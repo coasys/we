@@ -1,0 +1,11 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ESNext",
+    "outDir": "dist",
+    "isolatedModules": true,
+    // The theme-selector guard reads the primitives' source from disk.
+    "types": ["node"]
+  },
+  "include": ["src", "*.config.ts"]
+}

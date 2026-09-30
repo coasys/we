@@ -1,0 +1,262 @@
+/**
+ * The query IR — a backend-neutral, specified, versioned description of the data a template needs.
+ * It is what a `$query` resolves to (bindings — `local.x`, a store path in an expression — are evaluated *above* this, so
+ * the IR only ever holds concrete values), and what a backend adapter compiles to its native query.
+ *
+ * One grammar: this is both what an author writes and what an adapter consumes (bindings resolved).
+ * Defined against a `EntityManifest` (see manifest.ts) — the entity/field/relation names here are
+ * expected to resolve there; that cross-check is a separate validation pass.
+ */
+import { z } from 'zod';
+
+/*
+  Zod's object parser JIT-compiles a fast path with `new Function`, and probes for it with a
+  `new Function('')` in a try/catch. Electron's production CSP grants no 'unsafe-eval' (see
+  `contentSecurityPolicy` in apps/we-electron/electron/navigationPolicy.js), so the probe throws —
+  caught, and Zod falls back to the interpreted parser, so nothing misbehaves — but Chromium
+  reports the violation to the console regardless of the catch. A "Refused to evaluate a string as
+  JavaScript" that nobody can act on costs more than the parse speed it buys, and the fast path was
+  already unreachable under that CSP.
+
+  `jitless` skips the probe entirely. It must run before the first `z.object()` in this module,
+  which is when the probe fires — hence here rather than in an entry point, whose body executes
+  after every import has already been evaluated.
+*/
+z.config({ jitless: true });
+
+// ─── Filter ────────────────────────────────────────────────────────────────────
+
+export type Op =
+  'eq' | 'ne' | 'lt' | 'lte' | 'gt' | 'gte' | 'in' | 'nin' | 'contains' | 'startsWith' | 'endsWith' | 'exists';
+
+export type Scalar = string | number | boolean | null;
+
+/** A boolean expression tree. Leaves compare a field; combinators nest; `rel` scopes to a relation. */
+export type Filter =
+  | { field: string; op: Op; value: Scalar | Scalar[]; caseSensitive?: boolean }
+  | { and: Filter[] }
+  | { or: Filter[] }
+  | { not: Filter }
+  | { rel: string; op: 'exists' | 'some' | 'none'; where?: Filter };
+
+// ─── Sort / Page / Include / Aggregate ──────────────────────────────────────────
+
+export interface SortKey {
+  /** A property name, `id`, an aggregate alias, or a dotted path through to-one relations. */
+  by: string;
+  dir: 'asc' | 'desc';
+  nulls?: 'first' | 'last';
+}
+
+export type Page = { limit: number; offset?: number } | { limit: number; after?: string };
+
+export interface IncludeSpec {
+  /**
+   * Source relation, when the map key is an *alias* rather than a relation name — the instance-
+   * returning sibling of an `Aggregation` (both "project over" a relation). Absent = the key itself
+   * IS the relation name (plain hydration). Lets the same relation appear under several aliases
+   * (e.g. `$myLike` filtered to the current agent, alongside a `$likeCount` aggregate over `signals`).
+   */
+  over?: string;
+  filter?: Filter;
+  sort?: SortKey[];
+  page?: Page;
+  select?: string[];
+  include?: IncludeMap;
+  /** Unwrap a to-many relation to a single `object | null`. */
+  first?: boolean;
+}
+export type IncludeMap = Record<string, IncludeSpec | true>;
+
+/**
+ * Drill-down: restrict the result set to entities reached from a fixed anchor instance by traversing
+ * one of the anchor's relations — the neutral form of a master-detail "children of X" query. Kept
+ * grammar-neutral about hierarchy (the relation name carries that where it's real); implicitly ANDed
+ * with `filter`.
+ */
+export interface Scope {
+  /** Relation on the anchor entity whose targets are this query's `entity` (inbound traversal). */
+  via: string;
+  /**
+   * The anchor instance's id, or several of them.
+   *
+   * A list asks the same question of every anchor at once, which is what keeps one level of a tree
+   * to one round trip — and, under `live`, to one subscription — instead of one per parent. Twenty
+   * comments asked for their replies separately is twenty of each.
+   */
+  anchorId: string | number | Array<string | number>;
+  /** Optional anchor entity type — when present, enables manifest validation of `via`. */
+  anchor?: string;
+  /**
+   * Follow `via` as far as it goes rather than one step — every descendant, not every child.
+   *
+   * The result is flat and says nothing about the shape it came from: a backend walking a path
+   * reports which rows are under the anchor and not where any of them sits. Rebuilding a tree needs
+   * the inverse relation included alongside, so each row names its own parent.
+   */
+  transitive?: boolean;
+  /**
+   * `'out'` (the default) reads `anchor --via--> result`. `'in'` reads `result --via--> anchor`:
+   * searching among the things that point *at* the anchor, which `include` of an inverse relation
+   * cannot do because it only hydrates for rows already in hand.
+   */
+  direction?: 'out' | 'in';
+  /**
+   * Keep at most this many results per anchor — "the top five replies under each of these twenty".
+   *
+   * Distinct from `page.limit`, which caps the whole result: a limit of 100 across twenty anchors
+   * can legitimately return all 100 from one of them. Pair it with `sort`, or "top" means whichever
+   * the backend happened to return first.
+   */
+  limitPerAnchor?: number;
+  /**
+   * Walk `via` level by level, keeping this many results per anchor at each depth — `[10, 5, 3]` is
+   * "ten replies, five under each of those, three under each of *those*".
+   *
+   * One request, whatever the depth: a backend that supports this does the walk itself, so the
+   * levels cost it local queries rather than costing the caller round trips. Driven from the client
+   * instead, each level is a hop and the tree assembles itself on screen a level at a time.
+   *
+   * Results are flat and breadth-first, as with `transitive` — include the inverse relation to
+   * rebuild the tree. Not combinable with `transitive`, which is the same walk unbounded, and not
+   * expressible with `limitPerAnchor`, which has a single group when the walk starts from one
+   * anchor and so caps the total rather than the breadth at each depth.
+   */
+  levels?: number[];
+}
+
+export interface Aggregation {
+  /** Alias — becomes a field on each result row and is referenceable in `sort.by`. */
+  as: string;
+  /** Relation to aggregate across. */
+  over: string;
+  fn: 'count' | 'sum' | 'min' | 'max' | 'avg';
+  /** Required for sum/min/max/avg (a property on the related entity). */
+  field?: string;
+  /** Filter the related set before aggregating. */
+  filter?: Filter;
+  /**
+   * Aggregate over everything reachable through `over`, not just one step.
+   *
+   * What "42 replies" on a collapsed branch means: a reader takes it for the conversation below,
+   * and the direct-child count says 3. A backend that walks the relation as a path answers this in
+   * the read it is already making, grouped per row, so it costs no extra round trip.
+   *
+   * Needs `boundedTraversal.transitive`. Where a backend lacks it the aggregate is refused rather
+   * than answered one level deep, since a plausible wrong number is worse than a missing one.
+   */
+  transitive?: boolean;
+}
+
+// ─── Query ───────────────────────────────────────────────────────────────────────
+
+export interface QueryIR {
+  irVersion: 1;
+  /** Root entity type — same noun as the manifest's `entities` keys. */
+  entity: string;
+  filter?: Filter;
+  /** Ordered; first key is primary. */
+  sort?: SortKey[];
+  page?: Page;
+  /** The fields each row carries — properties, and relations as their target ids; omit = all. */
+  select?: string[];
+  include?: IncludeMap;
+  aggregate?: Aggregation[];
+  /** Drill-down from a fixed anchor instance (master-detail); ANDed with `filter`. */
+  scope?: Scope;
+  /** Subscription vs one-shot. */
+  live?: boolean;
+}
+
+// ─── Zod schema (structural validation) ─────────────────────────────────────────
+
+const op = z.enum(['eq', 'ne', 'lt', 'lte', 'gt', 'gte', 'in', 'nin', 'contains', 'startsWith', 'endsWith', 'exists']);
+const scalar = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+
+export const filterSchema: z.ZodType<Filter> = z.lazy(() =>
+  z.union([
+    z.object({
+      field: z.string(),
+      op,
+      value: z.union([scalar, z.array(scalar)]),
+      caseSensitive: z.boolean().optional(),
+    }),
+    z.object({ and: z.array(filterSchema) }),
+    z.object({ or: z.array(filterSchema) }),
+    z.object({ not: filterSchema }),
+    z.object({ rel: z.string(), op: z.enum(['exists', 'some', 'none']), where: filterSchema.optional() }),
+  ]),
+);
+
+const sortKeySchema = z.object({
+  by: z.string(),
+  dir: z.enum(['asc', 'desc']),
+  nulls: z.enum(['first', 'last']).optional(),
+});
+
+const pageSchema = z.union([
+  z.object({ limit: z.number(), offset: z.number().optional() }),
+  z.object({ limit: z.number(), after: z.string().optional() }),
+]);
+
+const includeSpecSchema: z.ZodType<IncludeSpec> = z.lazy(() =>
+  z.object({
+    over: z.string().optional(),
+    filter: filterSchema.optional(),
+    sort: z.array(sortKeySchema).optional(),
+    page: pageSchema.optional(),
+    select: z.array(z.string()).optional(),
+    include: includeMapSchema.optional(),
+    first: z.boolean().optional(),
+  }),
+);
+const includeMapSchema: z.ZodType<IncludeMap> = z.lazy(() =>
+  z.record(z.string(), z.union([includeSpecSchema, z.literal(true)])),
+);
+
+const aggregationSchema = z.object({
+  as: z.string(),
+  over: z.string(),
+  fn: z.enum(['count', 'sum', 'min', 'max', 'avg']),
+  field: z.string().optional(),
+  filter: filterSchema.optional(),
+  transitive: z.boolean().optional(),
+});
+
+const scopeSchema = z.object({
+  via: z.string(),
+  anchorId: z.union([z.string(), z.number(), z.array(z.union([z.string(), z.number()]))]),
+  anchor: z.string().optional(),
+  transitive: z.boolean().optional(),
+  direction: z.enum(['out', 'in']).optional(),
+  limitPerAnchor: z.number().int().positive().optional(),
+  levels: z.array(z.number().int().positive()).optional(),
+});
+
+export const queryIRSchema: z.ZodType<QueryIR> = z.object({
+  irVersion: z.literal(1),
+  entity: z.string(),
+  filter: filterSchema.optional(),
+  sort: z.array(sortKeySchema).optional(),
+  page: pageSchema.optional(),
+  select: z.array(z.string()).optional(),
+  include: includeMapSchema.optional(),
+  aggregate: z.array(aggregationSchema).optional(),
+  scope: scopeSchema.optional(),
+  live: z.boolean().optional(),
+});
+
+export interface IRError {
+  path: string;
+  message: string;
+}
+
+/** Structural validation of a query IR (shape only; entity/field resolution is a separate pass). */
+export function validateQueryIR(input: unknown): { valid: true; query: QueryIR } | { valid: false; errors: IRError[] } {
+  const parsed = queryIRSchema.safeParse(input);
+  if (parsed.success) return { valid: true, query: parsed.data };
+  return {
+    valid: false,
+    errors: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+  };
+}

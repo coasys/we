@@ -13,20 +13,29 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ay: 'center',
   gap: '100',
   px: '200',
-  py: '50',
+  py: '100',
   r: 'pill',
-  fontSize: '300',
+  fontSize: '100',
 };
 
 const VARIANT_DEFAULTS: Record<ComponentVariant, Partial<DesignSystemProps>> = {
-  neutral: { bg: 'neutral-100', color: 'neutral-700' },
-  primary: { bg: 'primary-100', color: 'primary-700' },
-  success: { bg: 'success-100', color: 'success-700' },
-  warning: { bg: 'warning-100', color: 'warning-700' },
-  danger: { bg: 'danger-100', color: 'danger-700' },
+  neutral: { bg: 'surface-sunken', color: 'text' },
+  primary: { bg: 'accent-muted', color: 'accent-text' },
+  success: { bg: 'success-surface', color: 'success-text' },
+  warning: { bg: 'warning-surface', color: 'warning-text' },
+  danger: { bg: 'danger-surface', color: 'danger-text' },
 };
 
 const styles = css`
+  [part='base'] {
+    /* Padding cascade: explicit prop → component theme → group density (x only, y fixed) → token defaults */
+    padding: var(
+      --we-tag-padding,
+      var(--we-theme-tag-padding-y, var(--we-space-100))
+        var(--we-theme-tag-padding-x, var(--we-theme-control-padding-x, var(--we-space-200)))
+    );
+  }
+
   [part='dismiss'] {
     all: unset;
     display: inline-flex;
@@ -37,7 +46,7 @@ const styles = css`
     width: 16px;
     height: 16px;
     opacity: 0.6;
-    transition: opacity 0.15s ease;
+    transition: opacity var(--we-transition-200, 150ms) ease;
   }
 
   [part='dismiss']:hover {
@@ -73,11 +82,13 @@ export default class Tag extends DesignSystemElement {
     return html`
       <span part="base" style=${styleMap(this.styles || {})}>
         <slot></slot>
-        ${this.dismissible
-          ? html`<button part="dismiss" aria-label="Dismiss" @click=${this._dismiss}>
-              <we-icon name="x" size="12px"></we-icon>
-            </button>`
-          : nothing}
+        ${
+          this.dismissible
+            ? html`<button part="dismiss" aria-label="Dismiss" @click=${this._dismiss}>
+                <we-icon name="x" size="12px"></we-icon>
+              </button>`
+            : nothing
+        }
       </span>
     `;
   }

@@ -1,10 +1,12 @@
 import type { DesignSystemProps } from '@we/design-types';
-import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html, nothing } from 'lit';
+import { type DSLayer, familyVar, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
+import { css, html, nothing, type PropertyValues, unsafeCSS } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
+import { fieldSurface } from '../shared/field-surface';
+import { openFloatingPanel } from '../shared/floating-panel';
 import sharedStyles from '../shared/styles';
 import type { ComponentSize } from '../types';
 
@@ -12,6 +14,15 @@ export interface SelectOption {
   label: string;
   value: string;
   disabled?: boolean;
+  /** Phosphor icon shown before the label, in the list and on the chosen value. */
+  icon?: string;
+  /**
+   * Heading this option sits under. Consecutive options sharing one render below a single
+   * non-interactive heading row — how a list says "these come from this space, those are blocks"
+   * without every label carrying a suffix. Keyboard navigation and filtering see only the options;
+   * a group whose options are all filtered out brings no heading with it.
+   */
+  group?: string;
 }
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
@@ -20,19 +31,19 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { fontSize: '200' },
-  sm: { fontSize: '300' },
-  md: { fontSize: '400' },
-  lg: { fontSize: '500' },
-  xl: { fontSize: '500' },
+  xs: { fontSize: '100' },
+  sm: { fontSize: '200' },
+  md: { fontSize: '300' },
+  lg: { fontSize: '400' },
+  xl: { fontSize: '400' },
 };
 
 const CONTROL_HEIGHT: Record<ComponentSize, string> = {
-  xs: 'var(--we-component-height-xs)',
-  sm: 'var(--we-component-height-sm)',
-  md: 'var(--we-component-height-md)',
-  lg: 'var(--we-component-height-lg)',
-  xl: 'var(--we-component-height-xl)',
+  xs: 'calc(var(--we-component-height-xs) + var(--we-theme-control-height-offset, 0px))',
+  sm: 'calc(var(--we-component-height-sm) + var(--we-theme-control-height-offset, 0px))',
+  md: 'calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px))',
+  lg: 'calc(var(--we-component-height-lg) + var(--we-theme-control-height-offset, 0px))',
+  xl: 'calc(var(--we-component-height-xl) + var(--we-theme-control-height-offset, 0px))',
 };
 
 const styles = css`
@@ -40,21 +51,64 @@ const styles = css`
     min-width: 120px;
   }
 
+  /*
+    Fitted: the control is as wide as its widest option, and no wider.
+
+    The sizer stacks every label in one grid cell and is hidden without being removed, so it still
+    contributes its width — which is the widest of them — while painting nothing and staying out of
+    the accessibility tree. Sizing this way rather than from the current value is what keeps the
+    control from resizing every time somebody picks something.
+
+    The width is a :host rule reading the design system's own variables, so an explicit width or
+    minWidth still wins, a breakpoint's width wins above it, and fit is only the default-sizing
+    opinion. It was set inline for a while, because the generated hover rule used to re-declare
+    width and a fitted control jumped to full width under the pointer; states now roll back what
+    they do not set (see "Cascade layers" in 'shared/helpers.ts'), and an inline width also beat
+    every breakpoint.
+  */
+  :host([fit]) {
+    width: var(--we-select-width, fit-content);
+    min-width: var(--we-select-min-width, 0);
+  }
+
+  [part='sizer'] {
+    display: grid;
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+  }
+
+  [part='sizer'] > span {
+    grid-area: 1 / 1;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--we-space-200);
+    white-space: nowrap;
+    font: inherit;
+  }
+
   [part='input-wrapper'] {
     position: relative;
     display: flex;
     align-items: center;
-    border: 1px solid var(--we-color-neutral-300);
-    border-radius: var(--we-radius-400);
-    background: var(--we-color-neutral-0);
-    transition: border-color 0.15s ease;
   }
 
-  [part='input-wrapper']:focus-within {
-    border-color: var(--we-color-primary-500);
-    outline: 2px solid var(--we-color-primary-100);
-    outline-offset: -1px;
-  }
+  /*
+    The recessed well, the ring, and — new here — a hover that answers with the fill as well as the
+    edge. These three rules were written on this control first and copied outward from it, which is
+    how the family drifted; they now come from the one definition instead, and this is the last
+    control to stop restating them.
+
+    The hover is the half that had gone missing at the source rather than in a copy. we-input's own
+    note argues for lifting the fill by pointing at this control ("that variant is what a Select
+    trigger is, so an input sitting in a row of them was the one control whose edge did not answer
+    the pointer") — and the trigger had no hover rule at all, so after that change it was the only
+    field in the family that did not respond to the pointer.
+
+    Focus-within rather than focus-visible: the focusable thing is the native input inside this
+    wrapper, and the ring has to follow the caret whether it was reached by click or by Tab.
+  */
+  ${fieldSurface("[part='input-wrapper']", ':focus-within')}
 
   input[part='native'] {
     all: unset;
@@ -77,6 +131,23 @@ const styles = css`
   [part='native-button'] {
     all: unset;
     flex: 1;
+    /*
+      Stretched and centred rather than shrink-wrapped around its label.
+
+      The all:unset above leaves the button with no height of its own, so a select with no value
+      *and* no placeholder had nothing but the caret to click: the trigger was full width and zero
+      height. The :empty::before rule below was meant to cover that and never fired, because
+      placeholder is a property on the host and attr() reads attributes — it is mirrored onto the
+      button element now.
+    */
+    align-self: stretch;
+    /*
+      A one-cell grid, so the value and the width-holding sizer occupy the same space rather than
+      sitting side by side — beside each other the button collapsed to nothing and the label was
+      clipped by the very thing meant to size it.
+    */
+    display: grid;
+    align-items: center;
     padding: 0 var(--we-space-300);
     font: inherit;
     color: inherit;
@@ -86,38 +157,110 @@ const styles = css`
     text-overflow: ellipsis;
   }
 
-  [part='native-button']:empty::before {
-    content: attr(placeholder);
-    color: var(--we-color-neutral-400);
+  [part='native-button'] > * {
+    grid-area: 1 / 1;
   }
 
+  [part='value'] {
+    display: flex;
+    align-items: center;
+    gap: var(--we-space-200);
+    overflow: hidden;
+  }
+
+  /* Truncation lives on the label span: an icon beside the text must never be what gets clipped. */
+  [part='value-label'] {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* A placeholder reads as absent text, not as a value. */
+  [part='value'][data-placeholder] {
+    color: var(--we-role-text-faint);
+  }
+
+  /*
+    Positioned by openFloatingPanel, which promotes it into the top layer — so no ancestor's
+    overflow can clip it and no z-index has to compete. The width still tracks the trigger, which
+    is why that is set from script rather than with a percentage: the panel is no longer laid out
+    inside the control.
+  */
   [part='listbox'] {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    min-width: 100%;
+    position: fixed;
     width: max-content;
     z-index: var(--we-z-dropdown);
     max-height: 200px;
     overflow-y: auto;
-    background: var(--we-color-neutral-0);
-    border: 1px solid var(--we-color-neutral-200);
-    border-radius: var(--we-radius-400);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    background: var(--we-role-surface-raised);
+    border: 1px solid var(--we-role-border);
+    /* A surface, though the control that opens it is an input — the panel is its own kind of thing.
+       Through the table rather than by hand, so it cannot drift from every other surface. */
+    border-radius: ${unsafeCSS(familyVar('surface', 'radius'))};
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--we-role-shadow-color) 10%, transparent);
     margin-top: var(--we-space-100);
     padding: var(--we-space-100) 0;
   }
 
   [part='option'] {
+    display: flex;
+    align-items: center;
+    gap: var(--we-space-200);
     padding: var(--we-space-200) var(--we-space-300);
     cursor: pointer;
     white-space: nowrap;
-    transition: background 0.1s ease;
+    transition: background var(--we-transition-200, 150ms) ease;
   }
 
-  [part='option']:hover,
+  /* Option icons are wayfinding, not content — tinted toward the accent so they read as a system
+     of markers rather than a column of dark glyphs. */
+  [part='option'] we-icon,
+  [part='value'] we-icon {
+    color: var(--we-role-accent-text);
+  }
+
+  [part='group-heading'] {
+    padding: var(--we-space-200) var(--we-space-300) var(--we-space-100);
+    font-size: 0.75em;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--we-role-text-faint);
+    pointer-events: none;
+  }
+
+  [part='group-heading']:not(:first-child) {
+    margin-top: var(--we-space-100);
+    border-top: 1px solid var(--we-role-border);
+  }
+
+  /*
+    Pointer feedback, and surfaceHover is the role for precisely that. This shared accentMuted
+    with the selected row below, so hovering anything looked like choosing it — three different
+    questions (pointer here, keyboard here, this one is chosen) answered in one colour.
+  */
+  [part='option']:hover {
+    background: var(--we-role-surface-hover);
+  }
+
   [part='option'][aria-selected='true'] {
-    background: var(--we-color-primary-50);
+    background: var(--we-role-accent-muted);
+  }
+
+  /*
+    Where the keyboard is, which is not the same question as which option is chosen — moving the
+    highlight with the arrows must be visible before Enter commits it, or the keys appear to do
+    nothing.
+
+    That was the stated intent and the rule then painted accentMuted, the identical value the
+    selected row carries. Since the highlight *starts* on the current value, arrowing moved it from
+    a tinted row to an identically tinted row: the arrows genuinely did appear to do nothing.
+
+    A ring rather than a fill, so it stacks on the selected tint instead of replacing it and the two
+    read apart on the same row — the case the original comment was worried about. Inset, or the
+    listbox's own edge would clip it.
+  */
+  [part='option'][data-active='true'] {
+    box-shadow: inset 0 0 0 2px var(--we-ring-color);
   }
 
   [part='option'][aria-disabled='true'] {
@@ -127,7 +270,7 @@ const styles = css`
 
   [part='empty'] {
     padding: var(--we-space-300);
-    color: var(--we-color-neutral-500);
+    color: var(--we-role-text-muted);
     text-align: center;
   }
 
@@ -150,12 +293,52 @@ export default class Select extends DesignSystemElement {
   @property({ type: String }) placeholder = '';
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: Boolean, reflect: true }) searchable = false;
+  /**
+   * Size the control to its widest option instead of filling its container.
+   *
+   * Opt-in, and measured against the *widest* option rather than the current one: a control that
+   * resized as the selection changed would shift everything beside it on every pick. Right where the
+   * options are short and known — true/false, a handful of declared values — and wrong where they
+   * carry user text, which is why filling the container stays the default.
+   */
+  @property({ type: Boolean, reflect: true }) fit = false;
   @property({ type: String }) name = '';
+  /**
+   * What this control is called, for anybody who cannot see the label beside it. Rendered as
+   * `aria-label` on the combobox itself — see `we-input`'s `label` for why the wrapper's name is
+   * not enough.
+   */
+  @property({ type: String }) label = '';
+
   @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   @state() private _open = false;
+
+  /** Teardown for the open panel: stops the position watcher and leaves the top layer. */
+  private _closeFloating?: () => void;
   @state() private _filter = '';
+  /**
+   * Which option the keyboard is on, as an index into the *filtered* list. `-1` is "none yet".
+   *
+   * Tracked rather than moving DOM focus, because the focused element must stay the combobox: a
+   * searchable select is typed into while the highlight moves, and moving focus into the listbox
+   * would take the caret with it. That is what `aria-activedescendant` is for, and why every option
+   * carries an id.
+   */
+  @state() private _active = -1;
+  /**
+   * Whether the keyboard has been used since the listbox opened — what decides if the highlight is
+   * drawn.
+   *
+   * The highlight starts on the current value so that opening and pressing Enter changes nothing,
+   * and it was drawn from that first frame however the list opened. Opened with a click, that put a
+   * focus-coloured ring on the chosen row that nothing the person did had asked for — it read as a
+   * stray focus ring, or as a second selection. It is the keyboard's cursor, so it appears once the
+   * keyboard is in use, the same distinction `:focus-visible` makes for focus. `_active` itself is
+   * unchanged, so `aria-activedescendant` still tells a screen reader where it is.
+   */
+  @state() private _keyboard = false;
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
@@ -175,8 +358,53 @@ export default class Select extends DesignSystemElement {
     document.addEventListener('click', this._onDocClick);
   }
 
+  /**
+   * Float the listbox while it is open.
+   *
+   * `updated` rather than the click handlers, because every path that opens this — pointer,
+   * keyboard, focus on a searchable select — runs through `_open`, and one of them would otherwise
+   * be forgotten.
+   */
+  updated(changed: PropertyValues) {
+    super.updated(changed);
+
+    if (changed.has('_open')) {
+      if (this._open) {
+        const trigger = this.shadowRoot?.querySelector('[part="input-wrapper"]') as HTMLElement | null;
+        const listbox = this.shadowRoot?.querySelector('[part="listbox"]') as HTMLElement | null;
+        // Matching the trigger's width is what keeps it looking like part of the control now that it
+        // is no longer inside it.
+        if (trigger && listbox) listbox.style.minWidth = `${trigger.getBoundingClientRect().width}px`;
+        this._closeFloating = openFloatingPanel(trigger, listbox);
+      } else {
+        this._closeFloating?.();
+        this._closeFloating = undefined;
+      }
+    }
+
+    /*
+      Keep the highlight where it can be seen.
+
+      `_move` only changes an index. On any list taller than the panel — the content-type select is
+      a dozen options across three groups — the arrows then walked the highlight off the bottom,
+      which from the outside is indistinguishable from the arrows doing nothing at all.
+
+      After the `_open` block, not before it: on the frame that opens the listbox both flags change,
+      and until `openFloatingPanel` has promoted and positioned the panel there is nothing
+      meaningful to scroll within. `nearest` moves the listbox and leaves the page alone.
+    */
+    if (this._open && this._active >= 0 && (changed.has('_active') || changed.has('_open'))) {
+      const active = this.shadowRoot?.querySelector(`#${this._optionId(this._active)}`);
+      // Called optionally although the DOM types promise it: the implementation the tests run
+      // against has no layout and omits scrollIntoView entirely, and a highlight that cannot be
+      // scrolled into view is not worth throwing out of a render for.
+      active?.scrollIntoView?.({ block: 'nearest' });
+    }
+  }
+
   disconnectedCallback() {
     super.disconnectedCallback();
+    this._closeFloating?.();
     document.removeEventListener('click', this._onDocClick);
   }
 
@@ -194,6 +422,10 @@ export default class Select extends DesignSystemElement {
     return this.options.find((o) => o.value === this.value)?.label ?? '';
   }
 
+  private get _selectedIcon() {
+    return this.options.find((o) => o.value === this.value)?.icon;
+  }
+
   private _onInput(e: Event) {
     e.stopPropagation();
     this._filter = (e.target as HTMLInputElement).value;
@@ -205,72 +437,230 @@ export default class Select extends DesignSystemElement {
     this.value = opt.value;
     this._filter = '';
     this._open = false;
+    this._active = -1;
     this.dispatchEvent(new CustomEvent('change', { detail: opt.value, bubbles: true, composed: true }));
   }
 
   private _toggle() {
+    this._keyboard = false;
     this._open = !this._open;
+    if (this._open) this._syncActive();
+    else this._active = -1;
+  }
+
+  /** Start the highlight on the current value, so opening and pressing Enter is a no-op. */
+  private _syncActive() {
+    const filtered = this._filtered;
+    const current = filtered.findIndex((o) => o.value === this.value && !o.disabled);
+    this._active = current >= 0 ? current : filtered.findIndex((o) => !o.disabled);
+  }
+
+  /** Move the highlight, skipping disabled options and stopping at the ends rather than wrapping. */
+  private _move(delta: number) {
+    const filtered = this._filtered;
+    if (!filtered.length) return;
+    let next = this._active;
+    for (let step = 0; step < filtered.length; step += 1) {
+      next += delta;
+      if (next < 0 || next >= filtered.length) return;
+      if (!filtered[next].disabled) {
+        this._active = next;
+        return;
+      }
+    }
+  }
+
+  /**
+   * The whole keyboard contract for a listbox, per the ARIA authoring practices.
+   *
+   * There was none at all: options were click-only non-focusable divs, so a keyboard user could open
+   * the listbox and was then stranded in it with no way to choose or to leave. This is the primary
+   * single-choice control — Settings, the marketplace, and every schema-authored form — so "stranded"
+   * meant those pages could not be completed without a mouse.
+   */
+  private _onKeyDown(e: KeyboardEvent) {
+    if (this.disabled) return;
+    if (['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', ' '].includes(e.key)) this._keyboard = true;
+
+    switch (e.key) {
+      case 'ArrowDown':
+      case 'ArrowUp': {
+        e.preventDefault();
+        if (!this._open) {
+          this._open = true;
+          this._syncActive();
+          return;
+        }
+        this._move(e.key === 'ArrowDown' ? 1 : -1);
+        return;
+      }
+      case 'Home':
+      case 'End': {
+        if (!this._open) return;
+        e.preventDefault();
+        this._active = e.key === 'Home' ? -1 : this._filtered.length;
+        this._move(e.key === 'Home' ? 1 : -1);
+        return;
+      }
+      case 'Enter': {
+        if (!this._open) {
+          e.preventDefault();
+          this._open = true;
+          this._syncActive();
+          return;
+        }
+        const option = this._filtered[this._active];
+        if (option) {
+          e.preventDefault();
+          this._select(option);
+        }
+        return;
+      }
+      case ' ': {
+        // Only when not typing: a space is a character in a search box, and swallowing it would make
+        // the searchable variant unable to match anything with two words in it.
+        if (this.searchable && this._open) return;
+        e.preventDefault();
+        if (!this._open) {
+          this._open = true;
+          this._syncActive();
+        } else {
+          const option = this._filtered[this._active];
+          if (option) this._select(option);
+        }
+        return;
+      }
+      case 'Escape': {
+        if (!this._open) return;
+        e.preventDefault();
+        this._open = false;
+        this._active = -1;
+        this._filter = '';
+        return;
+      }
+      case 'Tab': {
+        // Leaving closes, without choosing. Not prevented — Tab must still move on.
+        this._open = false;
+        this._active = -1;
+        return;
+      }
+      default:
+    }
+  }
+
+  /** Stable per option so `aria-activedescendant` can name one. */
+  private _optionId(index: number) {
+    return `we-select-option-${index}`;
   }
 
   render() {
     const h = CONTROL_HEIGHT[this.size];
     const filtered = this._filtered;
     const displayVal = this._open ? this._filter : this._displayValue;
+    const activeId = this._open && filtered[this._active] ? this._optionId(this._active) : nothing;
 
     return html`
       <div part="base" style=${styleMap({ position: 'relative', ...this.styles })}>
         <div part="input-wrapper" style=${styleMap({ height: h })}>
-          ${this.searchable
-            ? html`
-                <input
-                  part="native"
-                  type="text"
-                  .value=${displayVal}
-                  placeholder=${this.placeholder || nothing}
-                  ?disabled=${this.disabled}
-                  role="combobox"
-                  aria-expanded=${this._open ? 'true' : 'false'}
-                  aria-autocomplete="list"
-                  @input=${this._onInput}
-                  @focus=${() => (this._open = true)}
-                />
-              `
-            : html`
-                <button
-                  part="native-button"
-                  ?disabled=${this.disabled}
-                  role="combobox"
-                  aria-expanded=${this._open ? 'true' : 'false'}
-                  @click=${this._toggle}
-                >
-                  ${this._displayValue || this.placeholder || nothing}
-                </button>
-              `}
+          ${
+            this.searchable
+              ? html`
+                  <input
+                    part="native"
+                    type="text"
+                    .value=${displayVal}
+                    placeholder=${this.placeholder || nothing}
+                    ?disabled=${this.disabled}
+                    role="combobox"
+                    aria-label=${this.label || nothing}
+                    aria-expanded=${this._open ? 'true' : 'false'}
+                    aria-autocomplete="list"
+                    aria-controls="listbox"
+                    aria-activedescendant=${activeId}
+                    @input=${this._onInput}
+                    @focus=${() => {
+                      this._keyboard = false;
+                      this._open = true;
+                    }}
+                    @keydown=${this._onKeyDown}
+                  />
+                `
+              : html`
+                  <button
+                    part="native-button"
+                    placeholder=${this.placeholder}
+                    ?disabled=${this.disabled}
+                    role="combobox"
+                    aria-label=${this.label || nothing}
+                    aria-expanded=${this._open ? 'true' : 'false'}
+                    aria-controls="listbox"
+                    aria-activedescendant=${activeId}
+                    @click=${this._toggle}
+                    @keydown=${this._onKeyDown}
+                  >
+                    <span part="value" ?data-placeholder=${!this._displayValue}>
+                      ${this._selectedIcon ? html`<we-icon name=${this._selectedIcon} size="16px"></we-icon>` : nothing}
+                      <span part="value-label">${this._displayValue || this.placeholder || nothing}</span>
+                    </span>
+                    ${
+                      this.fit
+                        ? html`
+                            <span part="sizer" aria-hidden="true">
+                              ${this.options.map(
+                                // Markup kept tight: this span is a measurement, and stray template
+                                // whitespace inside it would be part of what gets measured.
+                                (o) =>
+                                  html`<span
+                                    >${o.icon ? html`<we-icon name=${o.icon} size="16px"></we-icon>` : nothing}${o.label}</span
+                                  >`,
+                              )}
+                              <span>${this.placeholder}</span>
+                            </span>
+                          `
+                        : nothing
+                    }
+                  </button>
+                `
+          }
           <button part="toggle" tabindex="-1" @click=${this._toggle} aria-label="Toggle options">
             <we-icon name=${this._open ? 'caret-up' : 'caret-down'} size="16px"></we-icon>
           </button>
         </div>
-        ${this._open
-          ? html`
-              <div part="listbox" role="listbox">
-                ${filtered.length > 0
-                  ? filtered.map(
-                      (opt) => html`
-                        <div
-                          part="option"
-                          role="option"
-                          aria-selected=${opt.value === this.value ? 'true' : 'false'}
-                          aria-disabled=${opt.disabled ? 'true' : nothing}
-                          @click=${() => this._select(opt)}
-                        >
-                          ${opt.label}
-                        </div>
-                      `,
-                    )
-                  : html`<div part="empty">No results</div>`}
-              </div>
-            `
-          : nothing}
+        ${
+          this._open
+            ? html`
+                <div part="listbox" role="listbox" id="listbox">
+                  ${
+                    filtered.length > 0
+                      ? filtered.map(
+                          (opt, index) => html`
+                            ${
+                              opt.group && opt.group !== filtered[index - 1]?.group
+                                ? html`
+                                    <div part="group-heading" role="presentation" aria-hidden="true">${opt.group}</div>
+                                  `
+                                : nothing
+                            }
+                            <div
+                              part="option"
+                              role="option"
+                              id=${this._optionId(index)}
+                              data-active=${this._keyboard && index === this._active ? 'true' : nothing}
+                              aria-selected=${opt.value === this.value ? 'true' : 'false'}
+                              aria-disabled=${opt.disabled ? 'true' : nothing}
+                              @click=${() => this._select(opt)}
+                            >
+                              ${opt.icon ? html`<we-icon name=${opt.icon} size="16px"></we-icon>` : nothing}
+                              ${opt.label}
+                            </div>
+                          `,
+                        )
+                      : html`<div part="empty">No results</div>`
+                  }
+                </div>
+              `
+            : nothing
+        }
       </div>
     `;
   }

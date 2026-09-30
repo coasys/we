@@ -6,7 +6,7 @@ import { Row } from '../../layout/Row/Row.solid';
 import type { ImageCropProps } from './ImageCrop.types';
 
 // ── constants ─────────────────────────────────────────────────────────────────
-const OVERLAY = 'rgba(0,0,0,0.55)';
+const OVERLAY = 'var(--we-role-overlay)';
 const BORDER = 'rgba(255,255,255,0.9)';
 const GRID = 'rgba(255,255,255,0.3)';
 
@@ -375,6 +375,22 @@ export function ImageCrop(allProps: ImageCropProps) {
       setImgLoaded(true);
       allProps.onReady?.({ getCroppedFile });
     };
+    /*
+      A picture that will not decode still has to hand back the handle.
+
+      `onReady` is how the consumer gets `getCroppedFile`, and it was only called from `onload` — so
+      a file the browser refuses (a truncated upload, a `.heic` on a browser that cannot read one, a
+      revoked object URL) left the crop dialog on screen with a Save button wired to a function
+      nobody had been given. Nothing said why, and nothing ever would.
+
+      The handle goes over anyway. `getCroppedFile` has an unloaded image to work from and answers
+      accordingly; what matters is that the consumer is in a position to find out, rather than
+      holding a dialog that cannot be completed or explained.
+    */
+    img.onerror = () => {
+      console.error('ImageCrop: could not load the image', allProps.src);
+      allProps.onReady?.({ getCroppedFile });
+    };
     img.src = allProps.src;
   });
 
@@ -401,7 +417,7 @@ export function ImageCrop(allProps: ImageCropProps) {
           cursor: 'grab',
           'touch-action': 'none',
           'border-radius': 'var(--we-radius-400)',
-          background: 'var(--we-color-neutral-100)',
+          background: 'var(--we-role-surface-sunken)',
         }}
         onPointerDown={(e) => {
           onPointerDown(e);
@@ -423,13 +439,13 @@ export function ImageCrop(allProps: ImageCropProps) {
 
       {/* Rotation and flip controls */}
       <Row ay="center" gap="300">
-        <we-tooltip title="Flip horizontal">
+        <we-tooltip content="Flip horizontal">
           <we-button size="md" square variant="ghost" onClick={toggleFlipH}>
             <we-icon name="flip-horizontal" />
           </we-button>
         </we-tooltip>
 
-        <we-tooltip title="Rotate left 90°">
+        <we-tooltip content="Rotate left 90°">
           <we-button size="md" square variant="ghost" onClick={snapRotateLeft}>
             <we-icon name="arrow-counter-clockwise" />
           </we-button>
@@ -437,18 +453,18 @@ export function ImageCrop(allProps: ImageCropProps) {
 
         <Column ax="center">
           <we-slider mt="24px" min={-45} max={45} step={0.5} value={fineRotDeg()} on:input={onSlider} />
-          <we-text mt="10px" fontSize="300" color="neutral-500">
+          <we-text mt="10px" fontSize="300" color="text-muted">
             {fineRotDeg() > 0 ? `+${fineRotDeg()}°` : `${fineRotDeg()}°`}
           </we-text>
         </Column>
 
-        <we-tooltip title="Rotate right 90°">
+        <we-tooltip content="Rotate right 90°">
           <we-button size="md" square variant="ghost" onClick={snapRotateRight}>
             <we-icon name="arrow-clockwise" />
           </we-button>
         </we-tooltip>
 
-        <we-tooltip title="Flip vertical">
+        <we-tooltip content="Flip vertical">
           <we-button size="md" square variant="ghost" onClick={toggleFlipV}>
             <we-icon name="flip-vertical" />
           </we-button>

@@ -1,0 +1,442 @@
+/**
+ * A timeline over the space's posts — the first of three templates that read *the same records*
+ * three different ways.
+ *
+ * The triptych (this, Photos, Videos) is the demo that argues for the whole architecture: one
+ * space, one set of posts, and switching template turns a timeline into a photo grid into a video
+ * library. Nothing migrates, because nothing about the data was ever shaped by the interface. That
+ * is "change your interface and your data stays" as something you can watch happen, rather than a
+ * claim on a page.
+ *
+ * ## Reactions are the community's, not this template's
+ *
+ * There is no hardcoded "like". The row of controls is whatever `SignalType`s the space has
+ * defined — one, five, or none — each with its own icon, range and aggregation. A community that
+ * decides a heart means "I'll help with this" gets that, and this template neither knows nor cares.
+ * Sorting by popularity uses a `$likeCount` projection over the type slugged `like` *if the space
+ * has one*, and falls back to recency if it does not.
+ *
+ * ## Scope
+ *
+ * Home is the space's posts. A cross-space timeline — the union of everywhere you are — needs
+ * queries that fan out over datasets, which does not exist yet; pretending otherwise would mean a
+ * feed that silently showed one community's posts under a global-looking header.
+ */
+import type { RouteSchema, SchemaNode, TemplateSchema } from '@we/schema-shared';
+import { agentByline, collectionFeed, commentThread, emptyState, noReplies, replyCount } from '@we/template-kit';
+
+import { composerModal, KIND, signalRow, signalTypesQuery } from './shared.ts';
+
+const navItems = [
+  /*
+    `segment` beside `path`, because the two answer different questions and only one of them
+    survives a move. The active test was `currentPath == nav.path`, which compares a whole address
+    against a fragment of one — true only while the template owned the root. Membership of a
+    segment is the same question asked where the answer does not depend on the prefix.
+
+    Home is the space itself, so it has no segment of its own: it is active when none of the others
+    is, which is what an empty segment means below.
+  */
+  { label: 'Home', icon: 'house', path: '.', segment: '' },
+  { label: 'Photos', icon: 'image', path: './photos', segment: 'photos' },
+  { label: 'Profile', icon: 'user', path: './profile', segment: 'profile' },
+];
+
+/**
+ * The two sections beside the feed — the reason the right-hand column stopped being a spacer.
+ *
+ * ## Sections, not a sidebar
+ *
+ * Each is a `meta.panels` entry with `home: 'right'`: it renders inline in the right-hand lane, with
+ * no frame, and the reader can break it out, dock it, fold it, or drag it into the lane under the
+ * nav on the left. Reordering the two is a change of `order` on the reader's own placement; none of
+ * it touches this tree, and "Reset layout" puts them back. This is what a home lane is for, and the
+ * test of whether a region should be one: would somebody want it beside a *different* page? These
+ * two, yes. The nav and the compose button, no — they stay ordinary layout.
+ *
+ * ## Real data, or say why not
+ *
+ * The column used to be a spacer, on the grounds that a "who to follow" rail wired to nothing is a
+ * lie about what the system does. These are wired: the reactions are the space's own `SignalType`s
+ * and the people are its members, and each says so when it has none rather than inventing some.
+ */
+const trendingSection: SchemaNode = {
+  type: 'Column',
+  $queries: signalTypesQuery,
+  props: { gap: '200', p: '400', bg: 'surface', r: 'surface', border: '1px solid border' },
+  children: [
+    { type: 'we-text', props: { variant: 'heading-sm', tag: 'h4' }, children: ['Reactions here'] },
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'count(local.signalTypes)' },
+        then: {
+          type: '$each',
+          props: { items: { $: 'local.signalTypes' }, as: 'sig' },
+          children: [
+            {
+              type: 'Row',
+              props: { ay: 'center', gap: '300', py: '100' },
+              children: [
+                { type: 'we-icon', props: { name: { $: 'sig.icon' }, color: 'accent-text' } },
+                { type: 'we-text', children: [{ $: 'sig.name' }] },
+              ],
+            },
+          ],
+        },
+        else: {
+          type: 'we-text',
+          props: { color: 'text-faint' },
+          children: ['This space has not defined any reactions yet.'],
+        },
+      },
+    },
+  ],
+};
+
+const membersSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200', p: '400', bg: 'surface', r: 'surface', border: '1px solid border' },
+  children: [
+    { type: 'we-text', props: { variant: 'heading-sm', tag: 'h4' }, children: ['People here'] },
+    {
+      type: '$each',
+      props: { items: { $: 'filter(spaceStore.members, {}, 6)' }, as: 'member' },
+      children: [
+        {
+          type: 'Row',
+          props: { ay: 'center', gap: '300', py: '100' },
+          children: [
+            {
+              type: 'we-avatar',
+              props: {
+                size: 'sm',
+                image: { $: 'member.avatar' },
+                hash: { $: 'member.did' },
+                initials: { $: 'member.name' },
+              },
+            },
+            { type: 'we-text', props: { truncate: true }, children: [{ $: 'member.name' }] },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const leftRail: SchemaNode = {
+  type: 'Column',
+  props: { width: '240px', flex: '0 0 auto', py: '400', px: '300', gap: '200', height: '100%' },
+  $localState: { composeOpen: { type: 'boolean', initial: false } },
+  children: [
+    {
+      type: '$each',
+      props: { items: navItems, as: 'nav' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: {
+              $: "(nav.segment ? nav.segment in routeStore.templateSegments : !count(routeStore.templateSegments)) ? 'secondary' : 'ghost'",
+            },
+            width: '100%',
+            ax: 'start',
+            gap: '300',
+            onClick: { $action: 'routeStore.navigate', args: [{ $: 'nav.path' }] },
+          },
+          children: [
+            { type: 'we-icon', props: { name: { $: 'nav.icon' } } },
+            { type: 'we-text', children: [{ $: 'nav.label' }] },
+          ],
+        },
+      ],
+    },
+    {
+      type: 'we-button',
+      props: {
+        variant: 'primary',
+        width: '100%',
+        r: 'pill',
+        mt: '300',
+        onClick: { $setLocal: 'composeOpen', value: true },
+      },
+      children: ['Post'],
+    },
+    composerModal({ openLocal: 'composeOpen', title: 'New post', kind: KIND.post }),
+    /*
+      An empty lane under the nav, so a section from the right can be carried across.
+
+      Holds no width of its own — the rail is already 240px — and renders nothing until something is
+      dropped in it; during a drag it offers its box, which is how a lane gets its first section.
+    */
+    { type: '$panels', props: { lane: 'left', mt: '400' } },
+  ],
+};
+
+/**
+ * One post in the timeline.
+ *
+ * Stacked: the avatar sits beside the *whole* post — name, text and actions all in one column to its
+ * right — rather than only beside the name with the text starting again at the far left. The
+ * difference is a single hanging edge running down the feed instead of two, and it is most of what
+ * makes a timeline read as a column of utterances rather than a stack of cards.
+ */
+const postCard = (opts: { clickable?: boolean }): SchemaNode => {
+  const body: SchemaNode = opts.clickable
+    ? {
+        // `bare`, not `ghost`: the card supplies its own affordance, and a ghost hover rectangle
+        // over a post reads as a selection state it does not have.
+        type: 'we-button',
+        props: {
+          variant: 'bare',
+          width: '100%',
+          onClick: { $action: 'routeStore.navigate', args: [{ $: '`./post/${post.id}`' }] },
+        },
+        children: [
+          {
+            type: 'BlockRenderer',
+            props: {
+              editorState: { $: 'post.editorState' },
+            },
+          },
+        ],
+      }
+    : {
+        type: 'BlockRenderer',
+        props: {
+          editorState: { $: 'post.editorState' },
+        },
+      };
+
+  return {
+    type: 'Column',
+    props: { width: '100%', p: '400', borderBottom: '1px solid border' },
+    children: [
+      agentByline({
+        did: { $: 'post.author' },
+        timestamp: { $: 'post.createdAt' },
+        stacked: true,
+        children: [
+          body,
+          {
+            type: 'Row',
+            props: { gap: '600', ay: 'center', width: '100%', pt: '200' },
+            children: [signalRow('post'), replyCount('post')],
+          },
+        ],
+      }),
+    ],
+  };
+};
+
+const timeline: SchemaNode = {
+  type: 'Column',
+  props: { width: '100%' },
+  // Declared here rather than inherited from the template root: a route subtree renders through a
+  // fresh `RenderSchema`, so the root's `$queries` never reach it. See `signalTypesQuery`.
+  $queries: signalTypesQuery,
+  $localState: {
+    // View state, mirrored into the URL: a link to "top posts" should open on top posts for
+    // whoever receives it. Sort replaces rather than pushes, so history is not a keystroke log.
+    sortField: { type: 'string', initial: 'date', syncParam: 'sort' },
+  },
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '200', p: '300', ay: 'center', borderBottom: '1px solid border' },
+      children: [
+        {
+          type: '$each',
+          props: {
+            items: [
+              { label: 'Latest', value: 'date' },
+              { label: 'Top', value: 'likes' },
+            ],
+            as: 'tab',
+          },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                size: 'sm',
+                variant: { $: "local.sortField == tab.value ? 'secondary' : 'ghost'" },
+                onClick: { $setLocal: 'sortField', value: { $: 'tab.value' } },
+              },
+              children: [{ $: 'tab.label' }],
+            },
+          ],
+        },
+      ],
+    },
+    collectionFeed({
+      kind: KIND.post,
+      as: 'post',
+      include: {
+        signals: true,
+        /*
+          Count of the type slugged `like`, resolved from the space's own signal types rather than
+          hardcoded. `spaceStore.signalTypesBySlug` used to serve this and was deleted without a
+          replacement, which left a filter on `undefined` — every count wrong, and sorting by them
+          wrong with it. Reading the hoisted query keeps the count and the controls below in
+          agreement about which type `like` names.
+        */
+        $likeCount: {
+          from: 'signals',
+          where: {
+            signalTypeId: { $: "find(local.signalTypes, { slug: 'like' }).id" },
+          },
+          count: true,
+        },
+      },
+      empty: emptyState({ icon: 'newspaper', label: 'posts' }),
+      children: [postCard({ clickable: true })],
+    }),
+  ],
+};
+
+const postDetail: RouteSchema = {
+  path: '/post/:postId',
+  type: 'Column',
+  props: { width: '100%' },
+  $localState: { replyOpen: { type: 'boolean', initial: false } },
+  $queries: signalTypesQuery,
+  children: [
+    {
+      type: '$single',
+      props: {
+        item: {
+          $query: {
+            entity: 'CollectionBlock',
+            where: { id: { $: 'routeStore.segments[1]' } },
+            include: { signals: true },
+            limit: 1,
+          },
+        },
+        as: 'post',
+      },
+      children: [
+        postCard({}),
+        {
+          type: 'Row',
+          props: { px: '400', py: '300', width: '100%' },
+          children: [
+            {
+              type: 'we-button',
+              props: { variant: 'secondary', size: 'sm', onClick: { $setLocal: 'replyOpen', value: true } },
+              children: [{ type: 'we-icon', props: { name: 'chat-circle' } }, 'Reply'],
+            },
+          ],
+        },
+        composerModal({
+          openLocal: 'replyOpen',
+          title: 'Reply',
+          kind: KIND.reply,
+          parentId: { $: 'post.id' },
+          // Discourse, not composition: a reply hangs off the post rather than becoming part of it.
+          predicate: 'we://comment',
+          saveLabel: 'Reply',
+        }),
+        {
+          type: 'Column',
+          props: { px: '400', pb: '600', width: '100%' },
+          children: [
+            commentThread({
+              anchorId: { $: 'routeStore.segments[1]' },
+              empty: noReplies(),
+              reply: (as) => [
+                {
+                  type: 'Column',
+                  props: { width: '100%', gap: '200', py: '300', borderTop: '1px solid border' },
+                  children: [
+                    agentByline({ did: { $: `${as}.author` }, timestamp: { $: `${as}.createdAt` } }),
+                    {
+                      type: 'BlockRenderer',
+                      props: {
+                        editorState: { $: `${as}.editorState` },
+                      },
+                    },
+                    signalRow(as),
+                  ],
+                },
+              ],
+            }),
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+export const twitterTemplate: TemplateSchema = {
+  meta: {
+    name: 'Timeline',
+    description: 'A reverse-chronological feed of the space’s posts, with replies and community signals.',
+    icon: 'newspaper',
+    // Shared with Photos and Videos deliberately: those three exist to show one space rendered three
+    // ways, so the theme must not be a second variable moving at the same time.
+    themeId: 'timeline',
+    /*
+      The two sections beside the feed start in the right-hand lane. Named `snap`s say where each
+      goes when broken out by a click rather than a drag — the corner every picture-in-picture uses.
+      The feed itself is not a section: it holds the routes, and a section's node has no router to
+      hand `$routes` its pages.
+    */
+    panels: [
+      { id: 'trending', node: trendingSection, title: 'Reactions', home: 'right', order: 0, snap: 'bottom-right' },
+      { id: 'members', node: membersSection, title: 'People', home: 'right', order: 1, snap: 'bottom-right' },
+    ],
+  },
+  type: 'Row',
+  props: { bg: 'page', width: '100%', minHeight: '100%', ax: 'center', ay: 'stretch' },
+  children: [
+    leftRail,
+    {
+      type: 'Column',
+      props: {
+        width: '100%',
+        maxWidth: '640px',
+        flex: '1',
+        minWidth: '0',
+        bg: 'surface-sunken',
+        borderLeft: '1px solid border',
+        borderRight: '1px solid border',
+      },
+      children: [{ type: '$routes' }],
+    },
+    // The right-hand lane, holding the two sections declared `home: 'right'`. It was a spacer, on
+    // the grounds that a "who to follow" rail wired to nothing is a lie about what the system does;
+    // the sections it holds now are wired — see `trendingSection`.
+    { type: '$panels', props: { lane: 'right', width: '280px', flex: '0 0 auto', py: '400', px: '300' } },
+  ],
+  routes: [
+    { path: '/', ...timeline },
+    postDetail,
+    {
+      path: '/profile',
+      type: 'Column',
+      props: { width: '100%', p: '400', gap: '400' },
+      $queries: signalTypesQuery,
+      children: [
+        {
+          type: 'we-text',
+          props: { variant: 'heading-md' },
+          children: ['Your posts'],
+        },
+        collectionFeed({
+          kind: KIND.post,
+          as: 'post',
+          where: { author: { eq: { $: 'sessionStore.me.did' } } },
+          include: { signals: true },
+          empty: emptyState({ icon: 'user', label: 'posts of your own', delay: 0 }),
+          children: [postCard({ clickable: true })],
+        }),
+      ],
+    },
+    {
+      path: '*',
+      type: 'Column',
+      props: { p: '600', ax: 'center' },
+      children: [{ type: 'we-text', props: { color: 'text-faint' }, children: ['Not found.'] }],
+    },
+  ],
+};

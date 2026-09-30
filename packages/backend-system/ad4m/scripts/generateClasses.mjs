@@ -1,0 +1,358 @@
+/**
+ * Generate the AD4M-decorated classes from the authored manifest.
+ *
+ * The manifest under `src/manifest/` is the source of truth for the core vocabulary; the class
+ * files under `src/entities/` are its artifact. Doc comments are lifted from the manifest modules,
+ * where they are edited, into the emitted classes, where IDE hovers read them.
+ *
+ * Both sides are one flat directory. They used to be split `entities/` beside `blocks/`, which read
+ * as two kinds of declaration when the manifest has only ever had one map — and which made
+ * blockness a fact about a file's location that nothing could check. It is now
+ * `EntitySchema.blockable`, and `validateManifest` enforces the `version` rule that goes with it.
+ *
+ *   node scripts/generateClasses.mjs   # then `pnpm exec prettier --write` runs on the output
+ *
+ * Also emits `src/manifest/types.ts` — the neutral per-entity interfaces that ARE the model
+ * contract — and `src/manifest/conformance.ts`, whose type-level assertions hold the generated
+ * AD4M classes to them at build time. A new backend implements the interfaces; the AD4M lane is
+ * checked against them like any other.
+ *
+ * `coreManifest.test.ts` (backend-ad4m) holds the emitted classes and the manifest's runtime
+ * compilation in exhaustive agreement — a codegen bug fails there rather than drifting.
+ */
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Run via tsx (`pnpm generate:classes`), which resolves the manifest's TS modules directly.
+const here = dirname(fileURLToPath(import.meta.url));
+const { CORE_DEFS } = await import(resolve(here, '../../../entities/src/manifest/index.ts'));
+// Imported rather than reimplemented: the default for an untyped relation is stated once, so a
+// generated class and a compiled one cannot disagree about which relations are polymorphic.
+const { resolvesPolymorphically } = await import(resolve(here, '../../shared/src/manifest.ts'));
+
+const ENTITY_DIR = resolve(here, '../src/entities');
+const MANIFEST_DIR = resolve(here, '../../../entities/src/manifest');
+
+// ── Comments, lifted from the manifest module the definition was authored in ──────────────────
+
+function extractDocs(name) {
+  const src = readFileSync(resolve(MANIFEST_DIR, `${name}.ts`), 'utf8');
+  const comment = /\/\*\*(?:[^*]|\*(?!\/))*\*\//y;
+  const classDoc = src.match(new RegExp(String.raw`(\/\*\*(?:[^*]|\*(?!\/))*\*\/)\s*\nexport const ${name}`));
+  const memberDocs = {};
+  for (const m of src.matchAll(/(\/\*\*(?:[^*]|\*(?!\/))*\*\/)\s*\n\s*(\w+): \{/g)) {
+    memberDocs[m[2]] = m[1];
+  }
+  void comment;
+  return { classDoc: classDoc?.[1], memberDocs };
+}
+
+/** Re-indent a lifted jsdoc block to class-member depth. */
+function indentDoc(doc, pad) {
+  return doc
+    .split('\n')
+    .map((line, i) => (i === 0 ? pad + line.trim() : `${pad} ${line.trim()}`))
+    .join('\n');
+}
+
+// ── Emission ───────────────────────────────────────────────────────────────────────────────────
+
+const q = (s) => `'${String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n')}'`;
+
+const TS_TYPE = {
+  string: 'string',
+  number: 'number',
+  boolean: 'boolean',
+  date: 'string',
+  datetime: 'string',
+  json: 'string',
+};
+
+function propertyDecorator(spec) {
+  const opts = [`through: ${q(spec.predicate)}`];
+  if (spec.required) opts.push('required: true');
+  if (spec.identity) opts.push('identity: true');
+  if (spec.format === 'file') opts.push('resolveLanguage: FILE_STORAGE_LANGUAGE');
+  if (spec.readAs === 'dataUri') opts.push('transform: fileToDataUri');
+  if (spec.interpretationHint !== undefined) opts.push(`interpretationHint: ${q(spec.interpretationHint)}`);
+  return `@Property({ ${opts.join(', ')} })`;
+}
+
+/**
+ * The options half of a relation's decorator, shared by both cardinalities.
+ *
+ * `ordering` is where the manifest's `ordered` becomes an AD4M mechanism: the declaration says the
+ * members are in a chosen order, and the strategy naming how that order survives two people editing
+ * at once is this backend's to pick. `polymorphic` is resolved through `resolvesPolymorphically`
+ * rather than tested against an empty target here, so the default lives in one place.
+ */
+function relationOptions(spec) {
+  const opts = [`through: ${q(spec.predicate)}`];
+  if (spec.cardinality === 'many' && spec.ordered) opts.push(`ordering: { strategy: 'linkedList' }`);
+  if (resolvesPolymorphically(spec)) opts.push('polymorphic: true');
+  return `{ ${opts.join(', ')} }`;
+}
+
+function fieldLine(name, spec, def) {
+  const alias = def.unions?.[name]?.alias;
+  const base = alias ?? TS_TYPE[spec.type];
+  if (def.optional?.includes(name)) return `${name}?: ${base};`;
+  if (spec.default === null) return `${name}: ${base} | null = null;`;
+  const dflt = spec.default !== undefined ? spec.default : TS_TYPE[spec.type] === 'string' ? '' : undefined;
+  if (dflt === undefined) return `${name}?: ${base};`;
+  const literal = typeof dflt === 'string' ? q(dflt) : String(dflt);
+  return `${name}: ${base} = ${literal};`;
+}
+
+const pascal = (s) => s[0].toUpperCase() + s.slice(1);
+
+function emitEntity(name, def) {
+  const { classDoc, memberDocs } = extractDocs(name);
+  const e = def.entity;
+
+  const ad4mImports = new Set(['Model']);
+  const relativeImports = new Map(); // path → names
+  const addRelative = (path, what) => {
+    if (!relativeImports.has(path)) relativeImports.set(path, new Set());
+    relativeImports.get(path).add(what);
+  };
+
+  if (def.base === 'WeNode') addRelative('./WeNode', 'WeNode');
+  else ad4mImports.add('Ad4mModel');
+  if (e.flag) ad4mImports.add('Flag');
+  if (Object.keys(e.properties).length) ad4mImports.add('Property');
+  if (Object.values(e.properties).some((p) => p.format === 'file'))
+    addRelative('@we/entities', 'FILE_STORAGE_LANGUAGE');
+  if (Object.values(e.properties).some((p) => p.readAs === 'dataUri')) ad4mImports.add('fileToDataUri');
+
+  const relations = Object.entries(e.relations);
+  const owns = ([, r]) => !r.reverseOf;
+  const borrows = ([, r]) => Boolean(r.reverseOf);
+  if (relations.filter(owns).some(([, r]) => r.cardinality === 'many')) ad4mImports.add('HasMany');
+  if (relations.filter(owns).some(([, r]) => r.cardinality === 'one')) ad4mImports.add('HasOne');
+  if (relations.filter(borrows).some(([, r]) => r.cardinality === 'many')) ad4mImports.add('BelongsToMany');
+  if (relations.filter(borrows).some(([, r]) => r.cardinality === 'one')) ad4mImports.add('BelongsToOne');
+  const manyMethods = (def.methodRelations ?? []).filter((r) => e.relations[r]?.cardinality === 'many');
+  if (manyMethods.length) ad4mImports.add('HasManyMethods');
+
+  /*
+    A relation onto the entity's own class needs no import — the class is right here. Emitting one
+    produced `import { CollectionBlock } from './CollectionBlock'` inside `CollectionBlock.ts`, which
+    TypeScript reads as a redeclaration rather than a self-reference. Reached the moment a collection
+    gained a relation to another collection: `CollectionBlock.board`.
+  */
+  for (const [, r] of relations) if (r.target && r.target !== name) addRelative(`./${r.target}`, r.target);
+
+  const L = [];
+  L.push('/**');
+  L.push(` * GENERATED from src/manifest/${name}.ts — do not edit here.`);
+  L.push(' *');
+  L.push(' * The manifest module is the source of truth: its schema, hints and prose. Rebuild with');
+  L.push(' * `pnpm --filter @we/entities generate:classes` after changing it.');
+  L.push(' */');
+  // One package-import group (the sorter keeps @coasys and @we lines adjacent), a blank line,
+  // then the relative imports — so the file lints clean exactly as generated.
+  const ci = [...ad4mImports].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  const rels = [...relativeImports.entries()].sort(([a], [b]) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  const pkgRels = rels.filter(([path]) => !path.startsWith('.'));
+  const localRels = rels.filter(([path]) => path.startsWith('.'));
+  L.push(`import { ${ci.join(', ')} } from '@coasys/ad4m';`);
+  for (const [path, names] of pkgRels) L.push(`import { ${[...names].join(', ')} } from '${path}';`);
+  L.push('');
+  for (const [path, names] of localRels) L.push(`import { ${[...names].join(', ')} } from '${path}';`);
+  if (localRels.length) L.push('');
+
+  for (const [field, u] of Object.entries(def.unions ?? {})) {
+    void field;
+    L.push(`export type ${u.alias} = ${u.values.map(q).join(' | ')};`);
+  }
+  if (def.unions) L.push('');
+
+  if (classDoc) L.push(classDoc);
+  const modelOpts = [`name: ${q(name)}`];
+  if (e.interpretationHint !== undefined) modelOpts.push(`interpretationHint: ${q(e.interpretationHint)}`);
+  L.push(`@Model({ ${modelOpts.join(', ')} })`);
+  L.push(`export class ${name} extends ${def.base === 'WeNode' ? 'WeNode' : 'Ad4mModel'} {`);
+
+  if (e.flag) {
+    L.push(`  @Flag({ through: ${q(e.flag.predicate)}, value: ${q(e.flag.value)} })`);
+    L.push(`  flag: string = '';`);
+    L.push('');
+  }
+
+  for (const [pname, spec] of Object.entries(e.properties)) {
+    if (memberDocs[pname]) L.push(indentDoc(memberDocs[pname], '  '));
+    L.push(`  ${propertyDecorator(spec)}`);
+    L.push(`  ${fieldLine(pname, spec, def)}`);
+    L.push('');
+  }
+
+  for (const [rname, spec] of Object.entries(e.relations)) {
+    if (memberDocs[rname]) L.push(indentDoc(memberDocs[rname], '  '));
+    /*
+      A relation declaring `reverseOf` is the non-owning side: the link lives on the target and this
+      end reads it backwards, which AD4M spells `@BelongsTo*`. The predicate is the same one — there
+      is one link, read from either end — so the options are unchanged; only the direction differs.
+
+      No `add`/`remove` companions are generated, and that is the point rather than an omission:
+      writing through this side would have to write a link the other end owns, and two relations
+      able to write one link is how they drift apart.
+    */
+    const reverse = Boolean(spec.reverseOf);
+    if (spec.cardinality === 'one') {
+      // An untyped to-one — a reference to whatever, the counterpart of the untyped to-many below.
+      // It holds a URI rather than an instance, since there is no class to hydrate it into, and it
+      // gets no `set<Name>` companion for the same reason: the accessor's whole signature is its
+      // target type.
+      const kind = reverse ? 'BelongsToOne' : 'HasOne';
+      const decorator = spec.target
+        ? `@${kind}(() => ${spec.target}, ${relationOptions(spec)})`
+        : `@${kind}(${relationOptions(spec)})`;
+      L.push(`  ${decorator}`);
+      L.push(`  ${rname}?: ${spec.target ? spec.target : 'string'};`);
+    } else {
+      const kind = reverse ? 'BelongsToMany' : 'HasMany';
+      const decorator = spec.target
+        ? `@${kind}(() => ${spec.target}, ${relationOptions(spec)})`
+        : `@${kind}(${relationOptions(spec)})`;
+      const fieldType = def.typedArrays?.includes(rname) ? `${spec.target}[]` : 'string[]';
+      L.push(`  ${decorator}`);
+      L.push(`  ${rname}: ${fieldType} = [];`);
+    }
+    L.push('');
+  }
+  while (L[L.length - 1] === '') L.pop();
+  L.push('}');
+
+  // Typed to-ones only: `set<Name>(value: T)` has no signature to declare without a target class.
+  // `reverseOf` excluded: a setter here would write the link the *other* entity owns, and two
+  // relations able to write one link is how they drift apart. The non-owning side is read-only.
+  const setters = relations.filter(([, r]) => r.cardinality === 'one' && r.target && !r.reverseOf);
+  /*
+    Both halves, not one or the other.
+
+    This was an `if`/`else`, which silently dropped every to-one setter from any entity that also had
+    a `methodRelations` collection — the two are independent facts about a class and the branch made
+    them exclusive. `Space` is where it surfaced: it had no `methodRelations`, so `setLocation` was
+    emitted; the moment `taskStates` was listed the other branch took over and the setter vanished,
+    while `SpaceRecord` went on requiring it. The conformance assertion in `conformance.ts` is what
+    caught it, which is the job that file exists to do.
+  */
+  if (manyMethods.length || setters.length) {
+    L.push('');
+    const extendsClause = manyMethods.length
+      ? ` extends HasManyMethods<${manyMethods.map((m) => q(m)).join(' | ')}>`
+      : '';
+    if (!setters.length) {
+      L.push(`export interface ${name}${extendsClause} {}`);
+    } else {
+      L.push(`export interface ${name}${extendsClause} {`);
+      for (const [rname, r] of setters) {
+        L.push(`  /** Generated by @HasOne — links a new ${r.target} as this ${name.toLowerCase()}'s ${rname}. */`);
+        // By identity, which is all the link is: the runtime passes the argument through
+        // `resolveRelationId`, so it reads an id and nothing else. Declaring the whole record asked
+        // callers for more than the write uses, and refused the one thing they most often have —
+        // the record a `create` just answered with, which carries no relations (see `NewRecord`).
+        // `HasManyMethods` already spells its side of this `string | { id: string }`.
+        L.push(`  set${pascal(rname)}(value: Pick<${r.target}, 'id'>): Promise<void>;`);
+      }
+      L.push('}');
+    }
+  }
+
+  L.push('');
+
+  writeFileSync(resolve(ENTITY_DIR, `${name}.ts`), L.join('\n'));
+  return `entities/${name}.ts`;
+}
+
+function emitConformance(defs) {
+  const L = [];
+  L.push('/**');
+  L.push(' * GENERATED — the AD4M classes, held to the neutral contract.');
+  L.push(' *');
+  L.push(' * Type-level only: each assertion fails compilation when a generated class stops satisfying');
+  L.push(' * its interface in types.ts, so the contract cannot drift from the one implementation that');
+  L.push(' * ships. Reached from the manifest entry point as a type export, which is what places this');
+  L.push(" * file in the build's type graph — an unimported assertion checks nothing.");
+  L.push(' */');
+  // One import group, no blank line — matching the repo's import sorter so the file lints clean
+  // exactly as generated.
+  L.push("import type * as M from '@we/entities/manifest';");
+  L.push('');
+  L.push("import type * as C from './index';");
+  L.push('');
+  L.push('type Satisfies<A extends B, B> = A;');
+  L.push('');
+  L.push('/** One entry per entity; the tuple exists so every assertion is referenced. */');
+  L.push('export type AssertClassesSatisfyContract = [');
+  for (const name of Object.keys(defs)) {
+    L.push(`  Satisfies<InstanceType<typeof C.${name}>, M.${name}Record>,`);
+  }
+  L.push('];');
+  L.push('');
+  L.push('/*');
+  L.push(' * The STATIC surface (EntityStatic, what the entity proxies are typed as) is deliberately not');
+  L.push(' * asserted here: the AD4M statics are `this`-polymorphic generics — `this: typeof Ad4mModel &');
+  L.push(' * (new (…) => T)` — and a detached method carrying that constraint satisfies no interface');
+  L.push(' * member, however compatible the call actually is. The guarantee is held at runtime instead:');
+  L.push(' * the proxy binds `this` at call time, and every store call in the test suite exercises the');
+  L.push(' * statics through the same proxies production uses.');
+  L.push(' */');
+  L.push('');
+  writeFileSync(resolve(here, '../src/entities/conformance.ts'), L.join('\n'));
+}
+
+/**
+ * The barrel, which was the one hand-maintained file in a generated set.
+ *
+ * `generate:classes` wrote the class and updated `conformance.ts`, and left this alone — so adding
+ * an entity produced a conformance assertion referencing an export that did not exist, and the only
+ * symptom was a DTS build failing several steps later on a name nobody had typed. The file's own
+ * docblock says it is generated from the manifest, which is exactly what makes the omission easy to
+ * make and hard to see.
+ *
+ * `WeNode` and the conformance re-export are fixed rather than derived: the first is the base every
+ * entity extends and is not itself a manifest entry, and the second is what places the type-level
+ * assertions in the build graph — an unimported assertion checks nothing.
+ */
+function emitIndex(defs) {
+  const L = [];
+  L.push('/**');
+  L.push(" * GENERATED — the AD4M lane's entity implementations, from `@we/entities`' manifest, living where");
+  L.push(' * they belong: in the adapter that registers them. Everything else in the application reaches');
+  L.push(' * these only through the entity proxies on `@we/entities`, which resolve to whatever this adapter');
+  L.push(" * registered at connect time; importing from here is asking for one specific backend's");
+  L.push(" * implementation by name, which only this package's own wiring and SDNA install have any");
+  L.push(' * business doing.');
+  L.push(' */');
+  for (const name of Object.keys(defs).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))) {
+    L.push(`export * from './${name}';`);
+  }
+  // The base class every entity extends, and not a manifest entry of its own.
+  L.push("export { WeNode } from './WeNode';");
+  L.push('');
+  L.push('// Type-only, and load-bearing: importing the conformance assertions is what places them in every');
+  L.push('// build graph that includes this barrel, so a class drifting from its neutral interface fails the');
+  L.push('// build rather than waiting to be noticed.');
+  L.push("export type { AssertClassesSatisfyContract } from './conformance';");
+  L.push('');
+  writeFileSync(resolve(ENTITY_DIR, 'index.ts'), L.join('\n'));
+}
+
+const written = Object.entries(CORE_DEFS).map(([name, def]) => emitEntity(name, def));
+emitConformance(CORE_DEFS);
+emitIndex(CORE_DEFS);
+written.push('entities/conformance.ts');
+written.push('entities/index.ts');
+console.log(`generated ${written.length - 3} classes + the neutral type surface`);
+try {
+  execFileSync('pnpm', ['exec', 'prettier', '--write', ...written.map((f) => resolve(here, '../src', f))], {
+    cwd: resolve(here, '..'),
+    stdio: 'inherit',
+  });
+} catch {
+  console.warn('prettier not available — emitted unformatted');
+}

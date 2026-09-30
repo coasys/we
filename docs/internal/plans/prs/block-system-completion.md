@@ -361,9 +361,9 @@ This mirrors exactly how Templates work: the `Template` model stores its schema 
 
 **Files:**
 
-- `packages/models/src/blocks/CollectionBlock.ts` — add `editorState` file-storage property
+- `packages/entities/src/blocks/CollectionBlock.ts` — add `editorState` file-storage property
 - `shared/src/serialization.ts` — save Lexical JSON blob alongside block tree, load it back
-- `packages/models/src/utils/fileTransforms.ts` — reuse existing `decodeFileAsJson`
+- `packages/entities/src/utils/fileTransforms.ts` — reuse existing `decodeFileAsJson`
 
 **Changes:**
 

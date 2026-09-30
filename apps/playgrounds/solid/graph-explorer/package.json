@@ -1,0 +1,33 @@
+{
+  "private": true,
+  "name": "@we/playground-graph-explorer",
+  "version": "0.0.0",
+  "description": "Browser harness — the graph engine, its expanders and layouts over an in-memory dataset. No AD4M.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build:steps": "vite build",
+    "build": "we-build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@we/components": "workspace:*",
+    "@we/graph-protocol": "workspace:*",
+    "@we/graph-solid": "workspace:*",
+    "@we/primitives": "workspace:*",
+    "@we/schema-shared": "workspace:*",
+    "@we/themes": "workspace:*",
+    "@we/tokens": "workspace:*",
+    "solid-js": "^1.9.15"
+  },
+  "devDependencies": {
+    "@we/cli": "workspace:*",
+    "happy-dom": "^20.12.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.2.2",
+    "vite-plugin-solid": "^2.11.14",
+    "vitest": "^4.1.11"
+  }
+}

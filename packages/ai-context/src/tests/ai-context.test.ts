@@ -1,29 +1,48 @@
-import { dirname, resolve } from 'node:path';
+import { existsSync, globSync, readFileSync } from 'node:fs';
+import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { ROLE_NAMES } from '@we/design-utils';
 import { describe, expect, it } from 'vitest';
 
 import { assembleReference } from '../assembler.js';
 import { extractPrimitives } from '../extractors/cem.js';
-import { extractModels } from '../extractors/models.js';
+import { extractEntities } from '../extractors/entities.js';
+import { foreignElementsFromManifest } from '../extractors/foreignElements.js';
 import { extractTokens } from '../extractors/tokens.js';
 import { extractComponentProps } from '../extractors/typescript.js';
+import { architecture } from '../fragments/architecture.js';
+import { contributionSurfaces } from '../fragments/contribution-surfaces.js';
+import { designSystemProps } from '../fragments/design-system-props.js';
+import { devPatterns } from '../fragments/dev-patterns.js';
+import { panels } from '../fragments/panels.js';
+import { patterns } from '../fragments/patterns.js';
+import { routing } from '../fragments/routing.js';
+import { rules } from '../fragments/rules.js';
+import { storePatterns } from '../fragments/store-patterns.js';
+import { stores } from '../fragments/stores.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../../../..');
 const designSystemRoot = resolve(repoRoot, 'packages/design-system');
 
 // Resolve paths explicitly (same as generate.ts does)
+//
+// `widgets` is a context *type*, not one package: generate.ts walks every package declaring
+// `context.type` and merges what it finds. Two declare 'widgets' — @we/widgets, which has held no
+// components since CollapsibleSidebar was retired, and @we/graph-solid, which holds GraphView. So
+// the widget path here is the graph one; pointing it at 5-widgets asserted a component count that
+// deleting the last widget was supposed to take to zero.
 const paths = {
   cem: resolve(designSystemRoot, '3-primitives/custom-elements.json'),
   components: resolve(designSystemRoot, '4-components/src'),
-  widgets: resolve(designSystemRoot, '5-widgets/src'),
+  widgets: resolve(repoRoot, 'packages/graph-system/frameworks/solid/src'),
   tokens: resolve(designSystemRoot, '1-tokens/src'),
-  models: resolve(repoRoot, 'packages/models/src'),
+  models: resolve(repoRoot, 'packages/entities/src'),
 };
 
 describe('extractPrimitives', () => {
-  it('extracts primitives from CEM', () => {
+  it('extracts primitives from CEM', async () => {
     const primitives = extractPrimitives(paths.cem);
     expect(primitives.length).toBeGreaterThan(0);
 
@@ -42,7 +61,12 @@ describe('extractPrimitives', () => {
   });
 });
 
-describe('extractComponentProps', () => {
+// Both of these build a TypeScript program over a whole package, which is cheap warm and several
+// seconds cold — and CI runs every package's suite at once, so a cold compile under contention
+// passed 5s there while taking under one here. A timeout, not a hang.
+const TYPESCRIPT_PROGRAM_TIMEOUT = 30_000;
+
+describe('extractComponentProps', { timeout: TYPESCRIPT_PROGRAM_TIMEOUT }, () => {
   it('extracts components', () => {
     const components = extractComponentProps(paths.components, 'components');
     expect(components.length).toBeGreaterThan(0);
@@ -76,9 +100,9 @@ describe('extractTokens', () => {
   });
 });
 
-describe('extractModels', () => {
-  it('extracts models from source', () => {
-    const models = extractModels(paths.models);
+describe('extractEntities', () => {
+  it('extracts models from source', async () => {
+    const models = await extractEntities(paths.models);
     expect(models.length).toBeGreaterThan(0);
 
     const textBlock = models.find((m) => m.name === 'TextBlock');
@@ -86,31 +110,33 @@ describe('extractModels', () => {
     expect(textBlock!.fields.some((f) => f.name === 'text')).toBe(true);
   });
 
-  it('extracts HasMany relations', () => {
-    const models = extractModels(paths.models);
+  it('extracts HasMany relations', async () => {
+    const models = await extractEntities(paths.models);
     const collection = models.find((m) => m.name === 'CollectionBlock');
     expect(collection).toBeDefined();
     expect(collection!.relations.some((r) => r.kind === 'HasMany' && r.name === 'children')).toBe(true);
   });
 });
 
-describe('assembleReference', () => {
-  it('contains all expected sections', () => {
+describe('assembleReference', { timeout: TYPESCRIPT_PROGRAM_TIMEOUT }, () => {
+  it('contains all expected sections', async () => {
     const context = {
       primitives: extractPrimitives(paths.cem),
       components: [
         ...extractComponentProps(paths.components, 'components'),
         ...extractComponentProps(paths.widgets, 'widgets'),
       ],
-      models: extractModels(paths.models),
+      models: await extractEntities(paths.models),
       tokens: extractTokens(paths.tokens),
       storeEntries: [],
       fragments: {
         schemaOperators: 'schema operators content',
         designSystemProps: 'design system props content',
         routing: 'routing content',
+        panels: 'panels content',
         stores: 'stores content',
         storePatterns: 'store patterns content',
+        patterns: 'patterns content',
         rules: 'rules content',
       },
     };
@@ -129,22 +155,24 @@ describe('assembleReference', () => {
     expect(reference).toContain('rules content');
   });
 
-  it('includes specific primitives', () => {
+  it('includes specific primitives', async () => {
     const context = {
       primitives: extractPrimitives(paths.cem),
       components: [
         ...extractComponentProps(paths.components, 'components'),
         ...extractComponentProps(paths.widgets, 'widgets'),
       ],
-      models: extractModels(paths.models),
+      models: await extractEntities(paths.models),
       tokens: extractTokens(paths.tokens),
       storeEntries: [],
       fragments: {
         schemaOperators: '',
         designSystemProps: '',
         routing: '',
+        panels: '',
         stores: '',
         storePatterns: '',
+        patterns: '',
         rules: '',
       },
     };
@@ -153,5 +181,239 @@ describe('assembleReference', () => {
     expect(reference).toContain('we-button');
     expect(reference).toContain('we-text');
     expect(reference).toContain('we-icon');
+  });
+});
+
+/**
+ * The contribution-surface guide and its router, held to the repository.
+ *
+ * Both are hand-authored lists of where things live, which is the kind of document that is correct
+ * on the day it is written and wrong two months later — a package moves, a conventions file is
+ * added, an example is renamed, and nothing says so. Every other hand-authored list in this pipeline
+ * is checked against its source (`mergeStoreEntries` fails the build on a stale store member,
+ * `templateSurface.test.ts` on an unclassified one), so these are too.
+ *
+ * What is deliberately NOT asserted is content. The guide is prose and should stay free to be
+ * rewritten; what has to hold is that the paths resolve and that no authoring-rules file is
+ * unreachable from it.
+ */
+describe('contribution surfaces', () => {
+  const guidePath = resolve(repoRoot, 'docs/contributing/surfaces.md');
+  const guide = readFileSync(guidePath, 'utf-8');
+
+  it('names every CONVENTIONS.md in the repo', () => {
+    /*
+      A CONVENTIONS.md is a surface's authoring rules, so one the guide never mentions is a surface a
+      contributor cannot route to — the whole failure the guide exists to fix, reappearing one
+      package at a time. This is not hypothetical: the check found `app-shell/CONVENTIONS.md`
+      unreferenced on its first run, because stores had been left off the guide entirely, and they
+      are the surface with the strictest registration on it.
+
+      Matched on the full path rather than the containing directory. A directory match passes on any
+      incidental mention of the word "models" anywhere in 400 lines of prose, which is the kind of
+      assertion that goes green forever and catches nothing.
+    */
+    const conventions = globSync('packages/**/CONVENTIONS.md', {
+      cwd: repoRoot,
+      exclude: (p) => p.includes('node_modules'),
+    });
+    expect(conventions.length).toBeGreaterThan(5);
+
+    const unreferenced = conventions.filter((rel) => !guide.includes(rel));
+    expect(unreferenced, 'link these from docs/contributing/surfaces.md by full path').toEqual([]);
+  });
+
+  it('only names paths that exist', () => {
+    /*
+      Every `packages/…` or `apps/…` path the guide quotes in backticks. A renamed reference example
+      is the likeliest drift here and the least visible: the prose still reads correctly, and the
+      contributor sent to copy it finds nothing.
+    */
+    const quoted = [...guide.matchAll(/`((?:packages|apps|docs)\/[A-Za-z0-9._/<>-]+)`/g)].map((m) => m[1]);
+    expect(quoted.length).toBeGreaterThan(20);
+
+    // `<name>` and `<id>` stand in for a directory the contributor is about to create.
+    const missing = [...new Set(quoted)]
+      .filter((p) => !p.includes('<'))
+      .filter((p) => !existsSync(resolve(repoRoot, p.replace(/\/$/, ''))));
+    expect(missing, 'these paths in docs/contributing/surfaces.md no longer exist').toEqual([]);
+  });
+
+  it('only links anchors that exist in it', () => {
+    /*
+      A heading rename breaks every link to it, and a broken in-document anchor is invisible: the
+      link still renders, the text still reads correctly, and clicking it goes nowhere. The
+      "Schema operators" section became "Expression functions" and the table above it went on
+      pointing at `#schema-operators` from two places.
+
+      GitHub's slug rule: lower-cased, non-alphanumerics dropped, spaces to hyphens.
+    */
+    const slug = (heading: string) =>
+      heading
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, '')
+        .trim()
+        .replace(/\s+/g, '-');
+
+    const headings = new Set([...guide.matchAll(/^#{2,4} (.+)$/gm)].map((m) => slug(m[1].trim())));
+    const anchors = [...guide.matchAll(/\]\(#([A-Za-z0-9-]+)\)/g)].map((m) => m[1]);
+    expect(anchors.length).toBeGreaterThan(10);
+
+    const broken = [...new Set(anchors)].filter((anchor) => !headings.has(anchor));
+    expect(broken, 'these anchors in docs/contributing/surfaces.md point at no heading').toEqual([]);
+  });
+
+  it('does not teach a token the schema language no longer has', () => {
+    /*
+      `$store` was replaced by the expression token in #169. Prose still naming it teaches a
+      spelling the validator rejects — the same class as the reference's own old-string examples,
+      and worse here because this is the document a contributor is sent to first.
+
+      Matched with a word boundary so `$storeName` in an example is not a false positive.
+    */
+    expect(guide, 'docs/contributing/surfaces.md names the removed `$store` token').not.toMatch(/\$store\b/);
+  });
+
+  it('keeps the router and the guide agreeing about which surfaces exist', () => {
+    /*
+      The router in CLAUDE.md is the compressed copy, and a surface added to one and not the other is
+      how the two start describing different repositories. Section headings in the guide are the
+      source; the router must mention each by name.
+    */
+    const sections = [...guide.matchAll(/^### (.+)$/gm)]
+      .map((m) => m[1].trim())
+      .filter((h) => !h.startsWith('Currently'));
+    expect(sections.length).toBeGreaterThan(10);
+
+    const singular = (h: string) => h.replace(/s$/, '').toLowerCase();
+    const router = contributionSurfaces.toLowerCase();
+    const absent = sections.filter((h) => !router.includes(singular(h)));
+    expect(absent, 'add these to packages/ai-context/src/fragments/contribution-surfaces.ts').toEqual([]);
+  });
+
+  it('is reachable from the docs index and the contributing guide', () => {
+    const rel = relative(repoRoot, guidePath);
+    expect(readFileSync(resolve(repoRoot, 'docs/README.md'), 'utf-8')).toContain('contributing/surfaces.md');
+    expect(readFileSync(resolve(repoRoot, 'CONTRIBUTING.md'), 'utf-8')).toContain('contributing/surfaces.md');
+    expect(rel).toBe('docs/contributing/surfaces.md');
+  });
+});
+
+describe('foreign elements from a custom-elements manifest', () => {
+  const manifest = JSON.parse(readFileSync(resolve(__dirname, 'fixtures/foreign-elements.json'), 'utf-8'));
+
+  it('reads each element’s public writable fields, attribute-only props and events', () => {
+    const [rating] = foreignElementsFromManifest(manifest, '@acme/elements', ['x-rating']);
+    expect(rating).toMatchObject({
+      tagName: 'x-rating',
+      package: '@acme/elements',
+      description: 'A row of stars somebody picks from.',
+    });
+    expect(rating.props.map((p) => p.name)).toEqual(['value', 'max', 'label']);
+    expect(rating.events).toEqual(['x-change', 'x-hover']);
+  });
+
+  it('keeps to the tags the seed allows, and reads every element when it names none', () => {
+    expect(foreignElementsFromManifest(manifest, '@acme/elements', ['x-rating']).map((e) => e.tagName)).toEqual([
+      'x-rating',
+    ]);
+    expect(foreignElementsFromManifest(manifest, '@acme/elements').map((e) => e.tagName)).toEqual([
+      'x-rating',
+      'x-chart',
+    ]);
+  });
+
+  it('documents them in their own section, with the event spelling a dashed name needs', () => {
+    const elements = foreignElementsFromManifest(manifest, '@acme/elements', ['x-rating']);
+    const reference = assembleReference({
+      primitives: [],
+      components: [],
+      models: [],
+      tokens: [],
+      storeEntries: [],
+      foreignElements: elements,
+      fragments: {
+        schemaOperators: '',
+        designSystemProps: '',
+        routing: '',
+        panels: '',
+        stores: '',
+        storePatterns: '',
+        patterns: '',
+        rules: '',
+      },
+    });
+    expect(reference).toContain('## Foreign Elements (this deployment)');
+    expect(reference).toContain('- x-rating — A row of stars somebody picks from.');
+    expect(reference).toContain('Events: on:x-change, on:x-hover');
+  });
+});
+
+describe('the colours the reference teaches', () => {
+  /*
+    Every example in the fragments is an unvalidated string. `we-validate-schemas` walks real
+    `.schema.ts` files and never sees these, so the one document an author is handed first is the
+    one place in the repo where a colour is nobody's job to check — and it drifted exactly that
+    way: four examples wrote `textFaint`, `surfaceSunken` and `accentText` while the props fragment
+    two sections above told the reader those spellings paint nothing, and `semanticValidation.ts`
+    rejected them outright. The reference was teaching a schema that fails its own validator.
+
+    So the examples are checked here, on the same two rules the validator and `role-audit` apply to
+    schemas. Only code fences are read: the prose *about* scale positions ("templates written with
+    `neutral-100` are frozen into one theme's idea of grey") is the guidance, not a violation of it.
+  */
+  const fragmentSources = Object.entries({
+    architecture,
+    contributionSurfaces,
+    designSystemProps,
+    devPatterns,
+    panels,
+    patterns,
+    routing,
+    rules,
+    storePatterns,
+    stores,
+  });
+
+  /** The fenced blocks of a fragment — what a reader copies, as opposed to what they read. */
+  const fencesOf = (text: string) => [...text.matchAll(/```[a-z]*\n([\s\S]*?)```/g)].map((m) => m[1]);
+
+  /** A colour prop written in JSON (`"bg": "surface"`) or in the kit's TS (`bg: 'surface'`). */
+  const COLOUR_PROP =
+    /["']?(bg|color|borderColor|fadeColor|bgImageTint|ring|border|borderTop|borderRight|borderBottom|borderLeft)["']?\s*:\s*["']([^"']+)["']/g;
+
+  const SCALE = /^(neutral|primary|success|warning|danger)-(0|25|50|75|100|200|300|400|500|600|700|800|900|1000)$/;
+  const BORDER_PROPS = new Set(['border', 'borderTop', 'borderRight', 'borderBottom', 'borderLeft']);
+
+  /** The colour half of a value: a border shorthand's third word, anything else whole. */
+  const colourOf = (prop: string, value: string) =>
+    BORDER_PROPS.has(prop) ? value.split(/\s+/).slice(2).join(' ') : value;
+
+  it('never writes a role in its TypeScript spelling', () => {
+    const camel = new Map(
+      [...ROLE_NAMES].map((kebab) => [kebab.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), kebab]),
+    );
+    const found: string[] = [];
+    for (const [name, source] of fragmentSources) {
+      for (const fence of fencesOf(source)) {
+        for (const [, prop, value] of fence.matchAll(COLOUR_PROP)) {
+          const kebab = camel.get(colourOf(prop, value));
+          if (kebab && kebab !== colourOf(prop, value)) found.push(`${name}: ${prop}: "${value}" → "${kebab}"`);
+        }
+      }
+    }
+    expect(found, 'the reference teaches a spelling semanticValidation.ts rejects').toEqual([]);
+  });
+
+  it('never names a scale position where a role belongs', () => {
+    const found: string[] = [];
+    for (const [name, source] of fragmentSources) {
+      for (const fence of fencesOf(source)) {
+        for (const [, prop, value] of fence.matchAll(COLOUR_PROP)) {
+          if (SCALE.test(colourOf(prop, value))) found.push(`${name}: ${prop}: "${value}"`);
+        }
+      }
+    }
+    expect(found, 'a scale position is invisible to the contrast layer — name a role').toEqual([]);
   });
 });

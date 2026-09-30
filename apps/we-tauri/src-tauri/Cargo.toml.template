@@ -1,7 +1,12 @@
+# `name` is the executable, so it is the lowercase spelling — see `mainBinaryName` in
+# tauri.conf.json, which has to match it. The display name is `productName` there.
+#
+# `description` is not decoration either: the AppImage's .desktop entry takes its `Comment=` from
+# it, which is the tooltip a launcher shows.
 [package]
-name = "we-ad4m-launcher"
+name = "we"
 version = "0.1.0"
-description = "WE AD4M Launcher"
+description = "Social infrastructure for communities that own their data"
 authors = ["James Weir"]
 edition = "2021"
 
@@ -15,6 +20,9 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["devtools"] }
 tauri-plugin-opener = "2"
+# The file dialog behind export/import. Used from Rust rather than the JS bridge: the path is for
+# the executor, which runs in this process, so nothing about it belongs in the renderer.
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # AD4M paths auto-generated from we-seed.json
@@ -25,3 +33,47 @@ warp = "0.3"
 ad4m-executor = { path = "{{AD4M_EXECUTOR_PATH}}" }
 uuid = { version = "0.8", features = ["v4"] }
 dirs = "5"
+
+# `enable_media` in src/lib.rs reaches into the GTK webview to grant camera/microphone access,
+# which needs webkit2gtk directly — it is not reachable through tauri's re-exports. Linux only,
+# matching the `#[cfg(target_os = "linux")]` on that function.
+#
+# The version is pinned to exactly what wry declares (`=2.0.2`, see wry's own Cargo.toml) so this
+# resolves to the same copy tauri's webview already uses. A second webkit2gtk would compile and
+# then hand back `WebView` values the running webview does not recognise as its own.
+#
+# This lived only in a locally-generated Cargo.toml until now: Cargo.toml is gitignored and built
+# from this template, so the dependency vanished the next time anyone regenerated it, and
+# `use webkit2gtk::…` stopped resolving. The template is the tracked source of truth — a Rust
+# dependency that is not in here does not exist.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = { version = "=2.0.2", features = ["v2_40"] }
+
+# Must mirror ad4m's workspace-root `[patch.crates-io]`, and mirror whatever is there NOW.
+#
+# `[patch]` applies only from the workspace root being built, and cargo does not propagate it
+# through a path or git dependency — ad4m says exactly this above its own block, which it keeps in
+# step with holochain's. This crate is its own workspace and depends on `ad4m-executor` by path, so
+# it is the third link in that chain and has to restate the same entries.
+#
+# The failure mode is not a missing patch line; it is a patch set that has drifted. This block used
+# to redirect the kitsune2 family, which ad4m no longer patches at all, while missing the lair and
+# sqlx entries ad4m added — so `pnpm dev:tauri` resolved a lair_keystore whose rusqlite wants
+# libsqlite3-sys ^0.35 against a deno_cache wanting ^0.38, and cargo refused the build outright over
+# the `links = "sqlite3"` single-owner rule. An out-of-date mirror is worse than none, because the
+# lines look deliberate.
+#
+# When ad4m's block changes, copy it here wholesale — additions AND removals — rather than merging.
+[patch.crates-io]
+# lair 0.7.1 with rusqlite bumped ^0.37 → ^0.40, so its libsqlite3-sys matches deno_cache's ^0.38.
+lair_keystore = { git = "https://github.com/coasys/lair.git", branch = "0.7.1-coasys-rusqlite-0.40" }
+lair_keystore_api = { git = "https://github.com/coasys/lair.git", branch = "0.7.1-coasys-rusqlite-0.40" }
+hc_seed_bundle = { git = "https://github.com/coasys/lair.git", branch = "0.7.1-coasys-rusqlite-0.40" }
+# sqlx built against libsqlite3-sys 0.38, for the same single-owner reason.
+sqlx = { git = "https://github.com/coasys/sqlx.git", branch = "sqlite-libsqlite3-sys-0.38-compat" }
+sqlx-core = { git = "https://github.com/coasys/sqlx.git", branch = "sqlite-libsqlite3-sys-0.38-compat" }
+sqlx-macros = { git = "https://github.com/coasys/sqlx.git", branch = "sqlite-libsqlite3-sys-0.38-compat" }
+sqlx-macros-core = { git = "https://github.com/coasys/sqlx.git", branch = "sqlite-libsqlite3-sys-0.38-compat" }
+sqlx-mysql = { git = "https://github.com/coasys/sqlx.git", branch = "sqlite-libsqlite3-sys-0.38-compat" }
+sqlx-postgres = { git = "https://github.com/coasys/sqlx.git", branch = "sqlite-libsqlite3-sys-0.38-compat" }
+sqlx-sqlite = { git = "https://github.com/coasys/sqlx.git", branch = "sqlite-libsqlite3-sys-0.38-compat" }

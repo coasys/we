@@ -15,12 +15,14 @@ const styles = css`
     display: block;
     max-width: 100%;
     height: auto;
+    border-radius: inherit;
   }
 
   .gradient-wrapper {
     display: block;
     max-width: 100%;
     height: auto;
+    border-radius: inherit;
   }
 
   :host([fit]) {
@@ -111,11 +113,13 @@ export default class Image extends LayoutVisualElement {
         width: 100%;
         height: 100%;
       `;
-      return html`<div class="gradient-wrapper" style=${maskStyle}></div>`;
+      return html`<div part="base"><div class="gradient-wrapper" style=${maskStyle}></div></div>`;
     }
 
     // Standard image rendering
     const imgStyle = this.objectPosition ? `object-position: ${this.objectPosition}` : '';
-    return html`<img src=${this._resolvedSrc} alt=${this.alt} loading=${this.loading} style=${imgStyle} />`;
+    return html`<div part="base">
+      <img src=${this._resolvedSrc} alt=${this.alt} loading=${this.loading} style=${imgStyle} />
+    </div>`;
   }
 }

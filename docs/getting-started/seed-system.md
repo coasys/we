@@ -1,317 +1,182 @@
-# WE Seed System
+# The Seed System
 
-The seed system allows developers to build custom launchers by defining a `we-seed.json` file that specifies which applications to embed and how to configure the launcher.
+Every WE deployment starts from a **seed file** — `we-seed.json` at the
+workspace root. It declares what this deployment _is_: project metadata, which
+feature modules ship, which external apps are embedded, how the bundled AD4M
+executor is wired, and the shared spaces a fresh install is offered.
+White-labeling a deployment is a matter of swapping the seed.
 
-## Overview
+> **Source of truth:** the seed's shape is
+> [`packages/app-shell/src/types/seed.ts`](../../packages/app-shell/src/types/seed.ts)
+> (`WeSeedFile`), which is thoroughly commented. This page is the guided tour;
+> when they disagree, the type wins — and please fix this page in the same PR.
 
-A **seed file** is a JSON configuration that defines:
-
-- Project metadata (name, version, author)
-- Host customization (launcher UI, settings)
-- Embedded applications (paths, capabilities, commands)
-
-The launcher automatically adapts based on the number of apps:
-
-- **Single app**: Full-screen layout (no sidebar)
-- **Multiple apps**: Sidebar navigation + app routing
-
-## Quick Start
-
-### 1. Clone Required Repositories
+## Validating
 
 ```bash
-# Clone the WE framework
-git clone https://github.com/yourusername/we.git
-
-# Clone applications you want to embed
-git clone https://github.com/juntofoundation/flux.git
-git clone https://github.com/yourusername/my-app.git
+pnpm validate:seed        # validates ./we-seed.json against the schema
 ```
 
-### 2. Create a Seed File
+Run it after any seed edit; `setup-workspace` also depends on a valid seed.
 
-Create `we/we-seed.json`:
+## The sections
+
+### `project` (required)
+
+Name, version, description, author — plus optional `repository` and `license`.
+Pure metadata.
+
+### `modules`
+
+The feature modules this deployment ships — e.g.
+`["globe", "graph", "notes", "call", "transcribe", { "id": "polls", "enabled": false }]`.
+Declaring what the deployment includes is what a seed is _for_, and this list is the
+_source_ of the shell's module registry rather than a filter over a hand-written one:
+`pnpm --filter @we/app-shell generate-modules` reads it and writes the imports, so a
+module nobody listed is not in the build at all. An entry is an id, or an object:
+
+- `id` — the module id. The package is `@we/module-<id>` unless `package` says otherwise.
+- `package` — a package outside this repository that exports `createModule`, e.g.
+  `"@acme/we-module-polls"`. The deployment adds the dependency and rebuilds; the
+  registry trusts it the way it trusts a bundled module.
+- `enabled: false` — ship it for communities to opt into rather than switching it on
+  in every space that has not decided. The default is on. It is a statement about
+  **spaces**: every agent still has the module installed, so a community can switch it
+  on from the space's settings without each member installing it first. It applies to
+  modules a community decides about — a panel, a section or a block. An agent-scoped
+  module (the Pocket, notes) is the person's to turn off in Settings → Modules.
+
+(Per-agent and per-space choices layer on top: `AgentSettings.installedModules` and
+`Space.enabledModules`.) `pnpm validate:seed` checks the entries.
+
+**The order is load-bearing.** Modules register in the order listed here, and
+the chrome rail renders their launchers in registration order — so this list is
+also the top-to-bottom order of the rail. Reordering it for tidiness rearranges
+the interface. The rail sorts rather than reshuffling on load order, so the
+result is stable; it is simply this list's order.
+
+### `settings`
+
+What this deployment believes each capability's settings should start as, keyed by module id
+and then by setting key:
 
 ```json
-{
-  "project": {
-    "name": "My Custom Launcher",
-    "version": "1.0.0",
-    "description": "A custom launcher with my favorite apps",
-    "author": "Your Name"
-  },
-  "host": {},
-  "ad4m": {},
-  "apps": [
-    {
-      "id": "flux",
-      "name": "Flux",
-      "route": "/flux",
-      "capabilities": ["perspectives", "languages", "agents"],
-      "paths": {
-        "projectRoot": "../flux/app",
-        "dist": "../flux/app/dist",
-        "devServer": {
-          "port": 3030,
-          "host": "localhost"
-        }
-      },
-      "commands": {
-        "install": "yarn install",
-        "build": "yarn build",
-        "dev": "yarn dev"
-      }
-    }
-  ]
-}
-```
-
-### 3. Build and Run
-
-```bash
-cd we
-pnpm install
-pnpm build
-cd apps/we-web
-pnpm dev
-```
-
-Open http://localhost:3000 to see your launcher!
-
-## Seed File Schema
-
-### Project Section
-
-```json
-{
-  "project": {
-    "name": "string", // Required: Display name
-    "version": "string", // Required: Semantic version
-    "description": "string", // Optional: Description
-    "author": "string" // Required: Author name
+"settings": {
+  "call": {
+    "iceServers": "stun:stun.l.google.com:19302\nturn:USER:PASSWORD@turn.example.org:3478"
   }
 }
 ```
 
-### Host Section
+This is the **least specific** of the four levels — a community, and then an agent, can still
+decide differently where the module's declaration allows it (see
+`docs/architecture/capabilities-and-surfaces.md`). It is the right place for a fact about the
+deployment rather than about any one space.
+
+**`call.iceServers` is the one worth knowing about**, because the thing it fixes is otherwise
+invisible. WE's calls ship with public STUN and no TURN relay, and two peers behind symmetric
+NAT — ordinary on mobile carriers and corporate networks — cannot reach each other without one.
+It does not look like a missing relay from inside the app; it looks like a peer who never
+finishes connecting, and only that pair is affected, so the same call works for everybody else.
+(Hovering a tile's connection badge says which it is: `relay` means TURN is carrying that pair,
+and nothing at all means no route was found.)
+
+A module cannot _ship_ a relay — infrastructure somebody has to run is not a module's to
+require — so a deployment that runs one says so here. One URL per line, or a JSON array of
+`RTCIceServer` objects if that is the shape your relay provider hands you.
+
+### `elements`
+
+Custom elements from libraries the deployment bundles — a chart, a rating, a map — which
+templates may then name like any primitive:
 
 ```json
-{
-  "host": {
-    "ui": {
-      "bootScreen": {}, // Optional: Custom boot screen schema
-      "appSettings": {}, // Optional: Custom app settings schema
-      "enableTemplateSwitching": true // Optional: Allow template switching
-    }
+"elements": [
+  {
+    "package": "@shoelace-style/shoelace",
+    "define": ["@shoelace-style/shoelace/dist/components/rating/rating.js"],
+    "tags": ["sl-rating"]
   }
-}
+]
 ```
 
-**Note:** The launcher shell UI (boot screen, app settings) can be fully customized via inline JSON schemas. See [Launcher UI Customization](../guides/launcher-ui-customization.md) for detailed examples and best practices.
+A template is data and cannot load code, so a visual element WE does not ship used to mean a
+merge into this repository. The renderer already mounts any hyphenated tag; what this adds is
+the deployment saying it trusts the code that defines one — the same trust it extends to a
+bundled module.
 
-### Apps Section
+- `package` — the npm package. Add it to `packages/app-shell/package.json`.
+- `define` — modules imported for their side effect of defining the elements. Defaults to the
+  package itself; name per-component entry points where the library has them, so the build
+  carries only what is listed.
+- `tags` — the tags templates may name. Defaults to every element the package's
+  custom-elements manifest declares.
+- `manifest` — the manifest's path in the package, when its `package.json` has no
+  `customElements` field.
 
-Each app in the `apps` array:
+`pnpm --filter @we/app-shell generate-elements` writes the imports (the build runs it), and
+`pnpm --filter @we/ai-context generate-context` reads each manifest into the reference and the
+validator — props, events, description — so the tags validate and an author can see how to use
+them. Two things differ from a primitive: a foreign element takes **no design-system props**
+(wrap it in a `Column` for spacing and colour), and its events keep their library's names, so a
+handler is written with the exact name — `"on:sl-change"` — since `onSlChange` would listen for
+`slchange`.
 
-```json
-{
-  "id": "string", // Required: Unique identifier
-  "name": "string", // Required: Display name
-  "route": "/path", // Required: Route path (e.g., /flux)
-  "capabilities": [], // Required: AD4M capabilities (see below)
-  "paths": {
-    "projectRoot": "string", // Path to app's project root
-    "dist": "string", // Path to built app (production)
-    "devServer": {
-      "port": 3000, // Dev server port
-      "host": "localhost" // Dev server host
-    }
-  },
-  "commands": {
-    "install": "string", // Install command (npm/yarn/pnpm)
-    "build": "string", // Build command
-    "dev": "string" // Dev server command
-  }
-}
-```
+### `features`
 
-## Capabilities
+Experimental flags the running app reads. Currently `useQueryIR` — route
+template queries through the neutral QueryIR before they reach the backend.
+Safe to flip in dev (the seed is a watched import); a production build bakes
+the seed in.
 
-Available AD4M capabilities:
+### `host`
 
-- `perspectives` - Access to AD4M perspectives
-- `languages` - Language management
-- `agents` - Agent operations
-- `filesystem` - File system access
-- `network` - Network requests
+Optional shell white-labeling: `host.theme` (color/font overrides) and
+`host.ui.bootScreen` (a schema node replacing the default boot screen).
 
-Capabilities automatically configure iframe permissions (camera, microphone, etc.).
+### `ad4m`
 
-## Single vs Multi-App Mode
+How the bundled executor is set up:
 
-### Single App (Full-Screen)
+- `dataPath` — where the executor keeps the agent's keys and data. Defaults to
+  `~/.ad4m` (shared with Flux and the ADAM launcher). **Changing it is a data
+  migration, not a preference** — an existing agent does not follow the path.
+- `executorPath` — the bundled `ad4m-executor` binary (required;
+  `setup-workspace` and `validate-seed` fail without it).
+- `repoPath` — an ad4m source checkout, needed by the Tauri build only.
+- `ai`, `perspectives`, `languages`, `executor` — optional executor-side setup.
 
-When `apps` array has **1 app**:
+### `globalSpaceUrl` / `marketplaceUrl`
 
-- App loads at root route `/`
-- No sidebar or navigation
-- 100% viewport width/height
-- Ideal for standalone launchers
+Neighbourhood URLs for the deployment's global discovery space and module
+marketplace. When set, a fresh install is prompted to join the global space,
+and a marketplace icon appears in the sidebar.
 
-### Multiple Apps (Sidebar)
+### `electron`
 
-When `apps` array has **2+ apps**:
+Desktop packaging knobs: `appDistPath`, and `basePort` for the local HTTP
+servers that serve embedded app bundles.
 
-- Sidebar (100px) with navigation buttons
-- Each app has its own route
-- Click sidebar buttons to switch apps
-- Content area fills remaining space
+### `apps` (required, may be empty)
 
-## Development Workflow
+External applications embedded in the shell sidebar. Each entry carries:
 
-1. **Edit seed file**: Modify `we/we-seed.json`
-2. **Rebuild**: `cd packages/app-framework && pnpm build`
-3. **Restart dev server**: `cd apps/we-web && pnpm dev`
-4. **See changes**: Refresh browser
+- `id`, `name`, `icon` (Phosphor name), optional `image` / `description`
+- `capabilities` — the AD4M permissions the app needs
+  (`perspectives` | `languages` | `agents` | `filesystem` | `network`)
+- `commands` — `install` (required), `build`, `dev`
+- `paths` — `projectRoot`, `dist`, optional `devServer` (`port`, `host`) and
+  `webUrl` (used on the web platform)
 
-## Example: Flux-Only Launcher
+How an embedded app receives its AD4M credentials at runtime is documented in
+[`docs/guides/embedding-external-apps.md`](../guides/embedding-external-apps.md).
 
-```json
-{
-  "project": {
-    "name": "Flux Launcher",
-    "version": "1.0.0",
-    "author": "Your Name"
-  },
-  "host": {},
-  "ad4m": {},
-  "apps": [
-    {
-      "id": "flux",
-      "name": "Flux",
-      "route": "/",
-      "capabilities": ["perspectives", "languages", "agents"],
-      "paths": {
-        "projectRoot": "../flux/app",
-        "dist": "../flux/app/dist",
-        "devServer": { "port": 3030, "host": "localhost" }
-      },
-      "commands": {
-        "install": "yarn install",
-        "build": "yarn build",
-        "dev": "yarn dev"
-      }
-    }
-  ]
-}
-```
+## Examples
 
-Result: Full-screen Flux at http://localhost:3000
+`seed-examples/` holds starting points:
 
-## Example: Multi-App Launcher
+- `we-native.seed.json` — WE standalone, no embedded apps
+- `we-with-apps.seed.json` — WE with an embedded external app (Flux)
 
-```json
-{
-  "project": {
-    "name": "My Multi-App Workspace",
-    "version": "1.0.0",
-    "author": "Your Name"
-  },
-  "host": {},
-  "ad4m": {},
-  "apps": [
-    {
-      "id": "flux",
-      "name": "Flux",
-      "route": "/flux",
-      "capabilities": ["perspectives", "languages", "agents"],
-      "paths": {
-        "projectRoot": "../flux/app",
-        "dist": "../flux/app/dist",
-        "devServer": { "port": 3030, "host": "localhost" }
-      },
-      "commands": {
-        "install": "yarn install",
-        "build": "yarn build",
-        "dev": "yarn dev"
-      }
-    },
-    {
-      "id": "my-app",
-      "name": "My App",
-      "route": "/my-app",
-      "capabilities": [],
-      "paths": {
-        "projectRoot": "../my-app",
-        "dist": "../my-app/dist",
-        "devServer": { "port": 3040, "host": "localhost" }
-      },
-      "commands": {
-        "install": "npm install",
-        "build": "npm run build",
-        "dev": "npm run dev"
-      }
-    }
-  ]
-}
-```
-
-Result: Sidebar with Flux and My App navigation
-
-## Architecture
-
-### How It Works
-
-1. **Build time**: `initializeIntegrations.ts` imports `we-seed.json` via static import
-2. **Module load**: Seed is validated and launcher template is generated
-3. **Template registration**: Generated launcher replaces placeholder in `templateRegistry`
-4. **Render time**: Template store reads registry and renders launcher
-5. **Runtime**: Apps load in iframes with configured permissions
-
-### File Structure
-
-```
-we/
-  we-seed.json                     ← Your seed file (REQUIRED)
-  packages/app-framework/src/
-    shared/
-      initializeIntegrations.ts    ← Loads seed, generates launcher
-      integrationComposer.ts       ← Generates template from seed
-      seedLoader.ts                ← (unused) Future async loading
-      registries/
-        templateRegistry.ts        ← Stores generated launcher
-```
-
-## Tips
-
-- **Seed file location**: Must be at `we/we-seed.json` (workspace root)
-- **Requires rebuild**: Changes require `pnpm build` in app-framework
-- **Dev server ports**: Ensure no conflicts (Flux: 3030, WE: 3000, etc.)
-- **Path resolution**: Relative paths are from workspace root (`we/`)
-
-## Troubleshooting
-
-**Launcher not updating?**
-
-- Rebuild app-framework: `cd packages/app-framework && pnpm build`
-- Restart dev server: `cd apps/we-web && pnpm dev`
-- Hard refresh browser (Cmd/Ctrl + Shift + R)
-
-**App not loading in iframe?**
-
-- Check dev server is running (e.g., `cd flux/app && yarn dev`)
-- Verify port in seed matches actual dev server port
-- Check browser console for CORS/permission errors
-
-**Sidebar not showing?**
-
-- Ensure `apps` array has 2+ items
-- Check console for "Generating multi-app launcher" message
-- Verify each app has unique `route` value
-
-## Future Enhancements
-
-- Template forking (customize launcher UI beyond seed config)
-- Dynamic seed loading (hot-reload without rebuild)
-- Seed validation CLI tool
-- Production build support
+Copy one to the workspace root as `we-seed.json`, adjust paths, and run
+`pnpm validate:seed`.

@@ -1,6 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html } from 'lit';
+import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
@@ -13,16 +13,16 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ay: 'center',
   gap: '200',
   cursor: 'pointer',
-  fontSize: '400',
-  color: 'neutral-800',
+  fontSize: '300',
+  color: 'text',
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { fontSize: '200', gap: '100' },
-  sm: { fontSize: '300', gap: '100' },
-  md: { fontSize: '400', gap: '200' },
-  lg: { fontSize: '500', gap: '300' },
-  xl: { fontSize: '500', gap: '400' },
+  xs: { fontSize: '100', gap: '100' },
+  sm: { fontSize: '200', gap: '100' },
+  md: { fontSize: '300', gap: '200' },
+  lg: { fontSize: '400', gap: '300' },
+  xl: { fontSize: '400', gap: '400' },
 };
 
 const TRACK_SIZES: Record<ComponentSize, { width: string; height: string; thumb: string }> = {
@@ -34,16 +34,43 @@ const TRACK_SIZES: Record<ComponentSize, { width: string; height: string; thumb:
 };
 
 const styles = css`
+  /*
+    A 44px tap target on a touchscreen, without changing what is drawn.
+
+    The visual size is a design decision and a finger is 44 CSS pixels wide whatever that decision
+    was — so the hit area grows and the box does not. WCAG 2.5.5 asks for 44; 2.5.8 settles for 24;
+    this control is well under both, and nothing in the set enlarged for touch.
+
+    A centred pseudo-element rather than padding, because padding would move everything around it.
+    pointer:coarse rather than a width query: this is about the input device, and a tablet with a
+    mouse should keep the compact target it can hit.
+  */
+  @media (pointer: coarse) {
+    [part='track'] {
+      position: relative;
+    }
+
+    [part='track']::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+      transform: translate(-50%, -50%);
+    }
+  }
+
   [part='track'] {
     position: relative;
     border-radius: var(--we-radius-pill);
-    background: var(--we-color-neutral-300);
-    transition: background 0.15s ease;
+    background: var(--we-role-control-surface);
+    transition: background var(--we-transition-200, 150ms) ease;
     flex-shrink: 0;
   }
 
   :host([checked]) [part='track'] {
-    background: var(--we-color-primary-500);
+    background: var(--we-role-accent);
   }
 
   [part='thumb'] {
@@ -52,8 +79,8 @@ const styles = css`
     left: 2px;
     border-radius: var(--we-radius-full);
     background: white;
-    transition: transform 0.15s ease;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    transition: transform var(--we-transition-200, 150ms) ease;
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--we-role-shadow-color) 20%, transparent);
   }
 
   :host([checked]) [part='thumb'] {
@@ -78,11 +105,28 @@ const styles = css`
     margin: -1px;
   }
 
+  /*
+    A focus ring on the track, since the input that takes focus is the hidden one.
+
+    The switch had none at all. Every other control in the set draws one — a button, an input, a
+    checkbox — so a keyboard user tabbing through a settings page watched the ring appear, vanish
+    across each switch, and reappear, with no way to tell which switch they were on. WCAG 2.4.7,
+    and the kind of gap that only shows up if somebody tabs through a form on purpose.
+
+    Drawn from the visually-hidden input's own focus, which is what actually receives it, and only
+    on :focus-visible so a click does not paint one.
+  */
+  input[part='native']:focus-visible ~ [part='track'] {
+    outline: var(--we-ring-width, 2px) solid var(--we-ring-color, var(--we-role-focus));
+    outline-offset: 2px;
+  }
+
   [part='off-label'],
   [part='on-label'] {
-    transition: opacity 0.15s ease;
+    transition: opacity var(--we-transition-200, 150ms) ease;
     cursor: pointer;
     user-select: none;
+    font-size: var(--we-font-size-200);
   }
 
   [part='off-label'] {
@@ -109,6 +153,21 @@ export default class Switch extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) checked = false;
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: String }) name = '';
+  /**
+   * What this control is called, for anybody who cannot see the label beside it.
+   *
+   * Rendered as `aria-label` on the **inner control**, which is the whole point. `we-form-field`
+   * puts `aria-labelledby` on its own `role="group"` wrapper, and naming a group does not name the
+   * widget inside it — so a screen reader announced these as "edit text", "checkbox, not checked",
+   * "slider", with nothing to say which one. `aria-label` on the host does not help either: the
+   * host is not the focusable thing.
+   *
+   * `we-form-field` sets this from its own label when the control does not already carry one, so an
+   * existing field gets a name with no change at its call site. Set it directly for a control that
+   * has no visible label at all.
+   */
+  @property({ type: String }) label = '';
+
   @property({ type: String }) value = '';
   @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: String }) labelOff = '';
@@ -141,6 +200,7 @@ export default class Switch extends DesignSystemElement {
           part="native"
           type="checkbox"
           role="switch"
+          aria-label=${this.label || nothing}
           .checked=${this.checked}
           ?disabled=${this.disabled}
           aria-checked=${this.checked ? 'true' : 'false'}

@@ -1,0 +1,46 @@
+{
+  "name": "@we/module-live",
+  "version": "0.1.0",
+  "description": "Live presence feature module — cursors on the page, and one person driving",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@we/backend-shared": "workspace:*"
+  },
+  "peerDependencies": {
+    "@we/module-shared": "workspace:*",
+    "@we/schema-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@we/cli": "workspace:*",
+    "@we/module-shared": "workspace:*",
+    "@we/module-testing": "workspace:*",
+    "@we/schema-kit": "workspace:*",
+    "@we/schema-shared": "workspace:*",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
+  },
+  "we": {
+    "module": true
+  }
+}

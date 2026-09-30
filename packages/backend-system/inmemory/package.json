@@ -1,0 +1,30 @@
+{
+  "name": "@we/backend-inmemory",
+  "version": "0.1.0",
+  "description": "An in-memory implementation of WE's backend contract — the reference adapter, and the one that makes stores testable without a running executor",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@we/backend-shared": "workspace:*",
+    "@we/entities": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "@we/cli": "workspace:*",
+    "tsup": "^8.5.1",
+    "vitest": "^4.1.11"
+  },
+  "sideEffects": false
+}

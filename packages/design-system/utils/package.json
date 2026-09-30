@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "build:steps": "tsup",
-    "build": "we-build"
+    "build": "we-build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "types": "dist/index.d.ts",
   "exports": {
@@ -22,8 +24,11 @@
   "files": [
     "dist"
   ],
+  "dependencies": {
+    "@we/tokens": "workspace:*"
+  },
   "peerDependencies": {
-    "solid-js": "^1.9.5"
+    "solid-js": "^1.9.15"
   },
   "peerDependenciesMeta": {
     "solid-js": {
@@ -31,12 +36,13 @@
     }
   },
   "devDependencies": {
+    "@types/node": "^26.4.0",
     "@we/cli": "workspace:*",
     "@we/design-types": "workspace:*",
-    "@we/tokens": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",
-    "solid-js": "^1.9.5",
-    "tsup": "^8.5.1"
+    "solid-js": "^1.9.15",
+    "tsup": "^8.5.1",
+    "vitest": "^4.1.11"
   },
   "publishConfig": {
     "access": "public"

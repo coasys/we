@@ -8,14 +8,25 @@ import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
-  fontFamily: 'monospace',
-  fontSize: '300',
+  fontFamily: 'var(--we-font-mono)',
+  fontSize: '200',
   r: '300',
 };
 
 const MODE_DEFAULTS: Record<'inline' | 'block', Partial<DesignSystemProps>> = {
-  inline: { display: 'inline', bg: 'neutral-100', color: 'neutral-800', px: '100', py: '50' },
-  block: { display: 'block', bg: 'neutral-900', color: 'neutral-100', px: '400', py: '300' },
+  inline: { display: 'inline', bg: 'surface-sunken', color: 'text', px: '100' },
+  block: {
+    display: 'block',
+    // A block of code reads as a terminal: dark in every theme. Scale tokens can't say
+    // that — the parametric lightness ramp inverts with the theme, so `neutral-900`
+    // rendered this near-white in dark mode. Pinning the lightness and keeping only
+    // hue/saturation parametric holds the terminal look while still tinting with the
+    // theme (same move as the dark theme's tooltip inversion).
+    bg: 'oklch(14% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.28) var(--we-color-neutral-hue))',
+    color: 'oklch(92% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.16) var(--we-color-neutral-hue))',
+    px: '400',
+    py: '300',
+  },
 };
 
 const styles = css`
@@ -38,6 +49,11 @@ export default class Code extends DesignSystemElement {
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
+  }
+
+  override getRawProps() {
+    const modeDefaults = MODE_DEFAULTS[this.block ? 'block' : 'inline'];
+    return { ...modeDefaults, ...super.getRawProps() };
   }
 
   override getInstanceProps() {

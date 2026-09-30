@@ -1,7 +1,6 @@
 import type { SchemaNode, TemplateSchema, ValidationError } from '@we/schema-shared';
 import { findMutations, isLengthMutation } from '@we/schema-shared';
 import { validateStructure } from '@we/schema-shared';
-import { batch } from 'solid-js';
 import { produce, SetStoreFunction } from 'solid-js/store';
 
 export type SchemaUpdateResult = { applied: boolean; errors?: ValidationError[] };
@@ -50,8 +49,11 @@ export function updateSchema<T extends TemplateSchema | SchemaNode>(
   const normalMuts = mutations.filter((m) => !isLengthMutation(m));
   const lengthMuts = mutations.filter(isLengthMutation);
 
-  // Apply normal mutations
-  if (normalMuts.length > 10) {
+  // Apply normal mutations via produce so that object-valued replacements
+  // create new reactive proxies (rather than merging into existing ones).
+  // This ensures SolidJS <For> sees a reference change when a node's type
+  // changes, forcing a component remount instead of reusing stale state.
+  if (normalMuts.length > 0) {
     setSchema(
       produce((draft: T) => {
         for (const { path, value } of normalMuts) {
@@ -67,11 +69,6 @@ export function updateSchema<T extends TemplateSchema | SchemaNode>(
         }
       }),
     );
-  } else if (normalMuts.length > 0) {
-    batch(() => {
-      // @ts-expect-error TypeScript cannot verify the tuple type here
-      for (const { path, value } of normalMuts) setSchema(...path, value);
-    });
   }
 
   // Apply array truncation mutations via produce (the only way to

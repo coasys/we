@@ -1,11 +1,8 @@
 /**
  * WE Widgets - All Styles
- * 
+ *
  * This file imports all widget styles into a single CSS bundle.
  * Import this in your app to get all widget styles at once:
- * 
+ *
  * import '@we/widgets/styles'
  */
-
-// Sidebars
-@use '../widgets/sidebars/CollapsibleSidebar/CollapsibleSidebar.scss';

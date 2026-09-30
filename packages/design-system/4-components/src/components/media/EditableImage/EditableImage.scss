@@ -1,10 +1,51 @@
-.editable-image__overlay {
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  opacity: 0;
-  transition: opacity 0.5s ease;
+// The tile is a `role="button"` div rather than a `we-button` (see the component for why), so it
+// inherits none of the ring every primitive carries and the browser paints its own instead — which
+// on Chrome is a white-cored double ring, matching nothing else in the app and reading worst of all
+// against the dark overlay this component fades in underneath it.
+//
+// `outline` rather than the `ring` box-shadow `we-button` and `we-input` use, for one reason: `ring`
+// is a DS prop a caller may already have set on the tile — the create-space avatar pins one as its
+// resting style — and that arrives as an inline style, which a stylesheet box-shadow cannot beat.
+// The geometry is the same either way: 2px, outside the border box, following the tile's radius.
+.editable-image:focus-visible {
+  outline: 2px solid var(--we-ring-color);
+  outline-offset: 0;
 }
 
-.editable-image:hover .editable-image__overlay {
+.editable-image__overlay {
+  inset: 0;
+  background: var(--we-role-overlay);
+  opacity: 0;
+
+  // The token rather than a hardcoded duration, so this follows the theme's animationSpeed like
+  // every other transition. It was 0.5s, slow enough on a hover to read as lag.
+  transition: opacity var(--we-transition-300, 250ms) ease;
+}
+
+// :focus-visible as well as :hover — the tile is keyboard-reachable now, and a focused control
+// that shows no sign of being focused may as well not be reachable.
+.editable-image:hover .editable-image__overlay,
+.editable-image:focus-visible .editable-image__overlay,
+.editable-image--dragging .editable-image__overlay {
   opacity: 1 !important;
+}
+
+.editable-image__remove {
+  opacity: 0;
+  transition: opacity var(--we-transition-300, 250ms) ease;
+}
+
+// Also on its own focus, not only the tile's: tabbing from the tile lands here, and the parent
+// is no longer :focus-visible by then.
+.editable-image:hover .editable-image__remove,
+.editable-image:focus-visible .editable-image__remove,
+.editable-image__remove:focus-visible {
+  opacity: 1;
+}
+
+// Out of the way while a file is being dragged over. The overlay is already saying what will
+// happen, and a delete button under the cursor at that moment invites the wrong outcome.
+.editable-image--dragging .editable-image__remove {
+  opacity: 0;
+  pointer-events: none;
 }

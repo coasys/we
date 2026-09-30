@@ -1,0 +1,34 @@
+{
+  "private": true,
+  "name": "@we/playground-portable-slice",
+  "version": "0.0.0",
+  "description": "Browser harness — WE's renderer + design system over a non-AD4M in-memory backend.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build:steps": "vite build",
+    "build": "we-build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@we/backend-inmemory": "workspace:*",
+    "@we/components": "workspace:*",
+    "@we/editor": "workspace:*",
+    "@we/primitives": "workspace:*",
+    "@we/schema-shared": "workspace:*",
+    "@we/schema-solid": "workspace:*",
+    "@we/tokens": "workspace:*",
+    "solid-js": "^1.9.15"
+  },
+  "devDependencies": {
+    "@solidjs/testing-library": "^0.8.10",
+    "@we/cli": "workspace:*",
+    "happy-dom": "^20.12.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.2.2",
+    "vite-plugin-solid": "^2.11.14",
+    "vitest": "^4.1.11"
+  }
+}

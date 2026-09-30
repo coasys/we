@@ -12,7 +12,9 @@ export default defineConfig({
   target: 'es2022',
   splitting: false,
   treeshake: true,
-  external: ['solid-js', '@we/primitives', /\.scss$/, /\.css$/], // Exclude SCSS/CSS imports from bundle
+  // design-utils is externalized so the published bundle resolves the live
+  // package instead of freezing a copy of it at build time.
+  external: ['solid-js', '@we/primitives', '@we/design-utils', /\.scss$/, /\.css$/],
   esbuildPlugins: [solidPlugin()],
   esbuildOptions(o) {
     o.jsx = 'automatic';

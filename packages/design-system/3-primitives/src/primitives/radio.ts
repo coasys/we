@@ -1,6 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html } from 'lit';
+import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
@@ -13,41 +13,68 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ay: 'center',
   gap: '200',
   cursor: 'pointer',
-  fontSize: '400',
-  color: 'neutral-800',
+  fontSize: '300',
+  color: 'text',
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { fontSize: '200', gap: '100' },
-  sm: { fontSize: '300', gap: '100' },
-  md: { fontSize: '400', gap: '200' },
-  lg: { fontSize: '500', gap: '300' },
-  xl: { fontSize: '500', gap: '400' },
+  xs: { fontSize: '100', gap: '100' },
+  sm: { fontSize: '200', gap: '100' },
+  md: { fontSize: '300', gap: '200' },
+  lg: { fontSize: '400', gap: '300' },
+  xl: { fontSize: '400', gap: '400' },
 };
 
 const styles = css`
+  /*
+    A 44px tap target on a touchscreen, without changing what is drawn.
+
+    The visual size is a design decision and a finger is 44 CSS pixels wide whatever that decision
+    was — so the hit area grows and the box does not. WCAG 2.5.5 asks for 44; 2.5.8 settles for 24;
+    this control is well under both, and nothing in the set enlarged for touch.
+
+    A centred pseudo-element rather than padding, because padding would move everything around it.
+    pointer:coarse rather than a width query: this is about the input device, and a tablet with a
+    mouse should keep the compact target it can hit.
+  */
+  @media (pointer: coarse) {
+    [part='control'] {
+      position: relative;
+    }
+
+    [part='control']::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+      transform: translate(-50%, -50%);
+    }
+  }
+
   [part='control'] {
     width: 18px;
     height: 18px;
-    border: 2px solid var(--we-color-neutral-400);
+    border: 2px solid var(--we-role-border-strong);
     border-radius: 50%;
     background: transparent;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.15s ease;
+    transition: all var(--we-transition-200, 150ms) ease;
     flex-shrink: 0;
   }
 
   :host([checked]) [part='control'] {
-    border-color: var(--we-color-primary-500);
+    border-color: var(--we-role-accent);
   }
 
   [part='dot'] {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--we-color-primary-500);
+    background: var(--we-role-accent);
     display: none;
   }
 
@@ -79,6 +106,21 @@ export default class Radio extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) checked = false;
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: String, reflect: true }) name = '';
+  /**
+   * What this control is called, for anybody who cannot see the label beside it.
+   *
+   * Rendered as `aria-label` on the **inner control**, which is the whole point. `we-form-field`
+   * puts `aria-labelledby` on its own `role="group"` wrapper, and naming a group does not name the
+   * widget inside it — so a screen reader announced these as "edit text", "checkbox, not checked",
+   * "slider", with nothing to say which one. `aria-label` on the host does not help either: the
+   * host is not the focusable thing.
+   *
+   * `we-form-field` sets this from its own label when the control does not already carry one, so an
+   * existing field gets a name with no change at its call site. Set it directly for a control that
+   * has no visible label at all.
+   */
+  @property({ type: String }) label = '';
+
   @property({ type: String, reflect: true }) value = '';
   @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
@@ -122,7 +164,13 @@ export default class Radio extends DesignSystemElement {
           tabindex="-1"
           aria-hidden="true"
         />
-        <span part="control" role="radio" aria-checked=${this.checked ? 'true' : 'false'} tabindex="0">
+        <span
+          part="control"
+          role="radio"
+          aria-checked=${this.checked ? 'true' : 'false'}
+          aria-label=${this.label || nothing}
+          tabindex="0"
+        >
           <span part="dot"></span>
         </span>
         <span part="label"><slot></slot></span>

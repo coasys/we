@@ -1,0 +1,77 @@
+import type {
+  AccountStore,
+  AppStore,
+  DatasetStore,
+  EditorStore,
+  InterpretationStore,
+  PresenceStore,
+  ProfileStore,
+  RecordStore,
+  RouteStore,
+  RuntimeStore,
+  SessionStore,
+  ShapeStore,
+  ShellStore,
+  SpaceStore,
+  TemplateStore,
+  ThemeStore,
+} from '@solid/stores';
+import type { RendererStores } from '@we/backend-shared';
+import type { RecordInstance } from '@we/backend-shared';
+
+export type RecordActionOptions = {
+  dataset?: string;
+  parent?: { model: string; id: string; field?: string };
+  [k: string]: unknown;
+};
+
+export type RecordActions = {
+  create: (entity: string, data?: Record<string, unknown>, options?: RecordActionOptions) => Promise<RecordInstance>;
+  update: (
+    entity: string,
+    id: string,
+    data: Record<string, unknown>,
+    options?: { dataset?: string },
+  ) => Promise<RecordInstance>;
+  delete: (entity: string, id: string, options?: { dataset?: string }) => Promise<void>;
+};
+
+/**
+ * This host's store bag.
+ *
+ * Extends {@link RendererStores} rather than restating the neutral bindings, so the renderer's
+ * contract is checked here, at the host's own declaration. Restating them let the two drift: this
+ * type had `$getEntity` returning AD4M's `EntityClass` (whose `query` takes a `PerspectiveProxy`)
+ * where the contract asks for the neutral shape, and it omitted bindings the renderer genuinely
+ * reads. Inheriting means adding a binding to the contract surfaces here as a type error rather
+ * than at runtime.
+ *
+ * Only host-specific members are declared below; everything neutral comes from the contract, and
+ * the inherited index signature keeps `someStore.field` dot-paths open.
+ */
+export interface Stores extends RendererStores {
+  // Restated explicitly: an interface does not pick up an inherited index signature for
+  // assignability the way a type alias does, so without this `Stores` is not assignable to
+  // `RendererStores` despite extending it.
+  [key: string]: unknown;
+  sessionStore: SessionStore;
+  accountStore: AccountStore;
+  runtimeStore: RuntimeStore;
+  datasetStore: DatasetStore;
+  profileStore: ProfileStore;
+  editorStore: EditorStore;
+  appStore: AppStore;
+  spaceStore: SpaceStore;
+  shapeStore: ShapeStore;
+  recordStore: RecordStore;
+  themeStore: ThemeStore;
+  templateStore: TemplateStore;
+  routeStore: RouteStore;
+  shellStore: ShellStore;
+  presenceStore: PresenceStore;
+  interpretationStore: InterpretationStore;
+  record?: RecordActions;
+  /** Neutral identity — the current agent (templates read `$me.did`). Backed by `sessionStore.me`;
+   *  typed `unknown` so the seam stays backend-agnostic. Host-specific: not part of the data contract. */
+  $me?: () => unknown;
+}

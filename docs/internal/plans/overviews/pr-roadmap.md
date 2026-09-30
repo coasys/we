@@ -1,5 +1,12 @@
 # PR Implementation Roadmap
 
+> **Status (Aug 2026): historical record — largely shipped.** 77 items here are marked ✅. The
+> per-PR plan documents this links to were deleted as each landed, so ~30 of its links resolve to
+> nothing; they are left as they are rather than stripped, because the titles are the useful part of
+> the record and rewriting them would lose it. Nothing here should be read as outstanding work
+> without checking the code first. For where a contribution goes today, see
+> [`docs/contributing/surfaces.md`](../../../contributing/surfaces.md).
+
 > Strategic ordering of planned PRs. Each PR delivers standalone value while building toward the [WE Apps Ecosystem](we-apps-ecosystem.md) vision.
 
 ---
@@ -97,7 +104,7 @@
 
                     ┌─────────────────────┐
                     │7c. Root Storybook   │
-                    │    Migration     ⏸️ │
+                    │    Migration     ❌ │
                     └─────────────────────┘
                               │
                               ▼
@@ -237,16 +244,16 @@ Added 34 components (25 Lit primitives + 9 SolidJS components) bringing the tota
 **Depends on:** nothing (but strategically placed here as prerequisite for Phases B and C)
 **Unblocks:** `$query` service, AI context extraction, clean model imports, core block types
 
-Moved TextBlock, ImageBlock, CollectionBlock from `@we/block-system/shared/src/models/` to `@we/models/src/blocks/`. Updated imports in serialization, AdamStore, SpaceStore, CreateSpaceModal. Re-exported from `@we/block-shared` for back-compat. Editor infrastructure (registry, GenericBlockNode) deferred to #5b.
+Moved TextBlock, ImageBlock, CollectionBlock from `@we/block-system/shared/src/models/` to `@we/entities/src/blocks/`. Updated imports in serialization, AdamStore, SpaceStore, CreateSpaceModal. Re-exported from `@we/block-shared` for back-compat. Editor infrastructure (registry, GenericBlockNode) deferred to #5b.
 
 ### 5b. Core Block Types ✅
 
 **Plan:** [core-block-types](../prs/core-block-types.md)
 **Status:** Complete (branch `feat/core-block-types`, 4 commits, 24 files)
-**Depends on:** Block Model Migration (#5) — new models go in `@we/models`
+**Depends on:** Block Model Migration (#5) — new models go in `@we/entities`
 **Unblocks:** block persistence & rendering (#5d), richer `$query` data, semantic block rendering outside editor, template diversity
 
-Expanded block model set from 3 to 15. Added 12 new models: AudioBlock, VideoBlock, FileBlock, EventBlock, TaskBlock, LocationBlock, LinkBlock, CodeBlock, TagBlock, EmbedBlock, CalloutBlock, DividerBlock. Created block type registry (`registerBlock`/`getBlockModel`) with idempotent `registerCoreBlocks()`. Refactored serialization from hardcoded if-branches to registry-based using `getPropertiesMetadata()` + `ModelClass.create()`. Added `createBlockNodeClass` factory for generic Lexical DecoratorNode creation. Migrated existing models to simplified URI convention (`we://field_name`), removed blanket `required: true`, removed `type` field from ImageBlock/CollectionBlock, added `columns`/`gap` to CollectionBlock. Renamed CSS class `we-block-composer-block` → `we-block`.
+Expanded block model set from 3 to 15. Added 12 new models: AudioBlock, VideoBlock, FileBlock, EventBlock, TaskBlock, LocationBlock, LinkBlock, CodeBlock, TagBlock, EmbedBlock, CalloutBlock, DividerBlock. Created block type registry (`registerBlock`/`getBlockRecord`) with idempotent `registerCoreBlocks()`. Refactored serialization from hardcoded if-branches to registry-based using `getPropertiesMetadata()` + `EntityClass.create()`. Added `createBlockNodeClass` factory for generic Lexical DecoratorNode creation. Migrated existing models to simplified URI convention (`we://field_name`), removed blanket `required: true`, removed `type` field from ImageBlock/CollectionBlock, added `columns`/`gap` to CollectionBlock. Renamed CSS class `we-block-composer-block` → `we-block`.
 
 ### 5d. Block Persistence & Rendering ✅
 
@@ -261,10 +268,10 @@ Implements parent-child linking via `@HasMany({ through: 'we://children' })` on 
 
 **Plan:** [query-service](../prs/query-service.md)
 **Status:** Complete (branch `feat/query-service`, 4 commits, 17 files)
-**Depends on:** Block Model Migration (#5) — model registry imports from `@we/models`
+**Depends on:** Block Model Migration (#5) — model registry imports from `@we/entities`
 **Unblocks:** declarative data binding in schemas, `$action: "model.*"` mutations, reactive shared data across templates
 
-Implements `$query` as a prop-level schema token with descriptor pattern (shared resolver returns pure `QueryDescriptor`, framework layer handles subscription lifecycle). Read side: `QueryToken` type + `zQueryToken` Zod schema, `resolveQueryProp` shared resolver, SchemaRenderer `$query` handling with `createSignal` + `createEffect` + `onCleanup`. Write side: `modelRegistry` (`registerModel`/`getModel`), `modelStore` in TemplateProvider (create/update/delete), `$getModel` passed to SchemaRenderer stores. Also refactored `processArgTokens` to recursive for nested `$arg` tokens. 8 integration tests covering subscribe lifecycle, perspective reactivity, cleanup, one-shot mode, params forwarding, and graceful fallback. Fixed pre-existing ImageBlock barrel import in block-system.
+Implements `$query` as a prop-level schema token with descriptor pattern (shared resolver returns pure `QueryDescriptor`, framework layer handles subscription lifecycle). Read side: `QueryToken` type + `zQueryToken` Zod schema, `resolveQueryProp` shared resolver, SchemaRenderer `$query` handling with `createSignal` + `createEffect` + `onCleanup`. Write side: `entityRegistry` (`registerEntity`/`getEntity`), `modelStore` in TemplateProvider (create/update/delete), `$getEntity` passed to SchemaRenderer stores. Also refactored `processArgTokens` to recursive for nested `$arg` tokens. 8 integration tests covering subscribe lifecycle, perspective reactivity, cleanup, one-shot mode, params forwarding, and graceful fallback. Fixed pre-existing ImageBlock barrel import in block-system.
 
 ---
 
@@ -275,7 +282,7 @@ Implements `$query` as a prop-level schema token with descriptor pattern (shared
 **Plan:** [schema-customization-architecture](../prs/schema-customization-architecture.md) | [review](../prs/schema-customization-review.md)
 **Decision:** [template-storage-architecture](../../../decisions/template-storage-architecture.md)
 **Status:** Complete (branch `feat/schema-customization`, 5 commits, 12 files)
-**Depends on:** Block Model Migration (#5) — `Template` model goes in `@we/models`
+**Depends on:** Block Model Migration (#5) — `Template` model goes in `@we/entities`
 **Unblocks:** template gallery, per-section AI editing, section sharing, SHACL auto-generated section tools
 
 **Architecture pivot:** Original plan called for physically split `SchemaSection` models with `$section` tokens. Review identified section drift, naming fragility, and structural rigidity issues. Pivoted to **monolith + stored index** — single `StoredTemplate` blob (schema + pre-computed section index) stored in AD4M via file-storage language. Index is generated at creation and structural edits, travels with shared copies for cross-client consistency.
@@ -322,14 +329,15 @@ Extracted shared prop interfaces from 13 `.solid.tsx` files into co-located `*.t
 
 Standalone dev tool (`@we/component-showcase`) for previewing multi-framework components. Deferred because it doesn't advance the core app-building workflow.
 
-### 7c. Root Storybook Migration ⏸️
+### 7c. Root Storybook Migration ❌
 
-**Plan:** [storybook-migration](../prs/storybook-migration.md)
-**Status:** Deferred — internal developer tooling, not vision-critical.
-**Depends on:** nothing (benefits from #10 landing first for more components to verify)
-**Unblocks:** cross-package story discovery, SolidJS component stories, unified theme preview
+**Status:** Cancelled — Storybook has been removed from the repo entirely; the plan document went with it.
 
-Moves Storybook from `3-primitives/.storybook/` to the monorepo root (`we/.storybook/`). Switches framework to `@storybook/html-vite` so both Lit primitives and SolidJS components render in one instance. Co-locates stories next to their components. Adds `renderSolid()` helper for SolidJS stories. Serves a different audience from #7b (internal team vs. external developers). Deferred because it doesn't block any remaining work.
+Would have moved Storybook to the monorepo root and switched to `@storybook/html-vite` so Lit primitives and SolidJS components rendered in one instance.
+
+Cancelled because the job it was aimed at — browsing components to compose something — is the job the marketplace and visual editor are being built to do, natively and against real schemas. Storybook could never do that version of it: it knows nothing about the registry, templates-as-data or themes-as-data. The divergence was already costing us — the June theme refactor (built-in themes injecting CSS at runtime) silently left Storybook rendering unstyled components for two months before anyone noticed, because nothing in CI or anyone's workflow opened it.
+
+What Storybook was genuinely good at — one component in isolation, in every state — is worth rebuilding inside the component browser, where a "story" is just a schema and therefore renders in the app, the editor and the marketplace for free. The 13 story files remain in git history as reference for whoever builds that.
 
 ### 8. @we/ai-context Package ✅
 
@@ -338,7 +346,7 @@ Moves Storybook from `3-primitives/.storybook/` to the monorepo root (`we/.story
 **Depends on:** Shared `*.types.ts` (#7a) ✅
 **Unblocks:** auto-extracted AI context, replacement of hand-written `schemaContext.ts`, instruction files for local AI agents
 
-Creates `@we/ai-context` with 4 extractors (CEM, TypeScript, tokens, models), 6 hand-maintained fragments (schema-operators, design-system-props, routing, stores, store-patterns, rules), assembler, and generate script. Exports lightweight `schemaContext` constant for runtime (~25KB bundle). Generates instruction files for Copilot (`.github/copilot-instructions.md`), Claude Code (`CLAUDE.md`), and Cursor (`.cursor/rules/we-schema.mdc`). Migrates `@we/app-framework` to import from `@we/ai-context`. 9 tests passing.
+Creates `@we/ai-context` with 4 extractors (CEM, TypeScript, tokens, models), 6 hand-maintained fragments (schema-operators, design-system-props, routing, stores, store-patterns, rules), assembler, and generate script. Exports lightweight `schemaContext` constant for runtime (~25KB bundle). Generates instruction files for Copilot (`.github/copilot-instructions.md`), Claude Code (`CLAUDE.md`), and Cursor (`.cursor/rules/we-schema.mdc`). Migrates `@we/app-shell` to import from `@we/ai-context`. 9 tests passing.
 
 **Output targets:** Copilot custom instructions, Claude Code project instructions, Cursor rules, and runtime `schemaContext` constant. All version-controlled with the repo — any local AI agent automatically has full component/token/convention knowledge without requiring an MCP server.
 
@@ -430,7 +438,7 @@ Adds `'file'` as a new `LocalStateField` type so schemas can declare file state,
 | ✅   | 11  | Context Fragments              | AI    | 8b         | Medium | Med  |
 | ✅   | 12  | File Upload Local State        | Cust  | 4c         | Small  | Low  |
 | ⏸️   | 7b  | Component Showcase             | AI    | 5          | Medium | Low  |
-| ⏸️   | 7c  | Root Storybook Migration       | AI    | —          | S–Med  | Low  |
+| ❌   | 7c  | Root Storybook Migration       | AI    | —          | S–Med  | Low  |
 | ⏸️   | 9   | MCP Tools                      | AI    | 6, 8, 8b   | Large  | Med  |
 
 > **†** 8b structural = token shape Zod schemas (no deps). **‡** 8b semantic = component/store validation (needs ai-context). **⏸️** = deferred indefinitely (developer tooling or superseded by skills approach).
@@ -460,5 +468,5 @@ Track 1:  [1–3, 4b, 10 ✅] ────────────────�
           [11. Context Fragments ✅] ─────────────────────────────────────────
           [12. File Upload Local State ✅] ───────────────────────────────────
 
-Deferred: [7b. Showcase ⏸️] [7c. Storybook ⏸️] [9. MCP Tools ⏸️]
+Deferred: [7b. Showcase ⏸️] [9. MCP Tools ⏸️]   Cancelled: [7c. Storybook ❌]
 ```

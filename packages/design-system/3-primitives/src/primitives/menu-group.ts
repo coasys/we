@@ -1,4 +1,4 @@
-import { css, html } from 'lit';
+import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
@@ -31,7 +31,7 @@ const styles = css`
   }
 
   [part='summary']:hover {
-    color: var(--we-color-neutral-700);
+    color: var(--we-role-text);
   }
   :host([collapsible]) [part='summary']:after {
     top: 50%;
@@ -39,11 +39,11 @@ const styles = css`
     position: absolute;
     display: block;
     content: '';
-    border-right: 1px solid var(--we-color-neutral-500);
-    border-bottom: 1px solid var(--we-color-neutral-500);
+    border-right: 1px solid var(--we-role-border-strong);
+    border-bottom: 1px solid var(--we-role-border-strong);
     width: 4px;
     height: 4px;
-    transition: all var(--we-transition-300) ease;
+    transition: all var(--we-transition-300, 250ms) ease;
     transform: rotate(-45deg) translateX(-50%);
     transform-origin: center;
   }
@@ -53,7 +53,7 @@ const styles = css`
   [part='title'] {
     text-transform: uppercase;
     font-size: var(--we-font-size-400);
-    color: var(--we-color-neutral-400);
+    color: var(--we-role-text-faint);
     font-weight: 500;
     flex: 1;
     white-space: nowrap;
@@ -70,9 +70,26 @@ export default class MenuGroup extends LayoutElement {
 
   @property({ type: Boolean, reflect: true }) collapsible = false;
   @property({ type: Boolean, reflect: true }) open = false;
-  @property({ type: String, reflect: true }) title = '';
+  /**
+   * The group's visible heading.
+   *
+   * Not `title`, which it was: that is a global HTML attribute, so reflecting it put the browser's
+   * own tooltip on the group as well as painting the heading — a bubble repeating, a second later
+   * and unstyled, the words already on screen. `we-tooltip` had the same collision from the other
+   * direction. See the note on its `content`.
+   */
+  @property({ type: String }) heading = '';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
+  /*
+    `role="group"`, not `role="menuitem"`.
+
+    A group is a *container* of menu items, and calling it a menu item told a screen reader that the
+    whole section was one selectable row — with every real item nested inside a thing that claimed to
+    be one. `group` with the section's own name is what it is, and it also keeps `we-menu`'s arrow
+    walk honest: it collects `we-menu-item` hosts, so a container that pretended to be one would
+    have been a focus stop with nothing to activate.
+  */
   collapsibleContent() {
     const inline = this.styles || {};
     return html`
@@ -83,12 +100,13 @@ export default class MenuGroup extends LayoutElement {
           this.open = open;
         }}
         part="base"
-        role="menuitem"
+        role="group"
+        aria-label=${this.heading || nothing}
         style=${styleMap(inline)}
       >
         <summary part="summary">
           <slot part="start" name="start"></slot>
-          <div part="title">${this.title}</div>
+          <div part="title">${this.heading}</div>
           <slot part="end" name="end"></slot>
         </summary>
         <div part="content">
@@ -101,10 +119,10 @@ export default class MenuGroup extends LayoutElement {
   normal() {
     const inline = this.styles || {};
     return html`
-      <div part="base" role="menuitem" style=${styleMap(inline)}>
+      <div part="base" role="group" aria-label=${this.heading || nothing} style=${styleMap(inline)}>
         <div part="summary">
           <slot part="start" name="start"></slot>
-          <div part="title">${this.title}</div>
+          <div part="title">${this.heading}</div>
           <slot part="end" name="end"></slot>
         </div>
         <div part="content">

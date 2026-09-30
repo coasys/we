@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 
+import { designSystemKeys } from '@we/design-utils';
 import type { FunctionDeclaration, JSDoc, Type } from 'ts-morph';
 import { Node, Project } from 'ts-morph';
 
@@ -131,82 +132,12 @@ function filterOwnProps(props: PropEntry[]): PropEntry[] {
   return props.filter((p) => !DS_PROP_NAMES.has(p.name));
 }
 
-// Canonical set of DesignSystemProps property names — kept in sync with @we/design-types.
-// When superclass is set, these are omitted from own props (documented separately).
-const DS_PROP_NAMES = new Set([
-  'bg',
-  'color',
-  'opacity',
-  'border',
-  'borderColor',
-  'borderTop',
-  'borderRight',
-  'borderBottom',
-  'borderLeft',
-  'borderWidth',
-  'shadow',
-  'ring',
-  'transform',
-  'transition',
-  'textAlign',
-  'fontFamily',
-  'fontWeight',
-  'fontSize',
-  'lineHeight',
-  'letterSpacing',
-  'textDecoration',
-  'textTransform',
-  'cursor',
-  'pointerEvents',
-  'width',
-  'height',
-  'minWidth',
-  'minHeight',
-  'maxWidth',
-  'maxHeight',
-  'display',
-  'direction',
-  'ax',
-  'ay',
-  'wrap',
-  'gap',
-  'flex',
-  'alignSelf',
-  'overflow',
-  'zIndex',
-  'position',
-  'top',
-  'right',
-  'bottom',
-  'left',
-  'm',
-  'ml',
-  'mr',
-  'mt',
-  'mb',
-  'mx',
-  'my',
-  'p',
-  'pl',
-  'pr',
-  'pt',
-  'pb',
-  'px',
-  'py',
-  'r',
-  'rt',
-  'rb',
-  'rl',
-  'rr',
-  'rtl',
-  'rtr',
-  'rbr',
-  'rbl',
-  'hoverProps',
-  'activeProps',
-  'focusProps',
-  'disabledProps',
-]);
+// Canonical set of DesignSystemProps property names, sourced directly from
+// @we/design-utils so this never drifts from the actual DS prop set.
+// When superclass is set, these (plus 'reverse', a common per-component addition
+// alongside designSystemKeys — see Card/Row/Column/Grid) are omitted from own
+// props and documented separately under "Design System Props".
+const DS_PROP_NAMES = new Set<string>([...designSystemKeys, 'reverse']);
 
 function getAiTagFromJsDocs(jsDocs: JSDoc[]): string | undefined {
   return getTagFromJsDocs(jsDocs, 'ai');

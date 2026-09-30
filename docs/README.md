@@ -1,5 +1,7 @@
 # WE Documentation
 
+Start with **[Why WE Exists](../VISION.md)** — the vision, the problem, and what WE is for.
+
 ## Getting Started
 
 New to WE? Start here.
@@ -7,37 +9,42 @@ New to WE? Start here.
 - [Developer Setup](getting-started/developer-setup.md) — Prerequisites, clone, build, run
 - [Seed System](getting-started/seed-system.md) — How `we-seed.json` configures everything
 
+## Contributing
+
+- [Contribution Surfaces](contributing/surfaces.md) — **Every slot WE accepts a contribution into.**
+  What each is for, which one your intent belongs in, where its rules live, how to register it and
+  how to check it. Start here when you know what you want to build but not where it goes.
+- [CONTRIBUTING.md](../CONTRIBUTING.md) — The four contributor tracks, the workflow, working with an agent
+
 ## Architecture
 
 How WE is designed and why.
 
-- [What is WE?](architecture/what-is-we.md) — Grounded vision for WE as a community-first meta-app
-- [Why WE](architecture/why-we.md) — The problem WE is responding to and why it matters
+- [Codebase Map](architecture/codebase-map.md) — **Start here.** Current package layering, AD4M runtime, render pipeline, framework-agnosticism strategy
+- [Package Conventions](architecture/package-conventions.md) — How packages are structured and named in the monorepo
+- [Routing & View State](architecture/routing-and-view-state.md) — Where UI state lives: path, query params (`syncParam`), device (`persist`), or nowhere — and how links carry template/theme suggestions
+- [Template Fragments](architecture/template-fragments.md) — The template kit: what fragments are, the extraction threshold, and where the fragment layer is going. Read before adding to `@we/template-kit`
 - [Why a Meta-App Instead of Many Separate Apps?](architecture/meta-app-vs-separate-apps.md) — Why shared continuity and cumulative evolution matter
 - [Practical Examples](architecture/examples.md) — Simple examples of how WE ideas work in practice
-- [Overview](architecture/overview.md) — Block system, schema system, entity models, design principles
-- [Package Conventions](architecture/package-conventions.md) — How packages are structured and named in the monorepo
+- [Performance](architecture/performance.md) — What the template system and design system cost, measured against raw DOM and plain Solid
 
 ## Guides
 
 How to build with WE.
 
-- [Module Development](guides/module-development.md) — Building and publishing custom modules
-- [Launcher UI Customization](guides/launcher-ui-customization.md) — Customizing boot screen and settings via seed
-- [Cesium Layers](guides/cesium/layers-guide.md) — Using the 3D globe layer system
-- [Cesium Implementation](guides/cesium/implementation-summary.md) — Implementation details and status
+- [Embedding External Apps](guides/embedding-external-apps.md) — The postMessage contract for embedding apps like Flux in the launcher
 
-## Design Decisions
-
-Why we chose this architecture.
-
-- [Block System Advantages](decisions/block-system-advantages.md) — Why standardised blocks solve content fragmentation
-- [Schema System Advantages](decisions/schema-system-advantages.md) — Why declarative schemas solve UI fragmentation
-- [Critical Analysis](decisions/critical-analysis.md) — Counter-arguments and responses
+Per-system docs live with the code — every `packages/<system>/` directory has a README
+(`graph-system`'s is the model), and packages with authoring rules carry a `CONVENTIONS.md`.
 
 ## Internal
 
-Working notes for maintainers.
+Working notes for maintainers — plans, design decisions, and superseded documents.
 
-- [Todos](internal/todos.md)
-- [plans/](internal/plans/) — Strategy docs for upcoming work (delete after merging)
+- [decisions/](internal/decisions/) — Design decisions and rationale (block system, schema system, template storage, semantic predicates, AI integration)
+- [plans/](internal/plans/) — Strategy docs for upcoming work. **Every plan carries a dated `Status` line** saying whether it shipped, is in progress, was never started, or was superseded — see [plans/README.md](internal/plans/README.md), which also lists the ones that don't have one yet
+- [old/](internal/old/) — Superseded documents, kept for historical context — each carries a banner naming what replaced it
+
+> **Note:** documents under `internal/old/` and some under `internal/plans/` describe designs that
+> are aspirational or have drifted from the implementation. For the current state of the codebase,
+> always use the [Codebase Map](architecture/codebase-map.md).

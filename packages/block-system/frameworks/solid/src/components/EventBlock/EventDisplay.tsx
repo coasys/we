@@ -19,7 +19,7 @@ function formatDate(dateStr: string, allDay?: boolean): string {
 
 export function EventDisplay(props: EventDisplayProps) {
   return (
-    <Row class="we-event-block" gap="300" ay="start" p="300" border="1px solid neutral-200" r="300">
+    <Row class="we-event-block" gap="300" ay="start" p="300" border="1px solid border" r="300">
       <we-icon name="calendar" size="lg" flex="none" mt="2px" />
       <Column gap="100" flex="1">
         <we-text variant="label">{props.title || 'Untitled Event'}</we-text>
@@ -37,7 +37,7 @@ export function EventDisplay(props: EventDisplayProps) {
           </Row>
         </Show>
         <Show when={props.description}>
-          <we-text variant="footnote" color="neutral-700" mt="100">
+          <we-text variant="footnote" color="text" mt="100">
             {props.description}
           </we-text>
         </Show>

@@ -1,0 +1,138 @@
+import type { CoreEntityDef } from './defs';
+
+/**
+ * Where something sits, on one canvas.
+ *
+ * A position is a fact about a **pair** — this view, this node — and not about either one alone.
+ * Every design that stores it on one side loses information the moment the other side multiplies:
+ * `x`/`y` on a block means a record can be on one canvas only, and the same note pinned to two
+ * canvases in two places is the ordinary case rather than the exotic one. So the coordinate lives on
+ * the relation, which is what this is.
+ *
+ * ## Why many small records rather than a map on the canvas
+ *
+ * A canvas holding `{ nodeId: {x, y} }` in one field is a read-modify-write, and a shared canvas is
+ * the worst possible place for one: two people dragging two *different* cards would clobber each
+ * other, and the loser would watch their card snap back with no explanation. `MutedAgent` made the
+ * same call for the same reason — one record per fact, so two independent changes are two
+ * independent writes. Two people dragging the *same* card is a real conflict and last-write-wins is
+ * the right answer to it; two people dragging different cards is not a conflict at all and must not
+ * be turned into one.
+ *
+ * ## Why `Ad4mModel` and not `WeNode` — the contrast with `Relationship`
+ *
+ * A relationship is a **claim**: arguable, ratable, authored as a statement, which is exactly why
+ * being a `WeNode` is the whole point of it. A placement is **bookkeeping about a view**. Nobody
+ * wants to argue with a coordinate, and somebody who wants to comment on a sticky note comments on
+ * the note, which is already a `WeNode`. Making these commentable would double the storage per card
+ * to enable a thread nobody will open.
+ *
+ * It is still authored, because every expression is — which is what makes "everybody shares one
+ * arrangement" and "everybody keeps their own" a difference of one `where` clause rather than a
+ * migration. Shared is the default, since a canvas is a shared artifact; per-agent stays free.
+ *
+ * ## What it does not decide
+ *
+ * A canvas is the container today. It should not be the container forever: the general thing is a
+ * *saved view*, and a canvas is its degenerate case — one where every node happens to be placed and
+ * the layout is `manual`. The evidence is already in the engine, where pinning a node on a knowledge
+ * map holds it exactly until the page reloads. When that becomes durable it wants this record and a
+ * different thing on the other end of the parent link, which costs a query rather than a model.
+ */
+export const Placement: CoreEntityDef = {
+  base: 'Ad4mModel',
+  entity: {
+    flag: { predicate: 'we://flag', value: 'we://placement' },
+    properties: {
+      /**
+       * Entity name of the placed record.
+       *
+       * The same fact `Relationship` carries beside its endpoints, for the same reason: a graph
+       * address is minted from a dataset, a type and an id, and an untyped relation supplies no
+       * type. Storing it means the canvas can work out what to query without first resolving every
+       * reference to ask it what it is.
+       */
+      nodeType: { type: 'string', predicate: 'we://node_type', default: '' },
+      x: { type: 'number', predicate: 'we://x', default: 0 },
+      y: { type: 'number', predicate: 'we://y', default: 0 },
+      /*
+        How the card is presented on this canvas — and only on this canvas.
+
+        Here rather than on the record for the same reason the coordinate is: this is a fact about a
+        pair. Somebody shrinking a post to fit six of them on a wall is not editing the post, and the
+        same post on somebody else's canvas must not change size because of it. It is also what makes
+        these safe to offer at all — every one of them is undoable by deleting a placement, and none
+        of them can damage the thing being displayed.
+
+        Zero means unset throughout, so the style layer falls back to its default rather than drawing
+        a card with no size. A default of `0` rather than the real default because the real default
+        lives in one place, in the graph engine, and a copy of it here would be a second place to
+        change when a card's proportions are next reconsidered.
+      */
+      width: { type: 'number', predicate: 'we://width', default: 0 },
+      height: { type: 'number', predicate: 'we://height', default: 0 },
+      /** Multiplier on the content drawn inside the card. 0 is unset; see `NodeStyle.contentScale`. */
+      contentScale: { type: 'number', predicate: 'we://content_scale', default: 0 },
+      /*
+        Degrees clockwise, and where in the stack it sits.
+
+        The same "fact about a pair" argument as everything above, and the one that most obviously
+        needed making: a photo is rotated *on this canvas*, and rotating it here must not rotate it
+        on somebody else's. Neither existed anywhere in the model — a canvas could not express a
+        tilted card at all, and overlap was an accident of load order rather than something anybody
+        chose, which is fine on a knowledge map and the entire point of a scrapbook.
+
+        `0` is unset for both, consistent with the sizes above, and it costs nothing to read that
+        way: an unrotated card and one nobody has rotated are the same card, and a stacking order
+        of zero is the auto the renderer would pick anyway. Rotation is signed, so the drop rule
+        for these is "zero" rather than "not positive".
+      */
+      rotation: { type: 'number', predicate: 'we://rotation', default: 0 },
+      z: { type: 'number', predicate: 'we://z', default: 0 },
+      /** Design token or CSS colour. Empty is unset, so the canvas's own rules decide. */
+      color: { type: 'string', predicate: 'we://color', default: '' },
+      /** `note`, `square` or `round`. Empty is unset; anything else is ignored by the renderer. */
+      cardShape: { type: 'string', predicate: 'we://card_shape', default: '' },
+      /*
+        Where this card sits among its siblings when the canvas is read as a tree.
+
+        ## Why the placement and not the connection
+
+        A structured reading of a canvas orders each parent's children, and somebody dragging one into
+        place is imprinting an order they want. That order could live on the `Relationship` joining the
+        two cards — which would handle a card under two parents correctly, since it would then have two
+        — and it is the wrong home for it anyway: a relationship is a *claim* somebody made, and
+        rearranging a view must not edit somebody else's claim. Ordering is bookkeeping about how this
+        canvas is read, which is exactly what this record already is, and it is per canvas for the same
+        reason the coordinate is: the same card arranged on two canvases is arranged on each.
+
+        ## Why a fraction rather than an index
+
+        Written as a number somebody can land *between* two existing ones, so seating a card in the
+        middle of eleven siblings is one write rather than twelve. Twelve writes is not merely slower:
+        on a shared, last-write-wins canvas two people reordering different parts of the same tree
+        would each rewrite the whole list and one of them would lose work they could see they had done.
+        One record per fact is the same call `MutedAgent` and the coordinate above both make.
+
+        ## Zero is unset, and negatives are ordinary
+
+        Signed, like `rotation` and `z`: a card dropped in front of the first one takes a rank below
+        whatever that one holds, and a fresh canvas has no ranks at all — so the layout falls back to
+        whatever else it was told to order by, which is what makes "by date" the state a canvas starts
+        in rather than a mode somebody has to choose.
+      */
+      rank: { type: 'number', predicate: 'we://rank', default: 0 },
+    },
+    relations: {
+      /**
+       * What is placed. Untyped, because a canvas holds whatever its community puts on it.
+       *
+       * Read as a bare URI rather than hydrated — deliberately, and it is why the canvas never asks
+       * for `include` on this. An untyped relation has no target class for the ORM to hydrate into,
+       * and the canvas wants the id anyway: it queries the placed records by type, in batches, and
+       * matches them up here.
+       */
+      node: { target: '', cardinality: 'one', predicate: 'we://placed_node' },
+    },
+  },
+};

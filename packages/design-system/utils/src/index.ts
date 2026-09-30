@@ -1,5 +1,15 @@
 import type { DesignSystemProps, FlexDirection } from '@we/design-types';
-import { font } from '@we/tokens';
+import { font, radius, role, semanticValues, shadow, space, type Tier, TIERS } from '@we/tokens';
+
+import { dataUriToBlob } from './saveFile';
+import { tierQuery } from './surface';
+
+export * from './color';
+export * from './record';
+export * from './safeHref';
+export * from './saveFile';
+export * from './surface';
+export * from './tiling';
 
 // --- Shared sub-arrays (used by CSS helpers directly) ---
 export const paddingKeys = ['p', 'px', 'py', 'pt', 'pr', 'pb', 'pl'] as const;
@@ -16,11 +26,21 @@ export const borderKeys = [
 ] as const;
 export const stateKeys = ['hoverProps', 'activeProps', 'focusProps', 'disabledProps'] as const;
 
+/** Which prop bag feeds which tier. */
+export const TIER_PROP_KEYS = {
+  sm: 'smUpProps',
+  md: 'mdUpProps',
+  lg: 'lgUpProps',
+} as const satisfies Record<Exclude<Tier, 'base'>, string>;
+
+export const tierKeys = Object.values(TIER_PROP_KEYS);
+
 // --- DS Layer key arrays ---
 
 /** Layout layer: box model & positioning in parent. Every component gets this. */
 export const layoutKeys = [
   'flex',
+  'flexShrink',
   'alignSelf',
   'width',
   'height',
@@ -46,6 +66,11 @@ export const layoutKeys = [
 /** Visual layer: appearance & decoration. Most components. */
 export const visualKeys = [
   'bg',
+  'bgImage',
+  'bgFit',
+  'bgPosition',
+  'bgImageOpacity',
+  'bgImageTint',
   'color',
   'opacity',
   'shadow',
@@ -54,6 +79,21 @@ export const visualKeys = [
   'pointerEvents',
   'visibility',
   'transform',
+  /*
+    Placement, in the visual layer rather than the layout one — because that is where `transform`
+    is, and these are `transform`.
+
+    The pull is the other way: `x`/`y`/`rotate` read as positioning, and the layout layer is the
+    one every component has. But layer membership decides which components *declare* the property
+    in their generated stylesheet, and a layout-only element (`we-icon`, `we-divider`) declares no
+    `transform` at all. Putting these there would write a variable nothing reads — the prop would
+    typecheck, validate, and do nothing, which is the failure this whole area already has one of.
+    Beside `transform`, a component that can be turned accepts all four and one that cannot accepts
+    none, which is a rule somebody can hold in their head.
+  */
+  'x',
+  'y',
+  'rotate',
   'transition',
   ...borderKeys,
   ...radiusKeys,
@@ -72,6 +112,8 @@ export const typographyKeys = [
   'letterSpacing',
   'textDecoration',
   'textTransform',
+  'whiteSpace',
+  'overflowWrap',
 ] as const;
 
 // --- Layer composition ---
@@ -96,13 +138,68 @@ export const layerKeyMap: Record<DSLayer, readonly string[]> = {
   state: stateKeys,
 };
 
-/** Get the combined set of keys for the given layers (deduplicated). */
+/** Memoised results of {@link getKeysForLayers}, keyed by sorted layer set. */
+const keysForLayersCache = new Map<string, string[]>();
+
+/**
+ * Get the combined set of keys for the given layers (deduplicated).
+ *
+ * Memoised because this sits on a hot path. `DesignSystemMixin` calls it once per class, but ~20
+ * primitives (button, text, input, badge, checkbox, …) override `getInstanceProps()` and call it
+ * again on every invocation — i.e. once per instance per update. Each uncached call allocated a Set
+ * and spread it into a fresh array of up to 82 keys, so a page rendering 3000 DS elements paid that
+ * 3000 times for a result that only ever has a handful of distinct values.
+ *
+ * Safe to cache: `layerKeyMap` is a module constant, so the result is a pure function of the layer
+ * set. The returned array is shared rather than copied — callers treat it as read-only
+ * (`filterProps` takes `readonly string[]` and only filters/maps), and it must stay that way.
+ *
+ * The key is sorted so ['layout','visual'] and ['visual','layout'] share an entry; the union itself
+ * is order-independent.
+ */
 export function getKeysForLayers(layers: DSLayer[]): string[] {
+  const cacheKey = [...layers].sort().join('|');
+  const cached = keysForLayersCache.get(cacheKey);
+  if (cached) return cached;
+
   const keys = new Set<string>();
   for (const layer of layers) {
     for (const key of layerKeyMap[layer]) keys.add(key);
   }
-  return [...keys];
+  /*
+    `styles` belongs to every component and to no layer, so it is added here rather than to one.
+
+    It is the raw-CSS escape hatch — "inline CSS applied directly to the component's own element" —
+    and what it is *for* is the CSS the layers do not cover, which makes membership of a layer the
+    one thing it cannot have. Left out, it was filtered away by every consumer of this function: the
+    mixin that registers reactive properties, the twenty-odd primitives that rebuild their own key
+    set, and the validator that decides which props a component accepts. So the prop was documented,
+    typed, accepted, and dropped — for a layout-only primitive and a full one alike.
+  */
+  keys.add('styles');
+  /*
+    And the tier bags, for exactly the reason `styles` is here: they belong to every element and to
+    no layer.
+
+    This is the identical bug the paragraph above records, one line later and unnoticed for a
+    release. `DesignSystemMixin` derives both its reactive-property registration and its
+    `filterProps` from this function, so on every `we-*` element `mdUpProps` was never a reactive
+    property and was filtered out before `updateAllCustomVars` could see it. No `--we-<name>-md-*`
+    variable was ever written, and the `@container` rules the static sheet emits read nothing. The
+    validator accepts a tier bag on any component, so `{ type: 'we-text', props: { mdUpProps: … } }`
+    validated clean and did nothing — and `designSystemKeys`, which the Solid layout components use,
+    includes tiers, which is why the one real usage in the repo happened to be on a layout node and
+    happened to work.
+
+    A tier is not a *kind* of property, it is a condition under which the kinds apply — so it cannot
+    be a layer without forcing every element to opt into responsiveness separately from the props
+    being made responsive. What a tier bag may contain is still bounded by the element's own layers,
+    enforced where the variables are emitted rather than here.
+  */
+  for (const key of tierKeys) keys.add(key);
+  const result = [...keys];
+  keysForLayersCache.set(cacheKey, result);
+  return result;
 }
 
 // --- Backwards-compatible combined key array ---
@@ -112,6 +209,16 @@ export const designSystemKeys = [
   ...flexKeys,
   ...typographyKeys,
   ...stateKeys,
+  /*
+    Tiers sit outside `layerKeyMap` on purpose, alongside `styles`.
+
+    A layer answers "which *kinds* of property does this element accept" — a `we-icon` takes layout
+    and nothing else. A tier is not a kind of property, it is a condition under which any of them
+    apply, so making it a fifth layer would force every element to opt into responsiveness
+    separately from the props being made responsive. What a tier bag may *contain* is still bounded
+    by the element's own layers, which is enforced where the vars are emitted rather than here.
+  */
+  ...tierKeys,
   'styles',
 ] as const;
 
@@ -131,6 +238,40 @@ function isRawCSSValue(value: string): boolean {
   // multi-value shorthands (number followed by space, e.g. "0 0 2px 2px ..."),
   // and CSS keywords (transparent, currentColor, inherit, initial, unset, revert, auto, none).
   if (/^(transparent|currentcolor|inherit|initial|unset|revert|auto|none)$/i.test(value)) return true;
+  // Math functions are raw CSS too. Without this they fall through to the token branch and come
+  // back as `var(--we-space-calc(100% - 8px))` — a variable name built out of an expression,
+  // which resolves to nothing. Applies to every token-resolved prop, not just offsets.
+  if (/^(calc|min|max|clamp|env)\(/i.test(value)) return true;
+  /*
+    `color-mix()` is how a control's hover and pressed steps stay inside the theme.
+
+    A neutral filled control needs three steps and the vocabulary has roles for one of them — a
+    fourth and fifth role for "secondary button, pressed" would be vocabulary nobody would ever pin.
+    Mixing the rest state toward `text` gives the ladder for free and, because `text` inverts with
+    the theme, it darkens in a light theme and lightens in a dark one without being told which it is.
+    Without this line it fell through to the token branch and came back as
+    `var(--we-color-color-mix(…))`, a variable name built out of an expression.
+  */
+  if (/^color-mix\(/i.test(value)) return true;
+  /*
+    The modern colour functions, `oklch(from …)` among them.
+
+    This line used to be `/^oklch\(from\s/` — the elevation stack and nothing else, because that was
+    the one shape a role happened to be written in. Every other spelling fell through to the token
+    branch and came back as `var(--we-color-oklch(90% 0.045 288))`, a variable name built out of an
+    expression, which resolves to nothing at all: the element painted no background and said
+    nothing about why.
+
+    Three ways in, so this is not hypothetical. `we-color-picker`'s custom tab offers **oklch** as
+    one of its four output formats, so a person choosing one hands the app a value nothing can
+    paint. A theme or a template naming a fill in the space the design system itself is built in
+    hits the same wall. And a card fill that must not invert with the polarity — a task's colour, a
+    state's — is most naturally written in exactly this form, which is how it was found.
+
+    Every function here answers a colour and none is a token name, so admitting them costs nothing
+    and closes the class rather than the instance.
+  */
+  if (/^(oklch|oklab|lch|lab|hwb|color|color-contrast|light-dark)\(/i.test(value)) return true;
   return /^-?(var\(|#|rgba?|hsla?|\d+(\.\d+)?(px|rem|em|%|vh|vw|vmin|vmax|ch|ex|\s))/.test(value);
 }
 
@@ -160,15 +301,254 @@ export const resolveFontWeight = makeTokenResolver(new Set(Object.keys(font.weig
 /** Resolves fontFamily: token names → CSS var, raw CSS font stacks → passthrough. */
 export const resolveFontFamily = makeTokenResolver(new Set(Object.keys(font.family)), 'font-family');
 
-export function tokenVar(prefix: string, token?: string, fallback = '0') {
+/**
+ * Role names, kebab-cased, as a template writes them: `bg="surface-sunken"`.
+ *
+ * Roles could not be *named* from a template before this. The vocabulary existed and a theme could
+ * pin one, but every consumer had to spell `var(--we-role-surface-sunken)` by hand — so templates
+ * kept reaching for scale positions instead, and a scale position cannot express a relationship
+ * that inverts between light and dark. The Discord-shaped template is the case in point: it paints
+ * its rail `neutral-100` over a `neutral-50` page, which is darker-on-lighter in light mode and
+ * *lighter-on-darker* in dark, because the whole scale inverts. Discord's rails are darker than its
+ * page in both. Only a role can say that.
+ *
+ * No collision with colour tokens: those are `{hue}-{shade}` over a closed set of five hues, and no
+ * role name begins with one.
+ */
+/**
+ * Every semantic role, in the spelling a schema writes — `surface-sunken`, not `surfaceSunken`.
+ *
+ * Derived from the token definitions rather than restated, so a role added there is namable here
+ * without a second edit. Exported because the design system is not the only resolver: the graph
+ * paints its own nodes and edges, and a role it could not recognise is a colour a theme cannot
+ * redefine.
+ */
+export const ROLE_NAMES = new Set(
+  Object.keys(role).map((name) => name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)),
+);
+
+/**
+ * Radius names that resolve to a theme group rather than a scale position — see `SemanticRadius`.
+ *
+ * Each carries the same fallback the corresponding primitive's cascade uses, so a component
+ * written with `r="avatar"` matches `we-avatar` exactly in a theme that sets nothing.
+ */
+/**
+ * Theme-family names, per axis, derived from the one table that declares them.
+ *
+ * Derived rather than restated, for the same reason `ROLE_NAMES` is: the hand-written version
+ * drifted once per axis. Adding a family to `themeFamily.ts` makes it nameable here, in the value
+ * types, and in the generated docs, in one edit.
+ *
+ * Keyed by *axis* rather than by prop prefix because padding, gap, margin and the offsets all
+ * resolve through `tokenVar('space', …)`. A family says how much room a card puts inside itself,
+ * which answers nothing about the space between it and its neighbour — so `m: 'surface'` must not
+ * resolve, and does not.
+ */
+const SEMANTIC: Record<string, Record<string, string>> = {
+  radius: semanticValues('radius'),
+  padding: semanticValues('padding'),
+  gap: semanticValues('gap'),
+};
+
+/**
+ * The **named** tokens each scale actually has, so a real one is not reported as a typo.
+ *
+ * Most scales are numbered, and a numbered name never reaches the check below — it is filtered out
+ * as "not shaped like a name". Several scales are not: radius ends in `pill` and `full`, letter
+ * spacing and line height are named throughout, and `base` is a font size. Every one of those was
+ * being reported as unknown, with the advice that it "resolves to a variable nothing declares" —
+ * which is exactly false, since `--we-radius-pill` is declared and paints. A warning that fires on
+ * correct code is worse than none: the console filled with it, and a real typo sat in the middle of
+ * the noise looking the same as the rest.
+ *
+ * Keyed by the prefix each caller passes, including the two spellings of font size — `dsPropsToStyle`
+ * says `font` and the Lit path says `font-size`.
+ */
+const SCALE_NAMES: Record<string, Set<string>> = {
+  radius: new Set(Object.keys(radius)),
+  space: new Set(Object.keys(space)),
+  shadow: new Set(Object.keys(shadow)),
+  font: new Set(Object.keys(font.size)),
+  'font-size': new Set(Object.keys(font.size)),
+  'font-weight': new Set(Object.keys(font.weight)),
+  'font-family': new Set(Object.keys(font.family)),
+  'line-height': new Set(Object.keys(font.lineHeight)),
+  'letter-spacing': new Set(Object.keys(font.letterSpacing)),
+};
+
+/**
+ * Which family names this value may use.
+ *
+ * Only needed where the prefix does not settle it. `radius` implies its own axis; `space` is shared
+ * by padding, gap, margin and the four offsets, so the caller says which of those it is building
+ * and the three that read no family pass nothing.
+ */
+export type SemanticAxis = 'padding' | 'gap';
+
+/**
+ * A family's chain, for CSS that cannot go through a prop.
+ *
+ * The names resolve on DS props, which covers a component's own box — but an inner shadow part is
+ * styled in a `css` block, and a component whose *panel* belongs to a different family from itself
+ * has nowhere else to say so: `we-select` is an input, and the listbox it opens is a surface.
+ *
+ * Both `we-select` and `we-date-picker` were writing that chain by hand, which is the same hazard
+ * `Select`'s copy of the button cascade was. Same table, same value, one spelling.
+ */
+export function familyVar(family: string, axis: 'radius' | 'padding' | 'gap'): string {
+  const value = SEMANTIC[axis]?.[family];
+  if (!value) throw new Error(`[DS] "${family}" has no ${axis} — see themeFamily.ts for the matrix.`);
+  return value;
+}
+
+export function tokenVar(prefix: string, token?: string, fallback = '0', axis?: SemanticAxis) {
   // If no token, return fallback
   if (!token) return fallback;
+
+  // Bare 0 is always a valid unitless CSS value, not a token name
+  if (token === '0') return '0';
 
   // Allow raw CSS values (hex colors, px, rem, %, rgba, etc.)
   if (isRawCSSValue(token)) return token;
 
+  // A colour prop may name a semantic role instead of a scale position.
+  if (prefix === 'color' && ROLE_NAMES.has(token)) return `var(--we-role-${token})`;
+
+  // A radius, padding or gap prop may name a theme family instead of a scale position, on the same
+  // principle. `prefix` answers it for radius; for spacing the caller names the axis, since margin
+  // and the offsets share this prefix and read no family.
+  const family = SEMANTIC[prefix === 'radius' ? 'radius' : (axis ?? '')]?.[token];
+  if (family) return family;
+
+  // A real named token of this scale — `r: 'pill'`, `letterSpacing: 'wide'` — is not a typo.
+  if (!SCALE_NAMES[prefix]?.has(token)) warnUnknownToken(prefix, token, axis);
+
   // Otherwise return CSS variable
   return `var(--we-${prefix}-${token})`;
+}
+
+/** Names already reported, so a value in a render loop warns once rather than every frame. */
+const warnedTokens = new Set<string>();
+
+/**
+ * A name that is not a token, not a family and not raw CSS is a typo, and it used to be silent.
+ *
+ * The fall-through below is what every unrecognised name gets: `r: 'sunken'` becomes
+ * `var(--we-radius-sunken)`, a variable nothing declares, so the property is invalid at
+ * computed-value time and the element simply paints none of it. Nothing throws and nothing logs —
+ * and the result is indistinguishable from a theme that chose square corners or no padding, which
+ * is how `r: 'surface'` looked correct for as long as it did.
+ *
+ * Fires on something *shaped* like a name: letters and dashes, no digits. A raw length and every
+ * CSS keyword have already returned above, so what reaches here is either a real token from a scale
+ * this does not know or a mistake.
+ *
+ * And on a bare number that is not a step of a scale this knows. It used to skip every digit on the
+ * assumption that a number was a scale position, which let `gap: '050'` through for as long as it
+ * existed — "half of 100", on a scale that goes `0`, `100`, `200` — painting no gap anywhere it was
+ * written. Only for a known scale: a prefix this has no list for cannot tell a step from a typo.
+ */
+function warnUnknownToken(prefix: string, token: string, axis?: SemanticAxis): void {
+  if (process.env.NODE_ENV === 'production') return;
+  const unknownStep = /^\d+$/.test(token) && SCALE_NAMES[prefix] !== undefined;
+  if (!unknownStep && !/^[a-z][a-z-]*$/i.test(token)) return;
+  const key = `${prefix}:${axis ?? ''}:${token}`;
+  if (warnedTokens.has(key)) return;
+  warnedTokens.add(key);
+
+  const known = Object.keys(SEMANTIC[prefix === 'radius' ? 'radius' : (axis ?? '')] ?? {});
+  const steps = unknownStep ? ` The ${prefix} scale is ${[...SCALE_NAMES[prefix]!].join(', ')}.` : '';
+  const suffix = (known.length ? ` Known names here: ${known.join(', ')}.` : '') + steps;
+  console.warn(
+    `[DS] "${token}" is not a ${prefix} token or theme family, so it resolves to ` +
+      `var(--we-${prefix}-${token}) — a variable nothing declares, which paints nothing.${suffix}`,
+  );
+}
+
+/**
+ * The duration tokens a `transition` shorthand may name — `animation.transition`'s keys.
+ */
+const TRANSITION_DURATION_TOKENS = new Set(['0', '100', '200', '300', '400', '500']);
+
+/**
+ * Resolve duration tokens inside a `transition` shorthand.
+ *
+ * `transition` was the one DS prop that bypassed the token system entirely — a raw passthrough, so
+ * `transition: '300'` emitted an unitless value the browser drops, silently and indistinguishably
+ * from a typo. That is the same bug the offset props (top/right/bottom/left) had and the same fix:
+ * discriminate by shape, so a token becomes a var and `'300ms'`, `'ease-in-out'`, `'0.2s'` and
+ * everything else passes through untouched.
+ *
+ * It buys more than consistency here. `--we-transition-*` is what a theme's `animationSpeed` preset
+ * overrides — 'instant' sets every one of them to 0ms — so a duration written as a token honours a
+ * reduced-motion choice, and one written as `300ms` overrides it.
+ *
+ * Only exact token names are substituted, and only where they stand alone as a segment. There is no
+ * other numeric slot in the shorthand — the two that exist, duration and delay, are both durations.
+ */
+/** A coordinate as a CSS length: a bare number is px, a string carries its own unit. */
+function cssLength(value: number | string | undefined): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value === 'number') return Number.isFinite(value) ? `${value}px` : undefined;
+  // A primitive set from an *attribute* arrives as a string, so a numeric one is a number that
+  // took the long way round — `<we-image x="40">` means 40px, not the invalid length `40`.
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && value.trim() !== '' ? `${numeric}px` : value;
+}
+
+/** The same, for an angle: a bare number is degrees. */
+function cssAngle(value: number | string | undefined): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value === 'number') return Number.isFinite(value) ? `${value}deg` : undefined;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && value.trim() !== '' ? `${numeric}deg` : value;
+}
+
+/**
+ * `x` / `y` / `rotate`, and any explicit `transform`, as one CSS value.
+ *
+ * The single place the four compose, so the Lit primitives and the Solid layout components cannot
+ * disagree about the order they compose in — which matters, because composing a translate and a
+ * rotate the other way round is a different result rather than a different spelling, and "compose
+ * in the wrong order and get a shear" is the sort of bug that gets written twice and fixed once.
+ *
+ * Placement first, then the caller's own transform: the element is put where it goes and turned,
+ * and anything else it asked for happens in that frame. The other order would rotate the
+ * coordinate system the offsets are measured in, so a card's `x` would mean something different
+ * for every angle it happened to be at.
+ *
+ * Returns `undefined` when there is nothing to say, so callers can keep emitting on presence.
+ */
+export function composeTransform(
+  props: Pick<DesignSystemProps, 'x' | 'y' | 'rotate' | 'transform'>,
+): string | undefined {
+  const x = cssLength(props.x);
+  const y = cssLength(props.y);
+  const rotate = cssAngle(props.rotate);
+  if (x === undefined && y === undefined && rotate === undefined) return props.transform || undefined;
+
+  const parts: string[] = [];
+  // One `translate` even when only one axis was given: two would be valid and longer, and the
+  // absent axis is zero either way.
+  if (x !== undefined || y !== undefined) parts.push(`translate(${x ?? '0'}, ${y ?? '0'})`);
+  if (rotate !== undefined) parts.push(`rotate(${rotate})`);
+  if (props.transform) parts.push(props.transform);
+  return parts.join(' ');
+}
+
+export function parseTransition(value?: string): string | undefined {
+  if (!value) return undefined;
+  return value
+    .split(',')
+    .map((part) =>
+      part
+        .trim()
+        .split(/\s+/)
+        .map((segment) => (TRANSITION_DURATION_TOKENS.has(segment) ? `var(--we-transition-${segment})` : segment))
+        .join(' '),
+    )
+    .join(', ');
 }
 
 /** Resolve a zIndex prop value: layer names → CSS var, numbers → passthrough. */
@@ -212,21 +592,40 @@ export function getMarginValues(props: DesignSystemProps) {
   ].join(' ');
 }
 
-export function getPaddingValues(props: DesignSystemProps) {
+/**
+ * What a side or corner takes when the props do not name one.
+ *
+ * `'0'` is right where there is nothing else to fall back to, and wrong wherever the value would
+ * otherwise have come from the theme — which is the case for every registered primitive. Both
+ * builders below assemble ONE declaration out of four values, so a single named corner decides all
+ * four: `rl: '0'` on a `we-button` set top-left and bottom-left explicitly and sent the other two to
+ * `0`, silently discarding the cascade they were reading.
+ *
+ * It looked like a Select quirk and is general. It is also why `Select` carried a hand-copy of
+ * `we-button`'s four-deep radius chain in its `rr`, with a comment explaining the workaround: with
+ * the rest of the chain passed in here instead, an unnamed corner keeps reading the theme and the
+ * restatement is unnecessary.
+ */
+export function getPaddingValues(props: DesignSystemProps, rest = '0') {
+  /*
+    Four values joined into one declaration, which is why a family's padding has to be a single
+    length: a shorthand landing in one slot invalidates the whole thing. `themeFamily.ts` says which
+    families qualify and why the two that do not are excluded.
+  */
   return [
-    tokenVar('space', props['pt'] || props['py'] || props['p']),
-    tokenVar('space', props['pr'] || props['px'] || props['p']),
-    tokenVar('space', props['pb'] || props['py'] || props['p']),
-    tokenVar('space', props['pl'] || props['px'] || props['p']),
+    tokenVar('space', props['pt'] || props['py'] || props['p'], rest, 'padding'),
+    tokenVar('space', props['pr'] || props['px'] || props['p'], rest, 'padding'),
+    tokenVar('space', props['pb'] || props['py'] || props['p'], rest, 'padding'),
+    tokenVar('space', props['pl'] || props['px'] || props['p'], rest, 'padding'),
   ].join(' ');
 }
 
-export function getRadiusValues(props: DesignSystemProps) {
+export function getRadiusValues(props: DesignSystemProps, rest = '0') {
   return [
-    tokenVar('radius', props['rtl'] || props['rt'] || props['rl'] || props['r']),
-    tokenVar('radius', props['rtr'] || props['rt'] || props['rr'] || props['r']),
-    tokenVar('radius', props['rbr'] || props['rb'] || props['rr'] || props['r']),
-    tokenVar('radius', props['rbl'] || props['rb'] || props['rl'] || props['r']),
+    tokenVar('radius', props['rtl'] || props['rt'] || props['rl'] || props['r'], rest),
+    tokenVar('radius', props['rtr'] || props['rt'] || props['rr'] || props['r'], rest),
+    tokenVar('radius', props['rbr'] || props['rb'] || props['rr'] || props['r'], rest),
+    tokenVar('radius', props['rbl'] || props['rb'] || props['rl'] || props['r'], rest),
   ].join(' ');
 }
 
@@ -279,6 +678,320 @@ export function mergeProps(
   return merged;
 }
 
+// ────────────────────────────────────────────
+// Shared static-CSS declaration builders — single source of truth for "which DS prop
+// maps to which CSS property", consumed by both the Lit adopted-stylesheet generator
+// (@we/primitives/shared/helpers.ts) and the Solid DS-interop stylesheet
+// (app-framework's dsInterop.ts, generated from these same tables). This is what lets
+// hoverProps/activeProps/focusProps support the exact same property surface on both
+// component families instead of two independently-maintained, silently-diverging lists.
+//
+// A PropSpec's third element (fallback) is only required for properties a caller sets
+// *unconditionally* regardless of props (e.g. Solid's buildLayoutStyles always emits
+// `display`) — for everything else, an absent custom property already degrades
+// correctly on its own: CSS resolves a var() with no matching custom property to
+// `inherit` for inherited properties (color, cursor, font-*, text-*) or `initial` for
+// non-inherited ones (background, opacity, transform, border*, box-shadow, sizing) —
+// which is exactly "this prop was never set", since callers only ever emit a key when
+// the corresponding prop was actually provided.
+// ────────────────────────────────────────────
+
+/**
+ * A property the generated stylesheet declares, and the custom property it reads.
+ *
+ * The optional fallback may contain `{p}`, which is replaced with the component's variable prefix
+ * — the way one declaration defers to another prop's variable. `overflow-x` needs this: it is
+ * emitted after the `overflow` shorthand in the same block, so it replaces it, and without a
+ * fallback an unset `--we-x-overflow-x` makes the whole declaration invalid at computed-value time.
+ * That resolved to `visible` and silently discarded both the `overflow` prop and any overflow rule
+ * a component wrote for itself — a modal with more content than it had room for spilled down the
+ * page instead of scrolling.
+ */
+export type PropSpec = [cssProp: string, varSuffix: string] | [cssProp: string, varSuffix: string, fallback: string];
+
+/** Host/outer-box layout — positioning relative to the parent. */
+export const HOST_LAYOUT_SPECS: PropSpec[] = [
+  ['width', 'width'],
+  ['height', 'height'],
+  ['min-width', 'min-width'],
+  ['min-height', 'min-height'],
+  ['max-width', 'max-width'],
+  ['max-height', 'max-height'],
+  ['position', 'position'],
+  ['top', 'top'],
+  ['right', 'right'],
+  ['bottom', 'bottom'],
+  ['left', 'left'],
+  ['z-index', 'z-index'],
+  ['margin', 'margin'],
+  ['flex', 'flex'],
+  ['align-self', 'align-self'],
+];
+
+/** Visual/appearance — deliberately excludes bgImage/bgFit/bgPosition/bgImageOpacity/
+ * bgImageTint, which are handled by the separate bg-image composite mechanism, not
+ * state-variance (swapping the background image itself on hover is out of scope here). */
+export const BASE_VISUAL_SPECS: PropSpec[] = [
+  // `background-color`, not the `background` shorthand — see the note in `buildLayoutStyles`. A
+  // shorthand here resets the background longhands the base rule sets, which made every hover
+  // animate `background-position` for no reason.
+  ['background-color', 'bg'],
+  ['color', 'color'],
+  ['opacity', 'opacity'],
+  ['border', 'border'],
+  ['border-color', 'border-color'],
+  ['border-top', 'border-top'],
+  ['border-right', 'border-right'],
+  ['border-bottom', 'border-bottom'],
+  ['border-left', 'border-left'],
+  ['border-width', 'border-width'],
+  ['box-shadow', 'box-shadow'],
+  ['transform', 'transform'],
+  ['cursor', 'cursor'],
+  ['pointer-events', 'pointer-events'],
+  ['visibility', 'visibility'],
+  ['border-radius', 'radius'],
+];
+
+export const BASE_LAYOUT_SPECS: PropSpec[] = [
+  ['display', 'display', 'flex'],
+  ['overflow', 'overflow'],
+  ['overflow-x', 'overflow-x', 'var({p}overflow)'],
+  ['overflow-y', 'overflow-y', 'var({p}overflow)'],
+  ['scrollbar-width', 'scrollbar-width'],
+  ['scrollbar-gutter', 'scrollbar-gutter'],
+];
+
+export const BASE_FLEX_SPECS: PropSpec[] = [
+  ['flex-direction', 'direction'],
+  ['justify-content', 'main-axis'],
+  ['align-items', 'cross-axis'],
+  ['flex-wrap', 'wrap'],
+  ['gap', 'gap'],
+  ['padding', 'padding'],
+];
+
+export const BASE_TYPOGRAPHY_SPECS: PropSpec[] = [
+  ['text-align', 'text-align'],
+  ['font-family', 'font-family'],
+  ['font-weight', 'font-weight'],
+  ['font-size', 'font-size'],
+  ['font-style', 'font-style'],
+  ['line-height', 'line-height'],
+  ['letter-spacing', 'letter-spacing'],
+  ['text-decoration', 'text-decoration'],
+  ['text-transform', 'text-transform'],
+  ['white-space', 'white-space'],
+  /*
+    Text breaks rather than pushing its container off the screen — the design system's answer, not
+    each template's.
+
+    The fallback is what makes this a default: every typography component emits
+    `overflow-wrap: var(--we-<name>-overflow-wrap, anywhere)`, so a node that says nothing gets a
+    breakable line and one that sets `overflowWrap` overrides it.
+
+    `anywhere` and not `break-word`, which is the value that looks right and does not work. The two
+    break in the same places; only `anywhere` also reduces min-content width. A flex item and a
+    `1fr` grid track are both sized by min-content, so under `break-word` one unbreakable
+    string — a transcriber's run-together output, a DID, a pasted URL — still stretches its card,
+    its grid track and the whole route sideways. That was the bug this default exists for.
+
+    A default rather than a rule in each primitive's own stylesheet: the DS sheet is adopted last,
+    so `var()` with no fallback would resolve invalid-at-computed-value-time and clobber an earlier
+    declaration. The fallback has to live here to survive.
+  */
+  ['overflow-wrap', 'overflow-wrap', 'anywhere'],
+];
+
+/**
+ * The `{p}` placeholder a fallback chain uses to name the prefix it resolves against.
+ *
+ * A regex rather than `String.replaceAll`, which is ES2021 — the workspace targets ES2020, so the
+ * method typechecks nowhere except by accident of a package's own `lib`.
+ */
+const PREFIX_PLACEHOLDER = /\{p\}/g;
+
+export function declCSS(prefix: string, [cssProp, varSuffix, fallback]: PropSpec): string {
+  if (!fallback) return `${cssProp}: var(${prefix}${varSuffix});`;
+  return `${cssProp}: var(${prefix}${varSuffix}, ${fallback.replace(PREFIX_PLACEHOLDER, prefix)});`;
+}
+
+export function stateDeclCSS(statePrefix: string, defaultPrefix: string, spec: PropSpec): string {
+  const [cssProp, varSuffix, fallback] = spec;
+  // {p} resolves against the default prefix here: a state's own shorthand (--x-hover-overflow) is
+  // not a thing anybody sets, and the chain still ends at the plain shorthand either way.
+  const resolved = fallback?.replace(PREFIX_PLACEHOLDER, defaultPrefix);
+  const defaultRef = resolved ? `var(${defaultPrefix}${varSuffix}, ${resolved})` : `var(${defaultPrefix}${varSuffix})`;
+  return `${cssProp}: var(${statePrefix}${varSuffix}, ${defaultRef});`;
+}
+
+export function joinDeclsCSS(prefix: string, specs: PropSpec[]): string {
+  return specs.map((s) => declCSS(prefix, s)).join('\n    ');
+}
+
+export function joinStateDeclsCSS(statePrefix: string, defaultPrefix: string, specs: PropSpec[]): string {
+  return specs.map((s) => stateDeclCSS(statePrefix, defaultPrefix, s)).join('\n    ');
+}
+
+/**
+ * One property's declaration at one tier, falling back down through the tiers beneath it.
+ *
+ * `md` resolves `var(--p-md-gap, var(--p-sm-gap, var(--p-gap, <token default>)))`, which is what
+ * makes a tier *cascade through* rather than replace: something set only in `smUpProps` still
+ * applies at `lg`, because every tier above it falls back through `sm` on the way to the base. The
+ * state version of this is one level deep; this is the same shape, as deep as there are tiers.
+ *
+ * The base arm keeps the spec's own fallback so a tier declaration can never strip a component's
+ * token default — a `mdUpProps` that mentions only `gap` must not blank out the radius.
+ */
+export function tierDeclCSS(tier: Exclude<Tier, 'base'>, basePrefix: string, spec: PropSpec): string {
+  const [cssProp, varSuffix, fallback] = spec;
+  const resolved = fallback?.replace(PREFIX_PLACEHOLDER, basePrefix);
+  const below = TIERS.slice(1, TIERS.indexOf(tier) + 1) as Exclude<Tier, 'base'>[];
+
+  let chain = resolved ? `var(${basePrefix}${varSuffix}, ${resolved})` : `var(${basePrefix}${varSuffix})`;
+  for (const t of below) chain = `var(${basePrefix}${t}-${varSuffix}, ${chain})`;
+  return `${cssProp}: ${chain};`;
+}
+
+export function joinTierDeclsCSS(tier: Exclude<Tier, 'base'>, basePrefix: string, specs: PropSpec[]): string {
+  return specs.map((s) => tierDeclCSS(tier, basePrefix, s)).join('\n    ');
+}
+
+/**
+ * The responsive rules for one family of elements, ready to drop into a stylesheet.
+ *
+ * `target` is the selector the family is addressed by — `[data-we-responsive]` for the Solid layout
+ * components, `:host` for a Lit primitive's own adopted sheet. Ascending, because container queries
+ * add no specificity and every rule here has the same selector: which tier wins is decided purely
+ * by declaration order, exactly as the interactive-state CSS already relies on.
+ */
+export function tierRulesCSS(target: string, basePrefix: string, specs: PropSpec[]): string {
+  return TIERS.slice(1)
+    .map((tier) => {
+      const t = tier as Exclude<Tier, 'base'>;
+      return `${tierQuery(t)} { ${target} { ${joinTierDeclsCSS(t, basePrefix, specs)} } }`;
+    })
+    .join('\n');
+}
+
+/**
+ * Selector list for the `focus` element state, shared by both state-CSS generators — the Lit
+ * adopted stylesheet (@we/primitives shared/helpers.ts) and the Solid DS-interop stylesheet
+ * (@we/app-shell frameworks/solid/dsInterop.ts) — so `focusProps` cannot come to mean two
+ * different things on the two component families.
+ *
+ * Two arms, because the DS has two shapes of focusable element and no single pseudo-class
+ * covers both:
+ *
+ *   - `:focus-visible` — the element itself holds focus AND the browser judged a ring
+ *     warranted (keyboard navigation, not a mouse click). This is the button/link case. It is
+ *     why this is not `:focus` or `:focus-within`: those match on click too, which would leave
+ *     a focus ring stuck on every button the user clicks — the exact problem `:focus-visible`
+ *     was introduced to solve.
+ *
+ *   - `:has(:focus-visible)` — the element is a wrapper around the real control, as with
+ *     we-input's [part='base'] around its inner <input>. A wrapper can never match
+ *     `:focus-visible` itself, so without this arm every text field would silently lose its
+ *     focus ring. Text-entry fields always match `:focus-visible` while focused (browsers
+ *     exempt them from the keyboard-only heuristic), so this preserves the previous
+ *     `:focus-within` behaviour for inputs exactly rather than making it mouse-dependent.
+ *
+ * `suffix` is appended to each arm rather than the list, since a trailing `:not(…)` guard has
+ * to bind to both selectors to take effect.
+ */
+export function focusSelector(target: string, suffix = ''): string {
+  return `${target}:focus-visible${suffix}, ${target}:has(:focus-visible)${suffix}`;
+}
+
+/**
+ * Whether bgImage should render via the ::before overlay + custom-property indirection
+ * (true) or a plain background-image directly on the host (false). Shared by both
+ * renderers' bgImage handling and the Solid getBgImageAttrs gate — single source of
+ * truth so they can't drift apart on what counts as "faded".
+ */
+export function isBgImageFaded(props: Pick<DesignSystemProps, 'bgImage' | 'bgImageOpacity'>): boolean {
+  return !!props.bgImage && props.bgImageOpacity !== undefined && props.bgImageOpacity < 1;
+}
+
+// data: URIs (e.g. an uploaded/browsed ImageBlock) can run to hundreds of KB of base64 —
+// far too large to embed directly in a CSS value. Even as a *plain* background-image this
+// bloats every style recompute; as a CSS custom property specifically, large var() payloads
+// hit a real (empirically confirmed, not spec-documented) length ceiling in Chromium and get
+// silently dropped. Converting to a Blob + short-lived object URL sidesteps both: the CSS
+// value becomes a fixed-length `blob:...` reference regardless of image size. Memoized by
+// source string so the same image reused across elements/re-renders converts once. Object
+// URLs are never revoked — the number of *distinct* images used in a session is small enough
+// that this is a non-issue in practice; revisit with an LRU + revokeObjectURL if that changes.
+const bgImageObjectUrlCache = new Map<string, string>();
+
+/**
+ * Resolves a bgImage value to something safe to embed in CSS. Data URIs get converted to a
+ * short-lived object URL (see cache comment above); anything else (a plain http(s) URL) is
+ * already short and passes through unchanged, aside from defensive whitespace stripping — a
+ * CSS custom property's value is parsed as a CSS token stream even when set via
+ * setProperty(), and an unescaped literal newline inside a quoted string produces a "bad
+ * string" token that invalidates the entire declaration.
+ */
+export function resolveBgImageUrl(raw: string): string {
+  const clean = raw.replace(/\s+/g, '');
+  if (!clean.startsWith('data:')) return clean;
+  const cached = bgImageObjectUrlCache.get(clean);
+  if (cached) return cached;
+  const objectUrl = URL.createObjectURL(dataUriToBlob(clean));
+  bgImageObjectUrlCache.set(clean, objectUrl);
+  return objectUrl;
+}
+
+/**
+ * Whether a bgImage value is a CSS gradient rather than an image reference.
+ *
+ * `background-image` accepts both in CSS, and a mesh — several radial gradients layered into one
+ * value — is the only way to express a soft, organic background without an asset. Tested against
+ * the start of the value because a mesh is comma-separated gradients, not just one.
+ */
+const GRADIENT_VALUE = /^\s*(repeating-)?(linear|radial|conic)-gradient\(/i;
+
+export function isGradientValue(raw: string): boolean {
+  return GRADIENT_VALUE.test(raw);
+}
+
+/**
+ * A bgImage value as a CSS `<image>` — a gradient verbatim, anything else wrapped as a URL.
+ *
+ * Gradients deliberately bypass `resolveBgImageUrl`: it strips *all* whitespace, which is right for
+ * a URL and destroys a gradient (`radial-gradient(55% 45% at 18% 22%` becomes unparseable). Their
+ * whitespace is collapsed rather than removed, since these values can also land in a custom
+ * property, where a literal newline inside a quoted string invalidates the declaration — a gradient
+ * has no quoted strings, but collapsing costs nothing and removes the class of problem.
+ */
+export function bgImageLayer(raw: string): string {
+  if (isGradientValue(raw)) return raw.trim().replace(/\s+/g, ' ');
+  return `url("${resolveBgImageUrl(raw)}")`;
+}
+
+/**
+ * Computes the composite `background-image` value for the bg-image overlay mechanism
+ * (see dsInterop.ts's [data-we-bg-image]::before / helpers.ts's :host([bgimage])::before).
+ * A single custom property carries either a plain image reference, or — when
+ * bgImageOpacity is set — that same image with a translucent tint layered on top via a
+ * linear-gradient, faking true per-layer opacity (CSS has no way to scope `opacity` to
+ * one background layer). Shared so both the Lit and Solid renderers fade identically.
+ */
+export function computeBgImageComposite(
+  props: Pick<DesignSystemProps, 'bgImage' | 'bgImageOpacity' | 'bgImageTint' | 'bg'>,
+): string | undefined {
+  if (!props.bgImage) return undefined;
+  const image = bgImageLayer(props.bgImage);
+  if (props.bgImageOpacity === undefined || props.bgImageOpacity >= 1) return image;
+  const tintSrc = props.bgImageTint ?? props.bg ?? 'neutral-0';
+  const tint = tokenVar('color', tintSrc, tintSrc);
+  const pct = Math.round((1 - props.bgImageOpacity) * 100);
+  const wash = `color-mix(in srgb, ${tint} ${pct}%, transparent)`;
+  // Layers cleanly over a gradient too: the wash simply becomes the first of several.
+  return `linear-gradient(${wash}, ${wash}), ${image}`;
+}
+
 // Map flex axes based on direction
 export function mapFlexAxes(props: DesignSystemProps, direction: FlexDirection) {
   const isRow = direction.includes('row');
@@ -290,4 +1003,274 @@ export function mapFlexAxes(props: DesignSystemProps, direction: FlexDirection) 
     main: flexMainAxisMap[mainKey as keyof typeof flexMainAxisMap],
     cross: flexCrossAxisMap[crossKey as keyof typeof flexCrossAxisMap],
   };
+}
+
+// ────────────────────────────────────────────
+// Layout style builder (framework-neutral)
+//
+// Pure DS-props → CSS style object. Emits CSS-canonical *kebab-case* property keys — the
+// neutral form consumed directly by Solid's `style` prop, the DOM setProperty/CSSOM, and
+// Lit. A framework whose style prop expects camelCase (e.g. React) normalizes keys in its
+// own adapter, not here. Lives in the neutral core (not a framework entry) so every
+// framework binding computes identical styles from one source; each binding is only a thin
+// reactive wrapper that re-types the return as its own CSS type.
+// ────────────────────────────────────────────
+
+/** Framework-neutral CSS style object: CSS-canonical kebab-case keys → value. */
+export type CSSStyleObject = Record<string, string | number | undefined>;
+
+/** Props accepted by buildLayoutStyles — DS props plus a `reverse` flag and a `styles` escape hatch. */
+export type LayoutStyleProps = DesignSystemProps & {
+  reverse?: boolean;
+  styles?: CSSStyleObject;
+};
+
+export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'column'): CSSStyleObject {
+  // Base flex container styles
+  const style: CSSStyleObject = {
+    display: props.display || 'flex',
+    'flex-direction': props.reverse ? `${direction}-reverse` : direction,
+    'flex-wrap': props.wrap ? 'wrap' : 'nowrap',
+  };
+
+  // Colors & backgrounds
+  if (props.bg) {
+    /*
+      Longhands, never the `background` shorthand.
+
+      The shorthand resets every background longhand it does not mention — image, size, position,
+      repeat. The base rule sets `background-position: var(--we-*-bg-image-position, center)` on every
+      component, so a hover rule using the shorthand silently reset position from `50% 50%` to
+      `0% 0%`. With the design system's `transition: all` default, that difference *animated*, so every
+      hover ran two pointless transitions (`background-position-x` and `-y`) alongside the colour —
+      repainting the background area for 150ms and producing a visible flicker.
+
+      It was a correctness bug too, not only a cosmetic one: any component with a `bgImage` and a
+      hover `bg` had its image reset on hover, because the shorthand cleared `background-image`.
+
+      Splitting by kind keeps each value in the property that owns it, so nothing clobbers anything.
+    */
+    if (props.bg.startsWith('gradient-')) {
+      style['background-image'] = `var(--we-gradient-${props.bg.slice(9)})`;
+    } else {
+      style['background-color'] = tokenVar('color', props.bg);
+    }
+  }
+  if (props.bgImage) {
+    if (isBgImageFaded(props)) {
+      // Faded — rendered via the DS interop stylesheet's [data-we-bg-image]::before
+      // overlay (see dsInterop.ts) rather than a plain background-image here, so
+      // bgImageOpacity can fade the image independently of the element's own content/
+      // opacity — CSS has no way to scope `opacity` to just one background layer, so
+      // the image needs its own paint layer. Custom properties are the only way to get
+      // a per-instance dynamic value into a pseudo-element (inline styles can't target
+      // ::before directly). computeBgImageComposite resolves the URL through
+      // resolveBgImageUrl internally, so this is safe for large data URIs too — only
+      // paid for (the extra paint layer + indirection) when fading is actually requested.
+      style['--we-bg-image-composite'] = computeBgImageComposite(props);
+      style['--we-bg-image-fit'] = props.bgFit ?? 'cover';
+      style['--we-bg-image-position'] = props.bgPosition ?? 'center';
+      // The pseudo-element overlay is absolutely positioned against this host — only
+      // default to relative when the caller hasn't already claimed `position`.
+      if (!props.position) style.position = 'relative';
+    } else {
+      // No fading — a plain background-image directly on the host, same as before
+      // bgImageOpacity existed. No custom-property indirection, so no z-index/stacking-
+      // context concerns from the pseudo-element overlay. Still resolved through
+      // resolveBgImageUrl (data URI -> short object URL) — a large base64 payload
+      // bloats every style recompute even as a plain inline style, not just as a var().
+      style['background-image'] = bgImageLayer(props.bgImage);
+      style['background-size'] = props.bgFit ?? 'cover';
+      style['background-position'] = props.bgPosition ?? 'center';
+      style['background-repeat'] = 'no-repeat';
+    }
+  }
+  if (props.color) style.color = tokenVar('color', props.color);
+
+  // Visual Effects
+  if (props.opacity !== undefined) style.opacity = props.opacity;
+  if (props.border) style.border = parseBorder(props.border);
+  if (props.borderColor) style['border-color'] = tokenVar('color', props.borderColor);
+  if (props.borderTop) style['border-top'] = parseBorder(props.borderTop);
+  if (props.borderRight) style['border-right'] = parseBorder(props.borderRight);
+  if (props.borderBottom) style['border-bottom'] = parseBorder(props.borderBottom);
+  if (props.borderLeft) style['border-left'] = parseBorder(props.borderLeft);
+  if (props.borderWidth) style['border-width'] = props.borderWidth;
+  if (props.shadow || props.ring) {
+    const parts = [props.ring, props.shadow].filter(Boolean).join(', ');
+    style['box-shadow'] = parts;
+  }
+  // `x`/`y`/`rotate` compose into this, in front of whatever the caller wrote — see composeTransform.
+  const transform = composeTransform(props);
+  if (transform) style.transform = transform;
+  if (props.transition) style.transition = parseTransition(props.transition)!;
+
+  // Typography
+  if (props.textAlign) style['text-align'] = props.textAlign;
+  if (props.fontFamily) style['font-family'] = resolveFontFamily(props.fontFamily);
+  if (props.fontWeight) style['font-weight'] = resolveFontWeight(props.fontWeight);
+  // `font-size`, not `font`: the tokens are emitted as `--we-font-size-300`, so the shorter prefix
+  // built `var(--we-font-300)` — undeclared, invalid at computed-value time, and therefore a
+  // `fontSize` that silently did nothing on every Solid layout component. The Lit path always
+  // spelled it in full, which is why `we-text` was unaffected and a `Column` was not.
+  if (props.fontSize) style['font-size'] = tokenVar('font-size', props.fontSize);
+  if (props.lineHeight) style['line-height'] = resolveLineHeight(props.lineHeight);
+  if (props.letterSpacing) style['letter-spacing'] = props.letterSpacing;
+  if (props.textDecoration) style['text-decoration'] = props.textDecoration;
+  if (props.textTransform) style['text-transform'] = props.textTransform;
+  if (props.whiteSpace) style['white-space'] = props.whiteSpace;
+  if (props.overflowWrap) style['overflow-wrap'] = props.overflowWrap;
+
+  // Interaction
+  if (props.cursor) style.cursor = props.cursor;
+  if (props.pointerEvents) style['pointer-events'] = props.pointerEvents;
+  if (props.visibility) style.visibility = props.visibility;
+
+  // Flex item
+  if (props.flex) style.flex = props.flex;
+  // `0` is the value that matters here and is falsy, so test for presence rather than truth.
+  if (props.flexShrink !== undefined) style['flex-shrink'] = props.flexShrink;
+  if (props.alignSelf) style['align-self'] = props.alignSelf;
+
+  // Layout
+  if (props.width) style.width = props.width;
+  if (props.height) style.height = props.height;
+  if (props.minWidth) style['min-width'] = props.minWidth;
+  if (props.minHeight) style['min-height'] = props.minHeight;
+  if (props.maxWidth) style['max-width'] = props.maxWidth;
+  if (props.maxHeight) style['max-height'] = props.maxHeight;
+  const { main, cross } = mapFlexAxes(props, props.reverse ? `${direction}-reverse` : direction);
+  if (main !== undefined) style['justify-content'] = main;
+  if (cross !== undefined) style['align-items'] = cross;
+  if (props.gap) style.gap = tokenVar('space', props.gap, '0', 'gap');
+  if (props.overflow) style.overflow = props.overflow;
+  if (props.overflowX) style['overflow-x'] = props.overflowX;
+  if (props.overflowY) style['overflow-y'] = props.overflowY;
+  if (props.scrollbarWidth) style['scrollbar-width'] = props.scrollbarWidth;
+  if (props.scrollbarGutter) style['scrollbar-gutter'] = props.scrollbarGutter;
+  if (props.zIndex !== undefined) style['z-index'] = zIndexVar(props.zIndex);
+  if (props.position) style.position = props.position;
+  // Offsets resolve space tokens, like margin and padding do. They were raw passthrough, which
+  // made `bottom: '400'` emit an unitless `bottom: 400` — invalid, silently dropped by the
+  // browser, and indistinguishable from a typo at author time since the prop is typed `string`.
+  // tokenVar discriminates by shape, so '400' becomes var(--we-space-400) while '400px', '50%',
+  // 'calc(...)' and '-8px' still pass through untouched.
+  if (props.top) style.top = tokenVar('space', props.top);
+  if (props.right) style.right = tokenVar('space', props.right);
+  if (props.bottom) style.bottom = tokenVar('space', props.bottom);
+  if (props.left) style.left = tokenVar('space', props.left);
+
+  // Margin
+  const margin = getMarginValues(props);
+  if (margin !== '0 0 0 0') style.margin = margin;
+
+  // Padding
+  const padding = getPaddingValues(props);
+  if (padding !== '0 0 0 0') style.padding = padding;
+
+  // Radius
+  const radius = getRadiusValues(props);
+  if (radius !== '0 0 0 0') style['border-radius'] = radius;
+
+  // Last, so it genuinely overrides. Spread at the top it was beaten by every DS prop assigned
+  // afterwards — `bg` especially, which emits the `background` shorthand and so silently erased a
+  // `background-image` set here. The comment said "allow custom overrides" and the position said
+  // the opposite; this is the escape hatch, and an escape hatch that loses is worse than none,
+  // because the failure is invisible.
+  return { ...style, ...props.styles };
+}
+
+/**
+ * Opt-in attribute for the DS interop stylesheet's [data-we-bg-image]::before overlay.
+ * Gated on an explicit attribute (rather than a bare pseudo-element on every layout
+ * primitive) so elements that never use bgImage don't pay for an extra paint layer — and
+ * specifically on the faded case, since the unfaded case renders via a plain
+ * background-image on the host (see buildLayoutStyles) and never needs the overlay at all.
+ */
+export function getBgImageAttrs(
+  props: Pick<LayoutStyleProps, 'bgImage' | 'bgImageOpacity'>,
+): Record<string, string | undefined> {
+  return { 'data-we-bg-image': isBgImageFaded(props) ? '' : undefined };
+}
+
+// ────────────────────────────────────────────
+// Interactive-state (hover/active/focus) style machinery
+//
+// Rendered via native :hover/:active/:focus-within in the DS interop stylesheet (see
+// app-framework's dsInterop.ts) instead of JS-tracked signals + mouseenter/mouseleave/blur
+// listeners — the browser handles the state transition for free, and it composes correctly
+// with every DesignSystemProps field (not a hand-picked subset), because it's built from the
+// exact same PropSpec tables Lit's we-* primitives already use for their own
+// :host(:hover)/[part=base]:hover rules. bgImage-related keys are excluded — handled
+// separately by the bg-image composite mechanism, not state-variance.
+// ────────────────────────────────────────────
+
+/*
+  position/top/right/bottom/left are deliberately excluded: bgImage's overlay depends
+  on `position: relative` being stable on the host, and an unset --we-ds-position would
+  resolve to `static` (position isn't inherited), which could win the cascade over the
+  bg-image rule's own position:relative depending on stylesheet order when both
+  bgImage and hoverProps are set on the same element. Varying position by hover/active/
+  focus state is a rare enough pattern that excluding it is the safer default.
+
+  **This applies to the tier axis too**, because the tier bags go through the same
+  `toInteractiveVars` + `buildStateFragmentStyles` pipeline the state bags do — so
+  `mdUpProps: { left: '300px' }` typechecks and does nothing, exactly as `hoverProps: { top }`
+  does. The rarity argument above is about states and does not obviously transfer: moving a
+  thing at a breakpoint is the ordinary case, not a rare one.
+
+  It stays excluded on both axes anyway, because the alternative is worse than the gap. Letting
+  positioning into the tier vars and not the state vars means one list becoming two, a second
+  `@container` arm per component, and the bg-image hazard re-opened for any element that sets a
+  background image and a tier — to serve a case that already has a spelling that works on both
+  axes and composes with rotation and scale: `x` / `y` / `rotate`, which are emitted as `transform`
+  and so tier and state for free.
+
+  What the exclusion must not do is stay unwritten. See `DesignSystemProps.mdUpProps`, which says
+  so where somebody reaching for `mdUpProps: { left }` will read it.
+*/
+const POSITIONING_VAR_SUFFIXES = new Set(['position', 'top', 'right', 'bottom', 'left']);
+
+// Exported so the generated dsInterop stylesheet (app-framework bootstrap) can declare
+// exactly the same properties this module emits vars for — one source of truth for
+// both the JS var-emission and the CSS rule text, so they can never drift apart.
+export const INTERACTIVE_SPECS: PropSpec[] = [
+  ...HOST_LAYOUT_SPECS.filter(([, varSuffix]) => !POSITIONING_VAR_SUFFIXES.has(varSuffix)),
+  ...BASE_VISUAL_SPECS,
+  ...BASE_LAYOUT_SPECS,
+  ...BASE_FLEX_SPECS,
+  ...BASE_TYPOGRAPHY_SPECS,
+];
+export const CSS_PROP_TO_VAR_SUFFIX = new Map(INTERACTIVE_SPECS.map(([cssProp, varSuffix]) => [cssProp, varSuffix]));
+
+// Remaps a computed style object's CSS-property keys to --we-ds-{prefix}{varSuffix}
+// custom properties, using the shared PropSpec tables' cssProp -> varSuffix mapping.
+// Keys outside the interactive-state surface (e.g. --we-bg-image-*) are left alone.
+export function toInteractiveVars(prefix: string, computed: CSSStyleObject): CSSStyleObject {
+  const out: Record<string, string> = {};
+  for (const [cssProp, value] of Object.entries(computed)) {
+    if (value === undefined || value === null || value === '') continue;
+    const varSuffix = CSS_PROP_TO_VAR_SUFFIX.get(cssProp);
+    if (!varSuffix) continue;
+    out[`--we-ds-${prefix}${varSuffix}`] = String(value);
+  }
+  return out;
+}
+
+// buildLayoutStyles always computes display/flex-direction/flex-wrap regardless of
+// which props were actually provided (they're an unconditional structural baseline for
+// a *complete* element style) — for a hover/active/focus *fragment*, that would leak
+// those structural defaults into every state variant even when the caller only meant to
+// vary e.g. `bg`. `direction` isn't part of DesignSystemProps at all (it's a fixed
+// per-component parameter, never user-settable via state props), so flex-direction is
+// always stripped; display/wrap are kept only when actually present in the fragment.
+export function buildStateFragmentStyles(
+  stateProps: Partial<DesignSystemProps>,
+  direction: 'row' | 'column',
+): CSSStyleObject {
+  const computed = buildLayoutStyles({ ...stateProps, styles: undefined } as LayoutStyleProps, direction);
+  delete computed['flex-direction'];
+  if (!('display' in stateProps)) delete computed['display'];
+  if (!('wrap' in stateProps)) delete computed['flex-wrap'];
+  return computed;
 }

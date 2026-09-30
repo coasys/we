@@ -4,7 +4,7 @@ This guide explains how to set up the WE workspace for development or production
 
 ## Prerequisites
 
-- Node.js 18+
+- Node.js 24+ (`.nvmrc` pins the exact version)
 - pnpm (`npm install -g pnpm`)
 - Rust and Cargo (for AD4M and Tauri)
 - Yarn (for Flux)
@@ -15,9 +15,9 @@ This guide explains how to set up the WE workspace for development or production
 
 ```bash
 # Clone all required repositories
-git clone https://github.com/your-org/we.git
-git clone https://github.com/your-org/flux.git
-git clone https://github.com/your-org/ad4m.git
+git clone https://github.com/coasys/we.git
+git clone https://github.com/coasys/flux.git
+git clone https://github.com/coasys/ad4m.git
 
 # Your directory structure should look like:
 # Coding/
@@ -74,7 +74,7 @@ nano we-seed.json  # Or use your favorite editor
 
 ```bash
 # From the we/ directory
-pnpm setup
+pnpm setup-workspace
 ```
 
 This single command:
@@ -99,8 +99,8 @@ pnpm dev:tauri     # Tauri development mode
 ```bash
 # Build specific platform
 pnpm build:web
-pnpm build:electron  # Creates AppImage in apps/we-electron/release/
-pnpm build:tauri     # Creates AppImage in apps/we-tauri/src-tauri/target/release/bundle/
+pnpm build:electron  # apps/we-electron/dist-electron/WE-<version>-linux-x86_64.AppImage
+pnpm build:tauri     # apps/we-tauri/src-tauri/target/release/bundle/appimage/WE-<version>-tauri-linux-x86_64.AppImage
 
 # Or build everything
 pnpm build:all
@@ -110,19 +110,24 @@ pnpm build:all
 
 ### Root Commands (run from `we/` directory)
 
-| Command               | Description                                                |
-| --------------------- | ---------------------------------------------------------- |
-| `pnpm setup`          | Complete workspace setup (run after clone or seed changes) |
-| `pnpm validate`       | Validate seed file configuration                           |
-| `pnpm dev`            | Start web dev (same as `dev:web`)                          |
-| `pnpm dev:web`        | Start web development server                               |
-| `pnpm dev:electron`   | Start Electron in dev mode                                 |
-| `pnpm dev:tauri`      | Start Tauri in dev mode                                    |
-| `pnpm build`          | Build all packages                                         |
-| `pnpm build:web`      | Build web distribution                                     |
-| `pnpm build:electron` | Build Electron AppImage                                    |
-| `pnpm build:tauri`    | Build Tauri AppImage                                       |
-| `pnpm build:all`      | Build all distributions                                    |
+| Command                                         | Description                                                |
+| ----------------------------------------------- | ---------------------------------------------------------- |
+| `pnpm setup-workspace`                          | Complete workspace setup (run after clone or seed changes) |
+| `pnpm test`                                     | Every package's tests (`--no-bail`: all failures at once)  |
+| `pnpm lint` / `pnpm lint:css`                   | ESLint (zero-warning) / Stylelint over authored CSS        |
+| `pnpm typecheck`                                | Typecheck packages that define a `typecheck` script        |
+| `pnpm validate:schemas`                         | Validate all template schemas                              |
+| `pnpm --filter @we/ai-context generate-context` | Regenerate CLAUDE.md and the other AI references           |
+| `pnpm validate:seed`                            | Validate seed file configuration                           |
+| `pnpm dev`                                      | Start web dev (same as `dev:web`)                          |
+| `pnpm dev:web`                                  | Start web development server                               |
+| `pnpm dev:electron`                             | Start Electron in dev mode                                 |
+| `pnpm dev:tauri`                                | Start Tauri in dev mode                                    |
+| `pnpm build`                                    | Build all packages                                         |
+| `pnpm build:web`                                | Build web distribution                                     |
+| `pnpm build:electron`                           | Build Electron AppImage                                    |
+| `pnpm build:tauri`                              | Build Tauri AppImage                                       |
+| `pnpm build:all`                                | Build all distributions                                    |
 
 ### Per-App Commands
 
@@ -204,14 +209,14 @@ cd apps/we-tauri
 node scripts/generate-seed-config.cjs
 ```
 
-Or just run `pnpm setup` from the root.
+Or just run `pnpm setup-workspace` from the root.
 
 ### Validation Errors
 
 Check your paths:
 
 ```bash
-pnpm validate
+pnpm validate:seed
 ```
 
 This will show exactly what's missing or incorrect.
@@ -226,8 +231,18 @@ we/
 │   ├── setup-workspace.cjs       # Setup automation
 │   └── validate-seed.cjs         # Validation tool
 ├── packages/
-│   ├── app-framework/            # Core framework
-│   └── cli/                      # Build tooling
+│   ├── design-system/            # tokens, themes, primitives, components, widgets
+│   ├── schema-system/            # schema semantics + the Solid renderer
+│   ├── block-system/             # block content composition
+│   ├── backend-system/           # the backend contract, AD4M adapter, in-memory reference
+│   ├── graph-system/             # the graph engine
+│   ├── module-system/            # feature-module contract + bundled modules
+│   ├── templates/                # template kit, shell surfaces, built-in templates
+│   ├── app-shell/                # WE's own app host — stores, registries, shell chrome
+│   ├── editor/                   # the template/theme editing surface
+│   ├── models/                   # domain models
+│   ├── ai-context/               # generates the AI/schema reference
+│   └── cli/                      # build tooling (we-build)
 └── apps/
     ├── we-web/                   # Web app
     ├── we-electron/              # Electron app
@@ -255,7 +270,7 @@ we/
    cd ../../we
    pnpm install
    nano we-seed.json  # Configure paths
-   pnpm setup
+   pnpm setup-workspace
    ```
 
 2. **Daily Development**:
@@ -269,27 +284,34 @@ we/
 
    ```bash
    pnpm install  # Update dependencies
-   pnpm setup    # Regenerate configs
+   pnpm setup-workspace    # Regenerate configs
    ```
 
 4. **After Changing Seed File**:
    ```bash
-   pnpm setup    # Regenerate all configs
+   pnpm setup-workspace    # Regenerate all configs
    ```
 
 ## Tips
 
 - **Web development** doesn't require AD4M or Flux to be built
 - **Electron and Tauri** need both AD4M executor and app dist folders
-- Run `pnpm validate` to check if everything is configured correctly
-- Run `pnpm setup` after any seed file changes
+- Run `pnpm validate:seed` to check if everything is configured correctly
+- Run `pnpm setup-workspace` after any seed file changes
 - All paths in seed file are relative to the `we/` directory
 
 ## Advanced Configuration
 
 ### Launcher UI Customization
 
-You can fully customize the launcher shell (boot screen, app settings) via the seed file. See [Launcher UI Customization](../guides/launcher-ui-customization.md) for detailed documentation and examples.
+The seed white-labels the shell through `host.theme` (colour and font overrides) and
+`host.ui.bootScreen` (a schema node replacing the default boot screen). See
+[Seed System](./seed-system.md), and `packages/app-shell/src/types/seed.ts` for the shape.
+
+> The wider surface this section used to describe — `launcherUIRegistry`, `seed.host.ui.appSettings`,
+> `enableTemplateSwitching` — was removed. The archived design is at
+> [`internal/old/launcher-ui-customization.md`](../internal/old/launcher-ui-customization.md);
+> it documents nothing that exists.
 
 ### Seed System
 

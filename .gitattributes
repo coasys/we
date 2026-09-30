@@ -1,0 +1,31 @@
+# Generated AI-context artefacts.
+#
+# These six files are written wholesale by `pnpm --filter @we/ai-context generate-context` from
+# `packages/ai-context/src/fragments/` plus the registries it reads. They are committed because the
+# tools that consume them read the repository — Claude Code reads CLAUDE.md, Cursor reads the rule
+# file, Copilot reads its instructions — so a build artefact is exactly what they need to find.
+#
+# Committing them makes them a conflict magnet. Any two branches that add a component, a store
+# member, an expression function or a token touch all six, and the audit of 2026-09-05 found that
+# they were the *only* thing two live feature branches collided on. Resolving that by hand means
+# reading a three-way diff of a 336 KB generated file, where the correct answer is never "pick a
+# side" — it is "regenerate".
+#
+# So: take one side automatically and regenerate afterwards. `merge=we-generated` is registered by
+# `scripts/install-merge-driver.mjs`, which `pnpm prepare` runs on install. A clone that has not run
+# install falls back to an ordinary conflict, which is the safe direction.
+#
+# The backstop is CI, not this file: the Build job runs `pnpm build` and then fails if the tree is
+# dirty, so a merge that left these stale is caught before review rather than after.
+#
+# `-diff` keeps them out of diff output, where 336 KB of regenerated prose buries the change that
+# actually needs reading.
+CLAUDE.md                             merge=we-generated -diff linguist-generated
+AGENTS.md                             merge=we-generated -diff linguist-generated
+.github/copilot-instructions.md       merge=we-generated -diff linguist-generated
+.cursor/rules/we-schema.mdc           merge=we-generated -diff linguist-generated
+packages/ai-context/context.json      merge=we-generated -diff linguist-generated
+packages/schema-system/shared/src/generated/contextData.ts  merge=we-generated -diff linguist-generated
+
+# The lockfile is generated too, and has the same "never merge by hand" property.
+pnpm-lock.yaml                        -diff linguist-generated

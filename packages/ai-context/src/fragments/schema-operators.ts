@@ -1,20 +1,76 @@
 /**
- * Schema operators fragment — documents schema structure, prop-level dynamic logic,
- * and block-level dynamic structures ($each, $if, $query).
+ * Schema operators fragment — documents schema structure, the expression layer, the handler and
+ * query tokens, local state, and block-level dynamic structures ($each, $if, $query).
  *
- * Hand-maintained: update when new schema tokens are implemented.
+ * Hand-maintained, except the function library, which is generated from the registry so the
+ * documented set and the callable set are one list.
  */
-export const schemaOperators = `
+import type { SourceEntry } from '../types.js';
+
+/** What the reference needs of a library function — `FunctionSpec` less its implementation. */
+export interface FunctionDoc {
+  name: string;
+  category: string;
+  params: readonly string[];
+  doc: string;
+  example: string;
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  list: 'Lists',
+  text: 'Text',
+  number: 'Numbers',
+  object: 'Objects',
+  form: 'Form state',
+};
+
+/**
+ * The function library as the reference lists it, then the host's own functions.
+ *
+ * Grouped by category, one line each with the signature, the sentence and an example. The host's
+ * functions come last under their own heading so a reader knows which names are the language's and
+ * which are this deployment's — a template written against a host function is portable only to a
+ * host that provides it.
+ */
+export function formatFunctionLibrary(library: FunctionDoc[], sources: SourceEntry[]): string {
+  const lines: string[] = [];
+  for (const category of Object.keys(CATEGORY_LABELS)) {
+    const entries = library.filter((fn) => fn.category === category);
+    if (!entries.length) continue;
+    lines.push(`  ${CATEGORY_LABELS[category]}:`);
+    for (const fn of entries) {
+      lines.push(`    ${fn.name}(${fn.params.join(', ')}) — ${fn.doc}  e.g. ${fn.example}`);
+    }
+  }
+  lines.push('  Host functions (this deployment registers them):');
+  if (!sources.length) lines.push('    (none)');
+  for (const source of sources) {
+    lines.push(`    ${source.name}(${source.params.join(', ')}) — ${source.doc}  e.g. ${source.example}`);
+  }
+  return lines.join('\n');
+}
+
+export function schemaOperators(library: FunctionDoc[], sources: SourceEntry[]): string {
+  const FUNCTIONS = formatFunctionLibrary(library, sources);
+  return `
 ## Schema Structure
 
 A schema is a tree of nodes. Each node can have:
 - type: The component to render (string, e.g. "we-button", "Column")
 - props: An object of props for the component
-- children: An array of child nodes (or strings for text), or token objects like { $store: '...' } or { $concat: [...] }.
+- children: An array of child nodes, strings for text, or expressions like { "$": "post.title" } (rendered as text).
 - slots: Named slots for advanced composition (optional)
 - slot: The name of the slot this node should be rendered into (optional)
 - routes: For routing components, an array of nestable route objects (optional)
-- styles: Raw CSS escape hatch — Record<string, string | number> applied as inline styles on the node wrapper. Use for CSS not covered by design system props (e.g. filter, clip-path, backdrop-filter, mix-blend-mode). When present the wrapper participates in layout (no display:contents), so CSS effects apply correctly.
+- $localState / $queries: ephemeral state and hoisted subscriptions declared on the node (optional; see Dynamic Logic)
+- styles: Raw CSS escape hatch — Record<string, string | number> applied as inline styles on a **wrapper div** that surrounds the component. Use only for CSS that must live on a wrapper: filter, clip-path, backdrop-filter, mix-blend-mode. When present the wrapper participates in layout (no display:contents), so CSS effects apply correctly. **Important:** this is NOT the same as props.styles. If you want to apply custom CSS to a Column, Row, or Grid's own element (e.g. a background image), put it in props.styles instead — node-level styles go on a wrapper div around the component and will be hidden behind the component's own background.
+
+The ROOT node carries one more, and it is required:
+
+- meta: { name, description, icon } — what the template is called and how it is listed. Optional
+  keys: role: 'view' for a section rather than a shell (absent means shell), themeId for a theme the
+  template was designed with, panels for the surfaces the interface has (see Panels), and
+  chromeReserve for a band the shell pins over the content. A root node without meta is refused.
 
 Example node:
 {
@@ -30,142 +86,499 @@ Example node:
 
 ## Prop-level Dynamic Logic & Expressions
 
-Special tokens in props enable dynamic, reactive, or computed behavior.
+Two kinds of token go in props: an EXPRESSION, { "$": "…" }, for anything computed (a store read, a
+condition, a label, a list), and a HANDLER ($action, $setLocal, …) for anything that happens on an
+event. A plain string is always text. There are no other value tokens.
 
 Store reference:
-{ "$store": "storeName.property.path" }
-Resolves a value from a named store, supporting nested paths.
+{ "$": "storeName.property.path" }
+Reads a value from a named store, supporting nested paths — reactive, so the prop follows the store.
 
 Action/event:
 { "$action": "storeName.method", "args": [...] }
 Calls a method on a store, optionally with arguments (which can themselves be tokens).
+IMPORTANT — omitting "args" does NOT call the method with no arguments: the handler's own arguments are
+forwarded, so a click handler passes the DOM event as the first parameter. That is deliberate (it is how
+{ "onChange": { "$action": "store.method" } } passes a value straight through), but it means a method whose
+first parameter is OPTIONAL receives a PointerEvent from a button written the obvious way. Pass the argument
+you mean explicitly when the method has an optional leading parameter — note "args": [] does not help, since
+an empty list is treated as "no args given" and forwards the event too.
+Supports async lifecycle callbacks — fired after the store method's Promise resolves/rejects:
+  onSuccess: [...actions]  — fired on resolve; { "$": "result" } (and result.<path>) in args refers to the resolved value
+  onError: [...actions]    — fired on reject; { "$": "result.message" } etc. refers to the error object
+  onFinally: [...actions]  — fired regardless of outcome
+Non-promise (synchronous) methods are unaffected — lifecycle keys are ignored.
+Example — close modal after async submission:
+{ "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] }
+Example — navigate to newly created item:
+{ "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$action": "routeStore.navigate", "args": [{ "$": "\`/space/\${result.uuid}\`" }] }] }
 
-Model mutations via $action (use these for creating/updating/deleting model instances):
-model.create — creates a model instance in the current perspective (default) or a specified one:
-{ "$action": "model.create", "args": ["ModelName", { "field": "value" }, { "perspective": "adamStore.rootPerspective" }] }
-The third argument is an options object. Omit it to use the current space perspective.
+Record mutations via $action (use these for creating/updating/deleting records):
+A RECORD is one stored thing; an ENTITY is its type. Every one of these takes the entity name first
+and acts on a record of it.
 
-model.update — updates a model instance:
-{ "$action": "model.update", "args": ["ModelName", "$item.id", { "field": "newValue" }] }
-To target a non-current perspective: { "$action": "model.update", "args": ["ModelName", "$item.id", { "field": "value" }, { "perspective": "adamStore.rootPerspective" }] }
+record.create — creates a record in the current dataset (default) or a specified one:
+{ "$action": "record.create", "args": ["EntityName", { "field": "value" }, { "dataset": "datasetStore.rootDataset" }] }
+The third argument is an options object. Omit it to write into the space on screen.
 
-model.delete — deletes a model instance:
-{ "$action": "model.delete", "args": ["ModelName", "$item.id"] }
+record.update — updates one record:
+{ "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "newValue" }] }
+To target another dataset: { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "value" }, { "dataset": "datasetStore.rootDataset" }] }
 
-Use perspective: 'adamStore.rootPerspective' for we-root models (AgentProfile, AgentSettings).
-Use the default (no perspective) for space-scoped models (Space, Signal, etc.).
+record.delete — deletes one record:
+{ "$action": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
 
-Conditional logic:
-{ "$if": { "condition": ..., "then": ..., "else": ... } }
-Evaluates condition; if truthy, returns then, else returns else.
+Use dataset: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.), and
+'datasetStore.personalDataset' for the agent's own content (a note, a Pocket folder). Both are chrome-tier.
+Use the default (no dataset) for space-scoped entities (Space, Signal, etc.). The same key $query
+takes, and it names the same accessors.
 
-Map/iterate:
-{ "$map": { "items": { "$store": "templateStore.templates" }, "select": { ... } } }
-Iterates over an array, mapping each item to a new object using the select mapping.
+record.* writes directly; recordStore is the form surface over the same job — it derives a form from
+the entity's own declaration, so a community's newest entity is creatable with no schema written for
+it. Reach for record.create when the template knows the fields, recordStore when a person is filling
+them in.
 
-Pick:
-{ "$pick": { "from": { "$store": "userStore.profile" }, "props": ["name", "email"] } }
-Picks specific properties from an object.
+Expressions:
+{ "$": "<expression>" }
+Every computed value — a condition, a label, a number, a filtered list — is one expression string in a
+{ "$": … } token. This is the value layer's whole vocabulary. The node layer ($each, node-level $if,
+$routes, $animate…), queries ($query, $queries) and handlers ($action, $setLocal, $toggleLocal…) stay
+as tokens; an expression goes anywhere a VALUE goes — a prop, a condition, $each's items, a children
+array (rendered as text), a where value, an $action argument.
 
-Concat (string building):
-{ "$concat": ["part1", "$context.value", "part2"] }
-Joins multiple parts into a single string.
+References — what a name starts from:
+  spaceStore.members             a store member (any store in the Stores section; modules.<id>.<key> for a module)
+  local.searchText               a $localState or $queries field; dot paths read into object fields
+  post.title                     a name bound by $each / $single / $agent through "as" — the default is item
+  index, prev                    $each's row position, and the previous row
+  me.did, currentDataset         the current agent, and the active dataset
+  surface.tier, surface.width    the responsive boundary
+  event, arg, result             the callback argument inside a handler, and a settled $action's value
+A plain string in an expression is ALWAYS a literal: 'item.name' is five words, item.name is a read.
+A plain string in a PROP or in children is text too: "$item.name" renders those ten characters. A
+reference is always written { "$": "item.name" }; the validator rejects the old string spelling.
+A store's actions are unreachable — spaceStore.createPost reads as nothing; only $action calls.
 
-Context references:
-Strings starting with "$" followed by a context key resolve to context values.
-Example: "$space.name" resolves to the name property of the space context variable.
-Dot paths supported: "$item.profile.avatar".
+Operators, in JavaScript's spelling and precedence:
+  == !=                          strict equality
+  < > <= >=                      numeric comparison
+  in                             list membership:  item.role in ['admin', 'moderator']
+  ! && ||                        boolean logic. && and || ANSWER WITH A BOOLEAN, never with an operand
+  ??                             the fallback-value idiom:  local.name ?? 'Untitled'
+  test ? a : b                   conditional value
+  + - * / %                      arithmetic; + joins strings when either side is one; / by 0 is 0
+  \`…\${expr}…\`                    interpolation
+  a.name   a[i]                  property and index reads; a missing path is undefined, never an error
+  [a, b]   { key: value }        list and object literals — the where-object below is one
 
-Equality / inequality checks:
-{ "$eq": [a, b] } — strict equality
-{ "$ne": [a, b] } — strict inequality
+Comprehensions — the one place a name is bound, over a list:
+  items.filter(x, x.done)          items.map(x, x.name)          items.find(x, x.id == local.selected)
+  items.exists(x, x.role == 'admin')                            items.all(x, x.read)
+Over something that is not a list: filter and map give [], find gives undefined, exists false, all true.
 
-Numeric comparisons:
-{ "$lt": [a, b] } — a < b (less than)
-{ "$gt": [a, b] } — a > b (greater than)
-Example: { "$gt": [{ "$count": { "items": { "$store": "listStore.items" } } }, 0] }
+Functions — the library. f(a, b) and a.f(b) are the same call; a value's own methods are never callable.
+Nothing is ever added to the grammar above: a new capability is a function here, or one the host
+registers (listed last). Wrong-typed input answers with the empty value of its kind, never an error.
+${FUNCTIONS}
 
-Set membership:
-{ "$in": [value, array] } — true if array contains value (false if second operand is not an array)
-Example: { "$in": [{ "$store": "spaceStore.uuid" }, { "$store": "adamStore.systemPerspectiveUuids" }] }
-Example: { "$in": ["$item.role", ["admin", "moderator"]] }
+The where-object — one grammar shared by filter(), find(), and $query's where. Keys are field names;
+values may be expressions (in an expression) or tokens (in a $query):
 
-Boolean logic:
-{ "$and": [a, b, ...] } — all truthy
-{ "$or": [a, b, ...] } — any truthy
-{ "$not": a } — negation
+  { field: 'value' }                       — strict equality
+  { field: ['a', 'b'] }                    — set membership (IN); matches any of them
+  { field: { not: 'value' } }              — inequality; a list excludes several values
+  { field: { contains: 'text' } }          — case-insensitive substring match (strings only)
+  { field: { startsWith: 'text' } }        — anchored prefix match, case-SENSITIVE
+  { field: { endsWith: 'text' } }          — anchored suffix match, case-SENSITIVE
+  { field: { exists: true } }              — non-null / non-undefined presence check
+  { field: { exists: false } }             — null or undefined check
+  { field: { gte: 10, lt: 50 } }           — a range; lt, lte, gt, gte, any of them together
+  { relation: { some: {…} } }              — has at least one linked record matching the clause
+  { relation: { none: {…} } }              — has no linked record matching it; { none: {} } is "has none at all"
+  { OR: [ {…}, {…} ] }  { AND: [ … ] }  { NOT: {…} }   — combinators; sibling keys are implicitly ANDed
 
-Array operators:
-{ "$filter": { "items": <array>, "where": { "field": "value", ... } } }
-Filters an array to items where all where conditions match (strict equality).
-Where values can be any resolvable token, including context refs.
-Example: { "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "role": "admin" } } }
+"some" and "none" ask about LINKED RECORDS rather than a field's value, and are the only way to do
+so: "posts with no comments", "nodes carrying a relationship of this kind". Without them the caller
+fetched everything with its children and counted client-side. An empty clause means "any", so
+{ comments: { some: {} } } is "has at least one". They nest — the clause inside one may itself
+contain a quantifier — and they run natively in a $query, so nothing is fetched to count.
 
-{ "$count": { "items": <array> } }
-Returns the length of an array.
-Example: { "badge": { "$count": { "items": { "$store": "notificationStore.unread" } } } }
+A key is read as a quantifier because it carries "some" or "none", not because the model says it is
+a relation. So a scalar property can never be compared with those two words, and everything else on
+a relation-named key stays an ordinary field compare.
 
-{ "$find": { "items": <array>, "where"?: { ... }, "select"?: "fieldName" } }
-Finds the first matching item. where is optional (returns first item if omitted). select plucks a single field.
-Example: { "$find": { "items": { "$store": "spaceStore.members" }, "where": { "id": "$item.creatorId" }, "select": "name" } }
+A bare list is the positive counterpart of "not" with a list, and the way to fetch a known set:
+{ id: ['id1', 'id2', 'id3'] }. Native in a $query. An empty list matches nothing, which is what
+"none of these" should mean.
+
+An ABSENT property is the trap worth knowing, and "not" is where a $query and filter() disagree.
+
+A record that never had a property written carries no value for it — a property is stored as a
+link, so an unwritten one is simply not there. Three cases, and the middle one differs by where it
+is evaluated:
+
+  { field: 'x' }             — does NOT match an absent value. Both agree.
+  { field: { not: 'x' } }    — MATCHES an absent value inside filter() and in the in-memory
+                               test backend (undefined !== 'x'), and does NOT match in a $query
+                               against the production backend, where != over an unbound value
+                               excludes the row, exactly as SQL's three-valued logic excludes
+                               NULL. A $query where written with "not" can therefore pass every
+                               test and come back empty in production.
+  { field: { exists: false } } — means absent, unambiguously — but see the warning below about
+                               where it can be used.
+
+A declared "default" does not rescue this. The manifest's default is applied when a record is
+CONSTRUCTED, so anything created normally does carry it — but a field added to an entity after
+some records already existed reads as absent on every one of them, and the query layer never
+consults the default when filtering.
+
+"exists" IS NOT AVAILABLE IN A $query — only inside filter(), where it is evaluated client-side.
+The backend has no such operator, so a $query using one is refused rather than run. This is a
+change: it used to be claimed as supported and was not, and the consequence was worse than a refusal
+— the clause reached a filter that rejected every row, so the query answered nothing at all, always,
+with no error anywhere. A refusal at least says so.
+
+That invalidates the idiom this section used to recommend for "absent counts as the default":
+
+  { OR: [ { retired: false }, { retired: { exists: false } } ] }   ← NOT usable in a $query
+
+Until the operator exists, the ways to say it are: give the field a default and write the plain
+comparison; fetch the candidates and filter() client-side, where "exists" works; or, where the field
+is a relation rather than a scalar, ask { relation: { none: {} } }, which IS native.
+
+startsWith/endsWith are case-sensitive where contains is not: they match structured strings against
+a known prefix (an ISO date, an id out of a URI). They are NOT native to the backend either, so a
+$query using one is refused — use contains there; inside filter() they are evaluated client-side.
+
+lt/lte/gt/gte compare a number with a number, and a string with a string as text. Text order is
+what makes dates work: WE writes a day as YYYY-MM-DD and a moment as YYYY-MM-DDTHH:mm, and those sort
+in time order, so { dueDate: { gte: '2026-09-15', lt: '2026-10-01' } } is "due in the second half of
+September" — including a task due '2026-09-30T18:00'. A mixed pair never matches: a number bound
+against a field holding the string '12' answers false, rather than guessing which you meant.
+
+In a $query a NUMBER bound is native and a STRING bound is refused — the backend compares numbers
+only. So a date range in a $query does not run yet; fetch the candidates and filter() client-side,
+where it works, or bound the query by something numeric. A numeric range (a price, a count, a
+rating) runs natively either way.
+
+OR/AND/NOT no longer cost a query its sort pushdown. They used to: the backend decided pushability
+with a second function that disagreed with what it actually emitted, and an explicit combinator fell
+outside it. One compiler now answers for its own emission, so a filter with an OR and a sort behaves
+like any other.
+
+Examples:
+{ "$": "filter(spaceStore.members, { role: 'admin' })" }
+{ "$": "filter(spaceStore.members, { location: { exists: true }, handle: { contains: local.searchText } })" }
+{ "$": "filter(local.dayEvents, { startDate: { startsWith: cell.date } }, 2)" }        — the first two only
+{ "$": "filter(local.tasks, { dueDate: { gte: local.weekStart, lt: local.weekEnd } })" }
+{ "$": "find(local.signalTypes, { slug: 'like' }).id" }                                — undefined when nothing matches
+{ "$": "count(local.rows) > 0 && local.searchText != ''" }
+{ "$": "item.author == me.did ? 'mine' : 'theirs'" }
+{ "$": "\`\${count(spaceStore.members)} \${plural(count(spaceStore.members), 'Member', 'Members')}\`" }
+{ "$": "spaceStore.members.filter(m, m.did != me.did).map(m, m.handle).join(', ')" }
+{ "$": "post.author in spaceStore.mutedDids" }
+
+Rules:
+- An expression naming event/arg/result at the TOP LEVEL of an $action's args, or as a $setLocal
+  "value", is evaluated when the handler fires. Nested inside another token it is evaluated at render
+  time against no event and becomes a constant — the validator rejects that.
+- The validator reports every mistake with a column: an unknown name (with "did you mean"), an unknown
+  store member, an undeclared local, an unknown function, a wrong argument count, prototype access.
+- No new value operators will be added and no new syntax. Computation the library lacks is a function
+  the host registers, catalogued under "Host functions" above.
 
 Query (data retrieval):
-{ "$query": { "model": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
-Queries the local perspective for model instances. Always returns an array.
-Options: model (required), where, order, limit, offset, include, parent, perspective, subscribe.
+{ "$query": { "entity": "EntityName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
+Queries the current dataset for entity instances. Always returns an array.
+Options: entity (required), where, order, limit, offset, include, scope, dataset, subscribe.
+select names the fields each row carries — properties, and relations as their target ids — and
+\`id\` always comes: { "select": ["title", "createdAt", "participants"] }. Without it a row carries
+every field, relation id lists included, and a container's children is the id of everything in it.
+A list of containers (CollectionBlock) names what its rows draw; a single-record read need not.
+A field left out reads as absent, so select what every expression on the row reads.
 subscribe defaults to true — reactive live updates. Set subscribe: false to do a one-time fetch.
-By default $query targets the current perspective (adamStore.currentPerspective). Use perspective to query a different perspective —
-required when reading models from an external app (e.g. Flux) that is open as a WE space:
-{ "$query": { "model": "Channel", "perspective": "adamStore.currentPerspective" } }
-adamStore.currentPerspective resolves to the AD4M Perspective instance of the currently active perspective.
+subscribe may also be an EXPRESSION, which is how a surface follows its subject only while the
+subject is still changing: { "subscribe": { "$": "modules.transcribe.callOnScreenLive" } } reads a
+finished call's transcript with no subscription at all, and follows a live one. Reach for it on
+anything whose record settles — a past call, an archived thread — where a live query would have the
+backend re-running it for an answer that cannot change. Turning falsy releases the subscription
+rather than merely ignoring it; an expression that has not resolved yet counts as not live, so the
+worst case is one fetch and a re-ask rather than a subscription nobody wanted.
+By default $query targets the current dataset. Use dataset to query a different dataset — required
+when reading entities from an external app (e.g. Flux) that is open as a WE space:
+{ "$query": { "entity": "Channel", "dataset": { "$": "currentDataset" } } }
+
+entity may be an expression rather than a literal name — what lets a list render records of a type
+the template was not written for. Put the query inside an $each over a list of model names and read
+the row:
+{
+  "type": "$each",
+  "props": { "items": { "$": "shapeStore.extractionTargets" }, "as": "target" },
+  "children": [{
+    "type": "Column",
+    "$queries": { "found": { "entity": { "$": "target" }, "order": { "createdAt": "asc" } } },
+    "children": ["…one group per model, each with its own subscription…"]
+  }]
+}
+Pair it with recordStore.displays[target] to draw the rows, and the group renders a model a
+community defined this morning with no template change (see "A record of any type").
+USE A LITERAL WHEREVER THE TYPE IS KNOWN. The validator cannot check a name it only sees at
+runtime, so a typo fails as a silently empty list rather than as an error — and a name that has not
+resolved yet reads as "not ready", so the query simply waits. Note the counts of such a set cannot
+be totalled: each group is its own subscription and a schema cannot sum a list of queries whose
+length it does not know, so put a count inside each group rather than above them.
+
+entity may also be a LIST of names — literal, or an expression answering with one — which asks the
+same question of every entity in it and answers with ONE list. Reach for it when the rows belong
+together rather than in a group per model: a mixed feed, "what did this call produce", "which kinds
+are on this canvas", or anything whose total or emptiness you need to read above the rows.
+{
+  "$queries": {
+    "produced": {
+      "entity": { "$": "shapeStore.extractionCandidates" },
+      "scope": { "anchor": "CollectionBlock", "via": "children", "anchorId": { "$": "local.callId" } },
+      "order": { "createdAt": "desc" },
+      "limit": 50
+    }
+  }
+}
+- Every row carries the entity it came from as __subjectClass — { "$": "row.__subjectClass" } — the
+  same key a polymorphic include already sets, so recordStore.displays[row.__subjectClass] draws it.
+- order and limit apply to the WHOLE list, not to each entity. offset is refused.
+- A record two entities both answer with (an abstract model and a concrete one) is listed once, as
+  the first entity in the list.
+- Nothing is shown, and local.<name>Loaded stays false, until every entity has answered once.
+- An EMPTY list is an answer: loaded, no rows. So { "$": "local.producedLoaded && !count(local.produced)" }
+  is a sound empty-state condition even when the list of kinds is computed.
+- One entity that cannot be read is reported and counts as having no rows; the others still show.
+- A literal list is checked name by name, like a literal name.
+To read the distinct kinds out of it, or merge them with kinds from another list, use distinct():
+{ "$": "distinct(local.produced.map(r, r.__subjectClass), local.placements.map(p, p.nodeType))" }
+
+Backend-neutral identity & dataset refs — prefer these over backend-store paths inside $query and conditions:
+- currentDataset — the currently active dataset. Use as a dataset value.
+  A host store's dataset accessor (e.g. \`dataset: 'datasetStore.marketplaceDataset'\`) works as a dataset value too.
+  When passing a dataset to a *component prop* rather than a query, append \`.handle\` — component props take the
+  backend's own dataset handle: { "dataset": { "$": "datasetStore.currentDataset.handle" } }.
+- me — the current agent's identity object. Use me.did for their DID (ownership checks, author filters, e.g. { "$": "post.author == me.did" }); me.handle / me.avatar for profile fields once loaded.
 
 Eager-loading relations with include (most common relational pattern):
 include hydrates related model instances in the same query — no extra fetches needed.
-Relation names come from the HasMany relations listed for each model in externalModels.
+Relation names come from the HasMany relations listed for each model in externalEntities.
 
 Simple include — hydrate all related instances:
-{ "$query": { "model": "Channel", "include": { "conversations": true } } }
+{ "$query": { "entity": "Channel", "include": { "conversations": true } } }
 Each item in the result will have a conversations array of hydrated Conversation objects.
 
 Sub-query include — filter, sort, or limit the related records:
-{ "$query": { "model": "Channel", "include": { "conversations": { "order": { "createdAt": "desc" }, "limit": 10 } } } }
+{ "$query": { "entity": "Channel", "include": { "conversations": { "order": { "createdAt": "desc" }, "limit": 10 } } } }
 
 Nested include — hydrate relations of relations:
-{ "$query": { "model": "Channel", "include": { "conversations": { "include": { "messages": true } } } } }
+{ "$query": { "entity": "Channel", "include": { "conversations": { "include": { "messages": true } } } } }
 Nesting can go as deep as needed. Each level adds one batched fetch (not N+1).
 
 Count projection — add a derived numeric field:
-{ "$query": { "model": "Post", "include": { "$likeCount": { "from": "likes", "count": true } } } }
+{ "$query": { "entity": "Post", "include": { "$likeCount": { "from": "likes", "count": true } } } }
 The $-prefixed key becomes a new field on each result item (e.g. item.$likeCount = 42).
 
+Sorting by a count projection — order can reference a $-prefixed count key directly, sorting by the aggregate:
+{
+  "$query": {
+    "entity": "Post",
+    "limit": 20,
+    "order": { "$likeCount": "desc" },
+    "include": { "$likeCount": { "from": "likes", "count": true } }
+  }
+}
+Requirements: only a single order key is supported when it targets a projection (mixing it with a second sort key falls back
+to a plain property sort), and the query must also specify limit or offset — without one the count isn't computed yet at
+sort time and the order silently has no effect. Always pair count-projection ordering with a limit.
+Combine with a ternary for a user-togglable sort field (e.g. "newest" vs "most liked"):
+{
+  "order": { "$": "local.sortField == 'likes' ? { $likeCount: local.sortDirection } : { createdAt: local.sortDirection }" }
+}
+
+Sorting by a related model property — order can reference a dotted "relation.property" path for a HasOne/HasMany
+relation declared on the model, sorting by a scalar property on the related instance:
+{
+  "$query": {
+    "entity": "Space",
+    "limit": 20,
+    "order": { "location.country": "asc" },
+    "include": { "location": true }
+  }
+}
+Same requirements as count-projection ordering above: only a single order key, and pair with limit/offset — without
+one the relation data isn't attached yet at sort time and the order silently has no effect. include isn't required
+for the sort itself (the relation is resolved from the model's declared shape), but you'll usually want it anyway to
+read the field in the UI (e.g. { "$": "space.location.country" }).
+Combine with a ternary the same way as count-projection ordering to let the user toggle between sort fields.
+
 Single-item projection — add a derived field that resolves to one instance or null:
-{ "$query": { "model": "Post", "include": { "$myLike": { "from": "likes", "where": { "author": { "$store": "adamStore.me.did" } }, "limit": 1 } } } }
+{ "$query": { "entity": "Post", "include": { "$myLike": { "from": "likes", "where": { "author": { "$": "me.did" } }, "limit": 1 } } } }
 With limit: 1 the field unwraps to T | null instead of an array.
 
-include only works with typed relations — ones where the target model class is known.
-For WE models this is always the case. For external models, check the externalModels listing:
-relations marked "→ ModelName" are typed (safe for include); relations marked "parent query only"
-are untyped and will crash at runtime if used with include — use parent instead.
+include works with an UNTYPED relation too — one whose target model class is not declared, like a
+collection's children. It used to crash, because there was no shape to hydrate the members into; now
+each member is read as the class it actually is, so one query returns a post's text blocks, images
+and tasks together, each with its own fields. Every member carries its type, so a card can pick a
+display per row rather than assuming one.
 
-Relational queries — fetch children by parent id (drill-down navigation):
-{ "$query": { "model": "Conversation", "parent": { "id": "$channel.id", "relation": "conversations" } } }
-The parent.id is the id of the parent record (typically from a $each context variable or a route segment).
-The parent.relation name matches the HasMany relation listed for that model in externalModels.
+That makes include the right tool for a FEED, where the alternative is one drill-down per parent:
+{ "$query": { "entity": "CollectionBlock", "where": { "type": "root" }, "include": { "children": true } } }
+
+A scope drill-down is still right on a DETAIL route, where the parent is fixed and its children are
+the whole subject — it is a narrower question, not a worse one. For external models, check the
+externalEntities listing: relations marked "→ EntityName" name their target, and untyped ones are
+read polymorphically.
+
+An ORDERED collection comes back in the order somebody arranged it — CollectionBlock.children is the
+one that matters, since the blocks of a post are a sequence its author chose rather than the order
+they happened to be typed in. Nothing to write in the query; the model declares it.
+
+Relational queries — fetch a parent record's children (drill-down navigation):
+{ "$query": { "entity": "Conversation", "scope": { "anchor": "Channel", "via": "conversations", "anchorId": { "$": "channel.id" } } } }
+scope.anchor is the parent entity type; scope.via is its relation whose targets are this query's entity (the
+HasMany relation listed for that entity in externalEntities); scope.anchorId is the parent record's id (typically
+from a $each context variable or a route segment). The adapter resolves the relation to a backend handle —
+no protocol details live in the template.
 Use this pattern when navigating to a detail route and loading only that record's children.
-For external-app perspectives, always add perspective: "spaceStore.perspective".
+For external-app datasets, always add dataset: { "$": "currentDataset" }.
+
+Reading a TREE rather than one record's children — the same scope, with one more key:
+
+  anchorId may be a LIST, which asks the same question of every anchor at once. One query for a
+  whole level of a tree rather than one per parent, which also means one subscription instead of
+  one per parent.
+  { "scope": { "anchor": "CollectionBlock", "via": "comments", "anchorId": { "$": "local.replies.map(r, r.id)" } } }
+
+  "levels": [10, 5, 3] walks the relation depth by depth — ten children, five under each of those,
+  three under each of THOSE — and the backend answers once. This is how to read a comment thread, a
+  knowledge map's neighbourhood, or any nested containment: bounded at every depth and one request,
+  where asking level by level from the template costs a round trip each and draws the tree a layer
+  at a time.
+  { "scope": { "anchor": "CollectionBlock", "via": "comments", "anchorId": { "$": "card.id" }, "levels": [10, 5, 3] } }
+
+  "transitive": true is the same walk with no bound — every descendant, however deep. Right for a
+  count, and for a small tree you mean to draw whole; wrong as a default, since it fetches a subtree
+  to draw part of one.
+
+  "limitPerAnchor": 5 caps results per anchor for a single level. Note it is NOT a substitute for
+  "levels": a walk from one anchor has one group, so it would cap the total instead of the breadth
+  at each depth.
+
+  "direction": "in" searches among the records that point AT the anchor, rather than the ones it
+  points at.
+
+A walked or transitive result is FLAT and does not describe its own shape — a row says it is under
+the anchor, never where. Include the inverse relation to rebuild the tree: every WeNode carries
+inReplyTo, the reverse of comments, so a row names its own parent.
+  "include": { "inReplyTo": true }
+Then each level is a filter over the one result:
+  { "$": "local.threadRows.filter(r, r.inReplyTo.id == (card.id))" }
+PARENTHESISE the anchor when it is anything but a plain path — \`==\` binds tighter than \`?:\`, so a
+ternary spliced in bare turns the predicate into its own result, which is truthy for every row.
+
+A count over a whole subtree is the same idea in a projection:
+  "include": { "$descendants": { "from": "comments", "count": true, "transitive": true } }
+It rides in the read already being made, so "42 replies" on a collapsed branch costs no extra query
+— where count(row.comments) is the direct children only and would say 3.
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
-Read:  { "$local": "name" } — returns the signal value (reactive).
-Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.
-       { "$setLocal": "name", "value": "literal" } — sets to a literal value (string, number, boolean).
+Supported types: "string", "boolean", "number", "function", "object", "array".
+"array" is a set of values — the type $toggleLocalIn writes and \`in\` reads. Use it for per-row state
+(which rows are open, which are selected) where the rows come from data.
+Two opt-in persistence tiers (see docs/architecture/routing-and-view-state.md for the full rules):
+- "syncParam": "<param>" mirrors the field into a URL query parameter — for VIEW STATE (selected
+  content type, sort, filters, search): what a shared link's recipient should see exactly as the
+  sender does. Object form { "name": "type", "push": true } adds a Back entry on change (use for
+  content-type switches; sort/filter changes keep the default replace). A field back at its
+  declared initial removes its param, keeping URLs clean.
+  Example: { "type": "string", "initial": "posts", "syncParam": { "name": "type", "push": true } }
+- "persist": "<key>" keeps the field on the device (localStorage) — for PREFERENCES (display
+  density, collapsed rails): things a shared link must NOT impose on its recipient. The key is
+  explicit and deployment-global (namespace it, e.g. "cards.displayMode").
+Precedence on mount: URL param > persisted value > declared "initial"; $resetLocal clears both.
+Neither applies to "file"/"function" fields. Open-modal and in-flight flags stay plain (ephemeral).
+The deciding question: "if I sent this URL to someone, should they see the effect?" — yes: syncParam;
+no but future-me should: persist; no one: plain.
+Links may also carry ?template=<id> and ?theme=<id> — the shell applies them when the recipient has
+them and warns (toast) when not. Templates never handle these params themselves.
+Read:  { "$": "local.name" } — the signal value (reactive).
+       { "$": "local.name.nested.path" } — dot paths read into object-typed fields (reactive).
+Write: { "$setLocal": "name", "value": { "$": "event.target.value" } } — event handler that sets what the expression computes when it fires, with event in scope.
+       { "$setLocal": "name", "value": "literal" } — sets to a literal value (string, number, boolean, null, object).
+       { "$setLocal": "name", "merge": { "field": { "$": "event.detail" } } } — shallow-merges fields into an object-typed signal; each field is a literal or an expression. Use for partial updates to object state.
+       { "$setLocal": "name", "value": { "$": "local.name + 20" } } — arithmetic on the current value, for paging and counters.
+Note "value" is a LITERAL unless it is an expression: any other token object inside it is stored as the object, not as what it would resolve to.
 Toggle: { "$toggleLocal": "fieldName" } — toggles a boolean field (equivalent to setting it to !current). Use for show/hide, open/close, expand/collapse patterns.
+Toggle one of many: { "$toggleLocalIn": "fieldName", "value": { "$": "group.id" } } — adds the value to an
+  array-typed field, or removes it if already there. Read it back with \`in\`:
+  { "$": "group.id in local.collapsedGroups" }.
+  This is how PER-ROW state works when the rows come from data. $localState field names are fixed
+  when the template is written, so "expanded?" cannot be a boolean per row for rows that come from a
+  $query or a store — there is no name to give them. Hold the ids instead:
+    "$localState": { "collapsedGroups": { "type": "array", "initial": [] } }
+  A fixed, known-in-advance set of sections is still better served by one boolean each.
 Call function: { "$callLocal": "fieldName" } — event handler that calls the function stored in a function-typed local field.
   Used when a child component needs to trigger a callback passed in via $localState.
   The field must be declared as type: 'function' and set via $setLocal.
   Example: { "onClick": { "$callLocal": "onConfirm" } }
 State is created on mount and destroyed on unmount. Nested $localState declarations merge, inner fields shadow outer.
-$local values can be used in $action args: { "$action": "store.method", "args": [{ "$local": "name" }] }
+Local values can be used in $action args: { "$action": "store.method", "args": [{ "$": "local.name" }] }
+
+Object-typed local state (consolidating related scalar fields):
+When several related fields share a common condition on their initial values (e.g. all null/empty when a store value is absent), prefer a single "object" field seeded from the store, then read sub-fields with dot-notation and write with merge.
+Example — location object (replaces 5 separate scalar fields with conditional initials):
+  "$localState": { "location": { "type": "object", "initial": { "$": "spaceStore.currentSpace.location" } } }
+  Read:  { "$": "local.location.latitude" }, { "$": "local.location.city" }
+  Write (picker confirm): { "$setLocal": "location", "value": { "$": "event.detail" } }
+  Write (partial edit):   { "$setLocal": "location", "merge": { "city": { "$": "event.detail" } } }
+  Write (clear):          { "$setLocal": "location", "value": null }
+  Condition (has location): { "$": "local.location" }
+Use "object" whenever you would otherwise write 3+ related scalar fields each needing a conditional initial value.
+
+Hoisted query state ($queries):
+Declare on any node to run reactive subscriptions at the node root and expose results under local.
+Solves two problems: avoids N duplicate subscriptions inside $each loops, and makes query results available to conditions.
+"$queries": { "signalTypes": { "entity": "SignalType", "subscribe": true } }
+Results are injected into local as read-only reactive arrays, read as { "$": "local.signalTypes" }.
+Query options are identical to $each's $query prop (entity, where, order, limit, include, dataset, subscribe).
+Each entry also exposes a read-only boolean local.<name>Loaded — false until the first result set (or
+error) arrives, then true for good. Gate a loading skeleton on it so the empty state only ever
+asserts "loaded and empty", never "not answered yet":
+{ "type": "$if", "props": { "condition": { "$": "local.signalTypesLoaded" }, "then": <list-or-empty>, "else": <skeleton> } }
+$queries and $localState share the same local namespace — avoid duplicate names across both.
+$setLocal will warn and no-op on $queries entries (they are read-only).
+A query's where or scope may read a sibling declared on the same node — { "anchorId": { "$":
+"first(local.board).gathers" } } — and re-runs when that sibling answers. The order the entries are
+written in does not matter.
+An operand that has not resolved yet is PRUNED rather than sent, and pruning WIDENS: a where loses
+the condition, a scope is dropped and the query is space-wide. Right for an optional filter; wrong
+for a query whose scope is about to exist, which would draw everything for a frame and then narrow.
+Give such a query "when": { "$": "local.boardLoaded" } and it is not asked until the condition is
+truthy — the result stays empty and local.<name>Loaded stays false, so a loading state can hold.
+A BOUND is the exception, and the only one: an unresolved "limit" or "offset" does NOT widen — the
+query is not asked at all, exactly as a falsy "when" leaves it unasked, and it runs once the bound
+arrives. Widening a filter answers a broader question, which is visible; widening a bound asks the
+backend for everything there is, which is not. So an expression-valued limit costs at worst one
+empty frame, never an unbounded fetch.
+A $query cannot be read inside an expression — a question for the backend is hoisted here and read
+back through local. Use count() for conditional visibility:
+{ "condition": { "$": "count(local.signalTypes)" } }
+Example:
+{
+  "$queries": { "signalTypes": { "entity": "SignalType", "subscribe": true } },
+  "type": "Column",
+  "children": [
+    {
+      "type": "$each",
+      "props": { "items": { "$": "local.signalTypes" }, "as": "sig" },
+      "children": [...]
+    }
+  ]
+}
 
 Boolean toggle pattern (show/hide comments, expand/collapse sections, etc.):
 {
@@ -182,7 +595,7 @@ Boolean toggle pattern (show/hide comments, expand/collapse sections, etc.):
     {
       "type": "$if",
       "props": {
-        "condition": { "$local": "showComments" },
+        "condition": { "$": "local.showComments" },
         "then": { "type": "Column", "children": [{ "type": "we-text", "children": ["Comments visible"] }] }
       }
     }
@@ -204,44 +617,49 @@ Declare validation rules on fields:
 
 Built-in rules: required, minLength (value: N), maxLength (value: N), min (value: N), max (value: N), pattern (value: regex string), match (field: otherFieldName). All accept optional "message" override.
 
-Read tokens:
-{ "$error": "fieldName" } — first validation error message (only shown after field is touched), or "".
-{ "$valid": "fieldName" } — true if all rules pass (regardless of touched state).
-{ "$touched": "fieldName" } — true after the field has been blurred/touched.
-{ "$formValid": "$scope" } — true if ALL validated fields in the current $localState scope pass.
+Read functions (in an expression):
+{ "$": "error('fieldName')" } — first validation error message (only shown after field is touched), or "".
+{ "$": "valid('fieldName')" } — true if all rules pass (regardless of touched state).
+{ "$": "touched('fieldName')" } — true after the field has been blurred/touched.
+{ "$": "formValid()" } — true if ALL validated fields in the current $localState scope pass.
 
 Action tokens:
-{ "$touch": "fieldName" } — marks a single field as touched (use in onBlur).
+{ "$touch": "fieldName" } — marks a single field as touched (in onBlur; opt-in, see below).
 { "$touch": "$all" } — marks all fields in scope as touched (use before submit guard).
 { "$resetLocal": "$scope" } — resets all fields to initial values and clears touched state.
 
 Handler arrays (compose multiple actions on one event):
-{ "onClick": [{ "$touch": "$all" }, { "$if": { "condition": { "$formValid": "$scope" }, "then": { "$action": "store.submit" } } }] }
-Array entries execute sequentially. Non-function entries (e.g. $if with false condition) are skipped.
+{ "onClick": [{ "$touch": "$all" }, { "$if": { "condition": { "$": "formValid()" }, "then": { "$action": "store.submit", "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] } } }] }
+Array entries execute sequentially. { "$if": { "condition", "then", "else" } } in a handler position runs one side or the
+other when the event fires — its condition may read event. It is the one place $if is a token rather than a node.
+Prefer onSuccess over a bare $setLocal before the $action — the bare form closes the modal immediately (losing the loading spinner); onSuccess waits for the Promise to resolve.
 
-Typical form pattern:
+Typical form pattern — validate on submit:
 {
-  "$localState": { "name": { "type": "string", "initial": "", "validate": [{ "rule": "required" }] } },
+  "$localState": {
+    "name": { "type": "string", "initial": "", "validate": [{ "rule": "required" }] },
+    "submitting": { "type": "boolean", "initial": false }
+  },
   "children": [
     {
       "type": "we-form-field",
-      "props": { "label": "Name", "error": { "$error": "name" } },
+      "props": { "label": "Name", "error": { "$": "error('name')" } },
       "children": [{
         "type": "we-input",
         "props": {
-          "value": { "$local": "name" },
-          "onInput": { "$setLocal": "name", "from": "$event.detail" },
-          "onBlur": { "$touch": "name" }
+          "value": { "$": "local.name" },
+          "onInput": { "$setLocal": "name", "value": { "$": "event.detail" } }
         }
       }]
     },
     {
       "type": "we-button",
       "props": {
-        "disabled": { "$not": { "$formValid": "$scope" } },
+        "loading": { "$": "local.submitting" },
+        "disabled": { "$": "local.submitting" },
         "onClick": [
           { "$touch": "$all" },
-          { "$if": { "condition": { "$formValid": "$scope" }, "then": { "$action": "store.save", "args": [{ "$local": "name" }] } } }
+          { "$if": { "condition": { "$": "formValid()" }, "then": { "$action": "store.save", "args": [{ "$": "local.name" }], "onSuccess": [{ "$setLocal": "submitDone", "value": true }] } } }
         ]
       },
       "children": ["Submit"]
@@ -249,33 +667,125 @@ Typical form pattern:
   ]
 }
 
+The submit button is disabled only while the request is in flight — NOT on { "$": "!formValid()" }.
+Those two are mutually exclusive. A button disabled while the form is invalid can never be clicked in the one
+state where { "$touch": "$all" } would reveal something, so the guard chain becomes dead code and blur is left
+as the user's only feedback path. Choose one shape:
+  - Validate on submit (above). The button is always clickable and the errors appear on the click that was
+    refused, which is where the user asked the question.
+  - Hard gate: "disabled": { "$": "!formValid()" }, and then drop { "$touch": "$all" } as dead
+    and wire "onBlur": { "$touch": "fieldName" } per field — otherwise no error is ever reachable.
+
+"onBlur": { "$touch": "fieldName" } is an opt-in, not boilerplate. It earns its place on long multi-field forms
+where a field is worth judging the moment it is left — a "match" rule on a confirm-password field, say. On a
+short form it fires an error at someone who merely clicked through a field they had not filled in yet.
+
+No validation, just a precondition (sign-in, search, any single-field submit):
+When nothing about the value is locally judgeable — a password is only wrong once the backend says so — skip the
+validation machinery and gate on the value itself:
+{
+  "$localState": { "password": { "type": "string", "initial": "" } },
+  ...
+  "disabled": { "$": "!local.password" }
+}
+A "required" rule here would exist only to drive "disabled", and its message is then one stray { "$touch": … }
+away from telling the user "Password is required" about a field they simply have not typed into yet.
+
 ## Block-level Dynamic Structures
 
 Block-level structures use "type" starting with "$" for dynamic rendering of schema nodes.
 
 Each loop:
-{ "type": "$each", "props": { "items": { "$store": "storeName.arrayProperty" }, "as": "itemName" }, "children": [ ... ] }
-Renders children once for each item. The "as" name becomes a context key. Defaults to "item" — omit "as" unless you need a different name.
+{ "type": "$each", "props": { "items": { "$": "storeName.arrayProperty" }, "as": "itemName" }, "children": [ ... ] }
+Renders children once for each item. The "as" name becomes a name expressions read — { "$": "itemName.title" }. Defaults to "item" — omit "as" unless you need a different name.
+
+Each row also gets two names describing its position in the list:
+- index — the 0-based position.
+- prev — the previous item, absent on the first row. Read fields off it like any name: { "$": "prev.author" }.
+
+prev is what makes **grouping** expressible — collapsing consecutive rows by the same author so
+a run of messages shows one avatar and byline instead of repeating them. Without it a row can only
+ask about itself, and the compact form is unreachable by any prop or theme:
+{
+  "type": "$if",
+  "props": {
+    "condition": { "$": "message.author == prev.author" },
+    "then": { "...": "compact row — no avatar, no byline" },
+    "else": { "...": "full row" }
+  }
+}
+The first row has no prev at all, so the condition is false there and it keeps its byline —
+which is what a feed wants, and why absent must not read as "same as the last item".
+
+Both shadow in a nested $each, exactly as the item does: the inner index restarts at 0.
 
 Conditional rendering:
 { "type": "$if", "props": { "condition": ..., "then": { ... }, "else": { ... } } }
 Renders "then" node if condition is truthy, else renders "else" node.
 Supports enterTransition / exitTransition for CSS animations when the node mounts/unmounts.
 TransitionConfig = TransitionEffect | TransitionEffect[]
-TransitionEffect = { type: 'fade'|'slide'|'scale', duration?: ms, easing?: string, delay?: ms, direction?: 'left'|'right'|'up'|'down', distance?: string }
-fade controls opacity only; slide/scale control transform only. Compose effects with an array.
+TransitionEffect = { type: 'fade'|'slide'|'scale'|'reveal'|'pulse', duration?: ms, easing?: string, delay?: ms, direction?: 'left'|'right'|'up'|'down', distance?: string, axis?: 'block'|'inline' }
+fade controls opacity only; slide/scale control transform only. pulse is a persistent looping animation (not a one-shot transition) — starts once entered, stops on exit; direction/distance don't apply (default duration 1200ms, easing 'ease-in-out'). Compose fade/slide/scale together in an array; pulse is typically used alone.
 Example: enterTransition: [{ type: 'fade', duration: 300 }, { type: 'slide', direction: 'up', distance: '40px', duration: 400 }]
+Example (pulse): enterTransition: { type: 'pulse', duration: 1500 }
 
-Viewport / mount animation (child always in DOM):
-{ "type": "$animate", "props": { "scrollReveal"?: true | number, "scrollLeave"?: true | number, "enterTransition"?: TransitionConfig, "exitTransition"?: TransitionConfig }, "children": [<node>] }
-The child is always mounted. Animations are CSS-only (opacity / transform) — use this for scroll-reveal effects.
+reveal — opening and closing in place:
+reveal is the size axis the others lack: it eases the element open to the size its content actually
+wants, and closed again. Use it for anything that opens in place — a disclosure, an accordion
+section, a "show more", a sidebar label appearing as the rail expands. axis: 'block' (the default)
+opens downward; axis: 'inline' opens sideways.
+Example (disclosure): enterTransition: [{ "type": "reveal", "duration": 300 }, { "type": "fade", "duration": 180 }]
+Example (label beside an icon): enterTransition: { "type": "reveal", "axis": "inline", "duration": 250 }
+Do NOT hand-roll this with maxHeight and a transition string. A guessed maxHeight applies the easing
+curve to the guess rather than to the real height, so most of the duration is spent crossing space
+that isn't there, and it breaks silently the day the content grows past the guess.
+reveal composes with fade exactly as slide does. Pair them: opening a box that is fully opaque from
+the first frame reads as a jump, however smooth the size change is.
+A reveal in an exitTransition also decides when the node unmounts — the node stays mounted for the
+longest effect in the config, so the collapse finishes before the content is removed.
+
+Viewport / mount / condition animation (child always in DOM):
+{ "type": "$animate", "props": { "condition"?: SchemaProp, "scrollReveal"?: true | number, "scrollLeave"?: true | number, "scrollPast"?: string, "enterTransition"?: TransitionConfig, "exitTransition"?: TransitionConfig }, "children": [<node>] }
+The child is always mounted. fade/slide/scale are CSS transitions (opacity/transform); reveal animates the element's own size; pulse is a real CSS @keyframes loop — use this for scroll-reveal effects.
 Do NOT use $animate when the child should be absent from the DOM. Use $if for conditional DOM presence.
+For an open/close that must NOT destroy what is inside it — a section holding a scroll position, a
+half-typed field, or a live subscription a collapsed row shouldn't tear down — use $animate with
+condition rather than $if, which unmounts the content when closed.
+condition works like $if's condition (an expression), except the child
+is never unmounted: only enterTransition/exitTransition replay as it changes. The initial render
+already matches whatever the condition is at mount — a node that starts open does not flash
+closed-then-open, and one that starts closed does not briefly show its content first.
+When exitTransition is omitted, closing reuses enterTransition (mirrored), the same fallback $if uses.
+A reveal clips a closed section to zero size, so it is already unreachable; without one (a plain fade),
+the wrapper's pointer-events follow the condition too, so a fully transparent closed section can't be
+clicked through.
+condition is mutually exclusive with the scroll triggers below and, when present, takes over as the
+sole trigger — scrollReveal/scrollLeave/scrollPast are ignored on that node.
 scrollReveal: true fires enterTransition when the element enters the viewport.
 scrollReveal: -100 fires 100px before the element would enter (negative = earlier reveal).
 scrollLeave fires exitTransition when the element leaves the viewport.
-Without scrollReveal/scrollLeave, the enterTransition runs once on mount.
+scrollPast: "element-id" watches a sentinel element (by DOM id) go past the $animate element itself.
+  enterTransition fires once the sentinel has scrolled above the $animate element's top edge (or out of
+  the viewport) — so a sentinel sliding under a sticky bar counts as gone the moment it does.
+  exitTransition fires when the sentinel comes back below it (user scrolled back up).
+  The sentinel may mount later than the $animate node; it is picked up when it appears.
+  Use this for sticky headers: place a zero-height sentinel div at the bottom of the non-sticky header section,
+  then wrap the mini-profile in $animate with scrollPast pointing to that sentinel's id.
+  scrollPast is mutually exclusive with scrollReveal/scrollLeave.
+Without condition or a scroll trigger, the enterTransition runs once on mount.
 Only one child node is supported.
-Example:
+Example (condition-driven disclosure — a collapsible group whose rows hold live store bindings and
+must not resubscribe every time it opens):
+{
+  "type": "$animate",
+  "props": {
+    "condition": { "$": "!local.sectionCollapsed" },
+    "enterTransition": { "type": "reveal", "duration": 250 }
+  },
+  "children": [{ "type": "$each", "props": { "items": { "$": "listStore.items" }, "as": "item" },
+    "children": [{ "type": "we-text", "children": [{ "$": "item.name" }] }] }]
+}
+Example (scroll-reveal):
 {
   "type": "$animate",
   "props": {
@@ -287,20 +797,66 @@ Example:
   },
   "children": [{ "type": "SomeCard", "children": [] }]
 }
+Example (sticky header mini-profile):
+Place a sentinel at the bottom of the header, reference it in the sticky nav:
+{ "type": "div", "props": { "id": "header-sentinel" }, "styles": { "height": "0px", "pointerEvents": "none" } }
+{
+  "type": "$animate",
+  "props": {
+    "scrollPast": "header-sentinel",
+    "enterTransition": { "type": "fade", "duration": 250 },
+    "exitTransition": { "type": "fade", "duration": 200 }
+  },
+  "children": [{ "type": "Row", "props": { "ay": "center", "gap": "300" }, "children": [
+    { "type": "we-avatar", "props": { "image": { "$": "space.avatar" }, "size": "sm" } },
+    { "type": "we-text", "props": { "fontWeight": "600" }, "children": [{ "$": "space.name" }] }
+  ]}]
+}
 
 Single model item (load one record, render children with it in context):
 {
   "type": "$single",
   "props": {
-    "item": { "$query": { "model": "ModelName", "params": { ... }, "subscribe": true } },
+    "item": { "$query": { "entity": "EntityName", "params": { ... }, "subscribe": true } },
     "as": "profile"   // context key for children — default: 'item'
   },
-  "children": [{ "type": "we-text", "children": ["$profile.username"] }]
+  "children": [{ "type": "we-text", "children": [{ "$": "profile.username" }] }]
 }
 Renders nothing until a matching record is found. Like $each but for a single result.
-query options (model, params, include, perspective, subscribe) work identically to $query.
+query options (entity, params, include, dataset, subscribe) work identically to $query.
 
 Route outlet:
 { "type": "$routes" }
 Indicates where nested routes should render within a layout.
+
+Responsive boundary:
+{ "type": "$surface", "props": { "as": "pane" }, "children": [ ... ] }
+A box the content inside it measures itself against. Everything inside it — \`*UpProps\` on any
+descendant, and \`surface.tier\` read in an expression — is answered by THIS box rather than by the
+window or the page.
+
+The host already puts one wherever it mounts a schema tree (the template area, the shell overlays,
+every docked module panel), so an ordinary template needs none: \`mdUpProps\` works out of the box.
+Declare one when a *part* of your layout should adapt to itself — a two-pane workspace whose right
+pane is narrow while the page is wide. Nesting works; the innermost surface wins.
+
+\`as\` names the context key (default \`surface\`), so a nested one can be addressed separately.
+Read it with \`surface.tier\` (\`base\` | \`sm\` | \`md\` | \`lg\`) or \`surface.width\` (px):
+
+{ "type": "$if", "props": { "condition": { "$": "surface.tier == 'base'" }, "then": <drawer>, "else": <sidebar> } }
+
+USE THIS SPARINGLY, and only for a genuinely different tree. \`$if\` unmounts and rebuilds its
+subtree when the condition changes, which loses scroll position, half-typed input and any live
+resource inside it. For different *values* — padding, gap, width, font size — use \`*UpProps\`, which
+is pure CSS and remounts nothing. See "Which mechanism to reach for" in the Design System Props
+section.
+
+Module slot outlet:
+{ "type": "$slot", "props": { "anchor": "call-controls" } }
+Renders whatever other feature modules have contributed to that anchor, in order. Only meaningful
+inside a module's own chrome: the module declares the anchor name in its \`anchors\` list and marks
+where contributions land with this. Resolves to nothing when no module has contributed — no empty
+container, no gap. Templates have no use for it; chrome is the host's and the modules', not a
+template's.
 `;
+}

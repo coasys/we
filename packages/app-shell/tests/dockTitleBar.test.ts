@@ -1,0 +1,317 @@
+/**
+ * Which of a panel's controls mean anything in full screen.
+ *
+ * Three of them do not, and each does nothing in a way that is worse than inert: fit-to-content
+ * writes a width the maximised box ignores, the displace toggle writes a flag it ignores, and the
+ * position menu ticks a snap that decides only where the panel lands *later* — so using it changes
+ * something invisible now and surprising on the way back out.
+ *
+ * Asserted against the schema rather than a render, for the same reason the layering test is: the
+ * titlebar's composition is a static decision, and what this is protecting is the *condition* each
+ * control is gated on rather than anything about how it draws.
+ */
+import { describe, expect, it } from 'vitest';
+
+import type { DockEntry } from '../src/shared/registries/dockRegistry';
+import { dockFrame } from '../src/shared/registries/dockRegistry';
+
+const entry = { id: 'call:0', moduleId: 'call', edge: 'bottom', aspect: 'dockAspect', close: 'closeStage' };
+
+/** The store path a gate negates — `{ $: '!shellStore.…' }` — or nothing for any other condition. */
+const negatedPath = (condition: unknown): string | undefined => {
+  const source = condition && typeof condition === 'object' && '$' in condition ? (condition as { $: string }).$ : '';
+  return source.startsWith('!') ? source.slice(1) : undefined;
+};
+
+/** Every `$if` in the tree, with the store path its condition negates — the gate, if it is one. */
+function gates(node: unknown, found: string[] = []): string[] {
+  if (Array.isArray(node)) {
+    for (const item of node) gates(item, found);
+    return found;
+  }
+  if (!node || typeof node !== 'object') return found;
+  const record = node as Record<string, unknown>;
+  const props = record.props as Record<string, unknown> | undefined;
+  const negated = record.type === '$if' ? negatedPath(props?.condition) : undefined;
+  if (negated) found.push(negated);
+  for (const value of Object.values(record)) if (value && typeof value === 'object') gates(value, found);
+  return found;
+}
+
+/** Whether a control naming itself this way exists anywhere in the tree, gated or not. */
+function names(node: unknown, text: string): boolean {
+  if (Array.isArray(node)) return node.some((item) => names(item, text));
+  if (!node || typeof node !== 'object') return false;
+  const record = node as Record<string, unknown>;
+  const props = record.props as Record<string, unknown> | undefined;
+  // A tooltip carries `content`; `we-move-handle` names itself with `label`.
+  if (props?.content === text || props?.label === text) return true;
+  return Object.values(record).some((value) => value && typeof value === 'object' && names(value, text));
+}
+
+/**
+ * Whether a node naming itself this way sits inside the *maximised* gate.
+ *
+ * Specifically that gate, not any `$if`: the whole frame is already wrapped in one on `edge`,
+ * because a panel with no edge is closed rather than hidden.
+ */
+function hiddenInFullScreen(node: unknown, text: string, inside = false): boolean {
+  if (Array.isArray(node)) return node.some((item) => hiddenInFullScreen(item, text, inside));
+  if (!node || typeof node !== 'object') return false;
+  const record = node as Record<string, unknown>;
+  const props = record.props as Record<string, unknown> | undefined;
+  if (inside && (props?.content === text || props?.label === text)) return true;
+  const within = inside || (record.type === '$if' && Boolean(negatedPath(props?.condition)?.endsWith('.maximised')));
+  return Object.values(record).some(
+    (value) => value && typeof value === 'object' && hiddenInFullScreen(value, text, within),
+  );
+}
+
+describe('a panel’s titlebar in full screen', () => {
+  const frame = dockFrame(entry as unknown as DockEntry, { type: 'Column' } as never);
+
+  it('hides the five controls that would do nothing', () => {
+    // One gate per inert control — fit, fold, collapse-to-edge, displace and the position menu — each
+    // on that panel's own maximised flag. Hidden rather than disabled, which is the choice `fitButton`
+    // already makes for a module publishing no aspect: a control that does nothing is worse than one
+    // that is not there.
+    const maximised = gates(frame).filter((path) => path === `shellStore.dockPlacement['${entry.id}'].maximised`);
+    expect(maximised).toHaveLength(5);
+
+    // Named, for the one whose tooltip is a plain string — the others write theirs conditionally,
+    // so the count above is what covers them.
+    expect(hiddenInFullScreen(frame, 'Fit to content')).toBe(true);
+  });
+
+  it('keeps the two ways out, ungated', () => {
+    /*
+      Dragging a maximised panel pulls it back out, so the grip is one way; the toggle is the other.
+      Neither may be gated on the state it exists to leave — a control that disappears in the mode it
+      is the exit from is how a panel strands somebody, which is the whole reason full screen used to
+      stop short of the window's edges.
+    */
+    expect(names(frame, 'Move panel')).toBe(true);
+    expect(hiddenInFullScreen(frame, 'Move panel')).toBe(false);
+
+    // The maximise toggle names itself by what pressing it does, so it has no one fixed title.
+    expect(JSON.stringify(frame)).toContain('Exit full screen');
+  });
+
+  it('keeps close reachable, since a full-screen panel is still one you may not want', () => {
+    expect(names(frame, 'Close')).toBe(true);
+    expect(hiddenInFullScreen(frame, 'Close')).toBe(false);
+  });
+});
+
+/** Every menu item in the tree, whatever depth the position menu ended up at. */
+function menuItems(node: unknown, found: Record<string, unknown>[] = []): Record<string, unknown>[] {
+  if (Array.isArray(node)) {
+    for (const item of node) menuItems(item, found);
+    return found;
+  }
+  if (!node || typeof node !== 'object') return found;
+  const record = node as Record<string, unknown>;
+  const props = record.props as Record<string, unknown> | undefined;
+  if (Array.isArray(props?.items)) found.push(...(props.items as Record<string, unknown>[]));
+  for (const value of Object.values(record)) if (value && typeof value === 'object') menuItems(value, found);
+  return found;
+}
+
+describe('the way back to the layout an interface declared', () => {
+  const items = menuItems(dockFrame(entry as DockEntry, { type: 'Column' }));
+  const reset = items.find((item) => item.label === 'Reset to layout');
+
+  it('is offered on the panel’s own menu', () => {
+    // Without it the three-rung chain is one-way: a drag wins for good, and an author improving a
+    // layout is overruled forever by one stray drag.
+    expect(reset).toBeDefined();
+  });
+
+  it('is disabled rather than absent when there is nothing to go back to', () => {
+    // The same choice displaceButton makes: a control that vanishes when you move a panel is one you
+    // stop looking for, and the disabled state carries the actual rule.
+    expect(reset?.disabled).toEqual({ $: `!shellStore.layoutPinned['${entry.id}']` });
+  });
+
+  it('forgets the stored placement rather than writing the declared one', () => {
+    // Deleting is what keeps the panel following the layout afterwards, including when the template
+    // changes it. Writing the declared placement would pin it to today's version for ever.
+    expect(reset?.onAction).toEqual({ $action: 'shellStore.resetDockToLayout', args: [entry.id] });
+  });
+
+  it('comes before the eight positions, not among them', () => {
+    // It undoes a position rather than choosing one; listed among the eight it would read as a ninth
+    // place to put the panel. "Return to page" sits ahead of it, being the more specific undo — a
+    // section's way back into the template — and greyed for a panel with no page to return to.
+    expect(items[0]?.label).toBe('Return to page');
+    expect(items[1]?.label).toBe('Reset to layout');
+  });
+});
+
+/**
+ * A panel the *interface* supplied, whose close cannot be named as a store member.
+ *
+ * A module names a method and the titlebar builds `<store>.<method>`, which works because the
+ * module's store has it. A template panel's keys are minted per panel into `hostDockStores` — where
+ * the shell reads `edge`/`size`/`float` in TypeScript — and the close button is not read that way:
+ * it is a schema `$action`, resolved against the real `shellStore` surface, which has no
+ * `close:extraction`. So the button rendered, took the click, and logged
+ * `method "close:extraction" not found on store "shellStore"`: an authored panel could not be
+ * closed at all, and the log was the only sign.
+ */
+describe('a dock whose close takes an argument', () => {
+  const authored = {
+    id: 'template:extraction',
+    moduleId: 'template',
+    edge: 'edge:extraction',
+    storeRef: 'shellStore',
+    closeAction: { $action: 'shellStore.closeTemplatePanel', args: ['extraction'] },
+  } as unknown as DockEntry;
+
+  const frame = dockFrame(authored, { type: 'Column' });
+
+  it('renders the button on the written-out action alone, with no close key', () => {
+    expect(names(frame, 'Close')).toBe(true);
+    expect(JSON.stringify(frame)).toContain('shellStore.closeTemplatePanel');
+    // The failing spelling, which would be built from a `close` key it does not have.
+    expect(JSON.stringify(frame)).not.toContain('close:extraction');
+  });
+
+  it('leaves a module’s own close exactly as it was', () => {
+    expect(JSON.stringify(dockFrame(entry as DockEntry, { type: 'Column' }))).toContain('modules.call.closeStage');
+  });
+});
+
+/** The first node anywhere in the tree whose `$if` condition reads this expression, or undefined. */
+function gatedOn(node: unknown, condition: string): Record<string, unknown> | undefined {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const found = gatedOn(item, condition);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  if (!node || typeof node !== 'object') return undefined;
+  const record = node as Record<string, unknown>;
+  const props = record.props as Record<string, unknown> | undefined;
+  if (record.type === '$if' && (props?.condition as { $?: string } | undefined)?.$ === condition) return record;
+  for (const value of Object.values(record)) {
+    if (!value || typeof value !== 'object') continue;
+    const found = gatedOn(value, condition);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+const geo = (field: string) => `shellStore.dockGeometry['${entry.id}'].${field}`;
+
+/**
+ * A folded panel says what it is.
+ *
+ * A panel alone names itself inside its own content, so an open one has no title on its bar. Folding
+ * hides the content, and with it the name — a column of folded panels was a column of identical grips.
+ */
+describe('a folded panel’s titlebar', () => {
+  const titled = { ...entry, title: 'Call stage' } as unknown as DockEntry;
+  const frame = dockFrame(titled, { type: 'Column' });
+
+  it('carries the panel’s name while folded, and only while a strip is not already naming it', () => {
+    const name = gatedOn(frame, `${geo('collapsed')} && count(${geo('tabs')}) < 2`);
+
+    expect(name).toBeDefined();
+    expect(JSON.stringify(name)).toContain('Call stage');
+  });
+
+  it('puts the name inside the grip, so the whole bar still drags', () => {
+    const grip = JSON.stringify(frame).indexOf('"label":"Move panel"');
+    const title = JSON.stringify(frame).indexOf('Call stage');
+
+    expect(grip).toBeGreaterThan(-1);
+    expect(title).toBeGreaterThan(grip);
+  });
+});
+
+describe('putting a lane away to its edge', () => {
+  const frame = dockFrame(entry as unknown as DockEntry, { type: 'Column' });
+
+  it('is offered on the titlebar the geometry says heads the lane', () => {
+    const button = gatedOn(frame, geo('canStow'));
+
+    expect(button).toBeDefined();
+    expect(JSON.stringify(button)).toContain('shellStore.toggleStowLane');
+  });
+
+  it('comes first on the bar, ahead of the tabs and the grip', () => {
+    const text = JSON.stringify(frame);
+
+    expect(text.indexOf('shellStore.toggleStowLane')).toBeLessThan(text.indexOf('"label":"Move panel"'));
+    expect(text.indexOf('shellStore.toggleStowLane')).toBeLessThan(text.indexOf('shellStore.beginTabDrag'));
+  });
+
+  it('draws the strip from outside the frame, as one button that opens the lane', () => {
+    const strip = gatedOn(frame, geo('strip'));
+    const text = JSON.stringify(strip);
+
+    expect(strip).toBeDefined();
+    // The whole strip is the way back — the lane's titlebars are all hidden — and there is no way to
+    // pull one panel out of it on its own.
+    expect(text.match(/"type":"we-button"/g)).toHaveLength(1);
+    expect(text).toContain('shellStore.toggleStowLane');
+    expect(text).not.toContain('peekDock');
+  });
+});
+
+describe('the displace control, by where the panel is', () => {
+  const frame = dockFrame(entry as unknown as DockEntry, { type: 'Column' });
+  const items = menuItems(frame);
+
+  it('is a titlebar button only while the panel floats', () => {
+    expect(gatedOn(frame, geo('floating'))).toBeDefined();
+  });
+
+  it('is a position-menu toggle, hidden while floating, once the panel docks', () => {
+    const displace = items.find((item) => item.id === 'displace');
+
+    expect(displace?.hidden).toEqual({ $: geo('floating') });
+    expect(displace?.onToggle).toEqual({ $action: 'shellStore.toggleDockDisplace', args: [entry.id] });
+  });
+});
+
+/**
+ * A column opening out of its strip is uncovered, not unfolded.
+ *
+ * The frame eases from the strip's 34px to its full size, and contents re-laid out at every step of
+ * that showed crushed and wrapping. While a lane opens they are held at the size the frame is heading
+ * for, and faded in.
+ */
+describe('a panel easing in or out of its strip', () => {
+  const text = JSON.stringify(dockFrame(entry as unknown as DockEntry, { type: 'Column' }));
+
+  it('lays its contents out at the size the move names, and fills the frame otherwise', () => {
+    const minWidth = `${geo('layoutWidth')} ? \`calc(\${${geo('layoutWidth')}} - 2px)\` : null`;
+    const minHeight = `${geo('layoutHeight')} ? \`calc(\${${geo('layoutHeight')}} - 35px)\` : '0'`;
+    expect(text).toContain(JSON.stringify(minWidth).slice(1, -1));
+    expect(text).toContain(JSON.stringify(minHeight).slice(1, -1));
+  });
+
+  it('fades its contents while the move says so', () => {
+    expect(text).toContain(JSON.stringify(`${geo('contentsFaded')} ? 0 : 1`).slice(1, -1));
+  });
+
+  it('fades the whole frame while it closes, borders and all', () => {
+    expect(text).toContain(JSON.stringify(`(${geo('stowed')} && ${geo('contentsFaded')}) ||`).slice(1, -1));
+  });
+
+  it('fades the whole frame when every panel is put away', () => {
+    expect(text).toContain(JSON.stringify(`|| ${geo('awayFaded')} ? 0 :`).slice(1, -1));
+  });
+
+  it('lays a top or bottom strip out as a row, not a column', () => {
+    const strip = gatedOn(dockFrame(entry as unknown as DockEntry, { type: 'Column' }), geo('strip'));
+    const layout = gatedOn(strip, geo('strip.vertical'));
+    const props = layout?.props as { then: { type: string }; else: { type: string } };
+
+    expect(props.then.type).toBe('Column');
+    expect(props.else.type).toBe('Row');
+  });
+});

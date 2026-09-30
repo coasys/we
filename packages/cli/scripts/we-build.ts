@@ -27,5 +27,4 @@ await new Promise((resolve, reject) => {
 
 // Print success
 const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
-// console.log(`\n${green}✅ Build complete in ${durationMs.toFixed(0)}ms: ${bold}${pkg.name}${reset}`);
 console.log(`\n${green}✅ ${bold}${pkg.name}${reset}${green} built in ${durationMs.toFixed(0)}ms${reset}`);

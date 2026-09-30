@@ -4,6 +4,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
+import { fieldSurface } from '../shared/field-surface';
 import sharedStyles from '../shared/styles';
 import { leafletCss } from './leaflet-css';
 
@@ -19,34 +20,29 @@ const styles = css`
     min-width: 0;
   }
 
+  /*
+    Everything about this box that makes it a field — fill, edge, hover, focus — comes from
+    fieldSurface below, so it cannot drift from we-input and we-select again. What is left here is
+    what is this control's alone: it is a button, so it needs the reset, and it is a single row, so
+    it needs a control height.
+  */
   [part='trigger'] {
     all: unset;
     display: inline-flex;
     align-items: center;
     gap: var(--we-space-300);
-    border: 1px solid var(--we-color-neutral-300);
-    border-radius: var(--we-radius-400);
-    background: var(--we-color-neutral-0);
     padding: 0 var(--we-space-300);
-    height: var(--we-component-height-md);
+    height: calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px));
     cursor: pointer;
     width: 100%;
     box-sizing: border-box;
-    transition: border-color 0.15s ease;
   }
 
-  [part='trigger']:hover:not([disabled]) {
-    border-color: var(--we-color-neutral-400);
-  }
-
-  [part='trigger']:focus-visible {
-    border-color: var(--we-color-primary-500);
-    outline: 2px solid var(--we-color-primary-100);
-    outline-offset: -1px;
-  }
+  /* After the reset above, never before it: all:unset clears border, radius and background. */
+  ${fieldSurface("[part='trigger']")}
 
   [part='pin-icon'] {
-    color: var(--we-color-primary-500);
+    color: var(--we-role-accent);
     flex-shrink: 0;
     display: flex;
     align-items: center;
@@ -54,8 +50,8 @@ const styles = css`
 
   [part='label'] {
     flex: 1;
-    font-size: var(--we-font-size-400);
-    color: var(--we-color-neutral-700);
+    font-size: var(--we-font-size-300);
+    color: var(--we-role-text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -63,33 +59,22 @@ const styles = css`
 
   [part='placeholder'] {
     flex: 1;
-    font-size: var(--we-font-size-400);
-    color: var(--we-color-neutral-400);
-  }
-
-  [part='clear'] {
-    all: unset;
-    cursor: pointer;
-    color: var(--we-color-neutral-400);
-    display: flex;
-    align-items: center;
-    line-height: 1;
-    padding: 2px;
-    border-radius: var(--we-radius-200);
-  }
-
-  [part='clear']:hover {
-    color: var(--we-color-neutral-600);
-    background: var(--we-color-neutral-100);
+    font-size: var(--we-font-size-300);
+    color: var(--we-role-text-faint);
   }
 
   [part='popover'] {
     position: fixed;
+    /* Reset UA [popover] defaults */
+    padding: 0;
+    margin: 0;
+    inset: unset;
+    /* Component styles */
     z-index: var(--we-z-dropdown, 9999);
-    background: var(--we-color-neutral-0);
-    border: 1px solid var(--we-color-neutral-200);
+    background: var(--we-role-surface-raised);
+    border: 1px solid var(--we-role-border);
     border-radius: var(--we-radius-500);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--we-role-shadow-color) 14%, transparent);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -106,13 +91,13 @@ const styles = css`
     align-items: center;
     justify-content: space-between;
     padding: var(--we-space-300) var(--we-space-400);
-    border-top: 1px solid var(--we-color-neutral-100);
+    border-top: 1px solid var(--we-role-border);
     gap: var(--we-space-300);
   }
 
   [part='coords'] {
-    font-size: var(--we-font-size-300);
-    color: var(--we-color-neutral-500);
+    font-size: var(--we-font-size-200);
+    color: var(--we-role-text-muted);
     font-variant-numeric: tabular-nums;
     flex: 1;
   }
@@ -120,17 +105,17 @@ const styles = css`
   [part='confirm'] {
     all: unset;
     cursor: pointer;
-    background: var(--we-color-primary-500);
-    color: var(--we-color-neutral-0);
-    font-size: var(--we-font-size-300);
+    background: var(--we-role-accent);
+    color: var(--we-role-on-inverse);
+    font-size: var(--we-font-size-200);
     font-weight: 500;
     padding: var(--we-space-200) var(--we-space-400);
     border-radius: var(--we-radius-400);
-    transition: background 0.15s ease;
+    transition: background var(--we-transition-200, 150ms) ease;
   }
 
   [part='confirm']:hover {
-    background: var(--we-color-primary-600);
+    background: var(--we-role-accent-text);
   }
 
   [part='confirm'][disabled] {
@@ -161,10 +146,8 @@ export default class LocationPicker extends DesignSystemElement {
   @state() private _pendingLng?: number;
   @state() private _geocoding = false;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private _map: any = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private _marker: any = null;
+  private _map: import('leaflet').Map | null = null;
+  private _marker: import('leaflet').Marker | null = null;
   private _mapDiv: HTMLElement | null = null;
 
   static getDefaultProps() {
@@ -173,17 +156,23 @@ export default class LocationPicker extends DesignSystemElement {
 
   connectedCallback() {
     super.connectedCallback();
-    this._onDocClick = this._onDocClick.bind(this);
-    document.addEventListener('click', this._onDocClick);
+    this._onDocPointerDown = this._onDocPointerDown.bind(this);
+    document.addEventListener('pointerdown', this._onDocPointerDown);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
-    document.removeEventListener('click', this._onDocClick);
+    document.removeEventListener('pointerdown', this._onDocPointerDown);
     this._destroyMap();
   }
 
-  private _onDocClick(e: Event) {
+  /**
+   * Dismiss on a press that *starts* outside — not on `click`. A click's target
+   * is the common ancestor of its mousedown and mouseup, so dragging the map and
+   * releasing outside the picker produced an "outside click" and closed the map
+   * mid-gesture. Where the press began is what the user means by inside/outside.
+   */
+  private _onDocPointerDown(e: Event) {
     if (!this.contains(e.target as Node)) {
       this._open = false;
       this._destroyMap();
@@ -207,17 +196,23 @@ export default class LocationPicker extends DesignSystemElement {
     const initialLng = this.longitude ?? 0;
     const initialZoom = this.latitude != null ? 8 : 2;
 
-    this._map = L.map(this._mapDiv, { zoomControl: true }).setView([initialLat, initialLng], initialZoom);
+    // Bound to a local as well as the field, and the handlers below close over the local. `_map` is
+    // a mutable property, so TypeScript cannot narrow it inside a callback — the marker created on
+    // click was being added to a `Map | null`. Narrowing by hand with a non-null assertion would
+    // have said the same thing less honestly: the map is genuinely non-null for the life of these
+    // handlers, because they are registered on it.
+    const map = L.map(this._mapDiv, { zoomControl: true }).setView([initialLat, initialLng], initialZoom);
+    this._map = map;
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       maxZoom: 18,
-    }).addTo(this._map);
+    }).addTo(map);
 
     // Custom pin icon using a simple data URI — avoids broken icon path issue in Leaflet+bundlers
     const pinIcon = L.divIcon({
       html: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="32" viewBox="0 0 24 32">
-        <path d="M12 0C5.373 0 0 5.373 0 12c0 9 12 20 12 20s12-11 12-20C24 5.373 18.627 0 12 0z" fill="var(--we-color-primary-500,#6366f1)"/>
+        <path d="M12 0C5.373 0 0 5.373 0 12c0 9 12 20 12 20s12-11 12-20C24 5.373 18.627 0 12 0z" fill="var(--we-role-accent,#6366f1)"/>
         <circle cx="12" cy="12" r="5" fill="white"/>
       </svg>`,
       className: '',
@@ -229,10 +224,10 @@ export default class LocationPicker extends DesignSystemElement {
     if (this.latitude != null && this.longitude != null) {
       this._pendingLat = this.latitude;
       this._pendingLng = this.longitude;
-      this._marker = L.marker([this.latitude, this.longitude], { icon: pinIcon }).addTo(this._map);
+      this._marker = L.marker([this.latitude, this.longitude], { icon: pinIcon }).addTo(map);
     }
 
-    this._map.on('click', (e: { latlng: { lat: number; lng: number } }) => {
+    map.on('click', (e: { latlng: { lat: number; lng: number } }) => {
       const { lat, lng } = e.latlng;
       this._pendingLat = Math.round(lat * 1e6) / 1e6;
       this._pendingLng = Math.round(lng * 1e6) / 1e6;
@@ -240,7 +235,7 @@ export default class LocationPicker extends DesignSystemElement {
       if (this._marker) {
         this._marker.setLatLng([lat, lng]);
       } else {
-        this._marker = L.marker([lat, lng], { icon: pinIcon }).addTo(this._map);
+        this._marker = L.marker([lat, lng], { icon: pinIcon }).addTo(map);
       }
       this.requestUpdate();
     });
@@ -253,6 +248,13 @@ export default class LocationPicker extends DesignSystemElement {
     this._open = true;
     // Small delay so the shadow DOM div is rendered before initMap reads it
     requestAnimationFrame(() => {
+      // Promote the popover div to the browser top layer so position:fixed resolves
+      // to the actual viewport, not an ancestor backdrop-filter containing block.
+      const popoverEl = this.shadowRoot?.querySelector('[part="popover"]') as HTMLElement | null;
+      if (popoverEl && 'showPopover' in popoverEl) {
+        popoverEl.setAttribute('popover', 'manual');
+        (popoverEl as HTMLElement & { showPopover(): void }).showPopover();
+      }
       this._mapDiv = this.shadowRoot?.querySelector('[part="map-container"]') as HTMLElement | null;
       this._initMap().then(() => {
         // Force Leaflet to recalculate container size after layout
@@ -308,15 +310,6 @@ export default class LocationPicker extends DesignSystemElement {
     this._destroyMap();
   }
 
-  private _clear(e: Event) {
-    e.stopPropagation();
-    this.latitude = undefined;
-    this.longitude = undefined;
-    this._pendingLat = undefined;
-    this._pendingLng = undefined;
-    this.dispatchEvent(new CustomEvent('change', { detail: null, bubbles: true, composed: true }));
-  }
-
   private _formatCoords(lat: number, lng: number): string {
     const latStr = `${Math.abs(lat).toFixed(4)}°${lat >= 0 ? 'N' : 'S'}`;
     const lngStr = `${Math.abs(lng).toFixed(4)}°${lng >= 0 ? 'E' : 'W'}`;
@@ -354,49 +347,38 @@ export default class LocationPicker extends DesignSystemElement {
               />
             </svg>
           </span>
-          ${hasValue
-            ? html`<span part="label">${this._formatCoords(this.latitude!, this.longitude!)}</span>`
-            : html`<span part="placeholder">${this.placeholder}</span>`}
-          ${hasValue
-            ? html`
-                <button part="clear" @click=${this._clear} title="Clear location" tabindex="0">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 256 256"
-                    fill="currentColor"
-                  >
-                    <path
-                      d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"
-                    />
-                  </svg>
-                </button>
-              `
-            : null}
+          ${
+            hasValue
+              ? html`<span part="label">${this._formatCoords(this.latitude!, this.longitude!)}</span>`
+              : html`<span part="placeholder">${this.placeholder}</span>`
+          }
         </button>
 
-        ${this._open
-          ? html`
-              <div part="popover" style=${styleMap(popoverPos)}>
-                <div part="map-container"></div>
-                <div part="footer">
-                  <span part="coords">
-                    ${this._pendingLat != null && this._pendingLng != null
-                      ? this._formatCoords(this._pendingLat, this._pendingLng)
-                      : 'Click map to place pin'}
-                  </span>
-                  <button
-                    part="confirm"
-                    ?disabled=${this._pendingLat == null || this._geocoding}
-                    @click=${this._confirm}
-                  >
-                    ${this._geocoding ? 'Looking up…' : 'Confirm location'}
-                  </button>
+        ${
+          this._open
+            ? html`
+                <div part="popover" style=${styleMap(popoverPos)}>
+                  <div part="map-container"></div>
+                  <div part="footer">
+                    <span part="coords">
+                      ${
+                        this._pendingLat != null && this._pendingLng != null
+                          ? this._formatCoords(this._pendingLat, this._pendingLng)
+                          : 'Click map to place pin'
+                      }
+                    </span>
+                    <button
+                      part="confirm"
+                      ?disabled=${this._pendingLat == null || this._geocoding}
+                      @click=${this._confirm}
+                    >
+                      ${this._geocoding ? 'Looking up…' : 'Confirm location'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            `
-          : null}
+              `
+            : null
+        }
       </div>
     `;
   }

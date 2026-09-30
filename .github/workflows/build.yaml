@@ -1,0 +1,325 @@
+# Named "CI" rather than "Build" because the PR check list renders each entry as
+# "<workflow> / <job>", and one of the jobs is itself called Build — which read as
+# "Build / Build". The file keeps its name: `ad4m-compat.yaml` looks this workflow up by
+# filename to find the last commit that passed, and renaming it would also detach the run
+# history.
+name: CI
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+
+# One run per branch/PR — a second push cancels the in-flight run instead of
+# duplicating the work.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Five jobs rather than one long one, for two reasons.
+#
+# Visibility: a pull request shows one check line per job. As a single job this was one
+# opaque "Build" entry that sat in progress for six and a half minutes, and the only way
+# to learn which stage was running — or which one had failed — was to open the run and
+# read the log. Now the PR itself says Lint / Build / Typecheck / Test / Schemas, and a
+# failure names its stage before anyone clicks anything.
+#
+# Wall clock: lint needs no build output, so it has no business queueing behind a
+# three-minute build; and typecheck, test and schema validation only need the build's
+# *result*, so they can run alongside each other rather than end to end.
+#
+# The three downstream jobs take the build's output as an artifact instead of rebuilding
+# it — see "Package build outputs" below.
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      # The heap the whole-monorepo walk needs lives in the `lint` script itself, so CI and a developer's
+      # own `pnpm lint` cannot disagree about it. It used to be set here only, which meant the command
+      # passed in CI and died locally — a gate nobody could reproduce a failure of.
+      - name: Lint
+        run: pnpm lint
+
+      # Stylelint was configured (config, deps, editor integration) but never ran anywhere
+      # but editors — now it gates the authored CSS.
+      - name: Lint CSS
+        run: pnpm lint:css
+
+      # The gap this closes: `pnpm lint` enforces formatting through eslint-plugin-prettier, but
+      # ESLint only reads the files it lints, so markdown, JSON, YAML, HTML and any stylesheet
+      # outside a `src/` directory had a fixer on commit (lint-staged) and no check anywhere.
+      # lint-staged only touches *staged* files, so anything committed before a prettier bump, or
+      # through `--no-verify`, drifted and stayed drifted — 20 files had, by September 2026.
+      #
+      # Same scope as `pnpm format`, so the command that fixes and the gate that checks cannot
+      # disagree about what is in scope. Seconds to run, and in the Lint job rather than Build
+      # because it needs nothing built.
+      - name: Check formatting
+        run: pnpm format:check
+
+      # Here rather than in Typecheck, which is where the failure it prevents would surface: this
+      # reads package.json and tsconfig.json only, so it needs no build and can answer in seconds
+      # while the Build job is still running. Its whole value is naming the package to fix, which
+      # `tsc` cannot — the 29 errors it reports land in the package that is correct.
+      - name: Check source-shipping consumers
+        run: pnpm check:source-consumers
+
+      # Beside the one above because it is the same kind of gate: a rule nothing else can state.
+      # `tsc` is green either way, the markup shows no trace, and the symptom is a size or a weight
+      # that is quietly wrong — so without this it is found by a person noticing, months later.
+      - name: Check we-* props
+        run: pnpm check:we-props
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      - name: Build
+        run: NODE_OPTIONS='--max-old-space-size=8192' pnpm build
+
+      # `pnpm build` regenerates the AI-context outputs (CLAUDE.md et al.) and the core
+      # manifest. If a PR changed their inputs without committing the regenerated files,
+      # fail here rather than drifting silently.
+      #
+      # Whole-tree rather than a hand-listed set of paths. The list named seven files and
+      # the build regenerates seventeen — `prebuild:steps` also writes ten tracked Tauri
+      # files — so editing `we-seed.json` without committing the regenerated output passed
+      # green. A path list is also blind to files the build *creates*, and it rots every
+      # time a generator is added.
+      #
+      # `--porcelain` covers modified, deleted and untracked in one check, and cannot go
+      # out of date.
+      #
+      # No exclusions. This check used to exempt `package.json`, `pnpm-lock.yaml` and
+      # `ad4m/`, all three of which were things the workflow itself had put there — it
+      # rewrote the manifest and lockfile to point at a local SDK build, then had to agree
+      # not to notice. Nothing rewrites them now, so the check covers the whole tree, and a
+      # build that touches the manifest or the lockfile is a finding rather than an
+      # exemption.
+      #
+      # It has to run before the packaging step below, which drops a tarball in the root.
+      - name: Check generated files are committed
+        run: |
+          DRIFT="$(git status --porcelain)"
+          if [ -n "$DRIFT" ]; then
+            echo '::error::The build changed tracked files — run `pnpm build` and commit the regenerated output.'
+            echo "$DRIFT"
+            git diff --stat
+            exit 1
+          fi
+
+      # Everything the build produced, for the three jobs that consume it.
+      #
+      # Derived from `git status --ignored` rather than a list of paths, on the same
+      # reasoning as the drift check above: the outputs are not only `dist/` directories.
+      # The primitives build also writes `src/generated/` (the icon bundle) and a
+      # `custom-elements.json`, and the Electron prebuild writes four seed files — all
+      # gitignored, all needed downstream, and none of them obvious from the outside. A
+      # hand-listed set would have missed them, and would miss the next generator too.
+      #
+      # node_modules is the one thing excluded: it is gitignored and enormous, and the
+      # consuming jobs install it themselves.
+      - name: Package build outputs
+        run: |
+          git status --porcelain --ignored=traditional \
+            | awk '$1 == "!!" { print $2 }' \
+            | grep -vE '(^|/)node_modules/$' \
+            > build-outputs.txt
+          echo "Packaging $(wc -l < build-outputs.txt) paths:"
+          cat build-outputs.txt
+          tar -czf build-outputs.tar.gz -T build-outputs.txt
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: build-outputs
+          path: build-outputs.tar.gz
+          # Read by this run's own downstream jobs and by nothing else afterwards.
+          retention-days: 1
+
+  # Runs after Build so every package's dist types exist.
+  typecheck:
+    name: Typecheck
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/restore-build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+  test:
+    name: Test
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/restore-build
+
+      # `--no-bail` (in the root script) runs every package before reporting, so one
+      # failing package does not hide the state of the rest. It still exits non-zero.
+      - name: Test
+        run: pnpm test
+
+      # The primitives' cascade, in a real browser. Which rule wins under a pointer at a container
+      # width is the one thing jsdom cannot answer, and every bug in that area passed the unit tests:
+      # a truncated label that unwrapped on hover, a header label that flashed, a focus ring lost
+      # while pressing. Drives the Chrome the runner image already has, so it downloads nothing.
+      - name: Browser tests
+        run: pnpm --filter @we/primitives test:browser
+
+      # Coverage has been configured for as long as the tests have and has never run anywhere,
+      # which is the same shape as the stylelint gap above it: a number nobody produces is a number
+      # nobody can act on. Reported rather than gated — there is no threshold yet, deliberately (see
+      # `packages/app-shell/vitest.config.ts`), and a gate set to today's figure would only ever
+      # ratchet by accident. Non-fatal so a package without the reporter cannot fail the run.
+      - name: Coverage
+        continue-on-error: true
+        run: pnpm --filter @we/app-shell test -- --coverage.enabled --coverage.reporter=text-summary
+
+  # The one part of WE that `pnpm test` cannot reach.
+  #
+  # `apps/we-tauri/src-tauri` is real code with real tests — account discovery, the data-directory
+  # layout, the launcher handoff — and twenty `#[test]`s that had never run anywhere but a
+  # developer's machine. Everything they cover is what decides *which agent's data a launch opens*,
+  # so a regression there is somebody else's identity, not a rendering glitch.
+  #
+  # Its own job rather than a step in Test, because it needs a Rust toolchain — and because what it
+  # can check today is narrower than "run the tests", for a reason worth stating rather than hiding.
+  #
+  # ## Why this is formatting and not `cargo test`
+  #
+  # Two independent reasons, and the first one is not about dependencies at all.
+  #
+  # `src-tauri/Cargo.toml` is **gitignored**: it is generated from `Cargo.toml.template` by
+  # `generate-seed-config.cjs`, which substitutes `{{AD4M_EXECUTOR_PATH}}` and `{{AD4M_CLIENT_PATH}}`
+  # out of `we-seed.json`. A fresh checkout has no manifest, so anything going through `cargo` fails
+  # before it reads a line of Rust — and generating one does not help, because the paths it writes
+  # point at a sibling ad4m checkout this runner does not have.
+  #
+  # Second, even with that checkout present the resolve fails: `libffi-sys` is pinned to `=3.2.0`
+  # through ad4m's `scryer-prolog` and to `^4.1` through its `deno_ffi`, and both declare
+  # `links = "ffi"`, which Cargo refuses. So the twenty `#[test]`s in `accounts.rs` do not run here
+  # or on a developer's machine, and a `cargo test` step would report a resolution failure rather
+  # than anything about the code.
+  #
+  # Getting one would mean checking out ad4m at a pinned ref, running the seed-config generator, and
+  # fixing the `links` conflict upstream — the same three things the packaged desktop build needs.
+  #
+  # Formatting is checked because it needs no resolution at all, and because it is the half that
+  # was silently drifting: thirty-two files were unformatted when this job was added.
+  #
+  # The fix is upstream, and belongs with the "packaged desktop build in CI" item this job does not
+  # close: once the crate resolves, add the `cargo test` step below it and drop this note.
+  rust:
+    name: Rust formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # rustfmt for the toolchain the crate pins, which is not the default one.
+      #
+      # `src-tauri/rust-toolchain.toml` pins channel 1.92 — it has to match ad4m's, because this
+      # crate compiles that whole tree by path and the older default resolved a dependency graph
+      # that does not build. rustup honours that file for anything run in the directory, so
+      # installing rustfmt for `stable` and then running rustfmt there installs it for one toolchain
+      # and uses another: rustup silently fetches 1.92 and reports "'cargo-fmt' is not installed for
+      # the toolchain '1.92'".
+      #
+      # The channel is read out of the file rather than written here, so this cannot drift from the
+      # pin it exists to serve — and it is echoed, because "which toolchain" is the whole failure.
+      - name: Install rustfmt for the pinned toolchain
+        working-directory: apps/we-tauri/src-tauri
+        run: |
+          CHANNEL="$(sed -n 's/^ *channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
+          if [ -z "$CHANNEL" ]; then
+            echo "::error::could not read [toolchain] channel from rust-toolchain.toml"
+            exit 1
+          fi
+          echo "Pinned Rust channel: $CHANNEL"
+          rustup toolchain install "$CHANNEL" --component rustfmt --profile minimal
+
+      # The generated Rust has to exist before anything parses `lib.rs`.
+      #
+      # `src-tauri/src/generated/` is gitignored — `mod.rs` and `seed_servers.rs` are written from
+      # `we-seed.json`. rustfmt follows `mod` declarations, so on a fresh checkout it parses
+      # `mod generated;` and stops with "failed to resolve mod `generated`". Nothing about that is
+      # visible on a developer's machine, where the directory has been sitting since the first build.
+      #
+      # The generator is plain Node with no imports outside the standard library, so this needs no
+      # `pnpm install` and none of the workspace — which is why this job stays independent of Build.
+      # It also rewrites the tracked `tauri.conf.json`; harmless here, since this job has no drift
+      # check, but it is the reason this step does not belong in one that does.
+      - name: Generate the seed-derived sources
+        run: node apps/we-tauri/scripts/generate-seed-config.cjs
+
+      # `rustfmt` directly, not `cargo fmt`, and that is the point rather than a shortcut.
+      #
+      # `cargo fmt` shells out to `cargo metadata`, which needs a manifest — and `src-tauri/Cargo.toml`
+      # is **gitignored**. It is generated from `Cargo.toml.template` by `generate-seed-config.cjs`,
+      # which substitutes `{{AD4M_EXECUTOR_PATH}}` and `{{AD4M_CLIENT_PATH}}` out of `we-seed.json`.
+      # So a fresh checkout has no manifest at all, and generating one would not help: the paths it
+      # writes point at a sibling ad4m checkout that CI does not have, so `cargo metadata` would then
+      # fail to resolve instead of failing to find.
+      #
+      # Formatting is a property of the source text, not of a dependency graph, so it needs neither.
+      # This also keeps the check honest about its own scope — it is exactly the nine tracked `.rs`
+      # files, `build.rs` included, and never the gitignored `src/generated/` output.
+      #
+      # The file list comes from git rather than a glob so it cannot silently pick up `target/` or
+      # generated sources, and the count is asserted because an empty list would make this pass
+      # vacuously — the failure mode a formatting gate is most likely to have.
+      - name: Check formatting
+        run: |
+          FILES="$(git ls-files -- apps/we-tauri/src-tauri | grep '\.rs$')"
+          COUNT="$(printf '%s\n' "$FILES" | grep -c . || true)"
+          if [ "$COUNT" -lt 1 ]; then
+            echo "::error::no Rust sources found to format-check"
+            exit 1
+          fi
+          echo "Checking $COUNT files"
+          printf '%s\n' "$FILES" | xargs rustfmt --check --edition 2021
+
+  schemas:
+    name: Validate schemas
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/restore-build
+
+      # 12.6k LOC of template data that `tsc` cannot judge: an unknown component type, a
+      # misspelled prop, a `$routes` outlet with no `routes` array and an orphan `$local`
+      # all typecheck cleanly and then render nothing. The validator has always existed and
+      # been thorough — it was reachable only from the AI editor and the CLI, so nothing ran
+      # it on the way in.
+      - name: Validate schemas
+        run: pnpm validate:schemas
+
+      # The same shape of gap one layer along: a colour that typechecks, validates and renders,
+      # and is wrong in a way only a walk of the composed tree can see.
+      #
+      # `audit:roles` reports a scale position where a role belongs — in a template, and since
+      # September 2026 in the TypeScript and SCSS every template is rendered *through*. A step is
+      # invisible to the contrast corrections at apply time, so nothing else measures it, ever.
+      #
+      # `audit:surfaces` reports a `surface-sunken` that is invisible against its ground. Both were
+      # on-demand reports that nobody ran; both are at zero, which is the moment to gate them.
+      #
+      # Here rather than in Lint because they import and walk the real composed schema trees, which
+      # needs the build — the same reason schema validation is in this job.
+      - name: Audit roles
+        run: pnpm audit:roles
+
+      - name: Audit surfaces
+        run: pnpm audit:surfaces

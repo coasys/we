@@ -1,0 +1,310 @@
+/**
+ * WE Seed File System
+ *
+ * Defines the shape of we-seed.json — the single source of truth for
+ * project metadata, platform paths, and which apps are embedded in the shell.
+ */
+
+import type { SchemaNode } from '@we/schema-shared';
+
+/**
+ * One module a deployment ships, when a bare id is not enough to say.
+ *
+ * `package` names the npm package the module's `createModule` factory comes from, for a module that
+ * is not one of this monorepo's own — the deployment adds the package, names it here, and rebuilds.
+ * Omitted, the id resolves to `@we/module-<id>`.
+ */
+export interface WeSeedModule {
+  id: string;
+  /** The package exporting `createModule`. Defaults to `@we/module-<id>`. */
+  package?: string;
+  /**
+   * Whether a space that has never decided has this module on. Defaults to true. `false` ships the
+   * module for communities to opt into without putting it in every existing space at once.
+   */
+  enabled?: boolean;
+}
+
+/**
+ * Custom elements from a library this deployment bundles — a chart, a rating, a map — that templates
+ * may then name as ordinary nodes.
+ *
+ * ## Why this is a seed decision
+ *
+ * A template is data and cannot load code, so a visual primitive WE does not ship used to mean a merge
+ * into this repository. But the renderer already mounts any hyphenated tag, and a custom element
+ * is framework-neutral by construction. What was missing was a deployment saying "these tags are
+ * defined here, trust them" — so the validator stops calling them unknown, the reference documents
+ * them, and the build imports what defines them. The trust is the deployment's, exactly as it is for
+ * a bundled module: it chose the package and rebuilt.
+ */
+export interface WeSeedElements {
+  /** The npm package providing the elements. Must be a dependency of `@we/app-shell`. */
+  package: string;
+  /**
+   * Modules imported for their side effect of defining the elements, in order. Defaults to the package
+   * itself. Name the per-component entry points where a library offers them, so the build carries
+   * only the elements listed.
+   */
+  define?: string[];
+  /**
+   * The tags templates may name. Defaults to every element the package's custom-elements manifest
+   * declares — list them to allow a few from a large library.
+   */
+  tags?: string[];
+  /**
+   * Path to the custom-elements manifest within the package. Defaults to the `customElements` field
+   * of its `package.json`, which is where the convention puts it.
+   */
+  manifest?: string;
+}
+
+export interface WeSeedFile {
+  /** Project metadata */
+  project: {
+    /** Workspace/project name */
+    name: string;
+    /** Semantic version */
+    version: string;
+    /** Brief description */
+    description: string;
+    /** Author or organization */
+    author: string;
+    /** Repository URL */
+    repository?: string;
+    /** License identifier (SPDX) */
+    license?: string;
+  };
+
+  /**
+   * Feature modules this deployment ships, by module id — or as an entry naming more.
+   *
+   * A deployment declaring what it includes is what the seed is *for*. Ids are matched against the
+   * bundled module set at boot; an id with no bundled module is reported rather than ignored, since a
+   * silently missing module surfaces later as an unexplained missing component.
+   *
+   * **The order is the module rail's order.** And the list is what `pnpm --filter @we/app-shell
+   * generate-modules` bundles: an unlisted module leaves the build rather than merely the rail.
+   *
+   * `AgentSettings.installedModules` and `Space.enabledModules` carry the per-agent and per-space
+   * halves; `enabled: false` here is what a space starts with for a module the deployment ships for
+   * people to opt into. See {@link WeSeedModule}.
+   */
+  modules?: Array<string | WeSeedModule>;
+
+  /**
+   * Custom elements from libraries this deployment bundles, which templates may name. See
+   * {@link WeSeedElements}. Generated into the build by `pnpm --filter @we/app-shell generate-elements`,
+   * and into the reference and the validator by `generate-context`.
+   */
+  elements?: WeSeedElements[];
+
+  /**
+   * What this deployment believes each capability's settings should start as.
+   *
+   * `{ "<group>": { "<key>": value } }`, where a group is a module id. The least specific of the
+   * four levels a setting resolves through — a white-label that ships with call recording off says
+   * so here rather than by patching the module's declared default, and every space it creates
+   * inherits that without anyone touching a switch.
+   *
+   * Unlisted keys are **silence**, not a value: a deployment that says nothing leaves the module's
+   * own default standing. See `moduleSettings.ts` for the order and for `restrict`.
+   */
+  settings?: Record<string, Record<string, boolean | string | number>>;
+
+  /**
+   * Built-in template ids this deployment ships, matched against the bundled template set.
+   *
+   * The counterpart to `modules`, and until now the missing half of the seed: a deployment could
+   * declare which *capabilities* it includes but not which *interfaces*, even though templates are
+   * the highest-volume contribution type in the whole system. Without it "built-in" was
+   * all-or-nothing — whatever `templateRegistry` happened to import shipped everywhere, so adding a
+   * showcase template imposed it on every white-label.
+   *
+   * **Unlisted templates leave the bundle**, not merely the picker: `pnpm --filter @we/app-shell
+   * generate-templates` rewrites the generated registry from this list, so an unselected template
+   * is never imported. Runtime filtering would have hidden it while still shipping it.
+   *
+   * Omit to ship the default set (`['default']`). An empty array is a deployment with no built-in
+   * templates at all — legal, and what a host expecting to load everything from a marketplace
+   * wants.
+   */
+  templates?: string[];
+
+  /**
+   * Built-in view ids this deployment ships — a space's *sections*, as opposed to `templates`, which
+   * are whole interfaces.
+   *
+   * Same mechanism, one tier down, and the tier is what it buys: a deployment that wants the default
+   * arrangement but not the globe used to have to fork the default template to remove one route.
+   * Now it drops `"globe"` from this list and the Cesium view leaves the bundle entirely.
+   *
+   * **The order is the default section order.** A space that has never been configured shows its
+   * sections in the order written here, so arranging a deployment's nav is done by writing this
+   * array rather than by a second setting.
+   *
+   * Omit to ship every bundled view. An empty array is a deployment whose spaces have no sections at
+   * all — legal, and what a kiosk or a single-purpose landing shell wants.
+   */
+  views?: string[];
+
+  /** Host app customization (WE shell) — optional white-labeling */
+  host?: {
+    /** Theme overrides for the host */
+    theme?: {
+      colors?: Record<string, string>;
+      fonts?: Record<string, string>;
+    };
+    /** Launcher UI customization */
+    ui?: {
+      /** Custom boot screen schema (replaces default) */
+      bootScreen?: SchemaNode;
+    };
+  };
+
+  /** AD4M-specific configuration */
+  ad4m?: {
+    /**
+     * Where the bundled executor keeps its data — the agent's keys, datasets and settings.
+     * `~` expands to the home directory. Read at build time by each desktop host's
+     * `generate-seed-config.cjs`; overridden at run time by `WE_AD4M_DATA_PATH`.
+     *
+     * Defaults to `~/.ad4m`, which is also the launcher's location — so out of the box WE
+     * desktop, Flux and the ADAM launcher share one agent. Pointing this elsewhere gives WE its
+     * own isolated agent, and is a **data migration, not a preference**: an existing agent does
+     * not follow the path, so a running install would come up empty with no error and no obvious
+     * way back. Change it deliberately, on a fresh install or after moving the directory yourself.
+     */
+    dataPath?: string;
+    /**
+     * A link server shared spaces can sync through, e.g. `https://links.example.org`. Setting it
+     * is what offers the server link language when creating a shared space; each space gets a
+     * fresh room on it.
+     *
+     * The server has to be reachable by every member, and should run with `AUTO_ADMIT=true`:
+     * otherwise only the space's creator is admitted to its room, and nothing in WE can admit
+     * anyone else. Unset, spaces keep publishing on the node's default link language.
+     */
+    linkServerUrl?: string;
+    /**
+     * The `ad4m-executor` binary the desktop hosts bundle, relative to the workspace root (or
+     * absolute). Required — `setup-workspace` and `validate-seed` both fail without it.
+     */
+    executorPath?: string;
+    /**
+     * The ad4m repo checkout, relative to the workspace root (or absolute). Feeds the Tauri
+     * `Cargo.toml` path dependencies, which is why its absence is only a warning: Electron
+     * spawns the prebuilt binary and never needs the source.
+     */
+    repoPath?: string;
+    /** AI agent configuration */
+    ai?: {
+      /** Enable AI features */
+      enabled: boolean;
+      /** Custom prompts or configurations */
+      config?: Record<string, unknown>;
+    };
+    /** Perspective definitions */
+    perspectives?: Array<{
+      name: string;
+      uuid?: string;
+    }>;
+    /** Language bundles to install */
+    languages?: Array<{
+      name: string;
+      address?: string;
+    }>;
+    /** Executor configuration */
+    executor?: {
+      /** Custom executor settings */
+      config?: Record<string, unknown>;
+    };
+  };
+
+  /** Electron-specific configuration */
+  electron?: {
+    /** Path to the built app dist (relative to we-electron) */
+    appDistPath?: string;
+    /** Base port for Express servers serving embedded app bundles */
+    basePort?: number;
+  };
+
+  /**
+   * The neighbourhood URL of the global discovery space.
+   * When set, users who haven't joined will be prompted to join on first launch.
+   * Create this perspective locally, publish it as a neighbourhood, then paste its sharedUrl here.
+   */
+  globalSpaceUrl?: string;
+
+  /**
+   * The neighbourhood URL of the module marketplace.
+   * When set, users get a marketplace icon in the sidebar. First click prompts them to join.
+   */
+  marketplaceUrl?: string;
+
+  /** Embedded applications shown in the shell sidebar */
+  apps: Array<{
+    /** Unique app identifier (e.g., "flux") */
+    id: string;
+    /** Display name shown in sidebar */
+    name: string;
+    /** Phosphor icon name for the sidebar button */
+    icon: string;
+    /** Optional image URL for the sidebar avatar */
+    image?: string;
+    /** Brief description */
+    description?: string;
+    /** AD4M capabilities/permissions this app requires */
+    capabilities: Array<'perspectives' | 'languages' | 'agents' | 'filesystem' | 'network'>;
+
+    /** Build and install commands for this app */
+    commands: {
+      /** Command to install dependencies */
+      install: string;
+      /** Command to build the app */
+      build?: string;
+      /** Command to start the dev server */
+      dev?: string;
+    };
+
+    /** File paths — used by generate-seed-config.cjs and resolveAppUrl */
+    paths: {
+      /** Root directory of the app (relative to workspace root) */
+      projectRoot: string;
+      /** Distribution/build output directory */
+      dist: string;
+      /** Development server configuration */
+      devServer?: {
+        /** Port number */
+        port: number;
+        /** Host address */
+        host?: string;
+      };
+      /** URL used when running on the web platform (e.g. deployed Netlify URL) */
+      webUrl?: string;
+    };
+  }>;
+}
+
+/**
+ * Validation result returned by the seed CLI validator.
+ */
+export interface SeedValidationResult {
+  valid: boolean;
+  errors?: Array<{ path: string; message: string }>;
+  warnings?: Array<{ path: string; message: string }>;
+}
+
+/**
+ * Metadata returned by the seed processor (legacy code-generation tooling).
+ */
+export interface SeedMetadata {
+  seed: WeSeedFile;
+  processedAt: string;
+  integrationId: string;
+  outputPaths: {
+    schema: string;
+    components: string;
+    routes: string;
+  };
+}

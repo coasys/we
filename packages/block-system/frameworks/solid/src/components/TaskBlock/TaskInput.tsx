@@ -12,12 +12,19 @@ interface TaskInputProps {
   assignee: string | undefined;
   onChange: (property: string, value: unknown) => void;
   isSelected: () => boolean;
-  onSelect: (e: MouseEvent) => void;
 }
 
+/*
+  The default states, as a block composed into a document rather than one on a board.
+
+  Hardcoded here on purpose: this component is part of the block system, which knows nothing about
+  spaces and cannot read a community's own vocabulary without acquiring a dependency on the host. A
+  task composed inline gets the three defaults; a task on a board is offered whatever its space
+  defines. Worth revisiting if inline tasks become the common case, and not worth a store edge now.
+*/
 const STATUS_OPTIONS = [
   { label: 'To Do', value: 'todo' },
-  { label: 'In Progress', value: 'in-progress' },
+  { label: 'Doing', value: 'doing' },
   { label: 'Done', value: 'done' },
 ];
 
@@ -36,8 +43,7 @@ export function TaskInput(props: TaskInputProps) {
   const [dueDate, setDueDate] = createSignal('');
   const [assignee, setAssignee] = createSignal('');
 
-  function openModal(e: MouseEvent) {
-    e.stopPropagation();
+  function openModal() {
     setTitle(props.title || '');
     setDescription(props.description || '');
     setStatus(props.status || 'todo');
@@ -65,7 +71,7 @@ export function TaskInput(props: TaskInputProps) {
   }
 
   return (
-    <Column class="we-task-block" onClick={props.onSelect} position="relative">
+    <Column class="we-task-block" position="relative">
       <Show
         when={props.title}
         fallback={
@@ -84,10 +90,10 @@ export function TaskInput(props: TaskInputProps) {
       </Show>
 
       <Show when={showModal()}>
-        <we-modal close={closeModal} p="500" width="320px" r="300">
+        <we-modal close={closeModal} size="sm">
           <form onSubmit={handleSubmit}>
             <Column gap="300">
-              <we-text variant="subheading">Add Task</we-text>
+              <we-text variant="heading-md">Add Task</we-text>
               <we-form-field label="Title">
                 <we-input
                   type="text"

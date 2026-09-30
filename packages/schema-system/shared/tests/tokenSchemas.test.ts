@@ -3,41 +3,22 @@ import { describe, expect, it } from 'vitest';
 import { zSchemaNode, zSchemaProp } from '../src/zodSchemas';
 
 describe('token shape validation', () => {
-  // --- $store ---
-  describe('$store', () => {
-    it('accepts valid $store token', () => {
-      expect(() => zSchemaProp.parse({ $store: 'userStore.name' })).not.toThrow();
+  // --- expressions ---
+  describe('{ $: … }', () => {
+    it('accepts an expression token', () => {
+      expect(() => zSchemaProp.parse({ $: 'userStore.name' })).not.toThrow();
     });
 
-    it('rejects $store with empty string', () => {
-      expect(() => zSchemaProp.parse({ $store: '' })).toThrow();
+    it('rejects an empty expression', () => {
+      expect(() => zSchemaProp.parse({ $: '' })).toThrow();
     });
 
-    it('rejects $store with non-string value', () => {
-      expect(() => zSchemaProp.parse({ $store: 123 })).toThrow();
+    it('rejects a non-string expression', () => {
+      expect(() => zSchemaProp.parse({ $: 123 })).toThrow();
     });
 
-    it('rejects $store with extra keys', () => {
-      expect(() => zSchemaProp.parse({ $store: 'x.y', extra: true })).toThrow();
-    });
-  });
-
-  // --- $concat ---
-  describe('$concat', () => {
-    it('accepts valid $concat token', () => {
-      expect(() => zSchemaProp.parse({ $concat: ['hello', ' ', 'world'] })).not.toThrow();
-    });
-
-    it('accepts $concat with nested tokens', () => {
-      expect(() => zSchemaProp.parse({ $concat: ['Hello ', { $store: 'user.name' }] })).not.toThrow();
-    });
-
-    it('rejects $concat with non-array value', () => {
-      expect(() => zSchemaProp.parse({ $concat: 'hello' })).toThrow();
-    });
-
-    it('rejects $concat with extra keys', () => {
-      expect(() => zSchemaProp.parse({ $concat: ['a'], extra: true })).toThrow();
+    it('rejects an expression with extra keys', () => {
+      expect(() => zSchemaProp.parse({ $: 'x.y', extra: true })).toThrow();
     });
   });
 
@@ -47,8 +28,10 @@ describe('token shape validation', () => {
       expect(() => zSchemaProp.parse({ $action: 'routeStore.navigate' })).not.toThrow();
     });
 
-    it('accepts $action with args', () => {
-      expect(() => zSchemaProp.parse({ $action: 'routeStore.navigate', args: ['/home'] })).not.toThrow();
+    it('accepts $action with args, including expressions', () => {
+      expect(() =>
+        zSchemaProp.parse({ $action: 'routeStore.navigate', args: ['/home', { $: 'event.detail' }] }),
+      ).not.toThrow();
     });
 
     it('rejects $action with empty string', () => {
@@ -60,22 +43,28 @@ describe('token shape validation', () => {
     });
   });
 
-  // --- $if ---
+  // --- $if (the handler conditional) ---
   describe('$if', () => {
-    it('accepts valid $if token with condition and then', () => {
-      expect(() => zSchemaProp.parse({ $if: { condition: true, then: 'yes' } })).not.toThrow();
+    it('accepts a condition with a then handler', () => {
+      expect(() =>
+        zSchemaProp.parse({ $if: { condition: { $: 'formValid()' }, then: { $action: 'store.submit' } } }),
+      ).not.toThrow();
     });
 
-    it('accepts $if with else', () => {
-      expect(() => zSchemaProp.parse({ $if: { condition: true, then: 'yes', else: 'no' } })).not.toThrow();
+    it('accepts an else handler', () => {
+      expect(() =>
+        zSchemaProp.parse({
+          $if: {
+            condition: { $: 'local.open' },
+            then: { $toggleLocal: 'open' },
+            else: { $setLocal: 'open', value: true },
+          },
+        }),
+      ).not.toThrow();
     });
 
     it('rejects $if missing condition', () => {
-      expect(() => zSchemaProp.parse({ $if: { then: 'yes' } })).toThrow();
-    });
-
-    it('rejects $if missing then', () => {
-      expect(() => zSchemaProp.parse({ $if: { condition: true } })).toThrow();
+      expect(() => zSchemaProp.parse({ $if: { then: { $action: 'x.y' } } })).toThrow();
     });
 
     it('rejects $if with wrong shape', () => {
@@ -87,87 +76,14 @@ describe('token shape validation', () => {
     });
   });
 
-  // --- $map ---
-  describe('$map', () => {
-    it('accepts valid $map token', () => {
-      expect(() =>
-        zSchemaProp.parse({
-          $map: { items: { $store: 'list.items' }, select: { label: { $store: 'item.name' } } },
-        }),
-      ).not.toThrow();
-    });
-
-    it('rejects $map missing items', () => {
-      expect(() => zSchemaProp.parse({ $map: { select: { a: 1 } } })).toThrow();
-    });
-
-    it('rejects $map missing select', () => {
-      expect(() => zSchemaProp.parse({ $map: { items: [] } })).toThrow();
-    });
-  });
-
-  // --- $pick ---
-  describe('$pick', () => {
-    it('accepts valid $pick token', () => {
-      expect(() => zSchemaProp.parse({ $pick: { from: { $store: 'user' }, props: ['name', 'email'] } })).not.toThrow();
-    });
-
-    it('rejects $pick with non-array props', () => {
-      expect(() => zSchemaProp.parse({ $pick: { from: {}, props: 'name' } })).toThrow();
-    });
-
-    it('rejects $pick missing from', () => {
-      expect(() => zSchemaProp.parse({ $pick: { props: ['name'] } })).toThrow();
-    });
-  });
-
-  // --- Comparison tokens ---
-  describe('$eq', () => {
-    it('accepts valid $eq tuple', () => {
-      expect(() => zSchemaProp.parse({ $eq: [1, 2] })).not.toThrow();
-    });
-
-    it('rejects $eq with wrong arity', () => {
-      expect(() => zSchemaProp.parse({ $eq: [1] })).toThrow();
-      expect(() => zSchemaProp.parse({ $eq: [1, 2, 3] })).toThrow();
-    });
-  });
-
-  describe('$ne', () => {
-    it('accepts valid $ne tuple', () => {
-      expect(() => zSchemaProp.parse({ $ne: ['a', 'b'] })).not.toThrow();
-    });
-
-    it('rejects $ne with wrong arity', () => {
-      expect(() => zSchemaProp.parse({ $ne: [1] })).toThrow();
-    });
-  });
-
-  describe('$not', () => {
-    it('accepts valid $not token', () => {
-      expect(() => zSchemaProp.parse({ $not: true })).not.toThrow();
-      expect(() => zSchemaProp.parse({ $not: { $store: 'flags.hidden' } })).not.toThrow();
-    });
-  });
-
-  describe('$and', () => {
-    it('accepts valid $and token', () => {
-      expect(() => zSchemaProp.parse({ $and: [true, false, true] })).not.toThrow();
-    });
-
-    it('rejects $and with non-array', () => {
-      expect(() => zSchemaProp.parse({ $and: true })).toThrow();
-    });
-  });
-
-  describe('$or', () => {
-    it('accepts valid $or token', () => {
-      expect(() => zSchemaProp.parse({ $or: [false, true] })).not.toThrow();
-    });
-
-    it('rejects $or with non-array', () => {
-      expect(() => zSchemaProp.parse({ $or: 'yes' })).toThrow();
-    });
+  // --- Retired value operators ---
+  describe('retired value operators', () => {
+    it.each(['$store', '$local', '$concat', '$eq', '$not', '$and', '$count', '$map', '$pick', '$plural', '$error'])(
+      'rejects %s, which is now written as an expression',
+      (key) => {
+        expect(() => zSchemaProp.parse({ [key]: 'x' })).toThrow();
+      },
+    );
   });
 
   // --- Unrecognised operator warning ---
@@ -190,7 +106,7 @@ describe('node-level operator validation', () => {
     it('accepts valid $each node', () => {
       const node = {
         type: '$each',
-        props: { items: { $store: 'list.items' } },
+        props: { items: { $: 'list.items' } },
         children: [{ type: 'we-text' }],
       };
       expect(() => zSchemaNode.parse(node)).not.toThrow();
@@ -208,7 +124,7 @@ describe('node-level operator validation', () => {
     it('rejects $each without children', () => {
       const node = {
         type: '$each',
-        props: { items: { $store: 'list.items' } },
+        props: { items: { $: 'list.items' } },
       };
       expect(() => zSchemaNode.parse(node)).toThrow(/\$each requires at least one child/);
     });
@@ -216,7 +132,7 @@ describe('node-level operator validation', () => {
     it('rejects $each with empty children array', () => {
       const node = {
         type: '$each',
-        props: { items: { $store: 'list.items' } },
+        props: { items: { $: 'list.items' } },
         children: [],
       };
       expect(() => zSchemaNode.parse(node)).toThrow(/\$each requires at least one child/);
@@ -235,7 +151,7 @@ describe('node-level operator validation', () => {
       const node = {
         type: '$if',
         props: {
-          condition: { $store: 'flags.visible' },
+          condition: { $: 'flags.visible' },
           then: { type: 'we-text' },
         },
       };
@@ -246,7 +162,7 @@ describe('node-level operator validation', () => {
       const node = {
         type: '$if',
         props: {
-          condition: { $store: 'flags.visible' },
+          condition: { $: 'flags.visible' },
           then: { type: 'we-text' },
           else: { type: 'we-text', props: { content: 'hidden' } },
         },

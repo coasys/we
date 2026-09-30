@@ -25,6 +25,71 @@ const CARGO_TOML_TEMPLATE = path.join(__dirname, '../src-tauri/Cargo.toml.templa
 const CARGO_TOML_OUTPUT = path.join(__dirname, '../src-tauri/Cargo.toml');
 const PORT_MAP_FILE = path.join(OUTPUT_DIR, 'seed-port-map.json');
 const PORT_MAP_FILE_WEB = path.join(SRC_GENERATED_DIR, 'seed-port-map.json');
+const RUNTIME_RS_FILE = path.join(OUTPUT_DIR, 'seed_runtime.rs');
+const APP_SERVER_FILE = path.join(OUTPUT_DIR, 'seed_servers.rs');
+const MOD_RS_FILE = path.join(OUTPUT_DIR, 'mod.rs');
+
+/**
+ * Emit the `generated` Rust module — on BOTH paths through main().
+ *
+ * `lib.rs` declares `mod generated;` unconditionally and calls `generated::setup_seed_servers`, so
+ * these two files are needed to compile whatever the seed says. The native-mode path used to return
+ * before writing them, which left them un-generated in exactly the configuration that is now the
+ * default — and the only reason a build still worked was that both had been committed by accident,
+ * despite `.gitignore` declaring the whole directory generated. Untracking them without this
+ * function would have broken the Rust build outright.
+ *
+ * With no apps the emitted `setup_seed_servers` is a no-op: no import and an underscored parameter,
+ * so it compiles clean rather than warning about things an empty deployment does not use.
+ */
+function writeGeneratedModule(apps, portMap) {
+  fs.writeFileSync(APP_SERVER_FILE, generateAppServerCode(apps, portMap), 'utf8');
+  console.log(`✅ App server code written to: ${path.relative(process.cwd(), APP_SERVER_FILE)}`);
+
+  fs.writeFileSync(
+    MOD_RS_FILE,
+    `// Generated seed server module
+mod seed_servers;
+
+pub use seed_servers::setup_seed_servers;
+`,
+    'utf8',
+  );
+  console.log(`✅ Module file written to: ${path.relative(process.cwd(), MOD_RS_FILE)}`);
+}
+
+/** Where the executor keeps its data when the seed says nothing. Also the launcher's location. */
+const DEFAULT_AD4M_DATA_PATH = '~/.ad4m';
+
+/**
+ * Emit the runtime settings lib.rs needs before the app starts.
+ *
+ * Written on both paths through main() — native mode and the apps path — because lib.rs always
+ * reads it. It is declared straight from lib.rs with `#[path]` rather than through
+ * `generated/mod.rs`, which only exists on the apps path.
+ */
+function writeRuntimeConfig(seed) {
+  const dataPath = seed.ad4m?.dataPath || DEFAULT_AD4M_DATA_PATH;
+
+  if (!fs.existsSync(OUTPUT_DIR)) {
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  }
+
+  // JSON.stringify gives a correctly escaped Rust string literal for any path we accept.
+  fs.writeFileSync(
+    RUNTIME_RS_FILE,
+    `// Auto-generated from we-seed.json by scripts/generate-seed-config.cjs
+// Do not edit manually - changes will be overwritten!
+
+/// Where the executor keeps its data, as written in the seed. \`~\` is expanded at run time,
+/// and \`WE_AD4M_DATA_PATH\` overrides this entirely. See \`resolve_ad4m_data_path\` in lib.rs.
+pub const AD4M_DATA_PATH: &str = ${JSON.stringify(dataPath)};
+`,
+    'utf8',
+  );
+  console.log(`✅ Runtime settings written to: ${path.relative(process.cwd(), RUNTIME_RS_FILE)}`);
+  console.log(`   AD4M data path: ${dataPath}`);
+}
 
 function main() {
   console.log('🔧 Generating Tauri seed configuration...\n');
@@ -75,11 +140,24 @@ function main() {
     }
 
     // Create empty config files so build doesn't fail
-    fs.writeFileSync(PORT_MAP_FILE, JSON.stringify({}, null, 2));
-    fs.writeFileSync(PORT_MAP_FILE_WEB, JSON.stringify({}, null, 2));
+    fs.writeFileSync(PORT_MAP_FILE, JSON.stringify({}, null, 2) + '\n');
+    fs.writeFileSync(PORT_MAP_FILE_WEB, JSON.stringify({}, null, 2) + '\n');
+
+    writeRuntimeConfig(seed);
+    writeGeneratedModule([], {});
+
+    /*
+      Clear the bundle resources, rather than leaving whatever the last apps-path run wrote.
+
+      `tauri.conf.json` is hand-authored except for this one field, which the generator has always
+      owned — it was simply never updated on this path. Left alone it kept bundling an app the seed
+      no longer declares, so a release build would package it and start its server, and would fail
+      outright on a machine without that app checked out beside the repo.
+    */
+    updateTauriConfig({});
 
     // Format generated files with Prettier to avoid noisy git diffs
-    formatGeneratedFiles([PORT_MAP_FILE, PORT_MAP_FILE_WEB]);
+    formatGeneratedFiles([PORT_MAP_FILE, PORT_MAP_FILE_WEB, TAURI_CONF_FILE]);
 
     console.log('✅ Minimal configuration files generated');
     return;
@@ -142,37 +220,29 @@ function main() {
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
   }
 
-  // Write port map JSON (both in src-tauri/generated and src/generated for Vite access)
-  fs.writeFileSync(PORT_MAP_FILE, JSON.stringify(portMap, null, 2), 'utf8');
+  // Written twice: once for the Rust side to `include_str!`, once where Vite can reach it.
+  fs.writeFileSync(PORT_MAP_FILE, JSON.stringify(portMap, null, 2) + '\n', 'utf8');
   console.log(`✅ Port map written to: ${path.relative(process.cwd(), PORT_MAP_FILE)}`);
 
   // Also write to src/generated for Vite/frontend access
   if (!fs.existsSync(SRC_GENERATED_DIR)) {
     fs.mkdirSync(SRC_GENERATED_DIR, { recursive: true });
   }
-  fs.writeFileSync(PORT_MAP_FILE_WEB, JSON.stringify(portMap, null, 2), 'utf8');
+  fs.writeFileSync(PORT_MAP_FILE_WEB, JSON.stringify(portMap, null, 2) + '\n', 'utf8');
   console.log(`✅ Port map (frontend) written to: ${path.relative(process.cwd(), PORT_MAP_FILE_WEB)}`);
 
-  // Write bundle resources JSON
-  const BUNDLE_RESOURCES_FILE = path.join(OUTPUT_DIR, 'seed-bundle-resources.json');
-  fs.writeFileSync(BUNDLE_RESOURCES_FILE, JSON.stringify(bundleResources, null, 2), 'utf8');
-  console.log(`✅ Bundle resources written to: ${path.relative(process.cwd(), BUNDLE_RESOURCES_FILE)}`);
+  /*
+    `bundleResources` goes straight into `tauri.conf.json` below and nowhere else.
 
-  // Generate Rust app server code
-  const appServerCode = generateAppServerCode(seed.apps, portMap);
-  const APP_SERVER_FILE = path.join(OUTPUT_DIR, 'seed_servers.rs');
-  fs.writeFileSync(APP_SERVER_FILE, appServerCode, 'utf8');
-  console.log(`✅ App server code written to: ${path.relative(process.cwd(), APP_SERVER_FILE)}`);
+    It used to be written to `generated/seed-bundle-resources.json` as well, which nothing ever read
+    — Tauri has no way to reference an external file for `bundle.resources`, so the config is the
+    only consumer there can be. Two copies of one fact, one of them dead and the dead one committed;
+    dropping it leaves the live copy as the single answer.
+  */
 
-  // Generate mod.rs to export the generated module
-  const MOD_RS_FILE = path.join(OUTPUT_DIR, 'mod.rs');
-  const modRsContent = `// Generated seed server module
-mod seed_servers;
+  writeGeneratedModule(seed.apps, portMap);
 
-pub use seed_servers::setup_seed_servers;
-`;
-  fs.writeFileSync(MOD_RS_FILE, modRsContent, 'utf8');
-  console.log(`✅ Module file written to: ${path.relative(process.cwd(), MOD_RS_FILE)}`);
+  writeRuntimeConfig(seed);
 
   // Generate Cargo.toml from template with AD4M paths
   if (fs.existsSync(CARGO_TOML_TEMPLATE)) {
@@ -207,8 +277,7 @@ pub use seed_servers::setup_seed_servers;
   updateTauriConfig(bundleResources);
 
   // Format generated files with Prettier to avoid noisy git diffs
-  const generatedFiles = [PORT_MAP_FILE, PORT_MAP_FILE_WEB, BUNDLE_RESOURCES_FILE, TAURI_CONF_FILE];
-  formatGeneratedFiles(generatedFiles);
+  formatGeneratedFiles([PORT_MAP_FILE, PORT_MAP_FILE_WEB, TAURI_CONF_FILE]);
 
   console.log('\n✨ Tauri seed configuration generated successfully!');
   console.log('\n📝 Next steps:');
@@ -250,16 +319,27 @@ function generateAppServerCode(apps, portMap) {
     })
     .join('\n\n');
 
-  return `// Auto-generated Seed Server Setup for Tauri
-// 
+  const header = `// Auto-generated Seed Server Setup for Tauri
+//
 // This file is generated by scripts/generate-seed-config.cjs
 // Do not edit manually - changes will be overwritten!
 
 use std::path::PathBuf;
-use crate::app_server::serve_static_app;
+`;
+
+  // No apps: still a real function, because lib.rs calls it either way — but with nothing to serve,
+  // an import and a bound parameter would only produce warnings about an empty deployment.
+  if (apps.length === 0) {
+    return `${header}
+/// No embedded apps are declared in we-seed.json, so there is nothing to serve.
+pub fn setup_seed_servers(_resource_path: PathBuf) {}
+`;
+  }
+
+  return `${header}use crate::app_server::serve_static_app;
 
 /// Setup HTTP servers for all apps from seed configuration
-/// 
+///
 /// In production: Serves from bundled resources
 pub fn setup_seed_servers(resource_path: PathBuf) {
 ${serverSetup}
@@ -275,7 +355,7 @@ function updateTauriConfig(bundleResources) {
     config.bundle = config.bundle || {};
     config.bundle.resources = bundleResources;
 
-    fs.writeFileSync(TAURI_CONF_FILE, JSON.stringify(config, null, 2), 'utf8');
+    fs.writeFileSync(TAURI_CONF_FILE, JSON.stringify(config, null, 2) + '\n', 'utf8');
     console.log(`✅ Updated tauri.conf.json with generated resources`);
   } catch (error) {
     console.error(`❌ Failed to update tauri.conf.json:`, error.message);

@@ -1,9 +1,23 @@
 {
+  // js/ts/tsx: formatting runs through ESLint's fixAll below (eslint-plugin-prettier reads
+  // .prettierrc.json directly and resolves prettier via this repo's own node_modules), not
+  // the standalone Prettier extension — avoids the extension picking up a different/bundled
+  // prettier version when `we` is opened alongside sibling repos (flux, ad4m) that pin their
+  // own. CSS/JSON/Markdown have no ESLint equivalent, so they keep formatOnSave via the extension.
   "editor.formatOnSave": true,
   "editor.codeActionsOnSave": {
     "source.fixAll.eslint": "always"
   },
   "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "[javascript]": {
+    "editor.formatOnSave": false
+  },
+  "[typescript]": {
+    "editor.formatOnSave": false
+  },
+  "[typescriptreact]": {
+    "editor.formatOnSave": false
+  },
   "[css]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },

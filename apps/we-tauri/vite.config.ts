@@ -34,13 +34,18 @@ export default defineConfig(async () => ({
   },
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src'),
-      // Resolve @we/app-framework internal aliases
-      '@shared': resolve(__dirname, '../../packages/app-framework/src/shared'),
-      '@solid': resolve(__dirname, '../../packages/app-framework/src/frameworks/solid'),
+      '@': resolve(import.meta.dirname, 'src'),
+      // Resolve @we/app-shell internal aliases
+      '@shared': resolve(import.meta.dirname, '../../packages/app-shell/src/shared'),
+      '@solid': resolve(import.meta.dirname, '../../packages/app-shell/src/frameworks/solid'),
     },
   },
   assetsInclude: ['**/*.glb'],
+  build: {
+    // Above the 500 kB default because the chunks that crossed it are the on-demand Cesium and
+    // three.js bundles. See apps/we-web/vite.config.ts for the full reasoning and what it costs.
+    chunkSizeWarningLimit: 3500,
+  },
   // Never pre-bundle local file: deps — hard links break on rebuild, causing
   // Vite's dep optimizer cache to serve stale content after restart.
   optimizeDeps: { exclude: ['@coasys/ad4m'] },

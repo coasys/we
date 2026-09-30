@@ -1,0 +1,24 @@
+{
+  "name": "@we/schema-kit",
+  "version": "0.1.0",
+  "description": "Portable schema fragments — shapes that expand to plain nodes, for templates and modules alike",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@we/schema-shared": "workspace:*",
+    "@we/tokens": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "vitest": "^4.1.11"
+  }
+}

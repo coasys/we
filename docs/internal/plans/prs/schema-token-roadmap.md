@@ -2,7 +2,7 @@
 
 Potential new tokens for the schema system, ordered by priority. Each is additive — none requires changes to existing tokens.
 
-For current token inventory and architecture, see the [schema system shared layer](../../../packages/schema-system/shared/src/propResolvers/).
+For current token inventory and architecture, see the [schema system shared layer](../../../../packages/schema-system/shared/src/propResolvers/).
 
 ---
 

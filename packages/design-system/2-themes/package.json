@@ -8,11 +8,22 @@
   "scripts": {
     "clean": "rimraf dist",
     "build:css": "postcss 'src/**/index.css' --base src --dir dist",
-    "build:steps": "pnpm run clean && pnpm run build:css",
-    "build": "we-build"
+    "build:steps": "pnpm run clean && pnpm run build:css && tsup",
+    "build": "we-build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "exports": {
     ".": "./dist/index.css",
+    "./presets": {
+      "types": "./dist/presets.d.ts",
+      "import": "./dist/presets.js"
+    },
+    "./sanitiseCss": {
+      "types": "./dist/sanitiseCss.d.ts",
+      "import": "./dist/sanitiseCss.js"
+    },
+    "./light": "./dist/light/index.css",
     "./dark": "./dist/dark/index.css",
     "./black": "./dist/black/index.css",
     "./retro": "./dist/retro/index.css",
@@ -21,15 +32,24 @@
   "files": [
     "dist"
   ],
+  "dependencies": {
+    "@we/design-utils": "workspace:*"
+  },
   "peerDependencies": {
     "@we/tokens": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "^26.4.0",
     "@we/cli": "workspace:*",
-    "postcss": "^8.4.23",
-    "postcss-cli": "^10.1.0",
-    "postcss-import": "^15.1.0",
-    "rimraf": "^6.0.1"
+    "@we/tokens": "workspace:*",
+    "jsdom": "^30.0.1",
+    "postcss": "^8.5.26",
+    "postcss-cli": "^11.0.1",
+    "postcss-import": "^17.0.0",
+    "rimraf": "^6.1.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
   },
   "publishConfig": {
     "access": "public"

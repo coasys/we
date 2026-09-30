@@ -1,0 +1,278 @@
+/**
+ * The layout contract.
+ *
+ * Two things here are load-bearing and neither is obvious from the name.
+ *
+ * **Containment.** Expansion produces nesting — a collection holding children, a cluster holding its
+ * members — so a layout may be asked to place children *inside* their parent's region. Simple layouts
+ * ignore {@link LayoutInput.containment}; compound ones use it. It is in the contract from the start
+ * because adding a hierarchy parameter once four layouts exist means rewriting four layouts.
+ *
+ * **Warm start.** Nodes arrive continuously: from expansion, and (once interpretation runs on a live
+ * call) from the data layer while the user is looking at the map. A layout that re-runs from scratch
+ * on every insert makes the graph jump every few seconds. So a layout receives the positions it
+ * already produced and is expected to keep them roughly, moving new nodes into place around them.
+ */
+import type { GraphEdge, GraphNode } from './graph';
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/**
+ * An axis-aligned world rectangle.
+ *
+ * Here beside {@link Point} rather than in the core, because a behaviour asks about one — a marquee
+ * hands the engine a rectangle and gets back what is inside it — and {@link BehaviourContext} is
+ * declared in this package. The core re-exports it, so nothing downstream had to change when it
+ * moved.
+ *
+ * Min/max rather than x/y/width/height: every consumer of a rectangle here is testing overlap, which
+ * is four comparisons against these and four subtractions against the other spelling. A caller
+ * building one from a drag normalises as it goes — see `boundsFromPoints`.
+ */
+export interface Bounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+/** A node's placement. `fixed` means the user pinned it and the layout must not move it. */
+export interface Placement extends Point {
+  fixed?: boolean;
+}
+
+export interface LayoutInput {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  /**
+   * Positions from the previous run, by node address. Nodes present here should stay near where they
+   * were; nodes absent are new and may be placed freely.
+   */
+  previous?: ReadonlyMap<string, Placement>;
+  /**
+   * Parent → children, for layouts that place children within a parent's region. Only nodes that
+   * actually contain others appear as keys.
+   */
+  containment?: ReadonlyMap<string, string[]>;
+  /** The area to lay out into, in world units. */
+  viewport: { width: number; height: number };
+  /**
+   * The world rectangle currently on screen.
+   *
+   * For a layout that has to *put* something rather than derive where it goes. A node with no
+   * position of its own has to land somewhere, and the origin is the one place guaranteed to be
+   * wrong — it is wherever the reader is not. Absent before a surface has been measured, which is
+   * why it is optional and why a layout falls back to the origin rather than requiring it.
+   */
+  visible?: { x: number; y: number; width: number; height: number };
+  /**
+   * A card somebody is dragging to a new place in a hierarchy, and where it would go — see
+   * {@link LayoutArranging}. A layout with no notion of parents ignores it.
+   */
+  arranging?: LayoutArranging;
+}
+
+/**
+ * A card being rearranged by hand: lay it out as if it were already where the drag would put it.
+ *
+ * What makes a drag in a tree a *preview* rather than a guess. While a card is held, the layout places it
+ * — and everything around it makes room — exactly as it would once the drop is written, so the reader sees
+ * the result before committing to it. The same answer again after the drop, until the write comes back and
+ * the data says the same thing, is what makes the drop one movement rather than two.
+ */
+export interface LayoutArranging {
+  id: string;
+  /** The parent it would have; null for out of every tree. */
+  parent: string | null;
+  /**
+   * Its position among that parent's other children, in the order the layout draws them. Absent for
+   * wherever the layout's own order would put it — which is the honest preview when siblings are ordered by
+   * something a drag cannot change, like a date.
+   */
+  index?: number;
+}
+
+/**
+ * The tree a layout read out of the graph, for a gesture that rearranges it.
+ *
+ * From the DATA, whatever {@link LayoutArranging} asked for: it is what a drop would change, not what is on
+ * screen mid-drag. Only a layout that has parents reports one.
+ */
+export interface LayoutHierarchy {
+  /** Each card's parent — the one it is drawn under, where the graph gives it several. */
+  parents: ReadonlyMap<string, string>;
+  /** Each parent's children, in the order the layout draws them. */
+  children: ReadonlyMap<string, readonly string[]>;
+  /** The edge that makes each card's parent its parent. */
+  parentEdges: ReadonlyMap<string, string>;
+}
+
+/**
+ * An area of the arrangement that means something, for the renderer to draw behind the nodes.
+ *
+ * A layout can only answer with positions, and there are arrangements where a position is not the
+ * whole of what was decided: `forest` puts every card that is on no tree in a zone of its own, and a
+ * region of cards with nothing said about it reads as a tree whose lines failed to draw. What makes
+ * it legible is the thing a position cannot carry — that this area is a *kind* of place, and how many
+ * cards are in it.
+ *
+ * Deliberately not a node. A synthetic node would be picked, dragged, selected, counted in the
+ * budget, offered a fold and asked for its record, and every one of those is wrong for a caption. It
+ * is also deliberately not styled: a region says what it is and the renderer decides what that looks
+ * like, exactly as a warning is worded here and drawn by the status strip.
+ */
+export interface LayoutRegion {
+  /** Stable within a layout, so a renderer can key on it across runs. */
+  id: string;
+  /** What this area is, in the reader's language. The renderer draws it as the region's caption. */
+  label?: string;
+  /** World bounds, as {@link Bounds}. */
+  bounds: Bounds;
+}
+
+export interface LayoutResult {
+  positions: Map<string, Placement>;
+  /**
+   * Areas of the arrangement worth naming — see {@link LayoutRegion}. Absent for the layouts where
+   * position says everything, which is most of them.
+   */
+  regions?: LayoutRegion[];
+  /**
+   * True while the layout is still settling — a force simulation between ticks.
+   *
+   * The driver polls {@link Layout.tick} while this is set, then stops. A layout that computes in one
+   * pass simply never sets it, and costs nothing.
+   */
+  running?: boolean;
+  /**
+   * Anything the layout could not do, in the author's terms.
+   *
+   * A layout that finds nothing to work with still has to return positions, so without somewhere to
+   * say so its only options are to fail silently or to invent an arrangement and pretend it derived
+   * one. `manual` is the case that forced this: asked to read positions from node data that does not
+   * carry any, it keeps what is already there — indistinguishable, on screen, from a layout that ran
+   * and decided nothing needed moving.
+   */
+  warnings?: string[];
+  /** The tree this arrangement was read from, where it is one — see {@link LayoutHierarchy}. */
+  hierarchy?: LayoutHierarchy;
+}
+
+/**
+ * A layout strategy.
+ *
+ * Stateful on purpose: a force simulation has to keep velocities between ticks, and throwing them
+ * away each frame is what makes naive force layouts vibrate.
+ */
+export interface Layout {
+  id: string;
+  /**
+   * Whether this layout works out where nodes go, as opposed to reading it from them.
+   *
+   * Almost all of them do, so it is omitted by default and only `manual` says otherwise. What it
+   * buys is the difference between a pinned node being an *exception* and being the rule: a node held
+   * against a force or tree layout is worth marking, because the layout would otherwise move it, while
+   * on a canvas every node is placed by definition and the same mark is on everything and means
+   * nothing.
+   */
+  derivesPositions?: boolean;
+  description?: string;
+  /** Seed or re-seed. Called when the node set changes. */
+  init(input: LayoutInput): LayoutResult;
+  /** Advance one step. Only called while the previous result reported `running`. */
+  tick?(): LayoutResult;
+  /** Pin a node — a drag in progress, or a user-fixed position. */
+  fix?(id: string, at: Point | null): void;
+  /** Release resources. */
+  stop?(): void;
+}
+
+export type LayoutFactory<TOptions = unknown> = (options?: TOptions) => Layout;
+
+/**
+ * The shape an edge is drawn with.
+ *
+ * Named for what it looks like rather than for the maths behind it, because these names are written by
+ * hand into templates and chosen by a model from a sentence like "show me how these connect". `arc`
+ * says bows-to-one-side; `bezier` said quadratic-with-one-control, which is both harder to picture and
+ * actively misleading — in most node editors "bezier" means the S-curve, which is `smooth` here.
+ *
+ * - `straight` — a direct line. Says the least, and is the right answer when the layout is doing the
+ *   talking.
+ * - `arc` — bows to one side. Deliberate curvature, when a graph is dense enough that lines need
+ *   telling apart by shape.
+ * - `smooth` — leaves and arrives along the dominant axis, the flow-chart S. The default: it reads as
+ *   direction without insisting on it, and it is the shape people expect from a node graph.
+ * - `step` — right angles. For containment and org charts, where the eye follows a rank rather than a
+ *   line.
+ */
+export type EdgeCurve = 'straight' | 'arc' | 'smooth' | 'step';
+
+/**
+ * A side of a node, as an edge's anchor names it.
+ *
+ * Which side a connection leaves or arrives on is normally derived from where the two nodes are —
+ * see `attachPoint` — and an anchor is somebody overruling that for one end of one edge. A side
+ * rather than a point along it: a side survives the node being resized, and it is the same four the
+ * connect handles already offer.
+ */
+export type EdgeSide = 'n' | 'e' | 's' | 'w';
+
+/** Which side each end of an edge is pinned to, where either has been. Absent means derived. */
+export interface EdgeAnchors {
+  source?: EdgeSide;
+  target?: EdgeSide;
+}
+
+/**
+ * Where an edge actually runs, in world units.
+ *
+ * Geometry, not drawing instructions: control points rather than an SVG path string, so the engine can
+ * measure an edge — for picking — without knowing how any particular renderer expresses it, and a
+ * canvas renderer can stroke the same curve without re-deriving it.
+ *
+ * That split is what lets the DOM stop owning edge hit-testing. While `pointer-events: stroke` did the
+ * picking, edges were the one thing behaviours could only reach through the DOM, which is also why a
+ * canvas renderer could not have supported clicking one.
+ */
+export interface EdgeGeometry {
+  id: string;
+  from: Point;
+  /** Trimmed to the target's edge, so an arrowhead lands on the node rather than under it. */
+  to: Point;
+  /**
+   * First control point: the whole of an `arc`'s quadratic, or the departure tangent of a `smooth`
+   * cubic. Absent for `straight` and `step`.
+   */
+  control?: Point;
+  /** Second control point — the arrival tangent of a `smooth` cubic. Its presence is what makes the
+   * route cubic rather than quadratic, so a renderer picks its path command from that alone. */
+  control2?: Point;
+  /**
+   * Corners of a `step` route, between `from` and `to`.
+   *
+   * A list rather than the single point this used to be, because a step turns twice, and which way it
+   * turns first depends on the axis the edge mostly runs along. Storing one corner forced every
+   * consumer to re-derive the second and to assume horizontal-first, which is wrong for a graph laid
+   * out top-to-bottom.
+   */
+  elbows?: Point[];
+  /**
+   * The route as a chain of segments after `from`, when it was shaped by hand.
+   *
+   * Present only for an edge carrying waypoints, and it replaces `control`/`control2`/`elbows`
+   * rather than joining them: those describe one span between two nodes, and a route somebody bent
+   * around a third card is several. A segment with no controls is a straight leg, which is what a
+   * polyline and an orthogonal route are made of, so one field serves every shape.
+   *
+   * `to` is still the last segment's endpoint, so anything that only wants the ends — the arrowhead's
+   * back-off, the bounds, a label — reads the same fields it always did.
+   */
+  segments?: { control?: Point; control2?: Point; to: Point }[];
+  curve: EdgeCurve;
+  /** Midpoint of the drawn route — where a label sits. */
+  mid: Point;
+}

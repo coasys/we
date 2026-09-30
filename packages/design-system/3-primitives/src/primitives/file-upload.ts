@@ -14,23 +14,23 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   gap: '300',
   p: '700',
   r: '500',
-  border: '2px dashed var(--we-color-neutral-300)',
-  color: 'neutral-500',
-  fontSize: '400',
+  border: '2px dashed var(--we-role-border)',
+  color: 'text-muted',
+  fontSize: '300',
   cursor: 'pointer',
 };
 
 const styles = css`
   [part='base'] {
     transition:
-      border-color 0.15s ease,
-      background 0.15s ease;
+      border-color var(--we-transition-200, 150ms) ease,
+      background var(--we-transition-200, 150ms) ease;
     min-height: 120px;
   }
 
   :host([dragover]) [part='base'] {
-    border-color: var(--we-color-primary-500);
-    background: var(--we-color-primary-50);
+    border-color: var(--we-role-accent);
+    background: var(--we-role-accent-muted);
   }
 
   input[part='native'] {
@@ -49,10 +49,10 @@ const styles = css`
     align-items: center;
     gap: var(--we-space-200);
     padding: var(--we-space-100) var(--we-space-200);
-    background: var(--we-color-neutral-50);
+    background: var(--we-role-page);
     border-radius: var(--we-radius-400);
     font-size: 0.875em;
-    color: var(--we-color-neutral-700);
+    color: var(--we-role-text);
   }
 
   [part='remove'] {
@@ -60,7 +60,7 @@ const styles = css`
     cursor: pointer;
     margin-left: auto;
     opacity: 0.5;
-    transition: opacity 0.15s ease;
+    transition: opacity var(--we-transition-200, 150ms) ease;
   }
 
   [part='remove']:hover {
@@ -155,28 +155,30 @@ export default class FileUpload extends DesignSystemElement {
           <span>Drop files here or click to browse</span>
         </slot>
 
-        ${this._files.length > 0
-          ? html`
-              <div part="file-list" @click=${(e: Event) => e.stopPropagation()}>
-                ${this._files.map(
-                  (file, i) => html`
-                    <div part="file-item">
-                      <we-icon name="file" size="sm"></we-icon>
-                      <span>${file.name}</span>
-                      <we-button
-                        part="remove"
-                        variant="secondary"
-                        aria-label="Remove file"
-                        @click=${() => this._removeFile(i)}
-                      >
-                        <we-icon name="x"></we-icon>
-                      </we-button>
-                    </div>
-                  `,
-                )}
-              </div>
-            `
-          : nothing}
+        ${
+          this._files.length > 0
+            ? html`
+                <div part="file-list" @click=${(e: Event) => e.stopPropagation()}>
+                  ${this._files.map(
+                    (file, i) => html`
+                      <div part="file-item">
+                        <we-icon name="file" size="sm"></we-icon>
+                        <span>${file.name}</span>
+                        <we-button
+                          part="remove"
+                          variant="secondary"
+                          aria-label="Remove file"
+                          @click=${() => this._removeFile(i)}
+                        >
+                          <we-icon name="x"></we-icon>
+                        </we-button>
+                      </div>
+                    `,
+                  )}
+                </div>
+              `
+            : nothing
+        }
       </div>
     `;
   }

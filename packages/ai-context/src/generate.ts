@@ -16,21 +16,37 @@ import { globSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { ContextData, ContextFragment } from '@we/schema-shared';
+import type { ContextData, ContextFragment, StoreEntry } from '@we/schema-shared';
+import { listFunctions } from '@we/schema-shared';
+import { format, resolveConfig } from 'prettier';
 
 import { aggregateFragments } from './aggregate.js';
 import { assembleReference } from './assembler.js';
+import {
+  type ExtractedStore,
+  extractHostSources,
+  extractRegisteredComponents,
+  extractStores,
+  extractWiringMembers,
+} from './extractors/appShell.js';
 import { extractPrimitives } from './extractors/cem.js';
-import { extractModels } from './extractors/models.js';
+import { extractEntities } from './extractors/entities.js';
+import { extractForeignElements } from './extractors/foreignElements.js';
+import { extractModules } from './extractors/modules.js';
+import { extractPluginCatalog } from './extractors/plugins.js';
 import { extractTokens } from './extractors/tokens.js';
 import { extractComponentProps } from './extractors/typescript.js';
+import { architecture } from './fragments/architecture.js';
+import { contributionSurfaces } from './fragments/contribution-surfaces.js';
 import { designSystemProps } from './fragments/design-system-props.js';
 import { devPatterns } from './fragments/dev-patterns.js';
+import { panels } from './fragments/panels.js';
+import { patterns } from './fragments/patterns.js';
 import { routing } from './fragments/routing.js';
 import { rules } from './fragments/rules.js';
 import { schemaOperators } from './fragments/schema-operators.js';
 import { storePatterns } from './fragments/store-patterns.js';
-import { storeEntries, stores } from './fragments/stores.js';
+import { generateStoresText, storeEntries, undescribedMembers } from './fragments/stores.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // From src/generate.ts: up to ai-context/, up to packages/, up to repo root
@@ -44,13 +60,131 @@ const DEFAULTS: Record<string, string> = {
   widgets: 'src',
   tokens: 'src',
   models: 'src',
+  plugins: 'src/catalog.ts',
 };
+
+/**
+ * Join the derived store shape to the hand-authored metadata, and say where the two disagree.
+ *
+ * The source decides *what exists* — a member absent here cannot be named in a schema, and one
+ * present is allowed whether or not anybody has described it. The fragment decides *what it means*:
+ * the prose in `fragments/stores.ts` and, more load-bearing, `StateMemberMeta`'s
+ * `properties`/`model`, which is what lets the validator check one level into an expression's path.
+ *
+ * Both directions of drift are reported, because they fail differently. A member with no entry is
+ * merely undocumented — the AI reference is thinner than it could be. A fragment entry for a member
+ * that no longer exists is worse: it documents something that isn't there, and its metadata would
+ * silently license an expression's path into nothing.
+ */
+function mergeStoreEntries(
+  derived: ExtractedStore[],
+  authored: StoreEntry[],
+  wiring: Map<string, Set<string>>,
+): StoreEntry[] {
+  const byName = new Map(authored.map((s) => [s.name, s]));
+  const undocumented: string[] = [];
+  const stale: string[] = [];
+
+  /*
+    Host wiring leaves the list before anything else looks at it.
+
+    `templateSurface.ts` is the one place that decides what a schema may name, and a member it
+    classifies as wiring is absent from every bag. Listing it anyway — as the generator did, under
+    `unknown` — told an author (and an LLM) that `sessionStore.token` and `templateStore.replaceTemplate`
+    were vocabulary with a missing description, when the truth is that no template can reach them.
+    Dropped here, the validator reports a reference to one as an unknown member, which is the accurate
+    complaint.
+  */
+  for (const store of derived) {
+    const hidden = wiring.get(store.name);
+    if (!hidden) continue;
+    for (const key of Object.keys(store.state)) if (hidden.has(key)) delete store.state[key];
+    store.actions = store.actions.filter((action) => !hidden.has(action));
+  }
+
+  /*
+    A hand-authored entry with no interface behind it is kept, not dropped.
+
+    `model` is the case that matters: `record.create` / `.update` / `.delete` are bound by the
+    template provider rather than declared as a store, so there is no `ModelStore` to read. Dropping
+    anything the extractor cannot see would have made every `record.create` in every schema an unknown
+    method — a generator quietly deleting vocabulary is worse than one that keeps too much.
+  */
+  const pseudo = authored.filter((s) => !derived.some((d) => d.name === s.name));
+  if (pseudo.length) {
+    console.log(`  Stores declared without an interface, kept as authored: ${pseudo.map((s) => s.name).join(', ')}`);
+  }
+
+  const merged = derived.map((store) => {
+    const hand = byName.get(store.name);
+    if (!hand) {
+      undocumented.push(store.name);
+      return store as StoreEntry;
+    }
+
+    const state: StoreEntry['state'] = {};
+    for (const [key, meta] of Object.entries(store.state)) {
+      // Hand-authored metadata wins: it carries `properties`/`model`, which is the half that cannot
+      // be derived. The derived coarse type is the fallback for anything newly added.
+      state[key] = hand.state[key] ?? meta;
+      if (!hand.state[key]) undocumented.push(`${store.name}.${key}`);
+    }
+    for (const key of Object.keys(hand.state)) {
+      if (!(key in store.state)) stale.push(`${store.name}.${key}`);
+    }
+    for (const action of hand.actions) {
+      if (!store.actions.includes(action)) stale.push(`${store.name}.${action}()`);
+    }
+    for (const action of store.actions) {
+      if (!hand.actions.includes(action)) undocumented.push(`${store.name}.${action}()`);
+    }
+
+    return { name: store.name, state, actions: store.actions };
+  });
+
+  if (stale.length) {
+    console.warn(`  ⚠ fragments/stores.ts describes members that no longer exist: ${stale.join(', ')}`);
+    // A stale entry documents vocabulary that resolves to nothing — always wrong, so it fails
+    // the build rather than scrolling past as a warning nobody acts on. (The undocumented
+    // direction below stays informational: most of those are internal wiring.)
+    process.exitCode = 1;
+  }
+  /*
+    An undescribed member a template can *reach* fails the build.
+
+    This used to be a count, on the reasoning that "nothing here can tell internal wiring from a
+    template-facing member somebody forgot to write up". Something can, and it is already read three
+    lines above: `templateSurface.ts` classifies every member, and `WIRING` is precisely "no schema
+    can reach this". So the members already filtered out as wiring are the ones that were making the
+    list unusable, and what is left is the set the architecture plan's rule is about — a member a
+    template may name, with nothing telling its author what it means.
+
+    The consequence of leaving it a count is on the record: three `ShapeStore` members regressed to
+    `unknown` after the PR that reported "zero unknown remain", and the count went up by three and
+    nobody looked.
+
+    Listed rather than counted now, because a failure has to say what to do about it.
+  */
+  /*
+    Counted, not listed — and deliberately not a failure.
+
+    This measures members missing from `storeEntries`, which is a *merge input*: a member absent
+    from it still renders with its description, because the descriptions are a separate table. So
+    the number here is noise for the most part, and the real "undescribed" check is the one against
+    that table — see `undescribedMembers`, which does fail the build.
+  */
+  if (undocumented.length) {
+    console.log(`  ${undocumented.length} store members are absent from storeEntries (mostly internal).`);
+  }
+
+  return [...merged, ...pseudo];
+}
 
 /**
  * Discover packages with a "context" field in their package.json
  * and extract the appropriate context fragment for each.
  */
-function discoverFragments(): ContextFragment[] {
+async function discoverFragments(): Promise<ContextFragment[]> {
   const fragments: ContextFragment[] = [];
 
   // Scan all workspace packages recursively (excludes node_modules).
@@ -86,7 +220,10 @@ function discoverFragments(): ContextFragment[] {
         fragments.push({ tokens: extractTokens(src) });
         break;
       case 'models':
-        fragments.push({ models: extractModels(src) });
+        fragments.push({ models: await extractEntities(src) });
+        break;
+      case 'plugins':
+        fragments.push({ pluginCatalogs: await extractPluginCatalog(src) });
         break;
       default:
         console.warn(`  Warning: unknown context type "${config.type}" in ${rel}`);
@@ -96,26 +233,129 @@ function discoverFragments(): ContextFragment[] {
   return fragments;
 }
 
-function main() {
+/**
+ * Formats generated content with the repo's Prettier config before writing.
+ * Raw JSON.stringify output doesn't collapse short arrays onto one line the
+ * way Prettier does, so re-running the generator with no source changes
+ * would otherwise produce a diff against the Prettier-formatted version
+ * already on disk.
+ */
+async function writeFormatted(filepath: string, content: string): Promise<void> {
+  const config = await resolveConfig(filepath);
+  const formatted = await format(content, { ...config, filepath });
+  writeFileSync(filepath, formatted, 'utf-8');
+}
+
+async function main() {
   console.log('Generating AI context...');
 
   // Discover and extract context from all workspace packages
-  const fragments = discoverFragments();
+  const fragments = await discoverFragments();
   const contextData = aggregateFragments(fragments);
 
-  // Store entries stay manually authored for now
-  contextData.storeEntries = storeEntries;
+  // Names come from the source, meaning comes from the fragment. See `extractors/appShell.ts`.
+  contextData.storeEntries = mergeStoreEntries(
+    extractStores(resolve(repoRoot, 'packages/app-shell/src/frameworks/solid/stores')),
+    storeEntries,
+    extractWiringMembers(resolve(repoRoot, 'packages/app-shell/src/shared/registries/templateSurface.ts')),
+  );
+
+  /*
+    Components the host registers that the design-system packages don't document — shell chrome,
+    lazy-loaded marketplace cards, a module's contributed widget. Listed so the validator doesn't
+    report them as unknown, and derived from the registry rather than remembered: it is the single
+    source for what a template may name, and a hand-copied subset of it drifted twice.
+  */
+  const registered = extractRegisteredComponents(
+    resolve(repoRoot, 'packages/app-shell/src/frameworks/solid/registries/componentRegistry.tsx'),
+  );
+
+  /*
+    The functions the host lends to expressions, read from its registry. Listed beside the built-in
+    library in the reference and handed to the validator, which is what makes a call to one accepted
+    and a typo in one reported — the same catalogue argument as the graph plugins.
+  */
+  contextData.sources = extractHostSources(resolve(repoRoot, 'packages/app-shell/src/shared/sources/index.ts'));
+
+  /*
+    The modules this deployment ships, read off the definitions the seed names. Everything a schema
+    may name of a module — its public store members, parts, panels, settings, activities, components,
+    functions, views, blocks and entities — reaches the reference and the validator from here, which
+    is what turns `modules.transcribe.typo` from a silent nothing into an error with a suggestion.
+  */
+  contextData.modules = await extractModules(repoRoot);
+
+  /*
+    Custom elements from libraries the seed says this deployment bundles. Read from each package's
+    own custom-elements manifest, so a chart or a rating a template names is documented beside the
+    primitives and accepted by the validator — see `extractors/foreignElements.ts`.
+  */
+  contextData.foreignElements = extractForeignElements(repoRoot);
+
+  /*
+    A component is documented only if something mounts it.
+
+    A package's `context` field documents everything it exports, and exporting is not registering.
+    `@we/block-solid` exports every block's input half, its placeholder and its toolbar for the
+    composer's own use; `@we/components` exports the media helpers its block displays are built
+    from. None of those is in the registry, so all of them were documented as schema components,
+    accepted by the validator — which reads this same list — and rendered as nothing. Twenty-one
+    names, each a template an author or a model could write correctly by the reference and see
+    fail silently: the failure the `CodeEditor` entry in the registry records fixing once, by hand.
+
+    Filtered here rather than per package, because the registry is the only thing that knows, and a
+    package cannot: whether a component is a schema word is the host's decision. What a module
+    contributes counts as mounted, since the host registers it at boot.
+  */
+  const mountable = new Set([...registered, ...(contextData.modules ?? []).flatMap((m) => m.components ?? [])]);
+  const unmounted = (contextData.components ?? []).filter((c) => !mountable.has(c.name)).map((c) => c.name);
+  if (unmounted.length) {
+    contextData.components = (contextData.components ?? []).filter((c) => mountable.has(c.name));
+    console.log(`  Left out ${unmounted.length} exported components nothing registers: ${unmounted.join(', ')}`);
+  }
+
+  const documented = new Set([
+    ...(contextData.primitives ?? []).map((p) => p.tagName),
+    ...(contextData.components ?? []).map((c) => c.name),
+  ]);
+  contextData.shellComponents = registered.filter((name) => !documented.has(name));
 
   const context = {
     ...contextData,
-    fragments: { schemaOperators, designSystemProps, routing, stores, storePatterns, rules },
+    fragments: {
+      // The library is generated from the registry, so the documented set and the callable set are
+      // one list.
+      schemaOperators: schemaOperators(
+        listFunctions().map(({ name, category, params, doc, example }) => ({ name, category, params, doc, example })),
+        contextData.sources,
+      ),
+      designSystemProps,
+      routing,
+      panels,
+      // Rebuilt from the merged entries rather than reusing the fragment's own text, so the prose in
+      // the reference lists exactly the members the validator accepts.
+      stores: generateStoresText(contextData.storeEntries ?? []),
+      storePatterns,
+      patterns,
+      rules,
+    },
   };
 
   // Schema-only reference — used for in-app AI (schemaContext.ts)
   const reference = assembleReference(context);
 
-  // IDE reference — schema reference + developer patterns (excluded from in-app AI)
-  const ideReference = reference + '\n\n---\n\n' + devPatterns.trim();
+  // IDE reference — orientation-first for codebase agents: architecture (the map) → contribution
+  // surfaces (where a change belongs) → schema authoring reference (the bulk/lookup) → developer
+  // patterns (gotchas appendix). Architecture, surfaces and dev-patterns are all excluded from the
+  // in-app AI (schemaContext.ts); the `reference` block in the middle stays contiguous because it IS
+  // the in-app context.
+  //
+  // Surfaces sits second because it answers the question that comes after "what is this codebase"
+  // and before any of the lookup below: which of nineteen slots does the thing I am about to write
+  // belong in. Read later it is useless — by then the file has already been created in the wrong one.
+  const ideReference = [architecture.trim(), contributionSurfaces.trim(), reference, devPatterns.trim()].join(
+    '\n\n---\n\n',
+  );
 
   // 1. Write instruction file for GitHub Copilot
   const instructionContent = wrapWithFraming(ideReference);
@@ -135,7 +375,24 @@ function main() {
   writeFileSync(resolve(cursorDir, 'we-schema.mdc'), instructionContent, 'utf-8');
   console.log(`  Written: ${resolve(cursorDir, 'we-schema.mdc')}`);
 
-  // 4. Generate schemaContext.ts (runtime constant for in-app AI)
+  /*
+    4. Write AGENTS.md — the same content again, under the name the rest of the field reads.
+
+    The three files above are one per vendor, and the list only grows: an outside contributor
+    arriving with a coding agent WE has never heard of gets nothing, and the surfaces guide this
+    reference now carries is aimed squarely at that person. AGENTS.md is the cross-tool convention,
+    so it costs one more write and stops the answer to "will my agent understand this repo" from
+    depending on which agent it is.
+
+    Identical bytes rather than a subset, deliberately. A trimmed variant would be a fourth thing to
+    keep in agreement with the fragments, and the ways it would drift are exactly the ways the
+    vendor files did before they were generated.
+  */
+  const agentsPath = resolve(repoRoot, 'AGENTS.md');
+  writeFileSync(agentsPath, instructionContent, 'utf-8');
+  console.log(`  Written: ${agentsPath}`);
+
+  // 5. Generate schemaContext.ts (runtime constant for in-app AI)
   // Uses the schema-only `reference` — devPatterns are intentionally excluded here
   // because an AI editing JSON templates inside the app doesn't need codebase patterns.
   const schemaContextPath = resolve(packageRoot, 'src/schemaContext.ts');
@@ -149,7 +406,7 @@ function main() {
   writeFileSync(schemaContextPath, schemaContextContent, 'utf-8');
   console.log(`  Written: ${schemaContextPath}`);
 
-  // 5. Write assembled context JSON (structured data for schema validation CLI)
+  // 6. Write assembled context JSON (structured data for schema validation CLI)
   // Only the ContextData fields — excludes fragments (AI prompt text, ~50KB)
   const contextJsonPath = resolve(packageRoot, 'context.json');
   const contextJson: ContextData = {
@@ -158,34 +415,96 @@ function main() {
     models: context.models,
     tokens: context.tokens,
     storeEntries: context.storeEntries,
+    shellComponents: context.shellComponents,
+    sources: context.sources,
+    modules: context.modules,
+    foreignElements: context.foreignElements,
   };
-  writeFileSync(contextJsonPath, JSON.stringify(contextJson, null, 2), 'utf-8');
+  await writeFormatted(contextJsonPath, JSON.stringify(contextJson, null, 2));
   console.log(`  Written: ${contextJsonPath}`);
 
-  // 6. Generate contextData.ts (runtime constant for schema validation)
-  const contextDataPath = resolve(packageRoot, 'src/contextData.ts');
+  // 7. Generate contextData.ts — the runtime component-metadata constant.
+  //
+  // Written into @we/schema-shared rather than this package, because it is runtime data consumed
+  // beside `getComponentMeta` (schema validation, the editor's inspector) — this package's job is
+  // generation, and nothing that runs in an app should need the doc generator in its dependency
+  // graph. Same arrangement as CLAUDE.md at the repo root: this tool writes files other places own.
+  const contextDataPath = resolve(packageRoot, '../schema-system/shared/src/generated/contextData.ts');
   const contextDataContent = [
     '// AUTO-GENERATED by packages/ai-context/src/generate.ts',
     '// Do not edit manually. Run: pnpm --filter @we/ai-context generate-context',
-    `import type { ContextData } from '@we/schema-shared';`,
+    `import type { ContextData } from '../contextTypes';`,
     '',
     `export const contextData: ContextData = ${JSON.stringify(contextJson)};`,
     '',
   ].join('\n');
-  writeFileSync(contextDataPath, contextDataContent, 'utf-8');
+  await writeFormatted(contextDataPath, contextDataContent);
   console.log(`  Written: ${contextDataPath}`);
+
+  /*
+    An example teaching a spelling the validator rejects fails the build.
+
+    ## Why this is a check and not a review note
+
+    Four audits have found this class. `CLAUDE.md`'s own rule says "a reference is always written
+    `{ \"$\": \"item.name\" }`; the validator rejects the old string spelling", and the sections
+    beneath it shipped `\"image\": \"$space.avatar\"`, `[\"$channel.name\"]` and a dozen more —
+    documentation contradicting its own rule, in the file every AI-authored template copies from.
+    An assistant following it is rejected and retries, burning continuations on the docs' own
+    pattern.
+
+    A regex over the finished reference rather than over the fragments, so it covers prose, examples
+    and anything a generator interpolates — the three places it actually appeared.
+
+    Matched only in a **value position**: an array element, or the right-hand side of a JSON key.
+    The reference has to be able to name the mistake in order to forbid it — "a plain string in a
+    prop is text too: `"$item.name"` renders those ten characters" is the rule, not a violation of
+    it — and quoting it in a sentence is not a value position, so the two are told apart by where
+    they sit rather than by an exception list.
+  */
+  const oldReferences = [...reference.matchAll(/(?<=[[,]\s*|"\s*:\s*)"(\$[a-z][A-Za-z0-9]*\.[A-Za-z0-9_.$]+)"/g)].map(
+    (m) => m[1],
+  );
+  if (oldReferences.length) {
+    console.error(
+      `  ✗ the generated reference teaches the old string reference, which the validator rejects — ` +
+        `write { "$": "…" } instead:\n     ${[...new Set(oldReferences)].join('\n     ')}`,
+    );
+    process.exitCode = 1;
+  }
+
+  /*
+    A member a template can name with nothing saying what it means fails the build.
+
+    Last, after everything is written, so a run that fails still leaves the reference regenerated —
+    the fix is to describe the member, and having the file on disk is what lets you see what it
+    currently says. See `undescribedMembers` in `fragments/stores.ts`.
+  */
+  if (undescribedMembers.length) {
+    console.error(
+      `  ✗ reachable from a schema and undescribed — add each to the descriptions table in ` +
+        `fragments/stores.ts:\n     ${undescribedMembers.join('\n     ')}`,
+    );
+    process.exitCode = 1;
+  }
 
   console.log('Done.');
 }
 
 function wrapWithFraming(reference: string): string {
-  return `# WE Schema Reference
+  return `# WE — Codebase & Schema Reference
 
 This file is auto-generated by \`@we/ai-context\`. Do not edit manually.
 Regenerate with: \`pnpm --filter @we/ai-context generate-context\`
 
-Use this reference when generating or updating WE UI schemas.
-All schemas must be valid JSON. Only use components, props, tokens, and patterns documented below.
+This reference serves two modes:
+- **Working in the codebase?** Start with **Architecture Orientation** below — what WE is, its
+  AD4M runtime, the core concepts, the package layering, and the render pipeline. Then
+  **Contribution Surfaces**, which routes what you are about to build to the slot it belongs in,
+  and names the file that registers it — the step whose omission fails silently.
+- **Authoring a WE UI schema (JSON)?** Skip to the **Schema Structure**, **Component Registry**,
+  and **Design Tokens** sections. All schemas must be valid JSON using only the components, props,
+  tokens, and patterns documented there.
 
 ---
 
@@ -193,4 +512,4 @@ ${reference}
 `;
 }
 
-main();
+await main();

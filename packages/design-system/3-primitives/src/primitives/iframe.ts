@@ -11,10 +11,19 @@ const CSS_STYLES = css`
     --we-iframe-height: 100%;
   }
 
+  /* An embed is content in a box, so it takes the surface radius — but the DS visual layer only
+     ever targets :host and [part='base'], and this element had neither, so every visual prop it
+     accepted did nothing. Same fix we-video already carries, for the same reason. */
+  [part='base'] {
+    overflow: hidden;
+  }
+
   iframe {
     width: 100%;
     height: 100%;
     border: none;
+    display: block;
+    border-radius: inherit;
   }
 `;
 
@@ -49,12 +58,14 @@ export default class Iframe extends LayoutVisualElement {
   }
 
   render() {
-    return html`<iframe
-      src=${this.src}
-      title=${this.title}
-      allow=${this.allow}
-      sandbox=${ifDefined(this.sandbox)}
-      allowfullscreen
-    ></iframe>`;
+    return html`<div part="base">
+      <iframe
+        src=${this.src}
+        title=${this.title}
+        allow=${this.allow}
+        sandbox=${ifDefined(this.sandbox)}
+        allowfullscreen
+      ></iframe>
+    </div>`;
   }
 }

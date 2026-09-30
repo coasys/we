@@ -19,16 +19,25 @@
  * - "panel"      — large child subtrees within a route (keyed by qualifier)
  */
 
-import type { OperatorToken, RouteSchema, SchemaNode, TemplateSchema } from './types';
+import { isPropsSchemaNode, isSchemaChild } from './treeUtils';
+import type { RouteSchema, SchemaNode, TemplateSchema } from './types';
 
-/** Type guard: a child is a SchemaNode (not a string or operator token) */
-function isSchemaChild(child: string | SchemaNode | OperatorToken): child is SchemaNode {
-  if (typeof child !== 'object' || child === null) return false;
-  // A node with `type` or `id` is always a SchemaNode, even if it also
-  // carries $-prefixed properties like $localState.
-  if ('type' in child || 'id' in child) return true;
-  // Otherwise reject objects whose keys are all $-prefixed (operator tokens).
-  return !Object.keys(child).some((k) => k.startsWith('$'));
+/**
+ * Call fn for each SchemaNode-shaped value directly embedded in node.props.
+ * Handles plain SchemaNode values (e.g. $if.props.then) and arrays of nodes.
+ */
+function forEachPropsNode(node: SchemaNode, fn: (child: SchemaNode) => void): void {
+  if (!node.props) return;
+  for (const val of Object.values(node.props)) {
+    if (typeof val !== 'object' || val === null) continue;
+    if (Array.isArray(val)) {
+      for (const item of val) {
+        if (isPropsSchemaNode(item)) fn(item as SchemaNode);
+      }
+    } else if (isPropsSchemaNode(val)) {
+      fn(val as SchemaNode);
+    }
+  }
 }
 
 /** A navigable region in the template tree */
@@ -259,6 +268,41 @@ export type FindNodeResult = {
  * Deduplicates: if two nodes share the same ID, the second gets a new one.
  * Mutates the schema in place and returns it.
  */
+/**
+ * Every component name a schema mounts, anywhere in its tree.
+ *
+ * Derived by walking rather than read from `meta.components`, because nothing keeps a hand-written
+ * list honest: not one template in the repo declares that field, and the default template plainly
+ * mounts `CesiumGlobe`. A declaration that is usually absent and occasionally stale is worse than
+ * no declaration when the answer decides whether a module can be safely uninstalled.
+ *
+ * Covers children, routes, slots and nodes nested in props (`$if`'s `then`/`else`, and the like) —
+ * the same reach as every other traversal here. `$`-prefixed control-flow types are skipped: they
+ * are the schema's own operators, never a contributed component.
+ */
+export function collectComponentTypes(schema: SchemaNode): Set<string> {
+  const found = new Set<string>();
+
+  function visit(node: SchemaNode): void {
+    if (typeof node.type === 'string' && node.type && !node.type.startsWith('$')) found.add(node.type);
+    if (node.children) {
+      for (const child of node.children) {
+        if (isSchemaChild(child)) visit(child);
+      }
+    }
+    if (node.routes) {
+      for (const route of node.routes) visit(route as SchemaNode);
+    }
+    if (node.slots) {
+      for (const slotNode of Object.values(node.slots)) visit(slotNode);
+    }
+    forEachPropsNode(node, visit);
+  }
+  visit(schema);
+
+  return found;
+}
+
 export function ensureNodeIds(schema: SchemaNode): SchemaNode {
   // First pass: collect all existing IDs and find max numeric suffix
   const existingIds = new Set<string>();
@@ -280,6 +324,7 @@ export function ensureNodeIds(schema: SchemaNode): SchemaNode {
     if (node.slots) {
       for (const slotNode of Object.values(node.slots)) collectIds(slotNode);
     }
+    forEachPropsNode(node, collectIds);
   }
   collectIds(schema);
 
@@ -306,9 +351,35 @@ export function ensureNodeIds(schema: SchemaNode): SchemaNode {
     if (node.slots) {
       for (const slotNode of Object.values(node.slots)) assignIds(slotNode);
     }
+    forEachPropsNode(node, assignIds);
   }
   assignIds(schema);
 
+  return schema;
+}
+
+/**
+ * Remove all auto-assigned node IDs from the tree.
+ * IDs are transient — only needed when passing the schema to the AI for patch editing.
+ * Mutates the schema in place and returns it.
+ */
+export function stripNodeIds(schema: SchemaNode): SchemaNode {
+  function strip(node: SchemaNode): void {
+    delete node.id;
+    if (node.children) {
+      for (const child of node.children) {
+        if (isSchemaChild(child)) strip(child);
+      }
+    }
+    if (node.routes) {
+      for (const route of node.routes) strip(route as SchemaNode);
+    }
+    if (node.slots) {
+      for (const slotNode of Object.values(node.slots)) strip(slotNode);
+    }
+    forEachPropsNode(node, strip);
+  }
+  strip(schema);
   return schema;
 }
 
@@ -342,6 +413,22 @@ export function findNodeById(schema: SchemaNode, targetId: string): FindNodeResu
       for (const [slotName, slotNode] of Object.entries(node.slots)) {
         const result = search(slotNode, node, `slots.${slotName}`, 0);
         if (result) return result;
+      }
+    }
+    if (node.props) {
+      for (const [propName, val] of Object.entries(node.props)) {
+        if (typeof val !== 'object' || val === null) continue;
+        if (Array.isArray(val)) {
+          for (let i = 0; i < val.length; i++) {
+            if (isPropsSchemaNode(val[i])) {
+              const result = search(val[i] as SchemaNode, node, `props.${propName}`, i);
+              if (result) return result;
+            }
+          }
+        } else if (isPropsSchemaNode(val)) {
+          const result = search(val as SchemaNode, node, `props.${propName}`, 0);
+          if (result) return result;
+        }
       }
     }
     return null;

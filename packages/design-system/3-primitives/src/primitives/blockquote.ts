@@ -8,15 +8,16 @@ import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'block',
+  r: '400',
   px: '400',
   py: '200',
-  color: 'neutral-600',
-  fontSize: '400',
+  color: 'text-muted',
+  fontSize: '300',
 };
 
 const styles = css`
   [part='base'] {
-    border-left: 3px solid var(--we-color-neutral-300);
+    border-left: 3px solid var(--we-role-border);
     margin: 0;
     font-style: italic;
   }

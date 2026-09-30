@@ -60,14 +60,14 @@ this.dispatchEvent(new CustomEvent('change', { detail: this.value, bubbles: true
 All visual variation should flow through the **JS merge chain**, not CSS attribute selectors.
 
 ```ts
-const DEFAULT_PROPS: Partial<DesignSystemProps> = { bg: '...', px: '...', ... };
+const DEFAULT_PROPS: Partial<DesignSystemProps> = { bg: '...', r: '...', ... };
 
 const VARIANT_DEFAULTS: Record<string, Partial<DesignSystemProps>> = {
   primary: { bg: '...', color: '...' },
 };
 
 const SIZE_DEFAULTS: Record<string, Partial<DesignSystemProps>> = {
-  sm: { px: '...', py: '...', fontSize: '...' },
+  sm: { fontSize: '...', height: '...' },
 };
 ```
 
@@ -79,17 +79,144 @@ explicit user props  >  variant defaults  >  size defaults  >  component default
 
 Using `mergeProps()` from `@we/design-utils`, which handles shorthand precedence (`p` vs `px`/`py`, etc.).
 
+### Density-cascade properties: keep out of SIZE_DEFAULTS
+
+Properties that participate in the theme density cascade (`px`/`gap` for controls) must **not** live in `SIZE_DEFAULTS` or `DEFAULT_PROPS`. If they did, `updateAllCustomVars` would set the concrete instance var (e.g. `--we-button-padding`) unconditionally, short-circuiting the cascade before `--we-theme-control-padding-x` is ever reached.
+
+Instead, those properties live in **CSS host rules** that set the size-specific CSS custom variable:
+
+```css
+:host([size='sm']) {
+  --we-button-size-padding-x: var(--we-space-300);
+}
+:host([size='md']) {
+  --we-button-size-padding-x: var(--we-space-400);
+}
+```
+
+The static DS stylesheet then emits the full fallback chain:
+
+```css
+/* x-only padding cascade */
+padding: var(
+  --we-button-padding,
+  /* explicit prop */
+  var(
+      --we-theme-button-padding-x,
+      /* component theme */
+      var(--we-theme-control-padding-x, /* group density */ var(--we-button-size-padding-x, var(--we-space-400)))
+    )
+); /* size default */
+```
+
+Components that use this pattern set `nativePadding: true` in `COMPONENT_CASCADE` (helpers.ts) to suppress the generic padding declaration, and add their own custom padding rule in `CSS_STYLES`. Gap follows the same pattern via `gapGroup` in `COMPONENT_CASCADE`.
+
 ### When to use CSS instead
 
-Use CSS only for properties **not covered by DesignSystemProps**:
+The rule is about **selector**, not property name. `DesignSystemElement` adopts a
+per-instance generated stylesheet _after_ the component's own `static styles` (see
+`applyDSBehavior` in `design-system-element.ts`), and that generated sheet declares
+**every** `DesignSystemProps` key covered by the component's layers as
+`property: var(--we-{name}-<x>)` — with no fallback in most cases — but only on two
+selectors: `:host` and `[part='base']`. Any equal-or-lower-specificity rule for the
+same property on one of those two selectors, written earlier in the component's own
+`static styles`, is silently overridden back to the CSS-initial value once an instance
+renders (`overflow: auto` → `visible`, `position: relative` → `static`, `min-height: 0`
+→ `auto`, etc.) — regardless of which property it is. This isn't limited to obviously
+"DS-ish" properties like `bg`/`padding`; it includes `position`, `top`/`right`/`bottom`/`left`,
+`z-index`, `flex`, `align-self`, `overflow`/`overflowX`/`overflowY`, `scrollbarWidth`,
+`scrollbarGutter`, and the full visual/flex/typography layers (see `HOST_LAYOUT` /
+`BASE_LAYOUT` / `BASE_VISUAL` / `BASE_FLEX` / `BASE_TYPOGRAPHY` in `helpers.ts` for
+the exact lists).
 
-- Non-DS layout (`position: absolute`, `overflow: hidden`)
+So: **hardcoding a DS-covered property on `:host` or `[part='base']` in a component's
+own CSS does not work** — set it via `DEFAULT_PROPS` instead (see below), which routes
+through `updateAllCustomVars()` and writes an inline custom property on the host,
+outranking any stylesheet. Confirmed broken this way: `we-tooltip`'s
+`:host { position: relative }` (not yet fixed — `tooltip.ts` has no `DEFAULT_PROPS`
+at all, so its host `position: relative` is currently a no-op; harmless today only
+because the tooltip's own positioning uses `position: fixed` promoted to the top
+layer, not because the host's `position: relative` is doing anything).
+`select.ts` independently worked around the same issue for `[part='base']`'s
+`position: relative` by setting it as an inline style directly in `render()`
+(`styleMap({ position: 'relative', ... })`) rather than in `static styles` — that
+works for the same reason `DEFAULT_PROPS` does (inline style beats any stylesheet).
+
+**`:host`'s own `overflow` is the one property that goes the _other_ way — it is
+never DS-covered at all**, even though `overflow` on `[part='base']` is. `HOST_LAYOUT`
+in `helpers.ts` (the list the generated stylesheet declares on `:host`) simply doesn't
+include `overflow` — it's `[part='base']`-only. This is a real trap for any wrapper
+component whose whole job is to clip or scroll its content (`we-scroll-area`, and check
+anything similar): setting `overflow: auto` on `[part='base']` alone is not enough. If
+`[part='base']` ends up taller than the host's own box — which happens easily, e.g. if
+its `height: 100%` doesn't resolve to something smaller than its content — the excess
+just visually spills out past the host, fully visible, with no scrollbar anywhere,
+_because nothing ever told the host itself to clip or scroll it_. `[part='base']`'s
+overflow only matters once `[part='base']` is actually bounded to something smaller
+than its content; don't assume that follows automatically from a definite host height.
+The fix (see `we-scroll-area`'s `scroll-area.ts`) is to set `overflow: auto` directly
+on `:host` in the component's own `static styles` — safe to hardcode, since (unlike
+almost every other layout property) `:host`'s overflow is never touched by the
+generated stylesheet. When building or debugging a scrollable/clippable wrapper,
+verify by giving the host a literal pixel height and confirming content actually clips
+— don't assume a "definite height + `overflow:auto` on an inner div" combination works
+without checking.
+
+All of the above is about the **base** rules, which is the only place specificity still
+decides. Breakpoints and states work differently — see the next section — and a component's
+own rule is never undone by one.
+
+The two selectors above are the _only_ ones the generated stylesheet touches. CSS
+targeting any other shadow part (`[part='trigger']`, `[part='arrow']`,
+`[part='backdrop']`, `[part='listbox']`, custom classes, pseudo-elements, etc.) is
+completely unaffected and safe to hardcode freely — this is how most existing
+`position: absolute` usage in this package (tooltip's arrow, modal's backdrop,
+select's listbox) already works correctly.
+
+Safe to hardcode in a component's own `static styles` (not DS-covered, or not on
+`:host`/`[part='base']`):
+
+- Positioning/layout on any part _other than_ `:host` or `[part='base']`
 - Pseudo-elements (`::before`, `::after`)
 - Animations / transitions
-- Child element styling (`[part='base'] { all: unset }`)
-- Host display override (`--we-{name}-host-display`)
+- Structural resets on inner elements (`[part='base'] { all: unset }` — targets
+  properties `all` doesn't include in the generated sheet's explicit list, but verify
+  case-by-case)
+- Host display override (`--we-{name}-host-display`) — a uniquely-named custom
+  property the generated sheet only ever _reads_ via `var()`, never sets itself
+- **Size-specific CSS custom properties** for density-cascade vars (see above)
 
-**Never** use `:host([variant='...'])` or `:host([size='...'])` CSS selectors for DS-covered properties (bg, color, padding, fontSize, etc.). Those belong in the JS maps.
+**Never** use `:host([variant='...'])` or `:host([size='...'])` CSS selectors to directly set DS-covered properties (bg, color, padding, fontSize, etc.) — those belong in the JS maps. **Exception:** setting CSS custom properties (e.g. `--we-button-size-padding-x`) via host selectors is fine — that feeds the cascade rather than bypassing it.
+
+## Cascade Layers
+
+Every primitive's shadow root is arranged in cascade layers, lowest first:
+
+| Layer                                                 | Holds                                                             |
+| ----------------------------------------------------- | ----------------------------------------------------------------- |
+| `we-base`                                             | The component's own `static styles`, and the generated base rules |
+| `we-tier-sm` / `we-tier-md` / `we-tier-lg`            | `smUpProps` / `mdUpProps` / `lgUpProps`                           |
+| `we-state-hover` / `-focus` / `-active` / `-disabled` | `hoverProps` / `focusProps` / `activeProps` / `disabledProps`     |
+| `we-overlay`                                          | `OverlayElement`'s surface rules                                  |
+
+Inside `we-base` nothing has changed: component rules and generated base rules resolve by
+specificity and order, as described above. Every declaration in a tier or state layer is
+`prop: var(--we-{name}-{variant}-{prop}, revert-layer)`, so a breakpoint or a state changes only
+what it names and rolls back to the layer below for everything else. That is what lets a hover
+leave a truncated label's `white-space` alone, keep a breakpoint's `display`, and combine with a
+focus ring instead of erasing it. Two states that set the same property resolve in the order
+above; a state beats a breakpoint.
+
+The tier and state rules match only `:host([data-we-tiers])` / `:host([data-we-states])`, which
+`updateAllCustomVars` writes when an element's merged props include a bag of that kind. An
+element with none carries no variant rules, so `revert-layer` costs it nothing.
+
+**The rule for authors: nothing may be adopted into a primitive's shadow root outside a layer.**
+A rule outside every layer beats every layer, so it would override every breakpoint and state on
+that component. `static styles` are moved into `we-base` for you as Lit finalizes them — write
+them as normal, with no `@layer` of your own. Anything adopted another way (as `OverlayElement`
+does) must be wrapped in a named layer after `DS_LAYER_ORDER`. `src/cascade.browser.test.ts`
+checks every registered primitive for this.
 
 ## Static `getDefaultProps()`
 
@@ -117,6 +244,35 @@ This is read once at class registration to generate the static DS stylesheet (CS
 - Size map: `SIZE_DEFAULTS`
 - CSS block: `styles` or `CSS_STYLES`
 
+## Record-anchored decorations — `data-we-record`
+
+Some marks belong at a **record** rather than at a coordinate: a live cursor, a highlight on something
+an extraction pass touched, a comment pin, "two people are reading this". They all need one answer
+from the DOM — _which box is that record, and where is it right now_ — and `data-we-record` is it.
+
+```html
+<we-draggable recordid="post-1" data-we-record="post-1">…the card…</we-draggable>
+```
+
+**Why an id and not a position.** In a flow layout there is nothing else durable to measure against.
+A kanban column is wherever the columns before it ended, so a pixel offset lands somewhere else on a
+screen with a different width or a different panel docked; a DOM path lands somewhere else the moment
+a template rearranges itself, and a template is data that changes under you. Two agents are
+guaranteed to agree about a record id and about nothing else on screen.
+
+**Who sets it.** `we-draggable` sets it from its own `recordId`, which covers the great majority of
+cards for nothing — anything a person can pick up is something a mark can be anchored to, and both
+are the same id. Any other surface that wants to be anchorable stamps it on the element standing for
+the record.
+
+**Reading it: the marker may have no box.** `we-draggable` is `display: contents` by design, so the
+attribute frequently sits on an element whose `getBoundingClientRect()` is empty with the real box one
+level down. **Fall back to the first child that has a box** — the same rule `we-sortable` follows for
+`data-we-id`. Measuring the marker blindly gives a zero rect, and every fraction computed against it
+collapses into a corner.
+
+The constant is `RECORD_ATTR`, exported from `@we/design-utils` so the app shell can read it too. Do not hardcode the string.
+
 ## Token Types vs CSS Enums
 
 When adding or referencing types in `DesignSystemProps`:
@@ -126,7 +282,7 @@ When adding or referencing types in `DesignSystemProps`:
 
 **Rule of thumb:** If there's a value map that generates CSS custom properties, it's a token. If it's just a union of CSS keywords, it's a type.
 
-See [token-type-consolidation plan](../../docs/internal/plans/prs/token-type-consolidation.md) for the full migration plan.
+(The token-type-consolidation plan this referenced has shipped and its plan file was removed; git history has it.)
 
 ## Migration Checklist
 

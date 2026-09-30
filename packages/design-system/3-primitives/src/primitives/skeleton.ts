@@ -9,7 +9,7 @@ import sharedStyles from '../shared/styles';
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'flex',
   r: '400',
-  bg: 'neutral-100',
+  bg: 'surface-sunken',
 };
 
 const styles = css`
@@ -43,9 +43,9 @@ const styles = css`
   :host([animation='wave']) [part='base'] {
     background: linear-gradient(
       90deg,
-      var(--we-color-neutral-100) 25%,
-      var(--we-color-neutral-200) 50%,
-      var(--we-color-neutral-100) 75%
+      var(--we-role-surface-sunken) 25%,
+      var(--we-role-control-surface) 50%,
+      var(--we-role-surface-sunken) 75%
     );
     background-size: 200% 100%;
     animation: wave 1.5s linear infinite;

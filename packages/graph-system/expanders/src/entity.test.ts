@@ -1,0 +1,437 @@
+/**
+ * Entity expander tests, against a fake data layer.
+ *
+ * Two behaviours are worth pinning because both are invisible when wrong: a relation that comes back
+ * as a bare id must still produce an edge (to a placeholder), and the backward pass must actually be
+ * asked for — a map that silently walks one way looks like a map with fewer relationships.
+ */
+import type { EntityShape, ExpanderContext, ExpanderQuery } from '@we/graph-protocol';
+import { entityAddress, parseAddress } from '@we/graph-protocol';
+import { describe, expect, it, vi } from 'vitest';
+
+import { entityExpander } from './entity';
+import { labelProperty } from './nodes';
+import { SCHEMA_TYPE, schemaExpander } from './schema';
+
+const SHAPES: EntityShape[] = [
+  {
+    name: 'Post',
+    properties: [
+      { name: 'title', type: 'string', required: true },
+      { name: 'body', type: 'string' },
+    ],
+    relations: [{ name: 'author', target: 'Agent', cardinality: 'one' }],
+  },
+  {
+    name: 'Agent',
+    properties: [{ name: 'name', type: 'string', required: true }],
+    relations: [],
+    identityProperty: 'name',
+  },
+  {
+    name: 'Comment',
+    properties: [{ name: 'text', type: 'string' }],
+    relations: [{ name: 'post', target: 'Post', cardinality: 'one' }],
+  },
+];
+
+function contextWith(rows: (query: ExpanderQuery) => Record<string, unknown>[]) {
+  const warnings: string[] = [];
+  const query = vi.fn(async (request: ExpanderQuery) => rows(request));
+  const context: ExpanderContext = {
+    query,
+    defaultDataset: () => 'ds',
+    models: () => SHAPES,
+    warn: (message) => warnings.push(message),
+  };
+  return { context, query, warnings };
+}
+
+const POST = entityAddress('ds', 'Post', 'p1');
+
+describe('entityExpander', () => {
+  it('follows a hydrated relation into a real node', async () => {
+    const { context } = contextWith(() => [{ id: 'p1', title: 'Hello', author: { id: 'a1', name: 'James' } }]);
+
+    const result = await entityExpander().expand({ id: POST, direction: 'out' }, context);
+
+    expect(result.nodes).toHaveLength(1);
+    expect(result.nodes[0]).toMatchObject({ type: 'Agent', label: 'James' });
+    expect(result.edges[0]).toMatchObject({ source: POST, type: 'author' });
+  });
+
+  it('turns a bare relation id into a placeholder rather than dropping the edge', async () => {
+    // The normal case in a P2P system: the target has not synced, or `include` did not hydrate it.
+    const { context } = contextWith(() => [{ id: 'p1', title: 'Hello', author: 'a1' }]);
+
+    const result = await entityExpander().expand({ id: POST, direction: 'out' }, context);
+
+    expect(result.nodes[0]).toMatchObject({ type: 'Agent', unresolved: true });
+    expect(result.edges).toHaveLength(1);
+  });
+
+  it('asks for what points at the node when walking backwards', async () => {
+    const { context, query } = contextWith((request) =>
+      request.entity === 'Comment' ? [{ id: 'c1', text: 'Nice' }] : [],
+    );
+
+    const result = await entityExpander().expand({ id: POST, direction: 'in' }, context);
+
+    // Comment.post targets Post, so Comment is the candidate — asked through the drill-down path
+    // with an inward direction, not by scanning every entity in the space.
+    expect(query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entity: 'Comment',
+        scope: expect.objectContaining({ anchor: 'Post', via: 'post', anchorId: 'p1', direction: 'in' }),
+      }),
+    );
+    expect(result.edges[0]).toMatchObject({ target: POST, type: 'post' });
+  });
+
+  it('honours an edge-type filter', async () => {
+    const { context, query } = contextWith(() => [{ id: 'p1', title: 'Hello' }]);
+
+    await entityExpander().expand({ id: POST, direction: 'out', edgeTypes: ['nothing'] }, context);
+
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('warns instead of throwing when the type has no shape', async () => {
+    const { context, warnings } = contextWith(() => []);
+
+    const result = await entityExpander().expand(
+      { id: entityAddress('ds', 'Unknown', 'x'), direction: 'both' },
+      context,
+    );
+
+    expect(result.nodes).toEqual([]);
+    expect(warnings.join(' ')).toContain('Unknown');
+  });
+
+  it('addresses nodes so the same instance from two expansions is one node', async () => {
+    const { context } = contextWith(() => [{ id: 'p1', title: 'Hello', author: { id: 'a1', name: 'James' } }]);
+
+    const first = await entityExpander().expand({ id: POST, direction: 'out' }, context);
+    const second = await entityExpander().expand({ id: POST, direction: 'out' }, context);
+
+    expect(first.nodes[0].id).toBe(second.nodes[0].id);
+    expect(parseAddress(first.nodes[0].id)).toMatchObject({ type: 'Agent', id: 'a1' });
+  });
+});
+
+describe('labelProperty', () => {
+  it('prefers what the backend declares as the identity', () => {
+    // Interpretation classes mark one property as the dedup identity, which is by construction the
+    // title-like field — better than any guess this file could make.
+    expect(labelProperty(SHAPES[1])).toBe('name');
+  });
+
+  it('falls back to a conventional name', () => {
+    expect(labelProperty({ name: 'X', properties: [{ name: 'title', type: 'string' }], relations: [] })).toBe('title');
+  });
+
+  it('falls back to the first required string', () => {
+    expect(
+      labelProperty({
+        name: 'X',
+        properties: [
+          { name: 'weight', type: 'number' },
+          { name: 'summary', type: 'string', required: true },
+        ],
+        relations: [],
+      }),
+    ).toBe('summary');
+  });
+});
+
+describe('schemaExpander', () => {
+  it('opens a type node into instances of that type', async () => {
+    const { context } = contextWith((request) =>
+      request.entity === 'Agent'
+        ? [
+            { id: 'a1', name: 'James' },
+            { id: 'a2', name: 'Nico' },
+          ]
+        : [],
+    );
+
+    const result = await schemaExpander().expand(
+      { id: entityAddress('ds', SCHEMA_TYPE, 'Agent'), direction: 'out' },
+      context,
+    );
+
+    expect(result.nodes.map((n) => n.label)).toEqual(['James', 'Nico']);
+    // Instances address as ordinary entities, so the entity expander takes over from here and the
+    // schema map and a knowledge map become one continuous gesture.
+    expect(parseAddress(result.nodes[0].id)).toMatchObject({ kind: 'entity', type: 'Agent', id: 'a1' });
+  });
+
+  it('reports a cursor when a full page came back, without inventing a total', async () => {
+    const { context } = contextWith(() => [{ id: 'a1', name: 'James' }]);
+
+    const result = await schemaExpander({ limit: 1 }).expand(
+      { id: entityAddress('ds', SCHEMA_TYPE, 'Agent'), direction: 'out', limit: 1 },
+      context,
+    );
+
+    expect(result.cursor).toBe('1');
+    expect(result.total).toBeUndefined();
+  });
+
+  it('warns rather than throwing for a type the dataset does not declare', async () => {
+    const { context, warnings } = contextWith(() => []);
+
+    const result = await schemaExpander().expand(
+      { id: entityAddress('ds', SCHEMA_TYPE, 'Ghost'), direction: 'out' },
+      context,
+    );
+
+    expect(result.nodes).toEqual([]);
+    expect(warnings.join(' ')).toContain('Ghost');
+  });
+});
+
+describe('reified edges', () => {
+  const REIFIED = { SemanticRelationship: { source: 'expression', target: 'tag', type: 'tagged' } };
+
+  const REIFIED_SHAPES: EntityShape[] = [
+    ...SHAPES,
+    {
+      name: 'SemanticRelationship',
+      properties: [{ name: 'relevance', type: 'number', required: true }],
+      relations: [
+        { name: 'expression', target: 'Post', cardinality: 'one' },
+        { name: 'tag', target: 'Agent', cardinality: 'one' },
+      ],
+    },
+  ];
+
+  function reifiedContext(rows: (query: ExpanderQuery) => Record<string, unknown>[]) {
+    const warnings: string[] = [];
+    return {
+      warnings,
+      context: {
+        query: async (request: ExpanderQuery) => rows(request),
+        defaultDataset: () => 'ds',
+        models: () => REIFIED_SHAPES,
+        warn: (m: string) => warnings.push(m),
+      } as ExpanderContext,
+    };
+  }
+
+  it('collapses a relationship entity into one edge instead of a node', async () => {
+    // The failure this prevents: every SemanticRelationship rendering as a dot, so a map of tagged
+    // messages shows three times as many nodes and none of the relationships they encode.
+    const { context } = reifiedContext((request) =>
+      request.entity === 'SemanticRelationship'
+        ? [{ id: 'sr1', relevance: 0.9, expression: { id: 'p1', title: 'Hello' }, tag: { id: 'a1', name: 'James' } }]
+        : [],
+    );
+
+    const result = await entityExpander({ reified: REIFIED }).expand({ id: POST, direction: 'in' }, context);
+
+    // Two endpoints, and no node for the relationship itself.
+    expect(result.nodes.map((n) => n.type).sort()).toEqual(['Agent', 'Post']);
+    expect(result.nodes.some((n) => n.type === 'SemanticRelationship')).toBe(false);
+    expect(result.edges).toHaveLength(1);
+  });
+
+  it('carries the relationshipic own data and stays traceable to its record', async () => {
+    const { context } = reifiedContext((request) =>
+      request.entity === 'SemanticRelationship'
+        ? [{ id: 'sr1', relevance: 0.9, expression: { id: 'p1' }, tag: { id: 'a1' } }]
+        : [],
+    );
+
+    const [edge] = (await entityExpander({ reified: REIFIED }).expand({ id: POST, direction: 'in' }, context)).edges;
+
+    expect(edge.type).toBe('tagged');
+    expect(edge.data?.relevance).toBe(0.9);
+    // Clicking the edge must be able to open the record behind it rather than dead-ending.
+    expect(edge.reifiedAs).toContain('SemanticRelationship');
+  });
+
+  it('is idempotent — reaching the same relationship twice is one edge', async () => {
+    const { context } = reifiedContext((request) =>
+      request.entity === 'SemanticRelationship'
+        ? [{ id: 'sr1', relevance: 0.5, expression: { id: 'p1' }, tag: { id: 'a1' } }]
+        : [],
+    );
+    const expander = entityExpander({ reified: REIFIED });
+
+    const first = await expander.expand({ id: POST, direction: 'in' }, context);
+    const second = await expander.expand({ id: POST, direction: 'in' }, context);
+
+    expect(first.edges[0].id).toBe(second.edges[0].id);
+  });
+
+  it('skips and warns when an endpoint is missing rather than drawing half an edge', async () => {
+    const { context, warnings } = reifiedContext((request) =>
+      request.entity === 'SemanticRelationship' ? [{ id: 'sr1', relevance: 0.5, expression: { id: 'p1' } }] : [],
+    );
+
+    const result = await entityExpander({ reified: REIFIED }).expand({ id: POST, direction: 'in' }, context);
+
+    expect(result.edges).toEqual([]);
+    // The warning names which end and why, so a repeating one in a real space can be acted on: this
+    // record has no `tag` link at all, which is different from having one nothing can classify.
+    expect(warnings.join(' ')).toContain('tag is empty');
+  });
+
+  it('reads an untyped endpoint from what it says it is, when nothing recorded its type', async () => {
+    /*
+      The case seen in a real space: a `Relationship` whose `sourceType`/`targetType` were never
+      written — an extraction pass can create one without them — and every such edge was skipped as
+      "missing an endpoint" though both ends existed and were perfectly readable. The endpoints are
+      read polymorphically now, so each arrives carrying its own class, and the stored copy stops
+      being the only place the type can come from.
+    */
+    const UNTYPED = { Connection: { source: 'source', target: 'target', sourceType: 'sourceType' } };
+    const shapes: EntityShape[] = [
+      ...SHAPES,
+      {
+        name: 'Connection',
+        properties: [{ name: 'label', type: 'string' }],
+        // Untyped both ends, as a hand-drawn or extracted connection is.
+        relations: [
+          { name: 'source', target: '', cardinality: 'one' },
+          { name: 'target', target: '', cardinality: 'one' },
+        ],
+      },
+    ];
+    const warnings: string[] = [];
+    const context = {
+      // The backward pass asks once per endpoint relation, and the backend answers only for the one
+      // that actually points at this node — here `source`, since the connection's source is the Post.
+      query: async (request: ExpanderQuery) =>
+        request.entity === 'Connection' && request.scope?.via === 'source'
+          ? [
+              {
+                id: 'c1',
+                label: 'contradicts',
+                // No `sourceType`/`targetType` on the row at all.
+                source: { id: 'p1', title: 'Hello', __subjectClass: 'Post' },
+                target: { id: 'a1', name: 'James', __subjectClass: 'Agent' },
+              },
+            ]
+          : [],
+      defaultDataset: () => 'ds',
+      models: () => shapes,
+      warn: (m: string) => warnings.push(m),
+    } as ExpanderContext;
+
+    const result = await entityExpander({ reified: UNTYPED }).expand({ id: POST, direction: 'in' }, context);
+
+    expect(warnings).toEqual([]);
+    expect(result.edges).toHaveLength(1);
+    expect(result.nodes.map((n) => n.type).sort()).toEqual(['Agent', 'Post']);
+  });
+
+  it('leaves the entity as an ordinary node when nothing declares it reified', async () => {
+    // The distinction is configuration, not inference: a Comment with author and post is a node
+    // people want to read, and only the person modelling the space knows which is which.
+    const { context } = reifiedContext((request) =>
+      request.entity === 'SemanticRelationship' ? [{ id: 'sr1', relevance: 0.9 }] : [],
+    );
+
+    const result = await entityExpander().expand({ id: POST, direction: 'in' }, context);
+
+    expect(result.nodes.some((n) => n.type === 'SemanticRelationship')).toBe(true);
+  });
+});
+
+/**
+ * A connection somebody drew, rather than one a schema declared.
+ *
+ * The difference that matters here is that its endpoints are untyped — it can point at anything —
+ * so the entity name each end needs for its address has nowhere to come from except the record.
+ */
+describe('reified edges with untyped endpoints', () => {
+  const DRAWN = {
+    Relationship: {
+      source: 'source',
+      target: 'target',
+      type: 'relates',
+      sourceType: 'sourceType',
+      targetType: 'targetType',
+    },
+  };
+
+  const DRAWN_SHAPES: EntityShape[] = [
+    ...SHAPES,
+    {
+      name: 'Relationship',
+      identityProperty: 'label',
+      properties: [
+        { name: 'label', type: 'string', required: true },
+        { name: 'sourceType', type: 'string' },
+        { name: 'targetType', type: 'string' },
+      ],
+      relations: [
+        { name: 'source', target: '', cardinality: 'one' },
+        { name: 'target', target: '', cardinality: 'one' },
+      ],
+    },
+  ];
+
+  /**
+   * Answers a reverse lookup honestly: a row comes back only from the end it is actually attached
+   * to.
+   *
+   * Both endpoint relations are queried, because a node can be at either end of a connection — and
+   * a fake that returned every row for both would hide that, by making one relationship look like
+   * two edges when it is really one query finding it and one query not.
+   */
+  function drawnContext(rows: Record<string, unknown>[]) {
+    const warnings: string[] = [];
+    return {
+      warnings,
+      context: {
+        query: async (request: ExpanderQuery) => {
+          if (request.entity !== 'Relationship') return [];
+          const { via, anchorId } = request.scope ?? {};
+          return via ? rows.filter((row) => row[via] === anchorId) : rows;
+        },
+        defaultDataset: () => 'ds',
+        models: () => DRAWN_SHAPES,
+        warn: (m: string) => warnings.push(m),
+      } as ExpanderContext,
+    };
+  }
+
+  it('takes each end’s type from the record when the relation declares none', async () => {
+    const { context } = drawnContext([
+      { id: 'r1', label: 'contradicts', source: 'p1', sourceType: 'Post', target: 'a1', targetType: 'Agent' },
+    ]);
+
+    const result = await entityExpander({ reified: DRAWN }).expand({ id: POST, direction: 'in' }, context);
+
+    expect(result.edges).toHaveLength(1);
+    // The types are what make the addresses, so getting them from the row is the whole mechanism:
+    // without it neither end could be addressed and the edge could not be drawn at all.
+    expect(result.nodes.map((n) => n.type).sort()).toEqual(['Agent', 'Post']);
+  });
+
+  it('carries the author’s own words as the edge label', async () => {
+    // `type` stays a stable category — "somebody asserted this" — and the label carries the meaning,
+    // which is why the type is not the entity name.
+    const { context } = drawnContext([
+      { id: 'r1', label: 'came out of', source: 'p1', sourceType: 'Post', target: 'a1', targetType: 'Agent' },
+    ]);
+
+    const [edge] = (await entityExpander({ reified: DRAWN }).expand({ id: POST, direction: 'in' }, context)).edges;
+
+    expect(edge.type).toBe('relates');
+    expect(edge.label).toBe('came out of');
+    expect(edge.reifiedAs).toContain('Relationship');
+  });
+
+  it('draws nothing when a record does not say what it connected', async () => {
+    // An address cannot be minted without a type, and half an edge is worse than none.
+    const { context } = drawnContext([{ id: 'r1', label: 'contradicts', source: 'p1', target: 'a1' }]);
+
+    const result = await entityExpander({ reified: DRAWN }).expand({ id: POST, direction: 'in' }, context);
+
+    expect(result.edges).toEqual([]);
+  });
+});

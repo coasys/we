@@ -1,0 +1,93 @@
+// Global reset and base styles
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+
+  // What sits behind the app *is* the page, so a theme pinning that role should reach here — and it
+  // did not: a theme could paint every surface it owned and still leave a frame of `neutral-50`
+  // around the whole window, wherever the app did not fill the viewport. `role.page` defaults to
+  // `neutral-50`, exactly what was hardcoded, so nothing moves for a theme that pins nothing.
+  background-color: var(--we-role-page);
+
+  // The role migration this was waiting for. Most text in the app sets no colour of its own and
+  // inherits from here, so while this named a scale position, `text` was the one role a theme could
+  // pin and watch do nothing — which is most of what "changing the colours does nothing" meant.
+  //
+  // It does move: `text` defaults to `neutral-900` against the `neutral-1000` that was here, so body
+  // text softens by one step off pure black in themes that pin nothing. That is the conventional
+  // choice for body copy and the cost of having the role reach anything at all.
+  color: var(--we-role-text);
+}
+
+// Before the app has mounted anything, paint what the boot screen is about to paint.
+//
+// The document background is the `page` role — a shade lighter than the boot screen's neutral-0 — and
+// it is what fills the window between a reload and Solid's first render. On an account switch
+// that gap is long enough to see, so it read as the screen flashing a lighter colour. The window
+// background is set to the same token from the main process, so the whole chain
+// (window → empty document → boot screen) is one colour now.
+//
+// `:empty` stops applying the moment Solid renders into it, so this costs the running app nothing.
+#root:empty {
+  // `surface` defaults to the `neutral-0` that was here, so the pre-mount frame is unchanged — but a
+  // theme that pins its surfaces now keeps the chain (window → empty document → boot screen) one
+  // colour, which was the whole point of matching them.
+  background-color: var(--we-role-surface);
+}
+
+/*
+  Global scrollbar styling.
+
+  These declarations are `scrollbarRules()` from `@we/tokens`, which is where they are decided —
+  the same block the primitives' shared stylesheet adopts and `we-scroll-area` uses for its own
+  part. Restated here because Sass cannot import a TypeScript string, and pinned by
+  `scrollbarConsistency.test.ts`, which fails if the two fall out of step. They already had: this
+  copy hid the scrollbar buttons and the shared one did not.
+
+  Do NOT add `scrollbar-color` or `scrollbar-width` beside these. Chromium reads either as "use the
+  platform scrollbar" and ignores every rule below — see the note on `scrollbarRules`.
+*/
+::-webkit-scrollbar {
+  width: var(--we-scrollbar-width);
+  height: var(--we-scrollbar-width);
+}
+
+::-webkit-scrollbar-track {
+  background: var(--we-scrollbar-background);
+  background-image: var(--we-scrollbar-background-image);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--we-scrollbar-corner-background);
+}
+
+::-webkit-scrollbar-thumb {
+  box-shadow: var(--we-scrollbar-thumb-box-shadow);
+  border-radius: var(--we-scrollbar-thumb-border-radius);
+  background-color: var(--we-scrollbar-thumb-background);
+
+  // Holds the thumb off the edges of its own track, so content that scrolls does not end flush
+  // against the bar. The border reserves the room and `content-box` stops the background painting
+  // into it — either alone does nothing. See the `thumbInset` token for why it is here and not a
+  // padding on each scroll region.
+  border: var(--we-scrollbar-thumb-inset) solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+.cesium-viewer-bottom {
+  opacity: 0.3;
+}

@@ -1,14 +1,271 @@
+import type { RendererStores } from '@we/backend-shared';
+
 // Pure framework-agnostic schema types
 export type SchemaProp = string | number | boolean | Record<string, unknown> | SchemaProp[] | undefined;
 export type StoreDeclaration = Record<string, true | { actions?: string[]; state?: string[] }>;
+/**
+ * A panel this interface has, and where it starts.
+ *
+ * Two things in one list, because from a template's side they are one question — "what panels does
+ * this interface have" — and splitting them would mean two declarations that could disagree about
+ * the same edge:
+ *
+ * - **`module`** places a panel some module already contributes. The template decides where it
+ *   opens; the module still owns what is in it and whether it is open.
+ * - **`node`** supplies the content itself. The shell owns the frame and the open flag, because
+ *   there is no module to own them.
+ *
+ * Positions are named, never pixels — the same reason `DockSize` is a name. A template cannot see
+ * the viewport, and a coordinate it guessed would be wrong on a display it never ran on. A *size*
+ * may be pixels, through `box`, because the host clamps it to the room there is: a box too big for
+ * the window is capped rather than hung off its edge.
+ */
+export type TemplatePanel = {
+  /**
+   * Stable, and the author's to choose.
+   *
+   * Placements are remembered per panel id, so an id that changed when the list was reordered would
+   * throw away wherever somebody had dragged it. Generated indices were the alternative and have
+   * exactly that failure.
+   */
+  id: string;
+  /** The module whose panel this places. Mutually exclusive with `node`. */
+  module?: string;
+  /**
+   * Which of that module's panels, where it contributes more than one — its declared `name`.
+   *
+   * Unnecessary for a module with a single panel, which is most of them: the host resolves the name
+   * to that one dock. A module with several has no default worth guessing — supplying a transcript
+   * body into a settings panel is a silent wrong answer — so the host refuses and says so until an
+   * entry names one.
+   */
+  dock?: string;
+  /** The panel's content, for a panel the template supplies. Mutually exclusive with `module`. */
+  node?: SchemaNode;
+  /** Shown in the titlebar. Only meaningful with `node`; a module's panel names itself. */
+  title?: string;
+  /** Which of the eight positions it opens at. */
+  snap?: 'top-left' | 'top' | 'top-right' | 'right' | 'bottom-right' | 'bottom' | 'bottom-left' | 'left';
+  /** Where it sits *along* the edge among the panels sharing its lane — lower is nearer the start. */
+  order?: number;
+  /**
+   * Which lane it is in, counting inward from the edge — 0 is against the edge.
+   *
+   * The second of an edge's two coordinates: `band` is how far in, `order` is where along. Two panels
+   * that name the same band share one lane and divide the edge between them; a panel that names none
+   * gets a lane of its own.
+   *
+   * Only meaningful with `displace`. A floating panel takes no room, so there is nothing for it to be
+   * inboard of — every float on an edge already shares one lane, which is the column `order` divides.
+   *
+   * "Two sidebars down the left, one above the other, both pushing the content aside" is what this
+   * makes sayable, and it was unreachable before: whether panels stacked inward or divided the edge
+   * was decided by `displace`, which is a question about taking room and not about position.
+   */
+  band?: number;
+  /**
+   * Position within a seat shared with other panels — a tab.
+   *
+   * Two entries with the same lane and the same explicit `order` share a seat: one shows, the rest
+   * stack behind it, and the one showing carries a strip naming them all. `tab` orders the strip.
+   * Absent `order` is a seat of its own, so nothing that never said `order` starts sharing.
+   */
+  tab?: number;
+  /**
+   * Start **in the template**, at the `$panels` outlet of this name, rather than on an edge.
+   *
+   * A section: it renders inline, in the template's flow, with no frame — and the reader can break
+   * it out into a panel, drag it to an edge, fold it, stack it, and put it back. Picture-in-picture
+   * for any region of a page. `order` is its position among the sections in that lane; `snap` is
+   * where it goes when broken out, if the reader does not drag it somewhere.
+   *
+   * `home` is a lane like the edges are, so nothing here touches the tree: the outlet stays where
+   * the author put it, and which sections start in it is data.
+   */
+  home?: string;
+  /**
+   * Not promotable: renders in its lane with no break-out grip, and no drop can move it.
+   *
+   * For a section with no standalone value — the compose box, a page's own header. The test is
+   * whether somebody would want it beside a *different* page; if not, it is arrangement, not a
+   * panel, and a corner button on it is noise.
+   */
+  fixed?: boolean;
+  /** How much room it asks for. Resolved against the viewport by the host. */
+  size?: 'sm' | 'md' | 'lg' | 'full';
+  /**
+   * The box it opens at, in pixels, where a named size is the wrong shape. Either side may be omitted.
+   *
+   * `size` gives a card whose width comes from a table and whose height is 16:9 of that, which is
+   * right for "a panel" and wrong for anything with a shape of its own: a key is tall and narrow, a
+   * strip of faces is wide and low, and neither is a `sm` of anything. This says the shape.
+   *
+   * The whole panel, titlebar and frame included — the same box `min` is measured against, so the
+   * two can be compared. Content that wants a given area adds the host's chrome to it.
+   *
+   * An opening bid, exactly as `size` is: clamped to the room there is, beaten by a drag, never
+   * written. A width alone keeps the 16:9 height derived from it; a height alone keeps the width
+   * `size` names. On a displacing edge the side across the edge is the thickness, and the side along
+   * it is the base a lane divides by `grow`.
+   */
+  box?: { width?: number; height?: number };
+  /**
+   * Its share of the spare room in a floating column, relative to its neighbours. Absent means 1.
+   *
+   * "The transcript takes most of the height, the panel under it does not" is a large panel with
+   * grow and a small one with `grow: 0`.
+   */
+  grow?: number;
+  /** Push the content aside rather than covering it. Honoured on an edge snap only. */
+  displace?: boolean;
+  /**
+   * The smallest box the panel's content is usable in, in pixels. Either side may be omitted.
+   *
+   * The one place a declaration writes pixels, and deliberately: a floor is a fact about the
+   * *content* — below this many pixels the thing inside stops working — not a guess about the
+   * viewport. The host has a default for panels that say nothing, and it is wrong in both directions
+   * often enough that a panel sharing a lane with two others should say where usable stops.
+   */
+  min?: { width?: number; height?: number };
+  /**
+   * Only while one of these segments is in the path. Absent means every route.
+   *
+   * What makes a layout change as somebody moves between sections — a graph wants a transcript
+   * beside it and a task list does not. A section that declares its own `meta.panels` needs none of
+   * this; `route` is for a shell that routes itself, which is how every showcase template works and
+   * which has no sections to hang a declaration on.
+   *
+   * A list because "these two pages, not the third" is an ordinary thing to want and a single
+   * segment could not say it. The alternative people reached for — the same `id` declared twice with
+   * different routes — happens to work, since exactly one survives the filter and the dock id is
+   * stable, but it is one panel written down twice for the two to disagree about later.
+   *
+   * It says *whether*, never *where*. A panel that moved from one route to the next would work
+   * until the reader dragged it once: a stored placement is keyed by template and panel, not by
+   * route, and it outranks every declaration — so per-route positions would silently stop applying
+   * the first time somebody used the panel. Where a page genuinely needs its own arrangement, it
+   * wants to be a **view** with its own `meta.panels`.
+   */
+  route?: string | string[];
+  /**
+   * Whether to open the panel as well as place it. Absent means yes.
+   *
+   * Opening a module's panel means invoking the action its launcher declares, and that action is not
+   * always "open a panel": the call module's is `goToCall`, which **joins a call** when there is not
+   * one. A template that placed the call window would therefore start a call on entering the space.
+   *
+   * So a declaration can place without opening. The panel appears where the template asked for it
+   * *if* the module opens it, and the template never reaches for the module's own verb.
+   */
+  open?: boolean;
+};
+
 export type TemplateMeta = {
   name: string;
   description: string;
   icon: string;
+  /**
+   * A theme this template is designed to be seen in — a **suggestion**, never a setting.
+   *
+   * Resolved rather than written: it takes effect as a rung in the theme chain, so switching
+   * template changes the look without overwriting anyone's choice, and switching back restores what
+   * was there. See `spaceStore`'s theme resolution for the precedence, which turns on *who chose the
+   * template* rather than on layer: a theme picked alongside a template stops applying once someone
+   * overrides that template, because it was a decision about a different interface.
+   *
+   * Lives in `meta` rather than only on the `Template` model because built-in templates have no
+   * model record — they are schemas in the registry — and because here it travels with a fork, a
+   * publish and a `?template=` link. `Template.themeId` is the queryable mirror `saveTemplate`
+   * writes.
+   *
+   * Honoured only when the theme resolves for this agent; a suggestion naming something they have
+   * not installed is reported once and ignored, exactly as `?theme=` in a share link is.
+   */
+  themeId?: string;
+  /**
+   * What this template *is* — a whole interface, or one section inside one.
+   *
+   * A `'shell'` (the default, and what every template was before this existed) owns the space's
+   * chrome, its route table and the arrangement everything sits in. A `'view'` owns a single
+   * section: it renders at one segment under the shell's `$views` marker, and knows nothing about
+   * what surrounds it.
+   *
+   * The distinction earns its place because it decides what a fork costs. A community that wants a
+   * seventh section used to fork the whole shell and drift from upstream forever; with views, the
+   * section is the unit — they install one, or write one, and the shell they share with everybody
+   * else keeps improving underneath them.
+   *
+   * Optional and defaulted rather than required, so every template that predates this keeps working
+   * unchanged and unannotated: absent means shell, which is what they all are.
+   */
+  role?: 'shell' | 'view';
+  /**
+   * For a `'view'`: the URL segment it renders at, and the identity a space enables or disables it
+   * by. Ignored on a shell.
+   *
+   * The template's own suggestion, not a fixed address — a space's section list pairs a segment
+   * with a view id, so two views can offer the same default segment and a community can put either
+   * one at `/cards` without either template knowing. What it must be is *stable*: it is in the URL,
+   * so changing it breaks every link anyone has shared.
+   */
+  segment?: string;
+  /**
+   * For a `'view'`: keep this section mounted when the user navigates to a sibling, rather than
+   * unmounting it. Becomes the route's `keepAlive`. Ignored on a shell.
+   *
+   * The expensive-to-rebuild case, and it is narrower than it looks — a Cesium globe, a live map, a
+   * running WebGL scene. Ordinary sections should not set it: a kept-alive view holds its
+   * subscriptions open for as long as the space is, which is the cost that buys the instant return.
+   */
+  keepAlive?: boolean;
+  /**
+   * Fixed chrome this shell paints over the content, for floating panels to keep clear of.
+   *
+   * A template that pins a nav strip or a toolbar has the same problem a module's call bar does: a
+   * panel snapped to that corner opens underneath it. Modules answer it with `chromeReserve` on
+   * their store; a template is data and has no store, so it declares the box here and the host folds
+   * it into the same sum.
+   *
+   * Report the height it has when **collapsed**, exactly as a module must. Chrome that grows as
+   * somebody opens a disclosure would otherwise shove a floating panel down the screen mid-read.
+   *
+   * Structurally the same shape as `ChromeReserve` in `@we/module-shared`, restated rather than
+   * imported: schema types are the layer modules point *at*, so naming a module type here would be
+   * an edge pointing the wrong way.
+   */
+  chromeReserve?: { top?: number; bottom?: number; width?: number };
+  /**
+   * The panels this interface has, and where each one starts. See {@link TemplatePanel}.
+   *
+   * A **suggestion**, resolved live and never written — the same rung `themeId` occupies. A drag
+   * beats it and is remembered per panel; the panel's own menu offers the way back. So switching
+   * template or view is non-destructive, and an author improving a layout is not overruled by a
+   * stray drag somebody made once.
+   */
+  panels?: TemplatePanel[];
+  /**
+   * What this interface depends on that a deployment might not have.
+   *
+   * `modules` names the feature modules whose stores or parts this template reaches —
+   * `modules.call.*` in an expression, a `$part` of theirs, a `meta.panels` entry placing one. The
+   * host cannot derive that: it can walk the component types a schema mounts, and it does, but an
+   * expression naming a module store and a part naming a module are invisible to that walk. So a
+   * template that leans on one says so, and a deployment omitting the module sees the reason instead
+   * of a blank panel. Reported through `spaceStore.missingModules`, and checked by the validator
+   * against the deployment's module list.
+   */
+  requires?: { modules?: string[] };
   stores?: string[] | StoreDeclaration;
   components?: string[];
 };
-export type TemplateSchema = SchemaNode & { id?: string; schemaVersion?: number; meta: TemplateMeta };
+export type TemplateSchema = SchemaNode & {
+  id?: string;
+  author?: string;
+  templateVersion?: number;
+  schemaVersion?: number;
+  meta: TemplateMeta;
+  _fromSpace?: boolean;
+};
 export type RouteSchema = SchemaNode & { path: string; redirect?: string; keepAlive?: boolean };
 
 /**
@@ -16,15 +273,30 @@ export type RouteSchema = SchemaNode & { path: string; redirect?: string; keepAl
  * - 'fade'  — animates opacity only
  * - 'slide' — animates transform only (use alongside 'fade' for a combined slide+fade)
  * - 'scale' — animates transform (scale) only
+ * - 'reveal' — animates the element open to the size its content actually wants, and closed
+ *   again. The size axis the other three deliberately lack: fade and slide/scale move paint,
+ *   this one moves the box. Use it for anything that opens in place — a disclosure, an
+ *   accordion, a sidebar label appearing as the rail expands.
+ * - 'pulse' — a persistent looping CSS `@keyframes` animation (not a one-shot enter/exit
+ *   transition like the others — fade/slide/scale interpolate between two static states,
+ *   which a CSS `transition` already does natively; a loop needs real keyframes, defined
+ *   in the DS interop stylesheet). Starts once entered, stops on exit. `direction`/
+ *   `distance` don't apply.
  */
 export type TransitionEffect = {
-  type: 'fade' | 'slide' | 'scale';
-  duration?: number; // Milliseconds (default: 300)
-  easing?: string; // CSS easing function (default: 'ease')
+  type: 'fade' | 'slide' | 'scale' | 'reveal' | 'pulse';
+  duration?: number; // Milliseconds (default: 300; pulse default: 1200)
+  easing?: string; // CSS easing function (default: 'ease'; pulse default: 'ease-in-out')
   delay?: number; // Milliseconds (default: 0)
   // slide / scale options
   direction?: 'left' | 'right' | 'up' | 'down'; // Slide direction (default: 'up')
   distance?: string; // Slide/scale distance (default: '40px' for slide, '0.95' for scale)
+  // reveal options
+  /**
+   * Which way the element opens. 'block' (default) is vertical — the accordion case.
+   * 'inline' is horizontal, for a label appearing beside an icon.
+   */
+  axis?: 'block' | 'inline';
 };
 
 /**
@@ -45,20 +317,12 @@ export type TransitionEffect = {
  */
 export type TransitionConfig = TransitionEffect | TransitionEffect[];
 
-/** Parametric theme overrides — each field maps to a CSS custom property on the design system. */
-export type ThemeOverrides = {
-  themeName?: string; // Named theme preset (e.g. 'dark', 'cyberpunk', 'retro') — sets data-we-theme attribute
-  primaryHue?: number; // --we-color-primary-hue
-  successHue?: number; // --we-color-success-hue
-  warningHue?: number; // --we-color-warning-hue
-  dangerHue?: number; // --we-color-danger-hue
-  neutralHue?: number; // --we-color-neutral-hue
-  saturation?: string; // --we-color-saturation  (e.g. "50%")
-  neutralSaturation?: string; // --we-color-neutral-saturation
-  multiplier?: number; // --we-color-multiplier
-  subtractor?: string; // --we-color-subtractor  (e.g. "108%")
-  fontFamily?: string; // --we-font-family
-};
+/**
+ * Parametric theme overrides — the vocabulary lives in `@we/themes` (its owner: the keys map onto
+ * design-system CSS custom properties). Re-exported here because schema nodes carry a `theme`.
+ */
+export type { ThemeOverrides, ThemeRole } from '@we/themes/presets';
+import type { ThemeOverrides } from '@we/themes/presets';
 
 export type SchemaNode = {
   id?: string; // Stable node identifier for ID-based patching (assigned by ensureNodeIds)
@@ -71,6 +335,7 @@ export type SchemaNode = {
   theme?: ThemeOverrides; // Scoped theme overrides — applied as CSS custom properties on a display:contents wrapper
   styles?: Record<string, string | number>; // Raw CSS escape hatch — applied as inline styles on the node wrapper element
   $localState?: Record<string, LocalStateField>; // Scoped local state — creates signals on mount, discarded on unmount
+  $queries?: Record<string, QueryStateField>; // Hoisted reactive query subscriptions — results injected into $local, shared across entire subtree
 };
 
 // Types that need to be passed a framework specific NodeType (e.g. JSX.Element for Solid, React.ReactNode for React)
@@ -81,7 +346,14 @@ export type ComponentRegistry<NodeType = unknown> = {
 
 export type RenderProps<NodeType = unknown> = {
   node: SchemaNode | null;
-  stores: Record<string, unknown>;
+  /**
+   * The injected stores bag. Typed as the declared contract rather than `Record<string, unknown>`
+   * so the bindings the renderer depends on are checked at the boundary: with a bare index
+   * signature every read came back `unknown`, a truthiness guard narrowed that to `{}`, and each
+   * call site had to re-assert the shape by hand — which meant the contract was documentation
+   * nothing enforced, and could drift from what the renderer actually read.
+   */
+  stores: RendererStores;
   registry: ComponentRegistry<NodeType>;
   context?: Record<string, unknown>;
   children?: NodeType;
@@ -89,46 +361,174 @@ export type RenderProps<NodeType = unknown> = {
 
 export type RendererOutput<NodeType = unknown> = NodeType | null;
 
-// --- Operator Token Types ---
-// Opt-in types for schema authors. SchemaProp remains `Record<string, unknown>` for Zod compatibility.
+// --- Token Types ---
+// The tokens a schema writes besides nodes: one expression, the handler verbs, and a query.
 
-export type StoreToken = { $store: string };
-export type ConcatToken = { $concat: unknown[] };
-export type ActionToken = { $action: string; args?: unknown[] };
-export type IfToken = { $if: { condition: unknown; then: unknown; else?: unknown } };
-export type MapToken = { $map: { items: unknown; select: Record<string, unknown> } };
-export type PickToken = { $pick: { from: unknown; props: string[] } };
-export type EqToken = { $eq: unknown[] };
-export type NeToken = { $ne: unknown[] };
-export type LtToken = { $lt: unknown[] };
-export type GtToken = { $gt: unknown[] };
-export type InToken = { $in: unknown[] };
-export type NotToken = { $not: unknown };
-export type AndToken = { $and: unknown[] };
-export type OrToken = { $or: unknown[] };
-export type FilterToken = { $filter: { items: unknown; where: Record<string, unknown> } };
-export type CountToken = { $count: { items: unknown } };
-export type FindToken = { $find: { items: unknown; where?: Record<string, unknown>; select?: string } };
+/**
+ * `{ $: '…' }` — an expression over the value layer. See `expressions/index.ts`. Every computed
+ * value is one of these; a plain string is text.
+ */
+export type ExpressionToken = { $: string };
+export type ActionToken = {
+  $action: string;
+  args?: unknown[];
+  onSuccess?: unknown[];
+  onError?: unknown[];
+  onFinally?: unknown[];
+};
+/**
+ * The conditional between handlers: `condition` is an expression, `then`/`else` a handler or a
+ * list of them. The only `$if` token — a conditional value is a ternary, a conditional subtree the
+ * node-level `{ type: '$if' }`.
+ */
+export type IfToken = { $if: { condition: unknown; then?: unknown; else?: unknown } };
 export type QueryToken = {
   $query: {
-    model: string;
+    /**
+     * The entity to query (neutral) — a name, or an expression that answers with one.
+     *
+     * The expression form is what lets a template list records of a type it was not written for:
+     * `entity: { $: 'target' }` inside an `$each` over a store's list of model names renders a
+     * group per model, and a model a community defines this afternoon joins the list with no
+     * template change. Resolved against the same stores and row bindings as `where` and `order`,
+     * and treated as "not yet" until it answers with a name.
+     *
+     * Prefer a literal wherever the type IS known: the validator can say nothing about a name it
+     * only sees at runtime, and a typo in an expression fails as a silently empty list.
+     *
+     * A **list** — literal, or an expression answering with one — asks the same question of every
+     * entity in it and answers with one list: each row tagged with the entity it came from under
+     * `__subjectClass`, a record two entities share listed once, and `order` and `limit` applied to
+     * the whole. An empty list is an answer (loaded, no rows), not a wait. `offset` is refused.
+     * See `combineEntityRows` in `@we/backend-shared`.
+     */
+    entity: string | string[] | Record<string, unknown>;
     where?: Record<string, unknown>;
     order?: Record<string, unknown>;
-    limit?: number;
-    offset?: number;
+    /**
+     * A literal, or a token resolving to one — `{ $local: 'pageSize' }` is how a "load more"
+     * button works, since raising the local re-runs the query with a bigger window. Params are
+     * deep-resolved before the query is built, so a token here has always worked at runtime.
+     */
+    limit?: number | Record<string, unknown>;
+    offset?: number | Record<string, unknown>;
     include?: Record<string, unknown>;
-    parent?: Record<string, unknown>;
-    subscribe?: boolean;
-    /** Store path to resolve perspective from (e.g. 'testStore.perspective'). Defaults to adamStore.currentPerspective. */
-    perspective?: string;
+    /**
+     * The fields a row carries — properties, and relations as their target ids. `id` always comes.
+     *
+     * Omitted, a row carries everything, relation id lists included: a container's `children` is the
+     * id of everything in it, so a list of thirty calls showing a title each carried every utterance
+     * id of every call. Name what the rows render. A field left out reads as absent.
+     */
+    select?: string[];
+    /**
+     * Neutral drill-down: fetch this entity's instances anchored to `anchorId` via the anchor entity's
+     * `via` relation. The adapter resolves `via` to a backend handle (AD4M: → the relation's predicate).
+     */
+    scope?: {
+      via: string;
+      /**
+       * The anchor, or several of them. A list asks the same question of every anchor in one query,
+       * which is how a level of a tree stays one round trip and one subscription rather than one of
+       * each per parent. An expression answering with a list works — `local.replies.map(r, r.id)`.
+       */
+      anchorId: string | number | Array<string | number> | Record<string, unknown>;
+      anchor?: string;
+      /**
+       * Follow `via` all the way down rather than one step. The result is flat: it says which rows
+       * are under the anchor, never where, so include the inverse relation to rebuild a tree.
+       */
+      transitive?: boolean;
+      /** `'in'` searches among what points *at* the anchor, rather than what it points at. */
+      direction?: 'out' | 'in';
+      /** At most this many per anchor — "the top five replies under each of these". Pair with `order`. */
+      limitPerAnchor?: number;
+      /**
+       * Walk `via` depth by depth, keeping this many per anchor at each — `[10, 5, 3]`.
+       *
+       * One question for a whole tree: the backend walks it and answers once, so the rows arrive
+       * together rather than a level at a time. Flat and breadth-first, so include the inverse
+       * relation to rebuild the shape.
+       */
+      levels?: Array<number | Record<string, unknown>>;
+    };
+    /**
+     * Follow the answer as it changes. Defaults to true; `false` fetches once.
+     *
+     * An **expression** is allowed here, and it is what lets a surface be live only while its
+     * subject is. A call's transcript is the case: while somebody is in the call it has to follow
+     * every utterance, and once the call is over the record is settled — so
+     * `{ $: 'modules.transcribe.callOnScreenLive' }` reads a past transcript with no subscription
+     * registered at all, where before it held one open over the whole thing for as long as it was
+     * on screen. Reading is the commonest thing anybody does to a long transcript, so this is
+     * where most of the cost of one was.
+     *
+     * Changing it re-asks the query, which is what tears the subscription down when a call ends.
+     */
+    subscribe?: boolean | SchemaProp;
+    /** Store path to the dataset handle (e.g. '$currentDataset', 'testStore.perspective'). */
+    dataset?: string;
+    /**
+     * Run only while this expression is truthy. Until then the result is empty and `<name>Loaded`
+     * stays false — the query has not been asked, rather than asked and answered with nothing.
+     *
+     * For a query whose shape depends on another's answer. A board's pool narrows to whatever the
+     * board record says it gathers; without this the pool ran once unanchored, drew the whole space,
+     * and re-ran narrowed a frame later — a flash of everybody's work on the way to one call's. An
+     * unresolved operand in `where` or `scope` is pruned, and pruning means "do not narrow", which
+     * is the right reading for an optional filter and the wrong one for a scope that is *about to*
+     * exist. `when: { $: 'local.board' }` says wait instead.
+     */
+    when?: Record<string, unknown>;
   };
 };
 
 export type LocalStateField = {
-  type: 'string' | 'boolean' | 'number' | 'file' | 'function' | 'object';
-  initial: string | boolean | number | null;
+  /**
+   * 'array' is a set of values rather than a shape — the type `$toggleLocalIn` writes and `$in`
+   * reads. It exists because `$localState` field names are static, so per-row state (which rows
+   * are expanded, which are selected) cannot be a boolean per row when the rows come from data.
+   * Holding the ids instead moves the varying part into the value, where an expression can reach it.
+   */
+  type: 'string' | 'boolean' | 'number' | 'file' | 'function' | 'object' | 'array';
+  /** Literal seed value, or any schema expression token (e.g. { $store: '...' }) evaluated once at mount. */
+  initial: string | boolean | number | null | Record<string, unknown> | unknown[];
   validate?: ValidationRule[];
+  /**
+   * Persist this field on the device (localStorage) under the given key, so it survives a
+   * reload. For *preferences* — display density, collapsed rails — things a shared link should
+   * NOT impose on its recipient. The key is explicit and global to the deployment
+   * (`'cards.displayMode'`), so two views naming the same key deliberately share the setting;
+   * pick namespaced names. The stored value wins over `initial` on mount; `$resetLocal` clears
+   * it. Ignored for 'file' and 'function' fields, which have no JSON form.
+   */
+  persist?: string;
+  /**
+   * Mirror this field into a URL query parameter, so the view is shareable and survives a
+   * reload as part of the address. For *view state* — selected content type, sort, filters:
+   * what a link's recipient should see exactly as the sender does. A string names the param;
+   * the object form adds `push: true` for changes that deserve a Back entry (content-type
+   * switches; leave sort/filter changes on the default replace). Precedence on mount:
+   * URL param > persisted value > `initial`; setting the field back to its initial removes
+   * the param, keeping URLs clean. Requires the host to bind `$routeParams` (the app shell
+   * does); degrades to plain local state elsewhere. See
+   * docs/architecture/routing-and-view-state.md for which state belongs where.
+   */
+  syncParam?: string | { name: string; push?: boolean };
 };
+
+/**
+ * The host's URL-query-parameter binding, injected into the stores bag as `$routeParams`.
+ * What lets `$localState`'s `syncParam` read and write the URL without the renderer knowing
+ * which router the host runs.
+ */
+export interface RouteParamsBinding {
+  get(name: string): string | undefined;
+  set(name: string, value: string | null, options?: { push?: boolean }): void;
+}
+
+/** A single entry in $queries — a reactive subscription hoisted to the node root. */
+export type QueryStateField = QueryToken['$query'];
 
 // --- Validation Rule Types ---
 
@@ -142,53 +542,54 @@ export type MatchRule = { rule: 'match'; field: string; message?: string };
 
 export type ValidationRule = RequiredRule | MinLengthRule | MaxLengthRule | MinRule | MaxRule | PatternRule | MatchRule;
 
-export type LocalToken = { $local: string };
-export type SetLocalToken = { $setLocal: string; from: string } | { $setLocal: string; value: unknown };
-export type ErrorToken = { $error: string };
-export type ValidToken = { $valid: string };
-export type TouchedToken = { $touched: string };
-export type FormValidToken = { $formValid: string };
+/** Write local state: `value` is a literal or an expression evaluated when the handler fires. */
+export type SetLocalToken =
+  { $setLocal: string; value: unknown } | { $setLocal: string; merge: Record<string, unknown> };
 export type TouchToken = { $touch: string };
 export type ResetLocalToken = { $resetLocal: string };
 export type ToggleLocalToken = { $toggleLocal: string };
+/** Add/remove one value in an array-typed field — per-row state whose rows come from data. */
+export type ToggleLocalInToken = { $toggleLocalIn: string; value: unknown };
 export type CallLocalToken = { $callLocal: string };
 
 /** Descriptor returned by the shared resolver — pure data, no framework effects */
 export type QueryDescriptor = {
-  model: string;
+  /**
+   * The entity to query, as authored: a name, a list of names, or an expression that answers with
+   * either.
+   *
+   * `unknown` rather than `string` because this resolver is pure and an expression can only be
+   * evaluated against stores and a row's bindings, which the framework layer holds. Every other
+   * part of a query — `where`, `order`, `limit`, `include` — already resolves that way; `entity`
+   * was the one field a template had to know at authoring time, and that is what stopped a feed
+   * listing records of a type its author had never heard of.
+   *
+   * A consumer must resolve it and treat an empty answer as "not yet", the way an unresolved
+   * `where` condition is dropped rather than shipped with a hole in it.
+   */
+  entity: unknown;
   params: Record<string, unknown>;
-  subscribe: boolean;
-  perspective?: string;
+  /**
+   * As authored: `true`/`false`, or an expression the framework layer resolves — see
+   * `QueryToken.subscribe`. `unknown` for the same reason `entity` is: this resolver is pure, and
+   * only the framework layer holds the stores an expression is evaluated against.
+   */
+  subscribe: unknown;
+  dataset?: string;
   include?: Record<string, boolean | Record<string, unknown>>;
+  /** The query runs only while this resolves truthy — see `QueryToken.when`. Kept out of `params`. */
+  when?: unknown;
 };
 
-/** Union of all prop-level operator tokens */
+/** Union of every token a schema writes in a value or handler position. */
 export type OperatorToken =
-  | StoreToken
-  | ConcatToken
+  | ExpressionToken
   | ActionToken
   | IfToken
-  | MapToken
-  | PickToken
-  | EqToken
-  | NeToken
-  | LtToken
-  | GtToken
-  | InToken
-  | NotToken
-  | AndToken
-  | OrToken
   | QueryToken
-  | LocalToken
   | SetLocalToken
-  | ErrorToken
-  | ValidToken
-  | TouchedToken
-  | FormValidToken
   | TouchToken
   | ResetLocalToken
   | ToggleLocalToken
-  | CallLocalToken
-  | FilterToken
-  | CountToken
-  | FindToken;
+  | ToggleLocalInToken
+  | CallLocalToken;

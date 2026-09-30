@@ -1,15 +1,27 @@
-import { execSync, spawn } from 'child_process';
-import { app, BrowserWindow, desktopCapturer, ipcMain } from 'electron';
+import { execSync, spawn, spawnSync } from 'child_process';
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, shell } from 'electron';
 import contextMenu from 'electron-context-menu';
 import express from 'express';
-import { existsSync, readdirSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import http from 'http';
 import net from 'net';
 import { homedir } from 'os';
-import { dirname, join } from 'path';
+import { basename, dirname, extname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 
+import { createAccountRegistry, expandHome } from './accounts.js';
+import { openExecutorLog } from './executorLog.js';
+import {
+  allowMediaPermission,
+  contentSecurityPolicy,
+  isExternallyOpenable,
+  isTrusted,
+  MEDIA_PERMISSIONS,
+  permissionOrigin,
+  safeOrigin,
+  trustedOrigins,
+} from './navigationPolicy.js';
 import { setupSeedServers } from './seed-servers.js';
 
 // Enable right-click context menu with inspect element in dev mode
@@ -28,6 +40,148 @@ let mainWindow;
 let ad4mPort = null;
 let ad4mToken = null;
 let executorProcess = null;
+/** Set while an account switch is tearing the executor down on purpose. */
+let switchingAccount = false;
+/** The current run's log in the account's data directory (see `executorLog.js`), or null. */
+let executorLog = null;
+
+/*
+  This process's own console goes into the executor log too.
+
+  What the host does around a start — the stale socket and LOCK files it removed, the path and binary
+  it chose, the exit code and signal — is exactly what a crash report needs beside the executor's
+  output, and none of it is the executor's to print. Copied rather than redirected, so the terminal
+  in development is unchanged.
+*/
+for (const level of ['log', 'info', 'warn', 'error']) {
+  const original = console[level].bind(console);
+  console[level] = (...args) => {
+    original(...args);
+    executorLog?.host(level, ...args);
+  };
+}
+
+/**
+ * The seed's data path — the deployment default, and the account the registry seeds itself with.
+ *
+ * Generated into `seed-runtime.json` at build time because the main process needs it before any
+ * window exists. Defaults to the launcher's own directory, so out of the box WE desktop, Flux and
+ * ADAM share one agent. See `SeedConfig.ad4m`.
+ */
+function seedDataPath() {
+  try {
+    const runtime = JSON.parse(readFileSync(join(__dirname, 'seed-runtime.json'), 'utf8'));
+    if (runtime.ad4mDataPath) return expandHome(runtime.ad4mDataPath);
+  } catch {
+    // Generated file missing or unreadable — fall through. Refusing to start over a config file
+    // would be a worse failure than quietly using the location every install already uses.
+  }
+  return join(homedir(), '.ad4m');
+}
+
+/**
+ * The executor binary to run in development, from the seed.
+ *
+ * A packaged build has the binary copied in beside it and reads it from `resourcesPath`; an
+ * unpackaged run has to find it in the workspace. That path used to be hardcoded here, which meant
+ * a seed pointing `executorPath` at a different checkout was silently ignored — the app went on
+ * running whichever executor happened to be built next door, and every symptom of that appears
+ * somewhere else entirely: a WS method that does not exist, a call that hangs, a feature that is
+ * present in the code and absent at runtime.
+ *
+ * Falls back to the historical location, so a workspace with no `executorPath` behaves as before.
+ */
+function seedExecutorPath() {
+  try {
+    const runtime = JSON.parse(readFileSync(join(__dirname, 'seed-runtime.json'), 'utf8'));
+    if (runtime.ad4mExecutorPath) return expandHome(runtime.ad4mExecutorPath);
+  } catch {
+    // Same reasoning as `seedDataPath`: a missing generated file is not worth refusing to start.
+  }
+  return join(__dirname, '..', '..', '..', '..', 'ad4m', 'target', 'release', 'ad4m-executor');
+}
+
+// The registry needs the app's config directory, which is available before `ready`.
+const accounts = createAccountRegistry({
+  configDir: app.getPath('userData'),
+  defaultPath: seedDataPath(),
+});
+
+/**
+ * Where the executor keeps its data this launch.
+ *
+ * Precedence is env → the selected account → the seed default (via the registry, which seeds
+ * itself from it). The env var wins outright and bypasses the registry: it is the ad-hoc override
+ * for testing a first run against a throwaway directory, and having that quietly register itself
+ * as a permanent account would be a surprise.
+ */
+function resolveAd4mDataPath() {
+  const fromEnv = process.env.WE_AD4M_DATA_PATH;
+  if (fromEnv) return expandHome(fromEnv);
+  // Before resolving, clear out any account whose setup was abandoned last session — it has a
+  // directory and a placeholder name and no identity, and nothing else will ever tidy it up.
+  accounts.pruneAbandoned();
+  return accounts.resolveActivePath();
+}
+
+/**
+ * Scaffold the data directory if the executor has never run against it.
+ *
+ * `ad4m-executor run` does NOT initialise — `init` is a separate subcommand, and Run's code path
+ * never calls it. Until now that was invisible: the path was hardcoded to `~/.ad4m`, which the
+ * launcher had almost always already initialised. Making the path configurable makes an
+ * uninitialised directory easy to reach, and an executor started against one comes up without its
+ * bootstrap seed rather than failing loudly.
+ *
+ * Tauri does not need this — its lib.rs calls `rust_executor::init::init` directly before running.
+ *
+ * `mainnet_seed.seed` is the marker because it is what `init` writes for the executor to consume
+ * at runtime; a directory holding it has been through initialisation.
+ *
+ * Its output is captured and written to the terminal and the log both, rather than inherited: a
+ * first run is the one most worth having a record of, and inherited output reaches only a terminal.
+ */
+function ensureDataPathInitialised(executorPath, dataPath, log) {
+  if (existsSync(join(dataPath, 'mainnet_seed.seed'))) return;
+
+  console.log('[main] Data path not initialised, running executor init:', dataPath);
+  const result = spawnSync(executorPath, ['init', '--data-path', dataPath], { maxBuffer: 16 * 1024 * 1024 });
+  for (const [output, destination] of [
+    [result.stdout, process.stdout],
+    [result.stderr, process.stderr],
+  ]) {
+    if (!output?.length) continue;
+    destination.write(output);
+    log?.write(output);
+  }
+
+  if (result.error || result.status !== 0) {
+    // Surfaced rather than thrown: the executor may still start, and a hard failure here would
+    // turn a recoverable state into an app that will not open at all.
+    const reason = result.error?.message ?? `exit code ${result.status ?? result.signal}`;
+    console.error('[main] Executor init failed — the executor may not start correctly:', reason);
+    return;
+  }
+  console.log('[main] Executor init complete');
+}
+
+/**
+ * The environment the executor is started with.
+ *
+ * Log levels reach it as `RUST_LOG`, which is the only lever there is: the executor's own logging
+ * setup reads that variable and, finding it set, leaves it alone. Written as overrides — anything
+ * not named keeps the executor's default, which is why this builds a string only from what the user
+ * actually chose.
+ *
+ * An inherited `RUST_LOG` always wins. Someone who exported one before launching is debugging
+ * something specific, and having a settings screen quietly override that would be the opposite of
+ * helpful.
+ */
+function executorEnv(logLevels) {
+  const overrides = Object.entries(logLevels ?? {});
+  if (!overrides.length || process.env.RUST_LOG) return process.env;
+  return { ...process.env, RUST_LOG: overrides.map(([crate, level]) => `${crate}=${level}`).join(',') };
+}
 
 // Find a free port in the given range
 function findFreePort(startPort, endPort) {
@@ -99,7 +253,16 @@ async function startExecutor() {
     ad4mToken = uuidv4();
 
     // Get AD4M data directory
-    const ad4mDataPath = join(homedir(), '.ad4m');
+    const ad4mDataPath = resolveAd4mDataPath();
+
+    // Start this run's log before anything below touches the data directory, so the cleanup it
+    // does is on record. The previous run's file is closed first: rotation renames it, and on
+    // Windows an open file cannot be renamed. Output still arriving from a killed executor goes to
+    // the log it was started with, which is closed, so it cannot land in this run's file.
+    executorLog?.close();
+    executorLog = openExecutorLog(ad4mDataPath);
+    const log = executorLog;
+    if (log) console.log('[main] Executor log:', log.path);
 
     // Kill any surviving ad4m-executor from a previous detached run (survives Ctrl+C).
     // Must happen BEFORE the lair socket / LOCK cleanups so the old process releases
@@ -152,11 +315,15 @@ async function startExecutor() {
     // Path to the executor binary
     // In production, this will be bundled with the app
     // In development, we need to point to the built executor from ad4m repo
-    const executorPath = app.isPackaged
-      ? join(process.resourcesPath, 'ad4m-executor')
-      : join(__dirname, '..', '..', '..', '..', 'ad4m', 'target', 'release', 'ad4m-executor');
+    const executorPath = app.isPackaged ? join(process.resourcesPath, 'ad4m-executor') : seedExecutorPath();
 
     console.log('Executor path:', executorPath);
+
+    ensureDataPathInitialised(executorPath, ad4mDataPath, log);
+
+    // Settings the executor reads once, at startup. Off unless asked for: MCP opens a port that
+    // serves this agent's data to anything local that speaks the protocol.
+    const executorSettings = accounts.executorSettings();
 
     // Start the executor process
     executorProcess = spawn(
@@ -173,10 +340,14 @@ async function startExecutor() {
         'false', // We don't need the built-in dapp server
         '--connect-holochain',
         'true', // Enable holochain connection
+        ...(executorSettings.mcpEnabled
+          ? ['--enable-mcp', 'true', '--mcp-port', executorSettings.mcpPort.toString()]
+          : []),
       ],
       {
         detached: true, // Create a new process group so we can kill the entire tree
         stdio: ['ignore', 'pipe', 'pipe'], // Capture stdout/stderr instead of inherit
+        env: executorEnv(executorSettings.logLevels),
       },
     );
 
@@ -189,13 +360,16 @@ async function startExecutor() {
     executorProcess.stdout?.unref();
     executorProcess.stderr?.unref();
 
-    // Forward executor output to console (prevents EPIPE errors)
+    // Forward executor output to the console (which also prevents EPIPE errors) and to this run's
+    // log. `log`, not `executorLog`: after a restart the latter is the next run's file.
     executorProcess.stdout?.on('data', (data) => {
       process.stdout.write(data);
+      log?.write(data);
     });
 
     executorProcess.stderr?.on('data', (data) => {
       process.stderr.write(data);
+      log?.write(data);
     });
 
     executorProcess.on('error', (err) => {
@@ -203,10 +377,19 @@ async function startExecutor() {
     });
 
     executorProcess.on('exit', (code, signal) => {
+      // Expected during an account switch — we killed it on purpose and are about to respawn.
+      if (switchingAccount) return;
+
       const msg = `[main] Executor exited — code: ${code}, signal: ${signal}`;
       console.log(msg);
-      // Notify the renderer so it shows in DevTools even in packaged builds
-      mainWindow?.webContents.executeJavaScript(`console.error(${JSON.stringify(msg)})`).catch(() => {});
+      // Notify the renderer so it shows in DevTools even in packaged builds.
+      //
+      // `mainWindow?.` only guards against null, not against a *destroyed* window: on quit the
+      // reference survives its BrowserWindow, and killing the executor makes this handler fire
+      // right afterwards — reaching webContents then throws "Object has been destroyed" as an
+      // uncaught exception, on the way out, where it looks like a crash.
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      mainWindow.webContents.executeJavaScript(`console.error(${JSON.stringify(msg)})`).catch(() => {});
     });
 
     console.log('AD4M executor process started, waiting for GraphQL server...');
@@ -245,8 +428,14 @@ function startAppServer() {
       }),
     );
 
+    /*
+      `root` rather than an absolute path. Without one, `send` checks every segment of the path for
+      a dotfile and answers 404 — and a running AppImage is mounted under `/tmp/.mount_WE-…`, so
+      every deep link (a reload anywhere but `/`) came back "Not Found". With `root`, only the part
+      below it is checked, which is how `express.static` above already behaves.
+    */
     launcherApp.use((req, res) => {
-      res.sendFile(join(launcherDir, 'index.html'));
+      res.sendFile('index.html', { root: launcherDir });
     });
 
     launcherApp.listen(9080, () => {
@@ -257,16 +446,67 @@ function startAppServer() {
   }
 }
 
+/**
+ * What `navigationPolicy` needs to work out the trusted set: where the app is served from, and the
+ * ports the build assigned the seed's embedded apps.
+ *
+ * `readFileSync` rather than a JSON import, to match how `seedDataPath` already reads its generated
+ * runtime file and to avoid depending on import-attribute support in whichever Node the packaged
+ * Electron carries. A failed read yields an empty map — fewer trusted origins, never more.
+ */
+function policyOptions() {
+  let seedPorts = {};
+  try {
+    seedPorts = JSON.parse(readFileSync(join(__dirname, 'seed-port-map.json'), 'utf8'));
+  } catch {
+    // No port map means no embedded apps to trust, which is the safe reading.
+  }
+  return { appUrl: appUrl(), seedPorts };
+}
+
+const trusted = (url) => isTrusted(url, trustedOrigins(policyOptions()));
+
+/**
+ * The window's own icon, which on Linux is what a taskbar or dock actually shows.
+ *
+ * Packaging an icon (electron-builder's `icon`) writes the .desktop entry and the hicolor theme
+ * inside the AppImage, and neither reaches a running window: a desktop environment matches a window
+ * to a .desktop entry by WM_CLASS, and an AppImage installs no .desktop entry unless the user asks
+ * for one. So the panel had nothing to match and fell back to a generic square. Electron sets
+ * `_NET_WM_ICON` from this option and nothing else — which is why the Tauri build, whose config
+ * lists its icons, was showing the mark while this one was not.
+ *
+ * The file therefore has to exist at runtime rather than only at package time; it is copied to
+ * `resources/icon.png` by `extraResources`, alongside the executor and the renderer bundle.
+ */
+const windowIcon = () =>
+  app.isPackaged ? join(process.resourcesPath, 'icon.png') : join(__dirname, '..', 'build', 'icon.png');
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     show: false, // Don't show until ready
+    icon: windowIcon(),
     width: 1200,
     height: 800,
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: false, // Allow cross-origin access for screen sharing in iframes
+      /*
+        Was `false`, "to allow cross-origin access for screen sharing in iframes".
+
+        That setting turns off the same-origin policy for the entire renderer, frames included. WE
+        renders `we-iframe` from post content — an EmbedBlock's URL, a video embed — so every page
+        anyone had ever linked in a post was running beside the app with no origin boundary at all:
+        able to read `parent.document`, to fetch `localhost:12000` with the executor's credentials,
+        and to read the responses. It made the app-bridge origin checks decorative, since a hostile
+        embed never needed to ask.
+
+        It also was not what screen sharing needed. `getDisplayMedia` in a subframe is gated by the
+        iframe's `allow="display-capture"` and, in Electron, by the display-media handler installed
+        below — neither of which has anything to do with the same-origin policy.
+      */
+      webSecurity: true,
     },
   });
 
@@ -276,30 +516,155 @@ function createWindow() {
     mainWindow.show();
   });
 
-  // Allow camera, microphone, and screen capture permissions
-  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-    const allowedPermissions = ['media', 'camera', 'microphone', 'display-capture', 'mediaKeySystem'];
-    if (allowedPermissions.includes(permission)) {
-      callback(true);
-    } else {
-      callback(false);
+  const session = mainWindow.webContents.session;
+
+  /*
+    Screen capture, through the mechanism that exists for it.
+
+    Electron will not satisfy `getDisplayMedia` without this handler, and the handler is where the
+    choice of what to share is actually made. `useSystemPicker` asks the OS to draw its own picker
+    where one exists (macOS 15+, Wayland portals), which is the right answer when it is available:
+    the source list never enters the renderer, so a page cannot enumerate the user's open windows
+    just by asking to share.
+  */
+  session.setDisplayMediaRequestHandler(
+    async (request, callback) => {
+      /*
+        This handler runs only where the OS has no picker of its own.
+
+        `useSystemPicker` stays on, and stays first: where the OS draws the picker — macOS 15+, a
+        Wayland portal — the source list never enters the renderer at all, so a page cannot
+        enumerate somebody's open windows just by asking to share. That is worth keeping, and it is
+        also what makes the branch below correct by construction rather than by guessing the
+        platform: Electron does not call this handler when the system picker is used, so anything
+        reaching here is a machine with no picker, and the choice has to come from somewhere else.
+
+        Where that somewhere else used to be `sources[0]` — the first screen, chosen by nobody. On a
+        two-monitor Linux desktop that is a coin toss, and a share of the wrong screen is not a
+        mistake you can see from the sharing side.
+      */
+      try {
+        const sources = await desktopCapturer.getSources({
+          types: ['screen', 'window'],
+          // Small enough to send several over IPC, large enough to tell two windows apart.
+          thumbnailSize: { width: 320, height: 180 },
+        });
+        if (!sources.length) return callback({});
+        // Nothing to choose between. Asking would be a dialog whose only answer is the one it was
+        // opened with.
+        if (sources.length === 1) return callback({ video: sources[0], audio: 'loopback' });
+
+        const chosenId = await askRendererForScreenSource(mainWindow, sources);
+        const chosen = sources.find((source) => source.id === chosenId);
+        // An empty answer is somebody closing the picker, which is an answer and not a failure —
+        // `{}` is how this API spells it, and the renderer reads it back as 'cancelled'.
+        callback(chosen ? { video: chosen, audio: 'loopback' } : {});
+      } catch {
+        callback({});
+      }
+    },
+    { useSystemPicker: true },
+  );
+
+  /*
+    Camera, microphone and screen capture — for the app and its embedded apps, not for a page
+    somebody linked in a post.
+
+    The decision and its reasoning live in `navigationPolicy.js`, where they are tested. What is
+    here is the wiring, and one thing the wiring owes: **a refusal says so.** Electron consults these
+    handlers silently, and the app's own error path for a denied camera is a fallback to audio-only
+    — so a wrong answer here surfaced as "no video, no errors", which is a bug report nobody can act
+    on. It is exactly the shape this audit spent its P2 section removing.
+  */
+  const decideMedia = (permission, details, webContentsUrl) => {
+    const origin = permissionOrigin(details, webContentsUrl);
+    const allowed = allowMediaPermission({
+      permission,
+      origin,
+      isMainFrame: details?.isMainFrame,
+      origins: trustedOrigins(policyOptions()),
+    });
+    if (!allowed && MEDIA_PERMISSIONS.includes(permission)) {
+      console.warn(`[we] refused ${permission} to ${origin ?? 'a frame with no identifiable origin'}`);
     }
+    return allowed;
+  };
+
+  session.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    callback(decideMedia(permission, details, webContents?.getURL()));
   });
 
-  // Also handle permission checks (not just requests)
-  mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission) => {
-    const allowedPermissions = ['media', 'camera', 'microphone', 'display-capture'];
-    return allowedPermissions.includes(permission);
+  session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+    return decideMedia(permission, { requestingUrl: requestingOrigin, ...details }, webContents?.getURL());
   });
 
-  // In development, load from Vite dev server
-  if (process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-    // mainWindow.webContents.openDevTools();
-  } else {
-    // In production, load from HTTP server (same protocol as iframe)
-    mainWindow.loadURL('http://localhost:9080');
-  }
+  /*
+    A link that opens a window opens it in the user's browser instead.
+
+    `window.open` and `target="_blank"` otherwise create a new BrowserWindow with *these*
+    webPreferences — the preload attached, the IPC channels live — showing a page WE did not write.
+    A template or a post is enough to trigger it. Denying and handing the URL to the OS is both
+    safer and what the user expects a link to do.
+  */
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isExternallyOpenable(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  /*
+    The top frame stays on the app.
+
+    Without this, anything that can set `location` — a template, an embedded app reaching `top` —
+    could navigate the main window to a page of its choosing, which would then be running *as* the
+    app: same window, same preload, same IPC. Nothing in WE navigates the top frame away, so this
+    forbids the whole class rather than trying to judge each case.
+  */
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (trusted(url)) return;
+    event.preventDefault();
+    if (isExternallyOpenable(url)) shell.openExternal(url);
+  });
+
+  // `<webview>` is a second renderer with its own settings and no reason to exist here.
+  mainWindow.webContents.on('will-attach-webview', (event) => event.preventDefault());
+
+  installContentSecurityPolicy(session);
+
+  mainWindow.loadURL(appUrl());
+}
+
+/**
+ * Attach the Content-Security-Policy to WE's own documents.
+ *
+ * The policy itself lives in `navigationPolicy.js`, where it is tested. What is decided here is
+ * *which responses get it*: only WE's own main-frame documents.
+ *
+ * A CSP header governs the document it arrives on and everything that document loads, so setting it
+ * on every response in the session would impose WE's policy on Flux's page too — a policy written
+ * for a different app, breaking it in ways nobody would think to attribute to this file. An
+ * embedded app's own security headers stay its own.
+ */
+function installContentSecurityPolicy(session) {
+  const policy = contentSecurityPolicy({
+    dev: Boolean(process.env.VITE_DEV_SERVER_URL),
+    origins: trustedOrigins(policyOptions()),
+  });
+  const appOrigin = safeOrigin(appUrl());
+
+  session.webRequest.onHeadersReceived((details, callback) => {
+    const isOwnDocument = details.resourceType === 'mainFrame' && safeOrigin(details.url) === appOrigin;
+    if (!isOwnDocument) return callback({ responseHeaders: details.responseHeaders });
+
+    callback({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [policy] } });
+  });
+}
+
+/**
+ * Where the app is served from. Vite in development; the bundled express server in production,
+ * over HTTP rather than file:// so it shares a protocol with the app iframes.
+ */
+function appUrl() {
+  return process.env.VITE_DEV_SERVER_URL || 'http://localhost:9080';
 }
 
 // IPC handlers for AD4M connection details
@@ -314,6 +679,247 @@ ipcMain.handle('get-token', () => {
 ipcMain.handle('get-is-development', () => {
   return !!process.env.VITE_DEV_SERVER_URL;
 });
+
+/**
+ * The server link language bundle built in the seed's ad4m checkout, in a development run only.
+ *
+ * Absolute, because the executor reads it from disk when publishing. Null in a packaged build,
+ * with no `repoPath`, or when the language has not been built — `pnpm build` in
+ * `bootstrap-languages/server-link-language` of the ad4m repo produces it.
+ *
+ * Returns a copy with one comment line appended, not the build itself. A language's address is
+ * the hash of its bundle, and the language store keeps the first meta published under an address:
+ * a later publish of identical bytes is ignored and hands back the earlier meta. A build that was
+ * ever published by hand with different template parameters is therefore stuck with them. The
+ * marker gives WE development its own address, the same one for everyone on the same build.
+ */
+ipcMain.handle('get-dev-link-language-bundle', () => {
+  if (app.isPackaged || !process.env.VITE_DEV_SERVER_URL) return null;
+  try {
+    const runtime = JSON.parse(readFileSync(join(__dirname, 'seed-runtime.json'), 'utf8'));
+    if (!runtime.ad4mRepoPath) return null;
+    const bundle = join(
+      expandHome(runtime.ad4mRepoPath),
+      'bootstrap-languages',
+      'server-link-language',
+      'build',
+      'bundle.js',
+    );
+    if (!existsSync(bundle)) return null;
+    const copy = join(app.getPath('temp'), 'we-dev-server-link-language', 'bundle.js');
+    mkdirSync(dirname(copy), { recursive: true });
+    writeFileSync(copy, `${readFileSync(bundle, 'utf8')}\n// Published for WE development.\n`);
+    return copy;
+  } catch {
+    return null;
+  }
+});
+
+// ── Account management ───────────────────────────────────────────────────────
+// Every mutation is registry-only; nothing takes effect until the app relaunches, because the
+// executor is configured with one data path at startup and holds it for its lifetime.
+
+ipcMain.handle('accounts-list', () => accounts.list());
+ipcMain.handle('accounts-create', () => accounts.create());
+ipcMain.handle('accounts-display', (_event, id, display) => accounts.setDisplay(id, display));
+ipcMain.handle('accounts-select', (_event, id) => accounts.select(id));
+ipcMain.handle('accounts-remove', (_event, id) => accounts.remove(id));
+
+/**
+ * Make the newly selected account take effect.
+ *
+ * The executor binds one data path for its lifetime, so the old one has to go — but only the
+ * *executor*, not the app. Electron spawns it as a child process, so it can be killed and
+ * respawned against the new path while the window stays put; relaunching the whole app (which is
+ * what this used to do, and what the ADAM launcher does) closes and reopens the window for no
+ * reason beyond it being the easier thing to write.
+ *
+ * The renderer is reloaded rather than reset in place. Every store holds agent-scoped state —
+ * session, datasets, spaces, profiles, presence, themes, templates, the editor — and clearing them
+ * individually means any one that forgets leaks the previous account's data into the next session.
+ * That is a privacy bug, not a glitch. A reload is a guaranteed clean slate and costs a few
+ * hundred milliseconds, which is why it is the design rather than a shortcut.
+ *
+ * Tauri cannot do this: it runs the executor in-process, and the executor's own graceful shutdown
+ * ends in `std::process::exit`, so stopping it takes the app with it. That host still relaunches.
+ */
+ipcMain.handle('accounts-apply', () => restartExecutorAndReload());
+
+ipcMain.handle('executor-settings-get', () => accounts.executorSettings());
+ipcMain.handle('executor-settings-set', (_event, settings) => accounts.setExecutorSettings(settings));
+/**
+ * Restart the executor so changed settings take effect.
+ *
+ * The same act as applying an account selection — the executor reads its arguments once, at
+ * startup, whether what changed is the data path or an MCP port. Sharing the implementation is not
+ * a shortcut: two functions that both mean "start the executor over" would drift, and the second
+ * one to be written would be the one that forgets to repaint the window.
+ */
+ipcMain.handle('executor-restart', () => restartExecutorAndReload());
+
+/**
+ * A path on this machine, for the backend to write to or read from.
+ *
+ * The executor's export and import take a path on its own filesystem, and it runs here — so this is
+ * the one place that can turn "somewhere to put it" into something it can use. A renderer file
+ * picker cannot: the File it yields carries no path.
+ */
+/*
+  Save a file the renderer has produced — every download in the app, when running here.
+
+  The renderer's own ways out are both worse on a desktop: a download link drops the file in
+  Downloads with no say and no answer, and Chromium's save picker needs a file-system permission
+  this app refuses to every page (see the permission handlers). So the dialog is the main process's
+  own, and so is the write — to the path that dialog returned and nothing else, which is what keeps
+  an IPC channel that writes files from being one that writes *any* file.
+
+  Resolves true once written, false when the dialog was closed.
+*/
+ipcMain.handle('save-file', async (_event, { name, bytes } = {}) => {
+  if (typeof name !== 'string' || !(bytes instanceof Uint8Array))
+    throw new Error('save-file: a name and bytes are required');
+  const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+  // A name only — a renderer-supplied path would choose the folder for the reader.
+  const fileName = basename(name) || 'download';
+  const extension = extname(fileName).slice(1);
+  const result = await dialog.showSaveDialog(parent, {
+    defaultPath: join(app.getPath('downloads'), fileName),
+    filters: extension
+      ? [
+          { name: extension.toUpperCase(), extensions: [extension] },
+          { name: 'All files', extensions: ['*'] },
+        ]
+      : [],
+  });
+  if (result.canceled || !result.filePath) return false;
+  writeFileSync(result.filePath, bytes);
+  return true;
+});
+
+ipcMain.handle('executor-choose-file', async (_event, { save, defaultName } = {}) => {
+  const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+  const options = { defaultPath: defaultName, filters: [{ name: 'JSON', extensions: ['json'] }] };
+  const result = save
+    ? await dialog.showSaveDialog(parent, options)
+    : await dialog.showOpenDialog(parent, { ...options, properties: ['openFile'] });
+  if (result.canceled) return null;
+  return save ? (result.filePath ?? null) : (result.filePaths[0] ?? null);
+});
+
+async function restartExecutorAndReload() {
+  switchingAccount = true;
+  try {
+    killExecutor();
+    // startExecutor picks up the new path, waits for GraphQL, and refreshes port/token — which the
+    // reloaded renderer asks for again over IPC, so it never sees the old credentials.
+    await startExecutor();
+  } catch (err) {
+    console.error('[main] Could not start the executor for the selected account:', err);
+    // Fall through to the reload anyway: the renderer's boot will surface a connection failure,
+    // which is a screen the user can act on. Leaving them on a spinner is not.
+  } finally {
+    switchingAccount = false;
+  }
+
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  // Paint the gap in the app's own colour.
+  //
+  // A reload repaints the window from its background colour, which defaults to white — so on a
+  // dark theme the switch flashes white for the frames before the new document paints.
+  //
+  // Resolved from `--we-color-neutral-0`, the token the boot screen itself uses, via a throwaway
+  // element: the token's authored form varies (hex, hsl parts, whatever a custom theme sets) and
+  // `getComputedStyle` on a real element hands back a resolved `rgb()` string whatever it was.
+  // Reading `document.body`'s own background instead — the first attempt — picked up the browser
+  // default rather than the app's, which is why the flash was a lighter shade than the app.
+  try {
+    const background = await mainWindow.webContents.executeJavaScript(
+      `(() => {
+         const probe = document.createElement('div');
+         probe.style.cssText = 'position:absolute;visibility:hidden;background:var(--we-color-neutral-0)';
+         document.body.appendChild(probe);
+         const resolved = getComputedStyle(probe).backgroundColor;
+         probe.remove();
+         return resolved;
+       })()`,
+    );
+    // Reject transparent: an unset token would otherwise set the window transparent-black, which
+    // paints as the very white this exists to avoid.
+    if (background && !background.startsWith('rgba(0, 0, 0, 0')) mainWindow.setBackgroundColor(background);
+  } catch {
+    // Best effort — a white frame is a blemish, not a reason to abandon the switch.
+  }
+
+  // Load the app root rather than reloading the current URL. Two reasons, and the second is why
+  // this is more than tidiness: after a switch the previous URL belongs to the account being left
+  // — a deep link into one of *its* spaces, which need not exist in the account now being opened.
+  // And in a packaged build a reload re-requests that deep path from the express server, where
+  // anything the static middleware cannot match falls through to a catch-all; that is the shape of
+  // the NotFoundError seen when creating an account from a built app.
+  mainWindow.loadURL(appUrl());
+}
+
+/**
+ * Ask the window to choose a screen, and wait for the answer.
+ *
+ * ## Why the ask goes this way round
+ *
+ * The obvious alternative is for the renderer to choose *before* it calls `getDisplayMedia` and
+ * stash the answer for this handler to read. It cannot: with `useSystemPicker` on, Electron does not
+ * call the handler at all where the OS has a picker, so the renderer would have to know in advance
+ * whether its own picker was wanted — and the only way to know is to guess from the platform and the
+ * OS version. Asking from inside the handler needs no guess, because reaching the handler *is* the
+ * condition.
+ *
+ * Thumbnails are sent as data URLs rather than as `NativeImage`s: what crosses is then plainly a
+ * string, and the renderer needs no Electron type to read it.
+ *
+ * ## The timeout is a release, not a policy
+ *
+ * A renderer that never answers — reloaded mid-share, crashed, a build with no picker in it — must
+ * not leave this promise outstanding forever, because the handler is holding a `getDisplayMedia`
+ * that the page is awaiting. Falling back to no selection reads as "cancelled" on the other side,
+ * which is the honest outcome: nothing was chosen.
+ */
+const SCREEN_PICK_TIMEOUT_MS = 60_000;
+
+function askRendererForScreenSource(window, sources) {
+  if (!window || window.isDestroyed()) return Promise.resolve('');
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (id) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      ipcMain.removeListener('screen-source-picked', onPicked);
+      resolve(id);
+    };
+
+    // Keyed by nothing: one share at a time per window, and a second request would have had to wait
+    // on the first anyway. A stale answer to a request that has already timed out is dropped by
+    // `settled`.
+    const onPicked = (event, id) => {
+      if (event.sender !== window.webContents) return;
+      finish(typeof id === 'string' ? id : '');
+    };
+
+    const timer = setTimeout(() => finish(''), SCREEN_PICK_TIMEOUT_MS);
+    ipcMain.on('screen-source-picked', onPicked);
+
+    window.webContents.send(
+      'screen-source-request',
+      sources.map((source) => ({
+        id: source.id,
+        name: source.name,
+        // A screen has no window title worth showing; Electron names them "Entire screen" and
+        // similar already, so nothing is invented here.
+        thumbnail: source.thumbnail?.toDataURL?.() ?? '',
+      })),
+    );
+  });
+}
 
 ipcMain.handle('get-desktop-sources', async () => {
   const sources = await desktopCapturer.getSources({

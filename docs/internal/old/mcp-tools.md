@@ -1,3 +1,6 @@
+> **Archived: unimplemented plan.** Proposes MCP tools for on-demand AI context; nothing in
+> the codebase implements it. The shipped approach is `@we/ai-context`'s generated reference.
+
 # Plan: WE MCP Tools for On-Demand AI Context
 
 > Separate follow-up PR after `@we/ai-context` lands. This plan covers exposing WE knowledge and validation capabilities through MCP tools instead of relying only on a large static prompt.

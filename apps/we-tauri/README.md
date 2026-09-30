@@ -1,13 +1,13 @@
 # WE Tauri App
 
-Tauri desktop application for the WE platform. This launcher uses the `@we/app-framework` package to provide a cross-platform AD4M-powered interface, with Tauri-specific platform adapters.
+Tauri desktop application for the WE platform. This launcher uses the `@we/app-shell` package to provide a cross-platform AD4M-powered interface, with Tauri-specific platform adapters.
 
 ## What This App Does
 
 The WE Tauri launcher:
 
 - Embeds the AD4M executor as a Rust library (not a separate process)
-- Provides a SolidJS-based interface using `@we/app-framework`
+- Provides a SolidJS-based interface using `@we/app-shell`
 - Supports embedding external apps via iframe (e.g., Flux, custom apps)
 - Handles platform-specific concerns like native IPC and resource bundling
 
@@ -17,7 +17,7 @@ The WE Tauri launcher:
   - Embeds `ad4m-rust-executor` as a library
   - Exposes Tauri commands for AD4M connection details
   - Handles resource bundling for embedded apps
-- **Frontend** (`src/`): SolidJS app using the shared `@we/app-framework`
+- **Frontend** (`src/`): SolidJS app using the shared `@we/app-shell`
 - **Platform Adapter** (`src/platform/tauriAdapter.ts`): Implements AD4M connection using Tauri commands
 
 ## How it Works
@@ -33,7 +33,7 @@ Unlike the Electron app which spawns the executor as a child process, the Tauri 
 
 This launcher can embed external apps (like Flux) via iframe. The embedded apps receive AD4M credentials through a postMessage protocol.
 
-**See:** [`../EMBEDDING.md`](../EMBEDDING.md) for the generic integration pattern.
+**See:** [`embedding-external-apps.md`](../../docs/guides/embedding-external-apps.md) for the generic integration pattern.
 
 ### Tauri-Specific Considerations
 

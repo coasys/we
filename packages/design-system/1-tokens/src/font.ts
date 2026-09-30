@@ -4,11 +4,12 @@
  */
 
 // Literal union types for font tokens
-export type FontFamilyToken = 'base' | 'mozilla' | 'boldonse';
+export type FontFamilyToken = 'base' | 'mozilla' | 'boldonse' | 'mono';
 export type FontFamilyValue = FontFamilyToken | (string & {});
 export type FontSizeToken = 'base' | '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' | '1000';
 export type FontSizeValue = FontSizeToken | (string & {});
-export type FontWeightToken = '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900';
+export type FontWeightToken =
+  '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' | 'regular' | 'medium' | 'semibold' | 'bold';
 export type LineHeightToken = 'none' | 'tight' | 'snug' | 'normal' | 'relaxed' | 'loose';
 export type LineHeightValue = LineHeightToken | (string & {});
 export type LetterSpacingToken = 'tighter' | 'tight' | 'normal' | 'wide' | 'wider' | 'widest';
@@ -22,6 +23,15 @@ export const fontFamily = {
   base: "'DM Sans', sans-serif",
   mozilla: "'Mozilla Text', serif",
   boldonse: "'Boldonse', serif",
+  /*
+    The code face. A system stack rather than a webfont, so it costs nothing to ship and looks
+    native everywhere; a theme wanting its own monospace overrides `--we-font-mono`.
+
+    It existed only as a fallback before: `we-markdown` and `we-html` both read
+    `var(--we-font-mono, monospace)` for a variable nothing declared, and `we-code` hardcoded
+    `monospace` — so the one face a theme could not change was the one code is set in.
+  */
+  mono: "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace",
 } satisfies Record<FontFamilyToken, string>;
 
 /**
@@ -31,16 +41,16 @@ export const fontFamily = {
  */
 export const fontSize = {
   base: '16px', // Base size reference
-  '100': '0.56rem', // ~9px
-  '200': '0.63rem', // ~10px
-  '300': '0.75rem', // ~12px
-  '400': '0.88rem', // ~14px
-  '500': '1rem', // 16px
-  '600': '1.25rem', // ~20px
-  '700': '1.5rem', // ~24px
-  '800': '2rem', // ~32px
-  '900': '2.63rem', // ~42px
-  '1000': '3.63rem', // ~58px
+  '100': '0.75rem', // 12px — caption / footnote
+  '200': '0.875rem', // 14px — label / secondary
+  '300': '1rem', // 16px — body (browser default)
+  '400': '1.125rem', // 18px — lead / subheading
+  '500': '1.25rem', // 20px — heading-sm
+  '600': '1.5rem', // 24px — heading-md
+  '700': '2rem', // 32px — heading-lg
+  '800': '2.5rem', // 40px — heading-xl
+  '900': '3.5rem', // 56px — display
+  '1000': '4.5rem', // 72px — hero
 } satisfies Record<FontSizeToken, string>;
 
 /**
@@ -57,6 +67,10 @@ export const fontWeight = {
   '700': '700',
   '800': '800',
   '900': '900',
+  regular: '400',
+  medium: '500',
+  semibold: '600',
+  bold: '700',
 } satisfies Record<FontWeightToken, string>;
 
 /**

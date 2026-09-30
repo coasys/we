@@ -10,7 +10,7 @@ A2UI is a protocol for AI agents to send declarative UI descriptions across trus
 
 Core concepts:
 
-- **Streaming JSON messages** — `createSurface`, `updateComponents`, `updateDataModel`, `deleteSurface`
+- **Streaming JSON messages** — `createSurface`, `updateComponents`, `updateDataRecord`, `deleteSurface`
 - **Flat adjacency list** — components are a flat list with ID references, not nested trees
 - **Catalogs** — JSON Schema files describing available components, functions, and themes
 - **Data binding** — JSON Pointer paths (`/user/name`) bind components to a separate data model
@@ -75,7 +75,7 @@ None have won yet. All are <2 years old and still evolving.
   },
   {
     "version": "v0.9",
-    "updateDataModel": { "surfaceId": "main", "path": "/currentSpace", "value": { "name": "My Space" } }
+    "updateDataRecord": { "surfaceId": "main", "path": "/currentSpace", "value": { "name": "My Space" } }
   }
 ]
 ```

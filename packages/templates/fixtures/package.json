@@ -1,0 +1,22 @@
+{
+  "private": true,
+  "name": "@we/template-fixtures",
+  "version": "0.1.0",
+  "description": "Sample content for the showcase templates — one format, applied to any backend",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
+  }
+}

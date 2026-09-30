@@ -1,7 +1,7 @@
 {
   "name": "@we/app-tauri",
-  "version": "0.1.0",
-  "description": "",
+  "version": "0.1.0-alpha.1",
+  "description": "WE - Decentralized social launcher (Tauri)",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -12,26 +12,28 @@
     "build": "we-build",
     "serve": "vite preview",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev -- --release",
-    "tauri:build": "tauri build"
+    "pretauri:dev": "node scripts/generate-seed-config.cjs",
+    "tauri:dev": "concurrently \"pnpm dev\" \"wait-on http://localhost:1420 && tauri dev -- --release\"",
+    "pretauri:build": "node scripts/generate-seed-config.cjs",
+    "tauri:build": "tauri build && node scripts/rename-bundle.cjs",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@apollo/client": "^3.7.10",
-    "@coasys/ad4m": "0.11.0",
-    "@solidjs/router": "^0.15.3",
-    "@tauri-apps/api": "2.7.0",
-    "@tauri-apps/plugin-opener": "2.4.0",
-    "@we/app-framework": "workspace:*",
-    "graphql": "15.7.2",
-    "graphql-ws": "5.12.0",
-    "solid-js": "^1.9.5"
+    "@coasys/ad4m": "0.13.0-test-interpretation-2",
+    "@tauri-apps/api": "2.11.1",
+    "@we/app-shell": "workspace:*",
+    "solid-js": "^1.9.15",
+    "@we/backend-ad4m": "workspace:*"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "2.7.0",
-    "@types/three": "^0.176.0",
+    "@tauri-apps/cli": "2.11.4",
+    "@types/three": "^0.185.4",
+    "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
-    "typescript": "^5.7.2",
-    "vite": "^6.0.0",
-    "vite-plugin-solid": "^2.11.6"
+    "concurrently": "^10.0.5",
+    "typescript": "^6.0.3",
+    "vite": "^8.2.2",
+    "vite-plugin-solid": "^2.11.14",
+    "wait-on": "^9.1.0"
   }
 }

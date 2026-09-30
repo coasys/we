@@ -28,11 +28,25 @@ const OUT_DIR = resolve(PRIMITIVES_ROOT, 'src/generated');
 const OUT_FILE = resolve(OUT_DIR, 'icon-bundle.ts');
 
 // Directories to scan (relative to workspace root)
+//
+// Templates and feature modules are in here for the same reason the app is: an icon named anywhere
+// that ships with a deployment has to render without a network. They were missing, so every icon a
+// built-in template asked for fell through to the CDN fallback — which looks fine in development
+// and leaves blank squares on a desktop build with no connection.
+//
+// The graph is here on the same argument, and was the next one to be caught by it: the connect
+// handles on a board name their four arrows in the renderer itself, and `arrow-up` was in no other
+// package, so it was the one of the four that did not exist offline.
 const SCAN_GLOBS = [
   'packages/app-framework/src/**/*.{ts,tsx}',
+  'packages/app-shell/src/**/*.{ts,tsx}',
   'packages/design-system/**/src/**/*.{ts,tsx}',
   'packages/block-system/**/src/**/*.{ts,tsx}',
+  'packages/graph-system/**/src/**/*.{ts,tsx}',
   'packages/schema-system/**/src/**/*.{ts,tsx}',
+  'packages/module-system/**/src/**/*.{ts,tsx}',
+  'packages/templates/**/src/**/*.{ts,tsx}',
+  'packages/editor/src/**/*.{ts,tsx}',
   'apps/**/src/**/*.{ts,tsx}',
   'views/**/*.{ts,tsx}',
 ];
@@ -108,6 +122,28 @@ function extractIconRefs(content: string): IconRef[] {
   while ((match = schemaIconRegex2.exec(content)) !== null) {
     const name = match[1];
     refs.push({ name, weight: 'regular' });
+  }
+
+  /*
+    Pattern 5: an icon named as a *value*, nowhere near a `we-icon`.
+
+    The patterns above all look for the element, which misses every icon that arrives as data — a
+    module's `icon`, a launcher's, a dropdown item's, a `triggerIcon`, or anything handed to a helper
+    that renders the element somewhere else entirely. That is most of the shell's own chrome: the call
+    bar builds its buttons through `mediaToggle({ on, off })`, the dock frame's position menu through
+    an `at(snap, label, icon)` helper, and not one of those names was ever collected. They all fell
+    through to the CDN — fine in development, blank squares on a desktop build with no connection,
+    which is a poor showing for an app whose whole claim is that it works offline.
+
+    Deliberately loose, because being wrong is cheap in exactly one direction: `readPhosphorSvg`
+    returns null for a name Phosphor does not have, so a false positive is skipped silently and costs
+    nothing. A false *negative* is an icon that does not render. Weight is always `regular` here —
+    a value-shaped icon has no weight attribute to read, and `regular` is what every one of these
+    call sites uses.
+  */
+  const valueIconRegex = /\b(?:icon|triggerIcon|iconSecondary|on|off)\s*:\s*['"]([a-z][a-z0-9-]{2,})['"]/g;
+  while ((match = valueIconRegex.exec(content)) !== null) {
+    refs.push({ name: match[1], weight: 'regular' });
   }
 
   return refs;

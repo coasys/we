@@ -1,4 +1,5 @@
 import './icons/register-bundled-icons';
+import './primitives/alert';
 import './primitives/audio';
 import './primitives/avatar';
 import './primitives/badge';
@@ -9,6 +10,8 @@ import './primitives/code';
 import './primitives/color-picker';
 import './primitives/date-picker';
 import './primitives/divider';
+import './primitives/draggable';
+import './primitives/drop-zone';
 import './primitives/drawer';
 import './primitives/file-upload';
 import './primitives/form-field';
@@ -19,6 +22,7 @@ import './primitives/iframe';
 import './primitives/image';
 import './primitives/input';
 import './primitives/link';
+import './primitives/live-cursor';
 import './primitives/location-picker';
 import './primitives/markdown';
 import './primitives/number';
@@ -33,6 +37,8 @@ import './primitives/progress-bar';
 import './primitives/radio';
 import './primitives/scroll-area';
 import './primitives/select';
+import './primitives/move-handle';
+import './primitives/resize-handle';
 import './primitives/skeleton';
 import './primitives/slider';
 import './primitives/sortable';
@@ -48,3 +54,14 @@ import './primitives/timestamp';
 import './primitives/video';
 
 export { buildCdnUrl, setIconResolver } from './primitives/icon';
+
+/**
+ * The theme cascade, open to components the design system has never heard of.
+ *
+ * A feature module owning its own components can say which theme group they follow, so a theme that
+ * squares off its surfaces reaches them too. See registerComponentCascade for when to call it.
+ */
+export { type ComponentCascade, componentCascadeFor, registerComponentCascade } from './shared/helpers';
+
+/** One icon per status variant — the redundancy that carries status without colour. */
+export { ALERT_VARIANT_ICONS } from './primitives/alert';

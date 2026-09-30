@@ -1,0 +1,588 @@
+/**
+ * What a template may name inside a `GraphView`.
+ *
+ * This file is the reason the plugin system is usable rather than merely well-designed. Props tell an
+ * author that `layout.type` is a string; nothing in a prop list says which strings exist, and a plugin
+ * nobody can name might as well not be registered. The globe is the cautionary case — its layer
+ * protocol is good, and an LLM still cannot author a globe template, because no catalog of layer names
+ * ever reaches the generated context.
+ *
+ * So the catalog is declared here and picked up by `@we/ai-context` (`context: { type: 'plugins' }` in
+ * this package's `package.json`), landing in CLAUDE.md alongside the component registry. A module
+ * contributing its own expander adds to its own catalog and is documented the same way — which is what
+ * makes "describe the graph you want" keep working for plugins that did not exist when the engine was
+ * written.
+ *
+ * Keep the examples runnable. An author — human or otherwise — composes from a worked snippet far
+ * better than from an option table, and a stale example is worse than none.
+ */
+import type { PluginCatalog } from '@we/schema-shared';
+
+export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
+  component: 'GraphView',
+  description:
+    'Names resolvable inside GraphView props: seed sources (seeds.source), expanders (expansion.expanders), layouts (layout.type) and behaviours (behaviours[]).',
+  plugins: [
+    // ─── Seed sources ──────────────────────────────────────────────────────────
+    {
+      id: 'query',
+      category: 'seed',
+      description: 'Loads instances of one entity type as nodes; can draw named relations immediately.',
+      options: [
+        { name: 'entity', type: 'string', description: 'Entity type to load (required).' },
+        { name: 'where', type: 'object', description: 'Filter, same operators as $query.' },
+        { name: 'order', type: 'object', description: 'e.g. { createdAt: "desc" }.' },
+        { name: 'limit', type: 'number', description: 'Defaults to 100.' },
+        { name: 'relations', type: 'string[]', description: 'Relations to hydrate and draw as edges up front.' },
+      ],
+      example: `{ "source": "query", "options": { "entity": "Post", "limit": 50, "relations": ["author"] } }`,
+    },
+    {
+      id: 'schema',
+      category: 'seed',
+      description:
+        "Maps the dataset's own entity types and the relations between them — one node per type. Picks up model types installed after the template was written, so it suits spaces whose vocabulary is open-ended.",
+      options: [{ name: 'entities', type: 'string[]', description: 'Restrict to these types; omit for all of them.' }],
+      example: `{ "source": "schema" }`,
+    },
+    {
+      id: 'canvas',
+      category: 'seed',
+      description:
+        "A container's contents at the positions somebody put them. Membership is ordinary containment, so a card composed onto the canvas is found like any child; position comes from Placement records parented to the same canvas, which is why the same note can sit on two canvases in two places. Pair with layout: manual and drag-node { pin: true }, and persist a drop through recordStore.placeOnCanvas. Loads nothing until a canvas is chosen.",
+      options: [
+        { name: 'canvas', type: 'string', description: 'Record id of the canvas (required).' },
+        {
+          name: 'contains',
+          type: 'string[]',
+          description:
+            'Types the canvas may hold beyond whatever its placements name — one query each. Defaults to the block vocabulary; anything *placed* is loaded whether or not it is listed.',
+        },
+        { name: 'via', type: 'string', description: 'Relation holding the contents. Defaults to "children".' },
+        {
+          name: 'connections',
+          type: 'string',
+          description:
+            'Reified relation entity to draw as lines between the cards — e.g. "Relationship". Only pairs whose two ends are both on the canvas are drawn, since a line to something elsewhere would leave the canvas. Each line carries the record it stands for, so clicking one can open it. Omit for a canvas with no connections.',
+        },
+        {
+          name: 'typeStyles',
+          type: 'string',
+          description:
+            'Entity holding this canvas\'s colour per kind of thing — WE passes "TypeStyle". Read onto every node as `canvasTypeColor`, for a style rule to pick up with `{ from: "data.canvasTypeColor" }`. This is what a canvas\'s key writes.',
+        },
+        {
+          name: 'routes',
+          type: 'string',
+          description:
+            'Entity holding how this canvas draws its connections — WE passes "EdgeRoute". Read onto each edge as `sourceAnchor` / `targetAnchor`, which pin which SIDE of a card a line leaves and arrives on (`n`, `e`, `s`, `w`) instead of letting the geometry decide. Per canvas, like a placement: the same connection shown on two canvases is tidied on each separately. Also carries the points a line is bent through, read onto the edge as `waypoints`. Pair with onEdgeAnchor/recordStore.anchorOnCanvas and onEdgeReroute/recordStore.rerouteOnCanvas to let people set them.',
+        },
+        {
+          name: 'pending',
+          type: 'string[]',
+          description:
+            'Record ids whose card stands for a suggestion nobody has agreed to yet — an extraction pass can stage a whole record, so it is on the canvas and answers every query the accepted ones do. Read onto the matching node as `data.pending`, for a style rule or a node action to pick up with `{ when: { "data.pending": true } }` — the `data.` prefix is required, since a bare key reads a node field rather than seeded data, and matches nothing here. Ids rather than a query because only the capability that staged them knows which they are.',
+        },
+        {
+          name: 'changed',
+          type: 'string[]',
+          description:
+            'Record ids that are agreed but carry a suggested change — a staged edit to something a person already owns. Read onto the matching node as `data.changed`. Separate from `pending` because it wants the opposite drawing: the record is settled, so mark it rather than fade it.',
+        },
+        {
+          name: 'hidden',
+          type: 'string[]',
+          description:
+            'Record ids to leave off the canvas entirely — no card, and no connection to or from one. For narrowing what is shown (hiding suggestions nobody has agreed to), where an opacity rule would still leave the card pressable and its lines drawn.',
+        },
+        {
+          name: 'counts',
+          type: 'string[]',
+          description:
+            'Relations to count on each card, read onto its data as `<name>Count` — `["signals", "comments"]` for "what have people made of this". The projections ride in the read the seed already makes, so a canvas of three hundred cards pays nothing extra; a query per card would be three hundred subscriptions. A type that does not declare the relation is asked for no count rather than refusing the read, since a refusal would take that whole type off the canvas. Absent for a count of zero, like every other unset field, so a rule can ask whether it is there.',
+        },
+        {
+          name: 'weigh',
+          type: '{ signalTypeId: string; aggregate?: string; mode?: string; rangeMin?: number; rangeMax?: number; step?: number; excludeAuthors?: string[]; me?: string }',
+          description:
+            "Weigh each card by one reaction type, read onto its data as `weight` (with `weightCount`, `weightMine` — what `me` gave — and `weightType`). Read the way every reaction surface reads the type: a toggle counts, a vote nets out, a rating or slider averages, and the community's own `aggregate` where the mode can express it. Absent for a vote or rating nobody has given; zero for a count. What a forest's `sortBy: 'weight'` and a heat rule read. Pass the type's `rangeMin`, `rangeMax` and `step` too, so the pretend people a development build can add answer within its range.",
+        },
+        {
+          name: 'weights',
+          type: 'string',
+          description:
+            "How much each person's voice counts in `weigh` — `did=50,did=0` in whole percent, anyone not named in full; 0 leaves them out. Applied to the answers already read, so changing it re-weighs the canvas with no query — a slider can drive it. The seed reports who answered as `onSeedSummary`'s `voices`: `{ author, cards, mean }`, the busiest first.",
+        },
+        { name: 'limit', type: 'number', description: 'Rows per type. Default 200.' },
+      ],
+      example: `{ "source": "canvas", "options": { "canvas": { "$": "local.canvasId" } } }`,
+    },
+    {
+      id: 'dataset',
+      category: 'seed',
+      description: 'Seeds a single node for the current space — the starting point for exploring outward.',
+      options: [{ name: 'label', type: 'string', description: 'What the node is called. Defaults to the space name.' }],
+      example: `{ "source": "dataset", "options": { "label": "This space" } }`,
+    },
+
+    // ─── Expanders ─────────────────────────────────────────────────────────────
+    {
+      id: 'entity',
+      category: 'expander',
+      description:
+        "Follows an entity's typed relations, forwards and backwards, from the dataset's schema. The default for knowledge maps.",
+      options: [
+        { name: 'relations', type: 'string[]', description: 'Only follow these.' },
+        { name: 'exclude', type: 'string[]', description: 'Never follow these.' },
+      ],
+      example: `"expansion": { "expanders": ["entity"], "direction": "both", "defaultDepth": 1 }`,
+    },
+    {
+      id: 'collection',
+      category: 'expander',
+      description:
+        'Opens a container into its children through an untyped to-many relation — the drill-down the schema cannot describe. Recurses naturally into nested collections.',
+      options: [
+        { name: 'parents', type: 'string[]', description: 'Container types. Defaults to CollectionBlock.' },
+        { name: 'via', type: 'string', description: 'Relation holding the children. Defaults to "children".' },
+        { name: 'children', type: 'string[]', description: 'Child entity types to look for.' },
+      ],
+      example: `"expansion": { "expanders": ["collection"], "defaultDepth": 2, "direction": "out" }`,
+    },
+    {
+      id: 'schema',
+      category: 'expander',
+      description:
+        'Opens an entity-type node from the schema seed into instances of that type — the step from "what kinds of thing are here" to "here they are". Paired with the schema seed it makes one map out of two.',
+      options: [{ name: 'limit', type: 'number', description: 'Instances loaded per type. Default 25.' }],
+      example: `"seeds": { "source": "schema" }, "expansion": { "expanders": ["schema", "entity"] }`,
+    },
+    {
+      id: 'property',
+      category: 'expander',
+      description:
+        'Opens an instance out into its own scalar fields, and optionally into shared value nodes so instances converge on common values. The resolution level below an entity.',
+      options: [
+        { name: 'properties', type: 'string[]', description: 'Only show these fields.' },
+        { name: 'valueNodes', type: 'boolean', description: 'Promote values to shared nodes. Defaults to true.' },
+      ],
+      example: `"expansion": { "expanders": ["property"] }`,
+    },
+
+    // ─── Layouts ───────────────────────────────────────────────────────────────
+    {
+      id: 'force',
+      category: 'layout',
+      description:
+        'Force-directed, with warm start so newly expanded nodes settle around what is already placed rather than restarting the whole map. The default.',
+      options: [
+        { name: 'distance', type: 'number', description: 'Preferred edge length. Default 90.' },
+        { name: 'charge', type: 'number', description: 'Repulsion; more negative spreads further. Default -220.' },
+        { name: 'collide', type: 'number', description: 'Minimum spacing. Default 28.' },
+      ],
+      example: `{ "type": "force", "options": { "distance": 140 } }`,
+    },
+    {
+      id: 'tree',
+      category: 'layout',
+      description: 'Layered hierarchy from the graph roots. The right choice for containment and org charts.',
+      options: [
+        {
+          name: 'direction',
+          type: '"down" | "right"',
+          description: 'Which way the tree grows from its roots. Default "down".',
+        },
+        { name: 'levelGap', type: 'number', description: 'Distance between one rank and the next.' },
+        { name: 'siblingGap', type: 'number', description: 'Distance between neighbours on the same rank.' },
+      ],
+      example: `{ "type": "tree", "options": { "direction": "right", "levelGap": 200 } }`,
+    },
+    {
+      id: 'forest',
+      category: 'layout',
+      description:
+        'Separate tidy trees side by side along one named connection, each parent centred over its own children, siblings ordered by a field on the card, and everything the connection does not touch in a labelled zone of its own. This is the layout for a map somebody reads an ORDER off — "the strongest option is leftmost". Prefer `tree` where shared parents are the point and crossings are what to reduce, since ordering siblings by data and minimising crossings are the same decision and cannot both be had.',
+      options: [
+        {
+          name: 'spine',
+          type: '{ field: string; value: string | number | boolean }',
+          description:
+            'Which connections make a parent a parent — one field of a line and the value it must hold. `{ "field": "data.relationshipTypeId", "value": "<id>" }` follows one kind a community named. Absent follows every line, which is right only where they are all one kind. Every other line is still drawn; it simply does not decide where a card goes.',
+        },
+        {
+          name: 'sortBy',
+          type: 'string',
+          description:
+            'Card data field deciding sibling order, left to right — "weight" for strongest first, "createdAt" for oldest first, "canvasRank" for an order somebody dragged. Absent leaves the order the graph holds.',
+        },
+        { name: 'sortDirection', type: '"asc" | "desc"', description: 'Default "asc", which is what a date wants.' },
+        {
+          name: 'tiebreakBy',
+          type: 'string',
+          description:
+            'The second key, used only where the first ties. Default "createdAt". Not decoration: two cards on the same number of votes otherwise swap places whenever anything else in the space changes, which reads as the map being unstable.',
+        },
+        {
+          name: 'card',
+          type: '{ width: number; height: number }',
+          description:
+            'The box every card is allotted — uniform on purpose, since ranks read as significance and cards at the sizes somebody chose on a freeform canvas would claim some the data does not support. What a card is DRAWN as is a style rule.',
+        },
+        {
+          name: 'siblingGap',
+          type: 'number',
+          description:
+            "Clear space between two cards side by side. Defaults to a share of the card's WIDTH, so a reader switching to large cards gets room to match — a constant is comfortable at one card size and reads as cards touching at another.",
+        },
+        {
+          name: 'levelGap',
+          type: 'number',
+          description:
+            "Clear space between one rank and the next. A share of the card's HEIGHT, and a larger share than the sibling gap: a rank is read along, so its cards belong together, where the vertical gap is what the lines live in and has to be legible on its own.",
+        },
+        {
+          name: 'treeGap',
+          type: 'number',
+          description: 'Clear space between one tree and the next. Default three sibling gaps.',
+        },
+        {
+          name: 'unattached',
+          type: '"right" | "bottom"',
+          description: 'Where cards on no tree go. Default "right"; "bottom" suits a narrow screen.',
+        },
+        { name: 'unattachedColumns', type: 'number', description: 'How many cards wide that zone is. Default 3.' },
+        {
+          name: 'unattachedLabel',
+          type: 'string',
+          description:
+            'What the zone is called; the count is appended. Default "Unconnected", and an empty string leaves it unlabelled.',
+        },
+      ],
+      example: `{ "type": "forest", "options": { "spine": { "field": "data.relationshipTypeId", "value": { "$": "local.spine" } }, "sortBy": "weight", "sortDirection": "desc", "card": { "width": 180, "height": 120 } } }`,
+    },
+    {
+      id: 'radial',
+      category: 'layout',
+      description: 'Concentric rings by hop distance from the roots — reads as distance from a centre.',
+      options: [{ name: 'ringGap', type: 'number', description: 'Distance between one ring and the next.' }],
+      example: `{ "type": "radial" }`,
+    },
+    {
+      id: 'grid',
+      category: 'layout',
+      description: 'Uniform grid, optionally ordered by a node data field. Honest default when edges say little.',
+      options: [
+        { name: 'columns', type: 'number', description: 'How many columns. Derived from the node count when omitted.' },
+        { name: 'sortBy', type: 'string', description: 'Node data field to order by.' },
+      ],
+      example: `{ "type": "grid", "options": { "columns": 6, "sortBy": "name" } }`,
+    },
+    {
+      id: 'manual',
+      category: 'layout',
+      description:
+        'Positions come from the nodes themselves — a canvas, where position is the data being edited rather than something derived. Pair with drag-node and persist via onNodeDragEnd.',
+      options: [
+        { name: 'xField', type: 'string', description: 'Node data field holding x. Default "x".' },
+        { name: 'yField', type: 'string', description: 'Node data field holding y. Default "y".' },
+        {
+          name: 'size',
+          type: '{ width: number; height: number }',
+          description:
+            'The box a card takes. A node with no stored position is parked in the view, in the first slot clear of every card already there — pass the card size so slots do not overlap. Absent means a 160-sided square.',
+        },
+        {
+          name: 'widthField',
+          type: 'string',
+          description: 'Node data field holding a resized card’s own width, so parking keeps clear of it.',
+        },
+        { name: 'heightField', type: 'string', description: 'The same, for height.' },
+        { name: 'margin', type: 'number', description: 'Clear space around a parked card. Default 24 with `size`.' },
+      ],
+      example: `{ "type": "manual", "options": { "size": { "width": 180, "height": 135 } } }`,
+    },
+
+    // ─── Presentation ──────────────────────────────────────────────────────────
+    {
+      id: 'curve',
+      category: 'style',
+      description:
+        'Edge style — the shape a connection is drawn with. "smooth" (default) leaves and arrives along the axis the edge mostly runs on, the flow-chart S, so it reads as direction and suits hierarchies and pipelines. "straight" is a direct line, right when the layout is already doing the talking. "arc" bows to one side, for a graph dense enough that lines need telling apart by shape. "step" turns at right angles, for containment and org charts where the eye follows a rank. Two nodes related in both directions are always separated — shifted sideways, or crossed at different points — so picking a shape never hides a relationship.',
+      example: `"edgeStyle": [{ "style": { "curve": "smooth" } }]`,
+    },
+    {
+      id: 'sourceAnchor / targetAnchor',
+      category: 'style',
+      description:
+        'Edge style — which side of each node the line leaves and arrives on ("n", "e", "s", "w"). Normally derived from where the two nodes are, which is right on a canvas, where a line between two cards somebody placed should take the shortest sensible path. It is wrong wherever the ARRANGEMENT carries the meaning: in a downward tree a parent\'s children sit below it and spread sideways, so the geometry attaches the outer ones to their left and right edges and only the middle one to its top — three children, three different-looking relationships, when they are the same relationship. A rule, so an edge\'s own stored anchors still win: those are one canvas\'s tidying of one connection, which is the narrower fact.',
+      example: `"edgeStyle": [{ "style": { "sourceAnchor": "s", "targetAnchor": "n" } }]`,
+    },
+    {
+      id: 'ignoreRoute',
+      category: 'style',
+      description:
+        "Edge style — ignore what one canvas has tidied about this connection, its stored anchors and the points it is bent through, and draw it as the rules say. The usual precedence is the other way round, and that is right on a canvas: a line somebody pulled to a card's left side is a decision about that connection, narrower than any rule. It is wrong wherever the ARRANGEMENT carries the meaning. In a tree every child hangs off its parent's underside and is met at its own top, and that uniformity is what makes a rank readable — so one line bending around something that is no longer in the way is a card disagreeing with the shape for a reason that belonged to a different reading of the same records. Nothing is unwritten: the route is still stored, still the canvas's, and comes back the moment an arrangement that reads it does — and a bend appearing or going away is animated over the switch rather than snapped.",
+      example: `"edgeStyle": [{ "style": { "sourceAnchor": "s", "targetAnchor": "n", "ignoreRoute": true } }]`,
+    },
+    {
+      id: 'arrow',
+      category: 'style',
+      description:
+        'Edge style — which ends carry an arrowhead. "target" (default) points at the thing being related to; "both" for a mutual relationship drawn as one line; "none" when the relation has no direction worth showing. The head scales with the line\'s width, and the line stops short of it rather than running underneath.',
+      example: `"edgeStyle": [{ "style": { "arrow": "none" } }]`,
+    },
+    {
+      id: 'scaleWithZoom',
+      category: 'style',
+      description:
+        'Edge style. true (default) treats the line as part of the drawing, so it thickens as you zoom in — right for a canvas. false pins it to a constant on-screen width, so hairlines stay visible when you zoom out to see a whole network.',
+      example: `"edgeStyle": [{ "style": { "scaleWithZoom": false } }]`,
+    },
+    {
+      id: 'content',
+      category: 'style',
+      description:
+        "Node style, cards only. Names a host-supplied component to draw INSIDE the card instead of a text label — WE registers `block`, which renders a CollectionBlock's composed content the way a post card does, and `record`, which does the same for a note and draws any other record as its kind, its name and every value it holds. A label can only ever be the first line, so a card holding an image and three paragraphs shows sixty characters and gives no sign the rest exists. Clipped, not scrolled: a card is a preview, and what does not fit is reached by opening it. Falls back to the label when the host supplies no component by that name.",
+      example: `"nodeStyle": [{ "style": { "shape": "card", "width": 180, "content": "block" } }]`,
+    },
+    {
+      id: 'contentMinZoom',
+      category: 'style',
+      description:
+        'Node style. Hides card content below this zoom and falls back to the label. The sibling of labelMinZoom, and the thing that decides whether rich cards scale: a hundred documents rendered at once is a hundred component trees, and at the zoom where a canvas reads as coloured rectangles none of them is legible anyway.',
+      example: `"nodeStyle": [{ "style": { "shape": "card", "content": "block", "contentMinZoom": 0.5 } }]`,
+    },
+    {
+      id: 'badge',
+      category: 'style',
+      description:
+        "Node style, cards only. Names a host-supplied mark to pin to the card's lower edge — one a reader can press without picking the card up. WE registers `reaction`, which shows a card's score for the reaction a tree is ordered by and lets a reader give, change or take back their own. Not content: a card's content is inert, so a press anywhere on it starts a drag, and it is clipped to the card's shape; a badge sits on the edge, outside the clip, and takes its own presses. Nothing is drawn when the host supplies no badge by that name.",
+      example: `"nodeStyle": [{ "style": { "shape": "card", "badge": "reaction" } }]`,
+    },
+    {
+      id: 'scaleLabelWithZoom',
+      category: 'style',
+      description:
+        'Node style. true (default) scales the label with the camera; false keeps it a constant on-screen size, which keeps text readable at any zoom on a map you navigate by reading. Affects the label only — a node mark always scales, because its size and its hit area are both world units.',
+      example: `"nodeStyle": [{ "style": { "scaleLabelWithZoom": false } }]`,
+    },
+    {
+      id: 'labelMinZoom',
+      category: 'style',
+      description:
+        'Node style. Hides the label below this zoom level, so a dense graph stays readable when zoomed out and gains its detail as you move in.',
+      example: `"nodeStyle": [{ "style": { "labelMinZoom": 0.6 } }]`,
+    },
+
+    // ─── Metrics ───────────────────────────────────────────────────────────────
+    {
+      id: 'degree',
+      category: 'metric',
+      description:
+        'How connected a node is, normalised 0..1. The usual answer to "make the important things bigger". Reference it from a style value rather than a fixed number.',
+      options: [{ name: 'range', type: '[number, number]', description: 'Output range, e.g. [8, 30].' }],
+      example: `"nodeStyle": [{ "style": { "size": { "metric": "degree", "range": [10, 34] } } }]`,
+    },
+    {
+      id: 'community',
+      category: 'metric',
+      description:
+        'Groups the visible graph by label propagation. Pair with scale: "categorical" to colour each cluster differently — this is what makes a cluster map.',
+      options: [{ name: 'rounds', type: 'number', description: 'Propagation rounds. Default 8.' }],
+      example: `"nodeStyle": [{ "style": { "color": { "metric": "community", "scale": "categorical" } } }]`,
+    },
+    {
+      id: 'field',
+      category: 'metric',
+      description:
+        'Reads a number already on the card and normalises it against the rest of the visible graph — what makes a HEAT MAP. Pair it with a scale to colour by it — a named one ("heat") steps, and two colours, scale: { from, to }, blend continuously low to high, so a card’s shade says where in the range it sits — or a range to size by it. Works on a freeform canvas as readily as on a tree, since it is a style value rather than an arrangement. A card with no value is left out entirely rather than scored zero, so it falls through to whatever an earlier rule set: "nobody has answered this" and "this is the coldest thing here" are different facts.',
+      options: [
+        {
+          name: 'from',
+          type: 'string',
+          description: 'The data field to read — "weight", "signalsCount", or a date such as "createdAt".',
+        },
+        {
+          name: 'min',
+          type: 'number',
+          description:
+            "With max, map against a FIXED domain instead of the data's own — for a value whose scale means something absolutely (a 0..1 share, a 1..5 rating), where normalising to what is on screen would make one card at two stars look like the best there is. Values outside are clamped.",
+        },
+        { name: 'max', type: 'number', description: 'The top of that fixed domain.' },
+      ],
+      example: `"nodeStyle": [{ "style": { "color": { "metric": "field", "options": { "from": "weight" }, "scale": "heat" } } }]`,
+    },
+
+    // ─── Controls ──────────────────────────────────────────────────────────────
+    {
+      id: 'zoom-in',
+      category: 'control',
+      description: 'Zooms toward the centre of the view. Shown by default.',
+      example: `"controls": ["zoom-in", "zoom-out", "fit"]`,
+    },
+    { id: 'zoom-out', category: 'control', description: 'Zooms out from the centre. Shown by default.' },
+    {
+      id: 'fit',
+      category: 'control',
+      description:
+        'Frames everything currently on the graph. Deliberately not a re-layout — it moves the camera, never the nodes.',
+    },
+    {
+      id: 'pin',
+      category: 'control',
+      description:
+        'Holds the selected nodes where they are, so the layout stops moving them; press again to release. The usual way to shape a force graph — put the thing you care about where you want it, hold it there, and let the rest settle around it. Held nodes are ringed so the state is visible. Not shown by default: on a canvas every node is placed already and it means nothing.',
+      example: `"controls": ["zoom-in", "zoom-out", "fit", "pin"]`,
+    },
+    {
+      id: 'lock',
+      category: 'control',
+      description:
+        'Blocks moving nodes, so a graph cannot be rearranged by accident while it is being read or shown to someone. Affects dragging only — panning, zooming and a settling force layout all carry on. Not shown by default, and only meaningful where the template allows dragging at all.',
+      example: `"controls": ["zoom-in", "zoom-out", "fit", "lock"]`,
+    },
+    {
+      id: 'relayout',
+      category: 'control',
+      description:
+        'Re-runs the layout. Not shown by default: a rescue for a tangled force graph, and destructive on a canvas, where it would discard every position somebody chose.',
+      example: `"controls": ["zoom-in", "zoom-out", "fit", "relayout"]`,
+    },
+
+    // ─── Behaviours ────────────────────────────────────────────────────────────
+    {
+      id: 'pan-zoom',
+      category: 'behaviour',
+      description:
+        'Drag the background to pan, wheel to zoom about the pointer. **List it last.** It claims a press on empty canvas, and dispatch stops at the first behaviour that claims — so anything after it never sees a background press. Listed before `select`, clicking empty canvas silently stops clearing the selection.',
+      example: `"behaviours": ["select", "expand-on-double-click", "pan-zoom"]`,
+    },
+    {
+      id: 'select',
+      category: 'behaviour',
+      description:
+        'Click to select, shift-click to extend, background to clear. Emits onNodeClick, and onSelectionChange with an empty list when a background click clears it. Must be listed BEFORE pan-zoom, which claims the background press it needs to see.',
+    },
+    {
+      id: 'marquee-select',
+      category: 'behaviour',
+      description:
+        'Drag a rectangle over empty canvas to select everything it touches, marking each card as the rectangle reaches it. Additive rather than a mode: it takes a background press only when Shift or Ctrl/Cmd is held, or when `armed` is set, so a plain drag still pans. List it BEFORE pan-zoom, which is the background fallback and would otherwise claim the press first. Selecting touches rather than encloses, so a card wider than the view can still be caught. Holding the modifier adds to whatever is already selected.',
+      options: [
+        {
+          name: 'armed',
+          type: 'boolean',
+          description:
+            'Whether a plain background drag sweeps rather than pans. Default false. Arm it from a control the user can see — a touchscreen has no modifier keys.',
+        },
+      ],
+      example: `"behaviours": [{ "type": "marquee-select", "options": { "armed": { "$": "local.selecting" } } }, "select", { "type": "drag-node", "options": { "pin": true } }, "pan-zoom"]`,
+    },
+    {
+      id: 'drag-node',
+      category: 'behaviour',
+      description:
+        'Drag a node to move it, and every other selected node with it — so a selection built by clicking or sweeping travels as one. Releases on drop by default so the layout stays in charge; pass { pin: true } on a canvas.',
+      options: [{ name: 'pin', type: 'boolean', description: 'Leave the node pinned where it was dropped.' }],
+      example: `{ "type": "drag-node", "options": { "pin": true } }`,
+    },
+    {
+      id: 'arrange-nodes',
+      category: 'behaviour',
+      description:
+        'Drag a card to another place in a hierarchy, with the tree showing the result as you go — emitting onNodeArrange when it is dropped. One rule — the place whose ghost would be nearest the card: every place it could go (each gap in each row, the level beneath a card with no children, its own place) is asked of the layout, and the one that would draw it closest to the middle of the card in the hand, on its level, is the one shown — so the gap always opens under the card, however the tree reshuffles to make room and wherever the card was picked up; where the end of one family and the start of the next land at one spot, just left of it is the first and just right the second; between levels the last place shown holds; in the unconnected zone it comes out of its tree; over its own place or off the tree it goes back where it was and nothing is emitted. A place it would land is drawn as a dashed ghost with the line it would have, and its own place as a faint hole with no line, so ‘nothing will happen’ never looks like a destination; on release the card travels into it and is held there until the write comes back, so the drop is one movement. The preview needs a layout that reports its hierarchy (forest); on one that does not, the gesture reports CHILD, SIBLING or LOOSE from where it is dropped, with no preview. Writes nothing: what a hierarchy is differs per graph, so the template decides. The alternative to drag-node rather than an addition to it — listing both has them fight for the same press.',
+      options: [
+        {
+          name: 'reorder',
+          type: 'boolean',
+          description:
+            'Whether a drag may change the order of siblings. Default true. Set it false while siblings are ordered by something a drag cannot change — a date, a tally — so a card can still move under another parent, and lands where that order puts it, but is never shown sliding into a place it would not keep.',
+        },
+        {
+          name: 'keep',
+          type: 'string[]',
+          description:
+            "Fields of a connection that keep a card in its tree: dragging into the unconnected zone is refused for a card whose connection to its parent holds a value in any of them, and the preview says why before it is let go. WE passes ['commentsCount', 'signalsCount'] with the canvas seed's `counts`, because it will not delete a connection people have discussed.",
+        },
+        {
+          name: 'keepReason',
+          type: 'string',
+          description: 'What the preview says when `keep` refuses a drop.',
+        },
+        {
+          name: 'reach',
+          type: 'number',
+          description:
+            'Without a hierarchy to preview against: how far from a card, in world units, a drop still counts as beside it. Default 240.',
+        },
+        {
+          name: 'band',
+          type: 'number',
+          description:
+            "Without a hierarchy to preview against: how tall the band searched for siblings is. Defaults to the dragged card's own height.",
+        },
+      ],
+      example: `"behaviours": ["select", { "type": "arrange-nodes", "options": { "reorder": true } }, "pan-zoom"]`,
+    },
+    {
+      id: 'connect-nodes',
+      category: 'behaviour',
+      description:
+        "Drag from one node to another to connect them, emitting onEdgeCreate with both ends. Writes nothing — what a connection means is the template's decision, so it answers by creating whatever record it thinks the connection is. List it BEFORE drag-node: both claim a press on a node and the first wins. Arm it from a control the user can see rather than a modifier key, which is undiscoverable and absent on a touchscreen.",
+      options: [
+        {
+          name: 'armed',
+          type: 'boolean',
+          description: 'Whether the gesture is live. Default true. Disarmed, the press falls through to drag-node.',
+        },
+        {
+          name: 'button',
+          type: '"primary" | "secondary"',
+          description:
+            'Which button starts it. Default "primary", armed as above. "secondary" is the quick form: a right-drag from a card draws a line whether or not anything is armed, leaving the left button to move cards — list it FIRST. A right-click that does not travel draws nothing, and the browser menu is kept off cards while it is listed. Touchscreens have no right-click, so keep another way to connect.',
+        },
+      ],
+      example: `"behaviours": [{ "type": "connect-nodes", "options": { "button": "secondary" } }, "select", { "type": "drag-node", "options": { "pin": true } }, "pan-zoom"]`,
+    },
+    {
+      id: 'node-double-click',
+      category: 'behaviour',
+      description:
+        "Double-click a node to emit onNodeDoubleClick, with the record it stands for resolved onto the payload. Writes nothing — what opening a node means is the template's decision. Pairs with canvas-double-click, which handles the same gesture on empty canvas; list both and exactly one fires. Do NOT list it alongside expand-on-double-click, which claims the same gesture to do something else.",
+      example: `"behaviours": ["node-double-click", "canvas-double-click", "pan-zoom", "select"]`,
+    },
+    {
+      id: 'canvas-double-click',
+      category: 'behaviour',
+      description:
+        "Double-click empty canvas to emit onCanvasDoubleClick with the world point. Writes nothing — what gets made there is the template's decision. List it BEFORE pan-zoom, which is the background fallback. Claims only the background, so it composes with expand-on-double-click: a double-click on a node opens it, one beside a node creates.",
+      example: `"behaviours": ["canvas-double-click", "pan-zoom", "select", { "type": "drag-node", "options": { "pin": true } }]`,
+    },
+    {
+      id: 'expand-on-double-click',
+      category: 'behaviour',
+      description: 'Double-click a node to expand it. The usual gesture on a map you also want to select on.',
+      options: [
+        {
+          name: 'direction',
+          type: '"in" | "out" | "both"',
+          description: 'Which way relations are followed when the node opens. Default "both".',
+        },
+      ],
+      example: `{ "type": "expand-on-double-click", "options": { "direction": "out" } }`,
+    },
+    {
+      id: 'expand-on-click',
+      category: 'behaviour',
+      description: 'Single click expands — for maps meant purely for exploring, where selection is not needed.',
+      options: [
+        {
+          name: 'direction',
+          type: '"in" | "out" | "both"',
+          description: 'Which way relations are followed when the node opens. Default "both".',
+        },
+      ],
+      example: `{ "type": "expand-on-click", "options": { "direction": "out" } }`,
+    },
+  ],
+};

@@ -1,5 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { tokenVar } from '@we/design-utils';
+import DOMPurify from 'dompurify';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
@@ -13,13 +14,19 @@ const md = new Marked({ breaks: true });
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'block',
   fontSize: '300',
-  color: 'neutral-800',
+  color: 'text',
 };
 
 const styles = css`
+  /*
+    No word-break: break-word here any more — the typography layer's overflow-wrap default covers
+    it, on [part='base'] where the overflowWrap prop can override it, and it inherits into the
+    rendered markdown's own elements from there. The old rule was the same behaviour under a
+    deprecated alias and, being on :host with no custom-property indirection, was unreachable from
+    a schema.
+  */
   :host {
     line-height: 1.5;
-    word-break: break-word;
   }
 
   /* Paragraphs */
@@ -72,7 +79,7 @@ const styles = css`
   /* Inline code */
   [part='base'] code {
     font-family: var(--we-font-mono, monospace);
-    background: var(--we-color-neutral-100);
+    background: var(--we-role-surface-sunken);
     padding: 0.1em 0.35em;
     border-radius: 3px;
     font-size: 0.9em;
@@ -80,7 +87,7 @@ const styles = css`
 
   /* Code blocks */
   [part='base'] pre {
-    background: var(--we-color-neutral-100);
+    background: var(--we-role-surface-sunken);
     padding: 0.75em;
     border-radius: 6px;
     overflow-x: auto;
@@ -100,43 +107,45 @@ const styles = css`
   [part='base'] blockquote {
     margin: var(--we-markdown-gap, 0.5em) 0;
     padding-left: 0.75em;
-    border-left: 3px solid var(--we-color-neutral-300);
-    color: var(--we-color-neutral-600);
+    border-left: 3px solid var(--we-role-border);
+    /* Muted body text, beside a border already written as a role. A scale position is never
+       measured against what is behind it by the contrast corrections at apply time. */
+    color: var(--we-role-text-muted);
   }
 
   /* Links */
   [part='base'] a {
-    color: var(--we-color-primary-600);
+    color: var(--we-role-accent-text);
     text-decoration: underline;
   }
 
   /* Horizontal rule */
   [part='base'] hr {
     border: none;
-    border-top: 1px solid var(--we-color-neutral-200);
+    border-top: 1px solid var(--we-role-border);
     margin: var(--we-markdown-gap, 0.5em) 0;
   }
 
   /* Status markers */
   [part='base'] .success {
-    color: var(--we-color-success-500);
+    color: var(--we-role-success-text);
     font-weight: 600;
   }
   [part='base'] .warning {
-    color: var(--we-color-warning-500);
+    color: var(--we-role-warning-text);
     font-weight: 600;
   }
   [part='base'] .danger {
-    color: var(--we-color-danger-500);
+    color: var(--we-role-danger-text);
     font-weight: 600;
   }
   [part='base'] .shimmer {
-    color: var(--we-color-neutral-600);
+    color: var(--we-role-text-muted);
     background: linear-gradient(
       90deg,
-      var(--we-color-neutral-500) 40%,
+      var(--we-role-border) 40%,
       rgba(255, 255, 255, 0.8) 50%,
-      var(--we-color-neutral-500) 60%
+      var(--we-role-text-faint) 60%
     );
     background-size: 200% 100%;
     -webkit-background-clip: text;
@@ -182,7 +191,18 @@ export default class Markdown extends DesignSystemElement {
   }
 
   render() {
+    /*
+      Markdown is not a safe subset of HTML — it is a superset of it. Every implementation passes raw
+      tags through by design, so `<img src=x onerror=…>` in any string rendered here executes, and
+      `[click](javascript:…)` becomes a link that runs script in the app's own origin. That string
+      is routinely somebody else's: a post body, a profile bio, a space description synced in from a
+      peer. Sanitising the *output* rather than restricting the input is what keeps the element's
+      contract simple — it renders markdown, all of it, minus what could run.
+
+      DOMPurify is the same pass `we-html` already makes, and its default URI allowlist covers the
+      `javascript:` half; `safeHref` covers the same ground for hrefs a template sets directly.
+    */
     const parsed = md.parse(this.content, { async: false }) as string;
-    return html`<div part="base">${unsafeHTML(parsed)}</div>`;
+    return html`<div part="base">${unsafeHTML(DOMPurify.sanitize(parsed))}</div>`;
   }
 }

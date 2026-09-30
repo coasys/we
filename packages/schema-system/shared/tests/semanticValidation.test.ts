@@ -75,7 +75,7 @@ function makeContext(overrides?: Partial<ContextData>): ContextData {
     tokens: [],
     storeEntries: [
       {
-        name: 'adamStore',
+        name: 'sessionStore',
         state: { loading: { type: 'boolean' }, bootState: { type: 'string' }, me: { type: 'object' } },
         actions: ['login'],
       },
@@ -129,11 +129,11 @@ describe('buildValidationContext', () => {
 
   it('builds store names and members', () => {
     const c = ctx();
-    expect(c.storeNames.has('adamStore')).toBe(true);
+    expect(c.storeNames.has('sessionStore')).toBe(true);
     expect(c.storeNames.has('routeStore')).toBe(true);
     expect(c.storeNames.has('unknownStore')).toBe(false);
 
-    const adamMembers = c.storeMembers.get('adamStore')!;
+    const adamMembers = c.storeMembers.get('sessionStore')!;
     expect(adamMembers.has('loading')).toBe(true);
     expect(adamMembers.has('login')).toBe(true);
 
@@ -143,9 +143,9 @@ describe('buildValidationContext', () => {
 
   it('builds model names', () => {
     const c = ctx();
-    expect(c.modelNames.has('TaskBlock')).toBe(true);
-    expect(c.modelNames.has('PostBlock')).toBe(true);
-    expect(c.modelNames.has('Unknown')).toBe(false);
+    expect(c.entityNames.has('TaskBlock')).toBe(true);
+    expect(c.entityNames.has('PostBlock')).toBe(true);
+    expect(c.entityNames.has('Unknown')).toBe(false);
   });
 
   it('builds prop type map', () => {
@@ -155,6 +155,51 @@ describe('buildValidationContext', () => {
     expect(buttonTypes.get('text')).toBe('string');
     // ButtonVariant is a named type → classified as 'string'
     expect(buttonTypes.get('variant')).toBe('string');
+  });
+});
+
+describe('foreign elements a seed allows', () => {
+  const withRating = () =>
+    buildValidationContext(
+      makeContext({
+        foreignElements: [
+          {
+            tagName: 'sl-rating',
+            package: '@shoelace-style/shoelace',
+            props: [
+              { name: 'value', type: 'number', optional: true },
+              { name: 'max', type: 'number', optional: true },
+            ],
+            events: ['sl-change'],
+          },
+        ],
+      }),
+    );
+
+  it('accepts the tag, its documented props and an exact-name event handler', () => {
+    const result = validateSemantic(
+      {
+        type: 'sl-rating',
+        props: {
+          value: 3,
+          max: 5,
+          'on:sl-change': { $action: 'routeStore.navigate', args: [{ $: 'event.target.value' }] },
+        },
+      },
+      withRating(),
+    );
+    expect(result.errors.filter((e) => e.severity === 'error')).toEqual([]);
+    expect(result.errors.filter((e) => e.message.includes('Unknown prop'))).toEqual([]);
+  });
+
+  it('warns on a prop the element does not document — a design-system prop included', () => {
+    const result = validateSemantic({ type: 'sl-rating', props: { vlaue: 3 } }, withRating());
+    expect(result.errors.map((e) => e.message).join('\n')).toContain('Unknown prop "vlaue"');
+  });
+
+  it('still refuses a hyphenated tag nobody allowed', () => {
+    const result = validateSemantic({ type: 'sl-button' }, withRating());
+    expect(result.errors[0]?.message).toContain('Unknown component "sl-button"');
   });
 });
 
@@ -275,7 +320,10 @@ describe('prop type mismatch', () => {
   });
 
   it('skips token objects', () => {
-    const result = validateSemantic({ type: 'we-button', props: { disabled: { $store: 'adamStore.loading' } } }, ctx());
+    const result = validateSemantic(
+      { type: 'we-button', props: { disabled: { $store: 'sessionStore.loading' } } },
+      ctx(),
+    );
     const typeErrors = result.errors.filter((e) => e.message.includes('expects'));
     expect(typeErrors).toHaveLength(0);
   });
@@ -287,30 +335,77 @@ describe('prop type mismatch', () => {
 });
 
 describe('unknown store', () => {
-  it('errors for $store with unknown store name', () => {
-    const result = validateSemantic({ type: 'we-button', props: { text: { $store: 'userStore.name' } } }, ctx());
+  it('errors for a read of an unknown store', () => {
+    const result = validateSemantic({ type: 'we-button', props: { text: { $: 'userStore.name' } } }, ctx());
     expect(result.errors.some((e) => e.severity === 'error' && e.message.includes('Unknown store "userStore"'))).toBe(
       true,
     );
   });
 
   it('passes for known store', () => {
-    const result = validateSemantic({ type: 'we-button', props: { text: { $store: 'adamStore.loading' } } }, ctx());
+    const result = validateSemantic({ type: 'we-button', props: { text: { $: 'sessionStore.loading' } } }, ctx());
     const storeErrors = result.errors.filter((e) => e.message.includes('Unknown store'));
     expect(storeErrors).toHaveLength(0);
+  });
+
+  // Which modules exist is a property of the deployment's seed, not of this build, so `modules` is a
+  // namespace with nothing to check members against. Without it a module's own fragments — the only
+  // schemas that *have* to reference their store this way — failed on their first token and could not
+  // be validated at all.
+  it('accepts the modules namespace, whatever the module id', () => {
+    const result = validateSemantic(
+      {
+        type: 'we-button',
+        props: {
+          text: { $: 'modules.transcribe.pending' },
+          onClick: { $action: 'modules.somethingNobodyHasWrittenYet.toggle' },
+        },
+      },
+      ctx(),
+    );
+    expect(result.errors.filter((e) => e.message.includes('Unknown store'))).toHaveLength(0);
+    expect(result.errors.filter((e) => e.message.includes('Unknown member'))).toHaveLength(0);
+    expect(result.errors.filter((e) => e.message.includes('Unknown method'))).toHaveLength(0);
+  });
+});
+
+describe('$slot outlet', () => {
+  it('accepts a named anchor', () => {
+    const result = validateSemantic({ type: '$slot', props: { anchor: 'call-controls' } }, ctx());
+    expect(result.errors.filter((e) => e.path.includes('anchor'))).toHaveLength(0);
+  });
+
+  // The host resolves the marker before the renderer sees it, so a missing anchor renders nothing and
+  // looks exactly like an anchor nobody contributed to. Nothing else would ever report it.
+  it.each([
+    ['no props at all', { type: '$slot' }],
+    ['no anchor', { type: '$slot', props: {} }],
+    ['an empty anchor', { type: '$slot', props: { anchor: '' } }],
+    ['a non-string anchor', { type: '$slot', props: { anchor: 42 } }],
+  ])('errors on %s', (_case, node) => {
+    const result = validateSemantic(node, ctx());
+    expect(result.errors.some((e) => e.severity === 'error' && e.message.includes('$slot'))).toBe(true);
+  });
+
+  it('is found nested inside other chrome, where a module actually puts it', () => {
+    const result = validateSemantic(
+      { type: 'Row', children: [{ type: 'we-button' }, { type: '$slot', props: {} }] },
+      ctx(),
+    );
+    expect(result.errors.some((e) => e.message.includes('$slot'))).toBe(true);
   });
 });
 
 describe('unknown store member', () => {
   it('warns for unknown member path', () => {
-    const result = validateSemantic({ type: 'we-button', props: { text: { $store: 'adamStore.nonExistent' } } }, ctx());
+    const result = validateSemantic({ type: 'we-button', props: { text: { $: 'sessionStore.nonExistent' } } }, ctx());
     expect(
       result.errors.some((e) => e.severity === 'warning' && e.message.includes('Unknown member "nonExistent"')),
     ).toBe(true);
   });
 
   it('passes for known member', () => {
-    const result = validateSemantic({ type: 'we-button', props: { text: { $store: 'adamStore.loading' } } }, ctx());
+    const result = validateSemantic({ type: 'we-button', props: { text: { $: 'sessionStore.loading' } } }, ctx());
     const memberErrors = result.errors.filter((e) => e.message.includes('Unknown member'));
     expect(memberErrors).toHaveLength(0);
   });
@@ -325,7 +420,7 @@ describe('unknown action', () => {
   });
 
   it('warns for $action with unknown method on known store', () => {
-    const result = validateSemantic({ type: 'we-button', props: { onClick: { $action: 'adamStore.goTo' } } }, ctx());
+    const result = validateSemantic({ type: 'we-button', props: { onClick: { $action: 'sessionStore.goTo' } } }, ctx());
     expect(result.errors.some((e) => e.severity === 'warning' && e.message.includes('Unknown method "goTo"'))).toBe(
       true,
     );
@@ -341,47 +436,103 @@ describe('unknown action', () => {
   });
 });
 
+describe('event/arg inside $action args', () => {
+  const nested = (args: unknown[]) =>
+    validateSemantic(
+      { type: 'we-button', props: { onClick: { $action: 'routeStore.navigate', args } } },
+      ctx(),
+    ).errors.filter((e) => e.severity === 'error' && e.message.includes('nested inside another token'));
+
+  it('errors when an expression about the event is nested inside another token', () => {
+    // The bug this exists for: args resolve once at render time, so a token wrapping the expression
+    // evaluates before any event exists. The argument is a constant, and a switch bound to it only
+    // ever sends one value. Nothing throws.
+    expect(nested(['notes', { $setLocal: 'x', merge: { a: { $: 'event.detail' } } }])).toHaveLength(1);
+  });
+
+  it('errors however deeply the expression is buried', () => {
+    expect(nested([{ $query: { entity: 'TaskBlock', where: { id: { $: 'arg.value' } } } }])).toHaveLength(1);
+  });
+
+  it('allows a top-level event expression, which is the form that reaches call time', () => {
+    expect(nested(['notes', { $: 'event.detail' }])).toHaveLength(0);
+    expect(nested([{ $: 'arg' }])).toHaveLength(0);
+    expect(nested([{ $: '!arg.detail.value' }])).toHaveLength(0);
+  });
+
+  it('leaves nested tokens alone when no event is involved', () => {
+    expect(nested([{ $query: { entity: 'TaskBlock', where: { id: { $: 'sessionStore.me' } } } }])).toHaveLength(0);
+  });
+
+  it('rejects the old string spelling of a reference in args', () => {
+    const errors = validateSemantic(
+      { type: 'we-button', props: { onClick: { $action: 'routeStore.navigate', args: ['$event.detail'] } } },
+      ctx(),
+    ).errors.filter((e) => e.message.includes('old string spelling'));
+    expect(errors).toHaveLength(1);
+  });
+});
+
 describe('unknown model', () => {
   it('errors for $query.model with unknown model name', () => {
-    const result = validateSemantic({ type: 'we-button', props: { data: { $query: { model: 'Taks' } } } }, ctx());
+    const result = validateSemantic({ type: 'we-button', props: { data: { $query: { entity: 'Taks' } } } }, ctx());
     expect(result.errors.some((e) => e.severity === 'error' && e.message.includes('Unknown model "Taks"'))).toBe(true);
   });
 
   it('suggests close model matches', () => {
-    const result = validateSemantic({ type: 'we-button', props: { data: { $query: { model: 'TasBlock' } } } }, ctx());
+    const result = validateSemantic({ type: 'we-button', props: { data: { $query: { entity: 'TasBlock' } } } }, ctx());
     expect(result.errors.some((e) => e.message.includes('Did you mean "TaskBlock"'))).toBe(true);
   });
 
   it('passes for known model', () => {
-    const result = validateSemantic({ type: 'we-button', props: { data: { $query: { model: 'TaskBlock' } } } }, ctx());
+    const result = validateSemantic({ type: 'we-button', props: { data: { $query: { entity: 'TaskBlock' } } } }, ctx());
     const modelErrors = result.errors.filter((e) => e.message.includes('Unknown model'));
     expect(modelErrors).toHaveLength(0);
   });
 });
 
 describe('$local scope', () => {
-  it('errors for $local with no $localState in scope', () => {
-    const result = validateSemantic({ type: 'we-button', props: { text: { $local: 'name' } } }, ctx());
-    expect(
-      result.errors.some((e) => e.severity === 'error' && e.message.includes('no $localState is declared in scope')),
-    ).toBe(true);
+  const meta = { name: 'T', description: '', icon: 'gear' };
+
+  it('errors for a local read with no $localState in scope', () => {
+    const result = validateSemantic({ meta, type: 'we-button', props: { text: { $: 'local.name' } } }, ctx());
+    expect(result.errors.some((e) => e.severity === 'error' && e.message.includes('name'))).toBe(true);
   });
 
-  it('errors for $local referencing undeclared field', () => {
+  it('stays silent for a fragment, whose scope belongs to whatever page composes it', () => {
+    // `meta` is what makes a schema self-contained. A bare node is a piece of something else, and
+    // `$localState` is scoped to the node declaring it — so a section reading state its host page
+    // owns is correct, and judging it standalone reports an error about working code. The shell's
+    // language settings section was flagged three times for reading a field the `/languages` route
+    // declares. The check still runs in full against that route, where the answer is knowable.
+    const result = validateSemantic({ type: 'we-button', props: { text: { $: 'local.name' } } }, ctx());
+    expect(result.errors.filter((e) => e.severity === 'error')).toEqual([]);
+  });
+
+  it('still catches an undeclared field in a fragment that declares some state', () => {
+    // Only the "nothing in scope" case is unknowable standalone. Once a fragment declares its own
+    // state, a reference outside it is wrong no matter what composes it.
     const result = validateSemantic(
       {
         type: 'Column',
         $localState: { name: { type: 'string', initial: '' } },
-        children: [{ type: 'we-button', props: { text: { $local: 'nme' } } }],
+        children: [{ type: 'we-button', props: { text: { $: 'local.other' } } }],
       },
       ctx(),
     );
-    expect(
-      result.errors.some(
-        (e) =>
-          e.severity === 'error' && e.message.includes('$local references "nme" but $localState only declares: name'),
-      ),
-    ).toBe(true);
+    expect(result.errors.some((e) => e.severity === 'error' && e.message.includes('other'))).toBe(true);
+  });
+
+  it('errors for a read of an undeclared field', () => {
+    const result = validateSemantic(
+      {
+        type: 'Column',
+        $localState: { name: { type: 'string', initial: '' } },
+        children: [{ type: 'we-button', props: { text: { $: 'local.nme' } } }],
+      },
+      ctx(),
+    );
+    expect(result.errors.some((e) => e.severity === 'error' && e.message.includes('nme'))).toBe(true);
   });
 
   it('passes for declared field', () => {
@@ -389,12 +540,11 @@ describe('$local scope', () => {
       {
         type: 'Column',
         $localState: { name: { type: 'string', initial: '' } },
-        children: [{ type: 'we-button', props: { text: { $local: 'name' } } }],
+        children: [{ type: 'we-button', props: { text: { $: 'local.name' } } }],
       },
       ctx(),
     );
-    const localErrors = result.errors.filter((e) => e.message.includes('$local'));
-    expect(localErrors).toHaveLength(0);
+    expect(result.errors.filter((e) => e.severity === 'error')).toHaveLength(0);
   });
 
   it('works with nested $localState (merged scope)', () => {
@@ -407,30 +557,27 @@ describe('$local scope', () => {
             type: 'Column',
             $localState: { email: { type: 'string', initial: '' } },
             children: [
-              { type: 'we-button', props: { text: { $local: 'name' } } },
-              { type: 'we-button', props: { text: { $local: 'email' } } },
+              { type: 'we-button', props: { text: { $: 'local.name' } } },
+              { type: 'we-button', props: { text: { $: 'local.email' } } },
             ],
           },
         ],
       },
       ctx(),
     );
-    const localErrors = result.errors.filter((e) => e.message.includes('$local') || e.message.includes('$localState'));
-    expect(localErrors).toHaveLength(0);
+    expect(result.errors.filter((e) => e.severity === 'error')).toHaveLength(0);
   });
 
-  it('checks $error token against scope', () => {
+  it('checks the field named by error() against scope', () => {
     const result = validateSemantic(
       {
         type: 'Column',
         $localState: { name: { type: 'string', initial: '' } },
-        children: [{ type: 'we-text', props: { tag: { $error: 'nme' } } }],
+        children: [{ type: 'we-text', props: { tag: { $: "error('nme')" } } }],
       },
       ctx(),
     );
-    expect(result.errors.some((e) => e.severity === 'error' && e.message.includes('$error references "nme"'))).toBe(
-      true,
-    );
+    expect(result.errors.some((e) => e.severity === 'error' && e.message.includes('nme'))).toBe(true);
   });
 
   it('checks $setLocal token against scope', () => {
@@ -611,49 +758,38 @@ describe('route validation', () => {
 });
 
 describe('nested detection', () => {
-  it('finds tokens inside $if.condition', () => {
+  it('finds a store inside a ternary test', () => {
+    const result = validateSemantic(
+      { type: 'we-button', props: { disabled: { $: 'unknownStore.value ? true : false' } } },
+      ctx(),
+    );
+    expect(result.errors.some((e) => e.message.includes('unknownStore'))).toBe(true);
+  });
+
+  it('finds a store inside an interpolation', () => {
+    const result = validateSemantic({ type: 'we-text', props: { tag: { $: '`Hello ${badStore.name}`' } } }, ctx());
+    expect(result.errors.some((e) => e.message.includes('badStore'))).toBe(true);
+  });
+
+  it('finds a store on either side of a comparison', () => {
+    const result = validateSemantic(
+      { type: 'we-button', props: { disabled: { $: 'sessionStore.loading == fakeStore.val' } } },
+      ctx(),
+    );
+    expect(result.errors.some((e) => e.message.includes('fakeStore'))).toBe(true);
+  });
+
+  it('finds a store inside a handler conditional', () => {
     const result = validateSemantic(
       {
         type: 'we-button',
         props: {
-          disabled: {
-            $if: {
-              condition: { $store: 'unknownStore.value' },
-              then: true,
-              else: false,
-            },
-          },
+          onClick: { $if: { condition: { $: 'unknownStore.value' }, then: { $action: 'routeStore.navigate' } } },
         },
       },
       ctx(),
     );
-    expect(result.errors.some((e) => e.message.includes('Unknown store "unknownStore"'))).toBe(true);
-  });
-
-  it('finds tokens inside $concat items', () => {
-    const result = validateSemantic(
-      {
-        type: 'we-text',
-        props: {
-          tag: { $concat: ['Hello ', { $store: 'badStore.name' }] },
-        },
-      },
-      ctx(),
-    );
-    expect(result.errors.some((e) => e.message.includes('Unknown store "badStore"'))).toBe(true);
-  });
-
-  it('finds tokens inside $eq comparisons', () => {
-    const result = validateSemantic(
-      {
-        type: 'we-button',
-        props: {
-          disabled: { $eq: [{ $store: 'adamStore.loading' }, { $store: 'fakeStore.val' }] },
-        },
-      },
-      ctx(),
-    );
-    expect(result.errors.some((e) => e.message.includes('Unknown store "fakeStore"'))).toBe(true);
+    expect(result.errors.some((e) => e.message.includes('unknownStore'))).toBe(true);
   });
 });
 
@@ -735,5 +871,162 @@ describe('severity', () => {
     expect(result.valid).toBe(true);
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0].severity).toBe('warning');
+  });
+});
+
+describe('$if branch slots', () => {
+  // The renderer hands `then`/`else` straight to renderNode, so only a node renders. Both
+  // spellings of a conditional look interchangeable — `{ $if: … }` is the prop-level operator,
+  // `{ type: '$if', props: … }` is the node — and the wrong one in a branch slot renders nothing
+  // at all, silently and only at runtime. It shipped in WE's boot screen and blanked the sign-in
+  // form with every check passing.
+
+  it('rejects an operator token where a node belongs', () => {
+    const schema = {
+      type: '$if',
+      props: {
+        condition: true,
+        then: { type: 'we-text', children: ['yes'] },
+        else: { $if: { condition: true, then: { type: 'we-text', children: ['no'] } } },
+      },
+    };
+    const result = validateSemantic(schema, ctx());
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toContain('Operator token "$if" used where a schema node is required');
+    expect(result.errors[0].path).toBe('.props.else');
+  });
+
+  it('accepts a properly nested $if node', () => {
+    const schema = {
+      type: '$if',
+      props: {
+        condition: true,
+        then: { type: 'we-text', children: ['yes'] },
+        else: {
+          type: '$if',
+          props: { condition: false, then: { type: 'we-text', children: ['no'] } },
+        },
+      },
+    };
+    expect(validateSemantic(schema, ctx()).valid).toBe(true);
+  });
+
+  it('accepts a node that merely carries $localState alongside its type', () => {
+    // "Has a $-prefixed key" does not make something a token: $localState and $queries are
+    // siblings of `type`. Treating them as tokens skipped the whole subtree beneath them.
+    const schema = {
+      type: '$if',
+      props: {
+        condition: true,
+        then: {
+          type: 'Column',
+          $localState: { open: { type: 'boolean', initial: false } },
+          children: [{ type: 'we-text', children: ['hi'] }],
+        },
+      },
+    };
+    expect(validateSemantic(schema, ctx()).valid).toBe(true);
+  });
+
+  it('still reports errors inside a branch subtree', () => {
+    // The point of walking it: a typo under a $localState-carrying branch used to be invisible.
+    const schema = {
+      type: '$if',
+      props: {
+        condition: true,
+        then: {
+          type: 'Column',
+          $localState: { open: { type: 'boolean', initial: false } },
+          children: [{ type: 'we-nonexistent' }],
+        },
+      },
+    };
+    const result = validateSemantic(schema, ctx());
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.message.includes('Unknown component "we-nonexistent"'))).toBe(true);
+  });
+});
+
+describe('local dot paths', () => {
+  it('accepts a read into an object-typed field', () => {
+    // Documented: `local.name.nested.path` reads into an object-typed local. Only the root segment
+    // is a declaration.
+    const schema = {
+      type: 'Column',
+      $localState: { location: { type: 'object', initial: null } },
+      children: [{ type: 'we-text', props: { text: { $: 'local.location.city' } } }],
+    };
+    expect(validateSemantic(schema, ctx()).valid).toBe(true);
+  });
+
+  it('still rejects an undeclared root', () => {
+    const schema = {
+      type: 'Column',
+      $localState: { location: { type: 'object', initial: null } },
+      children: [{ type: 'we-text', props: { text: { $: 'local.somewhereElse.city' } } }],
+    };
+    expect(validateSemantic(schema, ctx()).valid).toBe(false);
+  });
+});
+
+describe('a role named in its TypeScript spelling', () => {
+  /*
+    This failure is silent, which is why it is worth an error rather than a warning. `tokenVar`
+    recognises roles kebab-cased, so `surfaceSunken` emits `var(--we-color-surfaceSunken)` — a
+    variable that does not exist — and the browser drops the declaration: nothing painted, nothing
+    logged, and a symptom that reads as a layout bug somewhere else. Migrating this repo's templates
+    to roles hit it on hundreds of call sites at once, and typecheck and validation both passed.
+  */
+  const errorsFor = (props: Record<string, unknown>) => validateSemantic({ type: 'Column', props }, ctx()).errors;
+
+  it('is an error, naming the spelling a schema actually wants', () => {
+    expect(errorsFor({ bg: 'surfaceSunken' }).some((e) => e.message.includes('"surface-sunken"'))).toBe(true);
+  });
+
+  it('is caught on a foreground and inside a border shorthand', () => {
+    expect(errorsFor({ color: 'textMuted' }).some((e) => e.message.includes('"text-muted"'))).toBe(true);
+    expect(errorsFor({ border: '1px solid borderStrong' }).some((e) => e.message.includes('"border-strong"'))).toBe(
+      true,
+    );
+  });
+
+  it('is caught inside an expression, where a colour just as often lives', () => {
+    const errors = errorsFor({ bg: { $: "local.open ? 'accentMuted' : 'surface'" } });
+    expect(errors.some((e) => e.message.includes('"accent-muted"'))).toBe(true);
+  });
+
+  it('leaves the right spelling alone — including roles that read the same either way', () => {
+    for (const bg of ['surface-sunken', 'text-muted', 'page', 'surface', 'accent', 'neutral-100', '#ff0000']) {
+      expect(errorsFor({ bg })).toEqual([]);
+    }
+  });
+});
+
+/**
+ * `$if` in a value position is refused; `$if` in a handler position is the statement layer's one
+ * conditional and must be let through.
+ *
+ * Which of the two a prop is, is a question with two spellings. `onClick` is the delegated DOM
+ * event and was always exempt. `on:submit` is Solid's direct-listener syntax — how a schema reaches
+ * a custom event a Lit primitive declares, and what the design system's guidance tells authors to
+ * prefer there, since delegation is unreliable across a shadow boundary. That one was not exempt,
+ * so guarding a custom-event handler was refused with advice to use a ternary, which cannot hold a
+ * handler. `$action` in the same position was always accepted, so the rule contradicted itself.
+ */
+describe('$if in a handler position', () => {
+  const errorsFor = (props: Record<string, unknown>) => validateSemantic({ type: 'we-button', props }, ctx()).errors;
+  const guard = { $if: { condition: { $: 'local.ready' }, then: { $action: 'routeStore.navigate', args: ['/'] } } };
+
+  it('is allowed on a delegated DOM event', () => {
+    expect(errorsFor({ onClick: guard })).toEqual([]);
+  });
+
+  it('is allowed on a custom event reached with the on: spelling', () => {
+    expect(errorsFor({ 'on:submit': guard })).toEqual([]);
+  });
+
+  it('is still refused in a value position, which is what the rule is for', () => {
+    const errors = errorsFor({ loading: guard });
+    expect(errors.some((e) => e.message.includes('Use a ternary instead'))).toBe(true);
   });
 });

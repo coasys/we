@@ -1,0 +1,21 @@
+name: Restore build outputs
+description: Unpack the artifact the Build job produced, so this job does not have to rebuild.
+
+# Must run *after* the install step, not before: `pnpm install` writes into the same
+# package directories, and the build output is what should win.
+
+runs:
+  using: composite
+  steps:
+    # Paired with `upload-artifact` in `build.yaml`, and the pairing is load-bearing: the two
+    # halves speak the same artifact protocol, and a v7 upload read by a v4 download is not a
+    # version preference, it is a job that cannot find what the build produced.
+    - uses: actions/download-artifact@v7
+      with:
+        name: build-outputs
+
+    - name: Unpack build outputs
+      shell: bash
+      run: |
+        tar -xzf build-outputs.tar.gz
+        rm build-outputs.tar.gz

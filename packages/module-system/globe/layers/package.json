@@ -1,0 +1,47 @@
+{
+  "name": "@we/globe-layers",
+  "version": "0.1.0",
+  "description": "WE's first-party globe layers — implementations of @we/globe-protocol",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "cesium",
+    "globe",
+    "layers",
+    "h3",
+    "geospatial",
+    "3d",
+    "maps"
+  ],
+  "dependencies": {
+    "h3-js": "^4.1.0"
+  },
+  "peerDependencies": {
+    "cesium": "^1.144.0",
+    "@we/globe-protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@we/cli": "workspace:*",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "@we/globe-protocol": "workspace:*"
+  }
+}

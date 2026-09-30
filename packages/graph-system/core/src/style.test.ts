@@ -1,0 +1,462 @@
+/**
+ * Style-rule tests.
+ *
+ * The behaviour worth pinning is the cascade — rules apply in order and merge per property — because
+ * that is what lets an author write "everything grey, beliefs purple, unresolved outlined" as three
+ * readable rules instead of one nested condition. Get the merge wrong and the last rule silently wins
+ * everything.
+ */
+import type { GraphNode, GraphValue, NodeVisual } from '@we/graph-protocol';
+import { describe, expect, it } from 'vitest';
+
+import {
+  blendColors,
+  blendVisual,
+  edgeVisual,
+  matches,
+  nodeVisual,
+  resolveColor,
+  resolveNumber,
+  resolveStyle,
+} from './style';
+
+const belief: GraphNode = {
+  id: 'a',
+  kind: 'entity',
+  type: 'Belief',
+  label: 'The error rate doubled',
+  data: { confidence: 0.8, author: 'james' },
+};
+
+const NO_METRICS = new Map<string, ReadonlyMap<string, number>>();
+
+describe('match clauses', () => {
+  it('matches on a plain field', () => {
+    expect(matches(belief, { type: 'Belief' })).toBe(true);
+    expect(matches(belief, { type: 'Task' })).toBe(false);
+  });
+
+  it('ANDs sibling keys', () => {
+    expect(matches(belief, { type: 'Belief', kind: 'entity' })).toBe(true);
+    expect(matches(belief, { type: 'Belief', kind: 'literal' })).toBe(false);
+  });
+
+  it('reaches into the data bag', () => {
+    expect(matches(belief, { 'data.author': 'james' })).toBe(true);
+    expect(matches(belief, { 'data.confidence': { gt: 0.5 } })).toBe(true);
+    expect(matches(belief, { 'data.confidence': { gt: 0.9 } })).toBe(false);
+  });
+
+  it('supports the same operators as $filter', () => {
+    expect(matches(belief, { label: { contains: 'error' } })).toBe(true);
+    expect(matches(belief, { label: { contains: 'ERROR' } })).toBe(true);
+    expect(matches(belief, { type: { in: ['Belief', 'Task'] } })).toBe(true);
+    expect(matches(belief, { type: { not: 'Belief' } })).toBe(false);
+    expect(matches(belief, { 'data.missing': { exists: false } })).toBe(true);
+    expect(matches(belief, { 'data.author': { exists: true } })).toBe(true);
+  });
+
+  it('treats an absent clause as matching everything', () => {
+    expect(matches(belief, undefined)).toBe(true);
+  });
+});
+
+describe('style resolution', () => {
+  it('merges matching rules in order, last wins per property', () => {
+    const style = resolveStyle(belief, [
+      { style: { size: 10, color: 'neutral-400' } },
+      { when: { type: 'Belief' }, style: { color: 'primary-500' } },
+    ]);
+
+    // size survives from the base rule; colour is overridden by the later one.
+    expect(style).toEqual({ size: 10, color: 'primary-500' });
+  });
+
+  it('skips rules that do not match', () => {
+    const style = resolveStyle(belief, [{ style: { size: 10 } }, { when: { type: 'Task' }, style: { size: 99 } }]);
+    expect(style.size).toBe(10);
+  });
+
+  it('marks an unresolved node as a placeholder', () => {
+    const visual = nodeVisual({ ...belief, unresolved: true }, {}, NO_METRICS);
+    // Not-here-yet has to look different from empty, or a P2P graph lies about what it knows.
+    expect(visual.opacity).toBeLessThan(1);
+    expect(visual.borderColor).toBeDefined();
+  });
+
+  it('carries a dashed border through to what is drawn, and says nothing when unset', () => {
+    // A suggestion nobody has kept is drawn dashed on a canvas, as it is on a board.
+    expect(nodeVisual(belief, { borderStyle: 'dashed', borderWidth: 1 }, NO_METRICS).borderStyle).toBe('dashed');
+    expect(nodeVisual(belief, {}, NO_METRICS).borderStyle).toBeUndefined();
+  });
+
+  it('falls back to the type when a node has no label', () => {
+    const visual = nodeVisual({ id: 'x', kind: 'entity', type: 'Task' }, {}, NO_METRICS);
+    expect(visual.label).toBe('Task');
+  });
+});
+
+describe('field references', () => {
+  // `GraphValue`, not `unknown`: a node's data is what style rules read, and the whole point of the
+  // narrower type is that a rule can resolve a field without a runtime check.
+  const card = (data: Record<string, GraphValue>): GraphNode => ({ id: 'c', kind: 'entity', type: 'Card', data });
+
+  it('reads a size and a colour off the node itself', () => {
+    const visual = nodeVisual(
+      card({ canvasWidth: 320, canvasColor: '#ffcc00' }),
+      {
+        shape: 'card',
+        width: { from: 'data.canvasWidth' },
+        color: { from: 'data.canvasColor' },
+      },
+      NO_METRICS,
+    );
+
+    expect(visual.width).toBe(320);
+    expect(visual.color).toBe('#ffcc00');
+  });
+
+  it('defers to the rule above when the field is absent, rather than to the default', () => {
+    // The whole point of the cascade: a canvas colours every card by its type, then lets a card carry
+    // its own colour in front of that. If the second rule contributed `undefined` here, the cards
+    // carrying none would come out the built-in default and the type rule would be pointless.
+    const style = resolveStyle(card({ typeColor: 'success-500' }), [
+      { style: { color: { from: 'data.typeColor' } } },
+      { style: { color: { from: 'data.canvasColor' } } },
+    ]);
+
+    expect(style.color).toEqual({ from: 'data.typeColor' });
+  });
+
+  it('lets a present field override the rule above', () => {
+    const style = resolveStyle(card({ typeColor: 'success-500', canvasColor: '#ffcc00' }), [
+      { style: { color: { from: 'data.typeColor' } } },
+      { style: { color: { from: 'data.canvasColor' } } },
+    ]);
+
+    expect(style.color).toEqual({ from: 'data.canvasColor' });
+  });
+
+  it('accepts a number that was stored as a string', () => {
+    // What a backend with no numeric column hands back. Refusing it would make a size that
+    // round-trips through storage silently stop working.
+    const visual = nodeVisual(card({ w: '240' }), { shape: 'card', width: { from: 'data.w' } }, NO_METRICS);
+    expect(visual.width).toBe(240);
+  });
+
+  it('falls back when the stored value is the wrong type', () => {
+    const visual = nodeVisual(
+      card({ w: 'wide' }),
+      { shape: 'card', width: { from: 'data.w', fallback: 200 } },
+      NO_METRICS,
+    );
+    expect(visual.width).toBe(200);
+  });
+
+  it('refuses a card shape it does not know', () => {
+    // This reads a *stored* value, so a canvas written by a newer version of the app must fall back
+    // rather than hand the renderer a name it has no drawing for.
+    // A hexagon is a shape now; a blob is not.
+    const visual = nodeVisual(card({ s: 'blob' }), { shape: 'card', cardShape: { from: 'data.s' } }, NO_METRICS);
+    expect(visual.cardShape).toBe('note');
+  });
+
+  it('clamps a content scale that would make the card unusable', () => {
+    // Comes off a record, so a zero renders content nobody can see and nothing on screen to undo it.
+    expect(
+      nodeVisual(card({ s: 0 }), { shape: 'card', contentScale: { from: 'data.s' } }, NO_METRICS).contentScale,
+    ).toBe(0.25);
+    expect(
+      nodeVisual(card({ s: 99 }), { shape: 'card', contentScale: { from: 'data.s' } }, NO_METRICS).contentScale,
+    ).toBe(4);
+  });
+
+  it('reads a stacking order as a whole number, and leaves an unset one off', () => {
+    expect(nodeVisual(card({ z: 2.6 }), { shape: 'card', z: { from: 'data.z' } }, NO_METRICS).z).toBe(3);
+    expect(nodeVisual(card({ z: -1 }), { shape: 'card', z: { from: 'data.z' } }, NO_METRICS).z).toBe(-1);
+    expect('z' in nodeVisual(card({ z: 0 }), { shape: 'card', z: { from: 'data.z' } }, NO_METRICS)).toBe(false);
+  });
+
+  it('keeps a card big enough to grab', () => {
+    const visual = nodeVisual(card({ w: 2 }), { shape: 'card', width: { from: 'data.w' } }, NO_METRICS);
+    expect(visual.width).toBeGreaterThanOrEqual(40);
+  });
+});
+
+describe('metric references', () => {
+  const metrics = new Map([['degree', new Map([['a', 0.5]])]]);
+  // Typed as the thing it is passed as. Untyped it inferred `{ id, type }`, which satisfies neither
+  // `GraphNode` (no `kind`) nor `GraphEdge` (no ends), and the error named the second.
+  const a: GraphNode = { id: 'a', kind: 'entity', type: 'Task' };
+
+  it('maps a metric onto a numeric range', () => {
+    expect(resolveNumber({ metric: 'degree', range: [10, 30] }, a, metrics, 12)).toBe(20);
+  });
+
+  it('maps a metric onto a named colour scale', () => {
+    expect(resolveColor({ metric: 'degree', scale: 'heat' }, a, metrics, 'neutral-500')).toBe('primary-500');
+  });
+
+  it('falls back when the metric has not been computed', () => {
+    // Metrics run on user action, so a rule referencing one is legitimately unresolved until then —
+    // drawing plainly beats refusing to draw.
+    expect(resolveNumber({ metric: 'betweenness' }, a, metrics, 14)).toBe(14);
+    expect(resolveColor({ metric: 'betweenness' }, a, metrics, 'neutral-500')).toBe('neutral-500');
+  });
+});
+
+describe('card content', () => {
+  const card = { id: 'c1', kind: 'entity' as const, type: 'CollectionBlock', label: 'Idea' };
+
+  it('carries a named content renderer through to the visual', () => {
+    const visual = nodeVisual(card, { shape: 'card', content: 'block', contentMinZoom: 0.5 }, NO_METRICS);
+
+    expect(visual.content).toBe('block');
+    expect(visual.contentMinZoom).toBe(0.5);
+  });
+
+  it('ignores it on anything that is not a card', () => {
+    // A dot has nowhere to put content, and passing the name through anyway would have a renderer
+    // looking up a component it has no room to draw.
+    const visual = nodeVisual(card, { shape: 'circle', content: 'block' }, NO_METRICS);
+
+    expect(visual.content).toBeUndefined();
+  });
+});
+
+describe('rule lists built from data', () => {
+  it('flattens a nested group so a mapped rule sits among hand-written ones', () => {
+    // A schema cannot merge two arrays — `$concat` joins strings — so a template that wants a base
+    // rule plus one rule per row of data has no way to write the combined list. Nesting is how a
+    // `$map` over a community's own vocabulary contributes rules alongside the authored ones.
+    const style = resolveStyle(belief, [
+      { style: { size: 10 } },
+      [
+        { when: { type: 'Belief' }, style: { color: 'primary-500' } },
+        { when: { type: 'Task' }, style: { color: 'danger-500' } },
+      ],
+    ]);
+
+    expect(style).toEqual({ size: 10, color: 'primary-500' });
+  });
+
+  it('applies a nested group in the position it occupies, not last', () => {
+    // Precedence has to read exactly as written, or a template author cannot reason about which
+    // rule wins by looking at the list.
+    const style = resolveStyle(belief, [[{ style: { color: 'neutral-500' } }], { style: { color: 'primary-700' } }]);
+
+    expect(style).toEqual({ color: 'primary-700' });
+  });
+
+  it('treats an empty group as no rules at all', () => {
+    // A `$map` over a space that has named nothing yet. It must leave the hand-written rules alone
+    // rather than resolving to something that overrides them.
+    const style = resolveStyle(belief, [{ style: { size: 12 } }, []]);
+
+    expect(style).toEqual({ size: 12 });
+  });
+});
+
+describe('defaults', () => {
+  it('scales labels and edges with the camera unless told otherwise', () => {
+    // The intuition people arrive with is a canvas, where zoom magnifies the whole drawing. Constant
+    // on-screen size is the specialist choice, so it is the one you ask for.
+    expect(nodeVisual(belief, {}, NO_METRICS).scaleLabelWithZoom).toBe(true);
+    expect(edgeVisual({ id: 'e', source: 'a', target: 'b', type: 'rel' }, {}, NO_METRICS).scaleWithZoom).toBe(true);
+  });
+
+  it('treats an omitted option as the default, never as off', () => {
+    // `undefined` and `false` must not collapse into each other — an author who said nothing has not
+    // asked for the opposite, which is how a graph ends up with no arrows because nobody mentioned
+    // arrows.
+    const edge = edgeVisual({ id: 'e', source: 'a', target: 'b', type: 'rel' }, {}, NO_METRICS);
+    expect(edge.arrow).toBe('target');
+    expect(edge.curve).toBe('smooth');
+
+    const off = edgeVisual({ id: 'e', source: 'a', target: 'b', type: 'rel' }, { scaleWithZoom: false }, NO_METRICS);
+    expect(off.scaleWithZoom).toBe(false);
+  });
+
+  it('derives a card height from its width, so widening keeps the shape', () => {
+    const visual = nodeVisual(belief, { shape: 'card', width: 200 }, NO_METRICS);
+    expect(visual.height).toBe(150);
+    // `size` becomes the half-extent, which is what hit-testing reads.
+    expect(visual.size).toBe(100);
+  });
+});
+
+describe('blendVisual', () => {
+  const card = (over: Partial<NodeVisual> = {}): NodeVisual => ({
+    shape: 'card',
+    size: 90,
+    width: 180,
+    height: 135,
+    color: '#111',
+    cardShape: 'note',
+    ...over,
+  });
+
+  it('lerps the box and takes the destination for everything discrete', () => {
+    const from = card({ width: 100, height: 75, size: 50, color: '#aaa', contentScale: 0.5 });
+    const to = card({ width: 200, height: 150, size: 100, color: '#bbb', contentScale: 1.5 });
+
+    const half = blendVisual(from, to, 0.5);
+    expect(half.width).toBe(150);
+    expect(half.height).toBeCloseTo(112.5);
+    expect(half.size).toBe(75);
+    expect(half.contentScale).toBe(1);
+    // The colour is the destination's from the first frame: a colour fading through an intermediate
+    // hue nobody chose reads as a glitch, where a box easing to a new size reads as the move itself.
+    expect(half.color).toBe('#bbb');
+  });
+
+  it('is the destination at the end, and the start at the beginning', () => {
+    const from = card({ width: 100 });
+    const to = card({ width: 300 });
+    expect(blendVisual(from, to, 0).width).toBe(100);
+    expect(blendVisual(from, to, 1)).toBe(to);
+    // Out of range is clamped rather than extrapolated — a travel that overshoots by a frame must not
+    // draw a card wider than the layout asked for.
+    expect(blendVisual(from, to, 1.4)).toBe(to);
+    expect(blendVisual(from, to, -0.2).width).toBe(100);
+  });
+
+  it('only carries a silhouette when the two shapes actually differ', () => {
+    const same = blendVisual(card({ cardShape: 'note' }), card({ cardShape: 'note' }), 0.5);
+    expect(same.morph).toBeUndefined();
+
+    const changing = blendVisual(card({ cardShape: 'triangle' }), card({ cardShape: 'note' }), 0.5);
+    expect(changing.morph?.from).toBe('triangle');
+    expect(changing.morph?.at).toBe(0.5);
+    expect(changing.morph?.outline.length).toBeGreaterThan(2);
+    // Every point stays inside the unit box the renderer clips against.
+    for (const [x, y] of changing.morph!.outline) {
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x).toBeLessThanOrEqual(1);
+      expect(y).toBeGreaterThanOrEqual(0);
+      expect(y).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('does not blend across a change of shape KIND', () => {
+    // A card becoming a circle is not one outline easing into another — the two are drawn by
+    // different code paths, so there is nothing to interpolate and the honest answer is the
+    // destination.
+    const from = card();
+    const to: NodeVisual = { shape: 'circle', size: 40, color: '#111' };
+    expect(blendVisual(from, to, 0.5)).toBe(to);
+  });
+
+  it("leaves a non-card's box alone", () => {
+    const from: NodeVisual = { shape: 'circle', size: 20, color: '#111' };
+    const to: NodeVisual = { shape: 'circle', size: 40, color: '#111' };
+    const half = blendVisual(from, to, 0.5);
+    expect(half.size).toBe(30);
+    expect(half.width).toBeUndefined();
+    expect(half.morph).toBeUndefined();
+  });
+});
+
+describe('reversing a morph that is already in flight', () => {
+  const card = (cardShape: NodeVisual['cardShape'], over: Partial<NodeVisual> = {}): NodeVisual => ({
+    shape: 'card',
+    size: 90,
+    width: 180,
+    height: 135,
+    color: '#111',
+    cardShape,
+    ...over,
+  });
+
+  /** How far an outline reaches from the box's centre along one direction. */
+  const reach = (outline: readonly (readonly [number, number])[], angle: number) => {
+    const ux = Math.cos(angle);
+    const uy = Math.sin(angle);
+    let nearest = Infinity;
+    for (let i = 0; i < outline.length; i += 1) {
+      const [ax, ay] = outline[i];
+      const [bx, by] = outline[(i + 1) % outline.length];
+      const px = ax - 0.5;
+      const py = ay - 0.5;
+      const ex = bx - ax;
+      const ey = by - ay;
+      const denominator = ux * ey - uy * ex;
+      if (Math.abs(denominator) < 1e-12) continue;
+      const along = (px * ey - py * ex) / denominator;
+      const across = (px * uy - py * ux) / denominator;
+      if (along > 0 && across >= -1e-9 && across <= 1 + 1e-9) nearest = Math.min(nearest, along);
+    }
+    return nearest;
+  };
+
+  it('leaves the outline it is drawn as, not the one its name says', () => {
+    /*
+      A blended visual takes the destination's `cardShape`, like everything else discrete — so a card half
+      way from a triangle to a note is NAMED a note while being drawn as neither. Reversing from its name
+      snapped it to a full note before it started leaving one, which is what a reader who changes their mind
+      half way through sees.
+    */
+    const halfWay = blendVisual(card('triangle'), card('note'), 0.5);
+    expect(halfWay.cardShape).toBe('note');
+    expect(halfWay.morph).toBeDefined();
+
+    // Now back the other way, from that half-morphed card.
+    const reversing = blendVisual(halfWay, card('triangle'), 0);
+    expect(reversing.morph).toBeDefined();
+    // At the very first frame of the reversal the outline is exactly the one that was on screen.
+    for (const angle of [-1.3, -0.4, 0.6, 1.9, 3.0]) {
+      expect(reach(reversing.morph!.outline, angle)).toBeCloseTo(reach(halfWay.morph!.outline, angle), 5);
+    }
+  });
+
+  it('continues on the directions it was already using, rather than deriving new ones', () => {
+    /*
+      What stops a spike. Deriving the directions again from the half-morphed POLYGON gives a set that shifts
+      under the blend — and one of them can be a direction that polygon cannot answer along, which used to
+      fall back to the box and put one point a long way off the shape for a frame.
+    */
+    const halfWay = blendVisual(card('triangle'), card('note'), 0.5);
+    expect(halfWay.morph?.samples?.length).toBeGreaterThan(0);
+
+    let previous = halfWay.morph!.samples!;
+    for (let step = 1; step <= 8; step += 1) {
+      const frame = blendVisual(halfWay, card('diamond'), step / 10).morph!.samples!;
+      expect(frame).toHaveLength(previous.length);
+      for (let i = 0; i < frame.length; i += 1) {
+        expect(frame[i].ux).toBeCloseTo(previous[i].ux, 9);
+        expect(Math.abs(frame[i].r - previous[i].r)).toBeLessThan(0.2);
+      }
+      previous = frame;
+    }
+  });
+
+  it('still morphs when the same switch is asked for twice', () => {
+    // Both names equal, and a card that is still half of something else. Skipped on the names alone, this
+    // is the card jumping to its destination shape while every position carries on easing.
+    const halfWay = blendVisual(card('triangle'), card('note'), 0.5);
+    const again = blendVisual(halfWay, card('note'), 0);
+
+    expect(again.morph).toBeDefined();
+    for (const angle of [-1.3, 0.6, 3.0]) {
+      expect(reach(again.morph!.outline, angle)).toBeCloseTo(reach(halfWay.morph!.outline, angle), 5);
+    }
+  });
+
+  it('arrives at the destination shape all the same', () => {
+    const halfWay = blendVisual(card('triangle'), card('note'), 0.5);
+    // At the end the blend is the destination visual outright, morph and all.
+    expect(blendVisual(halfWay, card('triangle'), 1).morph).toBeUndefined();
+    expect(blendVisual(halfWay, card('triangle'), 1).cardShape).toBe('triangle');
+  });
+});
+
+describe('a two-colour scale', () => {
+  it('blends continuously between the stops, and paints exactly a stop at either end', () => {
+    expect(blendColors('primary-100', 'accent', 0)).toBe('primary-100');
+    expect(blendColors('primary-100', 'accent', 1)).toBe('accent');
+    expect(blendColors('primary-100', 'accent', 0.5)).toBe('color-mix(in oklch, accent 50%, primary-100)');
+    // Continuous: three cards at 0.1, 0.4 and 0.9 are three different colours, not two buckets.
+    const shades = [0.1, 0.4, 0.9].map((t) => blendColors('a', 'b', t));
+    expect(new Set(shades).size).toBe(3);
+  });
+});

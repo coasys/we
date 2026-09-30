@@ -1,4 +1,5 @@
 import type { DesignSystemProps } from '@we/design-types';
+import { safeHref } from '@we/design-utils';
 import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
@@ -8,7 +9,7 @@ import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'inline',
-  color: 'primary-600',
+  color: 'accent-text',
   cursor: 'pointer',
 };
 
@@ -16,7 +17,7 @@ const styles = css`
   [part='base'] {
     text-decoration: underline;
     text-underline-offset: 2px;
-    transition: opacity 0.15s ease;
+    transition: opacity var(--we-transition-200, 150ms) ease;
   }
 
   [part='base']:hover {
@@ -37,6 +38,7 @@ export default class Link extends DesignSystemElement {
   @property({ type: String }) href = '';
   @property({ type: String }) target = '';
   @property({ type: String }) rel = '';
+  @property({ type: String }) download = '';
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
@@ -48,9 +50,10 @@ export default class Link extends DesignSystemElement {
     return html`
       <a
         part="base"
-        href=${this.href}
+        href=${safeHref(this.href) || nothing}
         target=${this.target || nothing}
         rel=${this.target === '_blank' ? this.rel || 'noopener noreferrer' : this.rel || nothing}
+        download=${this.download || nothing}
         aria-disabled=${this.disabled ? 'true' : 'false'}
         style=${styleMap(this.styles || {})}
       >

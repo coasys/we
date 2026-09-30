@@ -1,0 +1,32 @@
+/*
+  Almost nothing.
+
+  Layout is `Column`/`Row` with design-system props, and everything with an appearance is a primitive,
+  so what is left is the page reset and the one list that has no component equivalent.
+  The graph brings its own styles from @we/graph-solid/styles.
+*/
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--we-font-family-body, system-ui, sans-serif);
+  color: var(--we-color-neutral-900);
+  background: var(--we-color-neutral-0);
+}
+
+.log {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.log li {
+  display: flex;
+  align-items: center;
+  gap: var(--we-space-100);
+  justify-content: space-between;
+}

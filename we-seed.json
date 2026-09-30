@@ -5,37 +5,19 @@
     "description": "Pure WE application built with design system and schema renderer",
     "author": "James Weir"
   },
-
+  "modules": ["call", "transcribe", "live", "pocket", "notes", "globe", "graph", { "id": "polls", "enabled": false }],
+  "templates": ["default", "workshop", "discord", "twitter", "instagram", "youtube", "kanban", "events", "scrapbook"],
+  "views": ["about", "cards", "graph", "globe", "boards", "calendar"],
   "ad4m": {
-    "dataPath": "~/.we-native-app",
+    "dataPath": "~/.ad4m",
     "executorPath": "../ad4m/target/release/ad4m-executor",
     "repoPath": "../ad4m"
   },
-
-  "globalSpaceUrl": "neighbourhood://QmzSYwdiPLzsQD6v6tmeR8c7b5vFkoaFijJNdBXiLadEzYS4st6",
-
+  "globalSpaceUrl": "neighbourhood://QmzSYwdd8UEtprCh5vuRWrM3FLsWMSqVNrou1dwqTMCrrf2iFS7",
+  "marketplaceUrl": "neighbourhood://QmzSYwdjBtfHQgMBAFCi5nX1fxS3SQ7prh5CcysSrc2yngqL51H",
   "electron": {
     "appDistPath": "dist",
     "basePort": 8080
   },
-
-  "apps": [
-    {
-      "id": "flux",
-      "name": "Flux",
-      "icon": "camera",
-      "image": "https://app.fluxsocial.io/icon.png",
-      "description": "Social web3 toolkit for communities",
-      "capabilities": ["perspectives", "languages", "agents"],
-      "paths": {
-        "projectRoot": "../flux/app",
-        "dist": "../flux/app/dist",
-        "webUrl": "https://deploy-preview-600--fluxsocial-dev.netlify.app/",
-        "devServer": {
-          "port": 3030,
-          "host": "localhost"
-        }
-      }
-    }
-  ]
+  "apps": []
 }

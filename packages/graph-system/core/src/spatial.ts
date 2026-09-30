@@ -1,0 +1,122 @@
+/**
+ * Spatial index and hit-testing — owned by the core, deliberately.
+ *
+ * With DOM nodes the browser will happily tell you what was clicked, and writing the drag, select and
+ * connect behaviours against DOM events is the obvious thing to do. It is also the one-way door in
+ * this system: a canvas renderer has no elements to hit, so every behaviour written that way has to
+ * be rewritten to support dense mode. Behaviours here receive world coordinates and ask the core what
+ * is there, so they never learn what a DOM node is and dense mode is additive.
+ *
+ * The index is a uniform grid rather than a quadtree. For this workload — points of broadly similar
+ * size, rebuilt whenever the layout moves — a grid is faster to build, allocation-free to query, and
+ * about thirty lines; a quadtree's advantage shows up with wildly non-uniform densities that a graph
+ * layout does not produce.
+ */
+import type { Point } from '@we/graph-protocol';
+
+import type { Bounds } from './viewport';
+
+export interface IndexedNode {
+  id: string;
+  x: number;
+  y: number;
+  /** Hit radius in world units. Used when the node has no box. */
+  radius: number;
+  /**
+   * Box half-extents, for nodes that are rectangles rather than marks.
+   *
+   * A card is 170×128; picking it with a circle either misses the corners or overshoots the edges
+   * into its neighbours. Both matter on a canvas, where cards sit close together and a click landing
+   * on the wrong one is worse than a click landing on nothing.
+   */
+  halfWidth?: number;
+  halfHeight?: number;
+  /** Stacking order — see `NodeStyle.z`. The node drawn in front is the one a press lands on. */
+  z?: number;
+}
+
+const DEFAULT_CELL = 120;
+
+export class SpatialIndex {
+  private cells = new Map<string, IndexedNode[]>();
+  private cellSize = DEFAULT_CELL;
+  private items: IndexedNode[] = [];
+
+  /** Rebuild from scratch. Called when positions change, which is once per layout tick. */
+  rebuild(nodes: IndexedNode[]): void {
+    this.items = nodes;
+    this.cells = new Map();
+    if (!nodes.length) return;
+
+    // Size cells to the largest node, so a node never spans more than the four cells its corners
+    // fall in and the query below can stay a fixed 3×3 sweep.
+    let maxExtent = 0;
+    for (const node of nodes) {
+      const extent = Math.max(node.radius, node.halfWidth ?? 0, node.halfHeight ?? 0);
+      if (extent > maxExtent) maxExtent = extent;
+    }
+    this.cellSize = Math.max(DEFAULT_CELL, maxExtent * 2);
+
+    for (const node of nodes) {
+      const key = this.key(node.x, node.y);
+      const cell = this.cells.get(key);
+      if (cell) cell.push(node);
+      else this.cells.set(key, [node]);
+    }
+  }
+
+  /**
+   * Nodes under a world point, frontmost first, then nearest.
+   *
+   * Ordered because overlapping nodes are normal in a force layout and "whichever the iteration
+   * happened to reach first" makes clicks feel random. Stacking comes before distance because a
+   * card drawn over another covers it: a press on the covering card that picked the one beneath,
+   * for being nearer its centre, would be a click on something you cannot see.
+   */
+  hitTest(at: Point): string[] {
+    const hits: { id: string; distance: number; z: number }[] = [];
+    const cx = Math.floor(at.x / this.cellSize);
+    const cy = Math.floor(at.y / this.cellSize);
+
+    for (let dx = -1; dx <= 1; dx += 1) {
+      for (let dy = -1; dy <= 1; dy += 1) {
+        const cell = this.cells.get(`${cx + dx},${cy + dy}`);
+        if (!cell) continue;
+        for (const node of cell) {
+          const distance = Math.hypot(node.x - at.x, node.y - at.y);
+          const inside =
+            node.halfWidth !== undefined && node.halfHeight !== undefined
+              ? Math.abs(node.x - at.x) <= node.halfWidth && Math.abs(node.y - at.y) <= node.halfHeight
+              : distance <= node.radius;
+          // Distance to centre still orders the hits — for overlapping cards, the one you are
+          // nearest the middle of is the one you meant.
+          if (inside) hits.push({ id: node.id, distance, z: node.z ?? 0 });
+        }
+      }
+    }
+
+    return hits.sort((a, b) => b.z - a.z || a.distance - b.distance).map((h) => h.id);
+  }
+
+  /** Ids intersecting a world rectangle — marquee selection, and viewport culling. */
+  within(bounds: Bounds): string[] {
+    const result: string[] = [];
+    for (const node of this.items) {
+      const halfWidth = node.halfWidth ?? node.radius;
+      const halfHeight = node.halfHeight ?? node.radius;
+      if (
+        node.x + halfWidth >= bounds.minX &&
+        node.x - halfWidth <= bounds.maxX &&
+        node.y + halfHeight >= bounds.minY &&
+        node.y - halfHeight <= bounds.maxY
+      ) {
+        result.push(node.id);
+      }
+    }
+    return result;
+  }
+
+  private key(x: number, y: number): string {
+    return `${Math.floor(x / this.cellSize)},${Math.floor(y / this.cellSize)}`;
+  }
+}

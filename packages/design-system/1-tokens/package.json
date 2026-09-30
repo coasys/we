@@ -7,7 +7,9 @@
   "type": "module",
   "scripts": {
     "build": "we-build",
-    "build:steps": "tsup"
+    "build:steps": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "types": "dist/index.d.ts",
   "exports": {
@@ -26,9 +28,10 @@
     "dist"
   ],
   "devDependencies": {
-    "@types/node": "^24.10.0",
+    "@types/node": "^26.4.0",
     "@we/cli": "workspace:*",
-    "tsup": "^8.5.1"
+    "tsup": "^8.5.1",
+    "vitest": "^4.1.11"
   },
   "publishConfig": {
     "access": "public"

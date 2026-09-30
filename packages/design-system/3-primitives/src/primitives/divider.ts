@@ -18,12 +18,12 @@ const styles = css`
   :host(:not([orientation])) [part='base'],
   :host([orientation='']) [part='base'] {
     width: 100%;
-    border-top: var(--_t, 1px) solid var(--_c, var(--we-color-neutral-200));
+    border-top: var(--_t, 1px) solid var(--_c, var(--we-role-border));
   }
 
   :host([orientation='vertical']) [part='base'] {
     height: 100%;
-    border-left: var(--_t, 1px) solid var(--_c, var(--we-color-neutral-200));
+    border-left: var(--_t, 1px) solid var(--_c, var(--we-role-border));
   }
 
   :host([variant='dashed'][orientation='horizontal']) [part='base'],

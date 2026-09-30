@@ -9,31 +9,29 @@ const h3 = { type: 'h3', label: 'Heading 3', icon: 'text-h-three', md: '###' };
 const quote = { type: 'quote', label: 'Quote', icon: 'quotes', md: '>' };
 const ul = { type: 'ul', label: 'Bullet List', icon: 'list-bullets', md: '-' };
 const ol = { type: 'ol', label: 'Number List', icon: 'list-numbers', md: '1.' };
-// const cl = { type: 'cl', label: 'Check List', icon: 'list-checks', md: '[]' };
+const cl = { type: 'cl', label: 'Check List', icon: 'list-checks', md: '[]' };
 
-// Collection blocks
-const grid = { type: 'grid', label: 'Grid', icon: 'squares-four', md: '+' };
-const columns = { type: 'columns', label: 'Columns', icon: 'columns-plus-right', md: '||' };
-const rows = { type: 'rows', label: 'Rows', icon: 'rows-plus-bottom', md: '=' };
+// // Collection blocks
+const collection = { type: 'collection', label: 'Collection', icon: 'squares-four', md: '[]' };
 
 // Media blocks
-const url = { type: 'url', label: 'URL', icon: 'link', md: '!' };
+const url = { type: 'link', label: 'URL', icon: 'link', md: '!' };
 const image = { type: 'image', label: 'Image', icon: 'image', md: '!!' };
 const audio = { type: 'audio', label: 'Audio', icon: 'speaker-high', md: '!!!' };
 const video = { type: 'video', label: 'Video', icon: 'youtube-logo', md: '!!!!' };
 const file = { type: 'file', label: 'File', icon: 'paperclip', md: '!!!!!' };
 
-// Social blocks
-const event = { type: 'event', label: 'Event', icon: 'calendar', md: '' };
-const task = { type: 'task', label: 'Task', icon: 'check-square', md: '' };
-const poll = { type: 'poll', label: 'Poll', icon: 'chart-pie', md: '' };
-const game = { type: 'game', label: 'game', icon: 'game-controller', md: '' };
+// // Social blocks
+// const event = { type: 'event', label: 'Event', icon: 'calendar', md: '' };
+// const task = { type: 'task', label: 'Task', icon: 'check-square', md: '' };
+// const poll = { type: 'poll', label: 'Poll', icon: 'chart-pie', md: '' };
+// const game = { type: 'game', label: 'game', icon: 'game-controller', md: '' };
 
 const categories = [
-  { title: 'Text', blocks: [p, h1, h2, h3, quote, ul, ol] },
-  { title: 'Collection', blocks: [grid, columns, rows] },
+  { title: 'Text', blocks: [p, h1, h2, h3, quote, ul, ol, cl] },
+  { title: 'Collection', blocks: [collection] },
   { title: 'Media', blocks: [url, image, audio, video, file] },
-  { title: 'Social', blocks: [event, task, poll, game] },
+  // { title: 'Social', blocks: [event, task, poll, game] },
 ].map((category, index, arr) => ({
   ...category,
   offset: arr.slice(0, index).reduce((sum, cat) => sum + cat.blocks.length, 0),
@@ -92,6 +90,12 @@ export default function BlockTypeMenu(props: {
   createEffect(() => {
     filterRef?.focus();
 
+    // Promote to the browser's top layer so the menu always renders above
+    // overlays (we-modal/we-drawer) which are top-layer themselves — a
+    // portaled document.body child can't out-rank the top layer via z-index.
+    menuRef?.setAttribute('popover', 'manual');
+    menuRef?.showPopover();
+
     // Set the focus index on the current node type
     const index = allBlocks.findIndex((item) => item.type === nodeType);
     setFocusIndex(index >= 0 ? index : 0);
@@ -101,7 +105,14 @@ export default function BlockTypeMenu(props: {
     }
 
     document.addEventListener('mousedown', handleClickOutside);
-    onCleanup(() => document.removeEventListener('mousedown', handleClickOutside));
+    onCleanup(() => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      try {
+        menuRef?.hidePopover();
+      } catch {
+        // Already hidden or popover API unavailable
+      }
+    });
   });
 
   // Update selection focus when focusIndex changes
@@ -124,24 +135,28 @@ export default function BlockTypeMenu(props: {
       style={{ top: `${position.top}px`, left: `${position.left}px` }}
       onKeyDown={onMenuKeyDown}
     >
-      <input
-        ref={filterRef}
-        class="we-block-menu-filter"
-        type="text"
-        placeholder="Filter blocks..."
-        value={filter()}
-        onInput={(e) => setFilter(e.currentTarget.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && filteredBlocks().length > 0) {
-            e.preventDefault();
-            const block = filteredBlocks()[focusIndex()];
-            if (block) {
-              selectType(block.type);
-              close();
+      <Row ay="center" gap="200" p="200">
+        <we-icon name="magnifying-glass" size="xs" color="text-faint" />
+        <input
+          ref={filterRef}
+          class="we-block-menu-filter"
+          type="text"
+          placeholder="Filter blocks..."
+          value={filter()}
+          onInput={(e) => setFilter(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && filteredBlocks().length > 0) {
+              e.preventDefault();
+              const block = filteredBlocks()[focusIndex()];
+              if (block) {
+                selectType(block.type);
+                close();
+              }
             }
-          }
-        }}
-      />
+          }}
+        />
+      </Row>
+      <we-divider mt="200" mb="400" />
       <Show when={filteredBlocks().length > 0} fallback={<div class="we-block-menu-empty">No matching blocks</div>}>
         {filteredCategories().map((category, index) => {
           const offset = () =>
@@ -152,7 +167,9 @@ export default function BlockTypeMenu(props: {
             <>
               {index > 0 && <div class="we-block-menu-divider" />}
 
-              <span class="we-block-menu-category-title">{category.title}</span>
+              <we-text fontSize="100" fontWeight="600" textTransform="uppercase" color="text-muted" mb="100">
+                {category.title}
+              </we-text>
 
               {category.blocks.map((option, blockIndex) => (
                 <button
@@ -164,17 +181,13 @@ export default function BlockTypeMenu(props: {
                   onClick={(e) => onOptionClick(e, option.type)}
                   onKeyDown={(e) => onOptionKeyDown(e, option.type)}
                 >
-                  <Row>
-                    <we-icon
-                      name={option.icon}
-                      weight="bold"
-                      color="neutral-300"
-                      size="sm"
-                      style={{ margin: '0 10px 0 0' }}
-                    />
-                    {option.label}
+                  <Row ay="center" gap="300">
+                    <we-icon name={option.icon} weight="bold" color="text-faint" size="sm" />
+                    <we-text fontSize="200">{option.label}</we-text>
                   </Row>
-                  <span class="we-block-menu-markdown">{option.md}</span>
+                  <we-text fontSize="200" color="text-muted">
+                    {option.md}
+                  </we-text>
                 </button>
               ))}
             </>

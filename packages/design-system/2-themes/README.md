@@ -49,10 +49,13 @@ import '@we/themes/dark';
 
 ## Available Themes
 
+- `@we/themes/light` – Light theme (near-empty by design: light is the parametric default)
 - `@we/themes/dark` – Dark theme
+- `@we/themes/black` – Pure-black theme
 - `@we/themes/black` – High-contrast black theme
 - `@we/themes/retro` – Retro/vintage theme
 - `@we/themes/cyberpunk` – Cyberpunk neon theme
+- `@we/themes/presets` – The JS entry: `THEME_PRESETS`, the `ThemeOverrides` vocabulary, and the `themeToStyle`/`applyThemeVars` mapping
 - `@we/themes` – Base theme (default)
 
 ## How It Works

@@ -1,26 +1,33 @@
 .we-block-menu {
-  position: absolute;
+  // position: fixed (not absolute) — this element is promoted to the browser's
+  // top layer via popover="manual", so its containing block is always the
+  // viewport. top/left are computed in viewport coordinates by the caller.
+  position: fixed;
   z-index: var(--we-z-popover);
+  margin: 0;
+
+  // Reset UA [popover] default `color` that would otherwise leak through —
+  // background/border are already set below, but overflow-x needs an explicit
+  // reset since the UA default (`overflow: auto` on both axes) would otherwise
+  // apply on x too (previously it was `visible` before the popover promotion).
+  color: inherit;
+  overflow: hidden auto;
   top: 20px;
   pointer-events: auto;
   display: flex;
   flex-direction: column;
-  background-color: var(--we-color-neutral-0);
-  padding: 5px;
-  border-radius: 5px;
+  background-color: var(--we-role-surface);
+  padding: 10px;
+  border-radius: 10px;
   font-family: var(--we-font-family);
-  border: 1px solid var(--we-color-neutral-300);
+  border: 1px solid var(--we-role-border);
   min-width: 250px;
   max-height: min(400px, 60vh);
-  overflow-y: auto;
 
   .we-block-menu-filter {
     all: unset;
-    font-size: 13px;
-    padding: 6px 8px;
-    margin-bottom: 4px;
-    border-bottom: 1px solid var(--we-color-neutral-100);
-    color: var(--we-color-neutral-900);
+    font-size: var(--we-font-size-200);
+    color: var(--we-role-text);
 
     &::placeholder {
       color: var(--we-color-neutral-300);
@@ -28,8 +35,8 @@
   }
 
   .we-block-menu-empty {
-    font-size: 13px;
-    color: var(--we-color-neutral-400);
+    font-size: var(--we-font-size-200);
+    color: var(--we-role-text-faint);
     padding: 8px;
     text-align: center;
   }
@@ -42,33 +49,17 @@
     justify-content: space-between;
     border-radius: 5px;
     height: 30px;
-    padding: 0 5px;
-    font-size: 14px;
-    color: var(--we-color-neutral-900);
+    padding: 5px 8px;
 
     &.we-block-menu-focused {
-      background-color: var(--we-color-neutral-50);
+      background-color: var(--we-role-page);
     }
-
-    .we-block-menu-markdown {
-      font-size: 12px;
-      color: var(--we-color-neutral-300);
-    }
-  }
-
-  .we-block-menu-category-title {
-    font-size: 10px;
-    color: var(--we-color-neutral-400);
-    padding: 5px 0;
-    margin-left: 5px;
-    font-weight: 600;
-    text-transform: uppercase;
   }
 
   .we-block-menu-divider {
     width: 100%;
     height: 1px;
     margin: 10px 0;
-    background-color: var(--we-color-neutral-100);
+    background-color: var(--we-role-surface-sunken);
   }
 }

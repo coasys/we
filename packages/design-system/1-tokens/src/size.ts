@@ -37,8 +37,19 @@ export const size = {
  */
 export type RadiusToken = '0' | '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' | 'pill' | 'full';
 
+/**
+ * Radius values that name a theme *family* rather than a size — see `themeFamily.ts`, which is the
+ * one place these are declared and from which this and its padding and gap counterparts derive.
+ *
+ * Kept out of the `radius` scale itself — a scale position is a length, these are indirections —
+ * and out of the theme editor's shared radius list, since `avatar` resolves to a percentage and is
+ * only safe on a box guaranteed square.
+ */
+export type { SemanticRadius } from './themeFamily.js';
+import type { SemanticRadius } from './themeFamily.js';
+
 // Branded type to allow both tokens and raw radius values (px, rem, %, etc.) while preserving autocomplete
-export type RadiusValue = RadiusToken | (string & {});
+export type RadiusValue = RadiusToken | SemanticRadius | (string & {});
 
 export const radius = {
   '0': '0', // 0px

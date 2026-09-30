@@ -23,12 +23,41 @@ const typeExpansions: Record<string, string> = {
   IconSize: "'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}'",
   SizeValue: "'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}'",
   TextVariant:
-    "'' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading' | 'heading-lg'",
+    "'' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl'",
   TextTag: "'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div'",
   Placement:
     "'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end'",
   ComboboxOption: '{ label: string; value: string; disabled?: boolean }',
+  /*
+    What the source's own card was drawn with, so a ghost or a receiver can draw the same one.
+
+    Written out rather than left opaque because every field is optional and none is implied by the
+    name: a template setting `preview` on a `we-draggable` has to know that a post fills `content`
+    while an image or a space fills `thumbnail`. `DragPreview` on its own says none of that, and
+    there is nowhere in the generated reference to look it up.
+
+    Source of truth is `@we/drag`'s `DragPreview` (packages/design-system/drag/src/types.ts).
+  */
+  DragPreview: '{ thumbnail?: string; content?: string; author?: string; date?: string }',
+  /*
+    Platform `Intl` types that are closed string unions, used by `we-timestamp`. Keyed by the exact
+    text the analyzer emits, indexed accesses included. Values copied from TypeScript's lib.
+  */
+  'Intl.RelativeTimeFormatStyle': "'long' | 'short' | 'narrow'",
+  "Intl.DateTimeFormatOptions['dateStyle']": "'full' | 'long' | 'medium' | 'short'",
+  "Intl.DateTimeFormatOptions['timeStyle']": "'full' | 'long' | 'medium' | 'short'",
+  "Intl.DateTimeFormatOptions['weekday']": "'long' | 'short' | 'narrow'",
+  "Intl.DateTimeFormatOptions['year']": "'numeric' | '2-digit'",
+  "Intl.DateTimeFormatOptions['month']": "'numeric' | '2-digit' | 'long' | 'short' | 'narrow'",
+  "Intl.DateTimeFormatOptions['day']": "'numeric' | '2-digit'",
+  "Intl.DateTimeFormatOptions['hour']": "'numeric' | '2-digit'",
+  "Intl.DateTimeFormatOptions['minute']": "'numeric' | '2-digit'",
+  "Intl.DateTimeFormatOptions['second']": "'numeric' | '2-digit'",
+  "Intl.DateTimeFormatOptions['hourCycle']": "'h11' | 'h12' | 'h23' | 'h24'",
 };
+
+/** A quoted string literal, e.g. `'sm'` or `''`. */
+const isStringLiteral = (part: string) => /^'[^']*'$/.test(part);
 
 /** Primitive types that are never opaque (no expansion needed). */
 const knownPrimitiveTypes = new Set([
@@ -45,6 +74,7 @@ const knownPrimitiveTypes = new Set([
   'array',
   'HTMLElement',
   'File',
+  'MediaStream',
 ]);
 
 /**
@@ -114,11 +144,14 @@ function resolveType(rawType: string, typeAliases: Map<string, string>): string 
   // Fast path: known primitive / trivial
   if (knownPrimitiveTypes.has(rawType)) return rawType;
 
-  // Already a string-literal union (e.g. "'xs' | 'sm' | 'md'")
-  if (rawType.includes("'")) return rawType;
+  const parts = rawType.split('|').map((p) => p.trim());
+
+  // Already a string-literal union (e.g. "'xs' | 'sm' | 'md'"). Every part must be one: a bare quote
+  // test also matched indexed accesses like "Intl.DateTimeFormatOptions['dateStyle']", which then
+  // passed through opaque and unwarned.
+  if (parts.every(isStringLiteral)) return rawType;
 
   // Resolve compound types: "AvatarSizeValue | undefined" → expand each part
-  const parts = rawType.split('|').map((p) => p.trim());
   const resolved = parts.map((part) => {
     if (knownPrimitiveTypes.has(part)) return part;
     if (typeAliases.has(part)) return typeAliases.get(part)!;
@@ -132,12 +165,14 @@ function resolveType(rawType: string, typeAliases: Map<string, string>): string 
     if (knownPrimitiveTypes.has(part)) continue;
     if (typeAliases.has(part)) continue;
     if (typeExpansions[part]) continue;
-    if (part.includes("'")) continue;
+    if (isStringLiteral(part)) continue;
     if (part.endsWith('[]')) continue;
     if (part.includes('=>')) continue; // function types
     if (part.includes('<')) continue; // generic types like Partial<...>
     if (part.startsWith('(')) continue; // grouped types like (string | ...)[]
-    console.warn(`⚠ Unresolved type "${part}" in "${rawType}" — add to typeExpansions in cem.ts`);
+    console.warn(
+      `⚠ Unresolved type "${part}" in "${rawType}" — add it to typeExpansions in cem.ts if it expands to a literal union, or to knownPrimitiveTypes if it is a platform type like HTMLElement`,
+    );
   }
 
   return result;

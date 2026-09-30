@@ -1,0 +1,116 @@
+/**
+ * Snapshot the generated token CSS — every `--we-*` variable the entire design
+ * system reads comes out of these builders, so a rename or dropped variable
+ * shows up here as a snapshot diff instead of as a silently unstyled component.
+ */
+import { describe, expect, it } from 'vitest';
+
+import { breakpoint } from '../src/breakpoint';
+import { color } from '../src/color';
+import { component } from '../src/component';
+import { font } from '../src/font';
+import { role } from '../src/role';
+import { avatarSize, componentHeight, radius, size } from '../src/size';
+import { space } from '../src/space';
+import { zIndex } from '../src/z-index';
+import {
+  generateBreakpointCSS,
+  generateColorCSS,
+  generateComponentCSS,
+  generateFontCSS,
+  generateSizeCSS,
+  generateSpaceCSS,
+  generateZIndexCSS,
+} from './generate-css';
+
+describe('token CSS generation', () => {
+  it('color.css — hues, lightness ramp, palettes, roles, gradient', () => {
+    expect(generateColorCSS(color)).toMatchSnapshot();
+  });
+
+  it('font.css — families, sizes, weights, line heights, letter spacing', () => {
+    expect(generateFontCSS(font)).toMatchSnapshot();
+  });
+
+  it('size.css — sizes, radii, avatar sizes, component heights', () => {
+    expect(generateSizeCSS(size, radius, avatarSize, componentHeight)).toMatchSnapshot();
+  });
+
+  it('breakpoint.css — the tier thresholds', () => {
+    expect(generateBreakpointCSS(breakpoint)).toMatchSnapshot();
+  });
+
+  it('space.css', () => {
+    expect(generateSpaceCSS(space)).toMatchSnapshot();
+  });
+
+  it('z-index.css', () => {
+    expect(generateZIndexCSS(zIndex)).toMatchSnapshot();
+  });
+
+  it('component.css — scrollbar values come from the token source', () => {
+    const css = generateComponentCSS(component);
+    expect(css).toMatchSnapshot();
+    // The generator once filtered these two keys out and hardcoded replacements,
+    // so editing the token source silently did nothing. Assert the source values
+    // actually appear in the output.
+    expect(css).toContain(`--we-scrollbar-thumb-border-radius: ${component.scrollbar.thumbBorderRadius}`);
+    expect(css).toContain(`--we-scrollbar-thumb-background: ${component.scrollbar.thumbBackground}`);
+  });
+
+  it('every declared role is emitted, and none of them hardcodes a colour', () => {
+    // Derived from the token object rather than a hand-listed set: a role added to `role.ts` and
+    // forgotten here would otherwise be untested, which is how `overlay` and `shadowColor` came to
+    // be hardcoded in nine primitives in the first place.
+    const css = generateColorCSS(color);
+    for (const name of Object.keys(role)) {
+      const cssName = name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+      const declaration = new RegExp(`--we-role-${cssName}: (.+);`).exec(css);
+      expect(declaration, `role '${name}' is not emitted`).not.toBeNull();
+
+      /*
+        A scale position, an expression over the theme's variables, or a step from another role —
+        never a literal, which is what makes a role themeable at all.
+
+        Six accepted forms, and the shape of each matters:
+          var(--we-color-…)                        a scale position
+          oklch(<number>% calc(var(--we-color-…     a pinned lightness, parametric chroma and hue
+          oklch(calc(var(--we-…                     a lightness that is itself a variable
+          oklch(from var(--we-role-…                a step from another role
+          oklch(from var(--we-color-…               a step from a scale POSITION
+          color-mix(in <space>, var(--we-role-…     a position BETWEEN two roles
+
+        The third was added for the accent, whose lightness became a theme parameter — it is *more*
+        parametric than the second, not less, so a pattern that only allowed a literal lightness was
+        rejecting the wrong thing. Written as an alternation of prefixes rather than "not a hex",
+        because the failure being guarded against is a role that stops following the theme, and
+        naming the legal shapes is what catches a new way of doing that.
+
+        The fifth arrived with the well's hover states, and is a different kind of parametric from
+        the fourth rather than a loosening of it. A step says "this far from that role" and needs a
+        signed direction; a mix says "this far between these two", which needs none — so it stays
+        correct when the ramp inverts, without the value being told which polarity it is in. The
+        arguments are still required to be variables, so a literal is refused here exactly as before.
+
+        The sixth is what an *anchor* role needs, and `chrome` is the one that has it. A role at the
+        bottom of a stack has no role beneath it to step from, and a bare scale position cannot carry
+        an offset — so "one step off neutral-50" had no legal spelling, and the pair it anchors could
+        not be placed independently at all. It follows the theme exactly as far as form one does,
+        since what it steps from is itself computed from the hue, saturation, floor, ceiling and
+        polarity. What it does *not* follow is a theme's pin on another role, which is the right way
+        round for an anchor: there is nothing above it whose decision it should be hearing.
+      */
+      expect(declaration![1], `role '${name}' hardcodes a colour`).toMatch(
+        /^(var\(--we-(color|role)-|oklch\([\d.]+% (calc\(var\(--we-color-|[\d.]+ var\(--we-color-)|oklch\(calc\(var\(--we-|oklch\(from var\(--we-(role|color)-|color-mix\(in [a-z]+, var\(--we-(color|role)-)/,
+      );
+    }
+  });
+
+  it('covers the roles the overlay primitives depend on', () => {
+    // These are the ones the modal/drawer/popover migration reads; losing one silently un-themes
+    // an overlay rather than failing a build.
+    for (const name of ['overlay', 'shadow-color', 'surface-raised', 'focus']) {
+      expect(generateColorCSS(color)).toContain(`--we-role-${name}:`);
+    }
+  });
+});

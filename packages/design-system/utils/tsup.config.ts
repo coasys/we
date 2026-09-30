@@ -11,6 +11,10 @@ export default defineConfig([
     target: 'es2022',
     splitting: false,
     treeshake: true,
+    // Resolve the live tokens package at runtime rather than freezing a copy
+    // of the scale into the bundle — a token added to @we/tokens must not
+    // silently fall through to raw-CSS passthrough until this package rebuilds.
+    external: ['@we/tokens'],
   },
   {
     entry: { solid: 'src/solid/index.ts' },
@@ -20,7 +24,7 @@ export default defineConfig([
     target: 'es2022',
     splitting: false,
     treeshake: true,
-    external: ['solid-js'],
+    external: ['solid-js', '@we/tokens'],
     esbuildPlugins: [solidPlugin()],
     esbuildOptions(o) {
       o.jsx = 'automatic';

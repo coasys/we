@@ -1,0 +1,133 @@
+import { peopleTooltip } from '@we/schema-kit';
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import { expr } from '@we/schema-shared';
+
+export interface PeopleRowOptions {
+  /** The people. Profile objects by default; bare DIDs when `dids` is set. */
+  items: SchemaProp;
+  /**
+   * The items are DIDs rather than profiles, so pictures and names are joined from
+   * `profileStore.profiles`.
+   *
+   * The join happens per row rather than as a filter over the cache, because the order has to
+   * follow *this* list — and because `$filter` has no set-membership operator to express "profiles
+   * whose did is in this list" with.
+   */
+  dids?: boolean;
+  /** Singular noun for the count beside the faces. Omit for faces alone. */
+  noun?: string;
+  /** The plural, when it is not `${noun}s`. */
+  nounPlural?: string;
+  max?: number;
+  size?: string;
+  /** Context key for one person inside the roster tooltip. */
+  as?: string;
+  /**
+   * A height floor for the row.
+   *
+   * `AvatarStack` is a flex container over its avatars, so with none it has no children and no
+   * height. People resolve on their own path, later than the record they belong to, so a row
+   * without this collapses and then pushes everything below it down a second time. A fixed floor
+   * is right rather than a workaround: the row holds fixed-size avatars, so its height depends on
+   * neither the count nor any font metric.
+   */
+  minHeight?: string;
+  /**
+   * The colour behind the row, as a CSS colour — `var(--we-role-surface)` on a card — so overlapping
+   * faces are edged in it and read as separate. Omit where the faces sit on something without one
+   * colour; see `AvatarStack.edge`.
+   */
+  edge?: string;
+  /** Extra props on the outer Row — margins, mostly. */
+  rowProps?: Record<string, SchemaProp>;
+}
+
+/**
+ * A group of faces and how many there are, with the full roster on hover.
+ *
+ * The count is inside the hover target, not beside it: "7 Members" and the faces are one statement,
+ * and a reader who hovers the words expects the same answer as one who hovers the pictures. That
+ * was the bug that moved the tooltip out of `AvatarStack` in the first place — see
+ * [peopleTooltip](./peopleTooltip.ts).
+ *
+ * `AvatarStack` stays a component because it does real work (overlap maths, ring, sizing); what
+ * this adds around it — the join, the count, the noun — is arrangement, and stays data.
+ */
+export function peopleRow(opts: PeopleRowOptions): SchemaNode {
+  const as = opts.as ?? 'person';
+  /**
+   * Join a DID to one field of its cached profile. Takes the reference's source because the same
+   * join runs in two scopes: the stack's comprehension addresses a person as `m`, the roster rows
+   * as `<as>`.
+   */
+  const lookup = (did: string, field: string) => `find(profileStore.profiles, { did: ${did} }).${field}`;
+  const count = expr`count(${opts.items})`;
+
+  return peopleTooltip({
+    items: opts.items,
+    as,
+    image: opts.dids ? { $: lookup(as, 'avatar') } : { $: `${as}.avatar` },
+    hash: opts.dids ? { $: as } : { $: `${as}.did` },
+    name: opts.dids ? { $: lookup(as, 'name') } : { $: `${as}.name` },
+    children: [
+      {
+        type: 'Row',
+        props: {
+          gap: '300',
+          ay: 'center',
+          ...(opts.minHeight && { minHeight: opts.minHeight }),
+          ...opts.rowProps,
+        },
+        children: [
+          {
+            type: 'AvatarStack',
+            props: {
+              /*
+                `hash` is set unconditionally, never as a fallback for a missing `image`: it seeds
+                an avatar that is stable per agent, so somebody whose profile has not arrived is
+                still visually distinct from everybody else whose profile has not arrived. A real
+                picture wins where there is one.
+              */
+              avatars: opts.dids
+                ? expr`${opts.items}.map(m, { image: ${{ $: lookup('m', 'avatar') }}, hash: m })`
+                : expr`${opts.items}.map(m, { image: m.avatar, hash: m.did })`,
+              max: opts.max ?? 5,
+              size: opts.size ?? 'sm',
+              /*
+                No ring. This used to pass `var(--we-ring-color)` — the theme's focus colour — as the
+                gap between faces, so every roster wore a permanent accent ring nobody chose. The gap
+                is `edge` now, in the colour the caller says the row sits on.
+              */
+              ...(opts.edge ? { edge: opts.edge } : {}),
+            },
+          },
+          ...(opts.noun
+            ? [
+                {
+                  type: 'Row',
+                  props: { gap: '100', ay: 'center' },
+                  children: [
+                    { type: 'we-number', props: { value: count, shorten: true } },
+                    {
+                      /*
+                        The count and its noun are one phrase, so they never break across lines.
+
+                        Worth stating rather than leaving to chance: this row is a fixed-size
+                        ornament sitting beside content that is not, so whenever the two compete
+                        for width this is the shrinkable one and flexbox takes the squeeze out of
+                        it first. In the space header that surfaced as "1 online / now" on two
+                        lines, caused entirely by a nav strip elsewhere in the row.
+                      */
+                      type: 'we-text',
+                      props: { whiteSpace: 'nowrap' },
+                      children: [expr`plural(${count}, ${opts.noun}, ${opts.nounPlural ?? `${opts.noun}s`})`],
+                    },
+                  ],
+                } as SchemaNode,
+              ]
+            : []),
+        ],
+      },
+    ],
+  });
+}

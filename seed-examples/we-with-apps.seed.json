@@ -5,18 +5,15 @@
     "description": "Testing multi-app integration with Flux and React playground",
     "author": "James Weir"
   },
-
   "ad4m": {
     "dataPath": "~/.we-multi-app",
     "executorPath": "../ad4m/target/release/ad4m-executor",
     "repoPath": "../ad4m"
   },
-
   "electron": {
     "appDistPath": "dist",
     "basePort": 8080
   },
-
   "apps": [
     {
       "id": "flux",
@@ -48,5 +45,6 @@
         }
       }
     }
-  ]
+  ],
+  "modules": ["globe", "graph", "notes", "call", "transcribe"]
 }

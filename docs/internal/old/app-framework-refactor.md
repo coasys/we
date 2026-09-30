@@ -1,6 +1,9 @@
+> **Archived: completed refactor.** `packages/app-framework` became `packages/app-shell`;
+> everything this plan proposed either shipped or was superseded. Historical context only.
+
 # App Framework Refactor
 
-Targeted cleanup of `@we/app-framework`: fix the seed import, remove dead integration infrastructure, fix type/validator mismatches, and add an `Ad4mIframe` wrapper for embedded app credential sharing.
+Targeted cleanup of `@we/app-shell`: fix the seed import, remove dead integration infrastructure, fix type/validator mismatches, and add an `Ad4mIframe` wrapper for embedded app credential sharing.
 
 ## Status
 
@@ -24,7 +27,7 @@ Targeted cleanup of `@we/app-framework`: fix the seed import, remove dead integr
 
 ### Current state
 
-`@we/app-framework` has several concrete issues worth fixing:
+`@we/app-shell` has several concrete issues worth fixing:
 
 1. **Hardcoded seed import**: `import weSeedFile from '../../../../we-seed.json'` in `initializeIntegrations.ts` — fragile relative path, breaks if repo structure changes, prevents framework reuse
 2. **Dead integration infrastructure**: `integrationComposer.ts`, `integrationLoader.ts`, `seedLoader.ts`, and `schemas/integrations/flux/*` — the seed has `apps: []`, the composer generates templates from apps that don't exist, the loader loads files the runtime never uses, `seedLoader.ts` is explicitly marked unused
@@ -54,7 +57,7 @@ Targeted cleanup of `@we/app-framework`: fix the seed import, remove dead integr
 ```tsx
 // apps/we-electron/src/index.tsx
 import seed from '../../we-seed.json';
-import { App, PlatformProvider } from '@we/app-framework/solid';
+import { App, PlatformProvider } from '@we/app-shell/solid';
 
 render(
   () => (
@@ -91,9 +94,9 @@ render(
 
 ### Why NOT in `@we/components`
 
-`@we/components` is a Solid component library that wraps primitives — part of the design system stack. But `Ad4mIframe` needs `usePlatform()` from `@we/app-framework`. Putting it in `@we/components` would create a circular dependency: `@we/app-framework` → `@we/components` (already exists via componentRegistry) → `@we/app-framework`.
+`@we/components` is a Solid component library that wraps primitives — part of the design system stack. But `Ad4mIframe` needs `usePlatform()` from `@we/app-shell`. Putting it in `@we/components` would create a circular dependency: `@we/app-shell` → `@we/components` (already exists via componentRegistry) → `@we/app-shell`.
 
-### Solution: wrapper in `@we/app-framework`
+### Solution: wrapper in `@we/app-shell`
 
 A thin Solid component (~20 lines) that composes `we-iframe` with platform-aware behavior:
 
@@ -241,7 +244,7 @@ P1 must come first since P3 simplifies `initializeIntegrations.ts` which P1 modi
 ├── cli.ts                (we-seed binary)
 └── examples.ts
 
-@we/app-framework (single package, two internal layers)
+@we/app-shell (single package, two internal layers)
 ├── core/                         ← platform infrastructure
 │   ├── stores/                   (Adam, Route, Template, Theme, Modal)
 │   ├── platform/                 (PlatformAdapter interface + context)
@@ -264,7 +267,7 @@ P1 must come first since P3 simplifies `initializeIntegrations.ts` which P1 modi
     deps: @coasys/ad4m, solid-js, @solidjs/router, zod
     deps: @we/tokens, @we/themes, @we/primitives, @we/components
     deps: @we/schema-shared, @we/schema-solid
-    deps: @we/models, @we/widgets, @we/cesium-layers, three, gsap
+    deps: @we/entities, @we/widgets, @we/cesium-layers, three, gsap
 
 we-iframe (in @we/primitives — enhanced)
 ├── AD4M credential sharing  (postMessage on load when ad4m=true)

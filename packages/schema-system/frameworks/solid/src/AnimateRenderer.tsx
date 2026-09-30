@@ -1,7 +1,17 @@
 import type { TransitionConfig } from '@we/schema-shared';
-import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
+import { resolveProp } from '@we/schema-shared';
+import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js';
 
-import { buildTransitionCSS, hiddenOpacity, hiddenTransform, scrollRootMargin } from './transitionUtils';
+import {
+  buildTransitionCSS,
+  hiddenOpacity,
+  hiddenTransform,
+  pulseAnimationCSS,
+  revealEffect,
+  revealTrackProperty,
+  scrollRootMargin,
+  transitionSpan,
+} from './transitionUtils';
 import type { RendererOutput, SchemaNode } from './types';
 
 type AnimateRendererProps = {
@@ -17,16 +27,25 @@ type AnimateRendererProps = {
  * The child is always mounted in the DOM — `$animate` never controls DOM presence,
  * only visual state (opacity + transform). Transitions are triggered by:
  *
+ *  - `props.condition`    — re-fire enter/exit whenever this changes, the same as `$if`'s
+ *                           `condition` — except the child is never unmounted. Reach for this
+ *                           over `$if` whenever the content must survive being closed: a scroll
+ *                           position, a half-typed field, a live subscription a collapsed
+ *                           accordion row shouldn't tear down.
  *  - `props.scrollReveal` — fire enter transition when element scrolls into viewport
  *  - `props.scrollLeave`  — fire exit transition when element scrolls out of viewport
- *  - Neither set          — fire enter animation on mount
+ *  - `props.scrollPast`   — fire enter/exit transitions keyed to a sentinel element by DOM id:
+ *                           enter fires when the sentinel is scrolled out of its scroll container
+ *                           (past a sticky bar's edge), exit fires when it returns. Use for sticky
+ *                           headers.
+ *  - None of the above    — fire enter animation on mount
  *
  * Transition effects are composed as arrays:
  *   enterTransition: [{ type: 'fade', duration: 400 }, { type: 'slide', ... }]
  *
- * For condition-driven mount/unmount animations, use `$if` instead.
+ * Use `$if` instead when the content genuinely should not exist while closed.
  */
-export function AnimateRenderer({ node, renderNode }: AnimateRendererProps): RendererOutput {
+export function AnimateRenderer({ node, stores, context, renderNode }: AnimateRendererProps): RendererOutput {
   const enterTransition = node.props?.enterTransition as TransitionConfig | undefined;
   const exitTransition = node.props?.exitTransition as TransitionConfig | undefined;
 
@@ -38,42 +57,175 @@ export function AnimateRenderer({ node, renderNode }: AnimateRendererProps): Ren
   // Scroll triggers live on the $animate node props, not inside the transition config
   const scrollReveal = node.props?.scrollReveal as true | number | undefined;
   const scrollLeave = node.props?.scrollLeave as true | number | undefined;
-  const hasScrollTrigger = scrollReveal !== undefined || scrollLeave !== undefined;
+  const scrollPast = node.props?.scrollPast as string | undefined;
+  const hasSelfScrollTrigger = scrollReveal !== undefined || scrollLeave !== undefined;
 
-  // Start in the hidden state; transitions will reveal / hide the element
-  const initOpacity = enterTransition ? hiddenOpacity(enterTransition) : 1;
-  const initTransform = enterTransition ? hiddenTransform(enterTransition) : '';
+  // A condition, like `$if`'s — except the child stays mounted either way. See the effect below.
+  const hasCondition = node.props?.condition !== undefined;
+  const conditionMet = createMemo(() => {
+    const condition = resolveProp(node.props?.condition, stores, context, createMemo);
+    return !!(typeof condition === 'function' ? condition() : condition);
+  });
+
+  // Start in the hidden state; transitions will reveal / hide the element. Except under
+  // `condition`, where the initial render has to already match its current value — otherwise a
+  // node that starts open flashes closed-then-open on mount, and one that starts closed briefly
+  // shows its content before the first effect run hides it.
+  const startOpen = hasCondition && conditionMet();
+  const initOpacity = !enterTransition || startOpen ? 1 : hiddenOpacity(enterTransition);
+  const initTransform = !enterTransition || startOpen ? '' : hiddenTransform(enterTransition);
 
   const [opacity, setOpacity] = createSignal(initOpacity);
   const [transform, setTransform] = createSignal(initTransform);
   const [transitionCSS, setTransitionCSS] = createSignal('');
+  /*
+    Reveal — the size axis. Same grid technique as `$if`'s (see ConditionalRenderer), and the reason
+    it is worth having here too: `$animate` keeps its child mounted, so a section can open and close
+    in place without its content — a scroll position, a half-typed field — being destroyed on the
+    way. `$if` is the right tool when the content genuinely should not exist while closed.
+  */
+  const enterReveal = enterTransition ? revealEffect(enterTransition) : undefined;
+  const exitReveal = exitTransition ? revealEffect(exitTransition) : undefined;
+  const hasReveal = enterReveal ?? exitReveal;
+  const [open, setOpen] = createSignal(hasCondition ? startOpen : !enterReveal);
+  // 'pulse' is a persistent loop, not a one-shot state transition like fade/slide/scale —
+  // it starts once entered and keeps running until exit, rather than settling into a
+  // final state. Starts empty (not pulsing) like opacity/transform start hidden — actual
+  // triggering (whichever scroll mode, or immediate on mount) happens via animateIn below.
+  const [animationCSS, setAnimationCSS] = createSignal('');
+
+  /*
+    Whether the size is currently moving — the clip a reveal needs belongs to the animation, not to
+    the element. Held on afterwards it silently cuts off anything painting outside its own box: a
+    focus ring, a shadow, a dropdown. See the same note in ConditionalRenderer.
+  */
+  const [animating, setAnimating] = createSignal(false);
+  let settleTimer: ReturnType<typeof setTimeout> | undefined;
+  const beginMotion = (config: TransitionConfig) => {
+    clearTimeout(settleTimer);
+    setAnimating(true);
+    settleTimer = setTimeout(() => setAnimating(false), transitionSpan(config));
+  };
+  onCleanup(() => clearTimeout(settleTimer));
 
   const animateIn = (config: TransitionConfig) => {
     setTransitionCSS(buildTransitionCSS(config));
+    setAnimationCSS(pulseAnimationCSS(config) ?? '');
     // Snap to hidden state (in case called after animateOut)
     setOpacity(hiddenOpacity(config));
     setTransform(hiddenTransform(config));
+    if (revealEffect(config)) setOpen(false);
     requestAnimationFrame(() => {
       const firstEffect = Array.isArray(config) ? config[0] : config;
       setTimeout(() => {
         setOpacity(1);
         setTransform('');
+        setOpen(true);
+        beginMotion(config);
       }, firstEffect?.delay ?? 0);
     });
   };
 
   const animateOut = (config: TransitionConfig) => {
     setTransitionCSS(buildTransitionCSS(config));
+    setAnimationCSS('');
     const firstEffect = Array.isArray(config) ? config[0] : config;
     setTimeout(() => {
       setOpacity(hiddenOpacity(config));
       setTransform(hiddenTransform(config));
+      if (revealEffect(config)) setOpen(false);
+      beginMotion(config);
     }, firstEffect?.delay ?? 0);
   };
 
   let wrapperRef: HTMLDivElement | undefined;
 
-  if (hasScrollTrigger) {
+  if (hasCondition) {
+    // Condition-driven: react to changes only. The very first run merely confirms the state
+    // `initOpacity`/`initTransform`/`open` were already seeded with above — animating it too
+    // would replay the enter transition on every node that happens to start open.
+    let firstRun = true;
+    createEffect(() => {
+      const met = conditionMet();
+      if (firstRun) {
+        firstRun = false;
+        return;
+      }
+      if (met) {
+        if (enterTransition) animateIn(enterTransition);
+      } else {
+        const config = exitTransition ?? enterTransition;
+        if (config) animateOut(config);
+      }
+    });
+  } else if (scrollPast) {
+    /*
+      Sentinel-based trigger: a separate element, by DOM id, that this one watches go by.
+
+      Observed against the nearest scroll container rather than the window. The case this exists
+      for is a sticky bar: the sentinel sits at the bottom of the header above it, the bar sticks at
+      the top of the box the template scrolls in, and the header keeps going — so the sentinel is
+      clipped out of that box at exactly the bar's edge. That is the moment the mini-profile should
+      appear, and an observer rooted on the box reports it. Rooted on the window it does not: the
+      box starts below the app's own chrome, so the sentinel is clipped long before it leaves the
+      viewport, and a space too short to scroll that far never showed the mini-profile at all.
+
+      Looked up again whenever the document changes, not once. The sentinel is usually rendered by a
+      sibling that arrives with the same data this element does — but not always, and a lookup that
+      ran once and found nothing left the element closed for good. A sentinel that is replaced (the
+      header remounting on a space switch) is re-observed the same way.
+    */
+    createEffect(() => {
+      let observer: IntersectionObserver | undefined;
+      let observed: Element | null = null;
+      let frame: number | undefined;
+
+      const scrollParent = (el: Element): Element | null => {
+        for (let p = el.parentElement; p; p = p.parentElement) {
+          const overflow = getComputedStyle(p).overflowY;
+          if (overflow === 'auto' || overflow === 'scroll' || overflow === 'overlay') return p;
+        }
+        return null;
+      };
+
+      const attach = () => {
+        frame = undefined;
+        const sentinel = document.getElementById(scrollPast);
+        if (!sentinel || sentinel === observed) return;
+        observer?.disconnect();
+        observed = sentinel;
+        observer = new IntersectionObserver(
+          (entries) => {
+            const entry = entries[0];
+            if (!entry.isIntersecting && enterTransition) animateIn(enterTransition);
+            else if (entry.isIntersecting && exitTransition) animateOut(exitTransition);
+          },
+          /*
+            A sentinel exactly on the box's top edge counts as gone. A zero-height sentinel at the
+            bottom of a header, on a page that can scroll by precisely the header's height, comes to
+            rest *on* that edge — and edge-adjacent is intersecting, so it never left. One pixel of
+            margin is the difference between a mini-profile that appears and one that appears only
+            when there is a little more to scroll.
+          */
+          { root: scrollParent(sentinel), rootMargin: '-1px 0px 0px 0px', threshold: 0 },
+        );
+        observer.observe(sentinel);
+      };
+      const schedule = () => {
+        if (frame === undefined) frame = requestAnimationFrame(attach);
+      };
+
+      attach();
+      const changes = new MutationObserver(schedule);
+      changes.observe(document.body, { childList: true, subtree: true });
+
+      onCleanup(() => {
+        observer?.disconnect();
+        changes.disconnect();
+        if (frame !== undefined) cancelAnimationFrame(frame);
+      });
+    });
+  } else if (hasSelfScrollTrigger) {
     // Bidirectional scroll observer — does not disconnect after first intersection
     createEffect(() => {
       if (!wrapperRef) return;
@@ -115,12 +267,52 @@ export function AnimateRenderer({ node, renderNode }: AnimateRendererProps): Ren
     };
     const t = transform();
     if (t) style.transform = t;
+    const a = animationCSS();
+    if (a) style.animation = a;
+    if (hasReveal) {
+      /*
+        A closed section is taken out of the layout, not merely clipped to nothing.
+
+        `0fr` gives it no height, and a zero-height box is still a flex item — so the column holding
+        it goes on spending its `gap` on the gap either side of a section that is not there. In the
+        inspector that read as one section sitting further from its neighbour than the rest, which
+        is a strange thing to chase because there is nothing between them to find.
+
+        `display: none` keeps the subtree MOUNTED, which is the whole point of `condition` over
+        `$if` — a half-typed field, a scroll position — while taking it out of the flow. Set only
+        once the animation has settled, so opening and closing still animate: the style goes back to
+        `grid` the moment `animating` is true.
+
+        Scoped to a condition-driven reveal. A scroll trigger's closed state must stay in the layout
+        or the IntersectionObserver watching it has nothing to observe, and the section never opens.
+      */
+      const gone = hasCondition && !open() && !animating();
+      style.display = gone ? 'none' : 'grid';
+      style[revealTrackProperty(hasReveal)] = open() ? '1fr' : '0fr';
+    }
+    // A reveal already clips a closed section to zero area, so nothing inside is reachable.
+    // Without one — a condition driving a plain fade — a fully transparent section would
+    // otherwise stay clickable at full size. Scoped to `condition`: the existing scroll/mount
+    // triggers never hid anything long enough for this to have come up, and this shouldn't be
+    // the change that decides it for them.
+    if (hasCondition && !hasReveal) style['pointer-events'] = conditionMet() ? 'auto' : 'none';
     return style;
+  });
+
+  // Clip for the reveal. `min-*: 0` overrides a grid item's automatic minimum size, which is its
+  // content — without it the track can never go below that and nothing appears to animate.
+  const innerStyle = createMemo<Record<string, string> | undefined>(() => {
+    if (!hasReveal) return undefined;
+    const axisProp = (hasReveal.axis ?? 'block') === 'inline' ? 'min-width' : 'min-height';
+    // Clipped while closed or moving, released once settled open.
+    return open() && !animating() ? { [axisProp]: '0' } : { overflow: 'hidden', [axisProp]: '0' };
   });
 
   return (
     <div ref={wrapperRef} style={wrapperStyle()}>
-      {renderNode(node.children?.[0] as SchemaNode | undefined)}
+      <Show when={hasReveal} fallback={renderNode(node.children?.[0] as SchemaNode | undefined)}>
+        <div style={innerStyle()}>{renderNode(node.children?.[0] as SchemaNode | undefined)}</div>
+      </Show>
     </div>
   );
 }

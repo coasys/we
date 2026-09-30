@@ -1,6 +1,6 @@
 # WE Electron App
 
-Electron desktop application for the WE platform. This launcher uses the `@we/app-framework` package to provide a cross-platform AD4M-powered interface, with Electron-specific platform adapters.
+Electron desktop application for the WE platform. This launcher uses the `@we/app-shell` package to provide a cross-platform AD4M-powered interface, with Electron-specific platform adapters.
 
 ## Installation
 
@@ -16,7 +16,7 @@ pnpm install
 The WE Electron launcher:
 
 - Spawns and manages the AD4M executor as a child process
-- Provides a SolidJS-based interface using `@we/app-framework`
+- Provides a SolidJS-based interface using `@we/app-shell`
 - Supports embedding external apps via iframe (e.g., Flux, custom apps)
 - Handles platform-specific concerns like IPC, screen sharing, and process management
 
@@ -28,7 +28,7 @@ The WE Electron launcher:
   - Handles IPC for AD4M connection details (port/token)
   - Implements screen sharing polyfill for embedded apps
 - **Preload Script** (`electron/preload.js`): Exposes secure IPC bridge via `window.electron`
-- **Renderer** (`src/`): SolidJS app using the shared `@we/app-framework`
+- **Renderer** (`src/`): SolidJS app using the shared `@we/app-shell`
 - **Platform Adapter** (`src/platform/electronAdapter.ts`): Implements AD4M connection using Electron IPC
 
 ## How it Works
@@ -44,7 +44,7 @@ Unlike the Tauri app which embeds the Rust executor as a library, the Electron a
 
 This launcher can embed external apps (like Flux) via iframe. The embedded apps receive AD4M credentials through a postMessage protocol.
 
-**See:** [`EMBEDDING.md`](../EMBEDDING.md) for the generic integration pattern.
+**See:** [`embedding-external-apps.md`](../../docs/guides/embedding-external-apps.md) for the generic integration pattern.
 
 ### Electron-Specific Considerations
 

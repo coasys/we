@@ -1,6 +1,7 @@
-import { Column, Row } from '@we/components/solid';
+import { Column } from '@we/components/solid';
 import { createSignal, Show } from 'solid-js';
 
+import { BlockToolbar } from '../BlockToolbar';
 import { DividerDisplay } from './DividerDisplay';
 
 type DividerVariant = 'solid' | 'dashed' | 'dotted';
@@ -9,7 +10,6 @@ interface DividerInputProps {
   style: DividerVariant | undefined;
   onChange: (property: string, value: unknown) => void;
   isSelected: () => boolean;
-  onSelect: (e: MouseEvent) => void;
 }
 
 const STYLE_OPTIONS = [
@@ -27,12 +27,12 @@ export function DividerInput(props: DividerInputProps) {
   }
 
   return (
-    <Column onClick={props.onSelect} position="relative">
+    <Column position="relative">
       <DividerDisplay style={style()} />
       <Show when={props.isSelected()}>
-        <Row position="absolute" top="-32px" right="0">
+        <BlockToolbar placement="above">
           <we-select value={style()} options={STYLE_OPTIONS} onChange={handleStyleChange} size="xs" />
-        </Row>
+        </BlockToolbar>
       </Show>
     </Column>
   );

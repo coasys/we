@@ -1,26 +1,88 @@
+import { role } from '@we/tokens';
 import { z } from 'zod';
 
-import type { RouteSchema, SchemaNode, SchemaProp, TemplateMeta, TemplateSchema } from './types';
+import type { RouteSchema, SchemaNode, SchemaProp, TemplateMeta, TemplateSchema, ThemeOverrides } from './types';
+
+// Zod's JIT probe trips Electron's production CSP — see the note in @we/backend-shared's
+// queryIR.ts. Repeated per module because the probe fires on the first `z.object()`.
+z.config({ jitless: true });
 
 const lazySchemaNode = z.lazy(() => zSchemaNode);
 const lazySchemaProp = z.lazy(() => zSchemaProp);
 const lazyRouteSchema = z.lazy(() => zRouteSchema);
 
-const zThemeOverrides = z
-  .object({
-    themeName: z.string().optional(),
-    primaryHue: z.number().optional(),
-    successHue: z.number().optional(),
-    warningHue: z.number().optional(),
-    dangerHue: z.number().optional(),
-    neutralHue: z.number().optional(),
-    saturation: z.string().optional(),
-    neutralSaturation: z.string().optional(),
-    multiplier: z.number().optional(),
-    subtractor: z.string().optional(),
-    fontFamily: z.string().optional(),
-  })
-  .strict();
+/*
+  `ThemeOverrides`, key for key.
+
+  A key missing here is refused on every template that sets it, while the renderer applies it
+  happily: that is how `polarity`, the lightness range, `roles` and every radius, typography and
+  density key came to fail `acceptTemplate` and the editor's validation. The `satisfies` makes the
+  drift a type error that names the key, in either direction.
+
+  `multiplier` and `subtractor` predate `polarity` and the lightness range (see @we/themes
+  `migrate.ts`). They stay accepted so a template saved before then is not newly refused.
+*/
+type LegacyThemeKey = 'multiplier' | 'subtractor';
+
+// Role names come from the token table the runtime resolves them against, not from a restated list.
+const zThemeRole = z.enum(Object.keys(role) as [keyof typeof role, ...(keyof typeof role)[]]);
+
+const themeOverridesShape = {
+  schemaVersion: z.number().int().positive().optional(),
+  themeName: z.string().optional(),
+  primaryHue: z.number().optional(),
+  successHue: z.number().optional(),
+  warningHue: z.number().optional(),
+  dangerHue: z.number().optional(),
+  neutralHue: z.number().optional(),
+  // 0–100 numbers, not percentage strings: OKLCH takes an absolute chroma. See @we/tokens.
+  saturation: z.number().optional(),
+  neutralSaturation: z.number().optional(),
+  accentLightness: z.number().optional(),
+  dangerLightness: z.number().optional(),
+  successLightness: z.number().optional(),
+  warningLightness: z.number().optional(),
+  polarity: z.enum(['light', 'dark']).optional(),
+  lightnessFloor: z.string().optional(),
+  lightnessCeiling: z.string().optional(),
+  roles: z.partialRecord(zThemeRole, z.string()).optional(),
+  fontFamily: z.string().optional(),
+  headingFontFamily: z.string().optional(),
+  monoFontFamily: z.string().optional(),
+  letterSpacing: z.string().optional(),
+  lineHeight: z.string().optional(),
+  fontScale: z.number().optional(),
+  controlRadius: z.string().optional(),
+  surfaceRadius: z.string().optional(),
+  inputRadius: z.string().optional(),
+  avatarRadius: z.string().optional(),
+  borderWidth: z.string().optional(),
+  stateDuration: z.string().optional(),
+  focusRingWidth: z.string().optional(),
+  controlPaddingX: z.string().optional(),
+  controlGap: z.string().optional(),
+  controlHeightOffset: z.string().optional(),
+  surfacePadding: z.string().optional(),
+  surfaceGap: z.string().optional(),
+  inputPadding: z.string().optional(),
+  spacingScale: z.number().optional(),
+  disabledOpacity: z.number().optional(),
+  shadowIntensity: z.enum(['flat', 'subtle', 'elevated', 'dramatic']).optional(),
+  surfaceOpacity: z.number().optional(),
+  surfaceBlur: z.number().optional(),
+  animationSpeed: z.enum(['none', 'fast', 'normal', 'slow']).optional(),
+  multiplier: z.number().optional(),
+  subtractor: z.string().optional(),
+} satisfies {
+  [K in keyof ThemeOverrides | LegacyThemeKey]-?: z.ZodType<(ThemeOverrides & Record<LegacyThemeKey, unknown>)[K]>;
+};
+
+const zThemeOverrides = z.object(themeOverridesShape).strict();
+
+// `satisfies` checks each schema is no wider than its key's type. This checks the reverse, so a value
+// added to a union there (a fifth `shadowIntensity`) is a type error here rather than a refused theme.
+type _EveryThemeParses = Accepts<z.input<typeof zThemeOverrides>, ThemeOverrides>;
+type Accepts<Schema, T extends Schema> = T;
 
 // --- Token shape Zod schemas ---
 // Each matches the corresponding TypeScript type in types.ts.
@@ -31,94 +93,93 @@ const zThemeOverrides = z
 // zDefined requires the value to be present (not undefined) while accepting any type.
 const zDefined = z.custom<unknown>((v) => v !== undefined, 'Required');
 
-const zStoreToken = z.object({ $store: z.string().min(1) }).strict();
-const zConcatToken = z.object({ $concat: z.array(z.unknown()) }).strict();
-const zActionToken = z.object({ $action: z.string().min(1), args: z.array(z.unknown()).optional() }).strict();
+/**
+ * `{ $: '…' }` — an expression. See `expressions/index.ts`.
+ *
+ * Only the shape is checked here; the *content* is parsed and checked against what the template
+ * can see by `semanticValidation`, which is where a column-precise error can be reported.
+ */
+const zExpressionToken = z.object({ $: z.string().min(1) }).strict();
+const zActionToken = z
+  .object({
+    $action: z.string().min(1),
+    args: z.array(z.unknown()).optional(),
+    onSuccess: z.array(z.unknown()).optional(),
+    onError: z.array(z.unknown()).optional(),
+    onFinally: z.array(z.unknown()).optional(),
+  })
+  .strict();
+// Neutral authoring DSL — `entity` (the entity to query) + `dataset` (the perspective/store handle).
+// `where`/`order`/`include`/`limit` are the concise DSL; the compiler maps them to the IR. No AD4M
+// vocab (`model`/`perspective`) — templates author neutral.
+const zQuery = z.object({
+  // A name, a list of names (one query over all of them), or an expression answering with either.
+  entity: z.union([z.string().min(1), z.array(z.string().min(1)), z.record(z.string(), z.unknown())]),
+  where: z.record(z.string(), z.unknown()).optional(),
+  order: z.record(z.string(), z.unknown()).optional(),
+  /*
+    A literal, or a token resolving to one.
+
+    Token-valued paging is what makes a "load more" button possible at all: the button raises a
+    `$local` number and the query re-runs with a bigger window. The renderer has always supported it
+    — `descriptor.params` is deep-resolved before the query is built, exactly like `where` — but the
+    schema said `number`, so every paginated list was a validation error for a pattern that worked.
+    `scope.anchorId` above already carries the same allowance, and for the same reason.
+  */
+  limit: z.union([z.number().int().positive(), z.record(z.string(), z.unknown())]).optional(),
+  offset: z.union([z.number().int().nonnegative(), z.record(z.string(), z.unknown())]).optional(),
+  include: z.record(z.string(), z.unknown()).optional(),
+  // Neutral drill-down. `anchorId` may be a token (e.g. '$conversation.id') resolved before the query runs.
+  scope: z
+    .object({
+      via: z.string().min(1),
+      anchorId: z.union([
+        z.string(),
+        z.number(),
+        z.array(z.union([z.string(), z.number()])),
+        z.record(z.string(), z.unknown()),
+      ]),
+      anchor: z.string().optional(),
+      transitive: z.boolean().optional(),
+      direction: z.enum(['out', 'in']).optional(),
+      limitPerAnchor: z.number().int().positive().optional(),
+      // A level's breadth may be a token, so "show more" is a local the template raises rather than
+      // a second query shape. Resolved before the IR is built, like every other operand.
+      levels: z.array(z.union([z.number().int().positive(), z.record(z.string(), z.unknown())])).optional(),
+    })
+    .optional(),
+  // A literal, or an expression — a surface that is live only while its subject is. See
+  // `QueryToken.subscribe`.
+  subscribe: z.union([z.boolean(), z.record(z.string(), z.unknown())]).optional(),
+  dataset: z.string().optional(),
+  // Run only while this expression is truthy — a query that waits for another's answer.
+  when: z.record(z.string(), z.unknown()).optional(),
+});
+
+const zQueryToken = z.object({ $query: zQuery }).strict();
+
+/**
+ * The conditional between handlers. `condition` is an expression; `then`/`else` a handler or a list,
+ * either optional — `{ $if: { condition, else: [...] } }` is how "on nothing selected" is written.
+ */
 const zIfToken = z
   .object({
     $if: z.object({
       condition: zDefined,
-      then: zDefined,
+      then: z.unknown().optional(),
       else: z.unknown().optional(),
     }),
   })
   .strict();
-const zMapToken = z
-  .object({
-    $map: z.object({
-      items: zDefined,
-      select: z.record(z.string(), z.unknown()),
-    }),
-  })
-  .strict();
-const zPickToken = z
-  .object({
-    $pick: z.object({
-      from: zDefined,
-      props: z.array(z.string()),
-    }),
-  })
-  .strict();
-const zEqToken = z.object({ $eq: z.array(z.unknown()).length(2) }).strict();
-const zNeToken = z.object({ $ne: z.array(z.unknown()).length(2) }).strict();
-const zLtToken = z.object({ $lt: z.array(z.unknown()).length(2) }).strict();
-const zGtToken = z.object({ $gt: z.array(z.unknown()).length(2) }).strict();
-const zInToken = z.object({ $in: z.array(z.unknown()).length(2) }).strict();
-const zNotToken = z.object({ $not: zDefined }).strict();
-const zAndToken = z.object({ $and: z.array(z.unknown()) }).strict();
-const zOrToken = z.object({ $or: z.array(z.unknown()) }).strict();
-const zFilterToken = z
-  .object({
-    $filter: z.object({
-      items: zDefined,
-      where: z.record(z.string(), z.unknown()),
-    }),
-  })
-  .strict();
-const zCountToken = z
-  .object({
-    $count: z.object({
-      items: zDefined,
-    }),
-  })
-  .strict();
-const zFindToken = z
-  .object({
-    $find: z.object({
-      items: zDefined,
-      where: z.record(z.string(), z.unknown()).optional(),
-      select: z.string().optional(),
-    }),
-  })
-  .strict();
-const zQueryToken = z
-  .object({
-    $query: z.object({
-      model: z.string().min(1),
-      where: z.record(z.string(), z.unknown()).optional(),
-      order: z.record(z.string(), z.unknown()).optional(),
-      limit: z.number().int().positive().optional(),
-      offset: z.number().int().nonnegative().optional(),
-      include: z.record(z.string(), z.unknown()).optional(),
-      parent: z.record(z.string(), z.unknown()).optional(),
-      subscribe: z.boolean().optional(),
-      perspective: z.string().optional(),
-    }),
-  })
-  .strict();
-
-const zLocalToken = z.object({ $local: z.string().min(1) }).strict();
+// `value` is a literal or an expression evaluated when the handler fires; `merge` shallow-merges.
 const zSetLocalToken = z.union([
-  z.object({ $setLocal: z.string().min(1), from: z.string().min(1) }).strict(),
   z.object({ $setLocal: z.string().min(1), value: z.unknown() }).strict(),
+  z.object({ $setLocal: z.string().min(1), merge: z.record(z.string(), z.unknown()) }).strict(),
 ]);
-const zErrorToken = z.object({ $error: z.string().min(1) }).strict();
-const zValidToken = z.object({ $valid: z.string().min(1) }).strict();
-const zTouchedToken = z.object({ $touched: z.string().min(1) }).strict();
-const zFormValidToken = z.object({ $formValid: z.string().min(1) }).strict();
 const zTouchToken = z.object({ $touch: z.string().min(1) }).strict();
 const zResetLocalToken = z.object({ $resetLocal: z.string().min(1) }).strict();
 const zToggleLocalToken = z.object({ $toggleLocal: z.string().min(1) }).strict();
+const zToggleLocalInToken = z.object({ $toggleLocalIn: z.string().min(1), value: z.unknown() }).strict();
 const zCallLocalToken = z.object({ $callLocal: z.string().min(1) }).strict();
 
 // --- Validation rule Zod schemas ---
@@ -147,44 +208,33 @@ const zValidationRule = z.union([
   zMatchRule,
 ]);
 
-/** All prop-level token types — used in both prop values and children arrays */
+/** Every token a schema writes in a value or handler position — one expression, the verbs, a query. */
 const zPropToken = z.union([
-  zStoreToken,
-  zConcatToken,
+  zExpressionToken,
   zActionToken,
   zIfToken,
-  zMapToken,
-  zPickToken,
-  zEqToken,
-  zNeToken,
-  zLtToken,
-  zGtToken,
-  zInToken,
-  zNotToken,
-  zAndToken,
-  zOrToken,
   zQueryToken,
-  zLocalToken,
   zSetLocalToken,
-  zErrorToken,
-  zValidToken,
-  zTouchedToken,
-  zFormValidToken,
   zTouchToken,
   zResetLocalToken,
   zToggleLocalToken,
+  zToggleLocalInToken,
   zCallLocalToken,
-  zFilterToken,
-  zCountToken,
-  zFindToken,
 ]);
 
 const zLocalStateField = z.object({
-  type: z.enum(['string', 'boolean', 'number', 'file', 'function', 'object']),
-  initial: z.union([z.string(), z.boolean(), z.number(), z.null()]),
+  type: z.enum(['string', 'boolean', 'number', 'file', 'function', 'object', 'array']),
+  // Arrays are structurally distinct from token objects, so admitting them here cannot make a
+  // malformed token (`{ $storee: … }`) pass as a plain-object initial.
+  initial: z.union([z.string(), z.boolean(), z.number(), z.null(), z.array(z.unknown()), zPropToken]),
   validate: z.array(zValidationRule).optional(),
+  persist: z.string().optional(),
+  syncParam: z.union([z.string(), z.object({ name: z.string(), push: z.boolean().optional() })]).optional(),
 });
 const zLocalStateDeclaration = z.record(z.string(), zLocalStateField);
+
+const zQueryStateField = zQuery; // $queries entries use the same neutral query grammar
+const zQueriesDeclaration = z.record(z.string(), zQueryStateField);
 
 /** Known node-level operator types */
 export const NODE_OPERATORS = new Set(['$each', '$if', '$routes']);
@@ -201,6 +251,7 @@ function schemaNodeShape() {
     theme: zThemeOverrides.optional(),
     styles: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
     $localState: zLocalStateDeclaration.optional(),
+    $queries: zQueriesDeclaration.optional(),
   };
 }
 
@@ -234,7 +285,11 @@ export const zSchemaProp: z.ZodType<SchemaProp> = z.union([
   z.boolean(),
   // Token objects — tried before the generic record fallback
   zPropToken,
-  // Fallback: plain objects/arrays that aren't tokens.
+  // Nested schema nodes (e.g. $if.then / $if.else containing a node with $localState).
+  // Must come before the plain-record fallback because the fallback rejects objects
+  // that have any $-prefixed key, which would incorrectly reject nodes with $localState.
+  lazySchemaNode,
+  // Fallback: plain objects/arrays that aren't tokens or schema nodes.
   // Rejects objects with $-prefixed keys at the parse level (not via superRefine)
   // so that the union properly rejects malformed tokens.
   z.custom<Record<string, unknown>>(
@@ -253,6 +308,68 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
     name: z.string(),
     description: z.string(),
     icon: z.string(),
+    /** A theme this template suggests. See `TemplateMeta.themeId` — a suggestion, not a setting. */
+    themeId: z.string().optional(),
+    /** Whole interface, or one section inside one. See `TemplateMeta.role`. Absent means shell. */
+    role: z.enum(['shell', 'view']).optional(),
+    /** A view's default URL segment. See `TemplateMeta.segment`. */
+    segment: z.string().optional(),
+    /** A view that stays mounted across sibling navigation. See `TemplateMeta.keepAlive`. */
+    keepAlive: z.boolean().optional(),
+    /** The modules this interface reaches by name. See `TemplateMeta.requires`. */
+    requires: z.object({ modules: z.array(z.string()).optional() }).optional(),
+    /** Fixed chrome this shell paints, for floating panels to clear. See `TemplateMeta.chromeReserve`. */
+    chromeReserve: z
+      .object({
+        top: z.number().optional(),
+        bottom: z.number().optional(),
+        width: z.number().optional(),
+      })
+      .optional(),
+    /**
+     * The panels this interface has, and where each starts. See `TemplatePanel`.
+     *
+     * `node` is typed but not structurally checked here: this schema is what *checks* a node, so
+     * recursing into it would be a cycle. The node inside a panel is walked like any other by the
+     * validator's own traversal, which is where its props and component names are verified.
+     */
+    panels: z
+      .array(
+        z.object({
+          id: z.string(),
+          module: z.string().optional(),
+          /** Which of a module's panels this places, where it contributes several. */
+          dock: z.string().optional(),
+          node: z.custom<SchemaNode>().optional(),
+          title: z.string().optional(),
+          snap: z
+            .enum(['top-left', 'top', 'top-right', 'right', 'bottom-right', 'bottom', 'bottom-left', 'left'])
+            .optional(),
+          order: z.number().optional(),
+          // How far inboard, where `order` is how far along. See `band` on `TemplatePanel`.
+          band: z.number().optional(),
+          // Position within a shared seat. See `tab` on `TemplatePanel`.
+          tab: z.number().optional(),
+          // Start in the template, at the `$panels` outlet of this name. See `home` on `TemplatePanel`.
+          home: z.string().optional(),
+          // Not promotable. See `fixed` on `TemplatePanel`.
+          fixed: z.boolean().optional(),
+          size: z.enum(['sm', 'md', 'lg', 'full']).optional(),
+          // The opening box in pixels, clamped by the host. See `box` on `TemplatePanel`. Listed
+          // because this object is not strict: a key it does not name passes with nothing checked,
+          // so `box: { width: '252px' }` would validate and then resolve to NaN.
+          box: z.object({ width: z.number().optional(), height: z.number().optional() }).optional(),
+          grow: z.number().optional(),
+          displace: z.boolean().optional(),
+          // The smallest usable box, in pixels — a fact about the content. See `min` on `TemplatePanel`.
+          min: z.object({ width: z.number().optional(), height: z.number().optional() }).optional(),
+          // One segment or several — see `route` on `TemplatePanel` for why it is a list and why
+          // it says *whether* rather than *where*.
+          route: z.union([z.string(), z.array(z.string())]).optional(),
+          open: z.boolean().optional(),
+        }),
+      )
+      .optional(),
     stores: z
       .union([
         z.array(z.string()),
@@ -275,8 +392,11 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
 export const zTemplateSchema: z.ZodType<TemplateSchema> = z
   .object({
     ...schemaNodeShape(),
+    author: z.string().optional(),
+    templateVersion: z.number().optional(),
     schemaVersion: z.number().optional(),
     meta: zTemplateMeta,
+    _fromSpace: z.boolean().optional(),
   })
   .strict();
 

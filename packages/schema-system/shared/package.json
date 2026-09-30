@@ -7,8 +7,13 @@
     "build:steps": "tsup",
     "build": "we-build",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "coverage": "vitest run --coverage",
-    "validate": "tsx src/cli/we-validate-schemas.ts ../../app-framework/src/shared/schemas/"
+    "validate": "tsx src/cli/we-validate-schemas.ts ../../app-shell/src/shared/schemas/ ../../templates/shell/src/ ../../templates/default/src/ ../../templates/views/src/ ../../templates/showcase/src/ ../../module-system/",
+    "surface-audit": "tsx src/cli/surface-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system",
+    "role-audit": "tsx src/cli/role-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system --code ../../editor/src ../../graph-system ../../app-shell/src ../../design-system ../../module-system",
+    "tooltip-audit": "tsx src/cli/tooltip-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system",
+    "query-audit": "tsx src/cli/query-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system"
   },
   "bin": {
     "we-validate-schemas": "./dist/cli/we-validate-schemas.js"
@@ -21,18 +26,20 @@
     }
   },
   "dependencies": {
+    "@we/backend-shared": "workspace:*",
     "@we/design-utils": "workspace:*",
+    "@we/themes": "workspace:*",
     "@we/tokens": "workspace:*",
-    "zod": "^4.1.12"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@types/node": "^24.10.0",
-    "@vitest/coverage-v8": "^4.0.15",
+    "@types/node": "^26.4.0",
+    "@vitest/coverage-v8": "^4.1.11",
     "@we/cli": "workspace:*",
-    "jsdom": "^27.2.0",
+    "jsdom": "^30.0.1",
     "tsup": "^8.5.1",
-    "tsx": "^4.21.0",
-    "vitest": "^4.0.15"
+    "tsx": "^4.23.13",
+    "vitest": "^4.1.11"
   },
   "sideEffects": false
 }

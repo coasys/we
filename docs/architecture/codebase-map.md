@@ -1,0 +1,189 @@
+# WE Architecture
+
+The depth companion to the **Architecture Orientation** section in `CLAUDE.md` (and the other
+generated IDE reference files). That orientation is the always-loaded map; this doc holds the
+detail that doesn't need to sit in every agent's context.
+
+> This file is **hand-maintained** — it is _not_ auto-generated. Update it directly. The concise
+> orientation lives in `packages/ai-context/src/fragments/architecture.ts`; keep the two in sync
+> when the high-level model changes.
+
+## Contents
+
+- [The composability stack](#the-composability-stack)
+- [AD4M runtime & data model](#ad4m-runtime--data-model)
+- [Schema render pipeline](#schema-render-pipeline)
+- [Framework-agnosticism strategy](#framework-agnosticism-strategy)
+- [Block & editor system](#block--editor-system) _(to expand)_
+- [Seed system & deployment](#seed-system--deployment) _(to expand)_
+- [Local dev, build & test loop](#local-dev-build--test-loop) _(to expand)_
+
+---
+
+## The composability stack
+
+WE is the UI layer of a three-part stack for distributed collective intelligence:
+
+1. **WE** — composable design system + module marketplace (what users see and interact with).
+2. **AD4M** — ontological layer for data, meaning, and agent coordination (how data flows/connects).
+3. **Holochain** — trust, validation, and sync (how agreements are enforced, how peers sync).
+
+Contributions are **modules**, not apps, at every level of abstraction: design tokens →
+primitives → components → widgets → templates (whole interfaces) and views (one section of one —
+see `views.md`), plus blocks, themes, template fragments
+(`@we/template-kit` — see `template-fragments.md`), and feature modules (call, notes, transcribe,
+globe, graph). All are shareable through one module marketplace. A finished "app" is a **seed**
+that composes modules. See `VISION.md` for the full rationale.
+
+## AD4M runtime & data model
+
+WE's data layer is [AD4M](https://ad4m.dev): agent-centric, local-first, peer-to-peer.
+
+- **Agent / DID** — user identity; `sessionStore.me.did` (prefer the `$me` token in schemas).
+- **Perspective / dataset** — a local knowledge graph (links/triples). The codebase says
+  **dataset** at the contract layer (`DatasetStore`, `currentDataset`) and perspective at the AD4M
+  layer; every Space is backed by one. `datasetStore.currentDataset` = the active dataset;
+  `datasetStore.rootDataset` = we-root, the app's configuration (AgentSettings, ChatSession,
+  installed templates/themes); `datasetStore.personalDataset` = we-personal, the agent's own things
+  (notes, the Pocket) with the ordinary space schema. Both chrome tier. See
+  `packages/app-shell/src/shared/systemDatasets.ts`.
+- **Neighbourhood** — a _shared_ perspective, synced peer-to-peer via Holochain. A shared Space is
+  a neighbourhood.
+- **SDNA (Social DNA)** — SHACL schemas installed into a perspective defining its data model. WE's
+  models are SDNA-typed. `spaceStore.initializeAsWeSpace` installs WE's Space SDNA into a
+  foreign/joined perspective (e.g. one synced in from Flux) so WE can read/write it.
+- **Expression / Language** — content addressed by a URL, stored/retrieved via a Language plugin
+  (e.g. image uploads → FILE_STORAGE_LANGUAGE → an expression URL published to a perspective).
+- **Model (Ad4mModel)** — WE's ORM over perspective links (`Space.create`, `findAll`, `findOne`,
+  `include`, relation accessors). CRUD conventions are in the generated **Developer Patterns**
+  section; model authoring rules are in `packages/entities/CONVENTIONS.md`.
+
+The Solid app (`@we/app-shell`) reaches AD4M through the **backend contract** rather than
+directly: `@we/backend-shared` declares the ports (`DataSource` + `QueryAdapter`, ephemeral,
+presence, transcription, model manifest), `@we/backend-ad4m` implements them against the executor,
+and `@we/backend-inmemory` is the reference implementation the boot/conformance tests run against.
+Stores (`sessionStore`, `datasetStore`, `spaceStore`, …) sit above the ports and expose reactive
+state to schemas. The renderer, the design system and the module contract never import
+`@coasys/*`.
+
+> **To expand:** exact connection/bootstrap flow, personal vs shared perspective lifecycle, how
+> `switchPerspective` registers SHACL models as dynamic classes, and the sync/conflict model.
+
+## Schema render pipeline
+
+A **Template** is a JSON schema (a tree of nodes). Rendering:
+
+1. Each node has `type`, `props`, `children`, and optional `routes` / `slots` / `$localState` /
+   `$queries`.
+2. Props resolve through the shared dispatcher (`@we/schema-shared` → `propResolvers/dispatcher.ts`).
+   Expressions (`{ $: '…' }`) and handler/query tokens (`$action`, `$query`, …) become plain values or
+   **reactive accessors** via a framework-injected `memo`; `markReactive()` tags accessors.
+3. The renderer (`@we/schema-solid`) looks up `type` in the `ComponentRegistry`: a custom-element
+   tag string for `@we/primitives`, a framework component for `@we/components` / `@we/widgets`.
+4. It mounts the node, binds accessors as reactive props, wires custom events, and recurses. Block
+   `$`-types (`$each`, `$if`, `$single`, `$animate`, `$routes`) map to Solid control flow
+   (`<For>` / `<Show>` / `<Dynamic>` / router outlet).
+
+The full authoring surface (operators, components, tokens, models, stores) is documented in the
+generated schema reference (the bulk of `CLAUDE.md`).
+
+## Framework-agnosticism strategy
+
+The seam is drawn so framework choice is isolated to thin adapters:
+
+- **Tokens, themes, primitives** — framework-neutral by construction (CSS vars; Lit web components).
+- **`@we/schema-shared`** — all schema semantics + a reactivity _port_ (`memo` + `markReactive`).
+  Nothing framework-specific leaks in.
+- **`@we/schema-solid`** — a thin renderer that injects Solid's `createMemo` and maps control flow.
+  A React/Vue/Svelte adapter is a new package of the same shape.
+- **`@we/components` / `@we/widgets`** — currently Solid (`.types.ts` + `.solid.tsx`). Layout
+  primitives (Row/Column) stay per-framework on purpose (highest cardinality, pure styling, cheap to
+  replicate, worst web-component cost); their DS-props → CSS computation is shared in
+  `@we/design-utils`'s neutral core, so each binding is a thin reactive wrapper.
+
+Mixed-framework templates cross the **web-component boundary** (a foreign component is rendered as a
+custom element, exactly like a primitive), kept as a deliberate island rather than the default.
+
+## Graph system
+
+`packages/graph-system/` is the graph engine behind `GraphView`: `@we/graph-protocol` (the
+expander/layout/behaviour contracts and address scheme), `@we/graph-core` (the neutral engine —
+store, spatial index, camera, expansion state, pointer behaviours), `@we/graph-expanders` and
+`@we/graph-layouts` (first-party plugins), and `@we/graph-solid` (the Solid adapter). Its data
+binding into the app lives at `packages/app-shell/src/frameworks/solid/components/GraphHost.tsx`.
+See `packages/graph-system/README.md` for the decisions worth knowing before changing anything.
+
+## The two fragment kits
+
+Reusable template fragments — authoring-time helpers that expand to plain schema nodes — live in
+**two** packages, split by whether the fragment names a store.
+
+- **`@we/schema-kit`** is the portable tier: `cardShell`, `emptyState`, `confirmModal`, `formModal`,
+  `railShell`. It names no store, which `kit.test.ts` enforces by reading the source,
+  so a fragment here works on any deployment whose renderer registers the same components.
+- **`@we/template-kit`** is the same idea for fragments that read WE's own stores —
+  `marketplaceList`, `installedList`, `agentByline`. It re-exports the portable kit, so a caller
+  importing from `@we/template-kit` gets both and does not have to know which tier a fragment is in.
+
+Attributing `cardShell`/`emptyState` to `@we/template-kit` was true before the split and is the
+reason the tier is worth stating: they are the examples of the portable half.
+
+What belongs in a kit, the extraction threshold, and the options-object API are documented in
+`packages/templates/kit/CONVENTIONS.md` — it governs both; the direction of travel is
+`template-fragments.md` in this directory.
+
+## Block & editor system
+
+`@we/block-shared` holds the **content model** and persistence; `@we/block-solid` holds the
+composer (ProseMirror), the renderer and every block's display/input components. Blocks
+(TextBlock, ImageBlock, EmbedBlock, CodeBlock, …) are models composed into posts.
+
+**The content model** (`block-shared/src/content.ts`). A composition is an ordered list of blocks.
+A text block is one canonical `text` string plus standoff `marks` — `{ start, end, type, …data }`
+ranges over it in Unicode code points — with `style`, `listItem` and `level` for its role; every
+other block is a typed record whose `_type` is its registry key; a collection holds a nested
+composition. It is Portable Text with WE extensions: `toPortableText` derives spans and markDefs
+beside the canonical fields. Content is data, never evaluated.
+
+**Where the truth is.** The models are canonical — one per block, linked through `children`.
+`CollectionBlock.editorState` is a cache: the Portable Text projection of those models, written on
+every save because reading a post is one file read rather than a hydration per block, and
+regenerable from the models (`loadBlocks`). Nothing is rewritten in place.
+
+**Save.** The composer's `onSave` hands `spaceStore.createPost` / `updatePost` a
+`ContentDocument` — `{ blocks, base }`, where `base` is the keys of the blocks that were loaded.
+`createBlocks` uploads file assets, creates the models, writes the blob, the `textContent` search
+index and the `we://mention` edges. `reconcileBlocks` updates blocks whose key survived, creates the
+rest, and computes removals against `base` rather than current state, so a block another agent
+added mid-edit is kept. It refuses any collection whose `mode` is not `document`.
+
+**The editor** (`block-solid/src/editor/`). One ProseMirror document per composition, the schema
+built from the block registry: text containers are textblocks, registered blocks are atoms with
+their fields in a `props` attr (rendered by a Solid root per node view), a collection is a node with
+nested content, a mention is an inline atom, the decorators and links are marks. Every block node
+carries its model id. Lists are flat items with `listType`/`level` attrs. The chrome — handles,
+drag-and-drop, hover/focus decorations, placeholders, slash menu, input rules, the @mention
+typeahead, the selection toolbar — is plugins and Solid overlays.
+
+**The renderer** walks the content and serialises text blocks through the same schema's `toDOM`,
+so it and the composer cannot draw different DOM (`tests/renderParity.test.tsx`), and no editor is
+instantiated to show a post.
+
+## Seed system & deployment
+
+Every deployment starts from a **seed file** (`we-seed.json`): which modules to include, how to
+arrange/theme them, and platform settings — making white-labeling a matter of swapping the seed.
+
+> **To expand:** seed schema, `scripts/validate-seed.cjs`, and how a seed maps to installed
+> templates/themes/modules at boot. See `docs/getting-started/seed-system.md`.
+
+## Local dev, build & test loop
+
+- Run: `pnpm dev:web` / `pnpm dev:electron` / `pnpm dev:tauri`.
+- Build: `pnpm build` (all packages) or per-target `build:web` / `build:electron` / `build:tauri`.
+- Validate schemas: `pnpm --filter @we/schema-shared validate`.
+- Regenerate AI context: `pnpm --filter @we/ai-context generate-context`.
+
+> **To expand:** test setup and where tests live, the AD4M executor binary rebuild flow (see the
+> generated Developer Patterns section), and what "verify a change" means without spinning up the
+> full backend.

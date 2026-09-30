@@ -1,19 +1,25 @@
 import type { DesignSystemProps } from '@we/design-types';
 import type { Accessor } from 'solid-js';
-import { createSignal, JSX } from 'solid-js';
+import { JSX } from 'solid-js';
 
 import {
-  getMarginValues,
-  getPaddingValues,
-  getRadiusValues,
-  mapFlexAxes,
-  parseBorder,
-  resolveFontFamily,
-  resolveFontWeight,
-  resolveLineHeight,
-  tokenVar,
-  zIndexVar,
+  buildLayoutStyles as buildLayoutStylesNeutral,
+  buildStateFragmentStyles,
+  CSS_PROP_TO_VAR_SUFFIX,
+  type CSSStyleObject,
+  getBgImageAttrs as getBgImageAttrsNeutral,
+  type LayoutStyleProps,
+  TIER_PROP_KEYS,
+  tierKeys,
+  toInteractiveVars,
+  warnIfUnsurfaced,
 } from '../index';
+
+// Re-export neutral pieces consumed unchanged elsewhere (e.g. app-framework's dsInterop
+// stylesheet reads INTERACTIVE_SPECS). Keeps `@we/design-utils/solid` a stable surface even
+// though the definitions now live in the framework-neutral core.
+export { INTERACTIVE_SPECS, TIER_PROP_KEYS, tierKeys, tierRulesCSS } from '../index';
+export type { CSSStyleObject } from '../index';
 
 export type MaybeAccessor<T> = T | Accessor<T>;
 
@@ -26,180 +32,132 @@ export type LayoutProps = Omit<DesignSystemProps, 'direction'> & {
   styles?: JSX.CSSProperties;
 } & Omit<JSX.HTMLAttributes<HTMLDivElement>, 'style'>;
 
+// Solid binding over the neutral style builder. The computation lives in @we/design-utils's
+// core (framework-agnostic, kebab-case output); this wrapper only re-types the result as
+// Solid's JSX.CSSProperties so consuming .solid.tsx components keep their exact prior types.
+// A React/Vue binding is the same one-liner over the same core function.
 export function buildLayoutStyles(props: LayoutProps, direction: 'row' | 'column'): JSX.CSSProperties {
-  // Base flex container styles
-  const style: JSX.CSSProperties = {
-    display: props.display || 'flex',
-    'flex-direction': props.reverse ? `${direction}-reverse` : direction,
-    'flex-wrap': props.wrap ? 'wrap' : 'nowrap',
-    ...props.styles, // Allow custom overrides
-  };
+  return buildLayoutStylesNeutral(props as unknown as LayoutStyleProps, direction) as JSX.CSSProperties;
+}
 
-  // Colors
-  if (props.bg) {
-    if (props.bg.startsWith('gradient-')) {
-      style['background'] = `var(--we-gradient-${props.bg.slice(9)})`;
-    } else {
-      style['background-color'] = tokenVar('color', props.bg);
-    }
-  }
-  if (props.color) style.color = tokenVar('color', props.color);
-
-  // Visual Effects
-  if (props.opacity !== undefined) style.opacity = props.opacity;
-  if (props.border) style.border = parseBorder(props.border);
-  if (props.borderColor) style['border-color'] = tokenVar('color', props.borderColor);
-  if (props.borderTop) style['border-top'] = parseBorder(props.borderTop);
-  if (props.borderRight) style['border-right'] = parseBorder(props.borderRight);
-  if (props.borderBottom) style['border-bottom'] = parseBorder(props.borderBottom);
-  if (props.borderLeft) style['border-left'] = parseBorder(props.borderLeft);
-  if (props.borderWidth) style['border-width'] = props.borderWidth;
-  if (props.shadow || props.ring) {
-    const parts = [props.ring, props.shadow].filter(Boolean).join(', ');
-    style['box-shadow'] = parts;
-  }
-  if (props.transform) style.transform = props.transform;
-  if (props.transition) style.transition = props.transition;
-
-  // Typography
-  if (props.textAlign) style['text-align'] = props.textAlign;
-  if (props.fontFamily) style['font-family'] = resolveFontFamily(props.fontFamily);
-  if (props.fontWeight) style['font-weight'] = resolveFontWeight(props.fontWeight);
-  if (props.fontSize) style['font-size'] = tokenVar('font', props.fontSize);
-  if (props.lineHeight) style['line-height'] = resolveLineHeight(props.lineHeight);
-  if (props.letterSpacing) style['letter-spacing'] = props.letterSpacing;
-  if (props.textDecoration) style['text-decoration'] = props.textDecoration;
-  if (props.textTransform) style['text-transform'] = props.textTransform;
-
-  // Interaction
-  if (props.cursor) style.cursor = props.cursor;
-  if (props.pointerEvents) style['pointer-events'] = props.pointerEvents;
-  if (props.visibility) style.visibility = props.visibility;
-
-  // Flex item
-  if (props.flex) style.flex = props.flex;
-  if (props.alignSelf) style['align-self'] = props.alignSelf;
-
-  // Layout
-  if (props.width) style.width = props.width;
-  if (props.height) style.height = props.height;
-  if (props.minWidth) style['min-width'] = props.minWidth;
-  if (props.minHeight) style['min-height'] = props.minHeight;
-  if (props.maxWidth) style['max-width'] = props.maxWidth;
-  if (props.maxHeight) style['max-height'] = props.maxHeight;
-  const { main, cross } = mapFlexAxes(props, props.reverse ? `${direction}-reverse` : direction);
-  style['justify-content'] = main;
-  style['align-items'] = cross;
-  if (props.gap) style.gap = tokenVar('space', props.gap);
-  if (props.overflow) style.overflow = props.overflow;
-  if (props.overflowX) style['overflow-x'] = props.overflowX;
-  if (props.overflowY) style['overflow-y'] = props.overflowY;
-  if (props.scrollbarWidth) style['scrollbar-width'] = props.scrollbarWidth;
-  if (props.scrollbarGutter) style['scrollbar-gutter'] = props.scrollbarGutter;
-  if (props.zIndex !== undefined) style['z-index'] = zIndexVar(props.zIndex);
-  if (props.position) style.position = props.position;
-  if (props.top) style.top = props.top;
-  if (props.right) style.right = props.right;
-  if (props.bottom) style.bottom = props.bottom;
-  if (props.left) style.left = props.left;
-
-  // Margin
-  const margin = getMarginValues(props);
-  if (margin !== '0 0 0 0') style.margin = margin;
-
-  // Padding
-  const padding = getPaddingValues(props);
-  if (padding !== '0 0 0 0') style.padding = padding;
-
-  // Radius
-  const radius = getRadiusValues(props);
-  if (radius !== '0 0 0 0') style['border-radius'] = radius;
-
-  return style;
+export function getBgImageAttrs(
+  props: Pick<LayoutProps, 'bgImage' | 'bgImageOpacity'>,
+): Record<string, string | undefined> {
+  return getBgImageAttrsNeutral(props);
 }
 
 // ────────────────────────────────────────────
-// State props (hover, active, focus) for Solid layout components
+// State props (hover, active, focus) — Solid accessor binding
+//
+// The pure fragment/var computation lives in the neutral core (buildStateFragmentStyles,
+// toInteractiveVars); this hook is the genuinely Solid-shaped part — it takes a reactive
+// baseStyle accessor and returns a reactive `style` thunk plus the gating attribute.
 // ────────────────────────────────────────────
 
 export interface StatePropsResult {
   style: () => JSX.CSSProperties;
-  handlers: JSX.HTMLAttributes<HTMLDivElement>;
+  attrs: JSX.HTMLAttributes<HTMLDivElement>;
+  /** Attach to the element, so an unsurfaced responsive prop can say so in development. */
+  checkSurface: (el: Element) => void;
 }
 
+/**
+ * Variant props — the states, and now the breakpoint tiers.
+ *
+ * Both are the same mechanism: a partial prop bag that applies under a condition the *stylesheet*
+ * can test, so the values move out of the inline style into `--we-ds-*` custom properties and a
+ * rule picks the winner. That is why tiers cost almost nothing to add here — `@container` is
+ * another condition alongside `:hover`, and the plumbing was already built.
+ *
+ * The two axes stay independent: a tier sets base values at that width, a state applies at every
+ * width. See `DesignSystemProps.mdUpProps` for why they do not cross.
+ */
 export function useStateProps(
   baseStyle: Accessor<JSX.CSSProperties>,
   props: LayoutProps,
   direction: 'row' | 'column',
 ): StatePropsResult {
+  const bagOf = (key: string) => {
+    const bag = (props as Record<string, unknown>)[key] as Partial<DesignSystemProps> | undefined;
+    return bag && Object.keys(bag).length > 0 ? bag : undefined;
+  };
+
   const hasHover = () => props.hoverProps && Object.keys(props.hoverProps).length > 0;
   const hasActive = () => props.activeProps && Object.keys(props.activeProps).length > 0;
   const hasFocus = () => props.focusProps && Object.keys(props.focusProps).length > 0;
+  const hasDisabled = () => props.disabledProps && Object.keys(props.disabledProps).length > 0;
+  const hasState = () => hasHover() || hasActive() || hasFocus() || hasDisabled();
+  const hasTier = () => tierKeys.some((key) => bagOf(key) !== undefined);
+  const hasAny = () => hasState() || hasTier();
 
-  const [hovered, setHovered] = createSignal(false);
-  const [active, setActive] = createSignal(false);
-  const [focused, setFocused] = createSignal(false);
-
-  const handlers: JSX.HTMLAttributes<HTMLDivElement> = {};
-
-  // Only attach listeners when state props are provided.
-  // We use getters so they react to prop changes.
-  Object.defineProperties(handlers, {
-    onMouseEnter: {
-      get: () => (hasHover() ? () => setHovered(true) : undefined),
-      enumerable: true,
-    },
-    onMouseLeave: {
-      get: () => (hasHover() ? () => setHovered(false) : undefined),
-      enumerable: true,
-    },
-    onMouseDown: {
-      get: () => (hasActive() ? () => setActive(true) : undefined),
-      enumerable: true,
-    },
-    onMouseUp: {
-      get: () => (hasActive() ? () => setActive(false) : undefined),
-      enumerable: true,
-    },
-    onFocus: {
-      get: () => (hasFocus() ? () => setFocused(true) : undefined),
-      enumerable: true,
-    },
-    onBlur: {
-      get: () => (hasFocus() ? () => setFocused(false) : undefined),
-      enumerable: true,
-    },
+  const attrs: JSX.HTMLAttributes<HTMLDivElement> = {};
+  // Two gates, because the stylesheet has two sets of rules and an element with only one kind of
+  // variant should not pay for the other. Both share the base declarations — see dsInterop.
+  Object.defineProperty(attrs, 'data-we-interactive', {
+    get: () => (hasState() ? '' : undefined),
+    enumerable: true,
+  });
+  Object.defineProperty(attrs, 'data-we-responsive', {
+    get: () => (hasTier() ? '' : undefined),
+    enumerable: true,
   });
 
   const style = () => {
-    const base = baseStyle();
+    const base = baseStyle() as unknown as CSSStyleObject;
+    if (!hasAny()) return base as unknown as JSX.CSSProperties;
 
-    // Fast path: no state active
-    if (!hovered() && !active() && !focused()) return base;
+    // Move every interactive-surface property from a direct inline declaration to a
+    // --we-ds-* custom property, so the stylesheet's :hover/:active/:focus-within rules
+    // (which fall back through --we-ds-{state}-x -> --we-ds-x -> a safe CSS default) can
+    // apply them without JS re-deriving the merged style on every pointer/focus event.
+    const withoutInteractiveProps: CSSStyleObject = { ...base };
+    for (const cssProp of CSS_PROP_TO_VAR_SUFFIX.keys())
+      delete (withoutInteractiveProps as Record<string, unknown>)[cssProp];
 
-    // Build override styles and merge over base
-    let merged = base;
-    if (focused() && props.focusProps) {
-      merged = {
-        ...merged,
-        ...buildLayoutStyles({ ...props.focusProps, styles: undefined } as LayoutProps, direction),
-      };
-    }
-    if (hovered() && props.hoverProps) {
-      merged = {
-        ...merged,
-        ...buildLayoutStyles({ ...props.hoverProps, styles: undefined } as LayoutProps, direction),
-      };
-    }
-    if (active() && props.activeProps) {
-      merged = {
-        ...merged,
-        ...buildLayoutStyles({ ...props.activeProps, styles: undefined } as LayoutProps, direction),
-      };
+    const baseVars = toInteractiveVars('', base);
+    // Declaration order below is the precedence order: rules declared later in the
+    // stylesheet win for equal-specificity selectors, so :focus-within < :hover < :active
+    // here reproduces the same active-over-hover-over-focus precedence the old
+    // JS-merge order (focus, then hover, then active) produced.
+    const focusVars = hasFocus()
+      ? toInteractiveVars('focus-', buildStateFragmentStyles(props.focusProps!, direction))
+      : {};
+    const hoverVars = hasHover()
+      ? toInteractiveVars('hover-', buildStateFragmentStyles(props.hoverProps!, direction))
+      : {};
+    const activeVars = hasActive()
+      ? toInteractiveVars('active-', buildStateFragmentStyles(props.activeProps!, direction))
+      : {};
+    // Layout elements have no native :disabled — the stylesheet keys the disabled
+    // state off aria-disabled="true", which the consumer sets alongside disabledProps.
+    const disabledVars = hasDisabled()
+      ? toInteractiveVars('disabled-', buildStateFragmentStyles(props.disabledProps!, direction))
+      : {};
+
+    /*
+      Tier values, as `--we-ds-{tier}-*`.
+
+      Order does not matter here the way it does for the states: these are values, not competing
+      declarations, and which one *wins* is decided by the stylesheet's own ascending rules and the
+      fallback chain each of them carries. Written unconditionally per tier that has a bag, so an
+      element declaring only `lgUpProps` emits only that.
+    */
+    const tierVars: CSSStyleObject = {};
+    for (const [tier, key] of Object.entries(TIER_PROP_KEYS)) {
+      const bag = bagOf(key);
+      if (bag) Object.assign(tierVars, toInteractiveVars(`${tier}-`, buildStateFragmentStyles(bag, direction)));
     }
 
-    return merged;
+    return {
+      ...withoutInteractiveProps,
+      ...baseVars,
+      ...focusVars,
+      ...hoverVars,
+      ...activeVars,
+      ...disabledVars,
+      ...tierVars,
+    } as unknown as JSX.CSSProperties;
   };
 
-  return { style, handlers };
+  return { style, attrs, checkSurface: (el: Element) => hasTier() && warnIfUnsurfaced(el, 'This element') };
 }

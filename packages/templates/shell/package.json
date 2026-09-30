@@ -1,0 +1,22 @@
+{
+  "name": "@we/template-shell",
+  "version": "0.1.0",
+  "description": "WE's shell surfaces as templates — sidebar, settings, profile, boot screen, marketplace, about",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@we/schema-shared": "workspace:*",
+    "@we/template-kit": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0"
+  }
+}

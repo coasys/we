@@ -7,6 +7,7 @@
  * 1. Port mappings for production Express servers
  * 2. extraResources configuration for package.json
  * 3. Express server setup code for main.js
+ * 4. Runtime settings the main process needs before any window exists (the executor's data path)
  *
  * This ensures a single source of truth (the seed file) for all platform configurations.
  */
@@ -21,6 +22,10 @@ const SEED_FILE = path.join(WORKSPACE_ROOT, 'we-seed.json');
 const OUTPUT_DIR = path.join(__dirname, '../electron');
 const PORT_MAP_FILE = path.join(OUTPUT_DIR, 'seed-port-map.json');
 const EXTRA_RESOURCES_FILE = path.join(OUTPUT_DIR, 'seed-extra-resources.json');
+const RUNTIME_FILE = path.join(OUTPUT_DIR, 'seed-runtime.json');
+
+/** Where the executor keeps its data when the seed says nothing. Also the launcher's location. */
+const DEFAULT_AD4M_DATA_PATH = '~/.ad4m';
 
 function main() {
   console.log('🔧 Generating Electron seed configuration...\n');
@@ -120,12 +125,45 @@ function main() {
   }
 
   // Write port map
-  fs.writeFileSync(PORT_MAP_FILE, JSON.stringify(portMap, null, 2), 'utf8');
+  fs.writeFileSync(PORT_MAP_FILE, JSON.stringify(portMap, null, 2) + '\n', 'utf8');
   console.log(`✅ Port map written to: ${path.relative(process.cwd(), PORT_MAP_FILE)}`);
 
   // Write extraResources
-  fs.writeFileSync(EXTRA_RESOURCES_FILE, JSON.stringify(allExtraResources, null, 2), 'utf8');
+  fs.writeFileSync(EXTRA_RESOURCES_FILE, JSON.stringify(allExtraResources, null, 2) + '\n', 'utf8');
   console.log(`✅ extraResources written to: ${path.relative(process.cwd(), EXTRA_RESOURCES_FILE)}`);
+
+  // Write runtime settings. Separate from the port map because the main process needs these
+  // before any window (or renderer, or seed loader) exists — it starts the executor first.
+  const runtime = {
+    ad4mDataPath: seed.ad4m?.dataPath || DEFAULT_AD4M_DATA_PATH,
+    // Carried through for **development** runs. Packaged builds get the binary copied in as an
+    // extraResource above and read it from `resourcesPath`, but an unpackaged run has to find it in
+    // the workspace — and until this was here it did so from a path hardcoded in `main.js`, so a
+    // seed pointing `executorPath` at a different checkout was silently ignored and the app went on
+    // running whichever executor happened to be built next door. Absolute, because the main process
+    // resolves it relative to nothing it can rely on.
+    ...(seed.ad4m?.executorPath
+      ? {
+          ad4mExecutorPath: path.isAbsolute(seed.ad4m.executorPath)
+            ? seed.ad4m.executorPath
+            : path.join(WORKSPACE_ROOT, seed.ad4m.executorPath),
+        }
+      : {}),
+    // Development only, like the executor path: the main process hands the renderer the local
+    // server link language build from this checkout, so it can be tried before the node's seed
+    // ships one. See `get-dev-link-language-bundle` in main.js.
+    ...(seed.ad4m?.repoPath
+      ? {
+          ad4mRepoPath: path.isAbsolute(seed.ad4m.repoPath)
+            ? seed.ad4m.repoPath
+            : path.join(WORKSPACE_ROOT, seed.ad4m.repoPath),
+        }
+      : {}),
+  };
+  fs.writeFileSync(RUNTIME_FILE, JSON.stringify(runtime, null, 2) + '\n', 'utf8');
+  console.log(`✅ Runtime settings written to: ${path.relative(process.cwd(), RUNTIME_FILE)}`);
+  console.log(`   AD4M data path: ${runtime.ad4mDataPath}`);
+  if (runtime.ad4mExecutorPath) console.log(`   AD4M executor:  ${runtime.ad4mExecutorPath}`);
 
   // Generate Express server setup code (only if there are apps)
   const serverSetupCode = hasApps ? generateServerSetupCode(seed.apps, portMap) : generateEmptyServerSetupCode();
@@ -135,7 +173,7 @@ function main() {
   console.log(`✅ Server setup code written to: ${path.relative(process.cwd(), SERVER_SETUP_FILE)}`);
 
   // Format generated files with Prettier to avoid noisy git diffs
-  formatGeneratedFiles([PORT_MAP_FILE, EXTRA_RESOURCES_FILE, SERVER_SETUP_FILE]);
+  formatGeneratedFiles([PORT_MAP_FILE, EXTRA_RESOURCES_FILE, RUNTIME_FILE, SERVER_SETUP_FILE]);
 
   console.log('\n✨ Seed configuration generated successfully!');
   console.log('\n📝 Next steps:');
@@ -165,11 +203,10 @@ function generateServerSetupCode(apps, portMap) {
  * Sets up Express servers for each app defined in we-seed.json
  */
 
-import express from 'express';
 import { app } from 'electron';
+import express from 'express';
 import { existsSync } from 'fs';
-import { join } from 'path';
-import { dirname } from 'path';
+import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);

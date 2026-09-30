@@ -1,0 +1,254 @@
+import type { HostFileSaver } from '@we/design-utils';
+
+export type { HostFileSaver };
+
+export interface AppConfig {
+  id: string;
+  name: string;
+  paths: {
+    projectRoot: string;
+    dist: string;
+    devServer?: {
+      port: number;
+      host?: string;
+    };
+    webUrl?: string;
+  };
+}
+
+/**
+ * One local account: a directory holding one agent's keys and data.
+ *
+ * Internally an account is the *container* and an agent is the identity (a DID) inside it — they
+ * are not the same thing, since an account exists before any agent has been created in it, which
+ * is exactly the state first-run setup passes through.
+ *
+ * **The UI never exposes that split.** To a user, an account is the thing they sign in to, full
+ * stop; making them hold "create an account, then set up its agent" is two words for one act.
+ * User-facing copy says "account" throughout, and "agent" is reserved for AD4M protocol objects
+ * that genuinely are agents rather than accounts — a peer's DID in the trusted-agents list.
+ */
+export interface Account {
+  /** The data directory. Stable, and unique by construction — no separate id to keep in sync. */
+  id: string;
+  name: string;
+  /**
+   * A cached copy of the profile picture, as a small data URI.
+   *
+   * Cached rather than read live because the sign-in screen renders while the agent is *locked*,
+   * and the real profile lives inside the encrypted store. Operating systems solve the same
+   * problem the same way — macOS keeps your account picture outside the encrypted volume so the
+   * login window can draw it. Absent until a profile picture has been set.
+   */
+  avatar?: string;
+  /** The account this app instance is currently running against. */
+  active: boolean;
+  /**
+   * An identity has been created in this account.
+   *
+   * False for a directory that has been scaffolded but never set up — which every account is
+   * between being created and finishing setup, and which the whole machine is on a genuine first
+   * run. The host answers it from disk, so the boot screen knows which of those it is without
+   * waiting for an executor to start.
+   *
+   * The marker is the executor's own: `is_initialized()` is `<data>/ad4m/agent.json` existing, so
+   * this cannot disagree with what the session will report a few seconds later.
+   */
+  hasAgent: boolean;
+  /**
+   * The ADAM launcher keeps its own registry — its list of every agent it knows about — inside
+   * this account's directory. Deleting it therefore also erases the launcher's record of its
+   * other agents, which is a consequence worth naming in a confirmation.
+   */
+  sharedWithLauncher?: boolean;
+}
+
+/**
+ * Switching which account the app runs as.
+ *
+ * A host capability, not a backend one: it manipulates directories on disk and restarts the
+ * backend. No amount of talking to a running executor achieves it, because the executor is
+ * configured with one data path at startup and holds it for its lifetime — which is why every
+ * mutation here ends with the caller invoking {@link applySelection}.
+ *
+ * Optional on {@link PlatformAdapter}. The web host omits it: a browser tab has no filesystem to
+ * keep accounts in and nothing to restart, and `ad4m-connect` already owns which executor it
+ * talks to.
+ */
+export interface AccountHost {
+  list(): Promise<Account[]>;
+  /**
+   * Register a new account and make it active. Creates the directory but no agent — the agent is
+   * created on the next boot, by the setup screen, in the same empty directory a genuine first run
+   * would see. Caller calls {@link applySelection} to get there.
+   *
+   * Takes no name: the setup screen asks for one *afterwards*, so that first run and
+   * adding an account reach the same single page rather than collecting the name in two different
+   * places. The host assigns a provisional name until then.
+   */
+  create(): Promise<Account>;
+  /**
+   * Set what an account is shown as: its name, its picture, or both.
+   *
+   * The account's identity is the *profile's* identity — same DID, same person — so this is how
+   * the profile is mirrored out to where a locked sign-in screen can reach it. Written at setup,
+   * and again whenever the profile is edited later, so the two never drift.
+   */
+  setDisplay(id: string, display: { name?: string; avatar?: string }): Promise<void>;
+  select(id: string): Promise<void>;
+  /**
+   * Delete an account and its data. Refuses the active one — you cannot pull the directory out
+   * from under the running executor.
+   *
+   * Any AD4M account, whichever app created it: `~/.ad4m` is not "Flux's account", it is the
+   * user's account that Flux also uses. The host's own guard is on *shape*, not provenance — it
+   * confirms the directory actually holds an agent before erasing anything, because a registry
+   * entry is a path and a path is not proof that AD4M data is there.
+   */
+  remove(id: string): Promise<void>;
+  /**
+   * Make the selected account take effect.
+   *
+   * Deliberately named for the intent, not the mechanism: Electron respawns the executor and
+   * reloads the window, Tauri relaunches the app. Both are correct for their host, and a caller
+   * that knew which would be reaching past the contract. Does not return — the JS context this
+   * was called from is gone either way.
+   */
+  applySelection(): Promise<void>;
+}
+
+/**
+ * How the host starts the backend, as opposed to what the running backend can be asked.
+ *
+ * These are arguments to a process that has not started yet, which is exactly why they cannot live
+ * on `RuntimeAdminPort`: a port over a client can only reach a backend that is already running with
+ * whatever it was given. Changing one is therefore always "write it down, then start over" — hence
+ * {@link ExecutorHost.restart} sitting beside the setters rather than being implied by them.
+ *
+ * Optional, and absent on web: a browser tab does not start the executor, it connects to one.
+ */
+export interface ExecutorSettings {
+  /**
+   * Serve the Model Context Protocol.
+   *
+   * With it on, local AI tools (editors, agents, desktop assistants) can reach this agent's data
+   * through a port on this machine. Off by default — it is an open door on localhost, and the value
+   * of it is specific enough that it should be asked for.
+   */
+  mcpEnabled: boolean;
+  mcpPort: number;
+  /**
+   * Per-crate log levels for the backend, as `{ crate: level }`.
+   *
+   * Overrides only. The backend has its own defaults and applies them to anything not named here,
+   * so storing the effective set would freeze today's defaults into every install that ever opened
+   * this screen. Levels are the usual five: error, warn, info, debug, trace.
+   */
+  logLevels: Record<string, string>;
+}
+
+export interface ExecutorHost {
+  getSettings(): Promise<ExecutorSettings>;
+  /** Written immediately; takes effect the next time the backend starts. */
+  setSettings(settings: Partial<ExecutorSettings>): Promise<ExecutorSettings>;
+  /**
+   * Start the backend over, so written settings take effect.
+   *
+   * Same caveat as {@link AccountHost.applySelection}: what this costs differs per host — Electron
+   * respawns a child process and reloads the window, Tauri relaunches the app — and a caller that
+   * knew which would be reaching past the contract.
+   */
+  restart(): Promise<void>;
+  /**
+   * Ask the user for a path on this machine. Resolves to null if they cancel.
+   *
+   * Here rather than on a port because a path is only meaningful to a backend running on the same
+   * machine — which is exactly what having this capability means. The backend's own export/import
+   * take a path on *its* filesystem, so a browser File, which carries no path, cannot serve them.
+   */
+  chooseFile?(options: { save: boolean; defaultName?: string }): Promise<string | null>;
+}
+
+/**
+ * Where the host is running, and what that implies for locating things.
+ *
+ * Deliberately knows nothing about the data layer — obtaining a client is `BackendConnector`'s job
+ * (`shared/backend/types.ts`). The two were one interface until they proved to vary independently:
+ * `resolveAppUrl` differs per platform, `connect()` differs per data layer, and a host picks each
+ * without reference to the other. The practical symptom was that this file imported `@coasys/ad4m`
+ * purely for a return type, so every host that wanted `isDesktop` also named the data layer.
+ */
+export interface PlatformAdapter {
+  // Resolve app URL for iframes (platform-specific)
+  // - Dev mode: Returns devServer URL (http://localhost:PORT)
+  // - Production: Platform-specific resolution
+  //   - Electron: Returns Express server URL (http://localhost:AUTO_PORT)
+  //   - Tauri: Returns asset protocol URL (asset://localhost/...)
+  //   - Web: Returns external URL or bundled path
+  resolveAppUrl(app: AppConfig, isDevelopment: boolean): string;
+
+  // Check if running in desktop app (vs web)
+  isDesktop: boolean;
+
+  // Check if running in development mode
+  isDevelopment: boolean;
+
+  // Platform identifier
+  platform: 'web' | 'electron' | 'tauri';
+
+  /**
+   * Local account management, when the host can offer it. Absent on web — the boot screen
+   * feature-detects and simply shows no account controls.
+   */
+  accounts?: AccountHost;
+
+  /**
+   * Settings the host passes to the backend at startup. Absent on web, where the host does not
+   * start one — the settings page feature-detects and shows nothing.
+   */
+  executor?: ExecutorHost;
+
+  /**
+   * Save a file through the host's own dialog. Absent on web, where `saveFile` in
+   * `@we/design-utils` uses the browser's save picker or a download instead.
+   *
+   * Every download in the app goes through that one helper, which the shell hands this to at boot
+   * (`PlatformProvider`), so a host that can do better supplies it once and every export benefits.
+   */
+  saveFile?: HostFileSaver;
+
+  /**
+   * Choosing which screen or window to share, where the OS will not ask.
+   *
+   * Absent on web, where `getDisplayMedia` raises the browser's own picker and there is nothing for
+   * the app to draw. Present on a desktop host, and even there only *used* on machines with no
+   * system picker — macOS 15+ and Wayland both draw their own, and where they do the source list
+   * never reaches the renderer at all, which is worth keeping.
+   *
+   * The host asks rather than the app: only the host knows the ask is needed, because the branch
+   * that needs it is the one the OS did not take.
+   */
+  screenSources?: ScreenSourceHost;
+}
+
+/** One thing that could be shared, as the host describes it. */
+export interface ScreenSource {
+  id: string;
+  /** The OS's own name for it — "Entire screen", a window title. Nothing is invented here. */
+  name: string;
+  /** A small still of it, as a data URL, or empty where the host could not take one. */
+  thumbnail: string;
+}
+
+export interface ScreenSourceHost {
+  /**
+   * The host needs somebody to choose. Returns its own unsubscribe.
+   *
+   * A request outstanding is a `getDisplayMedia` the page is waiting on, so an answer has to come —
+   * `choose('')` is the one that means "nothing", and the host treats not answering at all as the
+   * same thing after a minute.
+   */
+  onRequest(listener: (sources: ScreenSource[]) => void): () => void;
+  /** Answer the outstanding request. An empty id cancels the share. */
+  choose(sourceId: string): void;
+}

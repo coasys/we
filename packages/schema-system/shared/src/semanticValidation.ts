@@ -1,6 +1,8 @@
-import { BASE_CLASS_LAYERS, getKeysForLayers, layerKeyMap } from '@we/design-utils';
+import { BASE_CLASS_LAYERS, getKeysForLayers, layerKeyMap, tierKeys } from '@we/design-utils';
+import { role, semanticValues, space } from '@we/tokens';
 
 import type { ContextData, StateMemberMeta } from './contextTypes';
+import { checkExpression, ExpressionSyntaxError, isCallTime, isExpressionToken, parseExpression } from './expressions';
 import type { ValidationError, ValidationResult } from './validators';
 import { validateStructure } from './validators';
 
@@ -15,8 +17,23 @@ export type ValidationContext = {
   storeNames: Set<string>;
   storeMembers: Map<string, Set<string>>;
   storeMemberMeta: Map<string, Map<string, StateMemberMeta>>;
-  modelNames: Set<string>;
+  entityNames: Set<string>;
   dsPropToLayer: Map<string, string>;
+  /** Functions the host lends to expressions, from the generated context's `sources`. */
+  hostFunctions: Set<string>;
+  /**
+   * The module catalogue, when the context carries one. Every check keyed on it is skipped when it
+   * is absent, so a context built without a seed judges `modules.*`, `$part` and `meta.panels` as
+   * leniently as it always did.
+   */
+  modules?: {
+    /** Public store members by module id — or `null` for the module whose own chrome is being judged. */
+    members: Map<string, Set<string> | null>;
+    /** Part ids, `<moduleId>.<name>`. */
+    parts: Set<string>;
+    /** Panel names by module id. */
+    panels: Map<string, Set<string>>;
+  };
 };
 
 // ── Constants ──────────────────────────────────────────────────────
@@ -147,9 +164,41 @@ function suggest(name: string, knownNames: Iterable<string>): string | undefined
   return best;
 }
 
+// DS layer keys whose runtime type isn't a plain token string (see DesignSystemProps
+// in @we/design-types). Every other layer key is a token/CSS string.
+const DS_PROP_TYPE_OVERRIDES: Record<string, string> = {
+  wrap: 'boolean',
+  opacity: 'number',
+  bgImageOpacity: 'number',
+  zIndex: 'string|number',
+  /*
+    Coordinates, and a number is the ordinary way to write one.
+
+    `number | string` classifies as `string` on its own — the general rule is that a union
+    containing `string` is a string, which is right for `SpaceValue | string` and wrong here, where
+    the number is the *primary* spelling and the string is the escape hatch for a unit that is not
+    px. Left to classify itself, every `"x": 620` in a canvas warned.
+  */
+  x: 'string|number',
+  y: 'string|number',
+  rotate: 'string|number',
+};
+
 function classifyPropType(typeText: string): string {
   if (!typeText || typeText === 'unknown') return 'unknown';
   const t = typeText.replace(/\s*\|\s*undefined/g, '').trim();
+  /*
+    A prop that takes a handler, which is not the same as one that takes a value.
+
+    `we-modal`'s `close: () => void` is called like a click handler and is passed one everywhere in
+    the app — a `discardGuard` hands it a `{ $if: … }`, correctly. Classified `unknown` it was
+    indistinguishable from a prop nobody had described, so the only way to tell a handler position
+    from a value position was the `on…` naming convention, and `close` does not follow it.
+
+    Bearing on nothing else: the type-category check below skips anything that is not string,
+    boolean or number, so this classification is read by `checkValuePositionIf` alone.
+  */
+  if (/=>/.test(t) || t === 'Function') return 'function';
   if (t === 'boolean') return 'boolean';
   if (t === 'number') return 'number';
   if (t === 'string') return 'string';
@@ -170,7 +219,27 @@ function classifyPropType(typeText: string): string {
  * e.g. "'primary' | 'secondary' | 'ghost'" → ['primary', 'secondary', 'ghost']
  */
 /** Check if a string looks like a CSS length value (e.g. "20px", "2rem", "50%", "1.5em") */
-const CSS_LENGTH_RE = /^-?\d+(\.\d+)?(px|em|rem|%|vh|vw|vmin|vmax|ch|ex|cap|lh|svh|svw|dvh|dvw|cqi|cqb)$/;
+// Container-query units included in full: `cqi`/`cqb` were already here, but a box measured against
+// a surface is usually reasoning about width and height rather than inline and block axes, and the
+// call module has been writing `100cqh` through the `styles` escape hatch — the one place this
+// check does not reach — since before surfaces existed.
+const CSS_LENGTH_RE =
+  /^-?\d+(\.\d+)?(px|em|rem|%|vh|vw|vmin|vmax|ch|ex|cap|lh|svh|svw|dvh|dvw|cqi|cqb|cqw|cqh|cqmin|cqmax)$/;
+
+/**
+ * A length that is *computed* rather than written out.
+ *
+ * `calc()` and friends are lengths wherever a length is allowed, and a custom property may hold
+ * one, so a prop documented as `{css-length}` has to accept them or it rejects valid CSS. The
+ * runtime already does: `isRawCSSValue` in `@we/design-utils` passes these through for every
+ * token-resolved prop, and a primitive with a custom size writes whatever string it is given
+ * straight onto its own variable.
+ *
+ * It bit a derived value first — `badgedAvatar` sizes its glyph as a fraction of the avatar's size
+ * token, which is exactly the kind of expression a schema cannot write out as a number and should
+ * not have to.
+ */
+const CSS_COMPUTED_LENGTH_RE = /^(calc|min|max|clamp|env|var)\(/i;
 
 function extractAllowedValues(typeText: string): string[] | null {
   const t = typeText.replace(/\s*\|\s*undefined/g, '').trim();
@@ -233,14 +302,33 @@ export function buildValidationContext(data: ContextData): ValidationContext {
       const dsKeys = getKeysForLayers(layers);
       for (const key of dsKeys) {
         props.add(key);
-        // DS props are all string-typed (token values)
-        propTypes.set(key, 'string');
+        propTypes.set(key, DS_PROP_TYPE_OVERRIDES[key] ?? 'string');
       }
     }
 
     componentProps.set(prim.tagName, props);
     componentPropTypes.set(prim.tagName, propTypes);
     if (propAllowed.size > 0) componentPropAllowedValues.set(prim.tagName, propAllowed);
+  }
+
+  /*
+    Custom elements the seed allows. Their props are whatever their manifest documents, and nothing
+    of the design system's: they are not built on its base classes, so a `p` or a `bg` would be set
+    as a property the element ignores.
+  */
+  for (const element of data.foreignElements ?? []) {
+    componentNames.add(element.tagName);
+    const props = new Set<string>();
+    const propTypes = new Map<string, string>();
+    for (const p of element.props) {
+      props.add(p.name);
+      propTypes.set(p.name, classifyPropType(p.type));
+    }
+    // An element whose manifest documents nothing is judged by name alone, not reported prop by prop.
+    if (props.size) {
+      componentProps.set(element.tagName, props);
+      componentPropTypes.set(element.tagName, propTypes);
+    }
   }
 
   // Components and widgets
@@ -255,13 +343,41 @@ export function buildValidationContext(data: ContextData): ValidationContext {
       const allowed = extractAllowedValues(p.type);
       if (allowed) propAllowed.set(p.name, allowed);
     }
+
+    // Add DS props based on superclass (mirrors the primitives loop above)
+    if (comp.superclass && BASE_CLASS_LAYERS[comp.superclass]) {
+      const layers = BASE_CLASS_LAYERS[comp.superclass];
+      const dsKeys = getKeysForLayers(layers);
+      for (const key of dsKeys) {
+        props.add(key);
+        propTypes.set(key, DS_PROP_TYPE_OVERRIDES[key] ?? 'string');
+      }
+    }
+
     componentProps.set(comp.name, props);
     componentPropTypes.set(comp.name, propTypes);
     if (propAllowed.size > 0) componentPropAllowedValues.set(comp.name, propAllowed);
   }
 
   // Universal props
-  const universalProps = new Set(['style', 'styles', 'children', 'ref', 'key']);
+  // Includes HTML global attributes that pass through to the DOM on all components
+  //
+  // The breakpoint tiers sit here alongside `styles` rather than in a layer, for the reason they
+  // are not in `layerKeyMap` either: a layer answers "which kinds of property does this element
+  // accept", and a tier is not a kind of property but a condition under which any of them apply.
+  // What a tier bag may contain is bounded by the element's own layers where the CSS is generated.
+  const universalProps = new Set([
+    'style',
+    'styles',
+    'children',
+    'ref',
+    'key',
+    'title',
+    'id',
+    'class',
+    'tabindex',
+    ...tierKeys,
+  ]);
 
   // Stores
   const storeNames = new Set<string>();
@@ -280,10 +396,44 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     storeMemberMeta.set(store.name, metaMap);
   }
 
+  // Feature-module stores, published by the host at `modules.<id>.<key>`.
+  //
+  // A namespace rather than a store, and deliberately given no `storeMembers` entry: which modules
+  // exist is a property of the running deployment's seed, not of this build, so there is no list to
+  // check a reference against and pretending otherwise would reject valid schemas. What it does buy
+  // is that a module's own fragments — which can only talk to their store this way — stop being
+  // unvalidatable. Before this they failed on the very first token, so no module fragment could be
+  // checked at all, and a typo in one surfaces only as a component that silently renders nothing.
+  storeNames.add('modules');
+
   // Models
-  const modelNames = new Set<string>();
+  const entityNames = new Set<string>();
   for (const model of data.models) {
-    modelNames.add(model.name);
+    entityNames.add(model.name);
+  }
+
+  for (const name of data.shellComponents ?? []) {
+    componentNames.add(name);
+  }
+
+  const hostFunctions = new Set((data.sources ?? []).map((source) => source.name));
+
+  /*
+    The module catalogue, folded into every list a module can add to — and kept as its own map for
+    the checks only a module has. Entities a module declares are queryable like core ones; functions
+    it lends are callable like host sources; components it contributes are mountable like the shell's.
+  */
+  let modules: ValidationContext['modules'];
+  if (data.modules) {
+    modules = { members: new Map<string, Set<string> | null>(), parts: new Set(), panels: new Map() };
+    for (const entry of data.modules) {
+      modules.members.set(entry.id, new Set(entry.members.map((member) => member.name)));
+      for (const part of entry.parts) modules.parts.add(`${entry.id}.${part.name}`);
+      modules.panels.set(entry.id, new Set(entry.panels.map((panel) => panel.name)));
+      for (const entity of entry.entities) entityNames.add(entity.name);
+      for (const fn of entry.functions) hostFunctions.add(fn.name);
+      for (const component of entry.components) componentNames.add(component);
+    }
   }
 
   return {
@@ -295,8 +445,10 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     storeNames,
     storeMembers,
     storeMemberMeta,
-    modelNames,
+    entityNames,
     dsPropToLayer,
+    hostFunctions,
+    ...(modules ? { modules } : {}),
   };
 }
 
@@ -304,11 +456,47 @@ export function buildValidationContext(data: ContextData): ValidationContext {
 
 interface WalkState {
   localScope: Set<string> | null; // null = no $localState in scope
+  /**
+   * Of those, the names contributed by `$queries` — which are read-only.
+   *
+   * Kept apart from `localScope` because a *read* does not care which declared it (that is the
+   * point of one namespace), while a *write* very much does: `$setLocal` on a hoisted query warns
+   * to the console and no-ops, so the control renders, takes the click and does nothing.
+   */
+  queryScope: Set<string>;
+  /**
+   * The declared `type` of each `$localState` field in scope, for the checks that care.
+   *
+   * Only `$toggleLocalIn` does today — it writes a set, and pointed at a boolean it would replace
+   * that boolean with an array, which is silent at runtime and confusing everywhere the field is
+   * read afterwards.
+   */
+  localTypes: Map<string, string>;
+  /**
+   * Names the enclosing nodes bound for an expression to read — `$each`'s `as`, `$single`'s,
+   * `$agent`'s, `$surface`'s. What tells `post.title` from a typo, which the context-reference
+   * strings never had: `'$psot.title'` resolved to nothing and nobody was told.
+   */
+  contextScope: Set<string>;
   hasRoutesAncestor: boolean;
+  /**
+   * Inside a `meta.panels` entry's node — a section's own tree. What refuses a `$panels` outlet
+   * there: lanes hold sections, sections do not hold lanes.
+   */
+  insidePanel?: boolean;
   /** True only for the root template node and for route entry nodes — the positions the router
    *  actually reads routes arrays from. Child nodes that are not route entries must never own
    *  a routes array; if they do, nothing will render (the router never sees it). */
   isRouteEligible: boolean;
+  /**
+   * This schema is a fragment (a bare `SchemaNode` export), not a self-contained template.
+   *
+   * A fragment is by definition a piece of something else, and `$localState` is scoped to the node
+   * that declares it — so a section composed into a page legitimately reads state that page owns.
+   * Judging it standalone reports an error about correct code: the shell's language settings section
+   * was flagged three times for reading `newLanguageAddress`, which the `/languages` route declares.
+   */
+  isFragment: boolean;
 }
 
 function walkNode(
@@ -322,7 +510,130 @@ function walkNode(
   const n = node as Record<string, unknown>;
 
   const type = n.type as string | undefined;
-  if (!type || typeof type !== 'string') return;
+  if (!type || typeof type !== 'string') {
+    /**
+     * A node with no `type` is legitimate, and returning here used to discard its whole subtree.
+     *
+     * The case that matters is a **grouping route** — `{ path, children, routes }` with nothing to
+     * render of its own, which is how a layout route nests its sub-routes. The default template's
+     * `/space/:spaceId` is exactly that, so bailing here meant About, Globe, Cards, Flux, Graph and
+     * Settings — every space view there is — were never validated at all. Unknown components and
+     * misspelled props inside them passed silently, which is the opposite of what running this is
+     * for.
+     *
+     * There is nothing to check *about* the node itself (no component, so no props to resolve
+     * against one); what matters is that the walk continues through it.
+     */
+    checkRoutes(n, path, ctx, state, errors);
+    const childState = Array.isArray(n.routes) ? { ...state, hasRoutesAncestor: true } : state;
+    walkChildren(n, path, ctx, childState, errors);
+    return;
+  }
+
+  /**
+   * A node type the renderer draws ONE child of, given several.
+   *
+   * `$each` renders `children[0]` as its row template and drops the rest; `$animate` does the same
+   * with the child it wraps. Both are documented as taking one child, and both discard the others in
+   * silence — no warning, no fallback, nothing in the DOM.
+   *
+   * That silence is the whole reason this check exists. `commentThread` built each row as *two*
+   * nodes — the reply, then the thread hanging off it — so every level of every thread below the
+   * first was expanded, validated, and never mounted. The symptom was a reply to a reply appearing
+   * nowhere at all, with nothing anywhere to say a node had been dropped, and the fragment's own
+   * tests could not see it: the expansion was correct, and what was wrong was what the renderer did
+   * with it.
+   *
+   * The fix at a call site is always the same — wrap the children in one box.
+   */
+  if ((type === '$each' || type === '$animate') && Array.isArray(n.children) && n.children.length > 1) {
+    errors.push({
+      path: `${path}.children`,
+      message:
+        `{ type: "${type}" } renders only its first child and silently drops the other ` +
+        `${n.children.length - 1}. Wrap them in one node — a Column or a Row — so the whole ` +
+        `${type === '$each' ? 'row' : 'subject'} is one child.`,
+      severity: 'error',
+    });
+  }
+
+  /**
+   * `$part` — a module's named fragment, placed by an interface.
+   *
+   * The host expands the marker before the renderer sees it, so an unknown id renders nothing and
+   * warns once in a console nobody is reading. With a catalogue the id is checked here, where the
+   * author is; without one only its shape is.
+   */
+  if (type === '$part') {
+    const id = (n.props as { id?: unknown } | undefined)?.id;
+    if (typeof id !== 'string' || !id.includes('.')) {
+      errors.push({
+        path: `${path}.props.id`,
+        message: '{ type: "$part" } needs an "id" of the form "<moduleId>.<partName>"',
+        severity: 'error',
+      });
+    } else if (ctx.modules && !ctx.modules.parts.has(id)) {
+      const hint = suggest(id, ctx.modules.parts);
+      errors.push({
+        path: `${path}.props.id`,
+        message: `No module publishes part "${id}"${hint ? ` — did you mean "${hint}"?` : ''}`,
+        severity: 'error',
+      });
+    }
+    return;
+  }
+
+  /**
+   * `$slot` outlet — where a module lets other modules contribute chrome.
+   *
+   * Checked rather than waved through with the other `$` types because the failure is silent in a
+   * way none of theirs are: the host resolves the marker before the renderer ever sees it, so a
+   * missing or misspelled `anchor` renders nothing at all and is indistinguishable from an anchor
+   * nobody has contributed to. The registry reports the *other* half of this — a contribution aimed
+   * at an anchor no module provides — so between them a typo is caught from whichever side it was
+   * made on.
+   */
+  if (type === '$slot') {
+    const anchor = (n.props as { anchor?: unknown } | undefined)?.anchor;
+    if (typeof anchor !== 'string' || !anchor) {
+      errors.push({
+        path: `${path}.props.anchor`,
+        message: '{ type: "$slot" } needs a non-empty "anchor" string naming the anchor it renders',
+        severity: 'error',
+      });
+    }
+    return;
+  }
+
+  /**
+   * `$panels` outlet — a home lane, where a template lets sections live in its own flow.
+   *
+   * Checked for the reason `$slot` is: the host rewrites the marker before the renderer sees it, so
+   * a missing `lane` renders an empty outlet that is indistinguishable from a lane nobody has put a
+   * section in. And refused inside a panel's own node: lanes hold sections, sections do not hold
+   * lanes. That is what keeps a position a few integers, which is what keeps two arrangements
+   * mergeable per panel — make it recursive and the template's declaration stops being a suggestion
+   * a drag can overrule.
+   */
+  if (type === '$panels') {
+    const lane = (n.props as { lane?: unknown } | undefined)?.lane;
+    if (typeof lane !== 'string' || !lane) {
+      errors.push({
+        path: `${path}.props.lane`,
+        message: '{ type: "$panels" } needs a non-empty "lane" string naming the home lane it renders',
+        severity: 'error',
+      });
+    }
+    if (state.insidePanel) {
+      errors.push({
+        path: `${path}.type`,
+        message:
+          '{ type: "$panels" } cannot be inside a panel\'s node: lanes hold sections, sections do not hold lanes',
+        severity: 'error',
+      });
+    }
+    return;
+  }
 
   // Skip operator nodes
   if (type.startsWith('$') && type !== '$routes') {
@@ -363,14 +674,23 @@ function walkNode(
     return;
   }
 
+  /**
+   * Bring this node's own `$localState` into scope *before* reading its props.
+   *
+   * Declaring state and consuming it on the same node is the ordinary shape — a button that owns a
+   * `joining` flag sets it in `onClick` and reads it in `loading` — and checking props against the
+   * parent scope reported every one of those as undeclared. The runtime has no such ordering: the
+   * signals are created on mount, before any prop resolves.
+   */
+  const newState = updateLocalScope(n, state);
+
+  checkHoistedQueries(n, path, ctx, newState, errors);
+
   // Check props
   const props = n.props as Record<string, unknown> | undefined;
   if (props && typeof props === 'object') {
-    checkProps(props, path, type, ctx, state, errors);
+    checkProps(props, path, type, ctx, newState, errors);
   }
-
-  // Update local scope if $localState is present
-  const newState = updateLocalScope(n, state);
 
   // Check routes
   checkRoutes(n, path, ctx, newState, errors);
@@ -393,41 +713,339 @@ function walkOperatorNode(
   const props = n.props as Record<string, unknown> | undefined;
   if (!props) return;
 
-  if (type === '$each') {
-    // Walk the item template
-    if (props.item && typeof props.item === 'object') {
-      walkNode(props.item, `${path}.props.item`, ctx, state, errors);
-    }
+  /*
+    Every prop on an operator node, checked as a token.
+
+    Only `$if`'s condition used to be, which left the most data-dense prop in the language unexamined:
+    `$each`'s `items` is where a `$query` lives, and nothing looked at it. That is the last link in the
+    chain that let `spaceStore.signalTypesBySlug` outlive the store refactor that deleted it — the
+    route wasn't walked, the docs still listed the member, and even once both were fixed the `$query`
+    holding it sat in a prop nobody read.
+
+    A generic pass rather than a per-operator list, so an operator added later is covered by default
+    instead of silently exempt. There is no known-prop check to make here — an operator's props are
+    its own grammar, not a component's registered surface.
+  */
+  for (const [key, value] of Object.entries(props)) {
+    // `then`/`else` hold schema *nodes*, not tokens — walked below, where a token in that slot is
+    // itself reported as the mistake it is.
+    if (type === '$if' && (key === 'then' || key === 'else')) continue;
+    checkTokenValue(value, `${path}.props.${key}`, ctx, state, errors);
+    // No registry entry for an operator's own props; the name test is the whole check there.
+    checkValuePositionIf(key, value, `${path}.props.${key}`, undefined, errors);
   }
 
   if (type === '$if') {
-    checkTokenValue(props.condition, `${path}.props.condition`, ctx, state, errors);
-    if (props.then && typeof props.then === 'object' && !isTokenObject(props.then)) {
-      walkNode(props.then, `${path}.props.then`, ctx, state, errors);
-    } else if (props.then) {
-      checkTokenValue(props.then, `${path}.props.then`, ctx, state, errors);
-    }
-    if (props.else && typeof props.else === 'object' && !isTokenObject(props.else)) {
-      walkNode(props.else, `${path}.props.else`, ctx, state, errors);
-    } else if (props.else) {
-      checkTokenValue(props.else, `${path}.props.else`, ctx, state, errors);
-    }
+    checkBranchSlot(props.then, `${path}.props.then`, ctx, state, errors);
+    checkBranchSlot(props.else, `${path}.props.else`, ctx, state, errors);
   }
 
-  // Walk children of operator nodes
-  walkChildren(n, path, ctx, state, errors);
+  // Walk children of operator nodes, with whatever name this one binds for them.
+  walkChildren(n, path, ctx, withBoundName(type, props, state), errors);
+}
+
+/** The context name a binding operator gives its subtree, if this is one. */
+const BINDING_DEFAULTS: Record<string, string> = {
+  $each: 'item',
+  $single: 'item',
+  $agent: 'agent',
+  $surface: 'surface',
+};
+
+function withBoundName(type: string, props: Record<string, unknown>, state: WalkState): WalkState {
+  const fallback = BINDING_DEFAULTS[type];
+  if (fallback === undefined) return state;
+  const name = typeof props.as === 'string' && props.as ? props.as : fallback;
+  const contextScope = new Set(state.contextScope);
+  contextScope.add(name);
+  return { ...state, contextScope };
+}
+
+/**
+ * An expression, parsed and checked against what this node can see.
+ *
+ * Both halves report a column — the offset into the source the author wrote — because "somewhere
+ * in this string" is not a location an authoring loop can act on, and the string can be long.
+ */
+function checkExpressionToken(
+  source: string,
+  path: string,
+  ctx: ValidationContext,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  let ast;
+  try {
+    ast = parseExpression(source);
+  } catch (error) {
+    if (error instanceof ExpressionSyntaxError) {
+      errors.push({
+        path: `${path}.$`,
+        message: `Expression: ${error.message} (column ${error.span[0]})`,
+        severity: 'error',
+      });
+      return;
+    }
+    throw error;
+  }
+  const issues = checkExpression(ast, {
+    storeNames: ctx.storeNames,
+    storeMembers: ctx.storeMembers,
+    // A whole template with no `$localState` has an empty scope, not an unknowable one.
+    locals: state.localScope ?? (state.isFragment ? null : new Set()),
+    contextNames: state.contextScope,
+    strict: !state.isFragment,
+    hostFunctions: ctx.hostFunctions,
+    moduleMembers: ctx.modules?.members,
+  });
+  for (const issue of issues) {
+    errors.push({
+      path: `${path}.$`,
+      message: `Expression: ${issue.message} (column ${issue.span[0]})`,
+      severity: issue.severity,
+    });
+  }
+}
+
+/**
+ * A `then`/`else` slot on a **block-level** `$if` node must hold a schema node.
+ *
+ * The renderer passes these straight to `renderNode`, so an operator token — `{ $if: … }`,
+ * `{ $store: … }` — has no `type` and renders nothing at all. Silently, and only at runtime.
+ *
+ * The mistake is easy because both spellings are real and look interchangeable: `{ $if: … }` is
+ * the prop-level operator, legal in any prop value, while `{ type: '$if', props: { … } }` is the
+ * node. Nesting one conditional inside another's `else` is exactly where an author reaches for the
+ * wrong one — and this validator used to accept it, which is how a token in that slot blanked WE's
+ * entire sign-in screen with every check passing.
+ */
+function checkBranchSlot(
+  value: unknown,
+  path: string,
+  ctx: ValidationContext,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  if (value === undefined || value === null) return;
+
+  // Strings are legal — a text child.
+  if (typeof value !== 'object') return;
+
+  // A node stays a node whatever `$`-prefixed siblings it carries: `$localState` and `$queries`
+  // live alongside `type`, so "has a $ key" alone does not make something a token.
+  const record = value as Record<string, unknown>;
+  const isNode = 'type' in record || 'children' in record;
+
+  if (!isNode && isTokenObject(value)) {
+    const keys = Object.keys(value).filter((k) => k.startsWith('$'));
+    const asNode = keys.includes('$if')
+      ? ` Write it as a node: { type: "$if", props: { … } }.`
+      : ` This slot renders a node, so a "${keys[0]}" token here renders nothing.`;
+    errors.push({
+      path,
+      message: `Operator token "${keys[0]}" used where a schema node is required.${asNode}`,
+      severity: 'error',
+    });
+    // Still walk the token's internals so store/action typos inside it are reported too.
+    checkTokenValue(value, path, ctx, state, errors);
+    return;
+  }
+
+  walkNode(value, path, ctx, state, errors);
 }
 
 function updateLocalScope(n: Record<string, unknown>, state: WalkState): WalkState {
-  // $localState lives on the node itself (sibling of type/props/children), not inside props
+  // Both live on the node itself (siblings of type/props/children), not inside props.
   const localState = n.$localState as Record<string, unknown> | undefined;
-  if (!localState || typeof localState !== 'object') return state;
+  /**
+   * Hoisted queries declare `$local` names too — they share one namespace with `$localState`, and a
+   * node reads `{ $local: 'signalTypes' }` without caring which declared it.
+   *
+   * Missed until `$count`'s internals started being walked, at which point every read of a hoisted
+   * query was reported as undeclared. Registering them here is what makes those reads legal — and,
+   * in the other direction, makes a typo in a `$queries` key catchable at last.
+   */
+  const queries = n.$queries as Record<string, unknown> | undefined;
+
+  const hasState = localState && typeof localState === 'object';
+  const hasQueries = queries && typeof queries === 'object';
+  if (!hasState && !hasQueries) return state;
 
   const newFields = new Set(state.localScope ?? []);
-  for (const key of Object.keys(localState)) {
-    newFields.add(key);
+  const newTypes = new Map(state.localTypes);
+  if (hasState)
+    for (const [key, field] of Object.entries(localState)) {
+      newFields.add(key);
+      const declared = (field as { type?: unknown } | null)?.type;
+      if (typeof declared === 'string') newTypes.set(key, declared);
+    }
+  const newQueries = new Set(state.queryScope);
+  if (hasQueries)
+    for (const key of Object.keys(queries)) {
+      newQueries.add(key);
+      // The renderer exposes a `<name>Loaded` flag beside each hoisted query —
+      // false until the first result set — so templates can hold a skeleton
+      // instead of flashing their empty state. Read-only, like the query itself.
+      newQueries.add(`${key}Loaded`);
+    }
+  // A `$localState` field on the same node shadows the hoisted query of that name, so the write
+  // check below must not treat it as read-only any more.
+  if (hasState) for (const key of Object.keys(localState)) newQueries.delete(key);
+  for (const key of newQueries) newFields.add(key);
+  return { ...state, localScope: newFields, queryScope: newQueries, localTypes: newTypes };
+}
+
+/**
+ * `BlockComposer` given an `onSave` but no `onReady`.
+ *
+ * The composer is pull-based: `onSave` fires when somebody calls the `save()` it hands out through
+ * `onReady`, not when the user types. So this combination means the template has a save handler
+ * nothing will ever trigger — and because `onReady` is optional, the composer falls back to
+ * rendering a floppy-disk button of its own, leaving two buttons on screen of which only the
+ * unexpected one works. The template's own button, wired to a draft that was never filled in,
+ * submits `null` and fails inside `persistNode`, several frames from the cause.
+ *
+ * A hard-coded component rule rather than something derived, because the constraint is not
+ * expressible in the manifest: it is a relationship *between* two optional props. Kept next to the
+ * generic prop checks so the one component this applies to is visible rather than buried.
+ *
+ * The fix at a call site is almost always "use `composerModal` from `@we/template-kit`", which owns
+ * the handshake.
+ */
+function checkComposerHandshake(
+  props: Record<string, unknown>,
+  path: string,
+  componentType: string,
+  errors: ValidationError[],
+): void {
+  if (componentType !== 'BlockComposer') return;
+  if (props.onSave === undefined || props.onReady !== undefined) return;
+  errors.push({
+    path: `${path}.props.onSave`,
+    message:
+      'BlockComposer has "onSave" but no "onReady" — onSave only fires when the composer\'s own save() ' +
+      'is called, and save() is handed out through onReady. Without it this handler never runs, and the ' +
+      'composer renders its own save button instead. Use composerModal from @we/template-kit, or wire ' +
+      'onReady to a function-typed $localState field and call it with $callLocal.',
+    severity: 'error',
+  });
+}
+
+/**
+ * Semantic roles as a *template* spells them — kebab-case — mapped from the camelCase a `ThemeRole`
+ * uses. The two spellings are unavoidable (one is a TypeScript key, the other a CSS custom property)
+ * and confusing them fails in the worst possible way: `tokenVar` does not recognise `surfaceSunken`,
+ * so it emits `var(--we-color-surfaceSunken)`, a variable that does not exist, and the declaration
+ * is dropped. No error, no fallback — the element simply paints nothing, which reads as a layout
+ * bug somewhere else entirely. Migrating the repo's templates to roles hit this on ~690 call sites
+ * at once, all of them silent.
+ */
+const ROLE_SPELLINGS = new Map(
+  Object.keys(role).map((name) => [name, name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)]),
+);
+const COLOUR_PROPS = new Set(['bg', 'color', 'borderColor', 'fadeColor', 'bgImageTint', 'ring']);
+const BORDER_PROPS = new Set(['border', 'borderTop', 'borderRight', 'borderBottom', 'borderLeft']);
+
+/** Flag a role named in camelCase, wherever a colour can appear — including behind `$if`. */
+function checkColourValue(propName: string, value: unknown, path: string, errors: ValidationError[]): void {
+  // A colour computed by an expression is one of its string literals — `open ? 'accentMuted' : 'surface'`.
+  if (isExpressionToken(value)) {
+    for (const literal of value.$.matchAll(/'([^'\\]*)'|"([^"\\]*)"/g)) {
+      checkColourValue(propName, literal[1] ?? literal[2], path, errors);
+    }
+    return;
   }
-  return { ...state, localScope: newFields };
+  if (typeof value === 'string') {
+    const candidate = BORDER_PROPS.has(propName) ? value.split(' ').slice(2).join(' ') : value;
+    // Only when the two spellings actually differ — `page` and `surface` are the same either way.
+    const kebab = ROLE_SPELLINGS.get(candidate);
+    if (kebab && kebab !== candidate) {
+      errors.push({
+        path,
+        message:
+          `"${candidate}" is a role name in its TypeScript spelling; a schema writes roles kebab-cased. ` +
+          `Use "${kebab}". As written it resolves to a CSS variable that does not exist, so nothing is painted.`,
+        severity: 'error',
+      });
+    }
+    return;
+  }
+}
+
+/**
+ * A spacing value that is neither a step of the scale, a theme family nor CSS.
+ *
+ * `gap: '050'` reads as "half of 100" and is not a token — the scale starts `0`, `100`, `200`. It
+ * resolved to `var(--we-space-050)`, a variable nothing declares, so the gap was silently zero, and
+ * nothing said so: the prop is typed `SpaceValue`, which classifies as a plain string, and the
+ * runtime's unknown-token warning only fired on names made of letters. Six call sites shipped it,
+ * one of them inside a segmented control whose padding was therefore never there.
+ *
+ * Families are per axis: `p: 'surface'` and `gap: 'control'` resolve, `m: 'surface'` does not.
+ */
+const SPACE_SCALE = new Set(Object.keys(space));
+const PADDING_PROPS = new Set(['p', 'px', 'py', 'pt', 'pr', 'pb', 'pl']);
+const MARGIN_AND_OFFSET_PROPS = new Set(['m', 'mx', 'my', 'mt', 'mr', 'mb', 'ml', 'top', 'right', 'bottom', 'left']);
+const SPACE_FAMILIES = {
+  padding: new Set(Object.keys(semanticValues('padding'))),
+  gap: new Set(Object.keys(semanticValues('gap'))),
+};
+/** The bags whose keys are DS props in their own right, so a `mdUpProps: { gap: '050' }` is caught too. */
+const PROP_BAGS = new Set(['hoverProps', 'activeProps', 'focusProps', 'disabledProps', ...tierKeys]);
+const CSS_KEYWORD_RE = /^(auto|inherit|initial|unset|revert)$/i;
+
+function checkSpaceValue(propName: string, value: unknown, path: string, errors: ValidationError[]): void {
+  const isPadding = PADDING_PROPS.has(propName);
+  if (!isPadding && propName !== 'gap' && !MARGIN_AND_OFFSET_PROPS.has(propName)) return;
+  // A spacing computed by an expression is one of its string literals — `open ? '400' : '050'`.
+  if (isExpressionToken(value)) {
+    for (const literal of value.$.matchAll(/'([^'\\]*)'|"([^"\\]*)"/g)) {
+      checkSpaceValue(propName, literal[1] ?? literal[2], path, errors);
+    }
+    return;
+  }
+  if (typeof value !== 'string') return;
+  const families = isPadding ? SPACE_FAMILIES.padding : propName === 'gap' ? SPACE_FAMILIES.gap : undefined;
+  if (
+    SPACE_SCALE.has(value) ||
+    families?.has(value) ||
+    CSS_LENGTH_RE.test(value) ||
+    CSS_COMPUTED_LENGTH_RE.test(value) ||
+    CSS_KEYWORD_RE.test(value) ||
+    // A shorthand of several lengths is raw CSS, and passes through the resolver untouched.
+    /\s/.test(value.trim())
+  ) {
+    return;
+  }
+  const familyHint = families ? `, a theme family (${[...families].join(', ')})` : '';
+  errors.push({
+    path,
+    message:
+      `"${value}" is not a space token. Use a step of the scale (${[...SPACE_SCALE].join(', ')})${familyHint} ` +
+      `or a CSS length. As written it resolves to var(--we-space-${value}), which nothing declares, so no space is applied.`,
+    severity: 'error',
+  });
+}
+
+/**
+ * A string that was a reference in the old spelling — `'$post.title'`, `'$event.detail'`, `'$me.did'`.
+ *
+ * A plain string is text now, so this would render as the characters themselves — a title reading
+ * `$post.title` — and nothing at runtime says so. The roots are the ones a reference could start
+ * from; a literal that happens to begin with a dollar sign and a word is left alone.
+ */
+const LEGACY_REFERENCE =
+  /^\$(event|arg|result|me|item|index|prev|surface|local|currentDataset|[a-zA-Z]+Store|modules)(\.[A-Za-z0-9_$]+)*$/;
+
+function checkLegacyReference(value: unknown, path: string, errors: ValidationError[], dottedOnly = false): void {
+  if (typeof value !== 'string' || !LEGACY_REFERENCE.test(value)) return;
+  // In text, a bare `$arg` is as likely to be prose about the token as a reference to it.
+  if (dottedOnly && !value.includes('.')) return;
+  errors.push({
+    path,
+    message: `"${value}" is a reference in the old string spelling and would render as text. Write { "$": "${value.slice(1)}" }.`,
+    severity: 'error',
+  });
 }
 
 function checkProps(
@@ -441,6 +1059,8 @@ function checkProps(
   const knownProps = ctx.componentProps.get(componentType);
   const propTypes = ctx.componentPropTypes.get(componentType);
 
+  checkComposerHandshake(props, path, componentType, errors);
+
   for (const [propName, propValue] of Object.entries(props)) {
     // Skip internal schema props
     if (propName === '$localState') continue;
@@ -449,11 +1069,36 @@ function checkProps(
 
     // Check for token values in props (regardless of whether prop is known)
     checkTokenValue(propValue, propPath, ctx, state, errors);
+    checkValuePositionIf(propName, propValue, propPath, propTypes, errors);
+
+    if (COLOUR_PROPS.has(propName) || BORDER_PROPS.has(propName)) {
+      checkColourValue(propName, propValue, propPath, errors);
+    }
+    checkSpaceValue(propName, propValue, propPath, errors);
+    if (PROP_BAGS.has(propName) && propValue && typeof propValue === 'object' && !isTokenObject(propValue)) {
+      for (const [bagProp, bagValue] of Object.entries(propValue)) {
+        checkSpaceValue(bagProp, bagValue, `${propPath}.${bagProp}`, errors);
+      }
+    }
 
     // Universal props are always valid
     if (ctx.universalProps.has(propName)) continue;
     // Event handlers are always valid
     if (propName.startsWith('on') && propName.length > 2 && propName[2] === propName[2].toUpperCase()) continue;
+    /*
+      A data attribute is always valid, on anything.
+
+      They are how a consumer marks something for a primitive to find — `data-we-handle` says which
+      part of a sortable row is the grab area, `data-we-more` says a scroller has unloaded content
+      beyond an end — and the design system documents several. Nothing declares them as props,
+      because they are not props: they are attributes the renderer spreads through, and the element
+      that reads one is looking at the DOM rather than at a prop bag.
+
+      Refusing them pushed authors onto a bare `div` to carry a marker, which is why the existing
+      conventions are all documented against native elements. That is a workaround for this check
+      rather than a design.
+    */
+    if (propName.startsWith('data-')) continue;
 
     // Check if prop is known
     if (knownProps && !knownProps.has(propName)) {
@@ -466,21 +1111,30 @@ function checkProps(
           severity: 'warning',
         });
       } else {
+        /*
+          The same nearest-name hint unknown components and models already get.
+
+          Worth having generally, and worth having *now*: `mdProps` is the obvious way to spell the
+          new breakpoint bags and the wrong one — `md` is already a size value on some fifteen
+          primitives, so `mdUpProps` is what they are called. A warning that only says the prop is
+          unknown leaves the author to find that out from the docs.
+        */
+        const suggestion = suggest(propName, [...knownProps, ...ctx.universalProps]);
         errors.push({
           path: propPath,
-          message: `Unknown prop "${propName}" on "${componentType}"`,
+          message: `Unknown prop "${propName}" on "${componentType}"${suggestion ? ` — did you mean "${suggestion}"?` : ''}`,
           severity: 'warning',
         });
       }
       continue;
     }
 
+    checkLegacyReference(propValue, propPath, errors);
+
     // Check prop type category (only for static values, not token objects)
-    // Skip $-prefixed strings — these are dynamic references (e.g. $each iteration vars)
     if (propTypes && !isTokenObject(propValue) && typeof propValue !== 'object') {
-      const isDynamicRef = typeof propValue === 'string' && propValue.startsWith('$');
       const expectedCategory = propTypes.get(propName);
-      if (expectedCategory && expectedCategory !== 'unknown' && !isDynamicRef) {
+      if (expectedCategory && expectedCategory !== 'unknown') {
         const actualType = typeof propValue;
         if (actualType === 'string' || actualType === 'boolean' || actualType === 'number') {
           const allowed =
@@ -505,7 +1159,8 @@ function checkProps(
       const allowed = allowedMap?.get(propName);
       if (allowed && !allowed.includes(propValue)) {
         // {css-length} is a placeholder meaning "any valid CSS length"
-        const acceptsCssLength = allowed.includes('{css-length}') && CSS_LENGTH_RE.test(propValue);
+        const acceptsCssLength =
+          allowed.includes('{css-length}') && (CSS_LENGTH_RE.test(propValue) || CSS_COMPUTED_LENGTH_RE.test(propValue));
         if (!acceptsCssLength) {
           errors.push({
             path: propPath,
@@ -528,6 +1183,71 @@ function checkProps(
   }
 }
 
+/**
+ * `{ $if: … }` in a **value** position, which resolves to a function and paints nothing.
+ *
+ * ## Why this is worth a rule of its own
+ *
+ * `$if` is two things with the same spelling. As a *node* (`{ type: '$if', props: { … } }`) it is
+ * the conditional that renders one branch or the other; as a *token* it is the handler conditional,
+ * legal inside `onClick` and the `$action` lifecycle arrays. What it is not is a value — and the
+ * dispatcher does not know that: it routes every `{ $if: … }` to `resolveIfHandler`, which
+ * unconditionally returns a handler. So
+ *
+ * ```json
+ * { "bg": { "$if": { "condition": …, "then": "primary-50", "else": "neutral-0" } } }
+ * ```
+ *
+ * hands a *function* to the colour resolver. Nothing is painted, nothing warns, nothing throws —
+ * and the validator was green, because `zIfToken` sits in the general prop union and this file
+ * modelled `$if` as yielding a colour. The generated reference taught it in three places, which is
+ * the only reason it kept being written.
+ *
+ * The sanctioned form is a ternary in an expression, which is what the language has one for.
+ *
+ * Handler props are exempt — which is a question about the prop's **declared type**, not its name.
+ * `onClick` is the obvious shape and `we-modal`'s `close: () => void` is the one that is not: it
+ * takes a handler and is called like one, and every `discardGuard` in the app passes a `$if` to it
+ * legitimately. So the test is "does this prop hold a function", answered from the registry, and
+ * falling back to the name only where the component is unknown to it.
+ *
+ * Available exactly here and nowhere deeper: by the time a token is walked recursively, which prop
+ * it hangs off has been lost.
+ */
+function checkValuePositionIf(
+  propName: string,
+  value: unknown,
+  path: string,
+  propTypes: Map<string, string> | undefined,
+  errors: ValidationError[],
+): void {
+  /*
+    Two spellings of "this prop is an event handler", and the second is easy to forget.
+
+    `onClick` is the delegated DOM event. `on:submit` is Solid's direct-listener syntax, which is
+    how a schema reaches a **custom event a Lit primitive declares** — `we-textarea`'s `submit`,
+    `we-menu-item`'s `select` — and which the design system's own guidance tells authors to prefer
+    there, because delegation is unreliable across a shadow boundary and the browser's top layer.
+
+    Only the first was exempt, so a `$if` guarding a custom-event handler was refused with advice to
+    use a ternary, which cannot hold a handler and would not have worked. `$action` in the same
+    position was always accepted, so the rule was not even self-consistent — it was rejecting the
+    conditional form of something it already allowed.
+  */
+  if (/^on[A-Z]/.test(propName) || propName.startsWith('on:')) return;
+  const declared = propTypes?.get(propName);
+  if (declared === 'function') return;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+  if (!('$if' in (value as Record<string, unknown>))) return;
+  errors.push({
+    path,
+    message:
+      `"$if" is a handler and a node type, not a value — in a prop it resolves to a function and the ` +
+      `prop is never set. Use a ternary instead: { "$": "condition ? a : b" }.`,
+    severity: 'error',
+  });
+}
+
 function checkTokenValue(
   value: unknown,
   path: string,
@@ -546,47 +1266,49 @@ function checkTokenValue(
 
   const obj = value as Record<string, unknown>;
 
-  // $store token
-  if ('$store' in obj && typeof obj.$store === 'string') {
-    checkStoreRef(obj.$store, `${path}.$store`, ctx, errors);
+  // An expression carries everything it references in its source; nothing else to walk.
+  if (isExpressionToken(obj)) {
+    checkExpressionToken(obj.$, path, ctx, state, errors);
+    return;
   }
 
   // $action token
   if ('$action' in obj && typeof obj.$action === 'string') {
     checkActionRef(obj.$action, `${path}.$action`, ctx, errors);
+    if (Array.isArray(obj.args)) checkActionArgs(obj.args, `${path}.args`, errors);
   }
 
-  // $query token
+  // $query token — the entity is checked against the manifest's known models.
   if ('$query' in obj && typeof obj.$query === 'object' && obj.$query !== null) {
     const query = obj.$query as Record<string, unknown>;
-    if (typeof query.model === 'string') {
-      checkModelRef(query.model, `${path}.$query.model`, ctx, errors);
-    }
-  }
-
-  // $local token
-  if ('$local' in obj && typeof obj.$local === 'string') {
-    checkLocalRef(obj.$local, `${path}.$local`, 'local', state, errors);
+    if (entityIsCheckable(query)) checkEntityRefs(query.entity, `${path}.$query.entity`, ctx, errors);
+    checkQueryInternals(query, `${path}.$query`, ctx, state, errors);
   }
 
   // $setLocal token
   if ('$setLocal' in obj && typeof obj.$setLocal === 'string') {
     checkLocalRef(obj.$setLocal, `${path}.$setLocal`, 'setLocal', state, errors);
+    checkLocalWrite(obj.$setLocal, `${path}.$setLocal`, 'setLocal', state, errors);
   }
 
-  // $error token
-  if ('$error' in obj && typeof obj.$error === 'string') {
-    checkLocalRef(obj.$error, `${path}.$error`, 'error', state, errors);
+  /*
+    $toggleLocal and $callLocal were never checked at all, so a typo in either produced exactly the
+    failure this validator exists to catch: the button renders, takes the click, warns to a console
+    nobody has open, and does nothing.
+  */
+  if ('$toggleLocal' in obj && typeof obj.$toggleLocal === 'string') {
+    checkLocalRef(obj.$toggleLocal, `${path}.$toggleLocal`, 'toggleLocal', state, errors);
+    checkLocalWrite(obj.$toggleLocal, `${path}.$toggleLocal`, 'toggleLocal', state, errors);
   }
 
-  // $valid token
-  if ('$valid' in obj && typeof obj.$valid === 'string') {
-    checkLocalRef(obj.$valid, `${path}.$valid`, 'valid', state, errors);
+  if ('$toggleLocalIn' in obj && typeof obj.$toggleLocalIn === 'string') {
+    checkLocalRef(obj.$toggleLocalIn, `${path}.$toggleLocalIn`, 'toggleLocalIn', state, errors);
+    checkLocalWrite(obj.$toggleLocalIn, `${path}.$toggleLocalIn`, 'toggleLocalIn', state, errors);
+    checkToggleLocalInField(obj, path, state, errors);
   }
 
-  // $touched token
-  if ('$touched' in obj && typeof obj.$touched === 'string') {
-    checkLocalRef(obj.$touched, `${path}.$touched`, 'touched', state, errors);
+  if ('$callLocal' in obj && typeof obj.$callLocal === 'string') {
+    checkLocalRef(obj.$callLocal, `${path}.$callLocal`, 'callLocal', state, errors);
   }
 
   // $touch token
@@ -596,132 +1318,159 @@ function checkTokenValue(
     }
   }
 
-  // $formValid token — skip $scope
-  if ('$formValid' in obj && typeof obj.$formValid === 'string') {
-    // $formValid: "$scope" is always valid — skip
-  }
-
   // $resetLocal token — skip $scope
   if ('$resetLocal' in obj && typeof obj.$resetLocal === 'string') {
-    // $resetLocal: "$scope" is always valid — skip
+    if (obj.$resetLocal !== '$scope') {
+      checkLocalRef(obj.$resetLocal, `${path}.$resetLocal`, 'resetLocal', state, errors);
+      checkLocalWrite(obj.$resetLocal, `${path}.$resetLocal`, 'resetLocal', state, errors);
+    }
   }
 
   // Recurse into nested token objects ($if, $concat, $map, $eq, $ne, etc.)
+  // The handler conditional: an expression, and a handler or a list of them on each side.
   if ('$if' in obj && typeof obj.$if === 'object' && obj.$if !== null) {
     const ifObj = obj.$if as Record<string, unknown>;
     checkTokenValue(ifObj.condition, `${path}.$if.condition`, ctx, state, errors);
     checkTokenValue(ifObj.then, `${path}.$if.then`, ctx, state, errors);
     checkTokenValue(ifObj.else, `${path}.$if.else`, ctx, state, errors);
   }
+}
 
-  if ('$concat' in obj && Array.isArray(obj.$concat)) {
-    for (let i = 0; i < obj.$concat.length; i++) {
-      checkTokenValue(obj.$concat[i], `${path}.$concat[${i}]`, ctx, state, errors);
-    }
-  }
+/**
+ * `$queries` — hoisted subscriptions declared on a node — get the same treatment as an inline
+ * `$query`.
+ *
+ * They had none at all: not the entity, not a `$store` in a `where`. The shape is identical to the
+ * prop-level token minus its wrapper, so the same two checks apply.
+ */
+function checkHoistedQueries(
+  n: Record<string, unknown>,
+  path: string,
+  ctx: ValidationContext,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  const queries = n.$queries as Record<string, unknown> | undefined;
+  if (!queries || typeof queries !== 'object') return;
 
-  if ('$map' in obj && typeof obj.$map === 'object' && obj.$map !== null) {
-    const mapObj = obj.$map as Record<string, unknown>;
-    checkTokenValue(mapObj.source, `${path}.$map.source`, ctx, state, errors);
-    if (mapObj.select && typeof mapObj.select === 'object') {
-      for (const [k, v] of Object.entries(mapObj.select as Record<string, unknown>)) {
-        checkTokenValue(v, `${path}.$map.select.${k}`, ctx, state, errors);
-      }
-    }
-  }
-
-  if ('$not' in obj) {
-    checkTokenValue(obj.$not, `${path}.$not`, ctx, state, errors);
-  }
-
-  if ('$eq' in obj && Array.isArray(obj.$eq)) {
-    for (let i = 0; i < obj.$eq.length; i++) {
-      checkTokenValue(obj.$eq[i], `${path}.$eq[${i}]`, ctx, state, errors);
-    }
-  }
-
-  if ('$ne' in obj && Array.isArray(obj.$ne)) {
-    for (let i = 0; i < obj.$ne.length; i++) {
-      checkTokenValue(obj.$ne[i], `${path}.$ne[${i}]`, ctx, state, errors);
-    }
-  }
-
-  if ('$lt' in obj && Array.isArray(obj.$lt)) {
-    for (let i = 0; i < obj.$lt.length; i++) {
-      checkTokenValue(obj.$lt[i], `${path}.$lt[${i}]`, ctx, state, errors);
-    }
-  }
-
-  if ('$gt' in obj && Array.isArray(obj.$gt)) {
-    for (let i = 0; i < obj.$gt.length; i++) {
-      checkTokenValue(obj.$gt[i], `${path}.$gt[${i}]`, ctx, state, errors);
-    }
-  }
-
-  if ('$and' in obj && Array.isArray(obj.$and)) {
-    for (let i = 0; i < obj.$and.length; i++) {
-      checkTokenValue(obj.$and[i], `${path}.$and[${i}]`, ctx, state, errors);
-    }
-  }
-
-  if ('$or' in obj && Array.isArray(obj.$or)) {
-    for (let i = 0; i < obj.$or.length; i++) {
-      checkTokenValue(obj.$or[i], `${path}.$or[${i}]`, ctx, state, errors);
-    }
+  for (const [name, query] of Object.entries(queries)) {
+    if (!query || typeof query !== 'object') continue;
+    const q = query as Record<string, unknown>;
+    const qPath = `${path}.$queries.${name}`;
+    if (entityIsCheckable(q)) checkEntityRefs(q.entity, `${qPath}.entity`, ctx, errors);
+    checkQueryInternals(q, qPath, ctx, state, errors);
   }
 }
 
-function checkStoreRef(ref: string, path: string, ctx: ValidationContext, errors: ValidationError[]): void {
-  const dotIdx = ref.indexOf('.');
-  const storeName = dotIdx === -1 ? ref : ref.slice(0, dotIdx);
-
-  if (!ctx.storeNames.has(storeName)) {
-    const known = [...ctx.storeNames].join(', ');
-    errors.push({
-      path,
-      message: `Unknown store "${storeName}" in $store token. Known stores: ${known}`,
-      severity: 'error',
-    });
-    return;
-  }
-
-  if (dotIdx === -1) return;
-
-  // Split remaining path: e.g. "sharedSpaces.length" → ["sharedSpaces", "length"]
-  const rest = ref.slice(dotIdx + 1);
-  const segments = rest.split('.');
-  const rootMember = segments[0];
-
-  // Validate root member exists on store
-  const members = ctx.storeMembers.get(storeName);
-  if (members && !members.has(rootMember)) {
-    const known = [...members].join(', ');
-    errors.push({
-      path,
-      message: `Unknown member "${rootMember}" on store "${storeName}". Known members: ${known}`,
-      severity: 'warning',
-    });
-    return;
-  }
-
-  // Validate nested property access if type metadata is available
-  if (segments.length > 1) {
-    const meta = ctx.storeMemberMeta.get(storeName)?.get(rootMember);
-    if (meta) {
-      const nestedProp = segments[1];
-      // .length is always valid on arrays
-      if (meta.type === 'array' && nestedProp === 'length') return;
-      // Check against known properties
-      if (meta.properties && !meta.properties.includes(nestedProp)) {
-        const known = meta.properties.join(', ');
-        errors.push({
-          path,
-          message: `Unknown property "${nestedProp}" on "${storeName}.${rootMember}" (${meta.type}). Known properties: ${known}`,
-          severity: 'warning',
-        });
+/**
+ * Walk anything nested inside a `$query`, checking every token found on the way down.
+ *
+ * Only `entity` used to be checked, so a `$store` inside a `where` clause was never looked at — which
+ * is how `spaceStore.signalTypesBySlug.like.id` survived the store refactor that deleted it, leaving
+ * a like-count projection filtering on `undefined` with every check passing.
+ *
+ * A query's tokens hide behind *plain* objects (`where: { field: { $store } }`,
+ * `include: { $alias: { where: { … } } }`), and `checkTokenValue` only recurses through operator
+ * shapes it recognises. So this descends the plain structure and hands each token over as it finds
+ * one, stopping at tokens rather than recursing into them — they walk their own internals, and
+ * walking them twice would report everything twice.
+ *
+ * Deliberately **not** checked here: relation names in `include`/`scope.via`, and entity names beyond
+ * the existing `entity` check. Those resolve against the *perspective's* manifest at runtime, which
+ * includes foreign schemas synced in from other apps (Flux's `Channel`, `Conversation`) that this
+ * validator has no picture of. Reporting them would be a stream of false positives on templates that
+ * work.
+ */
+function checkQueryInternals(
+  query: Record<string, unknown>,
+  path: string,
+  ctx: ValidationContext,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  for (const [key, value] of Object.entries(query)) {
+    // `entity` is a bare model name, already checked by the caller.
+    if (key === 'entity') continue;
+    // `include` keys are aliases (`$likeCount`), not tokens — descend per entry so a `$`-prefixed
+    // alias is never mistaken for an operator.
+    if (key === 'include' && value && typeof value === 'object' && !Array.isArray(value)) {
+      for (const [alias, spec] of Object.entries(value as Record<string, unknown>)) {
+        checkNestedTokens(spec, `${path}.include.${alias}`, ctx, state, errors);
       }
+      continue;
     }
+    checkNestedTokens(value, `${path}.${key}`, ctx, state, errors);
   }
+}
+
+/** Descend plain structure; hand any token to {@link checkTokenValue} and let it own its internals. */
+function checkNestedTokens(
+  value: unknown,
+  path: string,
+  ctx: ValidationContext,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      checkNestedTokens(value[i], `${path}[${i}]`, ctx, state, errors);
+    }
+    return;
+  }
+  if (typeof value !== 'object' || value === null) return;
+
+  if (isTokenObject(value)) {
+    checkTokenValue(value, path, ctx, state, errors);
+    return;
+  }
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    checkNestedTokens(child, `${path}.${key}`, ctx, state, errors);
+  }
+}
+
+/**
+ * An expression about the event, nested where it is evaluated before the event exists.
+ *
+ * `args` resolve at render time. At the top level an expression naming `event`/`arg` is deferred to
+ * the callback — that is how `args: [{ $: 'event.detail' }]` works. Inside another token it is
+ * evaluated at once, against no event, and becomes a constant: `{ $setLocal: 'x', value: { $: '…' } }`
+ * is fine (a handler), but an object argument holding one is not. Nothing errors at runtime — the
+ * store is handed a plausible argument — so this is only findable by noticing a control that does
+ * not work.
+ */
+function checkActionArgs(args: unknown[], path: string, errors: ValidationError[]): void {
+  const walk = (value: unknown, at: string, insideOperator: boolean): void => {
+    if (isExpressionToken(value)) {
+      if (!insideOperator) return;
+      try {
+        if (!isCallTime(parseExpression(value.$))) return;
+      } catch {
+        return;
+      }
+      errors.push({
+        path: at,
+        message:
+          `An expression reading the event is nested inside another token, where it is evaluated before the ` +
+          `event exists and becomes a constant. Put the whole computation in one expression at the top level of args.`,
+        severity: 'error',
+      });
+      return;
+    }
+    if (typeof value === 'string') {
+      checkLegacyReference(value, at, errors);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((v, i) => walk(v, `${at}[${i}]`, insideOperator));
+      return;
+    }
+    if (value && typeof value === 'object') {
+      const isOperator = Object.keys(value).some((k) => k.startsWith('$'));
+      for (const [k, v] of Object.entries(value)) walk(v, `${at}.${k}`, insideOperator || isOperator);
+    }
+  };
+
+  args.forEach((arg, i) => walk(arg, `${path}[${i}]`, false));
 }
 
 function checkActionRef(ref: string, path: string, ctx: ValidationContext, errors: ValidationError[]): void {
@@ -741,6 +1490,29 @@ function checkActionRef(ref: string, path: string, ctx: ValidationContext, error
     return;
   }
 
+  // A module's action is one segment deeper: `modules.<id>.<member>`.
+  if (storeName === 'modules' && ctx.modules) {
+    const at = methodName.indexOf('.');
+    const id = at === -1 ? methodName : methodName.slice(0, at);
+    const member = at === -1 ? undefined : methodName.slice(at + 1);
+    const known = ctx.modules.members.get(id);
+    if (known === undefined) {
+      errors.push({
+        path,
+        message: `Unknown module "${id}" in $action "${ref}". This deployment ships: ${[...ctx.modules.members.keys()].join(', ')}`,
+        severity: 'error',
+      });
+    } else if (known !== null && (!member || !known.has(member))) {
+      const hint = member ? suggest(member, known) : undefined;
+      errors.push({
+        path,
+        message: `Unknown action "${member ?? ''}" on modules.${id}${hint ? ` — did you mean "${hint}"?` : ''}. A module's store is private unless it marks a member public`,
+        severity: 'error',
+      });
+    }
+    return;
+  }
+
   const members = ctx.storeMembers.get(storeName);
   if (members && !members.has(methodName)) {
     // Filter to actions only (not state)
@@ -753,9 +1525,40 @@ function checkActionRef(ref: string, path: string, ctx: ValidationContext, error
   }
 }
 
-function checkModelRef(name: string, path: string, ctx: ValidationContext, errors: ValidationError[]): void {
-  if (!ctx.modelNames.has(name)) {
-    const suggestion = suggest(name, ctx.modelNames);
+/**
+ * Whether a query's entity name can be judged here at all.
+ *
+ * `dataset` names where the data lives, and naming one is the author saying the entity belongs to a
+ * schema this validator has no manifest for: a foreign app's models synced into the space (Flux's
+ * `Channel`, `Conversation`) or a manifest installed at runtime (the query test page's `TestItem`).
+ * Both are real entities that resolve fine against the *perspective's* manifest; only `@we/entities`
+ * is knowable statically.
+ *
+ * So the rule is the one the schema docs already state — external data carries `dataset` — and
+ * checking the name anyway turned every such query into a false error the moment operator props
+ * started being walked. A query with no `dataset` targets the current space's WE models, which is
+ * exactly the case worth checking.
+ */
+function entityIsCheckable(query: Record<string, unknown>): boolean {
+  return query.dataset === undefined;
+}
+
+/**
+ * Check the names a query's `entity` spells out: one name, or each name of a literal list — a query
+ * over several entities is only as valid as each one it asks. An expression is not checkable here,
+ * which is the cost the docs name for writing one.
+ */
+function checkEntityRefs(entity: unknown, path: string, ctx: ValidationContext, errors: ValidationError[]): void {
+  if (typeof entity === 'string') return checkEntityRef(entity, path, ctx, errors);
+  if (!Array.isArray(entity)) return;
+  entity.forEach((name, index) => {
+    if (typeof name === 'string') checkEntityRef(name, `${path}[${index}]`, ctx, errors);
+  });
+}
+
+function checkEntityRef(name: string, path: string, ctx: ValidationContext, errors: ValidationError[]): void {
+  if (!ctx.entityNames.has(name)) {
+    const suggestion = suggest(name, ctx.entityNames);
     const didYouMean = suggestion ? ` Did you mean "${suggestion}"?` : '';
     errors.push({
       path,
@@ -763,6 +1566,66 @@ function checkModelRef(name: string, path: string, ctx: ValidationContext, error
       severity: 'error',
     });
   }
+}
+
+/**
+ * A write to a name a `$queries` entry owns.
+ *
+ * `$queries` and `$localState` share one `$local` namespace so a reader need not care which
+ * declared a name — but query results are read-only. `$setLocal` against one warns and no-ops, so
+ * the control renders, accepts the click, and does nothing at all.
+ */
+/**
+ * `$toggleLocalIn` writes a set, so the field it names has to be one, and it has to be given
+ * something to put in it.
+ *
+ * Both mistakes are otherwise silent: a missing `value` toggles `undefined` in and out of the array
+ * forever, and a field declared `boolean` is quietly replaced by an array the first time it is
+ * clicked, so every read of it downstream starts answering a different question.
+ */
+function checkToggleLocalInField(
+  obj: Record<string, unknown>,
+  path: string,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  if (!('value' in obj) || obj.value === undefined) {
+    errors.push({
+      path: `${path}.$toggleLocalIn`,
+      message: '$toggleLocalIn needs a "value" — the entry to add or remove, e.g. { value: "$group.id" }',
+      severity: 'error',
+    });
+  }
+
+  const field = String(obj.$toggleLocalIn).split('.')[0];
+  const declared = state.localTypes.get(field);
+  if (declared !== undefined && declared !== 'array') {
+    errors.push({
+      path: `${path}.$toggleLocalIn`,
+      message:
+        `$toggleLocalIn writes a set to "${field}", which is declared as "${declared}". ` +
+        `Declare it as { type: 'array', initial: [] }.`,
+      severity: 'error',
+    });
+  }
+}
+
+function checkLocalWrite(
+  fieldName: string,
+  path: string,
+  tokenType: string,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  const rootField = fieldName.split('.')[0];
+  if (!state.queryScope.has(rootField)) return;
+  errors.push({
+    path,
+    message:
+      `$${tokenType} writes to "${rootField}", which is declared by $queries and is read-only. ` +
+      `The write will warn and no-op at runtime. Declare it in $localState instead, or write to a different field.`,
+    severity: 'error',
+  });
 }
 
 function checkLocalRef(
@@ -776,6 +1639,9 @@ function checkLocalRef(
   if (fieldName === '$all' || fieldName === '$scope') return;
 
   if (state.localScope === null) {
+    // A fragment's scope is supplied by whatever page composes it, which is not in view here. The
+    // check still runs in full against that page, where the answer is knowable.
+    if (state.isFragment) return;
     errors.push({
       path,
       message: `$${tokenType} references "${fieldName}" but no $localState is declared in scope`,
@@ -784,7 +1650,13 @@ function checkLocalRef(
     return;
   }
 
-  if (!state.localScope.has(fieldName)) {
+  // Dot paths read into an object-typed field (`{ $local: 'location.city' }`), so only the root
+  // segment is a declaration. Checking the whole string rejected a documented read — it went
+  // unnoticed because the subtrees using it were never walked: a branch node carrying $localState
+  // was misread as an operator token, and everything beneath it skipped.
+  const rootField = fieldName.split('.')[0];
+
+  if (!state.localScope.has(rootField)) {
     const declared = [...state.localScope].join(', ');
     errors.push({
       path,
@@ -868,8 +1740,36 @@ function checkRoutes(
     });
   }
 
-  // Walk route nodes. isRouteEligible = true so route entries themselves may define sub-routes.
-  const routeState = { ...state, hasRoutesAncestor: true, isRouteEligible: true };
+  /*
+    Walk route nodes. `isRouteEligible` so route entries may define sub-routes of their own.
+
+    **Local scope resets at a route boundary**, and that is the renderer's behaviour rather than a
+    conservative choice: `buildRoutes` renders each route through its own `RenderSchema` call, which
+    starts with no inherited context. So a `$localState` field or a `$queries` entry declared on the
+    template root is invisible to everything below a `$routes` outlet.
+
+    Carrying the parent's scope across here made the validator disagree with the renderer in the
+    quietest possible direction — it *approved* reads that resolve to nothing at runtime. A feed
+    whose hoisted `signalTypes` query sat on the template root passed validation and then rendered
+    no signal controls at all, with a `field "signalTypes" not declared` line in the console as the
+    only evidence.
+  */
+  const routeState = {
+    ...state,
+    hasRoutesAncestor: true,
+    isRouteEligible: true,
+    /*
+      An **empty** scope, not `null`. The two mean different things here: `null` is "unknown", which
+      is how a fragment validated on its own is treated so that reading a local its eventual parent
+      declares is not an error. Below a route there is nothing unknown — the renderer starts that
+      subtree with no context at all — so an empty set is the accurate statement, and it is what
+      makes the orphan check run rather than be skipped.
+    */
+    localScope: new Set<string>(),
+    localTypes: new Map<string, string>(),
+    queryScope: new Set<string>(),
+    contextScope: new Set<string>(),
+  };
   for (let i = 0; i < routes.length; i++) {
     walkNode(routes[i], `${path}.routes[${i}]`, ctx, routeState, errors);
   }
@@ -890,6 +1790,16 @@ function hasRoutesOutlet(node: unknown): boolean {
     for (const slotNode of Object.values(slots)) {
       if (hasRoutesOutlet(slotNode)) return true;
     }
+  }
+  /**
+   * A `$if` keeps its branches in `props`, not `children` — and putting the outlet behind a gate is
+   * the normal shape, not an exotic one: the default template renders its space routes only once the
+   * dataset is confirmed to be a WE space. Without this the outlet is invisible here and the node is
+   * accused of having routes with nowhere to render them.
+   */
+  const props = n.props as Record<string, unknown> | undefined;
+  if (props && typeof props === 'object') {
+    if (hasRoutesOutlet(props.then) || hasRoutesOutlet(props.else)) return true;
   }
   return false;
 }
@@ -912,9 +1822,35 @@ function walkChildren(
   if (Array.isArray(children)) {
     for (let i = 0; i < children.length; i++) {
       const child = children[i];
-      if (typeof child === 'object' && child !== null) {
-        walkNode(child, `${path}.children[${i}]`, ctx, childState, errors);
+      const childPath = `${path}.children[${i}]`;
+      if (typeof child === 'string') {
+        checkLegacyReference(child, childPath, errors, true);
+        continue;
       }
+      if (typeof child !== 'object' || child === null) continue;
+
+      /*
+        An expression sitting directly in `children` — a count-noun label, a store member for a
+        name, a local for a label. Legal (the children union accepts tokens, which is how a computed
+        label is written at all) but *not a node*, so it must be checked as a token rather than
+        walked as one.
+
+        Walking it as a node is what used to happen, and since a token has no `type` it fell into
+        the grouping-node branch, which looks for routes and children and finds neither — so every
+        store path and local reference inside an expression in a children array went unexamined.
+        The gap was invisible because the same expressions are checked everywhere else: move
+        `{ $: 'local.signalTypes' }` from a prop into a children array and the validator stopped
+        having an opinion about it.
+
+        `type`/`children` still win, so a node carrying `$localState` or `$queries` stays a node.
+      */
+      const record = child as Record<string, unknown>;
+      if (!('type' in record) && !('children' in record) && isTokenObject(child)) {
+        checkTokenValue(child, childPath, ctx, childState, errors);
+        continue;
+      }
+
+      walkNode(child, childPath, ctx, childState, errors);
     }
   }
 
@@ -930,6 +1866,22 @@ function walkChildren(
 }
 
 // ── Public API ─────────────────────────────────────────────────────
+
+/**
+ * The context for judging a module's **own** chrome.
+ *
+ * A module's panels and parts render against the chrome bag and see every member of its store,
+ * marked or not — that is what "private" means: private to the module's own chrome. A space
+ * template reaches only the public members, and that is what the catalogue holds. So a module's own
+ * schema files are judged with its member set left open, and every other module's as public. Without
+ * this the pocket's own panel failed on twenty reads of members it deliberately keeps to itself.
+ */
+export function withOwnModule(context: ValidationContext, moduleId: string): ValidationContext {
+  if (!context.modules) return context;
+  const members = new Map(context.modules.members);
+  members.set(moduleId, null);
+  return { ...context, modules: { ...context.modules, members } };
+}
 
 export function validateSemantic(schema: unknown, context: ValidationContext): ValidationResult {
   // If the schema declares custom stores/components in meta, extend the known sets for this validation
@@ -981,9 +1933,112 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
   }
 
   const errors: ValidationError[] = [];
-  const state: WalkState = { localScope: null, hasRoutesAncestor: false, isRouteEligible: true };
+  // `meta` is what makes a schema a template — a self-contained thing that must declare everything
+  // it reads. Anything else is a fragment; see `WalkState.isFragment`.
+  const state: WalkState = {
+    localScope: null,
+    localTypes: new Map<string, string>(),
+    queryScope: new Set(),
+    contextScope: new Set(),
+    hasRoutesAncestor: false,
+    isRouteEligible: true,
+    isFragment: !meta,
+  };
 
   walkNode(schema, '', context, state, errors);
+
+  /*
+    A template's sections are trees of their own, declared beside the tree rather than in it.
+
+    Walked with the same scope as the root — a section reads the template's stores and its own
+    `$localState`, nothing of the route it happens to render in — and marked so that a `$panels`
+    outlet inside one is refused. That is the one rule that keeps the arrangement model flat.
+  */
+  /*
+    The modules an interface says it needs, checked against the deployment's catalogue where there
+    is one. A declaration naming a module this deployment does not ship is the case the declaration
+    exists to make visible — reported here rather than left to `missingModules` at runtime.
+  */
+  const requires = (schema as { meta?: { requires?: { modules?: unknown } } })?.meta?.requires?.modules;
+  if (context.modules && Array.isArray(requires)) {
+    requires.forEach((id, index) => {
+      if (typeof id === 'string' && !context.modules!.members.has(id)) {
+        errors.push({
+          path: `meta.requires.modules[${index}]`,
+          message: `Requires module "${id}", which this deployment does not ship. This deployment ships: ${[...context.modules!.members.keys()].join(', ')}`,
+          severity: 'warning',
+        });
+      }
+    });
+  }
+
+  const panels = (
+    schema as {
+      meta?: { panels?: { id?: unknown; node?: unknown; open?: unknown; module?: unknown; dock?: unknown }[] };
+    }
+  )?.meta?.panels;
+  if (Array.isArray(panels)) {
+    panels.forEach((panel, index) => {
+      if (!panel || typeof panel !== 'object') return;
+
+      /*
+        A placed module panel names a module and, where the module has several, which panel. Both
+        used to fail silently — an entry naming a panel the module does not have fell back to the
+        module's own bid and nothing said so. With a catalogue, both are checked here.
+      */
+      if (context.modules && typeof panel.module === 'string') {
+        const names = context.modules.panels.get(panel.module);
+        if (!names) {
+          errors.push({
+            path: `meta.panels[${index}].module`,
+            message: `Places a panel of module "${panel.module}", which this deployment does not ship`,
+            severity: 'warning',
+          });
+        } else if (typeof panel.dock === 'string' && !names.has(panel.dock)) {
+          errors.push({
+            path: `meta.panels[${index}].dock`,
+            message: `Module "${panel.module}" has no panel named "${panel.dock}". It has: ${[...names].join(', ') || 'none'}`,
+            severity: 'error',
+          });
+        } else if (panel.dock === undefined && names.size > 1) {
+          errors.push({
+            path: `meta.panels[${index}]`,
+            message: `Module "${panel.module}" has ${names.size} panels; name one with "dock": ${[...names].join(', ')}`,
+            severity: 'error',
+          });
+        }
+      }
+
+      /*
+        `open` is a module's word, and on anything else it is a declaration that does nothing.
+
+        Opening a MODULE's panel means invoking the action its launcher declares, and that action is
+        not always "open a panel" — the call module's is `goToCall`, which joins a call when there is
+        not one — so `open: false` exists to place such a panel without invoking it. An authored
+        panel has no launcher to suppress: the host places it and it is up, and nothing anywhere
+        reads the flag for it.
+
+        Which made it the failure this codebase keeps naming. It typechecks (the entry is one flat
+        type, and `node`/`module` being mutually exclusive is a comment rather than a constraint), it
+        validates, it reads exactly as intended, and the panel opens anyway — with no diagnostic. The
+        one entry in this repo that wrote it has been documenting a behaviour it does not have.
+
+        A warning rather than an error: the panel it is on works, and refusing a whole interface over
+        a field with no effect would be the worse trade for a template arriving from a stranger.
+      */
+      if (panel.node && panel.open !== undefined) {
+        errors.push({
+          path: `meta.panels[${index}].open`,
+          message:
+            '"open" only applies to a panel placed with "module": a panel supplied with "node" has no launcher to invoke and is always placed open',
+          severity: 'warning',
+        });
+      }
+
+      if (!panel.node || typeof panel.node !== 'object') return;
+      walkNode(panel.node, `meta.panels[${index}].node`, context, { ...state, insidePanel: true }, errors);
+    });
+  }
 
   return {
     valid: errors.filter((e) => e.severity === 'error').length === 0,

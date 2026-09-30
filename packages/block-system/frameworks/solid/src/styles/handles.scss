@@ -1,0 +1,120 @@
+.we-block-handle {
+  // position: fixed (not absolute) — this element is promoted to the browser's
+  // top layer via popover="manual", so its containing block is always the
+  // viewport. top/left are computed in viewport coordinates by the caller.
+  position: fixed;
+  z-index: 10;
+  margin: 0;
+
+  // Reset UA [popover] defaults (inset, border, background, overflow, color) that
+  // would otherwise leak through — same defaults OverlayElement resets for
+  // we-modal/we-drawer. (Padding is set below rather than reset.)
+  inset: auto;
+  border: none;
+  background: transparent;
+  overflow: visible;
+  color: inherit;
+  opacity: 0;
+  pointer-events: none;
+  display: flex;
+  height: 40px;
+
+  // Fills the strip `HANDLE_GUTTER` describes in blockHandles.tsx, which is also the strip the
+  // pointer only has to reach for the handle to appear. Keep the two the same.
+  width: 50px;
+  padding: 8px 5px 0 0;
+  transition: opacity var(--we-transition-200);
+
+  .we-block-handle-settings-button {
+    all: unset;
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--we-transition-200);
+  }
+
+  .we-block-handle-dragger {
+    cursor: grab;
+  }
+
+  .we-block-handle-settings-button,
+  .we-block-handle-dragger {
+    height: 25px;
+    width: 25px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    // The icons take their colour from here (they carry no `color` prop, so they are drawn in
+    // currentColor) and brighten under the pointer. A filled hover swatch behind a handle that
+    // is itself already a hover affordance was one layer of feedback too many.
+    color: var(--we-role-text-muted);
+
+    // Both, because this rule comes after the settings button's own opacity transition and a
+    // second `transition` would replace it rather than add to it.
+    transition:
+      color var(--we-transition-200),
+      opacity var(--we-transition-200);
+
+    &:hover {
+      color: var(--we-role-text);
+    }
+  }
+
+  &[data-block-hovered='true'] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  &[data-block-focused='true'] {
+    opacity: 1;
+    pointer-events: auto;
+
+    .we-block-handle-settings-button {
+      opacity: 1;
+      pointer-events: auto;
+    }
+  }
+}
+
+.we-block-handle-drop-spot {
+  // position: fixed (not absolute) — promoted to the browser's top layer via
+  // popover="manual" (see BlockHandlesPlugin.tsx), so its containing block is
+  // always the viewport, matching the viewport-relative top/left computed by
+  // the caller. Without this it can end up confined to an ancestor's
+  // containing block (e.g. a transformed/positioned wrapper) instead.
+  position: fixed;
+
+  // A hairline with rounded caps — it marks a boundary, so it should read as a line rather than
+  // as a bar wedged between two blocks. The caller centres it on that boundary, and knows this
+  // height.
+  height: 4px;
+  background-color: var(--we-role-accent);
+  border-radius: var(--we-radius-pill);
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+
+  // transition: opacity var(--we-transition-300);
+  will-change: opacity;
+
+  // z-index: var(--we-z-dropdown);
+  margin: 0;
+
+  // Reset UA [popover] defaults (inset, padding, border, background, overflow, color) that
+  // would otherwise leak through — same defaults OverlayElement resets for
+  // we-modal/we-drawer, and `we-sortable` for the line it draws for the same job.
+  //
+  // `padding` is the one that matters here and the one that was missing: the UA gives every
+  // popover `0.25em`, so a bar asked for 2px painted about 10px and looked like a slab
+  // regardless of the height set on it.
+  inset: auto;
+  padding: 0;
+  border: none;
+  overflow: visible;
+  color: inherit;
+
+  &.we-block-handle-visible {
+    opacity: 1;
+  }
+}

@@ -69,6 +69,9 @@ This is the deeper promise of WE: communities can improve their institutions by 
 
 ## Example 3: A Shared Knowledge Map
 
+> **This one shipped.** The graph engine (`packages/graph-system/`, the `GraphView` component)
+> implements exactly this — see its README.
+
 A research or learning community builds a collaborative knowledge environment inside WE.
 
 Instead of only using posts and comments, it creates:

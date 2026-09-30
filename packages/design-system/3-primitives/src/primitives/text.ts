@@ -8,22 +8,45 @@ import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 import type { TextTag, TextVariant } from '../types';
 
+/**
+ * A theme may set a display face for headings without changing body text.
+ *
+ * The fallback is written out at the use site rather than defaulting the variable to
+ * `var(--we-font-family)` at :root, which would look equivalent and is not: a custom property
+ * containing var() is substituted where it is *declared*, so :root would bake in the document's
+ * font and a space-scoped theme changing --we-font-family would move its body text and leave its
+ * headings behind. Resolved here, both follow whatever is ambient at the element.
+ *
+ * Applied to the four heading variants only. A display face is chosen for the sizes that carry a
+ * page, and `subheading` sits inline among body text at 18px, where a second face reads as a
+ * mistake rather than a decision.
+ */
+const HEADING_FONT = 'var(--we-theme-heading-font-family, var(--we-font-family))';
+
 const VARIANT_DEFAULTS: Record<TextVariant, Partial<DesignSystemProps>> = {
   '': {},
-  heading: { fontSize: '800', fontWeight: 'bold' },
-  'heading-sm': { fontSize: '600', fontWeight: 'bold' },
-  'heading-lg': { fontSize: '1000', fontWeight: 'bold' },
-  subheading: { fontSize: '500', fontWeight: 'medium' },
-  ingress: { fontSize: '500', lineHeight: '1.6' },
-  body: { fontSize: '400' },
-  label: { fontSize: '300', fontWeight: 'medium' },
-  footnote: { fontSize: '200', color: 'neutral-400' },
+  'heading-sm': { fontSize: '500', fontWeight: 'bold', fontFamily: HEADING_FONT },
+  'heading-md': { fontSize: '600', fontWeight: 'bold', fontFamily: HEADING_FONT },
+  'heading-lg': { fontSize: '700', fontWeight: 'bold', fontFamily: HEADING_FONT },
+  'heading-xl': { fontSize: '800', fontWeight: 'bold', fontFamily: HEADING_FONT },
+  subheading: { fontSize: '400', fontWeight: 'medium' },
+  ingress: { fontSize: '400', lineHeight: '1.6' },
+  body: { fontSize: '300' },
+  label: { fontSize: '200', fontWeight: 'medium' },
+  footnote: { fontSize: '100' },
 };
 
 const styles = css`
   :host {
     --we-text-host-display: block;
     --we-text-display: block;
+    /* we-text is a content primitive often nested inside interactive components (e.g. we-button)
+       that animate color. Excluding color here prevents we-text from starting its own
+       independent ease curve on the inherited color value, which would compound the easing. */
+    --we-text-transition:
+      background var(--we-transition-200, 150ms) ease, border-color var(--we-transition-200, 150ms) ease,
+      opacity var(--we-transition-200, 150ms) ease, box-shadow var(--we-transition-200, 150ms) ease,
+      transform var(--we-transition-200, 150ms) ease, border-radius var(--we-transition-200, 150ms) ease;
   }
 
   :host([uppercase]) {
@@ -39,8 +62,90 @@ const styles = css`
     --we-text-display: inline;
   }
 
+  /*
+    Hold one line even with nothing in it.
+
+    An empty block has no line box, so text bound to data that has not arrived occupied no height
+    and then snapped to a full line once it did — every async name, label and description shifting
+    its layout on load. Reserving the line makes that the element's own problem rather than
+    something each template has to anticipate with a hand-measured placeholder.
+
+    1lh is exactly the line box this text will occupy, so it stays right when a theme changes
+    fontScale or the line-height tokens — which a pixel value cannot. The em fallback is for
+    engines without lh support; it is approximate, and only ever used where the better answer is
+    unavailable.
+
+    Not applied when inline: min-height does nothing on a non-replaced inline box, and an inline
+    run genuinely should collapse when it has nothing to say.
+  */
+  :host(:not([inline])) [part='base'] {
+    min-height: 1.5em;
+    min-height: 1lh;
+  }
+
+  /*
+    No margin unless something asks for one — the user agent's are not this element's to inherit.
+
+    The --we-text-margin variable was declared below and consumed nowhere, so every we-text rendering a
+    heading or a paragraph carried the browser's own margins instead: an h5 is 1.67em 0, which
+    put 44px of nothing inside a chrome pill that had asked for 8px of padding.
+
+    It went unnoticed because the tag is almost never set — six call sites in the app — and the ones
+    that do sit in scrolling pages where loose headings read as deliberate. The docs meanwhile tell
+    every author to pair a variant with a semantic tag, so this was a trap waiting on whoever did
+    it inside a fixed-height box.
+
+    Zero rather than a reset to something: spacing in this design system belongs to the layout that
+    owns it — the gap on the Column or Row around this — and a margin here would add to that gap
+    rather than replace it, which is the arithmetic DS props exist to avoid.
+  */
+  [part='base'] {
+    margin: var(--we-text-margin, 0);
+  }
+
+  /*
+    Prose keeps the space under it, for the reader that wants stacked paragraphs rather than a
+    gapped column. Inert today: nothing in the app sets tag=p, so this rule has never applied and
+    does not change anything now — it becomes live the first time somebody writes one, which is
+    worth knowing in a layout that also carries a gap.
+  */
   :host([tag='p']) {
     --we-text-margin: 0 0 1em 0;
+  }
+
+  /*
+    Truncation has to be allowed to happen.
+
+    Clipping the inner box was never enough in a row, and a row is where truncation is almost always
+    asked for. A flex item's automatic minimum size is its content, and the content of a nowrap line
+    is the whole line — so the host refused to be narrower than its text, the ellipsis never
+    appeared, and the row either ran off its container or took the room out of a sibling that could
+    give it up. The extraction readout did both: its label pushed past the panel while the elapsed
+    clock beside it folded "1:23" onto two lines. Only a handful of the call sites had patched it
+    with a minWidth: '0' of their own.
+
+    Overflow on the host rather than min-width: 0, because a scroll container's automatic
+    minimum is zero while its min-width stays the author's: a minWidth prop, at any tier, still
+    wins. The host's own overflow is not a DS prop, so nothing else writes it.
+  */
+  :host([truncate]) {
+    overflow: hidden;
+  }
+
+  /*
+    Truncated, in every state.
+
+    This is an attribute-gated rule in the base layer. The generated state rules used to outrank it:
+    a hover resolved 'white-space' to its initial 'normal', the line unwrapped onto two, and every row
+    under it moved. 'overflow' once carried '!important' against the same rule, which fixed one
+    property of the three this block needs. Breakpoints and states now sit in cascade layers above
+    this one and roll back whatever they do not set (see "Cascade layers" in 'shared/helpers.ts'), so
+    none can undo it — while one that does set 'whiteSpace' still wins, as an explicit ask should.
+  */
+  :host([truncate]) [part='base'] {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   :host([gradient]:not([gradient=''])) [part='base'] {
@@ -79,7 +184,25 @@ export default class Text extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) inline = false;
   @property({ type: Boolean, reflect: true }) uppercase = false;
   @property({ type: Boolean, reflect: true }) italic = false;
+  @property({ type: Boolean, reflect: true }) truncate = false;
   @property({ type: String, reflect: true }) gradient = '';
+  /**
+   * Show a placeholder at this text's own size instead of its content.
+   *
+   * Here rather than in each template because the size of absent text is only knowable by the
+   * element that would have rendered it — a hand-authored placeholder beside the text has to be
+   * given a height nobody can derive from the schema, and which drifts the moment a theme changes
+   * its type scale.
+   */
+  @property({ type: Boolean, reflect: true }) loading = false;
+  /**
+   * How wide the placeholder is. Defaults to filling the available width.
+   *
+   * The one thing the element genuinely cannot infer: the width of text it has never seen. Left to
+   * the author, and independent of the loaded state, so constraining the placeholder does not also
+   * constrain the text it stands in for.
+   */
+  @property({ type: String }) loadingWidth = '100%';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   override updated(changedProperties: Map<string, unknown>) {
@@ -103,6 +226,12 @@ export default class Text extends DesignSystemElement {
   render() {
     const inline = this.styles || {};
     const renderFn = tagTemplates[this.tag] ?? tagTemplates['span'];
-    return renderFn(this.text ?? html`<slot></slot>`, inline);
+    // The real `we-skeleton` rather than a shimmer of our own, so a placeholder standing in for
+    // text is the same object as one standing in for anything else. Sized to `1lh` — the line this
+    // text occupies — so it holds precisely the room the content will take.
+    const content = this.loading
+      ? html`<we-skeleton width=${this.loadingWidth} height="1lh" style="display:block"></we-skeleton>`
+      : (this.text ?? html`<slot></slot>`);
+    return renderFn(content, inline);
   }
 }

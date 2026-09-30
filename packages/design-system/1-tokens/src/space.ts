@@ -1,3 +1,5 @@
+import type { SemanticGap, SemanticPadding } from './themeFamily.js';
+
 /**
  * SPACE TOKEN DEFINITIONS
  * This file defines spacing tokens that serve as the source of truth for the design system.
@@ -10,20 +12,34 @@ export type SpaceToken = '0' | '100' | '200' | '300' | '400' | '500' | '600' | '
 export type SpaceValue = SpaceToken | (string & {});
 
 /**
+ * Padding and gap take a theme family name as well as a length — `p: 'surface'`, `gap: 'control'`.
+ *
+ * Separate types rather than widening `SpaceValue`, because these are valid on padding and gap and
+ * meaningless on a margin or an offset: a family says how much room a *card* puts inside itself,
+ * which answers nothing about the space between it and its neighbour. Offering `m: 'surface'` in
+ * autocomplete would be offering a value that resolves to nothing.
+ *
+ * Which families carry which axis is declared once in `themeFamily.ts`, and the reason each gap in
+ * that matrix is a gap is documented there.
+ */
+export type PaddingValue = SpaceValue | SemanticPadding;
+export type GapValue = SpaceValue | SemanticGap;
+
+/**
  * Spacing scale from 100-1000.
  * These values define standardized spacing for margins, padding, and layout.
  * The scale follows a consistent progression with appropriate values for various UI contexts.
  */
 export const space = {
-  '0': '0rem', // No spacing
-  '100': '0.25rem', // ~4px - Micro spacing
-  '200': '0.38rem', // ~6px - Tiny spacing
-  '300': '0.5rem', // ~8px - Small spacing
-  '400': '1rem', // ~16px - Default spacing
-  '500': '1.5rem', // ~24px - Medium spacing
-  '600': '2rem', // ~32px - Large spacing
-  '700': '2.38rem', // ~38px - Extra large spacing
-  '800': '2.75rem', // ~44px - Huge spacing
-  '900': '3.25rem', // ~52px - Gigantic spacing
-  '1000': '4rem', // ~64px - Extreme spacing
+  '0': '0rem', // 0px
+  '100': '0.25rem', // 4px — micro
+  '200': '0.5rem', // 8px — tight
+  '300': '0.75rem', // 12px — compact
+  '400': '1rem', // 16px — default
+  '500': '1.5rem', // 24px — medium
+  '600': '2rem', // 32px — large
+  '700': '2.5rem', // 40px — xl
+  '800': '3rem', // 48px — 2xl
+  '900': '4rem', // 64px — 3xl
+  '1000': '6rem', // 96px — 4xl
 } satisfies Record<SpaceToken, string>;

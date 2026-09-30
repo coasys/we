@@ -1,0 +1,434 @@
+/**
+ * Colour maths — parsing, conversion and formatting.
+ *
+ * Lives here rather than inside the picker because it is not the picker's: a contrast check, a
+ * theme's swatch sampling and any future palette generation all need the same conversions, and two
+ * implementations of `hexToRgb` in one repo is how they drift.
+ *
+ * Everything is sRGB and deliberately plain. A perceptual space (OKLCH) is the right substrate for
+ * generating *ramps*, and when that lands it belongs beside these rather than replacing them: a
+ * colour picker still has to speak the formats a person types.
+ */
+
+export type Rgba = { r: number; g: number; b: number; a: number };
+
+/** Colour notations a person can type or paste. */
+export type ColorFormat = 'hex' | 'rgb' | 'hsl' | 'oklch';
+
+const clamp = (n: number, lo = 0, hi = 255) => Math.min(hi, Math.max(lo, n));
+const hex2 = (n: number) => Math.round(clamp(n)).toString(16).padStart(2, '0');
+
+export function rgbToHex({ r, g, b }: Pick<Rgba, 'r' | 'g' | 'b'>): string {
+  return `#${hex2(r)}${hex2(g)}${hex2(b)}`;
+}
+
+/** HSV, which is what a saturation/value area is drawn in. h 0–360, s and v 0–1. */
+export function rgbToHsv({ r, g, b }: Pick<Rgba, 'r' | 'g' | 'b'>): { h: number; s: number; v: number } {
+  const [rn, gn, bn] = [r / 255, g / 255, b / 255];
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const d = max - min;
+  let h = 0;
+  if (d !== 0) {
+    if (max === rn) h = ((gn - bn) / d) % 6;
+    else if (max === gn) h = (bn - rn) / d + 2;
+    else h = (rn - gn) / d + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  return { h, s: max === 0 ? 0 : d / max, v: max };
+}
+
+export function hsvToRgb(h: number, s: number, v: number): Pick<Rgba, 'r' | 'g' | 'b'> {
+  const c = v * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = v - c;
+  const [r, g, b] =
+    h < 60
+      ? [c, x, 0]
+      : h < 120
+        ? [x, c, 0]
+        : h < 180
+          ? [0, c, x]
+          : h < 240
+            ? [0, x, c]
+            : h < 300
+              ? [x, 0, c]
+              : [c, 0, x];
+  return { r: (r + m) * 255, g: (g + m) * 255, b: (b + m) * 255 };
+}
+
+/*
+  OKLCH ⇄ sRGB.
+
+  Worth having even while the token ramps are still HSL, and for a reason that is not "it is
+  newer": OKLCH lightness is *perceptual*, so two colours at the same L look equally bright
+  whatever their hue, where HSL's 50% is far brighter for yellow than for blue. That is exactly the
+  property a colour picker and a contrast check want, and it is why an author pasting an oklch()
+  value from a modern palette tool should not be told it is unparseable.
+
+  Converting rather than storing: everything downstream — the swatches, the contrast maths, the
+  browser — speaks sRGB, so this is a front door, not a new internal representation. Moving the
+  *ramps* to OKLCH is a separate decision that changes how every theme looks; this does not.
+*/
+export function oklchToRgb(l: number, c: number, hDeg: number): Pick<Rgba, 'r' | 'g' | 'b'> {
+  const h = (hDeg * Math.PI) / 180;
+  const a = c * Math.cos(h);
+  const bb = c * Math.sin(h);
+
+  // OKLab → LMS (cube of the intermediate), → linear sRGB.
+  const l_ = (l + 0.3963377774 * a + 0.2158037573 * bb) ** 3;
+  const m_ = (l - 0.1055613458 * a - 0.0638541728 * bb) ** 3;
+  const s_ = (l - 0.0894841775 * a - 1.291485548 * bb) ** 3;
+
+  const lr = +4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_;
+  const lg = -1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_;
+  const lb = -0.0041960863 * l_ - 0.7034186147 * m_ + 1.707614701 * s_;
+
+  // Linear → gamma-encoded sRGB, clipped to the gamut. An out-of-gamut oklch() is clipped rather
+  // than rejected, which is what a browser does with one.
+  const enc = (v: number) => {
+    const g = v <= 0.0031308 ? 12.92 * v : 1.055 * Math.max(v, 0) ** (1 / 2.4) - 0.055;
+    return Math.min(255, Math.max(0, g * 255));
+  };
+  return { r: enc(lr), g: enc(lg), b: enc(lb) };
+}
+
+export function rgbToOklch({ r, g, b }: Pick<Rgba, 'r' | 'g' | 'b'>): { l: number; c: number; h: number } {
+  const dec = (v: number) => {
+    const s = v / 255;
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  const [lr, lg, lb] = [dec(r), dec(g), dec(b)];
+
+  const l_ = Math.cbrt(0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb);
+  const m_ = Math.cbrt(0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb);
+  const s_ = Math.cbrt(0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb);
+
+  const L = 0.2104542553 * l_ + 0.793617785 * m_ - 0.0040720468 * s_;
+  const A = 1.9779984951 * l_ - 2.428592205 * m_ + 0.4505937099 * s_;
+  const B = 0.0259040371 * l_ + 0.7827717662 * m_ - 0.808675766 * s_;
+
+  const c = Math.sqrt(A * A + B * B);
+  const h = c < 1e-6 ? 0 : ((Math.atan2(B, A) * 180) / Math.PI + 360) % 360;
+  return { l: L, c, h };
+}
+
+function hslToRgb(h: number, s: number, l: number): Pick<Rgba, 'r' | 'g' | 'b'> {
+  // Via HSV, so there is one conversion to be wrong in rather than two.
+  const v = l + s * Math.min(l, 1 - l);
+  return hsvToRgb(h, v === 0 ? 0 : 2 * (1 - l / v), v);
+}
+
+/**
+ * Parse any colour notation a person might type, plus the ones `getComputedStyle` returns.
+ *
+ * Returns null for anything unparseable — including `var(--we-color-…)`, which is deliberate: a
+ * token is an indirection, not a colour, and the only honest way to resolve one is to ask the
+ * browser. Callers that need the resolved value sample it from the DOM instead.
+ */
+export function parseColor(input: string): Rgba | null {
+  const value = input.trim().toLowerCase();
+  if (!value) return null;
+
+  const hex = /^#([0-9a-f]{3,8})$/.exec(value);
+  if (hex) {
+    const d = hex[1];
+    const pairs =
+      d.length === 3 || d.length === 4
+        ? [...d].map((c) => c + c)
+        : d.length === 6 || d.length === 8
+          ? [d.slice(0, 2), d.slice(2, 4), d.slice(4, 6), d.slice(6, 8)].filter(Boolean)
+          : null;
+    if (!pairs) return null;
+    const [r, g, b, a] = pairs.map((p) => parseInt(p, 16));
+    return { r, g, b, a: a === undefined ? 1 : a / 255 };
+  }
+
+  // rgb()/rgba()/hsl()/hsla()/oklch(), comma-separated or the modern space-separated form.
+  const fn = /^(rgba?|hsla?|oklch)\(([^)]+)\)$/.exec(value);
+  if (!fn) return null;
+  const parts = fn[2]
+    .replace(/\//g, ' ')
+    .split(/[\s,]+/)
+    .filter(Boolean);
+  if (parts.length < 3) return null;
+  const num = (s: string) => parseFloat(s);
+  const alpha = parts[3] === undefined ? 1 : parts[3].endsWith('%') ? num(parts[3]) / 100 : num(parts[3]);
+
+  if (fn[1].startsWith('rgb')) {
+    const [r, g, b] = parts.slice(0, 3).map((p) => (p.endsWith('%') ? (num(p) / 100) * 255 : num(p)));
+    return { r, g, b, a: alpha };
+  }
+  if (fn[1] === 'oklch') {
+    // L may be written 0–1 or as a percentage; C is absolute, H in degrees.
+    const l = parts[0].endsWith('%') ? num(parts[0]) / 100 : num(parts[0]);
+    return { ...oklchToRgb(l, num(parts[1]), num(parts[2])), a: alpha };
+  }
+  const h = ((num(parts[0]) % 360) + 360) % 360;
+  return { ...hslToRgb(h, num(parts[1]) / 100, num(parts[2]) / 100), a: alpha };
+}
+
+/** Render a colour in one of the notations a person reads. Alpha is dropped where it cannot show. */
+export function formatColor(c: Rgba, format: ColorFormat): string {
+  const r = Math.round(c.r);
+  const g = Math.round(c.g);
+  const b = Math.round(c.b);
+  const a = Math.round(c.a * 100) / 100;
+  if (format === 'rgb') return a < 1 ? `rgb(${r} ${g} ${b} / ${a})` : `rgb(${r} ${g} ${b})`;
+  if (format === 'hsl') {
+    const { h, s, v } = rgbToHsv(c);
+    const l = v * (1 - s / 2);
+    const sl = l === 0 || l === 1 ? 0 : (v - l) / Math.min(l, 1 - l);
+    const out = `hsl(${Math.round(h)} ${Math.round(sl * 100)}% ${Math.round(l * 100)}%`;
+    return a < 1 ? `${out} / ${a})` : `${out})`;
+  }
+  if (format === 'oklch') {
+    const { l, c: chroma, h } = rgbToOklch(c);
+    const out = `oklch(${(l * 100).toFixed(1)}% ${chroma.toFixed(3)} ${h.toFixed(1)}`;
+    return a < 1 ? `${out} / ${a})` : `${out})`;
+  }
+  // Hex cannot carry alpha in the form most people expect to paste back, so a translucent colour
+  // is written as rgb() rather than silently losing its transparency.
+  return a < 1 ? `rgb(${r} ${g} ${b} / ${a})` : rgbToHex(c);
+}
+
+/** The canonical string for a design token, as a theme and a schema both spell it. */
+export function tokenColorVar(token: string): string {
+  return `var(--we-color-${token})`;
+}
+
+/** The token a `var(--we-color-…)` string names, or null if it is not one. */
+export function colorVarToken(value: string): string | null {
+  const m = /^var\(--we-color-([a-z]+-\d+)\)$/.exec(value.trim());
+  return m ? m[1] : null;
+}
+
+/**
+ * Relative luminance, per WCAG 2.
+ *
+ * The sRGB channels are gamma-encoded, so they have to be linearised before they mean anything
+ * photometric — averaging the raw bytes is the classic way to get a contrast check that passes
+ * things nobody can read.
+ */
+export function relativeLuminance({ r, g, b }: Pick<Rgba, 'r' | 'g' | 'b'>): number {
+  const lin = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+/**
+ * The WCAG 2 contrast ratio between two colours, 1 (identical) to 21 (black on white).
+ *
+ * A translucent foreground is composited over the background first — otherwise a 10%-alpha text
+ * colour scores as though it were solid, which is exactly backwards: transparency is the thing
+ * most likely to make text unreadable.
+ *
+ * WCAG 2 is used rather than APCA because it is what accessibility requirements are still written
+ * against. It is known to be unkind to mid-tones; a check that disagrees with the standard people
+ * are held to would be worse than one that is occasionally pessimistic.
+ */
+export function contrastRatio(foreground: Rgba, background: Rgba): number {
+  const composited: Rgba =
+    foreground.a >= 1
+      ? foreground
+      : {
+          r: foreground.r * foreground.a + background.r * (1 - foreground.a),
+          g: foreground.g * foreground.a + background.g * (1 - foreground.a),
+          b: foreground.b * foreground.a + background.b * (1 - foreground.a),
+          a: 1,
+        };
+  const [hi, lo] = [relativeLuminance(composited), relativeLuminance(background)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/** What a pair is for, and therefore what it has to clear. */
+export type ContrastLevel = 'body' | 'large' | 'ui';
+
+/** WCAG 2 AA thresholds: 4.5 for body text, 3 for large text and for non-text UI. */
+export const CONTRAST_MINIMUM: Record<ContrastLevel, number> = { body: 4.5, large: 3, ui: 3 };
+
+/**
+ * The most chroma sRGB can hold at a given OKLCH lightness and hue.
+ *
+ * Needed because chroma is *absolute* where HSL saturation was relative, so one flat ceiling means
+ * one number does different things at different hues: at L 0.6 a violet can reach 0.259 and a teal
+ * only 0.103, so `saturation: 100` gave the violet 70% of its range and stopped affecting the teal
+ * at about 29. That is the same "one number, different meanings" problem the ramp had for
+ * lightness, one axis over.
+ *
+ * Found by bisection rather than by formula: the sRGB boundary in OKLCH is a genuinely awkward
+ * shape, and twenty halvings resolve it far finer than an 8-bit channel can show.
+ */
+export function maxChromaFor(lightness: number, hue: number, gamut: Gamut = 'srgb'): number {
+  let lo = 0;
+  let hi = 0.5;
+  for (let i = 0; i < 20; i++) {
+    const mid = (lo + hi) / 2;
+    if (rawInGamut(lightness, mid, hue, gamut)) lo = mid;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/**
+ * The gamuts a display might have.
+ *
+ * `p3` is not a different colour *space* here — the ramp is OKLCH either way — only a different
+ * boundary for how much chroma is reachable. Display P3 holds roughly 25% more of it, and on a
+ * modern laptop or phone that is the difference between an accent that looks considered and one
+ * that looks slightly washed. sRGB stays the default and the fallback: nothing is *lost* on an
+ * older display, the ceiling is simply lower there.
+ */
+export type Gamut = 'srgb' | 'p3';
+
+/** Linear-light RGB → XYZ (D65), then XYZ → the target gamut's linear RGB. */
+const P3_FROM_XYZ = [
+  [2.4934969119, -0.9313836179, -0.4027107845],
+  [-0.8294889696, 1.7626640603, 0.023624686],
+  [0.0358458302, -0.0761723893, 0.956884524],
+];
+const XYZ_FROM_SRGB_LINEAR = [
+  [0.4123907993, 0.3575843394, 0.1804807884],
+  [0.212639006, 0.7151686788, 0.0721923154],
+  [0.0193308187, 0.1191947798, 0.9505321522],
+];
+
+/** Whether oklch(l c h) lands inside the given gamut, without the clipping `oklchToRgb` applies. */
+function rawInGamut(l: number, c: number, h: number, gamut: Gamut = 'srgb'): boolean {
+  const rad = (h * Math.PI) / 180;
+  const a = c * Math.cos(rad);
+  const bb = c * Math.sin(rad);
+  const L = (l + 0.3963377774 * a + 0.2158037573 * bb) ** 3;
+  const M = (l - 0.1055613458 * a - 0.0638541728 * bb) ** 3;
+  const S = (l - 0.0894841775 * a - 1.291485548 * bb) ** 3;
+  const linearSrgb = [
+    4.0767416621 * L - 3.3077115913 * M + 0.2309699292 * S,
+    -1.2684380046 * L + 2.6097574011 * M - 0.3413193965 * S,
+    -0.0041960863 * L - 0.7034186147 * M + 1.707614701 * S,
+  ];
+  // P3 shares sRGB's white point and transfer curve, so the boundary test is the same one taken
+  // through a wider set of primaries: sRGB linear → XYZ → P3 linear.
+  const channels =
+    gamut === 'srgb'
+      ? linearSrgb
+      : (() => {
+          const xyz = XYZ_FROM_SRGB_LINEAR.map((row) => row.reduce((sum, k, i) => sum + k * linearSrgb[i], 0));
+          return P3_FROM_XYZ.map((row) => row.reduce((sum, k, i) => sum + k * xyz[i], 0));
+        })();
+  return channels.every((v) => v >= -0.001 && v <= 1.001);
+}
+
+/**
+ * APCA lightness contrast (Lc), the WCAG 3 candidate.
+ *
+ * Kept alongside WCAG 2 rather than replacing it, for two reasons. WCAG 2 may be the compliance
+ * obligation, and APCA is still a draft. But WCAG 2 is measurably wrong in the dark: it adds a flat
+ * 0.05 to both sides of the ratio, which dominates the denominator against a near-black background,
+ * so dark themes score far better than they read. Two of this repo's own themes measured 4.84 and
+ * 5.08 — comfortably "passing" — while their muted text sits at Lc 42 and 36 against a threshold
+ * of 60. Both had been *patched* to reach those WCAG numbers, which moved the score and not the
+ * legibility.
+ *
+ * Unsigned: the sign carries polarity (dark-on-light vs light-on-dark) and every caller here asks
+ * "is this legible", not "which way round is it".
+ */
+export function apcaContrast(text: Rgba, background: Rgba): number {
+  const y = ({ r, g, b }: Rgba) => 0.2126 * (r / 255) ** 2.4 + 0.7152 * (g / 255) ** 2.4 + 0.0722 * (b / 255) ** 2.4;
+  const soft = (v: number) => (v < 0.022 ? v + (0.022 - v) ** 1.414 : v);
+  const yt = soft(y(text));
+  const yb = soft(y(background));
+
+  let lc: number;
+  if (yb > yt) {
+    lc = (yb ** 0.56 - yt ** 0.57) * 1.14;
+    lc = lc < 0.1 ? 0 : lc - 0.027;
+  } else {
+    lc = (yb ** 0.65 - yt ** 0.62) * 1.14;
+    lc = lc > -0.1 ? 0 : lc + 0.027;
+  }
+  return Math.abs(lc * 100);
+}
+
+/**
+ * The Lc each kind of text needs, from APCA's own guidance.
+ *
+ * Deliberately one notch below what APCA calls ideal for body text (75): these are thresholds a
+ * whole existing design has to clear, and a bar nothing passes gets turned off rather than met.
+ */
+export const APCA_MINIMUM: Record<ContrastLevel, number> = { body: 60, large: 45, ui: 45 };
+
+/**
+ * The three common forms of inherited colour-vision deficiency.
+ *
+ * Together roughly 8% of men and 0.5% of women. Deuteranomaly is by far the most common, and it is
+ * the one that matters most here: it collapses exactly the red/green distinction that "danger" and
+ * "success" are built on.
+ */
+export type VisionDeficiency = 'protanopia' | 'deuteranopia' | 'tritanopia';
+
+/*
+  Viénot, Brettel and Mollon's LMS projections — the standard simulation.
+
+  A projection rather than a filter: the missing cone type means a whole plane of colours maps to
+  the same perceived colour, and these matrices are that collapse. Applied in linear light, which is
+  the only place it is meaningful.
+*/
+const LMS_FROM_LINEAR = [
+  [0.31399022, 0.63951294, 0.04649755],
+  [0.15537241, 0.75789446, 0.08670142],
+  [0.01775239, 0.10944209, 0.87256922],
+];
+const LINEAR_FROM_LMS = [
+  [5.47221206, -4.6419601, 0.16963708],
+  [-1.1252419, 2.29317094, -0.1678952],
+  [0.02980165, -0.19318073, 1.16364789],
+];
+const COLLAPSE: Record<VisionDeficiency, number[][]> = {
+  protanopia: [
+    [0, 1.05118294, -0.05116099],
+    [0, 1, 0],
+    [0, 0, 1],
+  ],
+  deuteranopia: [
+    [1, 0, 0],
+    [0.9513092, 0, 0.04866992],
+    [0, 0, 1],
+  ],
+  tritanopia: [
+    [1, 0, 0],
+    [0, 1, 0],
+    [-0.86744736, 1.86727089, 0],
+  ],
+};
+
+const apply = (m: number[][], v: number[]) => m.map((row) => row.reduce((sum, k, i) => sum + k * v[i], 0));
+
+/** What a colour looks like to someone with the given deficiency. */
+export function simulateVision(color: Rgba, deficiency: VisionDeficiency): Rgba {
+  const toLinear = (v: number) => (v / 255 <= 0.04045 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4);
+  const toSrgb = (v: number) => {
+    const clamped = Math.min(1, Math.max(0, v));
+    return Math.round(255 * (clamped <= 0.0031308 ? clamped * 12.92 : 1.055 * clamped ** (1 / 2.4) - 0.055));
+  };
+  const linear = [toLinear(color.r), toLinear(color.g), toLinear(color.b)];
+  const seen = apply(LINEAR_FROM_LMS, apply(COLLAPSE[deficiency], apply(LMS_FROM_LINEAR, linear)));
+  return { r: toSrgb(seen[0]), g: toSrgb(seen[1]), b: toSrgb(seen[2]), a: color.a };
+}
+
+/**
+ * How far apart two colours are perceptually, as an OKLab distance.
+ *
+ * OKLab rather than plain RGB because the whole question is what someone *perceives*, and an RGB
+ * distance answers a different one — two colours can be far apart in channel values and land in the
+ * same place for a viewer.
+ */
+export function perceptualDistance(a: Rgba, b: Rgba): number {
+  const oa = rgbToOklch(a);
+  const ob = rgbToOklch(b);
+  const [ax, ay] = [oa.c * Math.cos((oa.h * Math.PI) / 180), oa.c * Math.sin((oa.h * Math.PI) / 180)];
+  const [bx, by] = [ob.c * Math.cos((ob.h * Math.PI) / 180), ob.c * Math.sin((ob.h * Math.PI) / 180)];
+  return Math.hypot(oa.l - ob.l, ax - bx, ay - by);
+}

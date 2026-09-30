@@ -1,0 +1,442 @@
+/**
+ * Renderer and behaviour contracts — the two plugin points that touch the screen.
+ *
+ * Both are declared here, in the framework-neutral package, and neither names a framework. A node
+ * renderer describes *what to draw* as data; the framework adapter decides how. That keeps the
+ * decision "DOM element or canvas shape" out of the plugin and in the renderer, which is what lets
+ * the same graph run as a hundred rich cards or as ten thousand dots without the plugins knowing.
+ */
+import type { GraphEdge, GraphNode } from './graph';
+import type { Bounds, LayoutHierarchy, Point } from './layout';
+import type { CardShape, NodeStyle } from './style';
+
+/**
+ * A drawing instruction for one node, resolved from its style rules.
+ *
+ * Deliberately a small vocabulary of shapes rather than arbitrary drawing: everything here can be
+ * painted by a DOM element *and* by a canvas context, which is the property that makes dense mode
+ * possible later without rewriting the plugins that produce these.
+ */
+export interface NodeVisual {
+  shape: 'circle' | 'rect' | 'card' | 'template';
+  /** Radius for a mark; half-height for a box. A card uses `width`/`height` instead. */
+  size: number;
+  /** Card geometry, in world units. Present only for `shape: 'card'`. */
+  width?: number;
+  height?: number;
+  color: string;
+  borderColor?: string;
+  borderWidth?: number;
+  borderStyle?: 'solid' | 'dashed';
+  opacity?: number;
+  label?: string;
+  labelColor?: string;
+  labelSize?: number;
+  /** False pins the label to a constant on-screen size. See `NodeStyle.scaleLabelWithZoom`. */
+  scaleLabelWithZoom?: boolean;
+  icon?: string;
+  image?: string;
+  /** Registered node-content renderer to draw inside a card — see `NodeStyle.content`. */
+  content?: string;
+  /** Zoom below which the content is hidden and the label stands in for it. */
+  contentMinZoom?: number;
+  /** Registered badge pinned to the card's lower edge — see `NodeStyle.badge`. */
+  badge?: string;
+  /** The card's outline. See `NodeStyle.cardShape`. */
+  cardShape?: CardShape;
+  /** Multiplier on the size the card's content is drawn at. See `NodeStyle.contentScale`. */
+  contentScale?: number;
+  /** Stacking order among nodes, a whole number. Absent is 0. See `NodeStyle.z`. */
+  z?: number;
+  /**
+   * A card caught between two shapes, while the arrangement is rearranging.
+   *
+   * `outline` is the silhouette to use for everything that reads one — the clip, the two text-flow
+   * floats, the selection ring, the edge attach point — in the box's own 0..1 space. Its presence is
+   * what says "clipped right now", which is a different question from `cardShape` naming a cut shape:
+   * a note card is a box at rest and a polygon for as long as it is turning into a triangle.
+   *
+   * `from` and `at` are the two shape names and how far along, for the one thing an outline cannot
+   * answer: how far inside its own edges a shape holds its content. That is a number per shape rather
+   * than a property of the points, so it is interpolated from the names.
+   *
+   * Absent whenever a card is at rest, which is the point — a note keeps its real corner radius and its
+   * real `box-shadow`, and borrows a polygon only while it needs one.
+   */
+  morph?: {
+    outline: readonly (readonly [number, number])[];
+    from: CardShape;
+    at: number;
+    /**
+     * The radii the outline was built from, per direction — what a blend carries forward so that blending it
+     * AGAIN never has to ask a blended polygon how far it reaches. See `sampledBlend`; the renderer has no
+     * use for it and reads `outline`.
+     */
+    samples?: readonly { ux: number; uy: number; r: number }[];
+  };
+}
+
+/**
+ * A registered node renderer.
+ *
+ * The default renderer turns {@link NodeStyle} into a {@link NodeVisual}; a plugin overrides that for
+ * the kinds it claims — an avatar for agents, a swatch for colours, a sparkline for a metric.
+ * Renderers that need real DOM (an editable text node) declare `requiresDom`, which is what a dense
+ * canvas mode checks before refusing to enter.
+ */
+export interface NodeRenderer {
+  id: string;
+  description?: string;
+  /** Structural kinds this claims. Absent means it is only used when named explicitly by a style rule. */
+  kinds?: string[];
+  requiresDom?: boolean;
+  visual(node: GraphNode, style: NodeStyle): NodeVisual;
+}
+
+/** What a behaviour is allowed to do to the scene. Deliberately narrow. */
+export interface BehaviourContext {
+  /** Nodes currently under the pointer, nearest first. */
+  hitTest(at: Point): string[];
+  /**
+   * The edge under the pointer, if any, within a tolerance.
+   *
+   * Separate from {@link hitTest} because nodes win: an edge passing behind a node is not what you
+   * meant to click, and a caller that wants both asks for nodes first.
+   */
+  hitTestEdge(at: Point, tolerance?: number): string | null;
+  /**
+   * Every node overlapping a world rectangle — what a marquee asks.
+   *
+   * Overlapping rather than enclosed, which is the choice worth stating because the two behave
+   * differently on a canvas of cards. Enclosure asks a reader to lasso *past* the far edge of a card
+   * they are plainly pointing at, and a card wider than the viewport could never be caught at all.
+   * Overlap catches what the rectangle touches, which is what people draw a rectangle to mean.
+   */
+  within(bounds: Bounds): string[];
+  /**
+   * The id of the layout region a world point falls in, if any — see `LayoutRegion`.
+   *
+   * What lets a gesture tell "dropped somewhere with a meaning" from "dropped in open space". Without
+   * it the `forest`'s zone of unconnected cards is indistinguishable from a rank of siblings: it is
+   * full of cards at similar heights, so a drop into it reads as a reorder, which is the opposite of
+   * what dragging a card out of a tree means.
+   */
+  regionAt(at: Point): string | null;
+  select(ids: string[], mode?: 'replace' | 'add' | 'toggle'): void;
+  /**
+   * Open one edge's route for editing, or close whichever is open.
+   *
+   * Separate from {@link select}, which is about nodes: the two are alternatives, and selecting
+   * either closes the other. See `GraphEngine.selectEdge`.
+   */
+  selectEdge(id: string | null): void;
+  selection(): string[];
+  /** Ask the engine to expand a node — the click-to-explore behaviour's whole job. */
+  expand(id: string, direction?: 'in' | 'out' | 'both'): void;
+  collapse(id: string): void;
+  /** Pin a node at a world position, or release it. */
+  pin(id: string, at: Point | null): void;
+  /**
+   * Whether the user is currently allowed to move nodes.
+   *
+   * Read by anything that moves one on a gesture, so a locked graph refuses at the point the gesture
+   * starts rather than by silently discarding the result.
+   */
+  locked(): boolean;
+  /**
+   * Where a node currently is, in world units.
+   *
+   * Needed by anything that moves a node *relative* to where it already was — a drag has to preserve
+   * the offset between the node's centre and the point you grabbed it by, or it snaps to the cursor.
+   */
+  positionOf(id: string): Point | null;
+  /** Move the camera. */
+  pan(dx: number, dy: number): void;
+  zoomAt(at: Point, factor: number): void;
+  /** Screen ↔ world conversion, since pointer events arrive in screen space. */
+  toWorld(at: Point): Point;
+  toScreen(at: Point): Point;
+  /**
+   * Show a line being drawn from a node to a point in world space; `null` clears it.
+   *
+   * The one piece of *transient* scene state a behaviour is allowed to set, and it is here rather
+   * than owned by the behaviour because the renderer has to draw it and behaviours never touch the
+   * DOM. A drag with nothing following the pointer is the difference between a gesture and a guess:
+   * without it, connecting two nodes means pressing on one, moving across a graph that looks
+   * completely inert, and hoping.
+   */
+  drawConnection(from: string | null, to?: Point): void;
+  /**
+   * Show the rectangle a marquee is sweeping out; `null` clears it.
+   *
+   * The sibling of {@link drawConnection} and here for the identical reason: the renderer has to draw
+   * it and behaviours never touch the DOM. It matters more here, if anything — a connect gesture at
+   * least moves a line between two visible cards, where a selection sweep with nothing drawn is a
+   * press, a move across an inert canvas, and a set of rings appearing on release.
+   */
+  drawMarquee(bounds: Bounds | null): void;
+  /**
+   * The tree the layout read out of the graph, or null where the layout has no parents — see
+   * `LayoutHierarchy`. From the data, not from what a drag in progress is previewing.
+   */
+  hierarchy(): LayoutHierarchy | null;
+  /** A node's box in world units, as it is drawn and picked; null for one that is not placed. */
+  boundsOf(id: string): Bounds | null;
+  /** An edge as the graph holds it, data and all; null for one it does not. */
+  edgeOf(id: string): GraphEdge | null;
+  /**
+   * Where a card would be drawn if it were held at each of these places — see {@link ArrangeState} — laid out
+   * afresh and never drawn. Null for a place the layout could not put it.
+   *
+   * For a gesture that has to choose among the places a card could go: the one whose ghost would be nearest
+   * the card is the one the reader means, and nothing but the layout knows where each ghost would be, since
+   * making room at one place moves every card around it.
+   */
+  placesOf(id: string, places: readonly NonNullable<ArrangeState['to']>[]): (Point | null)[];
+  /**
+   * Hold a card for a gesture that rearranges a hierarchy — see {@link ArrangeState}; null lets it go.
+   *
+   * The preview a rearranging drag needs belongs to the engine rather than the behaviour for the reason
+   * {@link drawConnection} does: the renderer has to draw it. And more than that, the layout has to place it,
+   * because a preview is only honest if it is the arrangement the drop will produce.
+   */
+  arrange(state: ArrangeState | null): void;
+  /** Emit a graph event to the host — what a template binds `onNodeClick` and friends to. */
+  emit(event: GraphEvent): void;
+}
+
+/**
+ * A card held by a rearranging gesture.
+ *
+ * `at` is where the pointer holds it, and null once it has been let go. `to` is where the drop would put it
+ * — a parent (null for out of every tree) and a position among that parent's other children — or null for
+ * the place it already has.
+ *
+ * While it is held the card is drawn at `at` and the layout places it at `to`, so the rest of the tree makes
+ * room and the empty place it would land in is drawn as a ghost with its line. Let go with a `to`, the card
+ * travels into that place and the layout keeps it there until the data agrees, so the drop and the write
+ * landing read as one movement.
+ *
+ * `refused` says why a drop here would change nothing when the reason is not simply that the card is home —
+ * a move the host would turn down, which the preview should say rather than show happening.
+ */
+export interface ArrangeState {
+  id: string;
+  at: Point | null;
+  to: { parent: string | null; index?: number } | null;
+  refused?: string;
+}
+
+/** Events a template may bind handlers to. Payloads are plain data, addressable from `$event.detail`. */
+export type GraphEvent =
+  | { type: 'nodeClick'; node: GraphNode }
+  /**
+   * What a seed's `derive` said about the whole of what it loaded — see `SeedSource.derive`. Emitted
+   * when it changes, not on every load, so a host holding it in state does not churn.
+   */
+  | { type: 'seedSummary'; source: string; summary: Record<string, unknown> }
+  | { type: 'nodeDoubleClick'; node: GraphNode }
+  | { type: 'nodeHover'; node: GraphNode | null }
+  | { type: 'edgeClick'; edge: GraphEdge }
+  | { type: 'selectionChange'; ids: string[] }
+  /**
+   * A drag ended, leaving the node here — and everything that travelled with it there.
+   *
+   * `moved` is the rest of the selection when several cards were dragged as one. It is on the event
+   * rather than left for the consumer to work out from the selection, because by the time a host
+   * hears about the drop the selection is merely *what is selected now*: it says nothing about which
+   * cards this gesture actually moved, and the two come apart the moment anything reselects.
+   *
+   * Absent for the ordinary single-card drag, so nothing that already handled this event had to
+   * learn about it.
+   */
+  | { type: 'nodeDragEnd'; node: GraphNode; position: Point; moved?: { id: string; position: Point }[] }
+  /**
+   * The user resized a card, giving it this box in world units.
+   *
+   * Intent rather than a mutation, like every other event here: the engine has no write path, and
+   * where a card's box *lives* is the consumer's business — on a canvas it belongs to the placement,
+   * so the same note can be a wide banner on one canvas and a small square on another.
+   *
+   * The position travels with the size because resizing from one edge anchors the other, and a card
+   * drawn from its centre has to move that centre to hold an edge still.
+   *
+   * Emitted on release rather than continuously. The drag itself is drawn locally, so what you see
+   * follows the pointer without a write per frame.
+   */
+  | { type: 'nodeResize'; node: GraphNode; position: Point; width: number; height: number }
+  /**
+   * The user drew a line from one node to another.
+   *
+   * Intent, never a mutation — the same rule `we-sortable` follows. What connecting two things
+   * *means* is the consumer's business and differs completely: a knowledge map creates a
+   * relationship record somebody can argue with, a canvas might draw an arrow that is only ever
+   * decoration, an outline would reparent. A gesture that wrote one of those would be useless to the
+   * others, and the engine has no write path anyway.
+   */
+  | { type: 'edgeCreate'; source: GraphNode; target: GraphNode }
+  /**
+   * The user double-clicked empty canvas, at this point in world space.
+   *
+   * Intent again, and the position is the whole of it: "make something here" is a different request
+   * from "make something", and a surface where position is the data cannot ask the second one. What
+   * gets made is the consumer's business — a canvas creates a card, an outline might do nothing.
+   */
+  | { type: 'canvasDoubleClick'; at: Point }
+  /**
+   * The user dragged a card to somewhere else in a hierarchy.
+   *
+   * Intent, never a mutation — the same rule `edgeCreate` follows, and for a stronger version of the
+   * same reason. What a hierarchy *is* on a given graph is the consumer's decision: on WE's canvas a
+   * parent is a `Relationship` of one community-named kind and the order is a rank on a placement,
+   * where on some other graph it would be a containment link, a field, or nothing writable at all. A
+   * gesture that wrote one of those would be useless to the others, and the engine has no write path.
+   *
+   * The three intents are geometric, so a behaviour can tell them apart without knowing what a parent
+   * means here:
+   *
+   * - `child` — dropped **on** `target`, which is the reparent gesture. The clearest of the three, and
+   *   the one worth drawing a line for while it is in progress.
+   * - `sibling` — dropped in the gap **beside** `target`, at the same level. `before` says which side.
+   *   This is the reorder gesture: the card is already following the pointer, so the reader can see it
+   *   between the two cards it will sit between.
+   * - `loose` — dropped out of every tree, which on a `forest` means the zone of unconnected cards.
+   *
+   * **Nothing here is validated against the graph, and it cannot be.** A drop onto a card's own
+   * descendant would make a cycle, and only something that knows which relation is the hierarchy can
+   * say whether one card is under another. So the consumer refuses that, and says so — exactly as it
+   * decides what "parent" means in the first place.
+   */
+  | {
+      type: 'nodeArrange';
+      node: GraphNode;
+      into: 'child' | 'sibling' | 'loose';
+      /** What it was dropped on or beside. Absent for `loose`. */
+      target?: GraphNode;
+      /** For `sibling`: whether it goes on `target`'s leading side. */
+      before?: boolean;
+      /** Where the pointer let go, in world units — for a consumer that also stores a position. */
+      at: Point;
+      /**
+       * The new parent's children, left to right, as the reader saw them land — the card included.
+       *
+       * What an order is written from. A consumer that worked the order out again from its own data would
+       * be ordering by its own rules, and wherever those differ from the layout's — cards nobody has ranked
+       * yet, say — the order it wrote would not be the one the reader chose. Absent where the drop sets no
+       * order: out of every tree, or where siblings are ordered by something a drag does not change.
+       */
+      order?: string[];
+    }
+  | { type: 'expanded'; id: string; added: number; total?: number }
+  | { type: 'budgetReached'; limit: number };
+
+/** A normalised pointer event, so behaviours never touch a DOM event directly. */
+export interface PointerInput {
+  /** Screen-space position within the graph surface. */
+  at: Point;
+  buttons: number;
+  shiftKey: boolean;
+  /**
+   * Control on every platform, and Command on a Mac — the two spellings of one intent.
+   *
+   * Folded together by the adapter rather than reported separately, because every gesture that wants
+   * this wants "the platform's multi-select modifier" and no gesture wants to know which key that is.
+   * `metaKey` is still reported on its own for anything that genuinely means the Command key.
+   */
+  ctrlKey: boolean;
+  metaKey: boolean;
+  /** Wheel delta, `wheel` only. */
+  delta?: number;
+}
+
+/**
+ * A registered interaction.
+ *
+ * Additive and ordered: several are active at once, and one may claim an event by returning `true`,
+ * which stops later behaviours seeing it. That is how drag-node takes precedence over pan-canvas
+ * without either knowing the other exists.
+ */
+export interface Behaviour {
+  id: string;
+  description?: string;
+  onPointerDown?(input: PointerInput, ctx: BehaviourContext): boolean | void;
+  onPointerMove?(input: PointerInput, ctx: BehaviourContext): boolean | void;
+  onPointerUp?(input: PointerInput, ctx: BehaviourContext): boolean | void;
+  /**
+   * The gesture was abandoned — the pointer was captured away, the window lost focus, a touch was
+   * interrupted. Any behaviour holding state across a gesture must reset here, or it stays latched.
+   */
+  onPointerCancel?(input: PointerInput, ctx: BehaviourContext): boolean | void;
+  onWheel?(input: PointerInput, ctx: BehaviourContext): boolean | void;
+  onDoubleClick?(input: PointerInput, ctx: BehaviourContext): boolean | void;
+}
+
+export type BehaviourFactory<TOptions = unknown> = (options?: TOptions) => Behaviour;
+
+/**
+ * A button in the graph's own chrome.
+ *
+ * Declared as data — an icon, a title and what it does — rather than as a component, so the renderer
+ * draws every control the same way and a module can contribute one without shipping framework code.
+ * The same reasoning as a module's `launcher`: the contributor knows what the control *means*, only
+ * the host knows where controls go and how they should look.
+ */
+export interface GraphControl {
+  id: string;
+  /** Phosphor icon name. */
+  icon: string;
+  /** Tooltip, and the accessible name. */
+  title: string;
+  run(ctx: ControlContext): void;
+  /**
+   * Whether this control is currently *on*.
+   *
+   * Every control used to be a momentary action — zoom, fit, re-run the layout — so there was nothing
+   * for a button to be. A lock is not that: it has a state, and a toggle that does not show its own
+   * state is a switch you have to remember the position of. Omitted for an action, which is most of
+   * them.
+   */
+  active?(ctx: ControlContext): boolean;
+  /**
+   * Whether it can be used at all right now.
+   *
+   * Pinning acts on the selection, so with nothing selected it has nothing to act on. A button that
+   * silently does nothing teaches people it is broken.
+   */
+  enabled?(ctx: ControlContext): boolean;
+  /** Icon and tooltip while active, for a toggle that reads better as two states than one pressed one. */
+  activeIcon?: string;
+  activeTitle?: string;
+}
+
+/**
+ * What a control is allowed to do.
+ *
+ * Narrow on purpose: chrome acts on the *scene* — what is on screen and how it is arranged — and
+ * never on the data. `relayout` has always moved nodes, so the line was never "does not touch
+ * positions"; it is that nothing here writes anything back. Pinning and locking sit on the same side
+ * of it: a pinned node is held by the layout, not saved, and persisting a position remains the job of
+ * `onNodeDragEnd` and the host that listens to it.
+ */
+export interface ControlContext {
+  zoomBy(factor: number): void;
+  fit(): void;
+  relayout(): void;
+  viewport(): { x: number; y: number; zoom: number; width: number; height: number };
+  /** Ids currently selected. */
+  selection(): readonly string[];
+  /** Whether a node is held where it was put, so a layout will not move it. */
+  isPinned(id: string): boolean;
+  /** Hold nodes where they are, or release them back to the layout. */
+  setPinned(ids: readonly string[], pinned: boolean): void;
+  /**
+   * Whether node movement by the user is blocked.
+   *
+   * Deliberately about the user rather than the layout: locking a canvas stops it being rearranged by
+   * accident, and freezing a force simulation is a different request that nobody has made.
+   */
+  isLocked(): boolean;
+  setLocked(locked: boolean): void;
+}
+
+export type GraphControlFactory<TOptions = unknown> = (options?: TOptions) => GraphControl;

@@ -76,7 +76,7 @@ if (platform.isDesktop) {
 
 ```typescript
 // we-web/src/platform/webAdapter.ts
-import type { PlatformAdapter } from '@we/app-framework/shared';
+import type { PlatformAdapter } from '@we/app-shell/shared';
 
 export const webAdapter: PlatformAdapter = {
   async buildAd4mClient() {
@@ -161,7 +161,7 @@ export default config;
 // apps/we-mobile/src/platform/capacitorAdapter.ts
 import { Capacitor } from '@capacitor/core';
 import { Filesystem } from '@capacitor/filesystem';
-import type { PlatformAdapter } from '@we/app-framework/shared';
+import type { PlatformAdapter } from '@we/app-shell/shared';
 
 export const capacitorAdapter: PlatformAdapter = {
   async buildAd4mClient() {
@@ -267,7 +267,7 @@ pub fn main() {
 ### Updated Platform Adapter Interface
 
 ```typescript
-// packages/app-framework/src/shared/platform/types.ts
+// packages/app-shell/src/shared/platform/types.ts
 export interface PlatformAdapter {
   buildAd4mClient(): Promise<Ad4mClient>;
   getConnectionDetails?(): Promise<{ port: number; token: string }>;
@@ -297,7 +297,7 @@ export interface PlatformAdapter {
 ### Platform Detection Utility
 
 ```typescript
-// packages/app-framework/src/shared/platform/detect.ts
+// packages/app-shell/src/shared/platform/detect.ts
 export function detectPlatform(): Partial<PlatformAdapter> {
   // Check if running in Capacitor
   if (typeof window !== 'undefined' && (window as any).Capacitor) {
@@ -344,7 +344,7 @@ export function detectPlatform(): Partial<PlatformAdapter> {
 
 ```typescript
 // Example component that adapts to platform
-import { usePlatform } from '@we/app-framework/shared';
+import { usePlatform } from '@we/app-shell/shared';
 import { Show } from 'solid-js';
 
 export function AdaptiveLayout() {

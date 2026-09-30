@@ -15,11 +15,11 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { fontSize: '200', gap: '50' },
-  sm: { fontSize: '300', gap: '50' },
-  md: { fontSize: '400', gap: '100' },
-  lg: { fontSize: '500', gap: '200' },
-  xl: { fontSize: '500', gap: '300' },
+  xs: { fontSize: '100', gap: '0' },
+  sm: { fontSize: '200', gap: '0' },
+  md: { fontSize: '300', gap: '100' },
+  lg: { fontSize: '400', gap: '200' },
+  xl: { fontSize: '400', gap: '300' },
 };
 
 const BUTTON_SIZES: Record<ComponentSize, string> = {
@@ -39,17 +39,17 @@ const styles = css`
     justify-content: center;
     cursor: pointer;
     border-radius: var(--we-radius-400);
-    transition: background 0.15s ease;
+    transition: background var(--we-transition-200, 150ms) ease;
     user-select: none;
   }
 
   [part='page']:hover,
   [part='nav']:hover {
-    background: var(--we-color-neutral-100);
+    background: var(--we-role-surface-sunken);
   }
 
   [part='page'][aria-current='page'] {
-    background: var(--we-color-primary-500);
+    background: var(--we-role-accent);
     color: white;
   }
 
