@@ -131,8 +131,9 @@ The root \`package.json\`'s pnpm \`overrides\` pin \`@coasys/ad4m\` and \`@coasy
 **published version**, not a local \`file:\` link, and every WE build uses that pin except a deploy
 preview whose PR description pairs it with an ad4m change (\`ad4m: coasys/ad4m#<N>\`). So a local
 \`cd ad4m/core && pnpm run build\` does NOT get picked up by WE — changes to \`@coasys/ad4m\` reach WE
-once a version is published from the ad4m repo and the pin moves. Move it with \`pnpm bump:ad4m\`,
-in a PR of its own, and run \`pnpm verify:ad4m\` before merging it. The whole policy is in
+once a version is published from the ad4m repo and the pin moves. A bot keeps one PR open that moves
+it to the newest ad4m \`dev\` version (\`.github/workflows/bump-ad4m.yaml\`); a feature that needs a
+new ad4m moves it in its own PR with \`pnpm bump:ad4m\`. Run \`pnpm verify:ad4m\` before merging either. The whole policy is in
 \`docs/contributing/ad4m-and-deploys.md\`.
 
 For active local iteration you can temporarily switch the override to
