@@ -7,6 +7,8 @@
   "scripts": {
     "setup-workspace": "node scripts/setup-workspace.cjs",
     "validate:seed": "node scripts/validate-seed.cjs",
+    "bump:ad4m": "node scripts/bump-ad4m.mjs",
+    "verify:ad4m": "pnpm --filter @we/backend-shared --filter @we/backend-ad4m build && pnpm --filter @we/backend-ad4m verify",
     "check:source-consumers": "node scripts/check-source-consumers.mjs",
     "check:we-props": "node scripts/check-we-props.mjs",
     "validate:schemas": "pnpm --filter @we/schema-shared validate",
