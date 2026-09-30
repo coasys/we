@@ -41,12 +41,19 @@ The production build creates:
 
 ### Builds from CI
 
-`.github/workflows/electron-package.yaml` packages both whenever something merges to `dev`. It does
-not run on pull requests. Download the builds from the workflow run's **Artifacts** section in the
-Actions tab (signed-in GitHub account required); they are kept for 14 days.
+`.github/workflows/electron-package.yaml` runs when a release is tagged (`v0.1.0-alpha.1`, pushed
+to `main` after `dev` is merged into it). It builds the executor from the commit the pinned
+`@coasys/ad4m` was published from, packages the app, and publishes both as a GitHub release. The tag
+must match the `version` in the root `package.json`, or the run stops before building anything.
 
-To package a branch before it merges, or to build against a different AD4M branch, run the workflow
-manually from the Actions tab: pick the branch, and set `ad4m_ref`.
+It does not run on merges or pull requests. To package a branch, run the workflow manually from the
+Actions tab: pick the branch, and optionally set `ad4m_ref` to build the executor from another AD4M
+branch or commit. A manual run publishes nothing; download its builds from the run's **Artifacts**
+section (signed-in GitHub account required). They are kept for 14 days.
+
+Releases are Linux only for now. The executor cannot be compiled on macOS at the moment, because a
+dependency downloads a prebuilt ONNX Runtime that is no longer published for macOS. A manual run can
+still include macOS (the `mac` input) once that is fixed.
 
 The macOS build is **unsigned**, so a downloaded copy is quarantined and macOS reports it as
 damaged. Clear the quarantine flag after moving the app to Applications:
