@@ -6,7 +6,7 @@
  * the assertions live beside the cases, so one scenario can be measured several ways.
  */
 import { transcriptLines } from '@we/module-transcribe';
-import { panelScroll } from '@we/schema-kit';
+import { cardShell, panelScroll } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 import { discussionSection, foldingSectionLabel, signalDisplay } from '@we/template-kit';
 import { CALL_CHROME_BAND, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
@@ -827,6 +827,51 @@ const voicesPopover = (): Scenario => {
   return base;
 };
 
+/**
+ * One card, and a way to change its display mode while it is on screen.
+ *
+ * `cardShell` draws its body through a single `CollapsedContent` whose props carry the mode,
+ * rather than through a `$if` holding the body down both branches — which is what took every card
+ * list in WE from three copies of its body to two. The saving is only safe if the two modes still
+ * render what they rendered: clipped with a toggle when compact, and no wrapper at all when
+ * expanded.
+ *
+ * The mode is switched by pressing, not by mounting twice, because the failure worth catching is a
+ * reactivity one. A Solid component body runs ONCE, so deciding "is there anything to collapse"
+ * with an early `return` freezes that decision at creation — every mode renders correctly on a
+ * first paint and the card then keeps the first mode's shape for the rest of its life. Both modes
+ * measured from a fresh mount would pass against exactly that bug.
+ */
+const collapsingCard = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { width: '100%', p: '300', gap: '300' },
+    $localState: { displayMode: { type: 'string', initial: 'compact' } },
+    children: [
+      {
+        type: 'we-button',
+        props: { size: 'sm', onClick: { $setLocal: 'displayMode', value: 'expanded' } },
+        children: ['Expanded mode'],
+      },
+      {
+        type: 'we-button',
+        props: { size: 'sm', onClick: { $setLocal: 'displayMode', value: 'compact' } },
+        children: ['Compact mode'],
+      },
+      cardShell({
+        header: [{ type: 'we-text', props: { variant: 'heading-sm' }, children: ['A card'] }],
+        // Comfortably past the 100px a compact card clips to, so "is it clipped" has an answer.
+        body: Array.from({ length: 14 }, (_, i) => ({
+          type: 'we-text',
+          props: { tag: 'p' },
+          children: [`Body line ${i + 1}`],
+        })),
+      }),
+    ],
+  },
+  tables: {},
+});
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'canvas:tree-strip': treeStripOverCanvas,
   'canvas:voices': voicesPopover,
@@ -845,4 +890,5 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:pinned-short': pinnedPage(20),
   'ds:pinned-empty': pinnedShortContent,
   'panel:sections': panelSections,
+  'cards:collapse': collapsingCard,
 };
