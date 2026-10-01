@@ -65,7 +65,8 @@ Full prerequisites, the AD4M executor binary and the platform targets are in
 ### Branching
 
 `dev` is where all active work happens. `main` is the production branch and only receives periodic
-merges for releases.
+merges for releases; how a release is made, and which ad4m each build uses, is in
+[docs/contributing/ad4m-and-deploys.md](./docs/contributing/ad4m-and-deploys.md).
 
 **Always branch from `dev`, and always diff against `dev`** — `git diff dev...HEAD`, not `main`.
 
@@ -87,6 +88,9 @@ grep over source can do:
 pnpm --filter @we/schema-shared role-audit     # colours naming a scale position where a role belongs
 pnpm --filter @we/schema-shared surface-audit  # what each surface-sunken is actually sitting on
 ```
+
+How to describe the PR, and how it is merged, is in
+[docs/contributing/pull-requests.md](./docs/contributing/pull-requests.md).
 
 A pre-commit hook runs ESLint and Prettier on staged files only. It is deliberately narrow — it
 catches the formatting slip that would otherwise cost a CI round trip, not the whole pipeline.

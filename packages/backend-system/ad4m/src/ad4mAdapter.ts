@@ -193,50 +193,18 @@ export function createAd4mDataBindings(
 }
 
 /**
- * The executor build this profile was established against.
+ * What the executor answers natively, for the planner to decide what to push down.
  *
- * Every line below — and both degradations in `plan` — is a **claim about somebody else's
- * software**, checked by nothing at build time. `planQuery` is exact about what WE will do with the
- * answers, and completely credulous about the answers themselves: if a release changes AD4M's sort
- * pushdown, nothing here fails. Skew shows up as *wrong rows in the right shape* — a feed silently
- * in the wrong order, a "top posts" list that is not — which is the failure mode with no error
- * channel at all.
+ * Every line below, and both degradations in `plan`, is a **claim about somebody else's
+ * software**. `planQuery` is exact about what WE does with the answers and credulous about the
+ * answers themselves: if a release changes AD4M's sort pushdown, nothing here fails, and the skew
+ * shows up as *wrong rows in the right shape*, with no error anywhere.
  *
- * There is no handshake to close that gap with: the executor exposes no query-capability report to
- * ask. So the version is recorded instead, next to the claims it belongs to, and the two rules are:
- *
- * - When the `@coasys/ad4m` pin in the root `package.json` moves, re-check this and move this
- *   constant with it — the pin moving and this staying put is exactly the silent case.
- * - Verify by running the query, not by reading the changelog. `packages/backend-system/ad4m/tests`
- *   pins what the *planner* says; only an executor answers what the executor does.
- *
- * The pin itself is currently a test tag rather than a release, which is worth knowing when reading
- * "verified": what was verified was that build.
- *
- * This one was hand-published from `feat/bounded-traversal` at **3ce8430af**, under npm's `dev`
- * tag rather than `latest`. The SHA matters more here than usual: a hand-published version
- * corresponds to no git tag, so it is the only thing tying this string to a build. And the
- * executor binary is never published at all (WE runs the one at `ad4m/target/release/`, per
- * `seed-runtime.json`), so the Rust half is pinned by that SHA and by nothing else. A core built
- * from this commit against an executor built from another is exactly the skew this constant exists
- * to make visible, and npm cannot catch it.
- *
- * It moved off `0.13.0-test-model-layer` because that build emitted an inverse relation **twice**
- * into the generated SHACL — `@BelongsToOne` registers in both the relation registry and the
- * property metadata, and `buildSHACL` walked both. `WeNode.inReplyTo` therefore arrived as two
- * property shapes on every one of the 33 WeNode subclasses, one a literal and one the relation.
- * The manifest round-trip caught it; left alone it would have been written into each space's SDNA,
- * where `shapeIsStale` compares path counts in one direction only and so could never have taken it
- * back out again.
- *
- * Note what rides along, the fix having been published from a feature branch rather than from
- * `dev`: the TypeScript half of bounded traversal is now in core, so `levels`/`limitPerAnchor`
- * reach the executor instead of being dropped before the call — and the Rust half that answers
- * them is on that same branch and **not on `dev`**, which is what `electron-package.yaml` defaults
- * `ad4m_ref` to. Build the executor from the same branch, or pass `ad4m_ref` when packaging.
+ * The tests in `packages/backend-system/ad4m/tests` pin what the planner says. Only an executor can
+ * say whether a claim holds, so `pnpm verify:ad4m` asks one: it runs a query per claim against a
+ * local executor and against the in-memory backend and compares the rows. Run it whenever the
+ * `@coasys/ad4m` pin moves (docs/contributing/ad4m-and-deploys.md).
  */
-export const VERIFIED_AGAINST_AD4M = '0.13.0-test-inverse-relations';
-
 export const ad4mCapabilities: AdapterCapabilities = {
   /*
     `exists` is deliberately absent, and its absence is a correction rather than a change of policy.

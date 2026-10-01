@@ -9,6 +9,8 @@ on:
   push:
     branches: [dev]
   pull_request:
+  # The ad4m bump workflow starts this on its branch: a PR it opens with GITHUB_TOKEN starts nothing.
+  workflow_dispatch:
 
 # One run per branch/PR — a second push cancels the in-flight run instead of
 # duplicating the work.
