@@ -430,7 +430,7 @@ export function ShapeStoreProvider(props: ParentProps) {
       .map((s) => ({ entity: s.name, source: 'shape' as const })),
   ]);
 
-  /** Core vocabulary that declares itself extractable — `TaskBlock` and `EventBlock` today. */
+  /** Core vocabulary that declares itself extractable — `TaskBlock`, `EventBlock` and `Relationship` today. */
   const coreExtractionTargets = extractableEntities(CORE_MANIFEST);
 
   /*

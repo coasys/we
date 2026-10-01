@@ -42,7 +42,7 @@ export const Relationship: CoreEntityDef = {
   base: 'WeNode',
   entity: {
     interpretationHint:
-      'A relationship a person asserted between two specific records — "contradicts", "caused by", "same as". Only extract one when the speakers connect two things that both already exist as records.',
+      'A connection the speakers made between two specific things — one depends on another, includes it, leads to it, blocks it, contradicts it. Extract one whenever somebody says how two things relate, whether each end is already listed here or is something you are creating in this response. One connection joins exactly one pair: a goal with three prerequisites is three connections.',
     flag: { predicate: 'we://flag', value: 'we://relationship' },
     /**
      * A candidate for extraction — off in a space that has made no choice, on where one has.
@@ -57,11 +57,15 @@ export const Relationship: CoreEntityDef = {
      * finding relationships appearing in a meeting about anything else.
      */
     /*
-      Off for now, and hidden with it: extraction into a Relationship has never been tried end to end,
-      so offering it — even unticked — invites a choice that is likely not to work. Turning it back on
-      is this one flag; the hint above is kept ready for it.
+      On, after a spell off. It was switched off because nothing had ever carried an extracted
+      connection end to end, and three things stood in the way, all fixed with it: the class hint
+      allowed only connections between records that already existed, which ruled out the case that
+      matters — a new task said to depend on an old one; the canvas drew a line only between two
+      *placed* cards, and everything a call extracts lands unplaced, in the tray; and a connection
+      drawn by hand carried no `connection` key, and the executor shows a model only the instances
+      that have one, so the structure people had drawn was invisible to the pass meant to extend it.
     */
-    extractable: false,
+    extractable: true,
     // `sourceType`/`targetType` are absent: they are set from what was connected, not typed by hand,
     // and so is `relationshipTypeId` — the form offers the kinds this community has named.
     //
@@ -77,22 +81,29 @@ export const Relationship: CoreEntityDef = {
        * alone collapses every "contradicts" in a space into one record; either end alone is wrong by
        * construction, since the whole point is that a record has many connections.
        *
-       * Written by the model rather than derived, because machine-authored instances go through
+       * Written by the model for what it extracts, because machine-authored instances go through
        * `create_subject` server-side and never pass WE's own write path — the hint spells the format.
-       * Denormalised and never recomputed: relabel the connection and the next pass sees a different
-       * one and writes a new record. That is the accepted cost of a single-property key, and it fails
-       * in the safe direction — a duplicate somebody deletes, rather than two distinct claims merged.
+       * Written by WE for what people draw, in the same format (`connectionKey` in `RecordStore`),
+       * and that is not optional: the executor shows a model only the instances whose identity is
+       * set, so a connection drawn by hand without one was invisible to the pass meant to extend the
+       * structure it was part of. Its ends are ids there, so a key the model sees reads as a pair of
+       * entries it can look up in the same prompt.
        *
-       * Not `required`, deliberately, and for the reason `occurrence` records: required would mean
-       * every connection drawn by hand on a board carries `uninitialized`, and two of them would then
-       * dedup into each other. Left unset, an instance is invisible to dedup — the right answer for a
-       * record no machine is managing.
+       * Denormalised. Rewritten when an end moves, because a key naming the old end would tell the
+       * next pass the connection is still where it was; not when it is relabelled or an end renamed,
+       * where the next pass sees a different key and may write a second record. That is the accepted
+       * cost of a single-property key, and it fails in the safe direction — a duplicate somebody
+       * deletes, rather than two distinct claims merged.
+       *
+       * Not `required`, deliberately, and for the reason `occurrence` records: required would mean a
+       * connection written without one carries `uninitialized`, and two of them would then dedup into
+       * each other.
        */
       connection: {
         type: 'string',
         predicate: 'we://connection',
         interpretationHint:
-          'A dedup key, not a display value: the source id, the target id and the label joined, e.g. "we://a \u2192 we://b: contradicts". Always set it when you create a connection. Reuse an existing connection\u2019s exact value only when this is the same claim about the same pair.',
+          'A dedup key, not a display value: the two ends and the label joined as "<source> \u2192 <target>: <label>". Write an end as its id when it is an existing entry, and as its title when you are creating it in this response \u2014 never a "new:" reference, which names something else in the next response. Always set it when you create a connection. Reuse an existing connection\u2019s exact value only when this is the same claim about the same pair; a connection is never re-pointed at a different pair.',
         identity: true,
         default: '',
       },
@@ -129,7 +140,7 @@ export const Relationship: CoreEntityDef = {
         type: 'string',
         predicate: 'we://title',
         interpretationHint:
-          'What the connection is, in the speakers\u2019 own words \u2014 a short lowercase verb phrase read source-to-target: "contradicts", "came out of", "blocks", "is the same as". Not a sentence, and not a summary of either end.',
+          'What the connection is, in the speakers\u2019 own words \u2014 a short lowercase verb phrase read source-to-target, so from the broader end: "depends on", "includes", "leads to", "blocks", "contradicts". "Includes" rather than "is part of", which reads from the wrong end. Not a sentence, and not a summary of either end.',
         default: '',
       },
       /** Why — the room a one-word label does not leave. */
@@ -165,8 +176,25 @@ export const Relationship: CoreEntityDef = {
         each of which can be argued with and weighted separately, where one record holding a list
         would collapse them into a claim nobody can disagree with a part of.
       */
-      source: { target: '', cardinality: 'one', predicate: 'we://relationship_source' },
-      target: { target: '', cardinality: 'one', predicate: 'we://relationship_target' },
+      /*
+        Hinted, because which end is which is the one thing a tree needs and the declaration cannot
+        say. The workshop reads a connection as parent → child, source first; a model left to guess
+        connects a goal to its prerequisites either way round, and half the tree comes out inverted.
+      */
+      source: {
+        target: '',
+        cardinality: 'one',
+        predicate: 'we://relationship_source',
+        interpretationHint:
+          'The broader or governing end: the goal, the whole, the thing that depends on or comes before the other. Read from source to target, connections form a tree from its roots down. Between peers, as with "contradicts", either way round. An existing entry\u2019s id, or a new:<Class>:<n> reference to something you create in this response.',
+      },
+      target: {
+        target: '',
+        cardinality: 'one',
+        predicate: 'we://relationship_target',
+        interpretationHint:
+          'The narrower or following end: the prerequisite, the part, the next step. An existing entry\u2019s id, or a new:<Class>:<n> reference to something you create in this response.',
+      },
     },
   },
 };

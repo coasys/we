@@ -2947,7 +2947,7 @@ ShapeStore:
   - savingShape: boolean — a save is in flight
   - aiAvailable: boolean — AI model generation is available (the agent has a Claude API key configured)
   - generating: boolean — an AI generation is in flight
-  - hintEntities: { entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock) plus the space's own shapes
+  - hintEntities: { entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock, Relationship) plus the space's own shapes
   - extractionCandidates: string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a call actually looks for is two layers down (spaceStore.extractionTargets, then the call's own participants). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off
   - relationshipTargets: { label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent
   - identityOptions: { label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can map options but cannot prepend one

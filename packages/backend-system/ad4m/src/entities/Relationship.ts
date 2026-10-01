@@ -49,7 +49,7 @@ import { WeNode } from './WeNode';
 @Model({
   name: 'Relationship',
   interpretationHint:
-    'A relationship a person asserted between two specific records — "contradicts", "caused by", "same as". Only extract one when the speakers connect two things that both already exist as records.',
+    'A connection the speakers made between two specific things — one depends on another, includes it, leads to it, blocks it, contradicts it. Extract one whenever somebody says how two things relate, whether each end is already listed here or is something you are creating in this response. One connection joins exactly one pair: a goal with three prerequisites is three connections.',
 })
 export class Relationship extends WeNode {
   @Flag({ through: 'we://flag', value: 'we://relationship' })
@@ -63,22 +63,29 @@ export class Relationship extends WeNode {
    * alone collapses every "contradicts" in a space into one record; either end alone is wrong by
    * construction, since the whole point is that a record has many connections.
    *
-   * Written by the model rather than derived, because machine-authored instances go through
+   * Written by the model for what it extracts, because machine-authored instances go through
    * `create_subject` server-side and never pass WE's own write path — the hint spells the format.
-   * Denormalised and never recomputed: relabel the connection and the next pass sees a different
-   * one and writes a new record. That is the accepted cost of a single-property key, and it fails
-   * in the safe direction — a duplicate somebody deletes, rather than two distinct claims merged.
+   * Written by WE for what people draw, in the same format (`connectionKey` in `RecordStore`),
+   * and that is not optional: the executor shows a model only the instances whose identity is
+   * set, so a connection drawn by hand without one was invisible to the pass meant to extend the
+   * structure it was part of. Its ends are ids there, so a key the model sees reads as a pair of
+   * entries it can look up in the same prompt.
    *
-   * Not `required`, deliberately, and for the reason `occurrence` records: required would mean
-   * every connection drawn by hand on a board carries `uninitialized`, and two of them would then
-   * dedup into each other. Left unset, an instance is invisible to dedup — the right answer for a
-   * record no machine is managing.
+   * Denormalised. Rewritten when an end moves, because a key naming the old end would tell the
+   * next pass the connection is still where it was; not when it is relabelled or an end renamed,
+   * where the next pass sees a different key and may write a second record. That is the accepted
+   * cost of a single-property key, and it fails in the safe direction — a duplicate somebody
+   * deletes, rather than two distinct claims merged.
+   *
+   * Not `required`, deliberately, and for the reason `occurrence` records: required would mean a
+   * connection written without one carries `uninitialized`, and two of them would then dedup into
+   * each other.
    */
   @Property({
     through: 'we://connection',
     identity: true,
     interpretationHint:
-      'A dedup key, not a display value: the source id, the target id and the label joined, e.g. "we://a → we://b: contradicts". Always set it when you create a connection. Reuse an existing connection’s exact value only when this is the same claim about the same pair.',
+      'A dedup key, not a display value: the two ends and the label joined as "<source> → <target>: <label>". Write an end as its id when it is an existing entry, and as its title when you are creating it in this response — never a "new:" reference, which names something else in the next response. Always set it when you create a connection. Reuse an existing connection’s exact value only when this is the same claim about the same pair; a connection is never re-pointed at a different pair.',
   })
   connection: string = '';
 
@@ -114,7 +121,7 @@ export class Relationship extends WeNode {
   @Property({
     through: 'we://title',
     interpretationHint:
-      'What the connection is, in the speakers’ own words — a short lowercase verb phrase read source-to-target: "contradicts", "came out of", "blocks", "is the same as". Not a sentence, and not a summary of either end.',
+      'What the connection is, in the speakers’ own words — a short lowercase verb phrase read source-to-target, so from the broader end: "depends on", "includes", "leads to", "blocks", "contradicts". "Includes" rather than "is part of", which reads from the wrong end. Not a sentence, and not a summary of either end.',
   })
   label: string = '';
 
@@ -141,9 +148,19 @@ export class Relationship extends WeNode {
   })
   targetType: string = '';
 
-  @HasOne({ through: 'we://relationship_source', polymorphic: true })
+  @HasOne({
+    through: 'we://relationship_source',
+    polymorphic: true,
+    interpretationHint:
+      'The broader or governing end: the goal, the whole, the thing that depends on or comes before the other. Read from source to target, connections form a tree from its roots down. Between peers, as with "contradicts", either way round. An existing entry’s id, or a new:<Class>:<n> reference to something you create in this response.',
+  })
   source?: string;
 
-  @HasOne({ through: 'we://relationship_target', polymorphic: true })
+  @HasOne({
+    through: 'we://relationship_target',
+    polymorphic: true,
+    interpretationHint:
+      'The narrower or following end: the prerequisite, the part, the next step. An existing entry’s id, or a new:<Class>:<n> reference to something you create in this response.',
+  })
   target?: string;
 }

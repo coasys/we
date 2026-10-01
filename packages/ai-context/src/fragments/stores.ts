@@ -1356,9 +1356,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
         hintEditorDirty:
           'whether the open hint editor holds edits that closing would lose. What a discard guard reads: the rows come from the model’s declaration, so a schema has no set of local names it could test. Compares against the state the editor opened in, so an editor somebody only read closes without a question',
         hintEntities:
-          "{ entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock) plus the space's own shapes",
+          "{ entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock, Relationship) plus the space's own shapes",
         extractionTargets:
-          'string[] — entity names an AI extraction pass may write in this space: core vocabulary marked extractable (TaskBlock, EventBlock) plus every adopted shape that is. What COULD be found here, not what a given pass will look for — a call may narrow it and the space may have auto-extraction off. Drive a findings list off this rather than off any per-call selection, so a card shows a record another member extracted',
+          'string[] — entity names an AI extraction pass may write in this space: core vocabulary marked extractable (TaskBlock, EventBlock, Relationship — a connection, drawn as a line rather than a card) plus every adopted shape that is. What COULD be found here, not what a given pass will look for — a call may narrow it and the space may have auto-extraction off. Drive a findings list off this rather than off any per-call selection, so a card shows a record another member extracted',
         relationshipTargets:
           "{ label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent",
         identityOptions:
