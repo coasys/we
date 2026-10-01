@@ -103,6 +103,8 @@ Example — Nested include (Conversations with their messages):
 }
 Each conversation in the result has a messages array of hydrated Message instances.
 Nesting works to any depth: "include": { "messages": { "include": { "reactions": true } } }
+— with two limits, listed under "Nested include" in the operators section: no $-projections below the
+top level, and no untyped relation nested below another.
 
 Relational drill-down (master-detail navigation across entity relations):
 Use routes + a $query \`scope\` when you navigate to a detail route and need only that record's children.
