@@ -128,6 +128,9 @@ export function buildEntityFromEntry(
         // order survives concurrent edits is AD4M's, and belongs here rather than in the manifest.
         ...(p.ordered ? { ordering: { strategy: 'linkedList' as const } } : {}),
         ...(p.polymorphic ? { polymorphic: true } : {}),
+        // As for a property below: a declared entity's relation hints reach the stored shape by the
+        // same decorator option a hand-written model would use.
+        ...(p.interpretationHint !== undefined ? { interpretationHint: p.interpretationHint } : {}),
       })(proto as never, p.name as never);
     } else {
       // Only what the declaration states. `null` is itself a declared default (an unset file
@@ -239,6 +242,7 @@ export function manifestToEntries(manifest: EntityManifest, opts: CompileManifes
           ...(spec.target ? { relatedEntity: spec.target } : {}),
           ...(spec.ordered ? { ordered: true } : {}),
           ...(resolvesPolymorphically(spec) ? { polymorphic: true } : {}),
+          ...(spec.interpretationHint !== undefined ? { interpretationHint: spec.interpretationHint } : {}),
         })),
       ],
     };

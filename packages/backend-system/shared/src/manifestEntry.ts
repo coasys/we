@@ -133,6 +133,7 @@ export function manifestEntries(
             ...(spec.target ? { relatedEntity: spec.target } : {}),
             ...(spec.ordered ? { ordered: true } : {}),
             ...(resolvesPolymorphically(spec) ? { polymorphic: true } : {}),
+            ...(spec.interpretationHint ? { interpretationHint: spec.interpretationHint } : {}),
           })),
       ],
     };
