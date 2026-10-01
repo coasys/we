@@ -15,7 +15,11 @@ export default defineConfig({
     include: ['eval/**/*.eval.ts'],
     // One case can take minutes on a slow model, and cases run one after another on purpose: a
     // single node answering several at once would make every timing a measure of the queue.
-    testTimeout: 15 * 60_000,
+    //
+    // Derived from WE_EVAL_TIMEOUT, the per-turn limit, because a case spends several turns: a cap
+    // that did not follow it would kill the case before the limit it was given, and report a
+    // timeout the run had not actually reached. Six turns is the most a case makes.
+    testTimeout: Math.max(15 * 60_000, (Number(process.env.WE_EVAL_TIMEOUT) || 180) * 1000 * 6),
     hookTimeout: 60_000,
     fileParallelism: false,
   },

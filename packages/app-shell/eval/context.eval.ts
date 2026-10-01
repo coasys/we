@@ -40,8 +40,17 @@ const strategies = (list(env.WE_EVAL_STRATEGIES).length ? list(env.WE_EVAL_STRAT
 const caseIds = list(env.WE_EVAL_CASES);
 const cases = caseIds.length ? EVAL_CASES.filter((c) => caseIds.includes(c.id)) : EVAL_CASES;
 const repeat = Math.max(1, Number(env.WE_EVAL_REPEAT) || 1);
+/**
+ * How long one turn may take, in seconds.
+ *
+ * The port's default of 180s suits a hosted model and is far too short for a local one whose
+ * weights and KV cache do not both fit in VRAM: part of the model runs on the CPU, and a turn that
+ * writes a template takes tens of minutes. Left at the default, such a run records every case as
+ * "the model did not answer" and measures the timeout instead of the strategy.
+ */
+const timeoutMs = Math.max(1, Number(env.WE_EVAL_TIMEOUT) || 180) * 1000;
 
-const port = createAd4mLanguageModelPort({}, () => ({ url, token }));
+const port = createAd4mLanguageModelPort({}, () => ({ url, token, converseTimeoutMs: timeoutMs }));
 const validationContext = buildValidationContext(contextData);
 const records: EvalRecord[] = [];
 const startedAt = new Date();

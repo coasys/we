@@ -47,6 +47,7 @@ pnpm --filter @we/app-shell eval:context
 | `WE_EVAL_STRATEGIES` | all three                | Any of `full,sections,lookup`.                                                                                   |
 | `WE_EVAL_CASES`      | all                      | Case ids from `cases.ts`.                                                                                        |
 | `WE_EVAL_REPEAT`     | `1`                      | Runs per combination. Models are not deterministic; use 3 before drawing a conclusion.                           |
+| `WE_EVAL_TIMEOUT`    | `180`                    | Seconds one turn may take. Raise it for a local model — see below.                                               |
 
 Start small: `WE_EVAL_CASES=rename-heading,todo-tasks WE_EVAL_STRATEGIES=full` confirms the setup
 before a full run.
@@ -85,6 +86,23 @@ prefill of the prompt, and a small model's prefill is not free.
 Local Ollama models need coasys/ad4m#1001, or `PARAMETER num_ctx` raised in a Modelfile. Without
 either, Ollama's OpenAI-compatible endpoint silently truncates the prompt, and the run measures the
 truncation instead of the strategy.
+
+### A local model needs VRAM for its context, not just its weights
+
+**Check that the model fits in VRAM at the context the node asks for, before trusting a local
+run.** `ollama ps` says: a `PROCESSOR` column reading anything but `100% GPU` means part of the
+model is on the CPU, and generation then runs several times slower than the hardware suggests.
+
+The context is what usually does it, because the node asks for the model's _maximum_: the executor
+reads `<arch>.context_length` from Ollama's `/api/show` and passes that as `num_ctx`, so a 10K
+prompt still allocates the whole window. qwen3:8b is 5.2GB of weights and a further ~6GB of KV
+cache at its 40,960-token window — 11GB, which does not fit a 12GB card that is also driving a
+desktop.
+
+When it does not fit, either make room (`api_max_num_ctx` on the model entry caps what the node
+asks for; a quantized KV cache halves or quarters it) or raise `WE_EVAL_TIMEOUT` and accept a long
+run. What is not an option is leaving it: every case fails as "the model did not answer", and the
+run has measured the timeout.
 
 ## Reading the numbers
 
