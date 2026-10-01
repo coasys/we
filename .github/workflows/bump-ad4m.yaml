@@ -43,7 +43,7 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
       - name: Bump
         id: bump

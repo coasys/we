@@ -143,7 +143,7 @@ jobs:
 
       - name: Install Python (macOS)
         if: matrix.platform == 'mac' && steps.executor.outputs.cache-hit != 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
