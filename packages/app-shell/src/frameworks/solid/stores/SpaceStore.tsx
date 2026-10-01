@@ -2913,7 +2913,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     return [...bySlug.values()];
   }
 
-  async function loadTaskStates(): Promise<void> {
+  /**
+   * Read the space's own states. `quiet` for a re-read after somebody changed one: the list is
+   * already on screen, and dropping back to "not loaded" would flash every surface gated on it.
+   */
+  async function loadTaskStates(quiet = false): Promise<void> {
     const dataset = datasetStore.currentDataset()?.handle;
     const uuid = datasetStore.currentDataset()?.id;
     const ports = session.backendPorts()?.schemas;
@@ -2922,7 +2926,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       setTaskStatesLoaded(true);
       return;
     }
-    setTaskStatesLoaded(false);
+    if (!quiet) setTaskStatesLoaded(false);
     try {
       // Every space predates this entity, so none of them have its shape installed. `ensure` is the
       // diff-first idempotent path — a read in the common case — and the same step `loadShapes`
@@ -2953,9 +2957,36 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
+  /*
+    Read on entering the space, then follow it.
+
+    The states used to be read on entering and after this agent's own edits, and never otherwise —
+    so another member's rename, colour or new state reached nobody until they next switched space.
+    That was a cosmetic gap until a state could ask for agreement: a member still holding the old
+    rule was offered Approve on a move their vote no longer counted toward.
+
+    The watch starts after the first read, which is what installs the entity's shape on a space that
+    predates it — a query against a shape the dataset does not hold has nothing to watch.
+  */
   createEffect(() => {
-    void datasetStore.currentDataset()?.id;
-    void loadTaskStates();
+    const dataset = datasetStore.currentDataset()?.handle;
+    const weSpace = datasetStore.isWeSpace();
+    let stopped = false;
+    let watch: { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+    onCleanup(() => {
+      stopped = true;
+      watch?.dispose();
+    });
+    void loadTaskStates().then(() => {
+      if (stopped || !dataset || !weSpace) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      watch = (TaskState as any).query(dataset, {}) as typeof watch;
+      watch
+        ?.subscribe(() => void (!stopped && loadTaskStates(true)))
+        .catch((error: unknown) => {
+          console.warn('SpaceStore: could not watch task states', error);
+        });
+    });
   });
 
   /**
@@ -3192,9 +3223,13 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!move || !from) return;
     try {
       const outcome = await taskFlow.move(taskId, from, move.to);
-      if (outcome === 'moved') await mirrorTaskStatus(taskId, move.to);
+      if (outcome === 'moved' || outcome === 'already-there') await mirrorTaskStatus(taskId, move.to);
       else if (outcome === 'stalled') {
         toastService.error('That card is stuck between two moves — one of them has to be withdrawn');
+      } else if (outcome === 'slow') {
+        // Not a failure: the vote is usually counted after the call gives up waiting, and the board
+        // moves the card when it is.
+        toastService.info('The node is still counting your approval — the card will move when it has');
       }
     } catch (error) {
       console.error('SpaceStore: could not agree with that move', error);

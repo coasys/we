@@ -71,7 +71,10 @@ const { createBoardActions } = await import('../src/shared/boards');
 const holds: string[] = [];
 const releases: string[] = [];
 
-function actions(outcome: 'moved' | 'waiting' | 'already-voted' | 'stalled' | null, asking = new Set(['done'])) {
+function actions(
+  outcome: 'moved' | 'waiting' | 'already-voted' | 'stalled' | 'already-there' | 'slow' | null,
+  asking = new Set(['done']),
+) {
   const move = vi.fn(async () => outcome);
   const notify = vi.fn();
   const board = createBoardActions({
@@ -134,6 +137,22 @@ describe('a drop into a state that asks for agreement', () => {
     await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1'], 'done');
     expect(notify).toHaveBeenCalledWith(expect.stringContaining('stuck'));
     expect(writes).toEqual([]);
+  });
+});
+
+describe('a drop the backend could not answer plainly', () => {
+  it('writes the state when the run was already there, and says the column may lag', async () => {
+    const { board, notify } = actions('already-there');
+    await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1'], 'done');
+    expect(rows.get('t1')!.status).toBe('done');
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining('already there'));
+  });
+
+  it('writes nothing on a timeout, and says the vote is still being counted', async () => {
+    const { board, notify } = actions('slow');
+    await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1'], 'done');
+    expect(writes).toEqual([]);
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining('still counting'));
   });
 });
 

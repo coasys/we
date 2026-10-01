@@ -691,11 +691,18 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       if (task && to.slug && flow?.enabled()) {
         const current = flow.stateOf(cardId) ?? String((task as { status?: unknown }).status ?? '');
         const outcome = await flow.move(cardId, current, to.slug);
-        if (outcome !== null && outcome !== 'moved') {
+        /*
+          Already there counts as moved: the writes below put `status` and the arrangement where the
+          run already is, which is what every other surface should say. Only the column this board
+          draws from the run may lag, until the backend next re-derives it — so the person is told.
+        */
+        if (outcome === 'already-there') notify('That card was already there — its column will catch up');
+        else if (outcome !== null && outcome !== 'moved') {
           release(to.id, 'arranges');
           if (from) release(from.id, 'arranges');
           releaseStatus(cardId);
           if (outcome === 'stalled') notify('That card is stuck between two moves — one of them has to be withdrawn');
+          if (outcome === 'slow') notify('The node is still counting that vote — the card will move when it has');
           return;
         }
       }

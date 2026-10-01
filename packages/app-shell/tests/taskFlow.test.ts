@@ -164,3 +164,44 @@ describe('taskMoveCard', () => {
     expect(flowStateOf(entry, 'task')).toBeUndefined();
   });
 });
+
+describe('what a refusal or a timeout means', () => {
+  const states: TaskStateRule[] = [{ slug: 'todo' }, { slug: 'doing' }, { slug: 'done', approvals: 2 }];
+  const run = { id: 'r', subject: 'task', state: 'done', startedAt: 1 };
+  const stub = (propose: () => Promise<never>) =>
+    createTaskFlowActions({
+      dataset: () => ({}),
+      port: () => ({
+        install: async () => {},
+        start: async () => run,
+        propose,
+        withdraw: async () => 0,
+        watch: async () => () => {},
+      }),
+      states: () => states,
+      snapshot: () => null,
+      me: () => ANA,
+    });
+
+  it('reads "not reachable from where you asked to go" as already there', async () => {
+    // The board showed Done; a rule change had the backend re-judge the run into Doing.
+    const actions = stub(async () => {
+      throw new Error('RPC error 500: `doing` is not reachable from `doing` — no proposal written');
+    });
+    expect(await actions.move('task', 'done', 'doing')).toBe('already-there');
+  });
+
+  it('reads a timeout as slow rather than failed', async () => {
+    const actions = stub(async () => {
+      throw new Error("RPC call 'perspective.proposeFlowTransition' timed out after 30000ms");
+    });
+    expect(await actions.move('task', 'done', 'doing')).toBe('slow');
+  });
+
+  it('still throws a refusal that names somewhere else', async () => {
+    const actions = stub(async () => {
+      throw new Error('`todo` is not reachable from `done`');
+    });
+    await expect(actions.move('task', 'done', 'todo')).rejects.toThrow('not reachable');
+  });
+});

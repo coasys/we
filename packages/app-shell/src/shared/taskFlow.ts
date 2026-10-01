@@ -188,8 +188,28 @@ export function taskMoveCard(
 
 // ─── Acting ─────────────────────────────────────────────────────────────────────
 
-/** What asking for a move came to. `null` when the space has no flow and the caller should write `status`. */
-export type TaskMoveOutcome = ReturnType<typeof readProposeResult> | null;
+/**
+ * What asking for a move came to. `null` when the space has no flow and the caller should write
+ * `status`.
+ *
+ * Two answers beyond what a backend reports:
+ *
+ * - `already-there` — the backend refused because the run is already in the state asked for. The
+ *   move is done as far as anyone can make it, and `status` should say so. It happens when the
+ *   state a board shows is behind the backend's — a rule changed, and the backend re-judged the
+ *   run without yet re-deriving what it shows.
+ * - `slow` — the call did not answer in time. Not a failure: the backend usually carries on and
+ *   the move lands, and the board catches up when it does.
+ */
+export type TaskMoveOutcome = ReturnType<typeof readProposeResult> | 'already-there' | 'slow' | null;
+
+const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/** The state a refusal names the run as being in, when it was refused as unreachable. */
+const refusedFrom = (error: unknown): string | undefined => /not reachable from `([^`]+)`/.exec(messageOf(error))?.[1];
+
+/** The call outlived the caller's patience; the backend may well still be doing it. */
+const timedOut = (error: unknown) => /timed out|timeout/i.test(messageOf(error));
 
 export interface TaskFlowDeps {
   /** The space's dataset, when one is on screen. */
@@ -231,26 +251,37 @@ export function createTaskFlowActions(deps: TaskFlowDeps): TaskFlowActions {
     const known = new Set(deps.states().map((s) => s.slug));
     if (!known.has(to)) throw new Error(`"${to}" is not one of this space's states`);
 
-    const run = await port.start(dataset, TASK_FLOW, taskId);
-    let state = run.state;
-    /*
-      A run that has never left the entry is entered into the state the task already holds, on one
-      vote from anybody. An empty state is a run this device has not derived yet — synced in from a
-      peer a moment ago — which may or may not be past the entry; asking for the entry move then is
-      harmless either way, since a run past it refuses the move and names where it stands.
-    */
-    if (!state || state === ENTRY_STATE) {
-      const into = known.has(from) ? from : entryFor(to);
-      try {
-        state = (await port.propose(dataset, run.id, into)).state;
-      } catch (error) {
-        const at = /not reachable from `([^`]+)`/.exec(error instanceof Error ? error.message : String(error));
-        if (!at) throw error;
-        state = at[1];
+    try {
+      const run = await port.start(dataset, TASK_FLOW, taskId);
+      let state = run.state;
+      /*
+        A run that has never left the entry is entered into the state the task already holds, on one
+        vote from anybody. An empty state is a run this device has not derived yet — synced in from a
+        peer a moment ago — which may or may not be past the entry; asking for the entry move then is
+        harmless either way, since a run past it refuses the move and names where it stands.
+      */
+      if (!state || state === ENTRY_STATE) {
+        const into = known.has(from) ? from : entryFor(to);
+        try {
+          state = (await port.propose(dataset, run.id, into)).state;
+        } catch (error) {
+          const at = refusedFrom(error);
+          if (!at) throw error;
+          state = at;
+        }
       }
+      if (state === to) return 'moved';
+      try {
+        return readProposeResult(await port.propose(dataset, run.id, to));
+      } catch (error) {
+        // The run is already where it was asked to go; what this device showed was behind.
+        if (refusedFrom(error) === to) return 'already-there';
+        throw error;
+      }
+    } catch (error) {
+      if (timedOut(error)) return 'slow';
+      throw error;
     }
-    if (state === to) return 'moved';
-    return readProposeResult(await port.propose(dataset, run.id, to));
   }
 
   async function withdraw(taskId: string): Promise<number> {
