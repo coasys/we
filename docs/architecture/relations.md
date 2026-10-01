@@ -108,6 +108,35 @@ against "a person says so", and the second is the one worth arguing with.
 So the choice of tier is a modelling decision, not a UX one. Getting it wrong costs query power or
 provenance; it does not cost a rewrite of anything that draws.
 
+## When a conversation draws the connection
+
+A call can extract `Relationship` like any other candidate, so a pass can say "the migration depends
+on the auth rewrite" as a record. Nothing in the extraction engine knows connections are reified. It
+fills whatever relations a class declares, so a `Relationship` is a record with two to-one ends, and
+the reified shape costs nothing at write time. What the pass needs is said in the declaration:
+
+- **Which end is the parent.** The workshop reads a connection as a tree from source to target, so
+  the hints on `source` and `target` say the source is the broader end, and the label is phrased from
+  it ("includes", not "is part of"). The declaration cannot express direction, and a model guessing
+  it inverts half a tree.
+- **That the structure exists.** A model is shown only the instances whose identity property is set.
+  That property is `connection`, the dedup key, so WE writes it on every connection a person draws
+  (`connectionKey`) and rewrites it when an end moves. A connection drawn by hand with no key was
+  invisible to the pass meant to extend it.
+- **Which records it can reach.** A pass sees the existing records of the models it is looking for,
+  and no others, so a connection can join only those models. Relationship on its own connects nothing.
+
+What a pass cannot do yet is shared by every relation, not special to this one:
+
+- It cannot see a space's `RelationshipType`s, so an extracted connection has no kind. It shows in a
+  tree only while the tree follows every kind.
+- It cannot re-point an end. Relation writes are add-only, so "that belongs under X" produces a
+  second connection, and a person removes the old one.
+- It sees the tree as a flat list of keys, not as a tree.
+
+Those are executor capabilities: classes a pass can reference without creating, relation replacement
+staged as a suggestion, and context described as a query. They are not workarounds to build here.
+
 ## Worked examples
 
 | Connection                           | Tier                              | Why                                                                                       |
