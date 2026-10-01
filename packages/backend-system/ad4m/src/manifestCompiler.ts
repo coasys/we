@@ -140,6 +140,10 @@ export function buildEntityFromEntry(
       }
       Property({
         through: p.predicate,
+        // AD4M infers a property's datatype from the value a constructed instance holds, and a
+        // declaration with no default leaves that value unset — so number and boolean say so.
+        ...(p.type === 'number' ? { datatype: 'xsd://decimal' } : {}),
+        ...(p.type === 'boolean' ? { datatype: 'xsd://boolean' } : {}),
         ...(p.required ? { required: true } : {}),
         ...(p.writable === false ? { readOnly: true } : {}),
         ...(p.resolveLanguage !== undefined ? { resolveLanguage: p.resolveLanguage } : {}),
