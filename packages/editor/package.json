@@ -33,7 +33,7 @@
     "@we/primitives": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.4.0",
+    "@types/node": "^26.6.3",
     "@we/components": "workspace:*",
     "@we/schema-solid": "workspace:*",
     "solid-js": "^1.9.15",

@@ -23,7 +23,7 @@
     "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
     "typescript": "^6.0.3",
-    "vite": "^8.2.2",
+    "vite": "^8.3.1",
     "vite-plugin-solid": "^2.11.14",
     "vitest": "^4.1.11"
   }

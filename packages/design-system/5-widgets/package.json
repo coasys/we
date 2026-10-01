@@ -35,7 +35,7 @@
     "@we/cli": "workspace:*",
     "@we/primitives": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",
-    "sass": "^1.103.1",
+    "sass": "^1.105.0",
     "solid-js": "^1.9.15",
     "tsup": "^8.5.1",
     "vitest": "^4.1.11"
