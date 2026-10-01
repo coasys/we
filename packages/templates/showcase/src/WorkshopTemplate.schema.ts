@@ -3516,6 +3516,12 @@ const canvas: SchemaNode = {
         strength is a tangle and the shape has to be what the eye follows first.
       */
       TREE_EDGE_RULES,
+      /*
+        A connection an extraction pass suggested and nobody has agreed to: dashed and faded, as a
+        suggested card is. Last, so it wins over the tree's rules — a suggestion on the spine is still
+        a suggestion. Accepting or rejecting it is the inspector's, which a click on the line opens.
+      */
+      { when: { 'data.pending': true }, style: { dashed: true, opacity: 0.5 } },
     ],
     controls: ['zoom-in', 'zoom-out', 'fit', 'lock'],
     height: '100%',
