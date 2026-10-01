@@ -227,7 +227,7 @@ export const ad4mCapabilities: AdapterCapabilities = {
     every row — the `exists` failure above, again. A number bound is compared against the stored
     value after the executor parses it, which reads RFC 3339 timestamps but not the zone-less
     `YYYY-MM-DD` WE writes, so a date range cannot be pushed down by converting the bound either.
-    Refused until the executor compares strings; see ad4m-follow-ups.
+    Refused until the executor compares two strings as text.
   */
   rangeBounds: ['number'],
   booleanCombinators: true, // OR / AND / NOT in `where` (#868)

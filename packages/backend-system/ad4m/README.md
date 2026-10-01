@@ -44,5 +44,5 @@ code on this side, which is the intended direction:
   (`interpretationAdapter.ts`) — `runInterpretation` writes instances and returns URIs; attaching
   them to a container and naming their fields for a reviewer happens here.
 - The operators and bounds the planner refuses — `exists`, string range bounds, `startsWith` /
-  `endsWith` — see the notes beside `ad4mCapabilities` in `ad4mAdapter.ts`, and
-  `notes/we/September-2026/ad4m-follow-ups.md` (outside the repo) for the tracked items.
+  `endsWith` — see the notes beside `ad4mCapabilities` in `ad4mAdapter.ts`, which say what the
+  executor does with each and why the planner refuses it rather than sending it.
