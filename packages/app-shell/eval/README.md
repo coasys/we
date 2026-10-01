@@ -80,8 +80,11 @@ prefill of the prompt, and a small model's prefill is not free.
 ### Models worth including
 
 - **Claude Sonnet**, through the Anthropic protocol with coasys/ad4m#1044, so tools are native.
+- **A small local model** — the case the split is meant for. Pick by what fits VRAM _including_ its
+  KV cache, not by parameter count: on a 12GB card driving a desktop, qwen3:4b fits at its full
+  window and qwen3:8b does not (see below). The 4B is a weak model and its absolute pass rate is
+  low; what it measures is the ordering between strategies, which it reproduces faithfully.
 - **A ~35B local model**, e.g. Qwen3.6, which Josh ran with the full prompt.
-- **A ~8B local model**, the case the split is meant for.
 
 Local Ollama models need coasys/ad4m#1001, or `PARAMETER num_ctx` raised in a Modelfile. Without
 either, Ollama's OpenAI-compatible endpoint silently truncates the prompt, and the run measures the
@@ -99,10 +102,45 @@ prompt still allocates the whole window. qwen3:8b is 5.2GB of weights and a furt
 cache at its 40,960-token window — 11GB, which does not fit a 12GB card that is also driving a
 desktop.
 
-When it does not fit, either make room (`api_max_num_ctx` on the model entry caps what the node
-asks for; a quantized KV cache halves or quarters it) or raise `WE_EVAL_TIMEOUT` and accept a long
-run. What is not an option is leaving it: every case fails as "the model did not answer", and the
-run has measured the timeout.
+When it does not fit, either make room or raise `WE_EVAL_TIMEOUT` and accept a long run. What is
+not an option is leaving it: every case fails as "the model did not answer", and the run has
+measured the timeout.
+
+The recipe that worked here — a second Ollama on its own port, so the system service is untouched
+and no sudo is needed:
+
+```sh
+OLLAMA_HOST=127.0.0.1:11435 OLLAMA_MODELS=/home/you/.ollama-eval/models \
+OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1 ollama serve
+```
+
+`q8_0` roughly halves the cache and is near-lossless; `q4_0` quarters it and is a quality confound
+worth avoiding while measuring quality. qwen3:4b then loads at 6.4GB, `100% GPU`, 40,960 tokens.
+
+Then register a model entry pointing at that port, and **set `maxNumCtx`**. Without it the node asks
+for the model's own maximum: qwen3:4b advertises a 256K window, so the node clamps to its 131,072
+default and allocates ~14GB, which spills to CPU and is _worse_ than leaving it alone.
+
+Two things about changing a model entry, both learned the hard way:
+
+- **`removeModel` + `addModel` picks up new config; `updateModel` does not.** A provider captures its
+  base URL and context ceiling when its worker thread spawns, and an update does not rebuild them.
+- **Never change model config while a run is in flight.** `updateModel` tears down the LLM channel,
+  and the run fails with `Model '<id>' not found in LLM channel` partway through.
+
+### A turn longer than 300s cannot be measured
+
+Node's `fetch` gives up after 300s with no bytes — undici's default `headersTimeout` — and
+`converse` passes no dispatcher, so a slow turn fails as a bare `fetch failed` with zero model calls
+however high `WE_EVAL_TIMEOUT` is. It is not a limit the shipped editor has (browsers impose no
+comparable cap), and it is not ad4m's, whose Ollama timeout is 600s.
+
+It matters because it is **not neutral between strategies**: a larger core takes proportionally
+longer to prefill, and the node does not stream the first byte through for Ollama, so the silence is
+longer. In the 4B run `lookup` lost four cases to it and `sections` none — which means a comparison
+taken at face value understates the larger-core strategy. Compare on the cases both arms ran.
+
+Raising it needs a dispatcher with `headersTimeout` disabled, which means adding `undici`.
 
 ## Reading the numbers
 

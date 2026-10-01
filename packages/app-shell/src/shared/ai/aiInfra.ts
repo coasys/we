@@ -23,8 +23,17 @@ import { type ContextStrategyId, prepareContext, type PreparedContext } from './
  * is — so it sends a core plus the components and stores the request and the template implicate,
  * and leaves the rest a tool call away.
  *
+ * `lookup` over `sections` holds at the other end of the range too, and for a reason that explains
+ * itself. On a 4B, over the cases both arms ran, it took 6/13 against 4/13 — and the cases it flips
+ * are the ones needing a component's props or a store's members, which `sections` expects the model
+ * to ASK for. Context calls there were 0.1 per case against Sonnet's 1.2: a small model does not
+ * ask. Preselecting from the request is therefore what makes a split work for a weak model, rather
+ * than a refinement on top of one that already works.
+ *
  * It is also what makes the editor usable on a small node at all: the whole reference does not fit
- * beside a template in a 40K window, so the panel failed before reasoning.
+ * beside a template in a 40K window, so the panel failed before reasoning. The case still unmeasured
+ * is a LARGE template on a small node, where this strategy's ~9K of remaining window is what binds
+ * and `sections`' ~32K is not — one constant to change if that turns out to matter.
  */
 const STRATEGY: ContextStrategyId = 'lookup';
 
