@@ -31,14 +31,49 @@ describe('splitting the reference', () => {
 
 describe('the sections strategy', () => {
   const prepared = sectionsContext(chatSystemPreamble, schemaContext);
+  const storesText = splitReference(schemaContext).find((s) => s.title === 'Stores')!.text;
 
   it('keeps every section reachable, in the prompt or behind exactly one tool', () => {
     const loaded = prepared.tools.map((tool) => prepared.resolveTool!(call(tool.name))!);
     for (const { title, text } of splitReference(schemaContext)) {
-      if (!title) continue;
+      // Stores is the one section handed over a store at a time rather than whole — see below.
+      if (!title || title === 'Stores') continue;
       const places = [prepared.system, ...loaded].filter((place) => place.includes(text));
       expect(places, title).toHaveLength(1);
     }
+  });
+
+  it('reaches the stores by name, several at once', () => {
+    const answer = prepared.resolveTool!(call('we_stores_reference', { stores: ['spaceStore', 'themeStore'] }))!;
+    expect(answer).toMatch(/^SpaceStore:$/m);
+    expect(answer).toMatch(/^ThemeStore:$/m);
+    expect(answer).not.toMatch(/^RecordStore:$/m);
+  });
+
+  it('names every store it will answer for, in the directory and in the tool', () => {
+    const tool = prepared.tools.find((t) => t.name === 'we_stores_reference')!;
+    for (const name of storesText.match(/^([A-Z]\w*):$/gm)!) {
+      const asked = name.replace(/:$/, '');
+      const member = asked[0].toLowerCase() + asked.slice(1);
+      expect(prepared.system, member).toContain(member);
+      expect(tool.description, member).toContain(member);
+    }
+  });
+
+  /**
+   * The reason this tool takes names. Handed over whole the Stores section is most of the window
+   * this strategy exists to leave free, so one call would spend the budget and leave nowhere to put
+   * the answer.
+   */
+  it('hands over a fraction of the section for the stores a request actually touches', () => {
+    const answer = prepared.resolveTool!(call('we_stores_reference', { stores: ['spaceStore'] }))!;
+    expect(answer.length).toBeLessThan(storesText.length / 3);
+  });
+
+  it('says what it takes rather than answering an empty call with everything', () => {
+    const answer = prepared.resolveTool!(call('we_stores_reference'))!;
+    expect(answer).toMatch(/Name the stores you want/);
+    expect(answer.length).toBeLessThan(storesText.length / 10);
   });
 
   it('sends a much smaller prompt than the full reference', () => {

@@ -121,12 +121,26 @@ const SECTION_TOOLS: { name: string; summary: string; titles: string[] }[] = [
 
 const NO_PARAMETERS = { type: 'object', properties: {} };
 
+/**
+ * The one section too big to hand over whole.
+ *
+ * Every other tool returns a few thousand tokens; Stores is 31k — nearly the entire headroom this
+ * strategy exists to leave free, so one call spends the budget and the model has nowhere to put the
+ * answer. It is also the section that slices cleanly: a store is a named entry and a request names
+ * the one or two it touches. So this tool takes names, exactly as `lookup`'s does, and the directory
+ * lists what there is to ask for.
+ */
+const STORES_TOOL = 'we_stores_reference';
+
 export function fullContext(preamble: string, reference: string): PreparedContext {
   return { system: preamble + reference, tools: [] };
 }
 
 export function sectionsContext(preamble: string, reference: string): PreparedContext {
   const section = sectionsByTitle(reference);
+  const stores = parseEntries(section('Stores'), STORE_ENTRY, (m) => m[1][0].toLowerCase() + m[1].slice(1));
+  const storeNames = [...stores.entries.keys()];
+
   const directory = [
     '## Available Context Tools',
     '',
@@ -135,17 +149,45 @@ export function sectionsContext(preamble: string, reference: string): PreparedCo
     'most common reason a patch fails validation.',
     '',
     ...SECTION_TOOLS.map((tool) => `- **${tool.name}** — ${tool.summary}`),
+    '',
+    `Stores to ask ${STORES_TOOL} for by name: ${storeNames.join(', ')}.`,
   ].join('\n');
 
-  const texts = new Map(SECTION_TOOLS.map((tool) => [tool.name, tool.titles.map(section).join('\n\n')]));
+  const texts = new Map(
+    SECTION_TOOLS.filter((tool) => tool.name !== STORES_TOOL).map((tool) => [
+      tool.name,
+      tool.titles.map(section).join('\n\n'),
+    ]),
+  );
+
   return {
     system: preamble + [...CORE_TITLES.map(section), directory].join('\n\n'),
-    tools: SECTION_TOOLS.map((tool) => ({
-      name: tool.name,
-      description: `Load the reference section: ${tool.summary.toLowerCase()}.`,
-      parameters: NO_PARAMETERS,
-    })),
-    resolveTool: (call) => texts.get(call.name),
+    tools: SECTION_TOOLS.map((tool) =>
+      tool.name === STORES_TOOL
+        ? {
+            name: tool.name,
+            description: `Load the state and actions of the stores named. ${storeNames.join(', ')}.`,
+            parameters: {
+              type: 'object',
+              properties: {
+                stores: { type: 'array', items: { type: 'string' }, description: 'Store names, e.g. "spaceStore".' },
+              },
+              required: ['stores'],
+            },
+          }
+        : {
+            name: tool.name,
+            description: `Load the reference section: ${tool.summary.toLowerCase()}.`,
+            parameters: NO_PARAMETERS,
+          },
+    ),
+    resolveTool: (call) => {
+      if (call.name !== STORES_TOOL) return texts.get(call.name);
+      const asked = (call.arguments as { stores?: unknown }).stores;
+      const found = describeEntries('store', stores, asked);
+      if (!found.length) return `Name the stores you want. Stores: ${storeNames.join(', ')}`;
+      return [stores.intro, ...found].join('\n\n');
+    },
   };
 }
 
@@ -182,6 +224,16 @@ function parseEntries(text: string, start: RegExp, key: (match: RegExpMatchArray
     intro: intro.join('\n').trim(),
     entries: new Map([...entries].map(([name, lines]) => [name, lines.join('\n').trimEnd()])),
   };
+}
+
+/** Named entries out of a registry section, saying so when a name is not one. */
+function describeEntries(kind: string, from: Entries, names: unknown): string[] {
+  return (Array.isArray(names) ? names : []).map(String).map((name) => {
+    const entry = from.entries.get(name);
+    if (entry) return entry;
+    const near = [...from.entries.keys()].filter((known) => known.toLowerCase().includes(name.toLowerCase()));
+    return `No ${kind} named "${name}".${near.length ? ` Did you mean: ${near.slice(0, 5).join(', ')}?` : ''}`;
+  });
 }
 
 const LOOKUP_CORE_TITLES = [
@@ -304,14 +356,6 @@ export function lookupContext(
     `Sections: ${Object.keys(LOOKUP_SECTIONS).join(', ')}`,
   ].join('\n');
 
-  const describe = (kind: string, from: Entries, names: unknown): string[] =>
-    (Array.isArray(names) ? names : []).map(String).map((name) => {
-      const entry = from.entries.get(name);
-      if (entry) return entry;
-      const near = [...from.entries.keys()].filter((known) => known.toLowerCase().includes(name.toLowerCase()));
-      return `No ${kind} named "${name}".${near.length ? ` Did you mean: ${near.slice(0, 5).join(', ')}?` : ''}`;
-    });
-
   return {
     system: preamble + [...LOOKUP_CORE_TITLES.map(section), preselected].join('\n\n'),
     tools: [
@@ -333,8 +377,8 @@ export function lookupContext(
       if (call.name !== 'we_reference') return undefined;
       const args = call.arguments as { components?: unknown; stores?: unknown; sections?: unknown };
       const found = [
-        ...describe('component', components, args.components),
-        ...describe('store', stores, args.stores),
+        ...describeEntries('component', components, args.components),
+        ...describeEntries('store', stores, args.stores),
         ...(Array.isArray(args.sections) ? args.sections : []).map(String).map((name) => {
           const title = LOOKUP_SECTIONS[name];
           return title
