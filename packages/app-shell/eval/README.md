@@ -54,6 +54,28 @@ before a full run.
 Results go to `eval/results/<timestamp>/`, which is gitignored: `report.md` (a summary table,
 a case × combination grid, and every failure with its reason) and `results.json`.
 
+### Watching a run
+
+A case settles into a line as it finishes, so a long run can be followed:
+
+```
+[ 7/34] ✓ sections · todo-tasks · 184s · 3 calls +1 context · 23m elapsed
+[ 8/34] ✗ sections · post-count-badge · 201s · 4 calls +1 context +1 retries · 26m elapsed — no badge counting posts
+```
+
+**Do not pipe the run through `tail`, or anywhere else that is not a terminal.** Vitest holds a
+file's console output until the file ends, so a piped run of several hours shows nothing at all until
+it is over — no progress, and no way to tell a slow case from a wedged one. Use `tee` if the output
+is wanted in a file as well:
+
+```sh
+… pnpm --filter @we/app-shell eval:context 2>&1 | tee eval-run.log
+```
+
+The progress lines go to stdout directly for the same reason, so they survive what vitest captures.
+Against a local model, expect minutes per case rather than seconds: every tool call is another whole
+prefill of the prompt, and a small model's prefill is not free.
+
 ### Models worth including
 
 - **Claude Sonnet**, through the Anthropic protocol with coasys/ad4m#1044, so tools are native.

@@ -46,6 +46,39 @@ const validationContext = buildValidationContext(contextData);
 const records: EvalRecord[] = [];
 const startedAt = new Date();
 
+/**
+ * One line per case, as it settles.
+ *
+ * Against a local model a full run is hours, and there is otherwise nothing to watch: vitest holds
+ * a file's console output until the file ends, and holds it whatever the reporter is once stdout is
+ * not a terminal — which it is not the moment the run is piped or redirected, as a run this long
+ * will be. So the choice was a progress line or no way to tell a slow case from a wedged one, and
+ * no way to know how far along a run is without waiting for it to finish.
+ *
+ * `process.stdout.write` rather than `console.log` for the same reason `afterAll` uses it: console
+ * output from inside a test is captured and replayed at the end, which is exactly what this exists
+ * to avoid.
+ */
+const total = models.length * strategies.length * cases.length * repeat;
+let settled = 0;
+
+function reportProgress(record: EvalRecord): void {
+  settled += 1;
+  const where = models.length > 1 ? `${record.model.slice(0, 8)} · ${record.strategy}` : record.strategy;
+  const calls =
+    `${record.modelCalls} call${record.modelCalls === 1 ? '' : 's'}` +
+    (record.contextCalls ? ` +${record.contextCalls} context` : '') +
+    (record.validationRetries ? ` +${record.validationRetries} retries` : '');
+  // A failure's reason is the point of the line, so it is not truncated away.
+  const why = record.passed ? '' : ` — ${record.reason || record.outcome}`;
+  const count = `${settled}/${total}`.padStart(`${total}/${total}`.length);
+  const elapsed = Math.round((Date.now() - startedAt.getTime()) / 1000);
+  process.stdout.write(
+    `[${count}] ${record.passed ? '✓' : '✗'} ${where} · ${record.caseId} · ` +
+      `${(record.ms / 1000).toFixed(0)}s · ${calls} · ${Math.floor(elapsed / 60)}m elapsed${why}\n`,
+  );
+}
+
 beforeAll(async () => {
   const response = await fetch(`${url.replace(/\/+$/, '')}/v1/models`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -127,6 +160,7 @@ for (const model of models) {
             }
             record.ms = Date.now() - began;
             records.push(record);
+            reportProgress(record);
           });
         }
       }
