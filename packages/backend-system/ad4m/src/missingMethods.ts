@@ -32,9 +32,8 @@
  * It is **reactive**. A method nothing called this session is a method nothing knows is missing, so
  * an empty list means "nothing has been refused yet", never "this executor is current". The fix for
  * that is an executor that reports its own method set — the WS dispatcher already holds one, keyed
- * by exactly these names — which is written up in `notes/we/September-2026/ad4m-follow-ups.md` §12.
- * Until a node is new enough to answer that, this is what can be known from here, and it keeps
- * working against the old nodes that report nothing, which is the case that needs it most.
+ * by exactly these names, and does not expose it. Even once one does, this stays: it keeps working
+ * against the old nodes that report nothing, which is the case that needs it most.
  *
  * Module-level rather than per connection: a session talks to one executor, and the alternative is
  * threading an instance through five call sites that each hold nothing else.

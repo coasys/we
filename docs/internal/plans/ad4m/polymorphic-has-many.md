@@ -2,9 +2,13 @@
 
 > Feature request: allow `@HasMany` to hydrate children as their correct `@Model` subclass instead of the declared target class.
 
-> **Status (Aug 2026): not started upstream, and now has a second motivating case.** Nothing in
-> `ad4m/core/src/model` mentions `polymorphic`, and no PR — open, merged or closed — implements it.
-> Two things have changed since this was written; see **Revisions** at the end before starting work.
+> **Status (Oct 2026): superseded — shipped differently upstream. Kept as history; do not work from
+> it.** ad4m #925 added `polymorphic: true` on a relation (or on an include), and the executor
+> classifies each target with `subject_classes_of` and hydrates it as its own class, carrying
+> `__subjectClass` / `__subjectClasses`. Two premises below did not survive: classification never
+> came from a SHACL type flag, and nothing swaps classes on the TypeScript side (Revision 3's
+> "Files to modify"). What is still open is listed where WE uses it: the schema reference's notes on
+> nested include, and `canvas.ts`.
 
 ---
 

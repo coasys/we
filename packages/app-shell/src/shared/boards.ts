@@ -296,7 +296,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         renderer's own query path hydrates the same relation happily. Whatever the difference is, it
         is not needed: an un-included to-many comes back as the ids, which is all this wants. Reading
         the ids is also cheaper than hydrating every block in a call to find out whether any is a
-        task. See `notes/we/September-2026/ad4m-subscription-recovery.md`.
+        task.
       */
       const anchor = await CollectionBlock.findOne(p, {
         where: { id: collectionId },
