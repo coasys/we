@@ -73,6 +73,46 @@ self-documenting and keeps it visually parallel to its recipe in `@we/ai-context
   - value has a default, key always present → `px: opts.px ?? '400'`
   - the key itself is optional → `...(opts.minHeight !== undefined && { minHeight: opts.minHeight })`
 
+## A `$if` whose branches agree about their content is one node
+
+A fragment's output is DATA, and its size is paid for continuously: the editor sends the whole
+schema to a language model on every turn and gets a whole schema back, the undo history holds a
+copy per edit, and the template crosses the wire with all of it. A fragment is also the shape many
+templates inherit, so a copy here is a copy at every call site at once.
+
+So when a mode or a flag changes the WRAPPER around some content and not the content itself, put
+the condition in the wrapper's props rather than writing the content down both sides of a `$if`:
+
+```ts
+// One body. The mode decides what is around it.
+{ type: 'CollapsedContent',
+  props: { collapsed: { $: "local.displayMode != 'expanded' && !local.expanded" },
+           showToggle: { $: "local.displayMode != 'expanded'" } },
+  children: [body] }
+
+// Not this — `body` is in the output twice, and `body` is the whole of a card.
+{ type: '$if', props: { condition: { $: "local.displayMode == 'expanded'" },
+                        then: { type: 'Column', children: body },
+                        else: { type: 'CollapsedContent', children: [{ type: 'Column', children: body }] } } }
+```
+
+`buildCard` was the second shape, which made every card in WE carry its body three times — 150,445
+characters a copy in `CardsView`. Collapsing it took that view down 28%.
+
+Two things to know before reaching for this:
+
+- **A component may have to meet you halfway.** `CollapsedContent` renders its children bare when
+  there is nothing to collapse and no toggle offered, which is what makes the expanded mode's DOM
+  identical to what the `$if` used to produce. Without that the content would sit inside an
+  `overflow: hidden` box — a no-op for height, and not a no-op for anything that needs to escape
+  it. Check what the component does in the mode you are collapsing INTO rather than assuming.
+- **This is not the same as deduplicating a fragment.** A fragment called ten times produces ten
+  copies because a tree cannot name a shape and point at it; that is the data model, and nothing
+  you write here fixes it. This rule is only about one `$if` saying the same thing twice.
+
+`pnpm --filter @we/schema-shared size-audit` reports both, separately — a branch pair that shares
+content, and a shape that merely recurs.
+
 ## Colour — roles only
 
 Every `bg`, `color` and border colour a fragment emits names a **semantic role** (`surface`,
