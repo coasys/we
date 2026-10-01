@@ -35,9 +35,13 @@
  * `Sighting` nobody had heard of when this file was written.
  *
  * Placements are read first for that reason, and their node references are read as bare URIs rather
- * than hydrated. An untyped relation has no target class for `include` to hydrate into, and the id
- * is what is wanted anyway: the records come back in one query per type — `where: { id: [...] }`,
- * which is native on AD4M and pushes down to a SPARQL `VALUES` clause — and are matched up here.
+ * than hydrated: the records come back in one query per type — `where: { id: [...] }`, which is
+ * native on AD4M and pushes down to a SPARQL `VALUES` clause — and are matched up here.
+ *
+ * Not because the reference cannot be hydrated. An untyped to-one does come back through `include`
+ * as one record of its own class; what cannot come with it yet is the `counts` each card carries,
+ * since a count projection written inside a nested include is dropped. Hydrating the placements
+ * would therefore cost the counts, or a second pass to get them back — the same round this saves.
  */
 import type { GraphEdge, GraphNode, GraphValue, SeedSource } from '@we/graph-protocol';
 import { entityAddress, parseAddress } from '@we/graph-protocol';
