@@ -8,12 +8,7 @@
  * and patch application in `shared/ai/schemaPatches` — this store orchestrates them against its own
  * signals, and never learns which model or provider answered.
  */
-import {
-  chatSystemPrompt,
-  formatExternalManifestForPrompt,
-  requestMessage,
-  updateSchemaTool,
-} from '@shared/ai/aiInfra';
+import { chatContext, formatExternalManifestForPrompt, requestMessage, updateSchemaTool } from '@shared/ai/aiInfra';
 import { runEditSession } from '@shared/ai/editSession';
 import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
@@ -1002,14 +997,20 @@ export function EditorStoreProvider(props: ParentProps) {
     const streamMsg = createMessage('assistant', '', 'streaming');
     setMessages((prev) => [...prev, streamMsg]);
 
+    // What the model is told about WE, chosen for this request: a core plus the components and
+    // stores it implicates, with the rest behind a tool. See `chatContext`.
+    const schemaForRequest = deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode;
+    const prepared = await chatContext({ request: text, schema: schemaForRequest });
+
     const result = await runEditSession({
       converse,
-      system: await chatSystemPrompt(),
+      system: prepared.system,
       turns: buildTurns(text),
-      tools: [updateSchemaTool],
+      tools: [updateSchemaTool, ...prepared.tools],
+      resolveTool: prepared.resolveTool,
       // Buffered changes if there are any, so a conversation resumed against a read-only template
       // continues from them rather than reverting them.
-      schema: deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode,
+      schema: schemaForRequest,
       validationContext: getValidationCtx(),
       onDisplay: setStreamingContent,
       debug: devLog,
