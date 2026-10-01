@@ -145,6 +145,20 @@ async function createPlacement(
 }
 
 /**
+ * A connection's dedup key — the format `Relationship.connection`'s hint asks an extraction pass for.
+ *
+ * Written on every connection a person makes, not only on what a pass writes, because the executor
+ * shows a model only the instances whose identity property is set: a connection drawn by hand
+ * without a key was invisible to the pass meant to extend the structure it belonged to. Ids for both
+ * ends, which the same prompt lists beside their titles, so the key reads as a pair the model can
+ * look up. The label is left off when there is none, rather than leaving a dangling colon.
+ */
+export function connectionKey(sourceId: string, targetId: string, label?: unknown): string {
+  const pair = `${sourceId} \u2192 ${targetId}`;
+  return typeof label === 'string' && label.trim() ? `${pair}: ${label.trim()}` : pair;
+}
+
+/**
  * A connection between two records, written as ONE commit — answering with its id.
  *
  * Its ends go in as one-element arrays for the reason `createPlacement` gives: a plain value is
@@ -160,7 +174,12 @@ async function createConnection(
 ): Promise<string> {
   const created = (await getEntity(RELATIONSHIP).create(
     dataset as never,
-    { ...fields, source: [sourceId], target: [targetId] } as never,
+    {
+      connection: connectionKey(sourceId, targetId, fields.label),
+      ...fields,
+      source: [sourceId],
+      target: [targetId],
+    } as never,
   )) as { id?: string } | null;
   return String(created?.id ?? '');
 }
@@ -2290,8 +2309,24 @@ export function RecordStoreProvider(props: ParentProps) {
         return;
       }
 
+      /*
+        The key moves with the end. It names both ends, so left alone it would tell the next extraction
+        pass the connection still joins the pair it was drawn between — and a pass reusing that key, as
+        its hint asks of the same claim, would write the old end back. Only for a `Relationship`: this
+        gesture moves the ends of any record shaped like one, and only that one carries a key.
+      */
+      const moved = (event.recordType || RELATIONSHIP) === RELATIONSHIP;
+      const other = record[event.end === 'source' ? 'target' : 'source'];
       await Model.update(dataset.handle, event.recordId, {
         [event.end === 'source' ? 'sourceType' : 'targetType']: event.nodeType,
+        ...(moved && typeof other === 'string' && other
+          ? {
+              connection:
+                event.end === 'source'
+                  ? connectionKey(event.nodeId, other, record.label)
+                  : connectionKey(other, event.nodeId, record.label),
+            }
+          : {}),
       });
       /*
         Called, not optional-chained.
@@ -2824,7 +2859,11 @@ export function RecordStoreProvider(props: ParentProps) {
       */
       const fields = recordDraftFields(draft);
       if (link) {
-        Object.assign(fields, { sourceType: link.sourceType, targetType: link.targetType });
+        Object.assign(fields, {
+          sourceType: link.sourceType,
+          targetType: link.targetType,
+          connection: connectionKey(link.sourceId, link.targetId, fields.label),
+        });
         // Only when one was chosen: an empty string would write a reference to a kind that does not
         // exist, and the ORM cannot later clear it — see `recordDraftFields` on blank optionals.
         if (relationshipKind()) Object.assign(fields, { relationshipTypeId: relationshipKind() });

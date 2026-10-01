@@ -20,6 +20,8 @@ interface Link {
   target?: string;
   sourceType?: string;
   targetType?: string;
+  connection?: string;
+  label?: string;
 }
 
 interface Row {
@@ -95,7 +97,12 @@ vi.mock('../src/frameworks/solid/stores/ShapeStore', () => ({
   BLOCK_ICONS: {},
 }));
 
-import { type RecordStore, RecordStoreProvider, useRecordStore } from '../src/frameworks/solid/stores/RecordStore';
+import {
+  connectionKey,
+  type RecordStore,
+  RecordStoreProvider,
+  useRecordStore,
+} from '../src/frameworks/solid/stores/RecordStore';
 
 function mount(): RecordStore {
   let store!: RecordStore;
@@ -202,6 +209,45 @@ describe('undoing a tree drop', () => {
  * Connections held ahead of the data: drawn from the moment of the gesture, and dropped once the graph
  * reports its own data says the same — see `holdConnection`.
  */
+/**
+ * The dedup key an extraction pass reads.
+ *
+ * The executor shows a model only the connections whose key is set, so a tree built by hand with none
+ * was invisible to the pass meant to extend it — and a key naming an end that has since moved would
+ * tell that pass the card was still where it used to be.
+ */
+describe('a connection’s key', () => {
+  it('is written on a connection a tree drop makes', async () => {
+    const store = mount();
+    await store.arrangeOnTree(CANVAS, SPINE, {
+      recordId: 'z',
+      recordType: 'Card',
+      into: 'child',
+      targetId: 'x',
+      targetType: 'Card',
+      order: ['z'],
+    });
+    const made = [...world.links.values()].find((entry) => entry.target === 'z');
+    expect(made?.connection).toBe('x \u2192 z');
+  });
+
+  it('follows the end a tree drop moves, and moves back on undo', async () => {
+    world.links.get('pb')!.label = 'depends on';
+    const store = mount();
+    await drop(store, { into: 'child', targetId: 'x', targetType: 'Card', order: ['b'] });
+    expect(world.links.get('pb')?.connection).toBe('x \u2192 b: depends on');
+
+    await store.undoCanvas(CANVAS);
+    expect(world.links.get('pb')?.connection).toBe('p \u2192 b: depends on');
+  });
+
+  it('names both ends by id, and leaves the label off when there is none', () => {
+    expect(connectionKey('we://a', 'we://b', '  contradicts ')).toBe('we://a \u2192 we://b: contradicts');
+    expect(connectionKey('we://a', 'we://b', '')).toBe('we://a \u2192 we://b');
+    expect(connectionKey('we://a', 'we://b')).toBe('we://a \u2192 we://b');
+  });
+});
+
 describe('connections written and not yet seen', () => {
   /** What the graph would report drawing from its own data, in records. */
   const drawn = () =>
