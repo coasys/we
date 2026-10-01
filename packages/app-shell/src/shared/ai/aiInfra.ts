@@ -9,19 +9,64 @@
  */
 import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
 import type { ConversationTool, EntityManifestEntry } from '@we/backend-shared';
+import type { SchemaNode } from '@we/schema-shared';
+
+import { type ContextStrategyId, prepareContext, type PreparedContext } from './contextStrategies';
 
 /**
- * The full system prompt for schema-editing chat.
+ * How the editor tells a model about WE.
  *
- * The schema reference it embeds is ~117 KB of generated text, and it is needed only when a
- * request is actually sent. As a module-level constant it was in the first bytes every visitor
- * downloaded, whether or not they ever opened the assistant. Resolved once, then cached.
+ * `lookup` rather than the whole reference. Sending all of it was not merely wasteful, it was
+ * worse: measured over 17 edits on Sonnet, the whole reference passed 15 and was the only arm that
+ * needed validation retries, where `lookup` passed 17 and `sections` 16 (eval/results). A 97K
+ * system prompt buries what the request is actually about, and the editor already knows what that
+ * is — so it sends a core plus the components and stores the request and the template implicate,
+ * and leaves the rest a tool call away.
+ *
+ * `lookup` over `sections` holds at the other end of the range too, and for a reason that explains
+ * itself. On a 4B, over the cases both arms ran, it took 6/13 against 4/13 — and the cases it flips
+ * are the ones needing a component's props or a store's members, which `sections` expects the model
+ * to ASK for. Context calls there were 0.1 per case against Sonnet's 1.2: a small model does not
+ * ask. Preselecting from the request is therefore what makes a split work for a weak model, rather
+ * than a refinement on top of one that already works.
+ *
+ * It is also what makes the editor usable on a small node at all: the whole reference does not fit
+ * beside a template in a 40K window, so the panel failed before reasoning. The case still unmeasured
+ * is a LARGE template on a small node, where this strategy's ~9K of remaining window is what binds
+ * and `sections`' ~32K is not — one constant to change if that turns out to matter.
  */
-let promptLoad: Promise<string> | undefined;
+const STRATEGY: ContextStrategyId = 'lookup';
 
+/**
+ * The reference is ~117 KB of generated text, and is needed only when a request is actually sent.
+ * As a module-level constant it was in the first bytes every visitor downloaded, whether or not
+ * they ever opened the assistant. Imported once, then cached.
+ */
+let referenceLoad: Promise<string> | undefined;
+
+function reference(): Promise<string> {
+  referenceLoad ??= import('@we/ai-context').then(({ schemaContext }) => schemaContext);
+  return referenceLoad;
+}
+
+/**
+ * What to send for one request: the system prompt, and the tools that reach the rest.
+ *
+ * Per request rather than cached, because `lookup` reads the request and the template to decide
+ * what to put in the prompt — which is the whole point of it.
+ */
+export async function chatContext(subject: { request: string; schema: SchemaNode }): Promise<PreparedContext> {
+  return prepareContext(STRATEGY, chatSystemPreamble, await reference(), subject);
+}
+
+/**
+ * The whole reference in one string, for a caller that wants no tools.
+ *
+ * Kept for the strategies' own comparison and for anything measuring the untrimmed prompt; the
+ * editor goes through `chatContext`.
+ */
 export function chatSystemPrompt(): Promise<string> {
-  promptLoad ??= import('@we/ai-context').then(({ schemaContext }) => chatSystemPreamble + schemaContext);
-  return promptLoad;
+  return reference().then((text) => chatSystemPreamble + text);
 }
 
 /** Tool definition for schema mutations (ID-based patching). */
@@ -90,6 +135,17 @@ export const updateSchemaTool: ConversationTool = {
     required: ['patches'],
   },
 };
+
+/**
+ * The message a request is sent as: what was asked, and the template it is asked of.
+ *
+ * The model sees the template as JSON with node ids, which is what its patches target. Earlier
+ * requests in a conversation go with an empty schema — only the latest shows the template as it is
+ * now. `extras` carries the dataset's models when there are any.
+ */
+export function requestMessage(request: string, currentSchema: unknown, extras: Record<string, unknown> = {}): string {
+  return JSON.stringify({ request, currentSchema, ...extras });
+}
 
 /**
  * Format external (non-WE) manifest entries into a human-readable text block.
