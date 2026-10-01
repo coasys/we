@@ -31,7 +31,7 @@
     "@types/node": "^26.4.0",
     "@we/cli": "workspace:*",
     "tsup": "^8.5.1",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.2"
   },
   "publishConfig": {
     "access": "public"

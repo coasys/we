@@ -38,6 +38,6 @@
     "@we/schema-solid": "workspace:*",
     "solid-js": "^1.9.15",
     "@we/primitives": "workspace:*",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.2"
   }
 }
