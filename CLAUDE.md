@@ -5204,6 +5204,7 @@ pnpm audit:roles                               # a scale position where a role b
 pnpm audit:surfaces                            # a surface-sunken invisible against its ground
 pnpm --filter @we/schema-shared tooltip-audit  # nodes asking the browser for a tooltip via `title`
 pnpm --filter @we/schema-shared query-audit    # queries that read a growing list whole
+pnpm --filter @we/schema-shared size-audit     # how big each template is, and what it says twice
 ```
 
 Run them after any template, view or fragment change. A `neutral-600` label is invisible to the
@@ -5247,6 +5248,28 @@ Two things it now catches that it used to miss, both worth knowing when adding a
   several sections used to be judged on whichever happened to be declared at the top.
 - **A schema that fails to import is an error**, not a skip. It used to print the failure and still
   exit 0, so an unloadable schema looked identical to a clean one.
+
+`size-audit` measures what a template COSTS to carry around, which is a different question from
+whether it is correct. A template is data, and everything downstream pays for its size by the
+character: the editor sends the whole schema to a language model on every turn and gets a whole
+schema back, the undo history holds a copy per edit, and a template crossing the wire carries all
+of it. The hard limit is a model's context window, so a shape written twice is not untidy — it
+halves what can be reasoned about.
+
+It reports two things per schema, and they want different answers:
+
+- **`$if sides share N chars`** is a branch pair whose two sides say some of the same thing. This
+  is the one to fix, and the fix is usually one node with the condition in its props rather than a
+  `$if` holding the content down both sides — the same DOM, half the bytes, no new machinery.
+  `buildCard` in `@we/schema-kit` was exactly that, at 150,445 characters a copy in `CardsView`.
+- **`repeat ×N`** is a shape written out N times, which is usually a FRAGMENT called N times and
+  not a defect at all: a tree cannot name a shape and point at it, so a fragment's output is a
+  copy by construction. Reported because it is where the cost is, not because there is an edit.
+
+Neither gates CI. Size is a judgement — a rich template is big — and the honest summary is the
+`gzip` ratio beside it: around 4× means a template that says each thing once, and past about 8×
+means most of it is repetition. Pass `--show` to print the head of each repeated subtree, without
+which the report names a shape it gives no way to find.
 
 Asset imports (`import cover from './cover.jpg'`) resolve to a stub, so a schema that references
 an image validates without a bundler. See `src/cli/assetHooks.mjs`.

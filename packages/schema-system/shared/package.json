@@ -13,7 +13,8 @@
     "surface-audit": "tsx src/cli/surface-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system",
     "role-audit": "tsx src/cli/role-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system --code ../../editor/src ../../graph-system ../../app-shell/src ../../design-system ../../module-system",
     "tooltip-audit": "tsx src/cli/tooltip-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system",
-    "query-audit": "tsx src/cli/query-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system"
+    "query-audit": "tsx src/cli/query-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system",
+    "size-audit": "tsx src/cli/size-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system"
   },
   "bin": {
     "we-validate-schemas": "./dist/cli/we-validate-schemas.js"
