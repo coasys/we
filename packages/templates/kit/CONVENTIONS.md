@@ -99,7 +99,40 @@ the condition in the wrapper's props rather than writing the content down both s
 `buildCard` was the second shape, which made every card in WE carry its body three times — 150,445
 characters a copy in `CardsView`. Collapsing it took that view down 28%.
 
-Two things to know before reaching for this:
+### Three shapes this takes
+
+**The wrapper varies and the content does not** — the case above, and the one to reach for first.
+The condition moves into the wrapper's props and the content is written once.
+
+**The branch is around too much.** `taskBoard`'s board row chose between a row per person and the
+board's columns, and both sides then listed the add-column button and the Unplaced column. The two
+arrangements differ in what comes FIRST and agree about everything after it, so the `$if` belongs
+around that first position rather than around the whole row:
+
+```ts
+{ type: 'Row', props: { gap: '400' }, children: [
+  { type: '$if', props: { condition: byPerson, then: personRows(), else: columns() } },
+  { type: '$if', props: { condition: notByPerson, then: addColumnButton() } },
+  unplacedColumn(),
+] }
+```
+
+This one is usually a readability _improvement_ as well: written as two rows, a reader had to diff
+them to find out what actually differed.
+
+**Two overlapping conditions over one node.** `signalDisplay` showed a reactor list outright for
+one person and a summary-plus-disclosure for a crowd, with the list written into both sides of a
+`total == 1` branch. The questions are independent, so they can be asked separately — the summary
+when there is more than one, the list when there is one _or_ when anybody asked.
+
+**Be honest about the cost of this third shape.** The branch read as a sentence — _one person is
+shown; a crowd is summarised_ — and two overlapping conditions do not: a reader has to combine
+them to recover it. The data is better and the behaviour is identical, but the intent is a step
+less legible, so **carry the sentence into a comment on the condition**. If the two conditions
+cannot be written without restating most of each other, the branch was the clearer form and the
+duplication is the price of saying what you meant.
+
+Two things to know before reaching for any of them:
 
 - **A component may have to meet you halfway.** `CollapsedContent` renders its children bare when
   there is nothing to collapse and no toggle offered, which is what makes the expanded mode's DOM
