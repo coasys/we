@@ -100,8 +100,9 @@ on the PR means, so it is the first thing a reviewer should read; blank lines an
 above it do not count. A mention of an ad4m PR anywhere else — in a sentence, a table or inline code
 — is not a pairing.
 
-Editing the line does not rebuild the preview or re-run the paired check: push again, or use "Retry
-deploy" in Netlify and re-run the workflow. A pairing line that cannot be read fails both rather than
+Editing the line does not rebuild the preview or re-run the paired check. Push again, or use "Retry
+deploy" in Netlify and re-run the `AD4M compatibility` workflow: both read the description as it is
+now, so a re-run picks up the edit. A pairing line that cannot be read fails both rather than
 quietly using the pin, since that would look paired and not be: one that is not the first line, one
 written as a list item (`- ad4m: …`), one naming something that cannot be found or not in one of the
 two forms, and a description with two.
@@ -190,7 +191,8 @@ and tests there. It never blocks a PR.
 
 - **On a paired PR it runs by itself**, against the PR's own commit and whatever the `ad4m:` line
   names. It also runs the schema validation, audits and browser tests that the required checks skip
-  while Build is red. Editing the line does not re-run it: push again, or re-run the workflow. On an
+  while Build is red. Editing the line does not re-run it: push again, or re-run the workflow, which
+  reads the description as it is now. On an
   unpaired PR it is skipped.
 - **From the Actions tab**, name an ad4m branch, and it tests the last WE commit that passed CI on
   `dev` against it — so a failure there is ad4m's difference by construction.

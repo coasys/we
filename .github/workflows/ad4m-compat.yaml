@@ -12,7 +12,8 @@ name: AD4M compatibility
 #   change works, while the required jobs are red waiting for the pin to move — without it, a
 #   paired pull request went days with Typecheck, Test and schemas never running at all, and a
 #   real regression could hide behind the failure everyone expected. Unpaired pull requests skip
-#   it. Editing the line does not re-run it, as with the preview: push again, or re-run the run.
+#   it. Editing the line does not start a run: push again, or re-run this one, which reads the
+#   description as it is now rather than as it was when the run first started.
 # - **From the Actions tab**, naming an AD4M branch, against the last WE commit that passed CI.
 #
 # It used to run nightly against AD4M `dev` and keep a tracking issue. Now every merge to AD4M
@@ -99,7 +100,10 @@ jobs:
       - name: Resolve
         id: resolve
         env:
-          PR_BODY: ${{ github.event.pull_request.body }}
+          # The description as it was when the run was triggered — a fallback only; see below.
+          EVENT_BODY: ${{ github.event.pull_request.body }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           REQUESTED_BRANCH: ${{ github.event.inputs.ad4m_branch }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -108,6 +112,10 @@ jobs:
             # A line that cannot be read, or names a pull request that cannot be found, fails here
             # with the reason, as the preview does.
             # The reason is kept for the comment below as well as printed.
+            # The description as it is NOW, not the copy in the event: a re-run replays the event it
+            # was started by, description included, so reading the event would make "fix the line,
+            # then re-run" silently test the old one. Falls back to the event if the API cannot answer.
+            PR_BODY="$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.body // ""')" || PR_BODY="$EVENT_BODY"
             printf '%s' "$PR_BODY" | node scripts/ad4m-pairing.mjs --resolve 2> pairing-error.txt | tee -a "$GITHUB_OUTPUT"
             STATUS="${PIPESTATUS[1]}"
             cat pairing-error.txt >&2
