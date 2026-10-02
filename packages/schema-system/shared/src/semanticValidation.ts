@@ -997,11 +997,15 @@ const PROP_BAGS = new Set(['hoverProps', 'activeProps', 'focusProps', 'disabledP
  * Props a state or tier bag accepts and then drops on the floor.
  *
  * Both bags go through one pipeline over `INTERACTIVE_SPECS`, and positioning is excluded from it
- * on purpose: an offset that changed at a breakpoint would have to be animated and measured
- * against a containing block that the tier itself can move. So `mdUpProps: { left: '300px' }`
- * typechecks (the bag is a `Partial<DesignSystemProps>`), validates, and does nothing — and an
- * unwritten variable renders as the base value, which looks exactly like a breakpoint that has not
- * been crossed yet.
+ * on purpose — see the comment on `POSITIONING_VAR_SUFFIXES` in `@we/design-utils` for why, which
+ * is a cascade hazard rather than anything about layout: an unset `--we-ds-position` resolves to
+ * `static`, and that can beat the `position: relative` a background-image overlay depends on. That
+ * comment also concedes the weak half of its own argument, which is worth knowing before anybody
+ * reopens this — "rare enough to exclude" is true of hovering and plainly false of breakpoints.
+ *
+ * So `mdUpProps: { left: '300px' }` typechecks (the bag is a `Partial<DesignSystemProps>`),
+ * validates, and does nothing — and an unwritten variable renders as the base value, which looks
+ * exactly like a breakpoint that has not been crossed yet.
  *
  * DERIVED rather than listed, from the same table the pipeline reads. These five are the
  * candidates, and each one is refused only while that table really has no declaration for it — so
