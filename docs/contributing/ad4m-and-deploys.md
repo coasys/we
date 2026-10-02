@@ -58,25 +58,33 @@ until the executor builds on macOS again.
 Use this when a WE change needs an ad4m change that has not been published yet, so the pin cannot
 point at it.
 
-| Step | What you do                                                 | What happens                                                                                                 |
-| ---- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| 1    | Add a line `ad4m: coasys/ad4m#<N>` to the WE PR description | The preview builds both ad4m packages from that ad4m PR (its merge, once merged), and a check tests WE there |
-| 2    | Review and test on the preview                              | You see the two halves working together                                                                      |
-| 3    | Merge the ad4m PR first                                     | It is published under the `dev` tag (see below)                                                              |
-| 4    | Run `pnpm bump:ad4m` in the WE PR, and remove the line      | CI now tests the real combination                                                                            |
-| 5    | Merge the WE PR                                             | `dev` stays on a published, tested pin                                                                       |
+| Step | What you do                                                          | What happens                                                                                                 |
+| ---- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 1    | Make `ad4m: coasys/ad4m#<N>` the first line of the WE PR description | The preview builds both ad4m packages from that ad4m PR (its merge, once merged), and a check tests WE there |
+| 2    | Review and test on the preview                                       | You see the two halves working together                                                                      |
+| 3    | Merge the ad4m PR first                                              | It is published under the `dev` tag (see below)                                                              |
+| 4    | Run `pnpm bump:ad4m` in the WE PR, and remove the line               | CI now tests the real combination                                                                            |
+| 5    | Merge the WE PR                                                      | `dev` stays on a published, tested pin                                                                       |
 
 **Until step 4 the required checks are red.** They test against the pin, which does not have the
 ad4m change yet. Whether that is the only reason is answered by
 **`AD4M compatibility / Against the paired ad4m`**, which builds the same commit against the paired
-change, then typechecks, tests and validates its schemas — and a failing required check names it.
-Both checks build the same WE commit, so the ad4m version is the only difference between them:
+change, then typechecks, tests and validates its schemas. Both checks build the same WE commit, so
+the ad4m version is the only difference between them:
 
 | Required checks | Paired check | Meaning                                                                |
 | --------------- | ------------ | ---------------------------------------------------------------------- |
 | red             | green        | Waiting for the pin, not for a fix                                     |
 | red             | red          | Something is broken — the paired check's summary names the stage       |
 | green           | red          | Fine against today's ad4m, broken against the paired change: fix first |
+
+A reviewer does not have to know any of this to read the PR. The paired check keeps **one comment**
+on it, updated in place: that it is paired and the check is running, then what the check found —
+and if the line cannot be read, why. It also adds a **`paired with ad4m`** label, which the PR list
+shows beside the title. Both go away on the first push after the line is removed. (GitHub has no
+badge beside a PR's title or above its description, so those two are the nearest it offers. A PR
+from a fork gets neither, since its workflow cannot write here; a failing required check still names
+the paired check there.)
 
 The paired check tests the ad4m PR as it is now. If it changes before it is published, step 4 is
 where that shows: the required checks then test the real combination.
@@ -87,13 +95,17 @@ To pair with a branch, tag or commit instead, write `ad4m: coasys/ad4m@<ref>`, f
 To try an ad4m change in WE with no WE change to go with it, open a draft WE PR with an empty commit
 (`git commit --allow-empty`) and the line. Close it when you are done.
 
-Write the line on its own, not as a list item. A mention elsewhere in the description — in a
-sentence, a table or inline code — is not a pairing.
+**The line goes first in the description, on its own.** First because it changes what every check
+on the PR means, so it is the first thing a reviewer should read; blank lines and HTML comments
+above it do not count. A mention of an ad4m PR anywhere else — in a sentence, a table or inline code
+— is not a pairing.
 
-Editing the line does not rebuild the preview: push again, or use "Retry deploy" in Netlify. If the
-line names something that cannot be found, or is not in one of the two forms, the preview fails rather
-than quietly using the pin. So does a description with two lines, and a line written as a list item
-(`- ad4m: …`), which looks paired to whoever wrote it and otherwise would not be.
+Editing the line does not rebuild the preview or re-run the paired check. Push again, or use "Retry
+deploy" in Netlify and re-run the `AD4M compatibility` workflow: both read the description as it is
+now, so a re-run picks up the edit. A pairing line that cannot be read fails both rather than
+quietly using the pin, since that would look paired and not be: one that is not the first line, one
+written as a list item (`- ad4m: …`), one naming something that cannot be found or not in one of the
+two forms, and a description with two.
 
 ## An example, end to end
 
@@ -179,7 +191,8 @@ and tests there. It never blocks a PR.
 
 - **On a paired PR it runs by itself**, against the PR's own commit and whatever the `ad4m:` line
   names. It also runs the schema validation, audits and browser tests that the required checks skip
-  while Build is red. Editing the line does not re-run it: push again, or re-run the workflow. On an
+  while Build is red. Editing the line does not re-run it: push again, or re-run the workflow, which
+  reads the description as it is now. On an
   unpaired PR it is skipped.
 - **From the Actions tab**, name an ad4m branch, and it tests the last WE commit that passed CI on
   `dev` against it — so a failure there is ad4m's difference by construction.

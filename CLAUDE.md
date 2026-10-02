@@ -5111,7 +5111,8 @@ strings target/release/ad4m-executor | grep "your log string"
 
 The root `package.json`'s pnpm `overrides` pin `@coasys/ad4m` and `@coasys/ad4m-connect` to a
 **published version**, not a local `file:` link, and every WE build uses that pin except a deploy
-preview whose PR description pairs it with an ad4m change (`ad4m: coasys/ad4m#<N>`). So a local
+preview whose PR description pairs it with an ad4m change (`ad4m: coasys/ad4m#<N>` as the description's
+first line, on its own — anywhere else it is an error, not a pairing). So a local
 `cd ad4m/core && pnpm run build` does NOT get picked up by WE — changes to `@coasys/ad4m` reach WE
 once a version is published from the ad4m repo and the pin moves. A bot keeps one PR open that moves
 it to the newest ad4m `dev` version (`.github/workflows/bump-ad4m.yaml`); a feature that needs a

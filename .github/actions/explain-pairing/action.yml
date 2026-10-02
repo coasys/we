@@ -23,8 +23,16 @@ runs:
       env:
         # Through the environment, never interpolated into the script: the description is written
         # by whoever opened the pull request.
-        PR_BODY: ${{ github.event.pull_request.body }}
+        EVENT_BODY: ${{ github.event.pull_request.body }}
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
+        # The description as it is now: a re-run replays its event, description included, so the
+        # event's copy would still hold a line somebody has since fixed. The event's copy if the API
+        # cannot answer.
+        PR_BODY="$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.body // ""' 2>/dev/null)" || PR_BODY="$EVENT_BODY"
+
         # A line the parser cannot read is not this step's to report — the compatibility check and
         # the preview both fail on it, with the reason. Here it just means "say nothing".
         OUT="$(printf '%s' "$PR_BODY" | node scripts/ad4m-pairing.mjs 2>/dev/null)" || exit 0

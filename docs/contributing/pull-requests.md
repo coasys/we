@@ -43,8 +43,8 @@ conversation the PR came out of.
 
 ## Pairing with an ad4m change
 
-When a WE change needs an ad4m change that has not been published yet, add one line to the
-description, in exactly one of these forms:
+When a WE change needs an ad4m change that has not been published yet, make the **first line** of
+the description one of these, on its own:
 
 ```
 ad4m: coasys/ad4m#1187        an ad4m pull request
@@ -55,9 +55,12 @@ The preview then builds both `@coasys/ad4m` and `@coasys/ad4m-connect` from that
 installing the pin. Both live in the `coasys/ad4m` repository, so one line covers both. The
 required checks still build against the pin, so they stay red until it moves; the
 `AD4M compatibility / Against the paired ad4m` check builds the same commit against the pairing and
-says whether that red is only the pin.
+says whether that red is only the pin. It keeps a comment and a `paired with ad4m` label on the PR
+saying so, so a reviewer does not have to open the checks to find out.
 
-A line in any other form, such as a pasted link, fails the preview rather than being ignored.
+A line anywhere but first, or in any other form, such as a pasted link or a list item, fails the
+preview and the paired check rather than being ignored. A mention of an ad4m PR elsewhere in the
+description is not a pairing.
 
 Remove the line before merging, once the pin has been bumped to a version that contains the change.
 See [ad4m and deploys](./ad4m-and-deploys.md).
