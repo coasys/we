@@ -1,5 +1,17 @@
 <!-- How to fill this in: docs/contributing/pull-requests.md -->
 
+<!--
+Needs an unpublished ad4m change? Make the FIRST LINE of this description (above this comment is
+fine) one of these, on its own, naming an ad4m pull request or an ad4m branch, tag or commit:
+
+    ad4m: coasys/ad4m#1187
+    ad4m: coasys/ad4m@dev
+
+The preview then builds against it, and a check typechecks and tests this PR there. Anywhere but
+the first line it is an error, not a pairing. Remove it once the pin is bumped, before merging.
+See docs/contributing/ad4m-and-deploys.md.
+-->
+
 ## What
 
 <!-- What merging this changes, in a few bullets. -->
@@ -25,13 +37,3 @@
 ## Test plan
 
 <!-- What was actually verified, ticked. What was not, unticked, with the reason. -->
-
-<!--
-To build this PR's preview against an unpublished ad4m change, and typecheck and test it there,
-add a line outside this comment, naming an ad4m pull request or an ad4m branch, tag or commit:
-
-    for example:  ad4m: coasys/ad4m#1187
-    or:           ad4m: coasys/ad4m@dev
-
-Remove it before merging, once the pin is bumped. See docs/contributing/ad4m-and-deploys.md.
--->
