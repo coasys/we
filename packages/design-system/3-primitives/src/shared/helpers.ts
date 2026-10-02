@@ -636,6 +636,15 @@ function updateCustomVars(
   setProperty(el, `${prefix}z-index`, zIndexVar(props.zIndex));
   setProperty(el, `${prefix}margin`, hasMargin ? getMarginValues(props) : undefined);
   setProperty(el, `${prefix}flex`, props.flex);
+  /*
+    `flexShrink` is a number or a string, and the only prop here that is.
+
+    Missing entirely until now — this path and the `HOST_LAYOUT_SPECS` declaration it feeds both
+    skipped it — so `flexShrink` on a `we-*` element set nothing and read nothing. The same hazard
+    the offsets above record, one concept along: two hand-written implementations of one job, and a
+    prop added to the key list reaches CSS only if somebody remembers both.
+  */
+  setProperty(el, `${prefix}flex-shrink`, props.flexShrink === undefined ? undefined : String(props.flexShrink));
   setProperty(el, `${prefix}align-self`, props.alignSelf);
 
   // Visual

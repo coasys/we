@@ -730,6 +730,22 @@ export const HOST_LAYOUT_SPECS: PropSpec[] = [
   ['z-index', 'z-index'],
   ['margin', 'margin'],
   ['flex', 'flex'],
+  /*
+    `flex-shrink` as well as `flex`, because they are not the same prop and the shorthand is not a
+    substitute for it.
+
+    It was missing, so `flexShrink` on any `we-*` element type-checked, validated clean and did
+    nothing at all — 217 places across the composed templates asked an icon, an avatar or a
+    timestamp not to shrink, and every one of them went on shrinking. The prop works on
+    `Column`/`Row`/`Grid`, which take their styles inline, so the failure was invisible from the
+    one side an author was likely to test it from.
+
+    It is a layout prop and belongs on the host: whether a box gives up space is a fact about its
+    place among its siblings, not about what it holds. See `updateCustomVars` in `@we/primitives`
+    for the other half — the runtime that sets the variable this declaration reads, which was
+    missing it too.
+  */
+  ['flex-shrink', 'flex-shrink'],
   ['align-self', 'align-self'],
 ];
 

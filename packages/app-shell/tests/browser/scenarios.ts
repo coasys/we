@@ -861,6 +861,59 @@ const oneReactor = (): Scenario => {
 };
 
 /**
+ * A glyph that was told not to shrink, in a row with nothing else that can give.
+ *
+ * `flexShrink` is a recognised layout key and worked on `Column`/`Row`/`Grid`, which take their
+ * styles inline — and did nothing at all on any `we-*` element, because the primitives reach CSS
+ * by a second path and neither half of it knew the prop. 217 places across the composed templates
+ * asked an icon, an avatar or a timestamp not to shrink and were ignored.
+ *
+ * Most of those never showed it: `we-timestamp` hard-codes `flex-shrink: 0` in its own CSS, and
+ * an avatar in a byline is rarely under enough pressure to compress. So this row is built to apply
+ * the pressure — a long unbreakable word beside a glyph, in a box too narrow for both — because a
+ * case measured where the prop happens not to bite would have passed before the fix and after it.
+ */
+const unshrinkableBox = (): Scenario => {
+  /*
+    A box with a width it can be squeezed out of.
+
+    An icon will not do, however tight the row: its SVG gives it a min-content floor at its own
+    size, so it cannot shrink whether or not anything told it to. The item has to be one whose
+    min-content is genuinely smaller than its width — short words inside a wider box — or the case
+    measures the same number before the fix and after, which is exactly what the first draft of it
+    did.
+  */
+  const pill: SchemaNode = {
+    type: 'we-text',
+    props: { width: '120px', flexShrink: '0', bg: 'surface-sunken' },
+    children: ['one two three'],
+  };
+  return {
+    node: {
+      type: 'Column',
+      props: { width: '100%', gap: '400' },
+      children: [
+        // Under pressure: a neighbour that wants more room than the row has left.
+        {
+          type: 'Row',
+          props: { width: '100%', ay: 'center', gap: '200' },
+          children: [pill, { type: 'we-text', children: ['several more words to crowd it out of its width'] }],
+        },
+        /*
+          The same box with the row to itself, as the control.
+
+          A width the case states as a number goes stale the day the type scale moves, and would
+          then fail for a reason that has nothing to do with the prop. Two of them in one tree
+          answer "did this one keep its width" without anybody having to know what the width is.
+        */
+        { type: 'Row', props: { width: '100%', ay: 'center', gap: '200' }, children: [pill] },
+      ],
+    },
+    tables: {},
+  };
+};
+
+/**
  * One card, and a way to change its display mode while it is on screen.
  *
  * `cardShell` draws its body through a single `CollapsedContent` whose props carry the mode,
@@ -925,4 +978,5 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:pinned-empty': pinnedShortContent,
   'panel:sections': panelSections,
   'cards:collapse': collapsingCard,
+  'ds:unshrinkable-box': unshrinkableBox,
 };
