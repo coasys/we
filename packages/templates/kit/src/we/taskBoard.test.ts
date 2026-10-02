@@ -17,8 +17,9 @@ describe('the task board', () => {
   it('declares the three subscriptions the host function reads, and does not cap the pool', () => {
     const queries = (board as { $queries?: Record<string, Record<string, unknown>> }).$queries ?? {};
     expect(Object.keys(queries).sort()).toEqual(['board', 'columns', 'involvements', 'pool']);
-    // Declared so every list can name it, and never asked on a board that does not read people.
-    expect(queries.involvements.when).toEqual({ $: 'false' });
+    // Declared so every list can name it. On a board that does not read people it is asked only where
+    // the space's states ask for agreement, since whose approval counts can be read off it.
+    expect(queries.involvements.when).toEqual({ $: 'spaceStore.taskFlowEnabled' });
     expect(queries.board.include).toEqual({ children: true });
     expect(queries.pool.entity).toBe('TaskBlock');
     // A limit here was the one place the design broke its own rule: the card past it did not land
@@ -238,5 +239,20 @@ describe('selecting a card, and adding a column', () => {
       taskBoard({ boardId: { $: 'local.boardId' }, empty: { type: 'Column' }, people: true }),
     );
     expect(people).toContain('"name":"user-circle-dashed","size":"var(--we-avatar-size-xs)"');
+  });
+});
+
+describe('a task board in a space that asks for agreement', () => {
+  it('reads each card’s waiting move off the board once, and offers Approve and Withdraw on it', () => {
+    expect(json).toContain('.flow[card.id]].filter(w, w)');
+    expect(json).toContain('"$action":"spaceStore.approveTaskMove"');
+    expect(json).toContain('"$action":"spaceStore.withdrawTaskMove"');
+    expect(json).toContain('"condition":{"$":"wait.canApprove"}');
+    expect(json).toContain('"condition":{"$":"wait.mine"}');
+  });
+
+  it('can draw only the cards waiting on the viewer, and offers that only in a space with a flow', () => {
+    expect(json).toContain('awaitingMe: local.boardAwaiting');
+    expect(json).toContain('spaceStore.taskFlowEnabled && (count(');
   });
 });

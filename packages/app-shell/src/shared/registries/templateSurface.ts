@@ -438,6 +438,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     myMentions: state('content'),
     uploadFile: action('content'),
     taskStates: state('content'),
+    taskFlowEnabled: state('content'),
     offeredTaskStates: state('content'),
     taskStatesLoaded: state('content'),
     /*
@@ -476,6 +477,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     reorderBoardColumns: action('content'),
     arrangeColumn: action('content'),
     moveCardToColumn: action('content'),
+    approveTaskMove: action('content'),
+    withdrawTaskMove: action('content'),
     addTaskToColumn: action('content'),
 
     // ── signals ──

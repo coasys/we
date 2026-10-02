@@ -1826,6 +1826,8 @@ export const contextData: ContextData = {
         { name: 'color', type: 'string', predicate: 'we://color', required: false },
         { name: 'semantic', type: 'TaskStateSemantic', predicate: 'we://semantic', required: false, default: "'open'" },
         { name: 'retired', type: 'boolean', predicate: 'we://retired', required: false, default: 'false' },
+        { name: 'approvals', type: 'number', predicate: 'we://approvals', required: false, default: '1' },
+        { name: 'approverKind', type: 'string', predicate: 'we://approver_kind', required: false },
         { name: 'schemaVersion', type: 'number', predicate: 'we://schema_version', required: false, default: '1' },
       ],
       relations: [],
@@ -2758,10 +2760,13 @@ export const contextData: ContextData = {
         orderedSidebarItems: { type: 'array', properties: ['uuid', 'name', 'avatar', 'spaceId'] },
         foreignSpacePrefill: { type: 'object', properties: ['name', 'description', 'avatar'] },
         enabledModules: { type: 'array' },
-        taskStates: { type: 'array', properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'defined'] },
+        taskStates: {
+          type: 'array',
+          properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'defined', 'approvals', 'approverKind'],
+        },
         offeredTaskStates: {
           type: 'array',
-          properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'defined'],
+          properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'defined', 'approvals', 'approverKind'],
         },
         taskStatesLoaded: { type: 'boolean' },
         involvementTypes: {
@@ -2823,6 +2828,7 @@ export const contextData: ContextData = {
         agentModuleSettings: { type: 'array' },
         autoInterpret: { type: 'boolean' },
         extractionTargets: { type: 'array' },
+        taskFlowEnabled: { type: 'boolean' },
         canAdministerCurrentSpace: { type: 'boolean' },
       },
       actions: [
@@ -2875,6 +2881,8 @@ export const contextData: ContextData = {
         'setSignalTypeRetired',
         'createTaskState',
         'updateTaskState',
+        'approveTaskMove',
+        'withdrawTaskMove',
         'setTaskStateRetired',
         'reorderTaskStates',
         'setInvolvement',
@@ -3032,7 +3040,7 @@ export const contextData: ContextData = {
     {
       name: 'arrangedBoard',
       params: ['options'],
-      doc: 'A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total, involved, filtering, show, dimmed, cardCount, matchedCount, unplacedTotal, rows, cells, rowCounts }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count, shown, matched, order }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: "column" children), records (everything in scope), states (spaceStore.taskStates). To read it by who is on the work, also pass involvements (an Involvement query), kinds (spaceStore.involvementTypes), people (the chosen DIDs), me (me.did — involved is everyone on a card here, the viewer first) and show: "dim" lists the others in dimmed and moves nothing; "hide" drops them from arranged, unarranged and unplaced while count stays true and shown says how many are drawn; "rows" adds a row per person plus "nobody" — rows are keys, cells[row][columnId] is { arranged, unarranged, count }. A drag in a column showing only part of itself passes contents[columnId].order to arrangeColumn, so the hidden cards keep their places.',
+      doc: 'A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total, involved, filtering, show, dimmed, cardCount, matchedCount, unplacedTotal, rows, cells, rowCounts, flow, awaiting, awaitingOnly }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count, shown, matched, order }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: "column" children), records (everything in scope), states (spaceStore.taskStates). To read it by who is on the work, also pass involvements (an Involvement query), kinds (spaceStore.involvementTypes), people (the chosen DIDs), me (me.did — involved is everyone on a card here, the viewer first) and show: "dim" lists the others in dimmed and moves nothing; "hide" drops them from arranged, unarranged and unplaced while count stays true and shown says how many are drawn; "rows" adds a row per person plus "nobody" — rows are keys, cells[row][columnId] is { arranged, unarranged, count }. A drag in a column showing only part of itself passes contents[columnId].order to arrangeColumn, so the hidden cards keep their places. Where the space’s states ask for agreement (spaceStore.taskFlowEnabled) a card is drawn where its run is, and three more fields answer: flow[cardId] is { to, voters, counted, needs, mine, canApprove, approverKind } for a card waiting on a move — counted is how many of voters count toward needs; awaiting is the cards whose waiting move the viewer’s approval would help; pass awaitingMe: true to draw only those (awaitingOnly says it is on).',
       example:
         'arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates }).columns',
     },
@@ -3627,7 +3635,7 @@ export const contextData: ContextData = {
           levels: ['deployment', 'agent', 'space', 'agent-in-space'],
         },
       ],
-      activities: {},
+      activities: { transcribe: { id: 'string', recording: 'boolean', anchor: 'object', collection: 'string' } },
       components: [],
       functions: [],
       views: [],

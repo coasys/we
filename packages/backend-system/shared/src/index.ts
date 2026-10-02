@@ -203,6 +203,20 @@ export type {
   LanguageModelPort,
   LanguageModelStatus,
 } from './languageModel';
+export { openMoves, readProposeResult, runFor } from './flows';
+export type {
+  FlowDefinition,
+  FlowMove,
+  FlowPort,
+  FlowProposal,
+  FlowProposeResult,
+  FlowRole,
+  FlowRun,
+  FlowSnapshot,
+  FlowStateDefinition,
+  FlowTransitionDefinition,
+  OpenMove,
+} from './flows';
 export type {
   TranscriptionModelOffer,
   TranscriptionRecord,

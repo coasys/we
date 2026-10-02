@@ -273,6 +273,23 @@ describe('the call record', () => {
     const claim = h.published.find((a) => a.type === TRANSCRIBE_ACTIVITY);
     expect(claim).toMatchObject({ id: CALL, collection: RECORD });
   });
+
+  it('publishes only what it declares', async () => {
+    // The host checks a published activity against `contributes.activities` in development, and an
+    // undeclared one warns on every machine that records.
+    const { transcribeModule } = await import('./index');
+    const h = harness(inCall);
+    await h.say('first words');
+
+    const shape = transcribeModule.contributes?.activities?.[TRANSCRIBE_ACTIVITY];
+    expect(shape).toBeDefined();
+    for (const claim of h.published.filter((a) => a.type === TRANSCRIBE_ACTIVITY)) {
+      for (const [field, value] of Object.entries(claim)) {
+        if (field === 'type' || value === undefined) continue;
+        expect(shape?.[field], field).toBe(typeof value === 'object' ? 'object' : typeof value);
+      }
+    }
+  });
 });
 
 describe('the roster', () => {

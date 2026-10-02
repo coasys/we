@@ -10,6 +10,7 @@
  */
 import type { DatasetHandle, RendererDataBindings } from './dataSource';
 import type { EphemeralPort } from './ephemeral';
+import type { FlowPort } from './flows';
 import type { InterpretationPort } from './interpretation';
 import type { LanguageModelPort } from './languageModel';
 import type { AgentSessionPort, DatasetLifecyclePort } from './lifecycle';
@@ -229,4 +230,9 @@ export interface BackendPorts {
    * are a pair, and a backend that can hear but not interpret is a normal thing to be.
    */
   interpretation?: InterpretationPort;
+  /**
+   * Group decisions over a record's state. Optional: a backend that cannot derive a state from votes
+   * omits it, and a surface that would have asked for agreement falls back to writing the state.
+   */
+  flows?: FlowPort;
 }

@@ -8,6 +8,8 @@ import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegi
 import { provideChromeBag, provideTemplateBag } from '@shared/registries/templateBag';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
+import { flowStateOf } from '@shared/taskFlow';
+import { taskFlowLive } from '@shared/taskFlowLive';
 
 import { signalOptimism } from '../../../shared/signalOptimism';
 import { signalOrder } from '../../../shared/signalOrder';
@@ -492,12 +494,15 @@ export default function TemplateProvider() {
     ...sources,
     arrangedBoard: (options: unknown) => {
       const given = (options ?? {}) as { columns?: unknown; board?: unknown };
+      const flowView = taskFlowLive.view();
       const view = arrangedBoardSource({
         ...given,
         pending: boardOptimism.overlay(),
         // Who is on each card, including a tick nobody's subscription has carried back yet — a
         // filter that ignored it would dim the card somebody was just assigned to.
         pendingInvolvements: involvementOptimism.overlay(),
+        // Where the space's states ask for agreement, a card is where its run is. See `taskFlow.ts`.
+        flow: flowView,
       });
 
       const rows = new Map<string, readonly string[]>();
@@ -517,7 +522,9 @@ export default function TemplateProvider() {
         ? (given as { records: unknown[] }).records
         : []) as unknown[]) {
         const row = record as { id?: string; status?: unknown } | null;
-        if (row?.id) rows.set(`${row.id}.status`, [String(row.status ?? '')]);
+        // Against the state the board draws — the run's where there is one — or a drop that moved a
+        // run would be held until `status` caught up, which it may never do if nobody mirrors it.
+        if (row?.id) rows.set(`${row.id}.status`, [flowStateOf(flowView, row.id) ?? String(row.status ?? '')]);
       }
 
       queueMicrotask(() => boardOptimism.settle((id, relation) => rows.get(`${id}.${relation}`)));

@@ -364,12 +364,16 @@ export const storeEntries: StoreEntry[] = [
         type: 'array',
         properties: ['id', 'icon', 'label', 'active', 'busy', 'concealed'],
       },
-      taskStates: { type: 'array', properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'defined'] },
+      taskStates: {
+        type: 'array',
+        properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'defined', 'approvals', 'approverKind'],
+      },
       offeredTaskStates: {
         type: 'array',
-        properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'defined'],
+        properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'defined', 'approvals', 'approverKind'],
       },
       taskStatesLoaded: { type: 'boolean' },
+      taskFlowEnabled: { type: 'boolean' },
       involvementTypes: {
         type: 'array',
         properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired', 'defined'],
@@ -410,6 +414,8 @@ export const storeEntries: StoreEntry[] = [
       'updateTaskState',
       'setTaskStateRetired',
       'reorderTaskStates',
+      'approveTaskMove',
+      'withdrawTaskMove',
       'setInvolvement',
       'respondTo',
       'createInvolvementType',
@@ -1069,11 +1075,13 @@ export function generateStoresText(entries: StoreEntry[]): string {
         installedModules:
           'string[] — ids of the feature modules THIS AGENT wants available anywhere. Personal, held in the root dataset; unset means "not decided" and falls back to every registered module',
         taskStates:
-          '{ id, name, slug, semantic, color, retired, defined }[] — the states this community\u2019s work moves through, its own if it has defined any and otherwise the defaults ("unset" means not decided, never none). Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community\u2019s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `defined` is false for a default the space has never written down — a virtual state, which becomes a record the first time somebody reorders it, withdraws it, or names a state with its slug',
+          '{ id, name, slug, semantic, color, retired, defined, approvals, approverKind }[] — the states this community\u2019s work moves through, its own if it has defined any and otherwise the defaults ("unset" means not decided, never none). Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community\u2019s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `defined` is false for a default the space has never written down — a virtual state, which becomes a record the first time somebody reorders it, withdraws it, or names a state with its slug. `approvals` is how many distinct people must agree before a task enters the state (1 is a plain drop) and `approverKind` the involvement kind whose holders\u2019 agreement counts (empty: anybody\u2019s) — see taskFlowEnabled',
         offeredTaskStates:
-          '{ id, name, slug, semantic, color, retired, defined }[] — the same list without the withdrawn ones. What a state picker or a new board column should offer',
+          '{ id, name, slug, semantic, color, retired, defined, approvals, approverKind }[] — the same list without the withdrawn ones. What a state picker or a new board column should offer',
         taskStatesLoaded:
           'boolean — the space has been asked for its states. An empty list is otherwise indistinguishable from "not fetched yet"; gate an empty state on it',
+        taskFlowEnabled:
+          'boolean — this space\u2019s task states ask for agreement: some state needs more than one approval, or names whose approval counts. Where true, a card dragged into such a state waits instead of moving, and arrangedBoard(…).flow[card.id] describes what it is waiting on. Gate an explanation of the waiting on it; the board needs nothing else',
         involvementTypes:
           '{ id, name, slug, semantic, reflexive, appliesTo, icon, color, retired, defined }[] — the kinds of part a person can have in a record: "Assigned" and "Reviewing" on a task, "Going", "Maybe" and "Not going" on an event, plus whatever this community has named. Its own if it has named any, otherwise those defaults. `slug` is what Involvement.kind holds. `semantic` is the closed meaning underneath the name — responsible, reviewing, committed, interested, declined — so a board still finds the assignee after "Assigned" is renamed. `reflexive` kinds are an agent\u2019s own answer, which nobody else may give, and an agent holds one per record. `appliesTo` is the entity names the kind is offered on, empty for all — filter with `\'TaskBlock\' in kind.appliesTo || !count(kind.appliesTo)`. Includes withdrawn kinds; offer offeredInvolvementTypes. Read who holds them through the `involvement` host function',
         offeredInvolvementTypes:
@@ -1176,9 +1184,13 @@ export function generateStoresText(entries: StoreEntry[]): string {
         createTaskState:
           '(config: { name, semantic?, color?, icon? }): names a state this community\u2019s work moves through — "Blocked", "In review". The counterpart to createSignalType one concept along. The defaults stay virtual beside it; a name whose slug matches a default adopts that default rather than sitting beside it. The space\u2019s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards',
         updateTaskState:
-          '(slug: string, updates: { name?, icon?, color?, semantic? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made: the three defaults ship without one. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. By slug, so editing a default adopts it',
+          '(slug: string, updates: { name?, icon?, color?, semantic?, approvals?, approverKind? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made: the three defaults ship without one. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. `approvals` (a whole number, 1–20) and `approverKind` (an involvement kind\u2019s slug, or empty) set what agreement the state asks for — the first state that asks for any turns the space\u2019s states into a flow, see taskFlowEnabled. By slug, so editing a default adopts it',
         setTaskStateRetired:
           '(slug: string, retired: boolean): withdraws a state from use, or brings it back. Never touches the work sitting in it — a task names its state by slug, so deleting the state would leave the work holding a word nothing defines. The same decision setSignalTypeRetired makes. By slug, so a default can be withdrawn: doing so writes its record, which is the moment a default becomes the community\u2019s own',
+        approveTaskMove:
+          '(taskId: string): agrees with the move a task is waiting on — the same as dragging the card there yourself, so it counts toward the state\u2019s approvals when the agent is one whose approval counts. Offer it where arrangedBoard(…).flow[card.id].canApprove',
+        withdrawTaskMove:
+          '(taskId: string): takes back this agent\u2019s own vote on the move a task is waiting on, never anybody else\u2019s. Offer it where arrangedBoard(…).flow[card.id].mine',
         setInvolvement:
           '(nodeId: string, agent: string, kind: string, on: boolean): puts somebody on a record as a kind one member says about another — assigning a task, asking for a review — or takes them off. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick it shows and a double press cannot undo itself. Every copy of the pair goes on removal. A reflexive kind is routed to respondTo, and refused for anybody but the agent it is about. Pair with a DropdownMenu of toggle entries: `onSelect: { $action: "spaceStore.setInvolvement", args: [{ $: "card.id" }, { $: "arg.id" }, "assignee", { $: "!arg.checked" }] }`',
         respondTo:

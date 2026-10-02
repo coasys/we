@@ -1,5 +1,5 @@
 import type { DesignSystemProps, FlexDirection } from '@we/design-types';
-import { font, radius, role, semanticValues, shadow, space, type Tier, TIERS } from '@we/tokens';
+import { color, font, radius, role, semanticValues, shadow, space, type Tier, TIERS } from '@we/tokens';
 
 import { dataUriToBlob } from './saveFile';
 import { tierQuery } from './surface';
@@ -414,6 +414,11 @@ export function tokenVar(prefix: string, token?: string, fallback = '0', axis?: 
 
   // A colour prop may name a semantic role instead of a scale position.
   if (prefix === 'color' && ROLE_NAMES.has(token)) return `var(--we-role-${token})`;
+
+  // `white` and `black` are the colour scale's two named positions. Every other one is
+  // `<hue>-<step>`, whose digit keeps it clear of the typo check below; these two are not, and were
+  // reported as variables nothing declares while `--we-color-black` is declared and paints.
+  if (prefix === 'color' && Object.prototype.hasOwnProperty.call(color.base, token)) return `var(--we-color-${token})`;
 
   // A radius, padding or gap prop may name a theme family instead of a scale position, on the same
   // principle. `prefix` answers it for radius; for spacing the caller names the axis, since margin
