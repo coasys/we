@@ -1,16 +1,21 @@
 #!/usr/bin/env node
 // ---------------------------------------------------------------------------
-// Which ad4m change a WE pull request pairs itself with, read from its description.
+// Which ad4m change a WE pull request pairs itself with, read from the FIRST LINE of
+// its description:
 //
 //   ad4m: coasys/ad4m#1187        an ad4m pull request (its head, or its merge
 //                                 commit once merged)
 //   ad4m: coasys/ad4m@some-branch an ad4m branch, tag or commit
 //
+// First, because a pairing changes what every check on the pull request means, so it is
+// the first thing a reviewer should read. A pairing line anywhere else is an error rather
+// than ignored, so nobody believes a pull request is paired when it is not.
+//
 // Three things read that line: the Netlify preview (which builds against it), the
 // `AD4M compatibility` workflow (which typechecks and tests against it), and the
-// required CI jobs (which say, when they fail, that the failure is expected while the
-// pairing stands). One parser, so the three cannot disagree about whether a pull
-// request is paired. The policy is in docs/contributing/ad4m-and-deploys.md.
+// required CI jobs (which, when they fail, point at that workflow's check). One parser,
+// so the three cannot disagree about whether a pull request is paired. The policy is in
+// docs/contributing/ad4m-and-deploys.md.
 //
 // Usage: the description on stdin, `key=value` lines on stdout — the format both
 // `$GITHUB_OUTPUT` and a shell `sed` read.
@@ -26,8 +31,10 @@
 // its merge commit if so. GITHUB_TOKEN raises the rate limit when set.
 //
 // A line that is there and cannot be read is an error, not "unpaired": building
-// against the pin there would give a result that looks paired and is not. So is a
-// description with two lines, and a pull request that cannot be found.
+// against the pin there would give a result that looks paired and is not. So is one
+// that is not the first line, a description with two, and a pull request that cannot
+// be found. A MENTION of an ad4m pull request — in a sentence, a table, inline code —
+// is not a pairing line, wherever it is.
 // ---------------------------------------------------------------------------
 
 import { readFileSync } from 'node:fs';
@@ -38,7 +45,8 @@ const AD4M_REPO = 'coasys/ad4m';
  * Reads the pairing line out of a pull request description.
  *
  * HTML comments and fenced code blocks are dropped first: the PR template and the
- * docs show the line as an example inside them.
+ * docs show the line as an example inside them. "First line" is the first non-blank
+ * line of what is left, so a description may open with a template comment.
  *
  * @returns {{ kind: 'none' } | { kind: 'pr', number: string } | { kind: 'ref', ref: string } | { kind: 'invalid', detail: string }}
  */
@@ -47,11 +55,13 @@ function parsePairing(body) {
   // A line written as a list item is picked up too, so that it fails below rather than being
   // ignored: `- ad4m: coasys/ad4m#1187` looks like a pairing to whoever wrote it, and silently
   // using the pin would leave them believing the pull request is paired when it is not.
-  const lines = text
-    .split(/\r?\n/)
-    .filter((l) => /^[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+)?ad4m:/i.test(l) && /coasys\/ad4m/i.test(l));
+  const all = text.split(/\r?\n/);
+  const lines = all.filter((l) => /^[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+)?ad4m:/i.test(l) && /coasys\/ad4m/i.test(l));
   if (!lines.length) return { kind: 'none' };
   if (lines.length > 1) return { kind: 'invalid', detail: lines.map((l) => l.trim()).join(' | ') };
+  if (all.find((l) => l.trim()) !== lines[0]) {
+    return { kind: 'invalid', detail: `${lines[0].trim()}  — this is not the first line of the description` };
+  }
 
   const m = lines[0].match(/^[ \t]*ad4m:[ \t]*coasys\/ad4m([#@])([^ \t]+)[ \t]*$/i);
   if (!m) return { kind: 'invalid', detail: lines[0].trim() };
@@ -109,7 +119,7 @@ async function main() {
   if (pairing.kind === 'invalid') {
     console.error('The description has an ad4m pairing line that cannot be read:');
     console.error(`  ${pairing.detail}`);
-    console.error('Write exactly one line, in one of these forms:');
+    console.error('Write exactly one line, as the first line of the description, in one of these forms:');
     console.error(`  ad4m: ${AD4M_REPO}#<pull request number>`);
     console.error(`  ad4m: ${AD4M_REPO}@<branch, tag or commit>`);
     process.exit(1);

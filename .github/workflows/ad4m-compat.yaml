@@ -54,9 +54,13 @@ on:
         required: false
 
 # `actions: read` to find the last green Build run and the previous run of this workflow.
+# `pull-requests` and `issues` to keep the pairing's comment and label on a paired pull request
+# (`.github/actions/pairing-status`); `issues` because a label is created through it.
 permissions:
   contents: read
   actions: read
+  pull-requests: write
+  issues: write
 
 # One run per pull request, or per AD4M branch from the Actions tab.
 concurrency:
@@ -80,11 +84,13 @@ jobs:
       pairing: ${{ steps.resolve.outputs.pairing }}
       ref: ${{ steps.resolve.outputs.ref }}
     steps:
-      # Only the parser. Nothing here is built or installed.
+      # Only the parser and the action that reports it. Nothing here is built or installed.
       - uses: actions/checkout@v7
         if: github.event_name == 'pull_request'
         with:
-          sparse-checkout: scripts/ad4m-pairing.mjs
+          sparse-checkout: |
+            scripts/ad4m-pairing.mjs
+            .github/actions/pairing-status
           sparse-checkout-cone-mode: false
 
       # Inputs and the description reach the shell as environment variables rather than being
@@ -101,8 +107,11 @@ jobs:
             # Paired → pairing, ref and reason; unpaired → nothing, and the job below is skipped.
             # A line that cannot be read, or names a pull request that cannot be found, fails here
             # with the reason, as the preview does.
-            printf '%s' "$PR_BODY" | node scripts/ad4m-pairing.mjs --resolve | tee -a "$GITHUB_OUTPUT"
-            exit "${PIPESTATUS[1]}"
+            # The reason is kept for the comment below as well as printed.
+            printf '%s' "$PR_BODY" | node scripts/ad4m-pairing.mjs --resolve 2> pairing-error.txt | tee -a "$GITHUB_OUTPUT"
+            STATUS="${PIPESTATUS[1]}"
+            cat pairing-error.txt >&2
+            exit "$STATUS"
           fi
 
           BRANCH="${REQUESTED_BRANCH:-dev}"
@@ -116,6 +125,61 @@ jobs:
             echo "ref=$BRANCH"
             echo "reason=requested from the Actions tab"
           } >> "$GITHUB_OUTPUT"
+
+      # Say on the pull request itself that it is paired, before the long check starts: the
+      # required checks go red within minutes, and this is what tells a reviewer why. The job below
+      # replaces it with what it found. An unpaired pull request loses the comment and label, which
+      # is how they go away once the pin has moved and the line is removed.
+      - name: Write the pending comment
+        if: github.event_name == 'pull_request' && steps.resolve.outputs.paired == 'true'
+        env:
+          PAIRING: ${{ steps.resolve.outputs.pairing }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          cat > pairing-comment.md <<EOF
+          ### :hourglass: Paired with $PAIRING
+
+          The required checks build against the ad4m version WE pins, which does not have this change, so
+          they stay red until \`pnpm bump:ad4m\` moves the pin. **AD4M compatibility / Against the paired
+          ad4m** builds this pull request against $PAIRING instead. It is [running now]($RUN_URL), and this
+          comment will say what it found.
+          EOF
+
+      - name: Show the pairing on the pull request
+        if: github.event_name == 'pull_request' && steps.resolve.outputs.paired == 'true'
+        uses: ./.github/actions/pairing-status
+        with:
+          body-file: pairing-comment.md
+          paired: 'true'
+
+      - name: Clear the pairing from the pull request
+        if: github.event_name == 'pull_request' && steps.resolve.outputs.paired == 'false'
+        uses: ./.github/actions/pairing-status
+        with:
+          paired: 'false'
+
+      # A line that cannot be read fails this job, and the preview, with the reason — said here as
+      # well, since a failing "Read the ad4m pairing" row is easy to read past.
+      - name: Write the error comment
+        if: failure() && github.event_name == 'pull_request'
+        run: |
+          {
+            echo '### :x: The ad4m pairing line cannot be read'
+            echo
+            echo '~~~'
+            cat pairing-error.txt 2>/dev/null
+            echo '~~~'
+            echo
+            echo 'The preview and the paired check both fail until it is fixed. The line goes first in the'
+            echo 'description, on its own: see `docs/contributing/ad4m-and-deploys.md`.'
+          } > pairing-comment.md
+
+      - name: Report the error on the pull request
+        if: failure() && github.event_name == 'pull_request'
+        uses: ./.github/actions/pairing-status
+        with:
+          body-file: pairing-comment.md
+          paired: 'false'
 
   compat:
     needs: resolve
@@ -318,9 +382,10 @@ jobs:
 
       # Written on success and on failure alike, to the run's summary page: "green, and here is
       # what it proved" is worth as much as the failure.
+      # Not when cancelled: a superseded run has no stages that failed, and would report green.
       - name: Write report
         id: report
-        if: always()
+        if: ${{ !cancelled() }}
         env:
           AD4M_LABEL: ${{ needs.resolve.outputs.pairing }}
           AD4M_REF: ${{ needs.resolve.outputs.ref }}
@@ -345,6 +410,8 @@ jobs:
                    'Browser tests:${{ steps.browser.outcome }}'; do
             if [ "${s##*:}" = 'failure' ]; then STAGE="${s%%:*}"; break; fi
           done
+          # A step outside that list failed — fetching AD4M, say. Still a failure, never a pass.
+          if [ -z "$STAGE" ] && [ "${{ job.status }}" != 'success' ]; then STAGE='Setup'; fi
 
           {
             if [ -z "$STAGE" ]; then
@@ -420,3 +487,23 @@ jobs:
 
           cat report.md >> "$GITHUB_STEP_SUMMARY"
           echo "stage=$STAGE" >> "$GITHUB_OUTPUT"
+
+      # The same report, as the pull request's pairing comment — replacing the "running" one the
+      # resolve job wrote.
+      - name: Write the result comment
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        env:
+          WE_REF: ${{ steps.we-ref.outputs.ref }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            sed '1s/^## /### /' report.md
+            echo
+            echo "<sub>For \`${WE_REF:0:12}\` · [the run]($RUN_URL) · updated on every push</sub>"
+          } > pairing-comment.md
+
+      - name: Report on the pull request
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        uses: ./.github/actions/pairing-status
+        with:
+          body-file: pairing-comment.md
