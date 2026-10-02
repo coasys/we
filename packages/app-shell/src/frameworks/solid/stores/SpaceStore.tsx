@@ -3209,7 +3209,9 @@ export function SpaceStoreProvider(props: ParentProps) {
       { status?: string; save(): Promise<unknown> } | null | undefined;
     if (!task || task.status === slug) return;
     task.status = slug;
+    const started = performance.now();
     await task.save();
+    trace('flows', 'mirror', { taskId, slug, ms: Math.round(performance.now() - started) });
   }
 
   /**

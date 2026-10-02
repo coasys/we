@@ -37,7 +37,7 @@
  * board is where a move is asked for and where "not yet" has to be visible.
  */
 import type { DatasetHandle, FlowDefinition, FlowPort, FlowSnapshot, OpenMove } from '@we/backend-shared';
-import { openMoves, readProposeResult, runFor } from '@we/backend-shared';
+import { openMoves, readProposeResult, runFor, trace, tracing } from '@we/backend-shared';
 
 /** The flow's name in the dataset. One per space: the space's own task states. */
 export const TASK_FLOW = 'TaskStates';
@@ -244,7 +244,22 @@ export function createTaskFlowActions(deps: TaskFlowDeps): TaskFlowActions {
     return (states.find((s) => !needsAgreement(s)) ?? states.find((s) => s.slug !== to) ?? states[0])?.slug ?? to;
   }
 
+  /**
+   * The whole of a move, timed under the `flows` trace scope — set beside the adapter's per-call
+   * timings, the difference is what WE spends around the backend rather than in it.
+   */
   async function move(taskId: string, from: string, to: string): Promise<TaskMoveOutcome> {
+    if (!tracing()) return moveOnce(taskId, from, to);
+    const started = performance.now();
+    const outcome = await moveOnce(taskId, from, to).catch((error: unknown) => {
+      trace('flows', 'move:error', { taskId, to, ms: Math.round(performance.now() - started) });
+      throw error;
+    });
+    trace('flows', 'move', { taskId, to, outcome, ms: Math.round(performance.now() - started) });
+    return outcome;
+  }
+
+  async function moveOnce(taskId: string, from: string, to: string): Promise<TaskMoveOutcome> {
     const port = deps.port();
     const dataset = deps.dataset();
     if (!port || !dataset || !enabled()) return null;

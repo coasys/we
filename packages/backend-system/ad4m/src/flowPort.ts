@@ -54,7 +54,7 @@ import type {
   FlowSnapshot,
   FlowStateDefinition,
 } from '@we/backend-shared';
-import { runFor } from '@we/backend-shared';
+import { runFor, trace, tracing } from '@we/backend-shared';
 
 import { recordMissingMethod } from './missingMethods';
 
@@ -300,6 +300,30 @@ function toResult(result: Ad4mFlowProposeResult): FlowProposeResult {
 /** The SDK throws strings in places; the contract rejects with errors. */
 const asError = (error: unknown): Error => (error instanceof Error ? error : new Error(String(error)));
 
+/**
+ * Time one step under the `flows` trace scope — `localStorage.setItem('we:trace', 'flows')`.
+ *
+ * Kept rather than added for one investigation: a move that takes twenty seconds is several calls
+ * (find the run, propose, re-read), and only the timing of each says whether the time is spent in
+ * the executor or around it. Free when tracing is off — one check, and the call runs untouched.
+ */
+async function timed<T>(event: string, detail: Record<string, unknown>, run: () => Promise<T>): Promise<T> {
+  if (!tracing()) return run();
+  const started = performance.now();
+  try {
+    const result = await run();
+    trace('flows', event, { ...detail, ms: Math.round(performance.now() - started) });
+    return result;
+  } catch (error) {
+    trace('flows', `${event}:error`, {
+      ...detail,
+      ms: Math.round(performance.now() - started),
+      error: asError(error).message,
+    });
+    throw error;
+  }
+}
+
 // ─── Watching ─────────────────────────────────────────────────────────────────
 
 interface Watch {
@@ -327,6 +351,7 @@ export function createAd4mFlowPort(): FlowPort {
         WATCHED_PREDICATES.map((predicate) =>
           perspective.subscribeQuery(`SELECT ?s ?o WHERE { ?s <${predicate}> ?o }`).then((sub) => {
             sub.onResult(() => {
+              trace('flows', 'changed', { predicate });
               for (const listener of [...listeners]) listener();
             });
             return sub;
@@ -400,6 +425,7 @@ export function createAd4mFlowPort(): FlowPort {
 
       const stale = held.filter((l) => !desiredKeys.has(keyOf(l.data)));
       const missing = desired.filter((l) => !heldKeys.has(keyOf(l)));
+      trace('flows', 'install', { flow: definition.name, removing: stale.length, adding: missing.length });
       if (!stale.length && !missing.length) return;
       // Removed first: for as long as an old rule and its replacement sit side by side, the engine
       // refuses to move anything into that state.
@@ -410,7 +436,9 @@ export function createAd4mFlowPort(): FlowPort {
     async start(dataset, flowName, subject) {
       const perspective = proxy(dataset);
       try {
-        const existing = await FlowInstance.findAll(perspective, { flowName, subject });
+        const existing = await timed('start:find', { subject }, () =>
+          FlowInstance.findAll(perspective, { flowName, subject }),
+        );
         const runs: FlowRun[] = existing.map((instance) => ({
           id: instance.uri,
           subject: instance.subject,
@@ -419,7 +447,9 @@ export function createAd4mFlowPort(): FlowPort {
         }));
         const found = runFor(runs, subject);
         if (found) return found;
-        const started = await FlowInstance.start(perspective, flowName, subject);
+        const started = await timed('start:mint', { subject }, () =>
+          FlowInstance.start(perspective, flowName, subject),
+        );
         poke(perspective);
         return {
           id: started.uri,
@@ -436,7 +466,7 @@ export function createAd4mFlowPort(): FlowPort {
     async propose(dataset, run, to, rationale) {
       const perspective = proxy(dataset);
       try {
-        const result = await perspective.proposeFlowTransition(run, to, rationale);
+        const result = await timed('propose', { run, to }, () => perspective.proposeFlowTransition(run, to, rationale));
         poke(perspective);
         return toResult(result);
       } catch (error) {
@@ -448,7 +478,7 @@ export function createAd4mFlowPort(): FlowPort {
     async withdraw(dataset, proposal) {
       const perspective = proxy(dataset);
       try {
-        const removed = await perspective.rejectFlowProposal(proposal);
+        const removed = await timed('withdraw', { proposal }, () => perspective.rejectFlowProposal(proposal));
         poke(perspective);
         return removed;
       } catch (error) {
@@ -473,7 +503,7 @@ export function createAd4mFlowPort(): FlowPort {
         }
         reading = true;
         try {
-          const snapshot = await readSnapshot(perspective, flowName);
+          const snapshot = await timed('read', { flow: flowName }, () => readSnapshot(perspective, flowName));
           if (!stopped) onChange(snapshot);
         } catch (error) {
           if (!recordMissingMethod(error)) console.warn('flows: could not read the runs of', flowName, error);
