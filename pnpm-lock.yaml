@@ -5,8 +5,8 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@coasys/ad4m': 0.13.0-test-inverse-relations
-  '@coasys/ad4m-connect': 0.13.0-test-interpretation-2
+  '@coasys/ad4m': 0.13.0-test-flows-1
+  '@coasys/ad4m-connect': 0.13.0-test-flows-1
   prettier: 3.9.6
   '@xmldom/xmldom': '>=0.9.12'
   plist: '>=3.1.1'
@@ -248,8 +248,8 @@ importers:
         version: 14.0.2
     devDependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-inverse-relations
-        version: 0.13.0-test-inverse-relations
+        specifier: 0.13.0-test-flows-1
+        version: 0.13.0-test-flows-1
       '@types/node':
         specifier: ^26.4.0
         version: 26.4.0
@@ -348,8 +348,8 @@ importers:
   apps/we-tauri:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-inverse-relations
-        version: 0.13.0-test-inverse-relations
+        specifier: 0.13.0-test-flows-1
+        version: 0.13.0-test-flows-1
       '@tauri-apps/api':
         specifier: 2.11.1
         version: 2.11.1
@@ -394,11 +394,11 @@ importers:
   apps/we-web:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-inverse-relations
-        version: 0.13.0-test-inverse-relations
+        specifier: 0.13.0-test-flows-1
+        version: 0.13.0-test-flows-1
       '@coasys/ad4m-connect':
-        specifier: 0.13.0-test-interpretation-2
-        version: 0.13.0-test-interpretation-2
+        specifier: 0.13.0-test-flows-1
+        version: 0.13.0-test-flows-1
       '@we/app-shell':
         specifier: workspace:*
         version: link:../../packages/app-shell
@@ -492,8 +492,8 @@ importers:
   packages/app-shell:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-inverse-relations
-        version: 0.13.0-test-inverse-relations
+        specifier: 0.13.0-test-flows-1
+        version: 0.13.0-test-flows-1
       '@solidjs/router':
         specifier: ^0.16.3
         version: 0.16.3(solid-js@1.9.15)
@@ -680,8 +680,8 @@ importers:
         version: link:../../entities
     devDependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-inverse-relations
-        version: 0.13.0-test-inverse-relations
+        specifier: 0.13.0-test-flows-1
+        version: 0.13.0-test-flows-1
       '@types/node':
         specifier: ^26.4.0
         version: 26.4.0
@@ -2111,11 +2111,11 @@ packages:
     resolution: {integrity: sha512-um2JznRouJ2pfC0FNnEgJJU7WrCDrYFeyqCdiSsdbZgdW4q/R9ysDpj0VO/H2U4r4t6HDn9pA3HgAYpuIsdUWg==}
     engines: {node: '>=22.0.0'}
 
-  '@coasys/ad4m-connect@0.13.0-test-interpretation-2':
-    resolution: {integrity: sha512-EBk8nrAaLh6Lvp1Fa50yCBxd4advPMQqNydoJ/w/tMDZc+z7YvUSaqvgpLScVXOQKMNzElD5A/8Zh/RT7fILXQ==}
+  '@coasys/ad4m-connect@0.13.0-test-flows-1':
+    resolution: {integrity: sha512-nbpGKF/chX9/BqDwwtZEt1x+6fWjhI+jzvmvWr+4vDTjFjzFeYQ9A99ET6zy7EghWc2L8sgxBg21ucvJ1WsGgQ==}
 
-  '@coasys/ad4m@0.13.0-test-inverse-relations':
-    resolution: {integrity: sha512-ToBMMVNWrMBYQT1seOk3vD5P5AZtfWQul9L7swIRY9rGEc0ta9nZCCRa4SqvDctlc2LgkiAvRDSwTzTr+5n57w==}
+  '@coasys/ad4m@0.13.0-test-flows-1':
+    resolution: {integrity: sha512-v5OV/p+tlEyWr4NJK9Zq76cXmFy8Aayn9sxSCDY6zZgNiCn1HEhJHHdgN9KWqWr6qGAEzdfm+/8ySLXDLBNGNw==}
 
   '@codemirror/autocomplete@6.20.3':
     resolution: {integrity: sha512-tlosUqb+3BbxCxZdu4tKeRghPFC+QM7q4X5YhKV2eCmPG+1r2F3f4AaSz5sCrFqUtX4Jh20VFTKecl16MgiV9g==}
@@ -6725,14 +6725,14 @@ snapshots:
       '@cesium/engine': 26.2.0
       nosleep.js: 0.12.0
 
-  '@coasys/ad4m-connect@0.13.0-test-interpretation-2':
+  '@coasys/ad4m-connect@0.13.0-test-flows-1':
     dependencies:
       '@undecaf/barcode-detector-polyfill': 0.9.23
       '@undecaf/zbar-wasm': 0.9.16
       auto-bind: 5.0.1
       lit: 2.8.0
 
-  '@coasys/ad4m@0.13.0-test-inverse-relations':
+  '@coasys/ad4m@0.13.0-test-flows-1':
     dependencies:
       '@holochain/client': 0.16.0
       base64-js: 1.5.1

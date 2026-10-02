@@ -31,6 +31,7 @@ import { createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
 import { createFileExpression, getProfile, publishProfileToPublicPerspective } from './agentHelpers';
 import { installClearOnEmpty } from './clearOnEmpty';
 import { Space } from './entities';
+import { createAd4mFlowPort } from './flowPort';
 import { createAd4mInterpretationPort } from './interpretationAdapter';
 import { readInterpretationHints, resetInterpretationHints, writeInterpretationHints } from './interpretationHints';
 import { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './languageModelPort';
@@ -194,6 +195,7 @@ export function createAd4mBackendPorts(
     // Takes no client: interpretation is entirely a per-dataset operation, and every call already
     // carries the dataset handle it needs.
     interpretation: createAd4mInterpretationPort(ctx.selfId),
+    flows: createAd4mFlowPort(),
     ephemeral,
     dataBindings: (deps: DataBindingDeps) =>
       createAd4mDataBindings({

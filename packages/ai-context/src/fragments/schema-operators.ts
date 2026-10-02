@@ -233,12 +233,9 @@ some records already existed reads as absent on every one of them, and the query
 consults the default when filtering.
 
 "exists" IS NOT AVAILABLE IN A $query — only inside filter(), where it is evaluated client-side.
-The backend has no such operator, so a $query using one is refused rather than run. This is a
-change: it used to be claimed as supported and was not, and the consequence was worse than a refusal
-— the clause reached a filter that rejected every row, so the query answered nothing at all, always,
-with no error anywhere. A refusal at least says so.
+The backend has no such operator, so a $query using one is refused rather than run.
 
-That invalidates the idiom this section used to recommend for "absent counts as the default":
+That rules out the obvious idiom for "absent counts as the default":
 
   { OR: [ { retired: false }, { retired: { exists: false } } ] }   ← NOT usable in a $query
 
@@ -261,10 +258,8 @@ only. So a date range in a $query does not run yet; fetch the candidates and fil
 where it works, or bound the query by something numeric. A numeric range (a price, a count, a
 rating) runs natively either way.
 
-OR/AND/NOT no longer cost a query its sort pushdown. They used to: the backend decided pushability
-with a second function that disagreed with what it actually emitted, and an explicit combinator fell
-outside it. One compiler now answers for its own emission, so a filter with an OR and a sort behaves
-like any other.
+OR/AND/NOT cost a query nothing in sort pushdown: a filter with an OR and a sort behaves like any
+other.
 
 Examples:
 { "$": "filter(spaceStore.members, { role: 'admin' })" }
@@ -425,10 +420,9 @@ Single-item projection — add a derived field that resolves to one instance or 
 With limit: 1 the field unwraps to T | null instead of an array.
 
 include works with an UNTYPED relation too — one whose target model class is not declared, like a
-collection's children. It used to crash, because there was no shape to hydrate the members into; now
-each member is read as the class it actually is, so one query returns a post's text blocks, images
-and tasks together, each with its own fields. Every member carries its type, so a card can pick a
-display per row rather than assuming one.
+collection's children. Each member is read as the class it actually is, so one query returns a
+post's text blocks, images and tasks together, each with its own fields. Every member carries its
+type, so a card can pick a display per row rather than assuming one.
 
 That makes include the right tool for a FEED, where the alternative is one drill-down per parent:
 { "$query": { "entity": "CollectionBlock", "where": { "type": "root" }, "include": { "children": true } } }

@@ -111,6 +111,13 @@ describe('what the space tier can reach', () => {
     return member in ((bag[store] ?? {}) as Record<string, unknown>);
   };
 
+  it('lends the clipboard to chrome and not to a community template', () => {
+    // Chrome's copy buttons call it — unclassified, the bag dropped it and they did nothing at all.
+    // A space template could show one thing and copy another, so it waits for a decision.
+    expect(reaches(chromeBag, 'clipboard.copy')).toBe(true);
+    expect(reaches(spaceBag, 'clipboard.copy')).toBe(false);
+  });
+
   it('cannot reach the things that made this necessary', () => {
     // Every one of these was reachable from a marketplace template before this existed.
     for (const path of [

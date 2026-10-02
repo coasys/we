@@ -411,6 +411,15 @@ export function DatasetStoreProvider(props: ParentProps) {
           (await session.backendPorts()?.interpretation?.accept(dataset, id, property)) ?? false,
         reject: async (dataset, id, property) =>
           (await session.backendPorts()?.interpretation?.reject(dataset, id, property)) ?? false,
+        /*
+          Forwarded, like every member above — this wrapper lists them by hand, so a port method it
+          does not name never reaches a module. Leaving this one out made every Accept and Discard
+          decide alone, with no question asked, which is the failure the read exists to prevent.
+          Nothing tied, where the backend cannot say: the decision then stands alone, as it did
+          before the read existed.
+        */
+        connections: async (dataset, id) =>
+          (await session.backendPorts()?.interpretation?.connections?.(dataset, id)) ?? { ends: [], connections: [] },
       },
 
       /*

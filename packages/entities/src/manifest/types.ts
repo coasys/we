@@ -359,6 +359,8 @@ export interface TaskStateRecord extends WeNodeRecord {
   color: string;
   semantic: 'open' | 'active' | 'blocked' | 'done' | 'cancelled';
   retired: boolean;
+  approvals: number;
+  approverKind: string;
   schemaVersion: number;
 }
 

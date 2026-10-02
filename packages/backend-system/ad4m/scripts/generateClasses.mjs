@@ -92,6 +92,7 @@ function relationOptions(spec) {
   const opts = [`through: ${q(spec.predicate)}`];
   if (spec.cardinality === 'many' && spec.ordered) opts.push(`ordering: { strategy: 'linkedList' }`);
   if (resolvesPolymorphically(spec)) opts.push('polymorphic: true');
+  if (spec.interpretationHint !== undefined) opts.push(`interpretationHint: ${q(spec.interpretationHint)}`);
   return `{ ${opts.join(', ')} }`;
 }
 

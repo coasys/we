@@ -81,7 +81,8 @@ import {
   transcriptFeed,
   transcriptLines,
 } from './Panel.schema';
-import { createTranscribeStore } from './store';
+import { createTranscribeStore, TRANSCRIBE_ACTIVITY } from './store';
+import { tiedDecisionModals } from './TiedDecision.schema';
 
 export { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
 export { extractionActivity } from './ExtractionStatus.schema';
@@ -211,6 +212,12 @@ export const transcribeModule = defineModule({
         decision it is. The call module's `call-status` anchor has nothing left to hold.
       */
       { anchor: CALL_CONTROLS_ANCHOR, node: callControl, order: 10 },
+      /*
+        The one "decide these together?" question every Accept and Discard can raise, wherever it was
+        pressed — see `TiedDecision.schema.ts`. Chrome rather than a panel's, because the buttons are
+        on surfaces this module does not own.
+      */
+      ...tiedDecisionModals.map((node) => ({ anchor: 'overlay', node, order: 200 })),
     ],
 
     /*
@@ -322,6 +329,16 @@ export const transcribeModule = defineModule({
         resolution: 'restrict',
       },
     ],
+
+    /*
+      What this module publishes on presence while somebody records a call — see `announce` in the
+      store. `id` is the call, `recording` whether this agent's microphone is going into it, `anchor`
+      the call's space (so the notice reaches the people being recorded), and `collection` the record
+      the transcript is written into, so a peer can see somebody writing into an old one.
+    */
+    activities: {
+      [TRANSCRIBE_ACTIVITY]: { id: 'string', recording: 'boolean', anchor: 'object', collection: 'string' },
+    },
   },
 
   createStore: (deps: ModuleStoreDeps) => createTranscribeStore(deps),

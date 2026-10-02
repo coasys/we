@@ -136,33 +136,32 @@ function buildCard(opts: CardShellOptions): SchemaNode {
       // Always-visible compact header
       ...header,
 
-      // Body: expanded = full content; compact/grid = height-constrained with fade
+      /*
+        Body: expanded = full content; compact/grid = height-constrained with fade.
+
+        ONE node, with the mode in its props, rather than a `$if` carrying the body down both
+        branches. The two spellings render the same DOM — in expanded mode `CollapsedContent`
+        with nothing to collapse and no toggle renders its children bare — but the branching one
+        wrote the body into the schema twice, and `body` is the whole of a card. Every card list
+        in WE goes through here, and the duplication rode along into whatever an LLM was shown of
+        a template, into every patch it proposed, and into the editor's undo history.
+      */
       {
-        type: '$if',
+        type: 'CollapsedContent',
         props: {
-          condition: { $: "local.displayMode == 'expanded'" },
-          then: {
-            type: 'Column',
-            props: { gap: '300' },
-            children: body,
-          },
-          else: {
-            type: 'CollapsedContent',
-            props: {
-              maxHeight,
-              collapsed: { $: '!local.expanded' },
-              icon: { $: "local.displayMode == 'grid' ? 'arrows-out' : null" },
-              onExpandClick: {
-                $if: {
-                  condition: { $: "local.displayMode == 'grid'" },
-                  then: { $setLocal: 'modalOpen', value: true },
-                  else: { $toggleLocal: 'expanded' },
-                },
-              },
+          maxHeight,
+          collapsed: { $: "local.displayMode != 'expanded' && !local.expanded" },
+          showToggle: { $: "local.displayMode != 'expanded'" },
+          icon: { $: "local.displayMode == 'grid' ? 'arrows-out' : null" },
+          onExpandClick: {
+            $if: {
+              condition: { $: "local.displayMode == 'grid'" },
+              then: { $setLocal: 'modalOpen', value: true },
+              else: { $toggleLocal: 'expanded' },
             },
-            children: [{ type: 'Column', props: { gap: '300' }, children: body }],
           },
         },
+        children: [{ type: 'Column', props: { gap: '300' }, children: body }],
       },
 
       // Grid-expand modal

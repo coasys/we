@@ -74,7 +74,7 @@ const BOARD = 'first(local.board)';
   before the board is worked out rather than after, so every count, the Unplaced column and the people
   filter agree about what is on the board.
 */
-const VIEW = `arrangedBoard({ board: first(local.board), columns: local.columns, records: ${withoutHiddenSuggestions('local.pool')}, states: spaceStore.taskStates, involvements: local.involvements, kinds: spaceStore.involvementTypes, people: local.boardPeople, show: local.boardGrouped ? 'rows' : (local.boardShow == 'hide' ? 'hide' : 'dim'), me: me.did })`;
+const VIEW = `arrangedBoard({ board: first(local.board), columns: local.columns, records: ${withoutHiddenSuggestions('local.pool')}, states: spaceStore.taskStates, involvements: local.involvements, kinds: spaceStore.involvementTypes, people: local.boardPeople, show: local.boardGrouped ? 'rows' : (local.boardShow == 'hide' ? 'hide' : 'dim'), awaitingMe: local.boardAwaiting, me: me.did })`;
 
 /**
  * Who is on each card — the `involvement` host function over the board's own involvement query.
@@ -103,6 +103,13 @@ const ANCHOR = `(${BOARD}.gathers && ${BOARD}.gathers != spaceStore.currentSpace
 export interface TaskCardOptions {
   /** Controls shown at the end of the card's meta row — usually {@link moveTaskMenu}. */
   actions?: SchemaNode;
+  /**
+   * The move the card is waiting on, as an expression — `arrangedBoard(…).flow[card.id]`, which is
+   * nothing unless the space's states ask for agreement and somebody has asked to move this card.
+   * Draws where it is asking to go and how close it is, with Approve for somebody whose approval
+   * would count and Withdraw for somebody who asked.
+   */
+  waiting?: string;
   /** Context key the card reads. Defaults to `'card'`, which is what {@link taskBoard} binds. */
   as?: string;
   /**
@@ -291,6 +298,7 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
           },
         },
       },
+      ...(opts.waiting ? [waitingLine(opts.waiting, as)] : []),
       {
         type: 'Row',
         props: { gap: '200', ay: 'center' },
@@ -878,11 +886,88 @@ function draggable(card: SchemaNode, as: string): SchemaNode {
 }
 
 /** The default card for a column of this board — see `taskCard`. */
+/**
+ * What a card waiting on a move says: where it is asking to go, how many of the approvals it needs it
+ * has, whose they are, and the one thing the viewer can do about it.
+ *
+ * The move is bound once by a one-row `$each` rather than read in each child, because the expression
+ * behind it works the whole board out — one evaluation per card, not one per word on the card.
+ *
+ * The card does not move until the move happens, so this line is the whole of what a drop into such
+ * a column changes — which is why it is drawn in the warning role rather than as a quiet caption: it
+ * is the answer to "why is my card still here?".
+ */
+function waitingLine(waiting: string, as: string): SchemaNode {
+  const stateName = 'find(spaceStore.taskStates, { slug: wait.to }).name ?? wait.to';
+  const kindName = 'find(spaceStore.involvementTypes, { slug: wait.approverKind }).name ?? wait.approverKind';
+  return {
+    type: '$each',
+    props: { items: { $: `[${waiting}].filter(w, w)` }, as: 'wait' },
+    children: [
+      {
+        type: 'Row',
+        props: { gap: '200', ay: 'center', wrap: true, bg: 'warning-surface', r: 'control', px: '200', py: '100' },
+        children: [
+          { type: 'we-icon', props: { name: 'hourglass', size: 'xs', color: 'warning-text' } },
+          {
+            type: 'we-text',
+            props: { fontSize: '200', flex: '1 1 auto', minWidth: '0' },
+            children: [
+              {
+                $: `\`To \${${stateName}} · \${wait.counted} of \${wait.needs}\${wait.approverKind ? ' ' + lower(${kindName}) : ''}\``,
+              },
+            ],
+          },
+          {
+            type: 'AvatarStack',
+            props: {
+              avatars: { $: 'wait.voters.map(d, { image: find(profileStore.profiles, { did: d }).avatar, hash: d })' },
+              max: 3,
+              size: 'xs',
+            },
+          },
+          {
+            type: '$if',
+            props: {
+              condition: { $: 'wait.canApprove' },
+              then: {
+                type: 'we-button',
+                props: {
+                  size: 'xs',
+                  variant: 'primary',
+                  onClick: { $action: 'spaceStore.approveTaskMove', args: [{ $: `${as}.id` }] },
+                },
+                children: ['Approve'],
+              },
+            },
+          },
+          {
+            type: '$if',
+            props: {
+              condition: { $: 'wait.mine' },
+              then: {
+                type: 'we-button',
+                props: {
+                  size: 'xs',
+                  variant: 'ghost',
+                  onClick: { $action: 'spaceStore.withdrawTaskMove', args: [{ $: `${as}.id` }] },
+                },
+                children: ['Withdraw'],
+              },
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
 function boardCard(opts: TaskBoardOptions, showState: string, from: string): SchemaNode {
   return opts.card
     ? opts.card('card')
     : taskCard({
         actions: moveTaskMenu(from),
+        waiting: `${VIEW}.flow[card.id]`,
         extracted: opts.extracted,
         bg: opts.bg,
         showState,
@@ -1460,6 +1545,40 @@ function personRows(opts: TaskBoardOptions): SchemaNode {
 }
 
 /** Adding a column — a state everybody shares, or a lane of this board's own. */
+/**
+ * "Waiting on me" — draw only the cards whose waiting move this agent's approval would help.
+ *
+ * Offered only where it can find something: in a space whose states ask for agreement, and while a
+ * card is waiting on the viewer or the filter is on. A toggle reading "0" on every board of a space
+ * that never asks for anything would be furniture.
+ */
+function awaitingToggle(): SchemaNode {
+  return {
+    type: '$if',
+    props: {
+      condition: { $: `spaceStore.taskFlowEnabled && (count(${VIEW}.awaiting) > 0 || local.boardAwaiting)` },
+      then: {
+        type: 'Row',
+        props: { gap: '200', ay: 'center' },
+        children: [
+          {
+            type: 'we-button',
+            props: {
+              size: 'sm',
+              variant: { $: "local.boardAwaiting ? 'secondary' : 'ghost'" },
+              onClick: { $toggleLocal: 'boardAwaiting' },
+            },
+            children: [
+              { type: 'we-icon', props: { name: 'seal-check' } },
+              { $: `\`Waiting on me · \${count(${VIEW}.awaiting)}\`` },
+            ],
+          },
+        ],
+      },
+    },
+  };
+}
+
 function addColumnModal(opts: TaskBoardOptions): SchemaNode {
   return formModal({
     open: { $: 'local.addColumnOpen' },
@@ -1553,6 +1672,9 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
       boardShow: { type: 'string', initial: 'dim', ...(opts.people ? { persist: 'board.show' } : {}) },
       // A row per person, or one board — its own choice now, beside rather than inside dim and hide.
       boardGrouped: { type: 'boolean', initial: false, ...(opts.people ? { persist: 'board.grouped' } : {}) },
+      // Only the cards waiting on this agent's approval. Ephemeral: a board opened later should show
+      // everything, and a shared link must not arrive filtered to somebody else's queue.
+      boardAwaiting: { type: 'boolean', initial: false },
     },
     /*
       Three subscriptions for the whole board, read together through `arrangedBoard`.
@@ -1605,7 +1727,14 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
         and the rows are a person's deliberate claims, so there are as many as people have made. Never
         asked on a board without `people`, which leaves it empty and every card undimmed.
       */
-      involvements: { entity: 'Involvement', ...(opts.people ? {} : { when: { $: 'false' } }) },
+      /*
+        Also asked where the space's states ask for agreement: whose approval counts toward a state
+        can be "whoever holds this kind on the card", and without the rows a board would count nobody.
+      */
+      involvements: {
+        entity: 'Involvement',
+        ...(opts.people ? {} : { when: { $: 'spaceStore.taskFlowEnabled' } }),
+      },
       /*
         What this community reacts with, for the counts on every card — one subscription for the
         board. Declared here rather than by the route, so a board that draws them cannot be placed
@@ -1620,6 +1749,7 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
         other controls. One wrapping row, so the switch sits beside the people filter while there is
         room and drops under it when there is not.
       */
+      awaitingToggle(),
       ...(opts.people || opts.suggestions
         ? [
             {
@@ -1667,20 +1797,31 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
                 state — and by now every query has answered, so it is an answer.
               */
               condition: { $: `count(${VIEW}.columns)` },
+              /*
+                One row, whichever arrangement it is holding.
+
+                The two arrangements differ in what comes FIRST — a row per person, or the board's
+                columns — and agree about everything after it, so the `$if` belongs around that
+                first position rather than around the whole row. Written as two rows it carried
+                `unplacedColumn` down both sides, and Unplaced holds a card for every kind of work
+                the board does not place: 28,398 characters a copy in the workshop template.
+
+                `addColumnButton` becomes conditional rather than duplicated. Not because rows mode
+                has nowhere to add a column — it does, and `personRows` draws its own button up in
+                its headings row, which is where that layout wants it. This is the button that sits
+                after the last column, and a board grouped by person has no last column on the row
+                it is in.
+              */
               then: {
-                type: '$if',
-                props: {
-                  condition: { $: `${VIEW}.show == 'rows'` },
-                  then: {
-                    type: 'Row',
-                    props: { width: '100%', gap: '400', ay: 'start', overflowX: 'auto' },
-                    children: [personRows(opts), ...(opts.lanesOnly ? [] : [unplacedColumn(opts)])],
-                  },
-                  else: {
-                    type: 'Row',
-                    props: { width: '100%', gap: '400', ay: 'start', overflowX: 'auto' },
-                    children: [
-                      {
+                type: 'Row',
+                props: { width: '100%', gap: '400', ay: 'start', overflowX: 'auto' },
+                children: [
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $: `${VIEW}.show == 'rows'` },
+                      then: personRows(opts),
+                      else: {
                         type: 'we-sortable',
                         props: {
                           // The columns are themselves a sortable, in its own group so a card can never
@@ -1703,14 +1844,17 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
                           },
                         ],
                       },
-                      // After the last column and before Unplaced, which is not one of the board's own.
-                      addColumnButton('300'),
-                      // Outside the sortable, because it is not one of the board's columns: it has no
-                      // record and no id to reorder, and inside it looked draggable and did nothing.
-                      ...(opts.lanesOnly ? [] : [unplacedColumn(opts)]),
-                    ],
+                    },
                   },
-                },
+                  // After the last column and before Unplaced, which is not one of the board's own.
+                  {
+                    type: '$if',
+                    props: { condition: { $: `${VIEW}.show != 'rows'` }, then: addColumnButton('300') },
+                  },
+                  // Outside the sortable, because it is not one of the board's columns: it has no
+                  // record and no id to reorder, and inside it looked draggable and did nothing.
+                  ...(opts.lanesOnly ? [] : [unplacedColumn(opts)]),
+                ],
               },
               // A board with no columns has no last column to add after, so the empty state offers it.
               else: {

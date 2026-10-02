@@ -487,7 +487,7 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     calendarMonths(options?) — The twelve months of the year an offset lands in — { label, month, year, offset, isThisMonth, isShown } — each carrying its own offset from today, for a jump-to-month picker.  e.g. calendarMonths({ offset: local.monthOffset })
     monthLabel(options?) — The month a calendar is showing, as "August 2026" in the viewer’s language. Same options as calendarMonth.  e.g. monthLabel({ offset: local.monthOffset })
     yearLabel(options?) — The year a calendar is showing, on its own. Same options as calendarMonth.  e.g. yearLabel({ offset: local.monthOffset })
-    arrangedBoard(options) — A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total, involved, filtering, show, dimmed, cardCount, matchedCount, unplacedTotal, rows, cells, rowCounts }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count, shown, matched, order }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: "column" children), records (everything in scope), states (spaceStore.taskStates). To read it by who is on the work, also pass involvements (an Involvement query), kinds (spaceStore.involvementTypes), people (the chosen DIDs), me (me.did — involved is everyone on a card here, the viewer first) and show: "dim" lists the others in dimmed and moves nothing; "hide" drops them from arranged, unarranged and unplaced while count stays true and shown says how many are drawn; "rows" adds a row per person plus "nobody" — rows are keys, cells[row][columnId] is { arranged, unarranged, count }. A drag in a column showing only part of itself passes contents[columnId].order to arrangeColumn, so the hidden cards keep their places.  e.g. arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates }).columns
+    arrangedBoard(options) — A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total, involved, filtering, show, dimmed, cardCount, matchedCount, unplacedTotal, rows, cells, rowCounts, flow, awaiting, awaitingOnly }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count, shown, matched, order }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: "column" children), records (everything in scope), states (spaceStore.taskStates). To read it by who is on the work, also pass involvements (an Involvement query), kinds (spaceStore.involvementTypes), people (the chosen DIDs), me (me.did — involved is everyone on a card here, the viewer first) and show: "dim" lists the others in dimmed and moves nothing; "hide" drops them from arranged, unarranged and unplaced while count stays true and shown says how many are drawn; "rows" adds a row per person plus "nobody" — rows are keys, cells[row][columnId] is { arranged, unarranged, count }. A drag in a column showing only part of itself passes contents[columnId].order to arrangeColumn, so the hidden cards keep their places. Where the space’s states ask for agreement (spaceStore.taskFlowEnabled) a card is drawn where its run is, and three more fields answer: flow[cardId] is { to, voters, counted, needs, mine, canApprove, approverKind } for a card waiting on a move — counted is how many of voters count toward needs; awaiting is the cards whose waiting move the viewer’s approval would help; pass awaitingMe: true to draw only those (awaitingOnly says it is on).  e.g. arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates }).columns
     involvement(options) — Who is on each record, from the Involvement rows — { byNode, answers, dids }. byNode[recordId] is { people, dids, responsible, reviewing, committed, interested, declined, pairs }: people are { did, kind, name, semantic, reflexive, icon, color, tone }, assignees first then reviewers and so on, and tone is the avatar ring the part wears ("warning" for reviewing, empty otherwise) — pass it as an AvatarStack avatar’s tone; the five lists are DIDs grouped by what each kind means, so a renamed or added kind still lands in the right one; dids is everyone not declined; pairs is every "did|kind" present, for a menu tick with `in`. answers[recordId] is the viewer’s own reflexive answer (going, maybe, …). Options: rows (an Involvement query), types (spaceStore.involvementTypes), me (me.did, who then leads the top-level dids), nodes (record ids the top-level dids is limited to).  e.g. involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[card.id].responsible
     involvementMenu(options) — The entries of a "who is on this" DropdownMenu for one record: the member a conversation named, when `said` matches exactly one and nobody is doing it yet; "Assign to me" while the viewer is not already on it, then a group per kind the entity is offered that anybody may give (the first open, the rest closed unless somebody holds them), each listing members with their faces — current holders ticked and first, then the viewer, then everyone by name. Every entry carries `kind`, and a toggle `checked`, so one handler serves all: setInvolvement(record, arg.id, arg.kind, !arg.checked). Options: node, entity, rows (an Involvement query), types (spaceStore.offeredInvolvementTypes), members (spaceStore.members), profiles (profileStore.profiles), me (me.did), said (a name somebody said — TaskBlock.assignee).  e.g. involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did })
     signalTally(options) — What a record's reactions say, as one number. With `type`, the number THAT type is read as — a toggle counts, a vote nets out, a rating averages, and a community's own `aggregate` wins unless the mode cannot express it. Without a type, how many people reacted at all: records, never values, since a total summing likes and stars and downvotes is not a number. Retired types still count — somebody reacted, and a total that fell when a vocabulary was tidied would be reporting the tidying. Options: signals (the record's `signals`, hydrated), type (a SignalType row).  e.g. signalTally({ signals: row.signals, type: sig })
@@ -550,12 +550,9 @@ some records already existed reads as absent on every one of them, and the query
 consults the default when filtering.
 
 "exists" IS NOT AVAILABLE IN A $query — only inside filter(), where it is evaluated client-side.
-The backend has no such operator, so a $query using one is refused rather than run. This is a
-change: it used to be claimed as supported and was not, and the consequence was worse than a refusal
-— the clause reached a filter that rejected every row, so the query answered nothing at all, always,
-with no error anywhere. A refusal at least says so.
+The backend has no such operator, so a $query using one is refused rather than run.
 
-That invalidates the idiom this section used to recommend for "absent counts as the default":
+That rules out the obvious idiom for "absent counts as the default":
 
   { OR: [ { retired: false }, { retired: { exists: false } } ] }   ← NOT usable in a $query
 
@@ -578,10 +575,8 @@ only. So a date range in a $query does not run yet; fetch the candidates and fil
 where it works, or bound the query by something numeric. A numeric range (a price, a count, a
 rating) runs natively either way.
 
-OR/AND/NOT no longer cost a query its sort pushdown. They used to: the backend decided pushability
-with a second function that disagreed with what it actually emitted, and an explicit combinator fell
-outside it. One compiler now answers for its own emission, so a filter with an OR and a sort behaves
-like any other.
+OR/AND/NOT cost a query nothing in sort pushdown: a filter with an OR and a sort behaves like any
+other.
 
 Examples:
 { "$": "filter(spaceStore.members, { role: 'admin' })" }
@@ -742,10 +737,9 @@ Single-item projection — add a derived field that resolves to one instance or 
 With limit: 1 the field unwraps to T | null instead of an array.
 
 include works with an UNTYPED relation too — one whose target model class is not declared, like a
-collection's children. It used to crash, because there was no shape to hydrate the members into; now
-each member is read as the class it actually is, so one query returns a post's text blocks, images
-and tasks together, each with its own fields. Every member carries its type, so a card can pick a
-display per row rather than assuming one.
+collection's children. Each member is read as the class it actually is, so one query returns a
+post's text blocks, images and tasks together, each with its own fields. Every member carries its
+type, so a card can pick a display per row rather than assuming one.
 
 That makes include the right tool for a FEED, where the alternative is one drill-down per parent:
 { "$query": { "entity": "CollectionBlock", "where": { "type": "root" }, "include": { "children": true } } }
@@ -1869,9 +1863,12 @@ Roles work anywhere a colour token does, including inside a border shorthand
 (`{ "$": "row.selected ? 'accent-muted' : 'surface-sunken'" }`).
 
 **Not `$if` in a prop.** `$if` is a *node* type and, in a value position, resolves to a handler —
-so the colour resolver is handed a function, paints nothing, and warns about nothing. The validator
-does not catch it either. A condition that chooses a value is a ternary, which is what the
-expression language has one for.
+so the colour resolver is handed a function, paints nothing, and warns about nothing at runtime. A
+condition that chooses a value is a ternary, which is what the expression language has one for.
+
+The validator refuses it. It asks whether the prop holds a function rather than whether its name
+starts with `on`, so a handler prop that is not an event — `we-modal`'s `close`, which every
+`discardGuard` passes a `$if` to — stays legal.
 
 **Always kebab-case: `"surface-sunken"`, never `"surfaceSunken"`.** The camelCase spelling is the
 TypeScript key of a `ThemeRole`; a schema writes the CSS spelling. Getting it wrong fails silently —
@@ -1914,10 +1911,11 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | mb | SpaceValue | Margin bottom |
 | ml | SpaceValue | Margin left |
 
-**`position`, `top`, `right`, `bottom` and `left` do not respond to a breakpoint.** They are
-excluded from the tier and state pipelines, so `mdUpProps: { left: '300px' }` validates and does
-nothing at all. To move something at a breakpoint, use `x` / `y` / `rotate` (see Visual), which
-compose into `transform` and do tier — as do `width`, `height` and `zIndex`.
+**`position`, `top`, `right`, `bottom` and `left` do not respond to a breakpoint or a state.**
+They are excluded from the tier and state pipelines, so `mdUpProps: { left: '300px' }` would set a
+variable nothing reads — **the validator refuses it** rather than letting it through silently. To
+move something at a breakpoint use `x` / `y` / `rotate` (see Visual), which compose into
+`transform` and do tier — as do `width`, `height` and `zIndex`.
 
 **A row that overflows is a row where nobody said who gives up space.** Inside a `Row`, a child's
 `maxWidth` is not a promise: a flex item's automatic minimum size is its *content*, so an item whose
@@ -2504,6 +2502,8 @@ TaskState extends WeNode:
   - color: string [we://color]
   - semantic: TaskStateSemantic = 'open' [we://semantic]
   - retired: boolean = false [we://retired]
+  - approvals: number = 1 [we://approvals]
+  - approverKind: string [we://approver_kind]
   - schemaVersion: number = 1 [we://schema_version]
 
 Template extends WeNode:
@@ -2809,6 +2809,7 @@ RecordStore:
   - dropOnCanvas(canvas: string, payload): puts something dragged in from elsewhere onto a canvas where it landed. Takes the graph's onDrop payload as it arrives. A record from this space is placed as it is; something from another dataset is brought in first (the bringIn rule) and placed — a whole post or note as a post, a single block as itself (a copy of the block, or a lone EmbedBlock quoting somebody else's), owned by the canvas. Refuses, with a toast, anything that is not a record — an agent, a space
   - bringIn(payload): takes a `we-drop-zone`'s dropped detail ({ items }) into the space on screen as posts — `onDropped: { $action: 'recordStore.bringIn', args: [{ $: 'event.detail' }] }`. Your own note or post becomes a copy (a post from another shared space records sourceRef/sourceName, shown as 'Also posted in …'); anybody else's post or block becomes a new post quoting it through an EmbedBlock carrying sourceAuthor and sourceName. Things already in this space are ignored. Each new post shows a toast with Undo
   - updateRecordField(entity: string, id: string, field: string, value): changes one property of one record — the inspector's edit mode. Takes the field name so one action serves every control; the value is coerced by the field's declared kind and a control's { detail } is unwrapped. An empty string is not written, so a text field cannot be cleared this way
+  - rekeyConnection(id: string): rewrites a Relationship's dedup key (`connection`) from its label and both ends' titles, which is how an extraction pass reads the structure people drew. updateRecordField does it already; call this after saving a Relationship's label through record.update
   - removeFromCanvas(canvas: string, node: string | string[]): takes a record — or a whole selection — off a canvas, leaving the records themselves alone. A card the canvas owns survives as an unplaced one in the tray. Takes one id or a list, so a selection is not a special case: pass the graph's onDeleteSelection or onSelectionAction records as event.records.map(r, r.recordId). UNDOABLE, which is why this rather than deleteRecords is what a canvas should bind its Delete key to
   - deleteRecords(records): deletes several records for everyone in the space, asking ONCE. Takes the graph's onDeleteSelection or onSelectionAction `records` as they arrive — [{ recordId, recordType }]. The host raises its own confirmation and counts the list, which is why this exists: a template looping record.delete stacks one dialog per card. Irreversible and outside the undo history — a delete drops the record's links and a re-create earns a new id, so anything pointing at the old record breaks
   - undoCanvas(canvas: string): puts back the last thing this agent did to the arrangement of THAT canvas — a move, a resize, a colour, a card taken off, a card moved in a tree. Replayed as a NEW write rather than as a rollback, so a peer’s changes in between are not discarded and a card somebody else has moved since is skipped rather than dragged back out from under them. Pass the same canvas id the GraphView’s canvas seed reads; the stack scopes itself to it, so pressing undo after opening another canvas replays nothing. Gate a control on recordStore.canvasHistory.canUndo
@@ -2947,7 +2948,7 @@ ShapeStore:
   - savingShape: boolean — a save is in flight
   - aiAvailable: boolean — AI model generation is available (the agent has a Claude API key configured)
   - generating: boolean — an AI generation is in flight
-  - hintEntities: { entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock) plus the space's own shapes
+  - hintEntities: { entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock, Relationship) plus the space's own shapes
   - extractionCandidates: string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a call actually looks for is two layers down (spaceStore.extractionTargets, then the call's own participants). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off
   - relationshipTargets: { label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent
   - identityOptions: { label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can map options but cannot prepend one
@@ -3086,8 +3087,8 @@ SpaceStore:
   - orderedSidebarItems: array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged
   - foreignSpacePrefill: { name, description, avatar } | null — detected from a foreign app's own model (e.g. Flux's Community) for prefilling the "Initialize as WE space" gate; null once the dataset is a WE space or no recognized foreign model is found
   - enabledModules: string[] — ids of the feature modules THIS SPACE has turned on: the community’s decision, shared with every member. An unset value means "not decided", not "none": it falls back to every registered module, so spaces predating the setting keep the chrome they had
-  - taskStates: { id, name, slug, semantic, color, retired, defined }[] — the states this community’s work moves through, its own if it has defined any and otherwise the defaults ("unset" means not decided, never none). Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community’s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `defined` is false for a default the space has never written down — a virtual state, which becomes a record the first time somebody reorders it, withdraws it, or names a state with its slug
-  - offeredTaskStates: { id, name, slug, semantic, color, retired, defined }[] — the same list without the withdrawn ones. What a state picker or a new board column should offer
+  - taskStates: { id, name, slug, semantic, color, retired, defined, approvals, approverKind }[] — the states this community’s work moves through, its own if it has defined any and otherwise the defaults ("unset" means not decided, never none). Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community’s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `defined` is false for a default the space has never written down — a virtual state, which becomes a record the first time somebody reorders it, withdraws it, or names a state with its slug. `approvals` is how many distinct people must agree before a task enters the state (1 is a plain drop) and `approverKind` the involvement kind whose holders’ agreement counts (empty: anybody’s) — see taskFlowEnabled
+  - offeredTaskStates: { id, name, slug, semantic, color, retired, defined, approvals, approverKind }[] — the same list without the withdrawn ones. What a state picker or a new board column should offer
   - taskStatesLoaded: boolean — the space has been asked for its states. An empty list is otherwise indistinguishable from "not fetched yet"; gate an empty state on it
   - involvementTypes: { id, name, slug, semantic, reflexive, appliesTo, icon, color, retired, defined }[] — the kinds of part a person can have in a record: "Assigned" and "Reviewing" on a task, "Going", "Maybe" and "Not going" on an event, plus whatever this community has named. Its own if it has named any, otherwise those defaults. `slug` is what Involvement.kind holds. `semantic` is the closed meaning underneath the name — responsible, reviewing, committed, interested, declined — so a board still finds the assignee after "Assigned" is renamed. `reflexive` kinds are an agent’s own answer, which nobody else may give, and an agent holds one per record. `appliesTo` is the entity names the kind is offered on, empty for all — filter with `'TaskBlock' in kind.appliesTo || !count(kind.appliesTo)`. Includes withdrawn kinds; offer offeredInvolvementTypes. Read who holds them through the `involvement` host function
   - offeredInvolvementTypes: { id, name, slug, semantic, reflexive, appliesTo, icon, color, retired, defined }[] — the same list without the withdrawn ones. What an assign menu or an RSVP control should offer
@@ -3117,6 +3118,7 @@ SpaceStore:
   - agentModuleSettings: SettingRow[] — the same rows, for what THIS AGENT has decided everywhere. Private. Render it in global settings, where the question is what you want in every space
   - autoInterpret: boolean — whether this space has calls interpreted (extracted into records) as they happen. A community decision, off by default. Readable by every member; writing it is space-settings
   - extractionTargets: string[] — the models a call in this space starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a call begins with, and the call's own participants add or remove from there (modules.transcribe.extractionTargets). Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings
+  - taskFlowEnabled: boolean — this space’s task states ask for agreement: some state needs more than one approval, or names whose approval counts. Where true, a card dragged into such a state waits instead of moving, and arrangedBoard(…).flow[card.id] describes what it is waiting on. Gate an explanation of the waiting on it; the board needs nothing else
   - canAdministerCurrentSpace: boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space
 - Actions:
   - createSpace(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, linkLanguageTemplate?): creates a new space with full setup. linkLanguageTemplate is an address from linkLanguageTemplateOptions and only matters for a shared space; empty uses the backend's default
@@ -3167,7 +3169,9 @@ SpaceStore:
   - createRelationshipType(config: Partial<RelationshipType>): names a kind of connection this community makes — "contradicts", "came out of". The counterpart to createSignalType; slug derived from name if blank
   - setSignalTypeRetired(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given and re-creating one with the same slug does not restore them. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves
   - createTaskState(config: { name, semantic?, color?, icon? }): names a state this community’s work moves through — "Blocked", "In review". The counterpart to createSignalType one concept along. The defaults stay virtual beside it; a name whose slug matches a default adopts that default rather than sitting beside it. The space’s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards
-  - updateTaskState(slug: string, updates: { name?, icon?, color?, semantic? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made: the three defaults ship without one. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. By slug, so editing a default adopts it
+  - updateTaskState(slug: string, updates: { name?, icon?, color?, semantic?, approvals?, approverKind? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made: the three defaults ship without one. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. `approvals` (a whole number, 1–20) and `approverKind` (an involvement kind’s slug, or empty) set what agreement the state asks for — the first state that asks for any turns the space’s states into a flow, see taskFlowEnabled. By slug, so editing a default adopts it
+  - approveTaskMove(taskId: string): agrees with the move a task is waiting on — the same as dragging the card there yourself, so it counts toward the state’s approvals when the agent is one whose approval counts. Offer it where arrangedBoard(…).flow[card.id].canApprove
+  - withdrawTaskMove(taskId: string): takes back this agent’s own vote on the move a task is waiting on, never anybody else’s. Offer it where arrangedBoard(…).flow[card.id].mine
   - setTaskStateRetired(slug: string, retired: boolean): withdraws a state from use, or brings it back. Never touches the work sitting in it — a task names its state by slug, so deleting the state would leave the work holding a word nothing defines. The same decision setSignalTypeRetired makes. By slug, so a default can be withdrawn: doing so writes its record, which is the moment a default becomes the community’s own
   - reorderTaskStates(orderedSlugs: string[]): sets the order this community reads its states in — which is the order of a board’s columns. An ordered relation rather than a number on each state, so two people reordering at once converge instead of one write discarding the other. A state the order does not mention still appears, after the ones it does. Slugs, because a default has no id until it is placed in an order, which adopts it. Key the rows by slug and pair with we-sortable’s onReorder, passing { $: "arg.detail" }
   - setInvolvement(nodeId: string, agent: string, kind: string, on: boolean): puts somebody on a record as a kind one member says about another — assigning a task, asking for a review — or takes them off. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick it shows and a double press cannot undo itself. Every copy of the pair goes on removal. A reflexive kind is routed to respondTo, and refused for anybody but the agent it is about. Pair with a DropdownMenu of toggle entries: `onSelect: { $action: "spaceStore.setInvolvement", args: [{ $: "card.id" }, { $: "arg.id" }, "assignee", { $: "!arg.checked" }] }`
@@ -3277,6 +3281,11 @@ Record:
   - create(entity: string, fields: object, options?: { dataset?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities, 'datasetStore.personalDataset' for the agent's own content). See "Record mutations via $action" above
   - update(entity: string, id: string, fields: object, options?: { dataset?: string }): updates the named fields of one record, leaving the rest
   - delete(entity: string, id: string, options?: { dataset?: string }): deletes one record. Irreversible
+
+Clipboard:
+- State:
+- Actions:
+  - copy(text, what?: string): copies text to the clipboard and confirms with a toast — '<what> copied', or 'Text copied'. A non-string is copied as JSON. For a copy button beside something long: a prompt, a log, an id. Host chrome only (the `clipboard` capability) — a space template's bag does not have it
 
 ---
 
@@ -3397,6 +3406,8 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - speaking — Whether the microphone level currently counts as speech.
   - status — What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error.
   - thresholdPercent — The speech-onset threshold as a CSS width, to mark on the same meter.
+  - tiedBusy — Whether a confirmed tied decision is still being written.
+  - tiedDecision — A decision waiting on confirmation because it decides others too — { kind, title, body, detail, confirmLabel } — or null.
   - transcribers — Everyone recording this call, this agent included — the numerator of coverage.
   - transcribing — Speech has gone to the model and its text has not come back yet.
   - transcriptFromStart — Whether the transcript is being read from its beginning rather than following the live end.
@@ -3408,8 +3419,10 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - addMessage — Writes something a person typed into a transcript, as a typed line.
   - applyChange — Applies one suggested change to an agreed record.
   - cancelProposalEdit — Closes the open draft, discarding what was typed.
+  - cancelTiedDecision — Puts the decision waiting in tiedDecision down without making it.
   - closeExtractionPanel — Closes the extraction panel.
   - closePanel — Closes the transcript panel.
+  - confirmTiedDecision — Carries out the decision waiting in tiedDecision, with everything tied to it.
   - dismissChange — Dismisses one suggested change, leaving the record as it was.
   - editProposal — Opens one suggestion for editing, seeded with what the model proposed.
   - editUtterance — Corrects the words on a line of the transcript, marking a spoken line as corrected.
@@ -3431,6 +3444,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
 - Parts: `transcribe.transcriptFeed` (subject: routeStore.params.call ? routeStore.params.call : modules.transcribe.collectionId), `transcribe.transcriptLines` (subject: modules.transcribe.collectionId), `transcribe.transcriptComposer`, `transcribe.captureMeter`, `transcribe.captureStatus`, `transcribe.coverage`, `transcribe.extractionTargets`, `transcribe.pendingUtterance`
 - Panels (`meta.panels[].dock`): `transcript` "Transcript" (module-owned openness), `extraction` "Extraction" (module-owned openness)
 - Settings: `recordCalls` (boolean; deployment, agent, space, agent-in-space) — Record calls automatically
+- Presence activities: `transcribe` { id: string, recording: boolean, anchor: object, collection: string }
 
 ### Live presence (`live`)
 See each other’s cursors, and follow one person’s screen.
@@ -3782,9 +3796,10 @@ Signal types (community-specific reactions/votes):
 Signal types are created per-community by the user. Never hardcode signal type UUIDs in schemas.
 Resolve them by slug from a hoisted $queries subscription on the node.
 
-There is no store accessor for this. spaceStore.signalTypesBySlug existed once and was removed;
-schemas still referencing it filtered on undefined — a like count that silently counted the wrong
-thing. Query the SignalType entity instead, and look the slug up with find().
+There is no store accessor for signal types, which is the trap: the community's other vocabularies
+DO have one — spaceStore.taskStates, spaceStore.involvementTypes — so the analogy invites a
+spaceStore read that does not exist, and a filter on undefined counts the wrong thing silently.
+Query the SignalType entity instead, and look the slug up with find().
 
 ALWAYS ask the user: "What slug should I use? (e.g. 'like', 'upvote', 'star')"
 Then use that slug in the pattern below.
@@ -3965,11 +3980,10 @@ Use `gradient` on the icon when there is something to do, and a flat `color` (`t
 or `warning-text`) when there is not — the two read apart at a glance, and a dead end that looks
 like an invitation is worse than one that looks like a dead end.
 
-This line used to recommend `neutral-300`, and every gate prompt in the repo copied it. A scale
-position is not frozen — it follows the theme's hue, saturation and polarity — but it cannot follow
-what a theme *decides* a faint foreground is, and the contrast corrections at apply time skip it
-entirely, so nothing ever measures it against what is behind it. Guidance that names a step
-reproduces that in every template written from it.
+A role here rather than a scale position such as `neutral-300`, and the reason is sharper than
+house style. A scale position is not frozen — it follows the theme's hue, saturation and polarity —
+but it cannot follow what a theme *decides* a faint foreground is, and the contrast corrections at
+apply time skip it entirely, so nothing ever measures it against what is behind it.
 
 ### How wide is a modal — always `size`, never a pixel width
 
@@ -5204,6 +5218,7 @@ pnpm audit:roles                               # a scale position where a role b
 pnpm audit:surfaces                            # a surface-sunken invisible against its ground
 pnpm --filter @we/schema-shared tooltip-audit  # nodes asking the browser for a tooltip via `title`
 pnpm --filter @we/schema-shared query-audit    # queries that read a growing list whole
+pnpm --filter @we/schema-shared size-audit     # how big each template is, and what it says twice
 ```
 
 Run them after any template, view or fragment change. A `neutral-600` label is invisible to the
@@ -5241,12 +5256,34 @@ vocabulary all count as bounded. A list that really is read whole on purpose is 
 `DELIBERATE` in the script, **with the reason**, and the reasons are printed on every run so they
 get reviewed rather than accumulated.
 
-Two things it now catches that it used to miss, both worth knowing when adding a schema:
+Two things about its reach, both worth knowing when adding a schema:
 
-- **Every export in a file is checked**, not just the first one found. A fragment file exporting
-  several sections used to be judged on whichever happened to be declared at the top.
-- **A schema that fails to import is an error**, not a skip. It used to print the failure and still
-  exit 0, so an unloadable schema looked identical to a clean one.
+- **Every export in a file is checked**, not just the first one found — so a fragment file
+  exporting several sections is judged on all of them.
+- **A schema that fails to import is an error**, not a skip, so an unloadable schema cannot look
+  identical to a clean one.
+
+`size-audit` measures what a template COSTS to carry around, which is a different question from
+whether it is correct. A template is data, and everything downstream pays for its size by the
+character: the editor sends the whole schema to a language model on every turn and gets a whole
+schema back, the undo history holds a copy per edit, and a template crossing the wire carries all
+of it. The hard limit is a model's context window, so a shape written twice is not untidy — it
+halves what can be reasoned about.
+
+It reports two things per schema, and they want different answers:
+
+- **`$if sides share N chars`** is a branch pair whose two sides say some of the same thing. This
+  is the one to fix, and the fix is usually one node with the condition in its props rather than a
+  `$if` holding the content down both sides — the same DOM, half the bytes, no new machinery.
+  `buildCard` in `@we/schema-kit` was exactly that, at 150,445 characters a copy in `CardsView`.
+- **`repeat ×N`** is a shape written out N times, which is usually a FRAGMENT called N times and
+  not a defect at all: a tree cannot name a shape and point at it, so a fragment's output is a
+  copy by construction. Reported because it is where the cost is, not because there is an edit.
+
+Neither gates CI. Size is a judgement — a rich template is big — and the honest summary is the
+`gzip` ratio beside it: around 4× means a template that says each thing once, and past about 8×
+means most of it is repetition. Pass `--show` to print the head of each repeated subtree, without
+which the report names a shape it gives no way to find.
 
 Asset imports (`import cover from './cover.jpg'`) resolve to a stub, so a schema that references
 an image validates without a bundler. See `src/cli/assetHooks.mjs`.
@@ -5430,7 +5467,7 @@ include: {
 ```
 
 Note: `count: true` works as a plain literal — the typed projection (`TypedIncludeProjection`)
-contextually narrows it to the `true` literal, so the `as const` workaround is no longer needed.
+contextually narrows it to the `true` literal, so it needs no `as const`.
 
 ---
 

@@ -6,7 +6,7 @@
  * the assertions live beside the cases, so one scenario can be measured several ways.
  */
 import { transcriptLines } from '@we/module-transcribe';
-import { panelScroll } from '@we/schema-kit';
+import { cardShell, panelScroll } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 import { discussionSection, foldingSectionLabel, signalDisplay } from '@we/template-kit';
 import { CALL_CHROME_BAND, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
@@ -827,6 +827,137 @@ const voicesPopover = (): Scenario => {
   return base;
 };
 
+/**
+ * The same vocabulary panel with exactly ONE person's reaction on each type.
+ *
+ * Its own scenario rather than a width of the other one, because the count is the whole subject: a
+ * summary saying "1 person" behind a press that reveals one row is three pieces of indirection in
+ * front of something shorter than the thing hiding it, so one reactor is shown outright and the
+ * summary is not drawn at all.
+ *
+ * That used to be a `total == 1` branch with the list written into both of its sides. It is now two
+ * conditions over one list, which is the same answer in half the characters — and the case exists
+ * because nothing else measures the one-person path: `signals:vocabulary` seeds two reactions per
+ * type, so every assertion about it was about the crowd.
+ */
+const oneReactor = (): Scenario => {
+  const base = vocabulary();
+  /*
+    The reader's own, so the row has something to say.
+
+    This scenario seeds no profiles, so a peer resolves to no name and their row renders as an
+    empty string — which is why `reactorDisclosure` asserts on "You" as well. One reaction, and it
+    is the reader's.
+  */
+  const only = [
+    { signalTypeId: 'st-like', value: 1, author: 'did:me' },
+    { signalTypeId: 'st-stars', value: 5, author: 'did:me' },
+  ];
+  // The reactions are a literal on the `$each`, as they are in the scenario this builds on — the
+  // display reads `row.signals`, so there is no table to seed.
+  const each = base.node as SchemaNode & { props: { items: Record<string, unknown>[] } };
+  each.props.items = [{ id: 'card-1', signals: only }];
+  return base;
+};
+
+/**
+ * A glyph that was told not to shrink, in a row with nothing else that can give.
+ *
+ * `flexShrink` is a recognised layout key and worked on `Column`/`Row`/`Grid`, which take their
+ * styles inline — and did nothing at all on any `we-*` element, because the primitives reach CSS
+ * by a second path and neither half of it knew the prop. 217 places across the composed templates
+ * asked an icon, an avatar or a timestamp not to shrink and were ignored.
+ *
+ * Most of those never showed it: `we-timestamp` hard-codes `flex-shrink: 0` in its own CSS, and
+ * an avatar in a byline is rarely under enough pressure to compress. So this row is built to apply
+ * the pressure — a long unbreakable word beside a glyph, in a box too narrow for both — because a
+ * case measured where the prop happens not to bite would have passed before the fix and after it.
+ */
+const unshrinkableBox = (): Scenario => {
+  /*
+    A box with a width it can be squeezed out of.
+
+    An icon will not do, however tight the row: its SVG gives it a min-content floor at its own
+    size, so it cannot shrink whether or not anything told it to. The item has to be one whose
+    min-content is genuinely smaller than its width — short words inside a wider box — or the case
+    measures the same number before the fix and after, which is exactly what the first draft of it
+    did.
+  */
+  const pill: SchemaNode = {
+    type: 'we-text',
+    props: { width: '120px', flexShrink: '0', bg: 'surface-sunken' },
+    children: ['one two three'],
+  };
+  return {
+    node: {
+      type: 'Column',
+      props: { width: '100%', gap: '400' },
+      children: [
+        // Under pressure: a neighbour that wants more room than the row has left.
+        {
+          type: 'Row',
+          props: { width: '100%', ay: 'center', gap: '200' },
+          children: [pill, { type: 'we-text', children: ['several more words to crowd it out of its width'] }],
+        },
+        /*
+          The same box with the row to itself, as the control.
+
+          A width the case states as a number goes stale the day the type scale moves, and would
+          then fail for a reason that has nothing to do with the prop. Two of them in one tree
+          answer "did this one keep its width" without anybody having to know what the width is.
+        */
+        { type: 'Row', props: { width: '100%', ay: 'center', gap: '200' }, children: [pill] },
+      ],
+    },
+    tables: {},
+  };
+};
+
+/**
+ * One card, and a way to change its display mode while it is on screen.
+ *
+ * `cardShell` draws its body through a single `CollapsedContent` whose props carry the mode,
+ * rather than through a `$if` holding the body down both branches — which is what took every card
+ * list in WE from three copies of its body to two. The saving is only safe if the two modes still
+ * render what they rendered: clipped with a toggle when compact, and no wrapper at all when
+ * expanded.
+ *
+ * The mode is switched by pressing, not by mounting twice, because the failure worth catching is a
+ * reactivity one. A Solid component body runs ONCE, so deciding "is there anything to collapse"
+ * with an early `return` freezes that decision at creation — every mode renders correctly on a
+ * first paint and the card then keeps the first mode's shape for the rest of its life. Both modes
+ * measured from a fresh mount would pass against exactly that bug.
+ */
+const collapsingCard = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { width: '100%', p: '300', gap: '300' },
+    $localState: { displayMode: { type: 'string', initial: 'compact' } },
+    children: [
+      {
+        type: 'we-button',
+        props: { size: 'sm', onClick: { $setLocal: 'displayMode', value: 'expanded' } },
+        children: ['Expanded mode'],
+      },
+      {
+        type: 'we-button',
+        props: { size: 'sm', onClick: { $setLocal: 'displayMode', value: 'compact' } },
+        children: ['Compact mode'],
+      },
+      cardShell({
+        header: [{ type: 'we-text', props: { variant: 'heading-sm' }, children: ['A card'] }],
+        // Comfortably past the 100px a compact card clips to, so "is it clipped" has an answer.
+        body: Array.from({ length: 14 }, (_, i) => ({
+          type: 'we-text',
+          props: { tag: 'p' },
+          children: [`Body line ${i + 1}`],
+        })),
+      }),
+    ],
+  },
+  tables: {},
+});
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'canvas:tree-strip': treeStripOverCanvas,
   'canvas:voices': voicesPopover,
@@ -836,6 +967,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'cards:counts': countControls,
   'tooltip:rich': richTooltip,
   'signals:vocabulary': vocabulary,
+  'signals:one-reactor': oneReactor,
   'inspector:provenance': provenanceLine,
   'ds:nested-interactive': nestedInteractive,
   'ds:token-offsets': tokenOffsets,
@@ -845,4 +977,6 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:pinned-short': pinnedPage(20),
   'ds:pinned-empty': pinnedShortContent,
   'panel:sections': panelSections,
+  'cards:collapse': collapsingCard,
+  'ds:unshrinkable-box': unshrinkableBox,
 };

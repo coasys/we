@@ -57,8 +57,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@coasys/ad4m": "0.13.0-test-inverse-relations",
-      "@coasys/ad4m-connect": "0.13.0-test-interpretation-2",
+      "@coasys/ad4m": "0.13.0-test-flows-1",
+      "@coasys/ad4m-connect": "0.13.0-test-flows-1",
       "prettier": "3.9.6",
       "@xmldom/xmldom": ">=0.9.12",
       "plist": ">=3.1.1",
