@@ -336,6 +336,14 @@ export type SchemaNode = {
   styles?: Record<string, string | number>; // Raw CSS escape hatch — applied as inline styles on the node wrapper element
   $localState?: Record<string, LocalStateField>; // Scoped local state — creates signals on mount, discarded on unmount
   $queries?: Record<string, QueryStateField>; // Hoisted reactive query subscriptions — results injected into $local, shared across entire subtree
+  /**
+   * Shapes this template uses more than once, each stored once and referenced by a `$ref` node.
+   *
+   * Root only — a definition is a property of the document, not of a position in it. The entries
+   * are ordinary nodes, so what will render is still entirely inside the template and nothing has
+   * to be fetched to read it; see `definitions.ts` for why that property is the point.
+   */
+  $defs?: Record<string, SchemaNode>;
 };
 
 // Types that need to be passed a framework specific NodeType (e.g. JSX.Element for Solid, React.ReactNode for React)
