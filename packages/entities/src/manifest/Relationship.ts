@@ -191,14 +191,14 @@ export const Relationship: CoreEntityDef = {
         cardinality: 'one',
         predicate: 'we://relationship_source',
         interpretationHint:
-          'The broader or governing end: the goal, the whole, the thing that depends on or comes before the other. Read from source to target, connections form a tree from its roots down. Between peers, as with "contradicts", either way round. An existing entry\u2019s id, or a new:<Class>:<n> reference to something you create in this response.',
+          'The broader or governing end: the goal, the whole, or the thing that needs the other. Read from source to target, connections form a tree from its roots down. For one step that leads to another, the earlier step, labelled "leads to". Between peers, as with "contradicts", either way round. An existing entry\u2019s id, or a new:<Class>:<n> reference to something you create in this response.',
       },
       target: {
         target: '',
         cardinality: 'one',
         predicate: 'we://relationship_target',
         interpretationHint:
-          'The narrower or following end: the prerequisite, the part, the next step. An existing entry\u2019s id, or a new:<Class>:<n> reference to something you create in this response.',
+          'The narrower or following end: what the source needs, a part of it, or the step it leads to. An existing entry\u2019s id, or a new:<Class>:<n> reference to something you create in this response.',
       },
     },
   },
