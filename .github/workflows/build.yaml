@@ -84,7 +84,15 @@ jobs:
       - uses: ./.github/actions/setup
 
       - name: Build
+        id: build
         run: NODE_OPTIONS='--max-old-space-size=8192' pnpm build
+
+      # A pull request paired with an unpublished ad4m change fails here until the pin moves, on
+      # purpose — or because it is broken, which looks the same. Name the check that tells the two
+      # apart; see the action for why. Only after this step failed, never after the drift check.
+      - name: Point at the paired check
+        if: failure() && steps.build.outcome == 'failure' && github.event_name == 'pull_request'
+        uses: ./.github/actions/explain-pairing
 
       # `pnpm build` regenerates the AI-context outputs (CLAUDE.md et al.) and the core
       # manifest. If a PR changed their inputs without committing the regenerated files,
@@ -156,7 +164,12 @@ jobs:
       - uses: ./.github/actions/restore-build
 
       - name: Typecheck
+        id: typecheck
         run: pnpm typecheck
+
+      - name: Point at the paired check
+        if: failure() && steps.typecheck.outcome == 'failure' && github.event_name == 'pull_request'
+        uses: ./.github/actions/explain-pairing
 
   test:
     name: Test
@@ -170,6 +183,7 @@ jobs:
       # `--no-bail` (in the root script) runs every package before reporting, so one
       # failing package does not hide the state of the rest. It still exits non-zero.
       - name: Test
+        id: test
         run: pnpm test
 
       # The primitives' cascade, in a real browser. Which rule wins under a pointer at a container
@@ -178,6 +192,13 @@ jobs:
       # while pressing. Drives the Chrome the runner image already has, so it downloads nothing.
       - name: Browser tests
         run: pnpm --filter @we/primitives test:browser
+
+      # A test that exercises the new ad4m API fails against the pin as surely as a type does. Not
+      # the browser tests: they drive the primitives, which never reach ad4m, so pairing cannot
+      # explain a failure there.
+      - name: Point at the paired check
+        if: failure() && steps.test.outcome == 'failure' && github.event_name == 'pull_request'
+        uses: ./.github/actions/explain-pairing
 
       # Coverage has been configured for as long as the tests have and has never run anywhere,
       # which is the same shape as the stylelint gap above it: a number nobody produces is a number

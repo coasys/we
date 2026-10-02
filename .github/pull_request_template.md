@@ -27,8 +27,8 @@
 <!-- What was actually verified, ticked. What was not, unticked, with the reason. -->
 
 <!--
-To build this PR's preview against an unpublished ad4m change, add a line outside this comment,
-naming an ad4m pull request or an ad4m branch, tag or commit:
+To build this PR's preview against an unpublished ad4m change, and typecheck and test it there,
+add a line outside this comment, naming an ad4m pull request or an ad4m branch, tag or commit:
 
     for example:  ad4m: coasys/ad4m#1187
     or:           ad4m: coasys/ad4m@dev
