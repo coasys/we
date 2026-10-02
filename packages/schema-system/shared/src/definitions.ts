@@ -285,6 +285,55 @@ export function compactDefinitions(schema: SchemaNode, options: CompactOptions =
 }
 
 /**
+ * How many places a node renders in — 1 for an ordinary node, more for one inside a shared shape.
+ *
+ * This is what an editor tells somebody after a patch, and the reason it needs saying: a change
+ * to a node inside a definition reaches every use of that shape at once. That is usually what was
+ * wanted (a card template inside an `$each` is one definition already) and sometimes emphatically
+ * not, so it has to be visible rather than inferred from the result.
+ *
+ * Counted rather than estimated, because a definition can be referenced from inside another one:
+ * a shape used twice inside an arrangement that is itself used three times renders six times, and
+ * "changed 2 places" would be wrong in the direction that matters.
+ */
+export function useCountOf(root: SchemaNode, targetId: string): number {
+  const defs = definitionsOf(root);
+  if (!Object.keys(defs).length || !targetId) return 1;
+
+  const holds = (node: SchemaNode): boolean => node.id === targetId || childPositions(node).some(holds);
+  const owner = Object.entries(defs).find(([, def]) => holds(def))?.[0];
+  if (!owner) return 1;
+
+  const refsTo = (node: SchemaNode, name: string): number =>
+    (isRef(node) && (node.props as RefProps | undefined)?.def === name ? 1 : 0) +
+    childPositions(node).reduce((total, child) => total + refsTo(child, name), 0);
+
+  /*
+    Uses of a definition: references from the tree itself, plus references from each OTHER
+    definition multiplied by however many times that one is used. Memoised by name, and a name
+    already being resolved counts as nothing — `compactDefinitions` cannot produce a cycle, and a
+    template from a stranger must not be able to hang the editor by containing one.
+  */
+  const settled = new Map<string, number>();
+  const uses = (name: string, open: ReadonlySet<string>): number => {
+    const cached = settled.get(name);
+    if (cached !== undefined) return cached;
+    if (open.has(name)) return 0;
+    const deeper = new Set([...open, name]);
+    let total = refsTo({ ...root, $defs: undefined } as SchemaNode, name);
+    for (const [other, def] of Object.entries(defs)) {
+      if (other === name) continue;
+      const within = refsTo(def, name);
+      if (within) total += within * uses(other, deeper);
+    }
+    settled.set(name, total);
+    return total;
+  };
+
+  return Math.max(1, uses(owner, new Set()));
+}
+
+/**
  * Put every `$ref` back, and drop `$defs` — the exact inverse of the pass above.
  *
  * The renderer needs this, and so does anything that wants to read a template as the tree it will

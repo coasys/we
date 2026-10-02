@@ -252,6 +252,10 @@ function schemaNodeShape() {
     styles: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
     $localState: zLocalStateDeclaration.optional(),
     $queries: zQueriesDeclaration.optional(),
+    // Root only in practice, but declared here because the shape is checked node by node.
+    $defs: z.record(z.string(), lazySchemaNode).optional(),
+    // Set when a shared shape was given a copy of its own — see `definitions.ts`.
+    forkedFrom: z.string().optional(),
   };
 }
 

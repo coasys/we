@@ -23,6 +23,22 @@ import { isPropsSchemaNode, isSchemaChild } from './treeUtils';
 import type { RouteSchema, SchemaNode, TemplateSchema } from './types';
 
 /**
+ * Call fn for each shape the root keeps in `$defs`.
+ *
+ * Those are ordinary nodes in every respect that matters here — they are what will render, and
+ * they are what a patch targets to change every use of a shape at once — so anything that walks a
+ * tree to assign, collect or strip ids has to reach them. A walk that did not would hand the
+ * model a definition whose nodes have no ids, which is a shape it can see and cannot edit.
+ *
+ * `$defs` is root-only, so this is a property read on every other node.
+ */
+function forEachDefinition(node: SchemaNode, fn: (def: SchemaNode) => void): void {
+  const defs = node.$defs;
+  if (!defs) return;
+  for (const def of Object.values(defs)) fn(def);
+}
+
+/**
  * Call fn for each SchemaNode-shaped value directly embedded in node.props.
  * Handles plain SchemaNode values (e.g. $if.props.then) and arrays of nodes.
  */
@@ -325,6 +341,7 @@ export function ensureNodeIds(schema: SchemaNode): SchemaNode {
       for (const slotNode of Object.values(node.slots)) collectIds(slotNode);
     }
     forEachPropsNode(node, collectIds);
+    forEachDefinition(node, collectIds);
   }
   collectIds(schema);
 
@@ -352,6 +369,7 @@ export function ensureNodeIds(schema: SchemaNode): SchemaNode {
       for (const slotNode of Object.values(node.slots)) assignIds(slotNode);
     }
     forEachPropsNode(node, assignIds);
+    forEachDefinition(node, assignIds);
   }
   assignIds(schema);
 
@@ -378,6 +396,7 @@ export function stripNodeIds(schema: SchemaNode): SchemaNode {
       for (const slotNode of Object.values(node.slots)) strip(slotNode);
     }
     forEachPropsNode(node, strip);
+    forEachDefinition(node, strip);
   }
   strip(schema);
   return schema;
@@ -429,6 +448,22 @@ export function findNodeById(schema: SchemaNode, targetId: string): FindNodeResu
           const result = search(val as SchemaNode, node, `props.${propName}`, 0);
           if (result) return result;
         }
+      }
+    }
+    /*
+      Last, and it has to be here at all: a shape the template says once lives in `$defs`, and
+      every node in it is a node the editor hands the model with an id on it. Without this branch
+      a patch aimed at a shared shape comes back "no node with that id" — the model is shown
+      something it is then told does not exist, which is the worst of both.
+
+      Searched after everything else so an ordinary node always wins a collision, and reported
+      with a `$defs.<name>` key so the caller can tell that a patch lands on every use of the
+      shape rather than on one position.
+    */
+    if (node.$defs) {
+      for (const [name, def] of Object.entries(node.$defs)) {
+        const result = search(def, node, `$defs.${name}`, 0);
+        if (result) return result;
       }
     }
     return null;

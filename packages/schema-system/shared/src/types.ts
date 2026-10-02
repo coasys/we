@@ -344,6 +344,15 @@ export type SchemaNode = {
    * to be fetched to read it; see `definitions.ts` for why that property is the point.
    */
   $defs?: Record<string, SchemaNode>;
+  /**
+   * The definition this shape was copied out of, when one use of a shared shape was given its own.
+   *
+   * Recorded so the split stays answerable: without it, a shape that diverged is indistinguishable
+   * from one that was always separate, and "put these back the way they were" has nothing to work
+   * from. Nothing is kept in step automatically — a fork that diverges while its source also
+   * changes is two-way drift, which has no honest automatic answer.
+   */
+  forkedFrom?: string;
 };
 
 // Types that need to be passed a framework specific NodeType (e.g. JSX.Element for Solid, React.ReactNode for React)

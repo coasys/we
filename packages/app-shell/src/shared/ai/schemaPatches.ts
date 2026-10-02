@@ -6,7 +6,64 @@
  * mechanics — no Solid, no stores, no network.
  */
 import type { SchemaNode } from '@we/schema-shared';
-import { findNodeById, insertChild, mergeNode, removeChild } from '@we/schema-shared';
+import { definitionsOf, findNodeById, insertChild, mergeNode, REF_TYPE, removeChild } from '@we/schema-shared';
+
+/**
+ * Replace one `$ref` with a copy of the shape it names, leaving every other use sharing.
+ *
+ * The copy carries `forkedFrom`, which is what makes the split answerable afterwards: without it
+ * a shape that diverged is indistinguishable from one that was always separate, and "put these
+ * back the way they were" has nothing to work from. The link is recorded and nothing is kept in
+ * step automatically — a fork that diverges while its source also changes is two-way drift, and
+ * there is no honest automatic answer to that.
+ */
+function splitSharedShape(schema: SchemaNode, targetId: string): { schema: SchemaNode; error?: string } {
+  const found = findNodeById(schema, targetId);
+  if (!found) return { schema, error: `No node with id "${targetId}" found in the current schema.` };
+  if (found.node.type !== REF_TYPE) {
+    return {
+      schema,
+      error: `Node "${targetId}" is not a $ref, so it is not shared and needs no split. Patch it directly.`,
+    };
+  }
+
+  const name = (found.node.props as { def?: string } | undefined)?.def;
+  const source = name ? definitionsOf(schema)[name] : undefined;
+  if (!source || !name) {
+    return { schema, error: `The $ref at "${targetId}" names no definition this template carries.` };
+  }
+
+  // Ids are per position and this copy is a new one, so it takes none of the definition's.
+  const copy = JSON.parse(JSON.stringify(source)) as SchemaNode;
+  const shed = (node: SchemaNode) => {
+    delete node.id;
+    for (const child of node.children ?? []) if (child && typeof child === 'object') shed(child as SchemaNode);
+    for (const route of node.routes ?? []) shed(route as SchemaNode);
+    for (const slot of Object.values(node.slots ?? {})) shed(slot);
+    for (const value of Object.values(node.props ?? {})) {
+      for (const one of Array.isArray(value) ? value : [value]) {
+        if (one && typeof one === 'object' && 'type' in one) shed(one as SchemaNode);
+      }
+    }
+  };
+  shed(copy);
+  (copy as { forkedFrom?: string }).forkedFrom = name;
+
+  const { parent, key, index } = found;
+  if (!parent) return { schema, error: `The $ref at "${targetId}" is the root, which cannot be split.` };
+  if (key === 'children' && parent.children) parent.children[index] = copy;
+  else if (key === 'routes' && parent.routes) parent.routes[index] = copy as SchemaNode & { path: string };
+  else if (key.startsWith('slots.') && parent.slots) parent.slots[key.slice(6)] = copy;
+  else if (key.startsWith('$defs.') && parent.$defs) parent.$defs[key.slice(6)] = copy;
+  else if (key.startsWith('props.') && parent.props) {
+    const prop = key.slice(6);
+    const existing = (parent.props as Record<string, unknown>)[prop];
+    if (Array.isArray(existing)) (existing as SchemaNode[])[index] = copy;
+    else (parent.props as Record<string, unknown>)[prop] = copy;
+  } else return { schema, error: `Cannot split the $ref at "${targetId}": it sits at an unsupported position.` };
+
+  return { schema };
+}
 
 export type SchemaPatch = {
   targetId: string;
@@ -16,6 +73,19 @@ export type SchemaPatch = {
     routes?: { node: SchemaNode; after?: string; before?: string };
   };
   remove?: { children?: string; routes?: string };
+  /**
+   * Give THIS use of a shared shape a copy of its own, so an edit to it reaches nowhere else.
+   *
+   * `targetId` is a `$ref`. It is replaced in place by a copy of the definition it names, and
+   * every other use carries on sharing the original. Copy-on-write, in other words, except that
+   * the writer has to ask — the editor cannot tell from a patch whether "make this one wider"
+   * meant this one or all of them, and guessing silently is the one outcome worth ruling out.
+   *
+   * An operation rather than something the model does by hand with remove-then-insert, because
+   * by hand means re-emitting the whole shape: thousands of tokens, and a transcription to get
+   * wrong, to produce a copy the editor already has.
+   */
+  split?: boolean;
 };
 
 /**
@@ -26,12 +96,19 @@ export type SchemaPatch = {
 export function applySchemaPatches(schema: SchemaNode, patches: SchemaPatch[]): { schema: SchemaNode; error?: string } {
   try {
     for (const patch of patches) {
-      const opCount = [patch.node, patch.insert, patch.remove].filter(Boolean).length;
+      const opCount = [patch.node, patch.insert, patch.remove, patch.split].filter(Boolean).length;
       if (opCount !== 1) {
         return {
           schema,
-          error: `Patch for targetId "${patch.targetId}" must have exactly one of: node, insert, remove.`,
+          error: `Patch for targetId "${patch.targetId}" must have exactly one of: node, insert, remove, split.`,
         };
+      }
+
+      if (patch.split) {
+        const split = splitSharedShape(schema, patch.targetId);
+        if (split.error) return { schema, error: split.error };
+        schema = split.schema;
+        continue;
       }
 
       if (patch.node) {
@@ -51,6 +128,9 @@ export function applySchemaPatches(schema: SchemaNode, patches: SchemaPatch[]): 
               found.parent.children[found.index] = merged;
             } else if (found.key === 'routes' && found.parent.routes) {
               found.parent.routes[found.index] = merged as SchemaNode & { path: string };
+            } else if (found.key.startsWith('$defs.') && found.parent.$defs) {
+              // The definition itself was targeted, so the change reaches every use of the shape.
+              found.parent.$defs[found.key.slice(6)] = merged;
             } else if (found.key.startsWith('slots.') && found.parent.slots) {
               const slotName = found.key.slice(6);
               found.parent.slots[slotName] = merged;

@@ -19,7 +19,7 @@ import type {
   ConversationTurn,
 } from '@we/backend-shared';
 import type { SchemaNode, TemplateSchema, ValidationContext } from '@we/schema-shared';
-import { ensureNodeIds, validateSemantic, validateStructure } from '@we/schema-shared';
+import { ensureNodeIds, useCountOf, validateSemantic, validateStructure } from '@we/schema-shared';
 
 import { applySchemaPatches, type SchemaPatch } from './schemaPatches';
 
@@ -173,6 +173,23 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
       }
       debug(`[editSession] ${call.id}: ${patches.length} patch(es)`, JSON.stringify(patches, null, 2));
 
+      /*
+        Counted BEFORE the patch, and reported back to the model.
+
+        A node inside a `$defs` shape renders everywhere that shape is used, so a patch on one
+        reaches all of them at once. That is usually what was meant — a card template inside an
+        `$each` is one definition already — and sometimes emphatically not, so it has to be said
+        rather than left to be discovered. The model is told because the model is what explains
+        the edit to the person who asked for it; a count buried in a log would reach nobody.
+
+        Before, because applying can move nodes about and the question is about the tree the
+        patch was written against.
+      */
+      const reach = patches
+        .map((patch) => useCountOf(accumulated, patch.targetId))
+        .filter((places) => places > 1)
+        .sort((a, b) => b - a);
+
       const applied = applySchemaPatches(accumulated, patches);
       if (applied.error) {
         debug(`[editSession] patch failed: ${applied.error}`);
@@ -183,7 +200,15 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
         continue;
       }
       accumulated = ensureNodeIds(applied.schema);
-      results.push({ callId: call.id, content: 'Patches applied.', patch: true });
+      results.push({
+        callId: call.id,
+        content: reach.length
+          ? `Patches applied. ${reach.length === 1 ? 'One patch' : `${reach.length} patches`} changed a shared ` +
+            `shape, so the change shows in ${reach.join(' and ')} places. If it was meant for one of them, ` +
+            `replace that use's $ref node with a copy of the shape and patch the copy.`
+          : 'Patches applied.',
+        patch: true,
+      });
     }
 
     // Validate and accept only when every patch in the turn applied — atomically, so a turn never

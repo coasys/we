@@ -86,6 +86,7 @@ export {
   expandDefinitions,
   REF_TYPE,
   type RefProps,
+  useCountOf,
 } from './definitions';
 export {
   applyThemeVars,

@@ -27,7 +27,7 @@ import { ChatMessage as ChatMessageRecord, ChatSession as ChatSessionRecord } fr
 import type { DockEdge, DockSize } from '@we/module-shared';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { contextData, setLocalWarningSink } from '@we/schema-shared';
-import { buildValidationContext, ensureNodeIds, stripNodeIds } from '@we/schema-shared';
+import { buildValidationContext, compactDefinitions, ensureNodeIds, stripNodeIds } from '@we/schema-shared';
 import {
   Accessor,
   createContext,
@@ -1086,7 +1086,27 @@ export function EditorStoreProvider(props: ParentProps) {
       original, patched it again, and its second answer conflicted with a first it could not see.
       Same reason `workingSchema` in `sendMessage` carries across turns rather than re-reading.
     */
-    const schemaWithIds = ensureNodeIds(deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode);
+    /*
+      Said once before it is sent, and before ids are assigned.
+
+      A template repeats itself because a fragment stamps its whole tree at every call site, and
+      the editor is where that is most expensive: the schema crosses the wire on every turn and
+      comes back again. Compaction takes CardsView down 50% and the workshop template 32%, which
+      is the difference between a request that fits a context window and one that does not.
+
+      BEFORE `ensureNodeIds`, and that order is load-bearing. Shapes are compared ignoring ids —
+      ids are per position, so a shape used three times has three sets and comparing with them in
+      would find no repeats at all — but the definition keeps whatever ids its first occurrence
+      had, so hoisting an id-bearing tree would give every other occurrence the first one's ids.
+      Compacting first and numbering afterwards means each definition is numbered once, which is
+      also what makes it patchable: `$defs` is walked by `ensureNodeIds`.
+
+      What the model does with that is two scopes rather than one. A patch on a node inside a
+      definition changes every use of the shape; a patch on the `$ref` changes that one use. The
+      reference section says so, and `accept` reports which happened.
+    */
+    const working = deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode;
+    const schemaWithIds = ensureNodeIds(compactDefinitions(working).schema);
     const manifest = datasetStore.currentDatasetEntities();
     const extras: Record<string, unknown> = {};
     if (manifest.length > 0) {

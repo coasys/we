@@ -205,3 +205,70 @@ describe('a compacted template is still validated as what it will be', () => {
     expect(before.errors.length).toBeGreaterThan(0);
   });
 });
+
+describe('finding and patching a shared shape', () => {
+  it('finds a node inside a definition, and says it is one', async () => {
+    const { ensureNodeIds, findNodeById } = await import('./indexer');
+    const { schema } = compactDefinitions(root([body('Same'), body('Same')]));
+    const withIds = ensureNodeIds(schema);
+
+    const defs = definitionsOf(withIds);
+    const inner = (Object.values(defs)[0].children as SchemaNode[])[0];
+    expect(inner.id).toBeDefined();
+
+    const found = findNodeById(withIds, inner.id!);
+    expect(found?.node).toBe(inner);
+  });
+
+  it('says how many places a patch would change', async () => {
+    const { ensureNodeIds, findNodeById } = await import('./indexer');
+    const { useCountOf } = await import('./definitions');
+    const withIds = ensureNodeIds(compactDefinitions(root([body('Same'), body('Same'), body('Same')])).schema);
+
+    const inner = (Object.values(definitionsOf(withIds))[0].children as SchemaNode[])[0];
+    expect(useCountOf(withIds, inner.id!)).toBe(3);
+
+    // An ordinary node renders in one place, definitions or no definitions.
+    const plain = findNodeById(withIds, withIds.id!);
+    expect(useCountOf(withIds, plain!.node.id!)).toBe(1);
+  });
+
+  it('counts a shape used inside a shape that is itself used', async () => {
+    const { ensureNodeIds } = await import('./indexer');
+    const { useCountOf } = await import('./definitions');
+    // Two of the inner shape inside an arrangement, and three of the arrangement: six on screen.
+    const inner = body('Shared');
+    const group = (): SchemaNode => ({ type: 'Row', props: { gap: '400', ay: 'start' }, children: [inner, inner] });
+    const withIds = ensureNodeIds(compactDefinitions(root([group(), group(), group()])).schema);
+
+    const defs = definitionsOf(withIds);
+    const innerDef = Object.values(defs).find((d) => JSON.stringify(d).includes('Shared'))!;
+    const leaf = (innerDef.children as SchemaNode[])[0];
+    expect(useCountOf(withIds, leaf.id!)).toBe(6);
+  });
+
+  it("gives every definition's nodes an id, and takes them all away again", async () => {
+    const { ensureNodeIds, stripNodeIds } = await import('./indexer');
+    const { schema } = compactDefinitions(root([body('Same'), body('Same')]));
+
+    const withIds = ensureNodeIds(structuredClone(schema));
+    const ids = (node: SchemaNode): (string | undefined)[] => [
+      node.id,
+      ...((node.children ?? []).filter((c) => typeof c === 'object') as SchemaNode[]).flatMap(ids),
+    ];
+    for (const def of Object.values(definitionsOf(withIds))) {
+      expect(ids(def).every(Boolean)).toBe(true);
+    }
+
+    const stripped = stripNodeIds(withIds);
+    for (const def of Object.values(definitionsOf(stripped))) {
+      expect(ids(def).some(Boolean)).toBe(false);
+    }
+  });
+
+  it('is unchanged by a round trip through ids', async () => {
+    const { ensureNodeIds, stripNodeIds } = await import('./indexer');
+    const { schema } = compactDefinitions(root([body('Same'), body('Same')]));
+    expect(stripNodeIds(ensureNodeIds(structuredClone(schema)))).toEqual(schema);
+  });
+});
