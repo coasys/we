@@ -1676,8 +1676,11 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
                 `unplacedColumn` down both sides, and Unplaced holds a card for every kind of work
                 the board does not place: 28,398 characters a copy in the workshop template.
 
-                `addColumnButton` becomes conditional for the same reason rather than duplicated:
-                there is no last column to add after when the rows are people.
+                `addColumnButton` becomes conditional rather than duplicated. Not because rows mode
+                has nowhere to add a column — it does, and `personRows` draws its own button up in
+                its headings row, which is where that layout wants it. This is the button that sits
+                after the last column, and a board grouped by person has no last column on the row
+                it is in.
               */
               then: {
                 type: 'Row',
