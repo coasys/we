@@ -267,9 +267,10 @@ Signal types (community-specific reactions/votes):
 Signal types are created per-community by the user. Never hardcode signal type UUIDs in schemas.
 Resolve them by slug from a hoisted $queries subscription on the node.
 
-There is no store accessor for this. spaceStore.signalTypesBySlug existed once and was removed;
-schemas still referencing it filtered on undefined — a like count that silently counted the wrong
-thing. Query the SignalType entity instead, and look the slug up with find().
+There is no store accessor for signal types, which is the trap: the community's other vocabularies
+DO have one — spaceStore.taskStates, spaceStore.involvementTypes — so the analogy invites a
+spaceStore read that does not exist, and a filter on undefined counts the wrong thing silently.
+Query the SignalType entity instead, and look the slug up with find().
 
 ALWAYS ask the user: "What slug should I use? (e.g. 'like', 'upvote', 'star')"
 Then use that slug in the pattern below.

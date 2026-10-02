@@ -274,12 +274,12 @@ vocabulary all count as bounded. A list that really is read whole on purpose is 
 \`DELIBERATE\` in the script, **with the reason**, and the reasons are printed on every run so they
 get reviewed rather than accumulated.
 
-Two things it now catches that it used to miss, both worth knowing when adding a schema:
+Two things about its reach, both worth knowing when adding a schema:
 
-- **Every export in a file is checked**, not just the first one found. A fragment file exporting
-  several sections used to be judged on whichever happened to be declared at the top.
-- **A schema that fails to import is an error**, not a skip. It used to print the failure and still
-  exit 0, so an unloadable schema looked identical to a clean one.
+- **Every export in a file is checked**, not just the first one found — so a fragment file
+  exporting several sections is judged on all of them.
+- **A schema that fails to import is an error**, not a skip, so an unloadable schema cannot look
+  identical to a clean one.
 
 \`size-audit\` measures what a template COSTS to carry around, which is a different question from
 whether it is correct. A template is data, and everything downstream pays for its size by the
@@ -485,7 +485,7 @@ include: {
 \`\`\`
 
 Note: \`count: true\` works as a plain literal — the typed projection (\`TypedIncludeProjection\`)
-contextually narrows it to the \`true\` literal, so the \`as const\` workaround is no longer needed.
+contextually narrows it to the \`true\` literal, so it needs no \`as const\`.
 
 ---
 

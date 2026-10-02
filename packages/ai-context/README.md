@@ -41,6 +41,32 @@ for a member that no longer exists fails the build), rules, and patterns.
 `generate.ts` merges the two and writes every output. **Never edit the
 outputs directly** — edit a fragment or an extractor and regenerate.
 
+## Write the reference in the present tense
+
+A fragment's reader is a model authoring a schema, and it has never seen a
+previous version of this document. So **the reference describes the system as
+it is. It never describes what the reference used to say.**
+
+"The validator does refuse it, which this said it did not" is a sentence about
+this document's own history: there is nothing the reader can do with it, and a
+reference that admits it has been wrong invites doubt about every other claim
+in it. Why something changed belongs in the commit message. Why the code is
+shaped as it is belongs in a comment beside that code — including in the
+non-emitted parts of these files, where it reads correctly, because there the
+reader is a maintainer.
+
+Three things look like history and only two of them are:
+
+|                     | Example                                                                                      |                                                                                                                                                                                                                                              |
+| ------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Document history    | "the idiom this section used to recommend"                                                   | **Cut it.**                                                                                                                                                                                                                                  |
+| Behaviour history   | "It used to crash; now each member is read as its own class"                                 | **State the present.** The fact survives, the archaeology goes.                                                                                                                                                                              |
+| Evidence for a rule | "three symptoms, all of which have happened here"; "every gate prompt in the repo copied it" | **Keep — while it is true.** A reader who will meet the bad pattern in this repo needs to know it is bad, and "this has really happened" is how a rule earns attention. Say what the repo contains now, not what this document once advised. |
+
+The third row is why this is a judgement rather than a find-and-replace: these
+documents are concrete on purpose, and stripping every past tense would take
+the evidence out with the archaeology.
+
 ## When you change…
 
 - A store's public surface → regenerate; add/update the member's description
