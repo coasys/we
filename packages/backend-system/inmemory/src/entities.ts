@@ -293,7 +293,9 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
       }
 
       static rowsFor(dataset: DatasetEntry, query: Record<string, unknown> = {}): AnyRow[] {
-        const { where, order, limit, offset, include, scope, ...rest } = query;
+        // `select` is the template dialect; `properties` is the record contract's name for the same list.
+        const { where, order, limit, offset, include, select = query.properties, scope, properties, ...rest } = query;
+        void properties;
         void rest;
         const { ir, unsupported } = compileQuery({
           entity: name,
@@ -302,6 +304,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           ...(typeof limit === 'number' ? { limit } : {}),
           ...(typeof offset === 'number' ? { offset } : {}),
           ...(include ? { include: include as Record<string, unknown> } : {}),
+          ...(Array.isArray(select) ? { select: select as string[] } : {}),
           // A drill-down the engine has always been able to execute (`scopeRows`) and this layer
           // silently dropped into `rest` — so a scoped query answered as if it were unscoped,
           // returning every row in the table rather than one container's children.
@@ -317,9 +320,23 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         return executeQueryIR(ir, data) as AnyRow[];
       }
 
+      /**
+       * Rows as instances. Under a field selection an instance carries only what was selected, as any
+       * backend's does: the class's field defaults would otherwise stand in for fields the query never
+       * asked for, and an empty title reads as a real one.
+       */
+      static read(dataset: DatasetEntry, query: Record<string, unknown>): Entity[] {
+        const narrowed = Array.isArray(query.select ?? query.properties);
+        return Entity.rowsFor(dataset, query).map((row) => {
+          const instance = Entity.hydrate(dataset, row) as Entity & Record<string, unknown>;
+          if (narrowed) for (const key of Object.keys(instance)) if (!(key in row)) delete instance[key];
+          return instance;
+        });
+      }
+
       static async findAll(handle: unknown, query: Record<string, unknown> = {}): Promise<Entity[]> {
         const dataset = datasetOf(handle);
-        return Entity.rowsFor(dataset, query).map((row) => Entity.hydrate(dataset, row));
+        return Entity.read(dataset, query);
       }
 
       static async findOne(handle: unknown, query: Record<string, unknown> = {}): Promise<Entity | null> {
@@ -448,7 +465,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         return {
           async subscribe(callback: (rows: unknown[]) => void) {
             const run = () => {
-              const rows = Entity.rowsFor(dataset, q).map((row) => Entity.hydrate(dataset, row));
+              const rows = Entity.read(dataset, q);
               callback(rows);
               return rows;
             };

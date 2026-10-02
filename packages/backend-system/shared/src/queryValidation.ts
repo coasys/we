@@ -95,9 +95,10 @@ function validateSelect(
 ): void {
   const entity = manifest.entities[entityName];
   if (!entity) return;
+  // A relation selects its target ids — what a row carries for it before any include hydrates it.
   select.forEach((name, i) => {
-    if (!propExists(entity, name)) {
-      errors.push({ path: `${path}.${i}`, message: `"${name}" is not a property of "${entityName}"` });
+    if (!propExists(entity, name) && !(name in entity.relations)) {
+      errors.push({ path: `${path}.${i}`, message: `"${name}" is not a property or relation of "${entityName}"` });
     }
   });
 }

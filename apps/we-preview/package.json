@@ -1,7 +1,7 @@
 {
   "private": true,
   "name": "@we/app-preview",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "description": "WE over an in-memory backend — the host the screenshot harness drives",
   "license": "MIT",
   "type": "module",

@@ -2857,7 +2857,14 @@ const callsPanel: SchemaNode = {
     deletingIsCurrent: { type: 'boolean', initial: false },
   },
   $queries: {
-    calls: { entity: 'CollectionBlock', where: { kind: 'call' }, order: { createdAt: 'desc' }, limit: 30 },
+    // What a row shows. Without it every call arrived with the id of every utterance in it.
+    calls: {
+      entity: 'CollectionBlock',
+      where: { kind: 'call' },
+      select: ['title', 'description', 'createdAt'],
+      order: { createdAt: 'desc' },
+      limit: 30,
+    },
   },
   children: [
     panelHeader({ title: 'Calls', aside: startCallButton('sm') }),

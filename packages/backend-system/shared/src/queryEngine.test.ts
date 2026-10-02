@@ -280,6 +280,18 @@ describe('an ordered relation', () => {
     expect(childrenOf(partial)).toEqual(['b3', 'b1', 'b2', 'b4']);
   });
 
+  it('puts several it does not mention after it, oldest first', () => {
+    // The production rule, stated there as unpositioned members appended by timestamp: links written
+    // before a relation was ordered, or by a peer on older code, follow the arranged ones in the order
+    // they were written. Table order is write order here, so that is the order to keep.
+    const partial = structuredClone(ordered);
+    partial.tables.Block.push(
+      { id: 'b4', collectionId: 'c1', text: 'written fourth, never positioned' },
+      { id: 'b5', collectionId: 'c1', text: 'written fifth, never positioned' },
+    );
+    expect(childrenOf(partial)).toEqual(['b3', 'b1', 'b2', 'b4', 'b5']);
+  });
+
   it('ignores an id in the order that is no longer a member', () => {
     const stale = structuredClone(ordered);
     (stale.tables.Collection[0].children as string[]).unshift('deleted');
@@ -419,7 +431,7 @@ describe('executeQueryIR — bounded traversal', () => {
   });
 
   it('finds the parent when reading inward', () => {
-    expect(run({ via: 'comments', anchorId: 'rr1', anchor: 'Comment', direction: 'in' })).toEqual(['rr1']);
+    expect(run({ via: 'comments', anchorId: 'rr1', anchor: 'Comment', direction: 'in' })).toEqual(['r1']);
   });
 
   /**

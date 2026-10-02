@@ -16,7 +16,6 @@ export {
   createAd4mDataBindings,
   createAd4mQueryAdapter,
   toRendererEntity,
-  VERIFIED_AGAINST_AD4M,
   type Ad4mAdapterDeps,
 } from './ad4mAdapter';
 export { ad4mEphemeralCapabilities, createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
@@ -63,7 +62,7 @@ export {
   createAd4mProfileDirectory,
   createAd4mSchemaPort,
 } from './backendPortsAdapter';
-export type { Ad4mHttpConnection } from './languageModelPort';
+export { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './languageModelPort';
 export { connectToLocalExecutor, createLocalAd4mConnector, type LocalExecutorConnection } from './localExecutor';
 export { createAd4mTranscriptionPort } from './transcriptionAdapter';
 export { createAd4mFlowPort, FLOW_NAMESPACE } from './flowPort';

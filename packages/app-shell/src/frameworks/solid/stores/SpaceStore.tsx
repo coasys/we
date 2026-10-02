@@ -7,6 +7,12 @@ import {
   resolveCallExtractionTargets,
   resolveSpaceExtractionTargets,
 } from '@shared/callExtraction';
+import {
+  CONTAINER_ACTIVITY_QUERY,
+  type ContainerActivity,
+  mentionsOf,
+  unreadContainerIds,
+} from '@shared/containerActivity';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { buildGuestLink } from '@shared/guestLink';
 import {
@@ -981,7 +987,14 @@ export interface SpaceStore {
   updateSpaceInCache: (dataset: AppDataset, updates: Partial<Space>) => void;
 
   // Boot wiring (used by the boot controller, not by schemas)
-  loadSpaces: () => Promise<void>;
+  /** Given the dataset list, reads spaces from it rather than from the published one — see there. */
+  loadSpaces: (candidates?: readonly AppDataset[] | null) => Promise<void>;
+  /**
+   * Start what opening the space at this address needs — its templates and its schema reads — for a
+   * boot that is about to open it. Answers nothing, and does nothing for an address that is not a
+   * space among these datasets.
+   */
+  prepareSpaceAt: (path: string, datasets: readonly AppDataset[]) => void;
 
   // Testing
 }
@@ -1539,12 +1552,18 @@ export function SpaceStoreProvider(props: ParentProps) {
     return mktId ? items.filter((item) => item.spaceId !== mktId) : items;
   });
 
-  /** Load the Space model from every candidate dataset. Runs after DatasetStore.loadDatasets. */
-  async function loadSpaces(): Promise<void> {
+  /**
+   * Load the Space model from every candidate dataset.
+   *
+   * From the published dataset list, or from one handed in: a boot passes the list it just read, so
+   * this runs while the system datasets come up rather than after — it only ever reads datasets that
+   * already exist, and a system dataset made by the boot is never a candidate.
+   */
+  async function loadSpaces(from?: readonly AppDataset[] | null): Promise<void> {
     try {
       // System datasets hold no Space record — the root and the sandbox have no Space SDNA at all,
       // so `Space.findOne` on them is an RPC 500 "No SHACL shape" error — and none is a space.
-      const candidates = datasetStore.datasets().filter((d) => !isSystemDataset(d.name));
+      const candidates = (from ?? datasetStore.datasets()).filter((d) => !isSystemDataset(d.name));
       // Any other joined dataset without Space SDNA installed (e.g. a Flux
       // neighbourhood) would throw the same "No SHACL shape" error. Since these run in a
       // Promise.all, one rejection would otherwise abort the whole batch and hide every
@@ -1566,6 +1585,15 @@ export function SpaceStoreProvider(props: ParentProps) {
     } catch (error) {
       console.error('SpaceStore: loadSpaces error', error);
     }
+  }
+
+  function prepareSpaceAt(path: string, datasets: readonly AppDataset[]): void {
+    const [first, segment] = path.split(/[?#]/)[0].split('/').filter(Boolean);
+    if (first !== 'space' || !segment) return;
+    const ds = datasets.find((d) => datasetAddressedBy(d, segment));
+    if (!ds) return;
+    datasetStore.prepareDataset(ds);
+    void templateStore.preloadSpaceTemplates(ds).catch(() => {});
   }
 
   const [linkLanguageTemplateOptions, setLinkLanguageTemplateOptions] = createSignal<LinkLanguageOption[]>([]);
@@ -1889,7 +1917,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       await new Promise((resolve) => setTimeout(resolve, wait));
       wait = Math.min(Math.round(wait * 1.5), JOIN_RECOVERY_MAX_POLL_MS);
 
-      const refs = await lifecycle.list().catch(() => null);
+      // Fresh: the adapter may otherwise answer from the very events this is not relying on.
+      const refs = await lifecycle.list({ fresh: true }).catch(() => null);
       const match = refs?.find((ref) => datasetAnswersTo(ref, id));
       if (match) return match;
     }
@@ -1911,7 +1940,9 @@ export function SpaceStoreProvider(props: ParentProps) {
       // since — and the case that matters here is the one where neither covers it: a join this
       // client abandoned, finished by the backend while the page was reloading. Joining again there
       // is how one space becomes two.
-      const alreadyJoined = (await lifecycle.list().catch(() => null))?.find((ref) => datasetAnswersTo(ref, id));
+      const alreadyJoined = (await lifecycle.list({ fresh: true }).catch(() => null))?.find((ref) =>
+        datasetAnswersTo(ref, id),
+      );
       if (alreadyJoined) {
         trace('space', 'join:already', { id: alreadyJoined.id });
         await finishJoin(alreadyJoined, focus);
@@ -2645,7 +2676,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       The cost is the flicker the edit-in-place was introduced to remove: a rating moved from 3 to 4
       passes through "nobody has rated this" for a round trip, so the mean dips and comes back. A
       figure that is briefly wrong is worth more than one that is permanently wrong, and the real fix
-      is an executor that triggers on the shapes a query includes — filed in the ad4m follow-ups.
+      is an executor that triggers on the shapes a query includes.
 
       A withdrawal — `null` — removes the record rather than storing anything, which is what keeps a
       withdrawn reaction absent everywhere instead of being a row every count has to remember to
@@ -4190,78 +4221,41 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Containers holding something newer than this agent's marker for them.
+   * The space's containers, read once for both unread dots and mentions — see `containerActivity.ts`.
    *
-   * One subscription for the whole space rather than a projection per row: the rail asked the same
-   * question for every channel, so a space with thirty channels opened thirty of them.
-   *
-   * A container with *no* marker counts as unread — it has never been opened, so everything in it is
-   * new. That case has to be written down rather than falling out of the comparison, because `>`
-   * against `undefined` is false and would have read as "nothing new here".
+   * Once per space: marking a container read changes the markers, not the containers, so the unread
+   * set is recomputed from these rows rather than by reading the space again.
    */
-  const [unreadNodeIds, setUnreadNodeIds] = createSignal<string[]>([]);
+  const [activityRows, setActivityRows] = createSignal<ContainerActivity[]>([]);
 
   createEffect(() => {
     const ds = datasetStore.currentDataset();
-    const markers = readMarkers();
-    if (!ds) {
-      setUnreadNodeIds([]);
-      return;
-    }
+    setActivityRows([]);
+    if (!ds) return;
 
     void (async () => {
       try {
-        const containers = await CollectionBlock.findAll(ds.handle, {
-          include: { $latestChild: { from: 'children', order: { createdAt: 'DESC' }, limit: 1 } },
-        });
-        const lastReadOf = new Map(markers.map((m) => [m.nodeId, m.lastReadAt]));
-        setUnreadNodeIds(
-          containers
-            .filter((container) => {
-              const latest = (container as unknown as { $latestChild?: { createdAt?: string } }).$latestChild;
-              if (!latest?.createdAt) return false;
-              const marker = lastReadOf.get(container.id);
-              // ISO-8601 UTC compares lexicographically in chronological order — see ReadMarker.
-              return marker === undefined || latest.createdAt > marker;
-            })
-            .map((container) => container.id),
-        );
+        const rows = await CollectionBlock.findAll(ds.handle, CONTAINER_ACTIVITY_QUERY);
+        // A read that lands after a space switch belongs to the space that was left.
+        if (datasetStore.currentDataset() === ds) setActivityRows(rows);
       } catch (error) {
-        console.error('SpaceStore: could not compute unread state', error);
-        setUnreadNodeIds([]);
+        console.error('SpaceStore: could not read container activity', error);
       }
     })();
   });
 
+  /**
+   * Containers holding something newer than this agent's marker for them.
+   *
+   * One read for the whole space rather than a projection per row: the rail asked the same question
+   * for every channel, so a space with thirty channels opened thirty of them.
+   */
+  const unreadNodeIds = createMemo(() => unreadContainerIds(activityRows(), readMarkers()));
+
   /** Nodes in this space naming this agent. See the interface for why the filter is not pushed down. */
-  // Typed number because that is what hydration actually returns — the old `string` here was
-  // only ever satisfied by `any` flowing through untyped model fields.
-  const [myMentions, setMyMentions] = createSignal<{ id: string; author: string; createdAt: number }[]>([]);
-
-  createEffect(() => {
-    const ds = datasetStore.currentDataset();
+  const myMentions = createMemo(() => {
     const did = session.me()?.did;
-    if (!ds || !did) {
-      setMyMentions([]);
-      return;
-    }
-
-    void (async () => {
-      try {
-        const nodes = await CollectionBlock.findAll(ds.handle, { include: { mentions: true } });
-        setMyMentions(
-          nodes
-            .filter((node) => (Array.isArray(node.mentions) ? node.mentions : []).includes(did))
-            // The contract keeps timestamps' representation the backend's business; comparison is
-            // the consumer's, made explicit here.
-            .map((node) => ({ id: node.id, author: node.author, createdAt: Number(node.createdAt) }))
-            .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
-        );
-      } catch (error) {
-        console.error('SpaceStore: could not read mentions', error);
-        setMyMentions([]);
-      }
-    })();
+    return did ? mentionsOf(activityRows(), did) : [];
   });
 
   /**
@@ -5420,6 +5414,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateSpaceInCache,
 
     loadSpaces,
+    prepareSpaceAt,
   };
 
   return <SpaceContext.Provider value={store}>{props.children}</SpaceContext.Provider>;

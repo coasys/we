@@ -15,6 +15,9 @@ New to WE? Start here.
   What each is for, which one your intent belongs in, where its rules live, how to register it and
   how to check it. Start here when you know what you want to build but not where it goes.
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — The four contributor tracks, the workflow, working with an agent
+- [Pull Requests](contributing/pull-requests.md) — How a PR is described, reviewed and merged
+- [ad4m and Deploys](contributing/ad4m-and-deploys.md) — Which ad4m each build uses, where it deploys,
+  pairing a WE PR with an ad4m change, bumping the pin, and making a release
 
 ## Architecture
 

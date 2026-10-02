@@ -1,12 +1,17 @@
 name: AD4M compatibility
 
-# Is unreleased AD4M about to break WE?
+# Does WE still build, typecheck and test against an AD4M branch that is not published yet?
 #
-# The required build (`build.yaml`) installs the AD4M version this repo pins, so it answers
-# "does this commit work?" — one question, one answer per commit. This job answers a
-# different one: WE compiled against AD4M's `dev` *source*, so an AD4M change that breaks WE
-# surfaces before a tag is cut. It is also how a cross-repo change is tested — a WE branch
-# needing an unpublished AD4M API can be run against the AD4M branch carrying it.
+# The required build (`build.yaml`) installs the AD4M version this repo pins. A paired deploy
+# preview (an `ad4m:` line in a PR description) builds WE against an AD4M branch, but only builds
+# it. This job answers the remaining question: WE compiled against an AD4M branch's *source*, with
+# its typecheck and tests, before that branch merges. Run it from the Actions tab and name the
+# branch.
+#
+# It used to run nightly against AD4M `dev` and keep a tracking issue. Now every merge to AD4M
+# `dev` is published and the bump workflow (`bump-ad4m.yaml`) opens a PR for it within the hour,
+# with CI and a preview, which answers the same question sooner and where the fix goes. See
+# docs/contributing/ad4m-and-deploys.md.
 #
 # What it deliberately is not is a gate. It compiles against a branch, so its result depends
 # on when it runs and on what someone else pushed to another repository; a WE pull request
@@ -30,9 +35,6 @@ name: AD4M compatibility
 # blinds this job — it keeps answering about the last thing that worked.
 
 on:
-  schedule:
-    # 03:00 UTC daily — after AD4M's working day, before WE's.
-    - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
       ad4m_branch:
@@ -42,18 +44,11 @@ on:
       we_ref:
         description: 'WE ref to test (default: the last commit that passed CI on dev)'
         required: false
-      file_issue:
-        description: 'Also open/close the tracking issue (scheduled runs always do)'
-        type: boolean
-        required: false
-        default: false
 
-# `issues: write` to file and close the tracking issue; `actions: read` to find the last
-# green Build run and the previous run of this workflow.
+# `actions: read` to find the last green Build run and the previous run of this workflow.
 permissions:
   contents: read
   actions: read
-  issues: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.inputs.ad4m_branch || 'dev' }}
@@ -61,8 +56,6 @@ concurrency:
 
 env:
   GH_TOKEN: ${{ github.token }}
-  ISSUE_LABEL: ad4m-drift
-  ISSUE_TITLE: 'AD4M `dev` has diverged from what WE pins'
 
 jobs:
   compat:
@@ -238,9 +231,8 @@ jobs:
 
       # ---------------------------------------------------------------- report
 
-      # Written on success and on failure alike: the run page is where somebody lands from a
-      # notification, and "green, and here is what it proved" is worth as much as the
-      # failure. The same text becomes the issue body below.
+      # Written on success and on failure alike, to the run's summary page: "green, and here is
+      # what it proved" is worth as much as the failure.
       - name: Write report
         id: report
         if: always()
@@ -330,38 +322,3 @@ jobs:
 
           cat report.md >> "$GITHUB_STEP_SUMMARY"
           echo "stage=$STAGE" >> "$GITHUB_OUTPUT"
-
-      # Scheduled runs always report; a manual dispatch opts in, because somebody who
-      # dispatched this is already looking at the output and does not need an issue filed at
-      # them. The label is created on demand — `gh issue create` fails on a label that does
-      # not exist yet, which would otherwise make the very first failure silent.
-      - name: File or update the tracking issue
-        if: failure() && (github.event_name == 'schedule' || github.event.inputs.file_issue == 'true')
-        run: |
-          gh label create "$ISSUE_LABEL" \
-            --color 'B60205' \
-            --description 'WE does not build against unreleased AD4M' 2>/dev/null || true
-
-          EXISTING="$(gh issue list --label "$ISSUE_LABEL" --state open --limit 1 --json number --jq '.[0].number // empty')"
-
-          if [ -n "$EXISTING" ]; then
-            # Update in place rather than commenting. A failure that persists for a week is
-            # one problem, not seven notifications; the body always reflects the latest run.
-            gh issue edit "$EXISTING" --body-file report.md
-            echo "Updated #$EXISTING"
-          else
-            gh issue create \
-              --title "$ISSUE_TITLE" \
-              --label "$ISSUE_LABEL" \
-              --body-file report.md
-          fi
-
-      - name: Close the tracking issue
-        if: success() && (github.event_name == 'schedule' || github.event.inputs.file_issue == 'true')
-        run: |
-          EXISTING="$(gh issue list --label "$ISSUE_LABEL" --state open --limit 1 --json number --jq '.[0].number // empty')"
-          if [ -n "$EXISTING" ]; then
-            gh issue comment "$EXISTING" --body-file report.md
-            gh issue close "$EXISTING" --reason completed
-            echo "Closed #$EXISTING"
-          fi

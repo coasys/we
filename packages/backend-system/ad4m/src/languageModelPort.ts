@@ -25,14 +25,27 @@ const TASK_NAME = 'we://model-authoring';
 /**
  * Long enough for a turn that writes a whole template, which on a slow model is minutes rather than
  * seconds; short enough that a stalled connection is eventually reported rather than spinning.
+ *
+ * A node slower than this says so through `Ad4mHttpConnection.converseTimeoutMs` — see there for
+ * why a local model can need many times this.
  */
-const CONVERSE_TIMEOUT_MS = 180_000;
+const DEFAULT_CONVERSE_TIMEOUT_MS = 180_000;
 
 /** Where the executor's HTTP surface is, and the token this session holds for it. */
 export interface Ad4mHttpConnection {
   /** The executor's HTTP base, e.g. `http://localhost:12000`. */
   url: string;
   token: string;
+  /**
+   * How long to wait for a turn, when the default is wrong for this node.
+   *
+   * The default suits a hosted model. It is not a safe assumption about a local one: an 8B whose
+   * weights and KV cache do not both fit in VRAM runs part of itself on the CPU, and a turn that
+   * writes a whole template then takes tens of minutes rather than minutes. Against such a node
+   * every turn hits the default and the failure reads as the model being unable to answer, which is
+   * not what happened.
+   */
+  converseTimeoutMs?: number;
 }
 
 export function createAd4mLanguageModelPort(
@@ -166,7 +179,8 @@ async function converse(
   const controller = new AbortController();
   const abort = () => controller.abort();
   request.signal?.addEventListener('abort', abort);
-  const timeout = setTimeout(abort, CONVERSE_TIMEOUT_MS);
+  const limit = target.converseTimeoutMs ?? DEFAULT_CONVERSE_TIMEOUT_MS;
+  const timeout = setTimeout(abort, limit);
 
   try {
     const response = await fetch(`${target.url.replace(/\/+$/, '')}/v1/chat/completions`, {
@@ -177,7 +191,8 @@ async function converse(
         ...(target.token ? { Authorization: `Bearer ${target.token}` } : {}),
       },
       body: JSON.stringify({
-        model: 'default',
+        // The executor resolves a model's id or name, and `default` to the configured default LLM.
+        model: request.model || 'default',
         stream: true,
         messages: toOpenAiMessages(request.system, request.turns),
         ...(request.tools?.length ? { tools: toOpenAiTools(request.tools) } : {}),
@@ -192,7 +207,9 @@ async function converse(
     return await readChatStream(reader, request.onText);
   } catch (err) {
     if (controller.signal.aborted && !request.signal?.aborted) {
-      throw new Error(`The model did not answer within ${CONVERSE_TIMEOUT_MS / 60_000} minutes`);
+      // The limit is named because it is settable: a reader who sees "3 minutes" on a local model
+      // should be able to tell a model that cannot answer from one that was not given long enough.
+      throw new Error(`The model did not answer within ${Math.round(limit / 1000)}s`);
     }
     throw err;
   } finally {

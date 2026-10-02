@@ -608,6 +608,11 @@ Query (data retrieval):
 { "$query": { "entity": "EntityName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the current dataset for entity instances. Always returns an array.
 Options: entity (required), where, order, limit, offset, include, scope, dataset, subscribe.
+select names the fields each row carries — properties, and relations as their target ids — and
+`id` always comes: { "select": ["title", "createdAt", "participants"] }. Without it a row carries
+every field, relation id lists included, and a container's children is the id of everything in it.
+A list of containers (CollectionBlock) names what its rows draw; a single-record read need not.
+A field left out reads as absent, so select what every expression on the row reads.
 subscribe defaults to true — reactive live updates. Set subscribe: false to do a one-time fetch.
 subscribe may also be an EXPRESSION, which is how a surface follows its subject only while the
 subject is still changing: { "subscribe": { "$": "modules.transcribe.callOnScreenLive" } } reads a
@@ -687,7 +692,13 @@ Sub-query include — filter, sort, or limit the related records:
 
 Nested include — hydrate relations of relations:
 { "$query": { "entity": "Channel", "include": { "conversations": { "include": { "messages": true } } } } }
-Nesting can go as deep as needed. Each level adds one batched fetch (not N+1).
+Nesting can go as deep as needed. Each level adds one batched fetch (not N+1). Two limits, both silent
+rather than refused, so keep clear of them:
+- A $-prefixed projection (below) works only at the TOP level of include. Written inside a nested
+  include it is dropped: the query succeeds and the field is simply absent.
+- Below an UNTYPED relation (see "include works with an UNTYPED relation" below), only a TYPED
+  relation can be nested. Nesting another untyped one fails the whole query the moment any member has
+  something in it — so it works on an empty board and breaks on the first card.
 
 Count projection — add a derived numeric field:
 { "$query": { "entity": "Post", "include": { "$likeCount": { "from": "likes", "count": true } } } }
@@ -3612,6 +3623,8 @@ Example — Nested include (Conversations with their messages):
 }
 Each conversation in the result has a messages array of hydrated Message instances.
 Nesting works to any depth: "include": { "messages": { "include": { "reactions": true } } }
+— with two limits, listed under "Nested include" in the operators section: no $-projections below the
+top level, and no untyped relation nested below another.
 
 Relational drill-down (master-detail navigation across entity relations):
 Use routes + a $query `scope` when you navigate to a detail route and need only that record's children.
@@ -5041,23 +5054,21 @@ To add or change documented schema fields, tokens, conventions, or rules:
 
 ### Git Workflow — Default Branch & PR Summaries
 
-`main` is the production branch — it only receives periodic merges for releases.
+`main` is the production branch — it only receives periodic merges for releases, each tagged
+`v<version>` (the release steps are in `docs/contributing/ad4m-and-deploys.md`).
 `dev` is where all active work happens. Always branch from `dev`, and always
 diff/compare against `dev` (e.g. `git diff dev...HEAD`, `git log dev..HEAD`) —
 never `main`, even though it exists.
 
-**PR summary convention:** when asked to write a PR summary document for a branch,
-create a new `PR_<DESCRIPTIVE_NAME>.md` file at the repo root (e.g.
-`PR_COLLECTION_BLOCK_TEXT_CONTENT.md`), based on `git diff dev...<branch>` and the
-branch's commit log, with these sections:
+**PR summary convention:** a PR description follows `docs/contributing/pull-requests.md`. When
+asked to write one for a branch, create `PR_<DESCRIPTIVE_NAME>.md` at the repo root, based on
+`git diff dev...<branch>` and the branch's commit log, with these sections:
 
-- **Summary** — the problem being solved and the high-level approach, 1–2 paragraphs.
-- **Changes** — one entry per file or logical group, explaining *why* the change was
-  made, not just what changed (the diff already shows what).
-- **Known follow-ups** (optional) — gaps or pre-existing issues discovered during the
-  work that are intentionally out of scope for this branch.
-- **Test plan** — a checklist of what was actually verified (manual testing, builds,
-  etc.), not a hypothetical list of what could be tested.
+- **What** — what merging it changes, in a few bullets.
+- **Why** — the problem, and why this is the right fix for it.
+- **How** — where a reviewer should start and the route through the change; a table of files when
+  it is wide, explaining *why* each changed rather than restating the diff.
+- **Test plan** — what was actually verified, ticked, and what was not, unticked with the reason.
 
 **Never commit `PR_*.md` files.** They're scratch documents for the PR description.
 
@@ -5089,11 +5100,14 @@ strings target/release/ad4m-executor | grep "your log string"
 
 **After modifying `@coasys/ad4m` TypeScript (e.g. `core/src/model/Ad4mModel.ts`):**
 
-The normal pattern is that `we/package.json`'s pnpm `overrides` pins `@coasys/ad4m` to a
-**published npm tag**, not a local `file:` link. Under that normal pattern, a local
-`cd ad4m/core && pnpm run build` does NOT get picked up by WE — runtime/logic changes to
-`@coasys/ad4m` only reach WE once a new tag is published from the ad4m repo and the
-override version in `we/package.json` is bumped, followed by `pnpm install`.
+The root `package.json`'s pnpm `overrides` pin `@coasys/ad4m` and `@coasys/ad4m-connect` to a
+**published version**, not a local `file:` link, and every WE build uses that pin except a deploy
+preview whose PR description pairs it with an ad4m change (`ad4m: coasys/ad4m#<N>`). So a local
+`cd ad4m/core && pnpm run build` does NOT get picked up by WE — changes to `@coasys/ad4m` reach WE
+once a version is published from the ad4m repo and the pin moves. A bot keeps one PR open that moves
+it to the newest ad4m `dev` version (`.github/workflows/bump-ad4m.yaml`); a feature that needs a
+new ad4m moves it in its own PR with `pnpm bump:ad4m`. Run `pnpm verify:ad4m` before merging either. The whole policy is in
+`docs/contributing/ad4m-and-deploys.md`.
 
 For active local iteration you can temporarily switch the override to
 `"@coasys/ad4m": "file:../ad4m/core"` (then `pnpm install`) so `pnpm run build` in

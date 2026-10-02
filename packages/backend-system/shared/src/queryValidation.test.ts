@@ -162,3 +162,12 @@ describe('validateQueryAgainstManifest', () => {
     if (!r.valid) expect(r.errors[0].message).toContain('include alias "title" shadows a property of "Post"');
   });
 });
+
+describe('select', () => {
+  it('accepts properties and relations, and names anything else', () => {
+    expect(ok({ irVersion: 1, entity: 'Post', select: ['title', 'signals'] }).valid).toBe(true);
+    const r = ok({ irVersion: 1, entity: 'Post', select: ['title', 'nope'] });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.errors.map((e) => e.message)).toEqual(['"nope" is not a property or relation of "Post"']);
+  });
+});

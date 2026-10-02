@@ -1,4 +1,4 @@
-# Packages the Electron desktop app for Linux and macOS.
+# Packages the Electron desktop app, and publishes it as a GitHub release when a version is tagged.
 #
 # Separate from the CI workflow (build.yaml) because packaging needs the AD4M executor
 # binary, which means checking out a second repository and compiling ~2000 Rust crates.
@@ -12,24 +12,29 @@
 # follow-up — the certificates are not yet configured as repository secrets.
 name: Electron Package
 
-# Runs on merge to dev, never on pull requests: a run that has to compile the executor takes
-# hours on macOS, and a pull request would pay that again on every commit pushed to it. To
-# package a branch before merging, run the workflow manually from the Actions tab and pick it.
+# Runs when a release is tagged (`v0.1.0-alpha.1`, pushed after `dev` is merged into `main`), and by
+# hand from the Actions tab for any branch. Not on every merge to `dev`: a run that compiles the
+# executor takes hours on macOS, and what reaches people is a release, not a merge.
+#
+# macOS is off unless a manual run asks for it. The executor cannot currently be compiled there:
+# `ort-sys` downloads a prebuilt ONNX Runtime that its host has withdrawn for every macOS target.
+# Turn it back on for tagged runs once that is fixed in AD4M.
 on:
   push:
-    branches: [dev]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       ad4m_ref:
-        description: AD4M branch, tag or commit to build the executor from
-        default: dev
+        description: AD4M branch, tag or commit to build the executor from. Empty means the commit the pinned @coasys/ad4m was published from.
+        default: ''
+      mac:
+        description: Also package for macOS
+        type: boolean
+        default: false
 
-# A newer run on the same branch waits rather than cancelling the one in flight. Cancelling a
-# macOS run that is compiling the executor on every merge would mean it never finishes — and so
-# never fills the cache that makes later runs fast.
+# A newer run on the same ref waits rather than cancelling the one in flight. Cancelling a macOS
+# run that is compiling the executor would mean it never finishes — and so never fills the cache
+# that makes later runs fast.
 concurrency:
   group: electron-package-${{ github.ref }}
   cancel-in-progress: false
@@ -39,11 +44,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            platform: linux
-          - os: macos-latest
-            platform: mac
+        include: ${{ fromJSON(inputs.mac && '[{"os":"ubuntu-latest","platform":"linux"},{"os":"macos-latest","platform":"mac"}]' || '[{"os":"ubuntu-latest","platform":"linux"}]') }}
 
     runs-on: ${{ matrix.os }}
     # Room for a cold macOS run, while stopping a hung one well short of GitHub's six hours.
@@ -54,6 +55,37 @@ jobs:
 
       - name: Check out WE
         uses: actions/checkout@v7
+
+      # A tag names a version, and the app says which version it is from package.json. A tag that
+      # disagrees would publish a release whose files are named after something else.
+      - name: Check the tag matches the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $VERSION. Bump the version on dev, merge dev into main, and tag v<version>."
+            exit 1
+          fi
+
+      # The executor has to match the SDK the app was tested against, which is the pinned
+      # @coasys/ad4m. npm records the commit each version was published from as `gitHead`, so that
+      # commit is what gets built — not ad4m `dev`, which moves without WE changing.
+      - name: Resolve the AD4M commit
+        id: ad4m-ref
+        env:
+          AD4M_REF: ${{ inputs.ad4m_ref }}
+        run: |
+          if [ -z "$AD4M_REF" ]; then
+            PIN="$(node -p "require('./package.json').pnpm.overrides['@coasys/ad4m']")"
+            # Outside the repo, so npm does not read the workspace's pnpm-only config.
+            AD4M_REF="$(cd "$RUNNER_TEMP" && npm view "@coasys/ad4m@$PIN" gitHead)"
+            if [ -z "$AD4M_REF" ]; then
+              echo "::error::@coasys/ad4m@$PIN on npm records no gitHead, so the commit to build the executor from is unknown. Pass ad4m_ref by hand."
+              exit 1
+            fi
+            echo "Pinned @coasys/ad4m $PIN was published from $AD4M_REF"
+          fi
+          echo "ref=$AD4M_REF" >> "$GITHUB_OUTPUT"
 
       # AD4M checked out as a sibling so `we-seed.json`'s relative
       # `"executorPath": "../ad4m/target/release/ad4m-executor"` resolves
@@ -66,7 +98,7 @@ jobs:
       - name: Check out AD4M
         id: ad4m
         env:
-          AD4M_REF: ${{ inputs.ad4m_ref || 'dev' }}
+          AD4M_REF: ${{ steps.ad4m-ref.outputs.ref }}
         run: |
           AD4M_DIR="$(dirname "$GITHUB_WORKSPACE")/ad4m"
           git init -q "$AD4M_DIR"
@@ -216,3 +248,50 @@ jobs:
             apps/we-electron/dist-electron/*.zip
           if-no-files-found: error
           retention-days: 14
+
+  # Publishes what the package job built as the release for the tag. Only on a tag: a manual run
+  # leaves its files as workflow artifacts and publishes nothing.
+  release:
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out WE
+        uses: actions/checkout@v7
+
+      - name: Download packages
+        uses: actions/download-artifact@v8
+        with:
+          path: release-files
+          merge-multiple: true
+
+      # The notes say which ad4m the release was built against, since the executor inside it is
+      # the one thing a user cannot swap out. A pre-release version (`-alpha.1`) is published as a
+      # pre-release, so it never shows as the latest release.
+      #
+      # GitHub's generated list of merged PRs is added from the second release on. For the first
+      # it would list every PR the repository has ever merged.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PIN="$(node -p "require('./package.json').pnpm.overrides['@coasys/ad4m']")"
+          AD4M_SHA="$(cd "$RUNNER_TEMP" && npm view "@coasys/ad4m@$PIN" gitHead)"
+
+          cp .github/release-notes.md notes.md
+          printf '\n### Built with\n\n@coasys/ad4m `%s`, and the ad4m executor from [`%s`](https://github.com/coasys/ad4m/commit/%s).\n' \
+            "$PIN" "${AD4M_SHA:0:9}" "$AD4M_SHA" >> notes.md
+
+          FLAGS=()
+          case "$VERSION" in *-*) FLAGS+=(--prerelease) ;; esac
+          if [ -n "$(gh release list --limit 1)" ]; then FLAGS+=(--generate-notes); fi
+
+          gh release create "$GITHUB_REF_NAME" release-files/* \
+            --verify-tag \
+            --title "WE $VERSION" \
+            --notes-file notes.md \
+            "${FLAGS[@]}"

@@ -8,7 +8,8 @@
     "build": "we-build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "generate:classes": "tsx scripts/generateClasses.mjs"
+    "generate:classes": "tsx scripts/generateClasses.mjs",
+    "verify": "tsx scripts/verifyCapabilities.ts"
   },
   "types": "dist/index.d.ts",
   "exports": {

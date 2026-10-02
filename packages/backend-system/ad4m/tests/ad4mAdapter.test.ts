@@ -2,11 +2,9 @@
  * The AD4M QueryAdapter — focus on the logic that isn't just `planQuery`/`irToFlatQuery`: the two
  * conditional degradations `plan()` folds in, and the `scope`→`parent` predicate resolution.
  */
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 
 import type { EntityManifestEntry } from '@we/backend-ad4m';
-import { ad4mCapabilities, createAd4mQueryAdapter, VERIFIED_AGAINST_AD4M } from '@we/backend-ad4m';
+import { ad4mCapabilities, createAd4mQueryAdapter } from '@we/backend-ad4m';
 import type { QueryIR } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
@@ -147,6 +145,33 @@ describe('adapter.lower', () => {
   });
 });
 
+describe('adapter.lower — select', () => {
+  /**
+   * `Ad4mModel` names the field list `properties`. Passed as `select`, it is ignored and the executor
+   * answers with every field — relation id lists included, which on a container is everything in it.
+   */
+  it('names the field list the way the model reads it, at the root and on a relation sub-query', () => {
+    const opts = adapter.lower(
+      base({
+        select: ['title'],
+        include: { signals: { select: ['value'] } },
+        aggregate: [{ fn: 'count', over: 'signals', as: '$signalCount' }],
+      }),
+    ) as Record<string, unknown>;
+    expect(opts.properties).toEqual(['title']);
+    expect(opts).not.toHaveProperty('select');
+    const include = opts.include as Record<string, Record<string, unknown>>;
+    expect(include.signals).toMatchObject({ properties: ['value'] });
+    expect(include.signals).not.toHaveProperty('select');
+    // A projection takes no field list, and is passed on as it was.
+    expect(include.$signalCount).toEqual({ from: 'signals', count: true });
+  });
+
+  it('asks for every field when nothing is selected', () => {
+    expect(adapter.lower(base({}))).not.toHaveProperty('properties');
+  });
+});
+
 describe('adapter.lower — scope → parent (Tier-2 adapter-rewrite)', () => {
   const scopedIr = (): QueryIR => ({
     irVersion: 1,
@@ -176,31 +201,6 @@ describe('adapter.lower — scope → parent (Tier-2 adapter-rewrite)', () => {
 });
 
 describe('the capability profile and the executor it describes', () => {
-  it('names the executor build it was checked against, and that is the one installed', () => {
-    /*
-      `ad4mCapabilities` and the two degradations in `plan()` are claims about somebody else's
-      software, and nothing checks them at build time. `planQuery` is exact about what WE does with
-      the answers and completely credulous about the answers themselves — so a release that changes
-      AD4M's sort pushdown shows up as *wrong rows in the right shape*: a feed silently in the wrong
-      order, a "top posts" list that is not. There is no error channel at all.
-
-      The executor exposes no query-capability report to handshake against, so this is the next best
-      thing: the pin moving without anybody re-checking the profile is exactly the silent case, and
-      this makes it a loud one. When the pin moves, verify against a running executor — the tests
-      above pin what the *planner* says, which is a different question — and move the constant.
-    */
-    const root = JSON.parse(
-      readFileSync(fileURLToPath(new URL('../../../../package.json', import.meta.url)), 'utf8'),
-    ) as { pnpm?: { overrides?: Record<string, string> } };
-
-    const pinned = root.pnpm?.overrides?.['@coasys/ad4m'];
-    expect(pinned, 'no @coasys/ad4m override in the root package.json').toBeTruthy();
-    expect(
-      pinned,
-      'a `file:` link names no build, so the profile is unverifiable — the pin must name a published version before merge',
-    ).toBe(VERIFIED_AGAINST_AD4M);
-  });
-
   it('does not claim `exists`, which the executor has no operator for', () => {
     // Not a preference. `WhereOps` declares no `exists` and uses `deny_unknown_fields`, so
     // `{ field: { exists: true } }` is re-read as a nested where clause, compiles incomplete, and

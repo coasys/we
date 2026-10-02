@@ -61,7 +61,12 @@ export interface LinkLanguageTemplate {
  * test host) simply omits them, and callers degrade the same way they do for `presence`.
  */
 export interface DatasetLifecyclePort {
-  list(): Promise<DatasetRef[]>;
+  /**
+   * Every dataset this agent holds. A backend may answer from what it has already heard rather than
+   * asking again; `fresh` asks again. Pass it where the question is whether something arrived that
+   * an event may not have announced — a join the transport gave up on, say.
+   */
+  list(options?: { fresh?: boolean }): Promise<DatasetRef[]>;
   get(id: string): Promise<DatasetRef | null>;
   create(name: string): Promise<DatasetRef>;
   remove(id: string): Promise<void>;

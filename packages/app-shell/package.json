@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
-    "test:browser": "node tests/browser/run.mjs"
+    "test:browser": "node tests/browser/run.mjs",
+    "eval:context": "vitest run --config vitest.eval.config.ts"
   },
   "bin": {
     "we-seed": "./dist/seed/cli.js"

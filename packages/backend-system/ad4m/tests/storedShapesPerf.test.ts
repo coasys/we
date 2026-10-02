@@ -105,15 +105,41 @@ describe('bulkHasSubjectClassLink', () => {
     expect(query.target).toBe('ad4m://SubjectClass');
   });
 
-  it('falls back to a source-filtered query for one class', async () => {
+  it('shares one read between the checks of a switch', async () => {
+    // `hasCoreSchema`, `installModules` and `refreshSpace` each ask in turn, and each asking was a
+    // round trip on the load path. The answer is one query whatever is asked about.
+    const p = mockPerspective(['we://Space', 'we://Theme']);
+    const proxy = p as unknown as { get: ReturnType<typeof vi.fn> };
+
+    const [one, many] = await Promise.all([
+      bulkHasSubjectClassLink(p, ['we://Space']),
+      bulkHasSubjectClassLink(p, ['we://Theme', 'we://Missing']),
+    ]);
+    await bulkHasSubjectClassLink(p, ['we://Space']);
+
+    expect(one).toEqual([true]);
+    expect(many).toEqual([true, false]);
+    expect(proxy.get).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads the markers again once a registration is written', async () => {
     const p = mockPerspective(['we://Space']);
     const proxy = p as unknown as { get: ReturnType<typeof vi.fn> };
 
     await bulkHasSubjectClassLink(p, ['we://Space']);
+    forgetStoredShapes(p);
+    await bulkHasSubjectClassLink(p, ['we://Space']);
 
-    // Still one round trip, but filtered — the executor returns one link, not every class.
-    expect(proxy.get).toHaveBeenCalledTimes(1);
-    expect(proxy.get.mock.calls[0][0].source).toBe('we://Space');
+    expect(proxy.get).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps no answer from a failed read', async () => {
+    const p = mockPerspective(['we://Space']);
+    const proxy = p as unknown as { get: ReturnType<typeof vi.fn> };
+    proxy.get.mockRejectedValueOnce(new Error('offline'));
+
+    await expect(bulkHasSubjectClassLink(p, ['we://Space'])).rejects.toThrow('offline');
+    expect(await bulkHasSubjectClassLink(p, ['we://Space'])).toEqual([true]);
   });
 
   it('returns an empty array for an empty input', async () => {

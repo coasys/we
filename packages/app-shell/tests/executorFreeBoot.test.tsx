@@ -28,6 +28,11 @@ let connectFailure: string | null = null;
 /** Supplied by connectors whose session is the connection — the web host's, in practice. */
 let disconnect: (() => Promise<void>) | undefined;
 
+/** Set by a test to wrap the backend's ports before the shell boots against them. */
+let onPorts: ((ports: ReturnType<typeof createInMemoryBackendPorts>) => void) | undefined;
+/** Datasets that exist before boot — a space the agent already has, say. */
+let seededDatasets: { id: string; name: string }[] = [];
+
 /** Set by the tests that need a host able to restart the backend; absent is the web shape. */
 let executorHost:
   | { getSettings: () => Promise<unknown>; setSettings: () => Promise<unknown>; restart: () => Promise<void> }
@@ -39,7 +44,8 @@ vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
     // The real in-memory bundle — the same thing a backend-less host would supply.
     initialize: async (ctx: { selfId(): string | undefined }) => {
       if (connectFailure) throw new Error(connectFailure);
-      const ports = createInMemoryBackendPorts(ctx, { agent: agentOptions });
+      const ports = createInMemoryBackendPorts(ctx, { agent: agentOptions, datasets: seededDatasets });
+      onPorts?.(ports);
       lifecycle = ports.lifecycle;
       return { client: {}, ports, ...(disconnect ? { disconnect } : {}) };
     },
@@ -164,6 +170,8 @@ const ready = (stores: Stores) => vi.waitFor(() => expect(stores.session.bootSta
 beforeEach(() => {
   agentOptions = { id: 'did:test:james', unlocked: true };
   executorHost = undefined;
+  onPorts = undefined;
+  seededDatasets = [];
   connectFailure = null;
   disconnect = undefined;
   navigate.mockClear();
@@ -182,6 +190,126 @@ describe('boot', () => {
     expect(names).toEqual(['we-personal', 'we-root', 'we-test']);
     expect(stores.session.me()?.did).toBe('did:test:james');
     expect(navigate).toHaveBeenCalledWith('/');
+  });
+
+  /*
+    A dataset listing can cost a backend a handle per dataset, and some keep resources behind each
+    one nothing releases — so boot reads the list once, and publishes what it read plus
+    what it made. Answering from the first read must still include a system dataset created after it.
+  */
+  it('reads the dataset list once, and publishes the system datasets it created', async () => {
+    let listed = 0;
+    onPorts = (ports) => {
+      const list = ports.lifecycle.list.bind(ports.lifecycle);
+      ports.lifecycle.list = async () => {
+        listed++;
+        return list();
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+
+    expect(listed).toBe(1);
+    expect(
+      stores.datasets
+        .datasets()
+        .map((d) => d.name)
+        .sort(),
+    ).toEqual(['we-personal', 'we-root', 'we-test']);
+  });
+
+  /*
+    The root and the personal space share nothing but the list, and each is several round trips to
+    a remote backend. One after the other they were most of the wait before a space could open.
+  */
+  it('brings the root and the personal space up side by side', async () => {
+    let releaseRoot!: () => void;
+    const rootHeld = new Promise<void>((resolve) => (releaseRoot = resolve));
+    const started: string[] = [];
+    onPorts = (ports) => {
+      const { installRoot, installSpace } = ports.schemas;
+      ports.schemas.installRoot = async (dataset) => {
+        started.push('root');
+        await rootHeld;
+        return installRoot(dataset);
+      };
+      ports.schemas.installSpace = async (dataset, modules) => {
+        started.push('personal');
+        return installSpace(dataset, modules);
+      };
+    };
+    const stores = mountShell();
+
+    await vi.waitFor(() => expect(started).toEqual(expect.arrayContaining(['root', 'personal'])));
+    releaseRoot();
+    await ready(stores);
+  });
+
+  /*
+    The settings read starts beside the root's reinstall rather than after it, so it can land while a
+    changed settings model is being rewritten and fail. That must cost a second read, not the root:
+    an unset root loses every saved template and theme for the session.
+  */
+  it('keeps the root when the settings read beside its reinstall fails, and reads them again', async () => {
+    seededDatasets = [{ id: 'root-1', name: 'we-root' }];
+    let findOne: ReturnType<typeof vi.spyOn> | undefined;
+    // Spied when boot lists the datasets: the entities are registered by then, and the root is not
+    // up yet. Any earlier and the spy sits on a class that registration replaces.
+    onPorts = (ports) => {
+      const list = ports.lifecycle.list.bind(ports.lifecycle);
+      ports.lifecycle.list = async (options) => {
+        // The registered class itself: a spy defined on the neutral stand-in never sees a call.
+        findOne ??= vi
+          .spyOn(getEntity('AgentSettings') as unknown as { findOne: () => Promise<unknown> }, 'findOne')
+          .mockRejectedValueOnce(new Error('No SHACL shape'));
+        return list(options);
+      };
+    };
+    try {
+      const stores = mountShell();
+      await ready(stores);
+
+      expect(stores.datasets.rootDataset()?.id).toBe('root-1');
+      expect(findOne).toHaveBeenCalledTimes(2);
+    } finally {
+      findOne?.mockRestore();
+    }
+  });
+
+  /*
+    A reload on a space's address waited for the whole boot before that space began to load, then
+    read its templates, then its schema, one after another. Its templates and schema reads now start
+    as soon as the list names it, and the agent's spaces are read beside the system datasets.
+  */
+  it('starts the addressed space, and reads spaces, while the system datasets come up', async () => {
+    seededDatasets = [{ id: 'garden-1', name: 'Garden' }];
+    window.history.replaceState({}, '', '/space/garden-1/canvas');
+    let releaseRoot!: () => void;
+    const rootHeld = new Promise<void>((resolve) => (releaseRoot = resolve));
+    const prepared: unknown[] = [];
+    onPorts = (ports) => {
+      const { installRoot } = ports.schemas;
+      ports.schemas.installRoot = async (dataset) => {
+        await rootHeld;
+        return installRoot(dataset);
+      };
+      ports.schemas.prepare = (dataset) => prepared.push(dataset);
+    };
+    try {
+      const stores = mountShell();
+      const loadSpaces = vi.spyOn(stores.spaces, 'loadSpaces');
+
+      await vi.waitFor(() => expect(prepared).toHaveLength(1));
+      await vi.waitFor(() =>
+        expect(loadSpaces).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ id: 'garden-1' })])),
+      );
+      expect(stores.session.bootState()).not.toBe('ready');
+
+      releaseRoot();
+      await ready(stores);
+    } finally {
+      window.history.replaceState({}, '', '/');
+    }
   });
 
   it('walks the lock → login flow, including a failed password', async () => {

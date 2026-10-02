@@ -35,3 +35,6 @@ apps/we-electron/electron/seed-port-map.json
 apps/we-electron/electron/seed-extra-resources.json
 apps/we-electron/electron/seed-runtime.json
 apps/we-electron/electron/seed-servers.js
+
+# Context eval results — a run's numbers are read and summarised into a PR or note, not tracked.
+packages/app-shell/eval/results/
