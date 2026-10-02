@@ -1300,6 +1300,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "(payload): takes a `we-drop-zone`'s dropped detail ({ items }) into the space on screen as posts — `onDropped: { $action: 'recordStore.bringIn', args: [{ $: 'event.detail' }] }`. Your own note or post becomes a copy (a post from another shared space records sourceRef/sourceName, shown as 'Also posted in …'); anybody else's post or block becomes a new post quoting it through an EmbedBlock carrying sourceAuthor and sourceName. Things already in this space are ignored. Each new post shows a toast with Undo",
         updateRecordField:
           "(entity: string, id: string, field: string, value): changes one property of one record — the inspector's edit mode. Takes the field name so one action serves every control; the value is coerced by the field's declared kind and a control's { detail } is unwrapped. An empty string is not written, so a text field cannot be cleared this way",
+        rekeyConnection:
+          "(id: string): rewrites a Relationship's dedup key (`connection`) from its label and both ends' titles, which is how an extraction pass reads the structure people drew. updateRecordField does it already; call this after saving a Relationship's label through record.update",
         setSpaceTypeColor:
           "(spaceId: string, nodeType: string, color): sets the colour every card of one type is drawn in across the whole space — the community's key, which a canvas falls back to where it has no colour of its own for that type. Pass spaceStore.currentSpace.id. Read the result back with a TypeStyle query scoped { anchor: 'Space', via: 'typeStyles', anchorId: spaceStore.currentSpace.id }. An empty colour clears it",
         createOnCanvas:

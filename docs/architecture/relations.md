@@ -121,8 +121,10 @@ the reified shape costs nothing at write time. What the pass needs is said in th
   it inverts half a tree.
 - **That the structure exists.** A model is shown only the instances whose identity property is set.
   That property is `connection`, the dedup key, so WE writes it on every connection a person draws
-  (`connectionKey`) and rewrites it when an end moves. A connection drawn by hand with no key was
-  invisible to the pass meant to extend it.
+  (`connectionKey`), and rewrites it when an end moves, the connection is relabelled, or a record it
+  joins is renamed. Both ends are named by title, so the existing connections read as the tree they
+  are, and a hand-drawn key and an extracted key for the same claim are the same string. A
+  connection drawn by hand with no key was invisible to the pass meant to extend it.
 - **Which records it can reach.** A pass sees the existing records of the models it is looking for,
   and no others, so a connection can join only those models. Relationship on its own connects nothing.
 

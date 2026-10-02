@@ -2397,6 +2397,7 @@ export const contextData: ContextData = {
         'dropOnCanvas',
         'bringIn',
         'updateRecordField',
+        'rekeyConnection',
         'removeFromCanvas',
         'deleteRecords',
         'undoCanvas',

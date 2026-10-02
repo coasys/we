@@ -22,6 +22,8 @@ interface Link {
   targetType?: string;
   connection?: string;
   label?: string;
+  /** Only on the stand-ins for cards, which share the map so one double answers both reads. */
+  title?: string;
 }
 
 interface Row {
@@ -49,8 +51,15 @@ const { world, Placement, Relationship } = vi.hoisted(() => {
       create: async () => ({}),
     },
     Relationship: {
-      findAll: async (_p: unknown, query: { where: { relationshipTypeId: string } }) =>
-        [...state.links.values()].filter((link) => link.relationshipTypeId === query.where.relationshipTypeId),
+      findAll: async (
+        _p: unknown,
+        query: { where: { relationshipTypeId?: string; OR?: { source?: string; target?: string }[] } },
+      ) =>
+        query.where.OR
+          ? [...state.links.values()].filter((link) =>
+              query.where.OR!.some((one) => link.source === one.source || link.target === one.target),
+            )
+          : [...state.links.values()].filter((link) => link.relationshipTypeId === query.where.relationshipTypeId),
       findOne: async (_p: unknown, query: { where: { id: string } }) => {
         const link = state.links.get(query.where.id);
         return link ? live(link) : null;
@@ -217,7 +226,26 @@ describe('undoing a tree drop', () => {
  * tell that pass the card was still where it used to be.
  */
 describe('a connection’s key', () => {
-  it('is written on a connection a tree drop makes', async () => {
+  /** A card the double can read a title off, as `TaskBlock` names one by its identity property. */
+  const card = (id: string, title: string) => world.links.set(id, { id, relationshipTypeId: '', title });
+
+  it('names both ends by title on a connection a tree drop makes', async () => {
+    card('x', 'Ship the release');
+    card('z', 'Write the notes');
+    const store = mount();
+    await store.arrangeOnTree(CANVAS, SPINE, {
+      recordId: 'z',
+      recordType: 'TaskBlock',
+      into: 'child',
+      targetId: 'x',
+      targetType: 'TaskBlock',
+      order: ['z'],
+    });
+    const made = [...world.links.values()].find((entry) => entry.target === 'z');
+    expect(made?.connection).toBe('Ship the release \u2192 Write the notes');
+  });
+
+  it('falls back to an end’s id where its type names nothing', async () => {
     const store = mount();
     await store.arrangeOnTree(CANVAS, SPINE, {
       recordId: 'z',
@@ -227,8 +255,7 @@ describe('a connection’s key', () => {
       targetType: 'Card',
       order: ['z'],
     });
-    const made = [...world.links.values()].find((entry) => entry.target === 'z');
-    expect(made?.connection).toBe('x \u2192 z');
+    expect([...world.links.values()].find((entry) => entry.target === 'z')?.connection).toBe('x \u2192 z');
   });
 
   it('follows the end a tree drop moves, and moves back on undo', async () => {
@@ -241,10 +268,24 @@ describe('a connection’s key', () => {
     expect(world.links.get('pb')?.connection).toBe('p \u2192 b: depends on');
   });
 
-  it('names both ends by id, and leaves the label off when there is none', () => {
-    expect(connectionKey('we://a', 'we://b', '  contradicts ')).toBe('we://a \u2192 we://b: contradicts');
-    expect(connectionKey('we://a', 'we://b', '')).toBe('we://a \u2192 we://b');
-    expect(connectionKey('we://a', 'we://b')).toBe('we://a \u2192 we://b');
+  it('follows a relabel', async () => {
+    const store = mount();
+    await store.updateRecordField('Relationship', 'pb', 'label', 'blocks');
+    expect(world.links.get('pb')?.connection).toBe('p \u2192 b: blocks');
+  });
+
+  it('follows a record it joins being renamed', async () => {
+    card('q', 'Old name');
+    world.links.get('qx')!.sourceType = 'TaskBlock';
+    const store = mount();
+    await store.updateRecordField('TaskBlock', 'q', 'title', 'New name');
+    expect(world.links.get('qx')?.connection).toBe('New name \u2192 x');
+  });
+
+  it('trims, and leaves the label off when there is none', () => {
+    expect(connectionKey(' Launch ', 'Guide', '  depends on ')).toBe('Launch \u2192 Guide: depends on');
+    expect(connectionKey('Launch', 'Guide', '')).toBe('Launch \u2192 Guide');
+    expect(connectionKey('Launch', 'Guide')).toBe('Launch \u2192 Guide');
   });
 });
 

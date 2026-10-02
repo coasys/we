@@ -68,14 +68,19 @@ export class Relationship extends WeNode {
    * Written by WE for what people draw, in the same format (`connectionKey` in `RecordStore`),
    * and that is not optional: the executor shows a model only the instances whose identity is
    * set, so a connection drawn by hand without one was invisible to the pass meant to extend the
-   * structure it was part of. Its ends are ids there, so a key the model sees reads as a pair of
-   * entries it can look up in the same prompt.
+   * structure it was part of.
    *
-   * Denormalised. Rewritten when an end moves, because a key naming the old end would tell the
-   * next pass the connection is still where it was; not when it is relabelled or an end renamed,
-   * where the next pass sees a different key and may write a second record. That is the accepted
-   * cost of a single-property key, and it fails in the safe direction — a duplicate somebody
-   * deletes, rather than two distinct claims merged.
+   * Titles rather than ids, so the existing connections in a prompt read as the tree they are —
+   * "Launch the beta → Write the onboarding guide: depends on" — and so a key a person's
+   * connection carries and the one a model writes for the same claim are the same string. Ids
+   * were tried first: a small model then had to resolve every key against the record list to
+   * read the tree, misread one, and wrote titles in its own keys regardless.
+   *
+   * Denormalised, and kept in step by WE's own writes: rewritten when an end moves, when the
+   * connection is relabelled, and when a record it joins is renamed through the inspector. A
+   * rename made anywhere else leaves the key behind until the next of those, and the next pass may
+   * then write a second record. That fails in the safe direction — a duplicate somebody deletes,
+   * rather than two distinct claims merged.
    *
    * Not `required`, deliberately, and for the reason `occurrence` records: required would mean a
    * connection written without one carries `uninitialized`, and two of them would then dedup into
@@ -85,7 +90,7 @@ export class Relationship extends WeNode {
     through: 'we://connection',
     identity: true,
     interpretationHint:
-      'A dedup key, not a display value: the two ends and the label joined as "<source> → <target>: <label>". Write an end as its id when it is an existing entry, and as its title when you are creating it in this response — never a "new:" reference, which names something else in the next response. Always set it when you create a connection. Reuse an existing connection’s exact value only when this is the same claim about the same pair; a connection is never re-pointed at a different pair.',
+      'A dedup key, not a display value: the two ends’ titles and the label joined as "<source title> → <target title>: <label>". Write each end exactly as it is titled in this prompt, or as you title it when you are creating it in this response — never an id, and never a "new:" reference. Always set it when you create a connection. Reuse an existing connection’s exact value only when this is the same claim about the same pair; a connection is never re-pointed at a different pair.',
   })
   connection: string = '';
 

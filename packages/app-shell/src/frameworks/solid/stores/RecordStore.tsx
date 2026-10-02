@@ -149,12 +149,16 @@ async function createPlacement(
  *
  * Written on every connection a person makes, not only on what a pass writes, because the executor
  * shows a model only the instances whose identity property is set: a connection drawn by hand
- * without a key was invisible to the pass meant to extend the structure it belonged to. Ids for both
- * ends, which the same prompt lists beside their titles, so the key reads as a pair the model can
- * look up. The label is left off when there is none, rather than leaving a dangling colon.
+ * without a key was invisible to the pass meant to extend the structure it belonged to.
+ *
+ * Each end by its **title** — the value the prompt lists an existing record under — rather than its
+ * id. Ids were tried first, and the first real pass showed both costs: the model had to resolve
+ * every key against the task list to read the tree at all, and it wrote titles in its own keys
+ * anyway, so a key drawn by hand and the same claim extracted could never dedup into each other. The
+ * label is left off when there is none, rather than leaving a dangling colon.
  */
-export function connectionKey(sourceId: string, targetId: string, label?: unknown): string {
-  const pair = `${sourceId} \u2192 ${targetId}`;
+export function connectionKey(source: string, target: string, label?: unknown): string {
+  const pair = `${source.trim()} \u2192 ${target.trim()}`;
   return typeof label === 'string' && label.trim() ? `${pair}: ${label.trim()}` : pair;
 }
 
@@ -174,12 +178,7 @@ async function createConnection(
 ): Promise<string> {
   const created = (await getEntity(RELATIONSHIP).create(
     dataset as never,
-    {
-      connection: connectionKey(sourceId, targetId, fields.label),
-      ...fields,
-      source: [sourceId],
-      target: [targetId],
-    } as never,
+    { ...fields, source: [sourceId], target: [targetId] } as never,
   )) as { id?: string } | null;
   return String(created?.id ?? '');
 }
@@ -468,6 +467,13 @@ export interface RecordStore {
    * field leaves the old value, which is a limit of the store beneath rather than a choice here.
    */
   updateRecordField: (entity: string, id: string, field: string, value: unknown) => Promise<void>;
+  /**
+   * Bring a connection's dedup key back in line with its label and both ends' titles.
+   *
+   * `updateRecordField` does this itself. A surface that saves a connection through the generic
+   * `record.update` calls this after, or the next extraction pass reads the old claim from the key.
+   */
+  rekeyConnection: (id: string) => Promise<void>;
   /**
    * Take a record — or a whole selection — off a canvas, leaving the records themselves alone.
    *
@@ -1276,10 +1282,18 @@ export function RecordStoreProvider(props: ParentProps) {
     if (!dataset || !link?.sourceId || !link?.targetId) return '';
     try {
       // Drawn from the moment of the gesture rather than a round trip later — see `holdConnection`.
-      const id = await withConnectionHold({ kind: 'added', source: link.sourceId, target: link.targetId }, () =>
+      const id = await withConnectionHold({ kind: 'added', source: link.sourceId, target: link.targetId }, async () =>
         createConnection(
           dataset.handle,
-          { sourceType: link.sourceType, targetType: link.targetType },
+          {
+            sourceType: link.sourceType,
+            targetType: link.targetType,
+            connection: await keyFor(
+              dataset.handle,
+              { id: link.sourceId, type: link.sourceType },
+              { id: link.targetId, type: link.targetType },
+            ),
+          },
           link.sourceId,
           link.targetId,
         ),
@@ -1595,10 +1609,15 @@ export function RecordStoreProvider(props: ParentProps) {
     */
     hold = true,
   ): Promise<string> {
-    const write = () =>
+    const write = async () =>
       createConnection(
         handle,
-        { relationshipTypeId, sourceType: parent.type, targetType: card.type },
+        {
+          relationshipTypeId,
+          sourceType: parent.type,
+          targetType: card.type,
+          connection: await keyFor(handle, parent, card),
+        },
         parent.id,
         card.id,
       );
@@ -2316,15 +2335,20 @@ export function RecordStoreProvider(props: ParentProps) {
         gesture moves the ends of any record shaped like one, and only that one carries a key.
       */
       const moved = (event.recordType || RELATIONSHIP) === RELATIONSHIP;
-      const other = record[event.end === 'source' ? 'target' : 'source'];
+      const otherId = record[event.end === 'source' ? 'target' : 'source'];
+      const other = {
+        id: typeof otherId === 'string' ? otherId : '',
+        type: String(record[event.end === 'source' ? 'targetType' : 'sourceType'] ?? ''),
+      };
+      const to = { id: event.nodeId, type: event.nodeType };
       await Model.update(dataset.handle, event.recordId, {
         [event.end === 'source' ? 'sourceType' : 'targetType']: event.nodeType,
-        ...(moved && typeof other === 'string' && other
+        ...(moved && other.id
           ? {
               connection:
                 event.end === 'source'
-                  ? connectionKey(event.nodeId, other, record.label)
-                  : connectionKey(other, event.nodeId, record.label),
+                  ? await keyFor(dataset.handle, to, other, record.label)
+                  : await keyFor(dataset.handle, other, to, record.label),
             }
           : {}),
       });
@@ -2635,6 +2659,96 @@ export function RecordStoreProvider(props: ParentProps) {
     } catch (error) {
       console.error('RecordStore: updating a record field failed', error);
       toastService.error('Could not save that change.');
+      return;
+    }
+    /*
+      The keys that quote what just changed. A connection's key carries its label and both ends'
+      titles, so relabelling one or renaming a record it joins leaves a key describing a claim nobody
+      is making any more — and the next extraction pass reads the tree from those keys.
+    */
+    if (entity === RELATIONSHIP && field === 'label') await rekeyConnection(id);
+    else if (field === titleField(entity)) await rekeyConnectionsOf(dataset.handle, id);
+  }
+
+  /**
+   * The property an extraction prompt names a record by — its dedup key, which the executor lists an
+   * existing entry under as `title` — or its display name where it declares none.
+   */
+  function titleField(entity: string): string {
+    const schema = schemaFor(entity)?.schema;
+    if (!schema) return '';
+    return Object.entries(schema.properties).find(([, spec]) => spec.identity)?.[0] ?? namePropertyOf(schema);
+  }
+
+  /** What an extraction prompt calls one record, read now — falling back to its id. */
+  async function promptTitle(handle: unknown, end: { id: string; type: string }): Promise<string> {
+    const field = titleField(end.type);
+    if (!field) return end.id;
+    try {
+      const row = (await entityClass(end.type, handle).findOne(
+        handle as never,
+        {
+          where: { id: end.id },
+        } as never,
+      )) as Record<string, unknown> | null;
+      const value = row?.[field];
+      return typeof value === 'string' && value.trim() ? value : end.id;
+    } catch {
+      return end.id;
+    }
+  }
+
+  /** The key for a connection between two records, as it stands — see `connectionKey`. */
+  async function keyFor(
+    handle: unknown,
+    source: { id: string; type: string },
+    target: { id: string; type: string },
+    label?: unknown,
+  ): Promise<string> {
+    const [from, to] = await Promise.all([promptTitle(handle, source), promptTitle(handle, target)]);
+    return connectionKey(from, to, label);
+  }
+
+  /**
+   * Bring one connection's key back in line with its ends and its label.
+   *
+   * A store action as well as a helper, for the surfaces that save a connection through the generic
+   * `record.update` rather than through this store — the knowledge map's edge panel — and so cannot
+   * be followed here. Never throws: a stale key costs a duplicate on the next pass, and a failed save
+   * is not the place to say so.
+   */
+  async function rekeyConnection(id: string): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !id) return;
+    try {
+      const Model = getEntity(RELATIONSHIP);
+      const row = (await Model.findOne(dataset.handle as never, { where: { id } } as never)) as Record<
+        string,
+        unknown
+      > | null;
+      if (!row || typeof row.source !== 'string' || typeof row.target !== 'string') return;
+      const key = await keyFor(
+        dataset.handle,
+        { id: row.source, type: String(row.sourceType ?? '') },
+        { id: row.target, type: String(row.targetType ?? '') },
+        row.label,
+      );
+      if (key !== row.connection) await Model.update(dataset.handle as never, id, { connection: key } as never);
+    } catch (error) {
+      console.warn('RecordStore: could not refresh a connection key', error);
+    }
+  }
+
+  /** Every connection touching a record, rekeyed — after the record's title changed. */
+  async function rekeyConnectionsOf(handle: unknown, id: string): Promise<void> {
+    try {
+      const rows = (await getEntity(RELATIONSHIP).findAll(
+        handle as never,
+        { where: { OR: [{ source: id }, { target: id }] } } as never,
+      )) as unknown as { id?: string }[];
+      for (const row of rows) if (typeof row?.id === 'string') await rekeyConnection(row.id);
+    } catch (error) {
+      console.warn('RecordStore: could not refresh the keys of a renamed record', error);
     }
   }
 
@@ -2862,7 +2976,12 @@ export function RecordStoreProvider(props: ParentProps) {
         Object.assign(fields, {
           sourceType: link.sourceType,
           targetType: link.targetType,
-          connection: connectionKey(link.sourceId, link.targetId, fields.label),
+          connection: await keyFor(
+            dataset.handle,
+            { id: link.sourceId, type: link.sourceType },
+            { id: link.targetId, type: link.targetType },
+            fields.label,
+          ),
         });
         // Only when one was chosen: an empty string would write a reference to a kind that does not
         // exist, and the ORM cannot later clear it — see `recordDraftFields` on blank optionals.
@@ -2991,6 +3110,7 @@ export function RecordStoreProvider(props: ParentProps) {
     dropOnCanvas,
     bringIn,
     updateRecordField,
+    rekeyConnection,
     setRecordEntity,
     setRecordField,
     setRecordPlace,
