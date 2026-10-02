@@ -550,12 +550,9 @@ some records already existed reads as absent on every one of them, and the query
 consults the default when filtering.
 
 "exists" IS NOT AVAILABLE IN A $query — only inside filter(), where it is evaluated client-side.
-The backend has no such operator, so a $query using one is refused rather than run. This is a
-change: it used to be claimed as supported and was not, and the consequence was worse than a refusal
-— the clause reached a filter that rejected every row, so the query answered nothing at all, always,
-with no error anywhere. A refusal at least says so.
+The backend has no such operator, so a $query using one is refused rather than run.
 
-That invalidates the idiom this section used to recommend for "absent counts as the default":
+That rules out the obvious idiom for "absent counts as the default":
 
   { OR: [ { retired: false }, { retired: { exists: false } } ] }   ← NOT usable in a $query
 
@@ -578,10 +575,8 @@ only. So a date range in a $query does not run yet; fetch the candidates and fil
 where it works, or bound the query by something numeric. A numeric range (a price, a count, a
 rating) runs natively either way.
 
-OR/AND/NOT no longer cost a query its sort pushdown. They used to: the backend decided pushability
-with a second function that disagreed with what it actually emitted, and an explicit combinator fell
-outside it. One compiler now answers for its own emission, so a filter with an OR and a sort behaves
-like any other.
+OR/AND/NOT cost a query nothing in sort pushdown: a filter with an OR and a sort behaves like any
+other.
 
 Examples:
 { "$": "filter(spaceStore.members, { role: 'admin' })" }
@@ -742,10 +737,9 @@ Single-item projection — add a derived field that resolves to one instance or 
 With limit: 1 the field unwraps to T | null instead of an array.
 
 include works with an UNTYPED relation too — one whose target model class is not declared, like a
-collection's children. It used to crash, because there was no shape to hydrate the members into; now
-each member is read as the class it actually is, so one query returns a post's text blocks, images
-and tasks together, each with its own fields. Every member carries its type, so a card can pick a
-display per row rather than assuming one.
+collection's children. Each member is read as the class it actually is, so one query returns a
+post's text blocks, images and tasks together, each with its own fields. Every member carries its
+type, so a card can pick a display per row rather than assuming one.
 
 That makes include the right tool for a FEED, where the alternative is one drill-down per parent:
 { "$query": { "entity": "CollectionBlock", "where": { "type": "root" }, "include": { "children": true } } }
@@ -3802,9 +3796,10 @@ Signal types (community-specific reactions/votes):
 Signal types are created per-community by the user. Never hardcode signal type UUIDs in schemas.
 Resolve them by slug from a hoisted $queries subscription on the node.
 
-There is no store accessor for this. spaceStore.signalTypesBySlug existed once and was removed;
-schemas still referencing it filtered on undefined — a like count that silently counted the wrong
-thing. Query the SignalType entity instead, and look the slug up with find().
+There is no store accessor for signal types, which is the trap: the community's other vocabularies
+DO have one — spaceStore.taskStates, spaceStore.involvementTypes — so the analogy invites a
+spaceStore read that does not exist, and a filter on undefined counts the wrong thing silently.
+Query the SignalType entity instead, and look the slug up with find().
 
 ALWAYS ask the user: "What slug should I use? (e.g. 'like', 'upvote', 'star')"
 Then use that slug in the pattern below.
@@ -3985,11 +3980,10 @@ Use `gradient` on the icon when there is something to do, and a flat `color` (`t
 or `warning-text`) when there is not — the two read apart at a glance, and a dead end that looks
 like an invitation is worse than one that looks like a dead end.
 
-This line used to recommend `neutral-300`, and every gate prompt in the repo copied it. A scale
-position is not frozen — it follows the theme's hue, saturation and polarity — but it cannot follow
-what a theme *decides* a faint foreground is, and the contrast corrections at apply time skip it
-entirely, so nothing ever measures it against what is behind it. Guidance that names a step
-reproduces that in every template written from it.
+A role here rather than a scale position such as `neutral-300`, and the reason is sharper than
+house style. A scale position is not frozen — it follows the theme's hue, saturation and polarity —
+but it cannot follow what a theme *decides* a faint foreground is, and the contrast corrections at
+apply time skip it entirely, so nothing ever measures it against what is behind it.
 
 ### How wide is a modal — always `size`, never a pixel width
 
@@ -5262,12 +5256,12 @@ vocabulary all count as bounded. A list that really is read whole on purpose is 
 `DELIBERATE` in the script, **with the reason**, and the reasons are printed on every run so they
 get reviewed rather than accumulated.
 
-Two things it now catches that it used to miss, both worth knowing when adding a schema:
+Two things about its reach, both worth knowing when adding a schema:
 
-- **Every export in a file is checked**, not just the first one found. A fragment file exporting
-  several sections used to be judged on whichever happened to be declared at the top.
-- **A schema that fails to import is an error**, not a skip. It used to print the failure and still
-  exit 0, so an unloadable schema looked identical to a clean one.
+- **Every export in a file is checked**, not just the first one found — so a fragment file
+  exporting several sections is judged on all of them.
+- **A schema that fails to import is an error**, not a skip, so an unloadable schema cannot look
+  identical to a clean one.
 
 `size-audit` measures what a template COSTS to carry around, which is a different question from
 whether it is correct. A template is data, and everything downstream pays for its size by the
@@ -5473,7 +5467,7 @@ include: {
 ```
 
 Note: `count: true` works as a plain literal — the typed projection (`TypedIncludeProjection`)
-contextually narrows it to the `true` literal, so the `as const` workaround is no longer needed.
+contextually narrows it to the `true` literal, so it needs no `as const`.
 
 ---
 
