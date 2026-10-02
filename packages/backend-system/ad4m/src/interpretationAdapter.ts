@@ -104,8 +104,11 @@ const WATCH_DEFAULTS = {
    *
    * Ten minutes matches `INTERPRETATION_ACTIVITY_TTL_MS` — the point past which a running pass is
    * disbelieved anyway — and is the bound on how long a runner that genuinely died holds the batch
-   * hostage. The proper fix is a claim that refreshes during the pass; that is the executor's, and
-   * this is what can be done from here. See `notes/ad4m/auto-processor-claim-followups.md`.
+   * hostage. The proper fix is a claim that refreshes during the pass, and the executor has one
+   * since ad4m #1012: the runner renews its claim while it works, so an escalating peer finds it
+   * live and stands down. The ten minutes stays until every node WE runs against is past that
+   * change — against an older executor a shorter value brings the duplicate passes straight back,
+   * and the number is also the stall clock, which the renewal does not touch.
    */
   claimTtlMs: 10 * 60 * 1000,
 } as const;

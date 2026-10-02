@@ -2636,7 +2636,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       The cost is the flicker the edit-in-place was introduced to remove: a rating moved from 3 to 4
       passes through "nobody has rated this" for a round trip, so the mean dips and comes back. A
       figure that is briefly wrong is worth more than one that is permanently wrong, and the real fix
-      is an executor that triggers on the shapes a query includes — filed in the ad4m follow-ups.
+      is an executor that triggers on the shapes a query includes.
 
       A withdrawal — `null` — removes the record rather than storing anything, which is what keeps a
       withdrawn reaction absent everywhere instead of being a row every count has to remember to

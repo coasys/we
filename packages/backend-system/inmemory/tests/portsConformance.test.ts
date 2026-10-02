@@ -155,6 +155,30 @@ describe('model-layer conformance', () => {
     expect((row.children as { id: string }[]).map((c) => c.id)).toEqual(['image', 'para']);
   });
 
+  it('replaces an ordered relation whole, keeping the order it was handed', async () => {
+    // The write a drag makes — a column's cards after somebody rearranged them. It is the one relation
+    // write whose absence a backend could survive every other test without: the fixtures only ever
+    // append, so a backend with `add` and no `set` looked complete until a board was moved.
+    const ports = makePorts();
+    const handle = (await ports.lifecycle.get('ds-main'))!.handle;
+    const { getEntity } = await import('@we/entities');
+    const Collection = getEntity('CollectionBlock') as unknown as {
+      create(h: unknown, d: Record<string, unknown>): Promise<{ id: string }>;
+      setRelation(h: unknown, id: string, relation: string, ids: readonly string[]): Promise<void>;
+      findAll(h: unknown, q?: Record<string, unknown>): Promise<Array<{ children: unknown }>>;
+    };
+
+    const column = await Collection.create(handle, { id: 'col', kind: 'column' });
+    for (const id of ['a', 'b', 'c']) await Collection.create(handle, { id, kind: 'text' });
+
+    await Collection.setRelation(handle, column.id, 'children', ['a', 'b', 'c']);
+    // Rearranged, and one card taken out: the list is the membership as well as the order.
+    await Collection.setRelation(handle, column.id, 'children', ['c', 'a']);
+
+    const [row] = await Collection.findAll(handle, { where: { id: 'col' }, include: { children: true } });
+    expect((row.children as { id: string }[]).map((c) => c.id)).toEqual(['c', 'a']);
+  });
+
   it('says what each member of a heterogeneous relation is', async () => {
     // Without this a consumer holding a mixed bag can do nothing with it — the graph cannot address
     // a node, a card cannot pick a display. The key is a wire format the production backend chooses, so both backends
