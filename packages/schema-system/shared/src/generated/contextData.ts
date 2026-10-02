@@ -3635,7 +3635,7 @@ export const contextData: ContextData = {
           levels: ['deployment', 'agent', 'space', 'agent-in-space'],
         },
       ],
-      activities: {},
+      activities: { transcribe: { id: 'string', recording: 'boolean', anchor: 'object', collection: 'string' } },
       components: [],
       functions: [],
       views: [],

@@ -3436,6 +3436,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
 - Parts: `transcribe.transcriptFeed` (subject: routeStore.params.call ? routeStore.params.call : modules.transcribe.collectionId), `transcribe.transcriptLines` (subject: modules.transcribe.collectionId), `transcribe.transcriptComposer`, `transcribe.captureMeter`, `transcribe.captureStatus`, `transcribe.coverage`, `transcribe.extractionTargets`, `transcribe.pendingUtterance`
 - Panels (`meta.panels[].dock`): `transcript` "Transcript" (module-owned openness), `extraction` "Extraction" (module-owned openness)
 - Settings: `recordCalls` (boolean; deployment, agent, space, agent-in-space) — Record calls automatically
+- Presence activities: `transcribe` { id: string, recording: boolean, anchor: object, collection: string }
 
 ### Live presence (`live`)
 See each other’s cursors, and follow one person’s screen.
