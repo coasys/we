@@ -3282,7 +3282,7 @@ Record:
 Clipboard:
 - State:
 - Actions:
-  - copy(text, what?: string): copies text to the clipboard and confirms with a toast — '<what> copied', or 'Text copied'. A non-string is copied as JSON. For a copy button beside something long: a prompt, a log, an id
+  - copy(text, what?: string): copies text to the clipboard and confirms with a toast — '<what> copied', or 'Text copied'. A non-string is copied as JSON. For a copy button beside something long: a prompt, a log, an id. Host chrome only (the `clipboard` capability) — a space template's bag does not have it
 
 ---
 
