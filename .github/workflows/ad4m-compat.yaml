@@ -69,10 +69,10 @@ env:
 jobs:
   # Which AD4M to build against, and whether there is anything to do at all.
   #
-  # A job of its own so the job below can carry the answer in its NAME — the check list then reads
-  # "Against coasys/ad4m#1193" rather than something generic, which is the whole point on a pull
-  # request. It has to run on every pull request to find out: the PR template shows the line as an
-  # example inside a comment, so no filter on the raw description can tell a paired one apart.
+  # A job of its own so the job below can be skipped outright on an unpaired pull request: a
+  # job-level `if` needs the answer before that job starts. It has to run on every pull request to
+  # find out — the PR template shows the line as an example inside a comment, so no filter on the
+  # raw description can tell a paired one apart.
   resolve:
     name: Read the ad4m pairing
     runs-on: ubuntu-latest
@@ -120,8 +120,11 @@ jobs:
   compat:
     needs: resolve
     if: needs.resolve.outputs.ref != ''
-    # Named for what it tests against, so a pull request's check list says so.
-    name: Against ${{ needs.resolve.outputs.pairing || 'a paired ad4m' }}
+    # A fixed name, not one built from the pairing: GitHub shows a SKIPPED job's name unevaluated,
+    # so on every unpaired pull request the check list would read `Against ${{ … }}`. Which change
+    # it ran against is the first line of the run's summary, and the required checks' warning
+    # names it too.
+    name: Against the paired ad4m
     runs-on: ubuntu-latest
     steps:
       # ---------------------------------------------------------------- resolve what to test

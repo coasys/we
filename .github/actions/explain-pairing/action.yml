@@ -35,7 +35,7 @@ runs:
         # two workflows run side by side — so it must not lead with "expected": both checks build
         # the same commit, and only the paired one can say whether this failure is the pin's or a
         # real one.
-        MESSAGE="This pull request is paired with $PAIRING, and this job uses the ad4m version WE pins, which does not have that change. Compare with \"AD4M compatibility / Against $PAIRING\": if that is green, this failure is only the pin, and clears when \`pnpm bump:ad4m\` moves it; if that is red too, something is broken."
+        MESSAGE="This pull request is paired with $PAIRING, and this job uses the ad4m version WE pins, which does not have that change. Compare with \"AD4M compatibility / Against the paired ad4m\": if that is green, this failure is only the pin, and clears when \`pnpm bump:ad4m\` moves it; if that is red too, something is broken."
         echo "::warning title=Paired with $PAIRING — compare with the paired check::$MESSAGE"
         {
           echo "### Paired with $PAIRING — compare with the paired check"

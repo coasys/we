@@ -68,7 +68,7 @@ point at it.
 
 **Until step 4 the required checks are red.** They test against the pin, which does not have the
 ad4m change yet. Whether that is the only reason is answered by
-**`AD4M compatibility / Against coasys/ad4m#<N>`**, which builds the same commit against the paired
+**`AD4M compatibility / Against the paired ad4m`**, which builds the same commit against the paired
 change, then typechecks, tests and validates its schemas — and a failing required check names it.
 Both checks build the same WE commit, so the ad4m version is the only difference between them:
 
