@@ -84,13 +84,23 @@ function descend(node: Node): Node[] {
  * node to everything that reads them — and a comparison that said otherwise would miss exactly the
  * copies worth finding, since a copy made by hand rarely preserves the order.
  */
+const CANON = new WeakMap<object, string>();
+
 function canonical(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, v]) => v !== undefined)
-    .sort(([a], [b]) => a.localeCompare(b));
-  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(',')}}`;
+  // Memoised by identity: every `$if` is compared against its own subtree, so without this the
+  // same node is serialised once per ancestor and the audit is quadratic on a big template.
+  const cached = CANON.get(value);
+  if (cached !== undefined) return cached;
+  const out = Array.isArray(value)
+    ? `[${value.map(canonical).join(',')}]`
+    : `{${Object.entries(value as Record<string, unknown>)
+        .filter(([, v]) => v !== undefined)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`)
+        .join(',')}}`;
+  CANON.set(value, out);
+  return out;
 }
 
 interface Repeat {
@@ -106,6 +116,10 @@ interface Overlap {
   then: number;
   else: number;
   where: string;
+  /** Its condition, which is what actually identifies it in a file of a thousand nodes. */
+  cond: string;
+  /** The largest shapes both sides hold, for `--show`. */
+  tops: { size: number; copies: number; key: string }[];
 }
 
 interface Report {
@@ -158,6 +172,7 @@ function overlapOf(node: Node, path: string[]): Overlap | undefined {
   });
 
   let shared = 0;
+  const tops: { size: number; copies: number; key: string }[] = [];
   /*
     Each distinct shape is credited once, for as many copies as the thinner side has of it.
 
@@ -173,7 +188,9 @@ function overlapOf(node: Node, path: string[]): Overlap | undefined {
     const both = !!left && !!right;
     if (both && !covered && !credited.has(key)) {
       credited.add(key);
-      shared += Math.min(left.n, right.n) * left.size;
+      const copies = Math.min(left.n, right.n);
+      shared += copies * left.size;
+      tops.push({ size: left.size, copies, key });
     }
     for (const child of descend(n)) walkShared(child, covered || both);
   };
@@ -181,7 +198,19 @@ function overlapOf(node: Node, path: string[]): Overlap | undefined {
 
   if (!shared) return undefined;
   const bytes = (roots: Node[]) => roots.reduce((t, r) => t + canonical(r).length, 0);
-  return { shared, then: bytes(sides[0]), else: bytes(sides[1]), where: trail(path) };
+  const condition = node.props?.condition;
+  const cond =
+    typeof condition === 'object' && condition !== null && typeof (condition as { $?: unknown }).$ === 'string'
+      ? (condition as { $: string }).$
+      : String(condition ?? '?');
+  return {
+    shared,
+    then: bytes(sides[0]),
+    else: bytes(sides[1]),
+    where: trail(path),
+    cond: cond.length > 70 ? cond.slice(0, 70) + '…' : cond,
+    tops: tops.sort((x, y) => y.size * y.copies - x.size * x.copies).slice(0, 3),
+  };
 }
 
 function measure(root: Node, file: string, name: string): Report {
@@ -190,30 +219,37 @@ function measure(root: Node, file: string, name: string): Report {
   let nodes = 0;
 
   /*
-    `reported` suppresses the `$if`s inside one that has already been reported.
+    A nested `$if` is reported only when it shares MORE than anything above it.
 
-    An inner `$if` sits on one side of the outer one, so everything it shares is already inside
-    what the outer one shares: listing both counts the same bytes twice and sends a reader to two
-    places for one edit. The outermost is also usually where the edit belongs.
+    Where one `$if` sits inside another, the inner one's shared bytes are usually part of the outer
+    one's, so reporting both counts them twice and sends a reader to two places for one edit — the
+    outermost is where the edit belongs. But "outermost wins" alone is wrong, and was: a loading
+    guard sharing 371 characters with the board behind it suppressed every `$if` inside the board,
+    including one sharing 28,398. So the comparison is against the largest ancestor rather than
+    against the mere existence of one.
+
+    Where an inner one does win, its ancestor stays listed as well: the two numbers can overlap a
+    little, and over-reporting is the right way round for something whose job is to say where to
+    look.
   */
-  const collect = (node: Node, path: string[], reported: boolean) => {
+  const collect = (node: Node, path: string[], ancestorShared: number) => {
     nodes += 1;
     const here = [...path, node.type ?? '?'];
     const key = canonical(node);
     const seen = counts.get(key);
     if (seen) seen.count += 1;
     else counts.set(key, { count: 1, size: key.length, where: trail(here) });
-    let found = false;
-    if (node.type === '$if' && !reported) {
+    let deepest = ancestorShared;
+    if (node.type === '$if') {
       const overlap = overlapOf(node, here);
       if (overlap) {
-        overlaps.push(overlap);
-        found = true;
+        if (overlap.shared > ancestorShared) overlaps.push(overlap);
+        deepest = Math.max(ancestorShared, overlap.shared);
       }
     }
-    for (const child of descend(node)) collect(child, here, reported || found);
+    for (const child of descend(node)) collect(child, here, deepest);
   };
-  collect(root, [], false);
+  collect(root, [], 0);
 
   /*
     Keep a repeat only where no ancestor repeats at least as often.
@@ -326,6 +362,12 @@ for (const r of reports.sort((a, b) => b.chars - a.chars)) {
   for (const o of r.overlaps) {
     const of = Math.round((o.shared / Math.min(o.then, o.else)) * 100);
     console.log(`   $if sides share ${n(o.shared)} chars (${of}% of the smaller side)   ${o.where}`);
+    console.log(`      condition: ${o.cond}`);
+    if (show) {
+      for (const t of o.tops) {
+        console.log(`      ×${t.copies} ${n(t.size)}: ${t.key.slice(0, 220)}…`);
+      }
+    }
   }
 
   for (const rep of r.repeats.slice(0, 5)) {
