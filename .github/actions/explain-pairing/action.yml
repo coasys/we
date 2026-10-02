@@ -1,0 +1,44 @@
+name: Explain a failure while paired with ad4m
+description: When a paired pull request fails a job that uses the pinned ad4m, name the check that says whether the failure is only the pin.
+
+# A pull request whose description pairs it with an unpublished ad4m change (`ad4m: coasys/ad4m#N`)
+# fails the required jobs until that change is published and `pnpm bump:ad4m` moves the pin. That is
+# deliberate — these jobs test against the pin, so another repository's branch cannot decide whether
+# a WE change merges — but a red check reads the same whether it is waiting on ad4m or broken, and
+# telling them apart meant opening the log and recognising the error.
+#
+# So when a job fails on a paired pull request, this names, on the check itself, the one that tells
+# the two apart: the `AD4M compatibility` workflow, which builds the same commit against the paired
+# change. Green there means this failure is only the pin; red there too means something is broken.
+# It runs only after a failure, and says nothing on a pull request that is not paired.
+#
+# The pairing is read by scripts/ad4m-pairing.mjs, the same parser the deploy preview and the
+# compatibility check use, so the three cannot disagree about whether a pull request is paired.
+
+runs:
+  using: composite
+  steps:
+    - name: Explain the failure
+      shell: bash
+      env:
+        # Through the environment, never interpolated into the script: the description is written
+        # by whoever opened the pull request.
+        PR_BODY: ${{ github.event.pull_request.body }}
+      run: |
+        # A line the parser cannot read is not this step's to report — the compatibility check and
+        # the preview both fail on it, with the reason. Here it just means "say nothing".
+        OUT="$(printf '%s' "$PR_BODY" | node scripts/ad4m-pairing.mjs 2>/dev/null)" || exit 0
+        PAIRING="$(printf '%s\n' "$OUT" | sed -n 's/^pairing=//p')"
+        [ -n "$PAIRING" ] || exit 0
+
+        # A rule to apply, not reassurance. This step cannot know the paired check's result — the
+        # two workflows run side by side — so it must not lead with "expected": both checks build
+        # the same commit, and only the paired one can say whether this failure is the pin's or a
+        # real one.
+        MESSAGE="This pull request is paired with $PAIRING, and this job uses the ad4m version WE pins, which does not have that change. Compare with \"AD4M compatibility / Against $PAIRING\": if that is green, this failure is only the pin, and clears when \`pnpm bump:ad4m\` moves it; if that is red too, something is broken."
+        echo "::warning title=Paired with $PAIRING — compare with the paired check::$MESSAGE"
+        {
+          echo "### Paired with $PAIRING — compare with the paired check"
+          echo
+          echo "$MESSAGE"
+        } >> "$GITHUB_STEP_SUMMARY"

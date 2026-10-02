@@ -1,12 +1,19 @@
 name: AD4M compatibility
 
-# Does WE still build, typecheck and test against an AD4M branch that is not published yet?
+# Does WE still build, typecheck and test against an AD4M change that is not published yet?
 #
 # The required build (`build.yaml`) installs the AD4M version this repo pins. A paired deploy
-# preview (an `ad4m:` line in a PR description) builds WE against an AD4M branch, but only builds
-# it. This job answers the remaining question: WE compiled against an AD4M branch's *source*, with
-# its typecheck and tests, before that branch merges. Run it from the Actions tab and name the
-# branch.
+# preview (an `ad4m:` line in a PR description) builds WE against an AD4M change, but only builds
+# it. This job answers the remaining question: WE compiled against an AD4M change's *source*, with
+# its typecheck and tests, before that change is published. It runs two ways:
+#
+# - **On a paired pull request**, automatically. It reads the `ad4m:` line and tests the pull
+#   request's own commit against what it names. This is the check that says whether a paired
+#   change works, while the required jobs are red waiting for the pin to move — without it, a
+#   paired pull request went days with Typecheck, Test and schemas never running at all, and a
+#   real regression could hide behind the failure everyone expected. Unpaired pull requests skip
+#   it. Editing the line does not re-run it, as with the preview: push again, or re-run the run.
+# - **From the Actions tab**, naming an AD4M branch, against the last WE commit that passed CI.
 #
 # It used to run nightly against AD4M `dev` and keep a tracking issue. Now every merge to AD4M
 # `dev` is published and the bump workflow (`bump-ad4m.yaml`) opens a PR for it within the hour,
@@ -35,6 +42,7 @@ name: AD4M compatibility
 # blinds this job — it keeps answering about the last thing that worked.
 
 on:
+  pull_request:
   workflow_dispatch:
     inputs:
       ad4m_branch:
@@ -50,36 +58,73 @@ permissions:
   contents: read
   actions: read
 
+# One run per pull request, or per AD4M branch from the Actions tab.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.inputs.ad4m_branch || 'dev' }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event.inputs.ad4m_branch || 'dev' }}
   cancel-in-progress: true
 
 env:
   GH_TOKEN: ${{ github.token }}
 
 jobs:
-  compat:
-    # Without this the run renders as "AD4M compatibility / compat".
-    name: Build and verify
+  # Which AD4M to build against, and whether there is anything to do at all.
+  #
+  # A job of its own so the job below can carry the answer in its NAME — the check list then reads
+  # "Against coasys/ad4m#1193" rather than something generic, which is the whole point on a pull
+  # request. It has to run on every pull request to find out: the PR template shows the line as an
+  # example inside a comment, so no filter on the raw description can tell a paired one apart.
+  resolve:
+    name: Read the ad4m pairing
     runs-on: ubuntu-latest
+    outputs:
+      pairing: ${{ steps.resolve.outputs.pairing }}
+      ref: ${{ steps.resolve.outputs.ref }}
     steps:
-      # ---------------------------------------------------------------- resolve what to test
+      # Only the parser. Nothing here is built or installed.
+      - uses: actions/checkout@v7
+        if: github.event_name == 'pull_request'
+        with:
+          sparse-checkout: scripts/ad4m-pairing.mjs
+          sparse-checkout-cone-mode: false
 
-      # Dispatch inputs reach the shell as environment variables rather than being
-      # interpolated into the script text, so a branch name is always data and never
-      # something that can end up parsed as part of the command.
-      - name: Resolve AD4M branch
-        id: ad4m-branch
+      # Inputs and the description reach the shell as environment variables rather than being
+      # interpolated into the script text, so they are always data and never something that can
+      # end up parsed as part of the command. The parser refuses a ref that is not a plain name.
+      - name: Resolve
+        id: resolve
         env:
+          PR_BODY: ${{ github.event.pull_request.body }}
           REQUESTED_BRANCH: ${{ github.event.inputs.ad4m_branch }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
+          if [ "${{ github.event_name }}" = 'pull_request' ]; then
+            # Paired → pairing, ref and reason; unpaired → nothing, and the job below is skipped.
+            # A line that cannot be read, or names a pull request that cannot be found, fails here
+            # with the reason, as the preview does.
+            printf '%s' "$PR_BODY" | node scripts/ad4m-pairing.mjs --resolve | tee -a "$GITHUB_OUTPUT"
+            exit "${PIPESTATUS[1]}"
+          fi
+
           BRANCH="${REQUESTED_BRANCH:-dev}"
           if ! git ls-remote --exit-code --heads \
             https://github.com/coasys/ad4m.git "$BRANCH" >/dev/null 2>&1; then
             echo "::error::No such AD4M branch: $BRANCH"
             exit 1
           fi
-          echo "name=$BRANCH" >> "$GITHUB_OUTPUT"
+          {
+            echo "pairing=coasys/ad4m@$BRANCH"
+            echo "ref=$BRANCH"
+            echo "reason=requested from the Actions tab"
+          } >> "$GITHUB_OUTPUT"
+
+  compat:
+    needs: resolve
+    if: needs.resolve.outputs.ref != ''
+    # Named for what it tests against, so a pull request's check list says so.
+    name: Against ${{ needs.resolve.outputs.pairing || 'a paired ad4m' }}
+    runs-on: ubuntu-latest
+    steps:
+      # ---------------------------------------------------------------- resolve what to test
 
       # The control. A green Build run on `dev` means that commit compiles, typechecks and
       # tests against the AD4M this repo pins — so if it fails below, AD4M is the difference.
@@ -87,11 +132,24 @@ jobs:
       # `controlled=false` records the two cases where that guarantee does not hold: an
       # explicitly requested ref, and the case where no green run could be found at all. The
       # report says so rather than claiming an attribution it has not earned.
+      #
+      # A pull request is tested at its own commit, which is the question there: does THIS
+      # change work against the AD4M change it pairs with. `mode=pr` also turns on the checks
+      # the required jobs skip while Build is red.
       - name: Resolve WE ref
         id: we-ref
         env:
           REQUESTED: ${{ github.event.inputs.we_ref }}
         run: |
+          if [ "${{ github.event_name }}" = 'pull_request' ]; then
+            echo "ref=${{ github.sha }}"  >> "$GITHUB_OUTPUT"
+            echo "controlled=false"       >> "$GITHUB_OUTPUT"
+            echo "why=this pull request"  >> "$GITHUB_OUTPUT"
+            echo "mode=pr"                >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "mode=dispatch" >> "$GITHUB_OUTPUT"
+
           if [ -n "$REQUESTED" ]; then
             echo "ref=$REQUESTED"        >> "$GITHUB_OUTPUT"
             echo "controlled=false"      >> "$GITHUB_OUTPUT"
@@ -145,11 +203,15 @@ jobs:
 
       # ---------------------------------------------------------------- build the AD4M SDK
 
-      - name: Clone AD4M
+      # A fetch of one ref rather than `git clone --branch`, which cannot take a commit or a pull
+      # request ref — and a paired pull request names `pull/N/head`, or a merge commit once merged.
+      - name: Fetch AD4M
+        env:
+          AD4M_REF: ${{ needs.resolve.outputs.ref }}
         run: |
-          git clone --depth 1 --single-branch \
-            --branch "${{ steps.ad4m-branch.outputs.name }}" \
-            https://github.com/coasys/ad4m.git ad4m
+          git init -q ad4m
+          git -C ad4m fetch -q --depth 1 https://github.com/coasys/ad4m.git "$AD4M_REF"
+          git -C ad4m checkout -q FETCH_HEAD
 
       - name: Get AD4M commit hash
         id: ad4m-hash
@@ -229,6 +291,26 @@ jobs:
           set -o pipefail
           pnpm test 2>&1 | tee -a compat.log
 
+      # On a pull request, the rest of what the required jobs check after Build. While the pair is
+      # waiting on the pin, Build fails there and these never run anywhere else — so a pull request
+      # could merge the moment the pin moved having never had its schemas validated.
+      #
+      # Not from the Actions tab: that tests a commit that already passed all of them against the
+      # pin, and none of them can be changed by which AD4M ran.
+      - name: Validate schemas and audits
+        id: schemas
+        if: steps.we-ref.outputs.mode == 'pr'
+        run: |
+          set -o pipefail
+          { pnpm validate:schemas && pnpm audit:roles && pnpm audit:surfaces; } 2>&1 | tee -a compat.log
+
+      - name: Browser tests
+        id: browser
+        if: steps.we-ref.outputs.mode == 'pr'
+        run: |
+          set -o pipefail
+          pnpm --filter @we/primitives test:browser 2>&1 | tee -a compat.log
+
       # ---------------------------------------------------------------- report
 
       # Written on success and on failure alike, to the run's summary page: "green, and here is
@@ -237,10 +319,12 @@ jobs:
         id: report
         if: always()
         env:
-          AD4M_BRANCH: ${{ steps.ad4m-branch.outputs.name }}
+          AD4M_LABEL: ${{ needs.resolve.outputs.pairing }}
+          AD4M_REF: ${{ needs.resolve.outputs.ref }}
           AD4M_HASH: ${{ steps.ad4m-hash.outputs.hash }}
           WE_REF: ${{ steps.we-ref.outputs.ref }}
           CONTROLLED: ${{ steps.we-ref.outputs.controlled }}
+          MODE: ${{ steps.we-ref.outputs.mode }}
           WHY: ${{ steps.we-ref.outputs.why }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -253,27 +337,37 @@ jobs:
                    'WE install:${{ steps.install.outcome }}' \
                    'Build:${{ steps.build.outcome }}' \
                    'Typecheck:${{ steps.typecheck.outcome }}' \
-                   'Test:${{ steps.test.outcome }}'; do
+                   'Test:${{ steps.test.outcome }}' \
+                   'Schemas and audits:${{ steps.schemas.outcome }}' \
+                   'Browser tests:${{ steps.browser.outcome }}'; do
             if [ "${s##*:}" = 'failure' ]; then STAGE="${s%%:*}"; break; fi
           done
 
           {
             if [ -z "$STAGE" ]; then
-              echo "## WE builds against AD4M \`$AD4M_BRANCH\` :green_circle:"
+              echo "## WE builds against $AD4M_LABEL :green_circle:"
               echo
               echo "WE \`${WE_REF:0:12}\` builds, typechecks and tests against AD4M \`${AD4M_HASH:0:12}\`."
+              if [ "$MODE" = 'pr' ]; then
+                echo
+                echo "Schemas, audits and browser tests pass too. Required jobs that fail on this pull request"
+                echo "are waiting for the pin to move, not for a fix."
+              fi
             else
-              echo "## WE does not build against AD4M \`$AD4M_BRANCH\` :red_circle:"
+              echo "## WE does not build against $AD4M_LABEL :red_circle:"
               echo
               echo "| | |"
               echo "|---|---|"
               echo "| WE commit | \`${WE_REF:0:12}\` ($WHY) |"
-              echo "| AD4M commit | [\`${AD4M_HASH:0:12}\`](https://github.com/coasys/ad4m/commit/$AD4M_HASH) on \`$AD4M_BRANCH\` |"
+              echo "| AD4M commit | [\`${AD4M_HASH:0:12}\`](https://github.com/coasys/ad4m/commit/$AD4M_HASH) from \`$AD4M_REF\` |"
               echo "| Failed at | **$STAGE** |"
               echo "| Run | [$RUN_URL]($RUN_URL) |"
               echo
 
-              if [ "$CONTROLLED" = 'true' ]; then
+              if [ "$MODE" = 'pr' ]; then
+                echo "This is the pull request's own commit, built against the AD4M change it pairs with, so"
+                echo "the failure is this pair's to fix — on whichever side the error points at."
+              elif [ "$CONTROLLED" = 'true' ]; then
                 echo "This commit passes against the AD4M version WE pins — that is what made it"
                 echo "eligible to be tested here — so **AD4M is the difference**. Either AD4M needs a"
                 echo "fix before the next tag, or WE is using an API that exists only in the pinned"
@@ -289,11 +383,12 @@ jobs:
               # Printed only when it is non-empty — a heading over nothing reads as a failed
               # lookup, and the list is genuinely empty whenever the drift is older than the
               # last green run.
-              SINCE="$(gh api \
-                "repos/${{ github.repository }}/actions/workflows/ad4m-compat.yaml/runs?status=success&per_page=1" \
+              SINCE=''
+              [ "$MODE" = 'pr' ] || SINCE="$(gh api \
+                "repos/${{ github.repository }}/actions/workflows/ad4m-compat.yaml/runs?event=workflow_dispatch&status=success&per_page=1" \
                 --jq '.workflow_runs[0].created_at // empty' 2>/dev/null || true)"
               if [ -n "$SINCE" ]; then
-                COMMITS="$(gh api "repos/coasys/ad4m/commits?sha=$AD4M_BRANCH&since=$SINCE&per_page=30" \
+                COMMITS="$(gh api "repos/coasys/ad4m/commits?sha=$AD4M_REF&since=$SINCE&per_page=30" \
                   --jq '.[] | "- [`\(.sha[0:8])`](\(.html_url)) \(.commit.message | split("\n")[0])"' \
                   2>/dev/null || true)"
                 if [ -n "$COMMITS" ]; then

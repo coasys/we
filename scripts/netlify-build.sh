@@ -79,65 +79,19 @@ if [ -n "$PR_JSON" ]; then
   WE_BRANCH="$(printf '%s' "$PR_JSON" | json_field 'pr => pr.head?.ref')"
 fi
 
-# The pairing line, if the description has one: `#1187` or `@some-branch`.
-#
-# HTML comments and fenced code blocks are dropped first: the PR template and the docs show the line
-# as an example inside them. A line that starts with `ad4m:`, names coasys/ad4m and still does not
-# match (a pasted URL, a stray space) comes back as `!` plus the line. Silently using the pin there
-# would give a preview that looks paired and is not. So would picking one of two lines.
-PAIRING=''
-if [ -n "$PR_JSON" ]; then
-  PAIRING="$(printf '%s' "$PR_JSON" | json_field "pr => {
-    const body = (pr.body ?? '').replace(/<!--[\\s\\S]*?-->/g, '').replace(/^[ \\t]*\\\`\\\`\\\`[\\s\\S]*?^[ \\t]*\\\`\\\`\\\`/gm, '');
-    const lines = body.split(/\\r?\\n/).filter((l) => /^[ \\t]*ad4m:/i.test(l) && /coasys\\/ad4m/i.test(l));
-    if (!lines.length) return '';
-    if (lines.length > 1) return '!' + lines.map((l) => l.trim()).join(' | ');
-    const m = lines[0].match(/^[ \\t]*ad4m:[ \\t]*coasys\\/ad4m([#@][^ \\t]+)[ \\t]*$/i);
-    return m ? m[1] : '!' + lines[0].trim();
-  }")"
-fi
-
+# The pairing line, if the description has one. Read by scripts/ad4m-pairing.mjs, which the CI jobs
+# share, so the preview and CI cannot disagree about whether this pull request is paired. A line it
+# cannot read, two lines, or a pull request that cannot be found fail the build rather than silently
+# using the pin: that would give a preview that looks paired and is not.
 AD4M_REF='pin'
 REASON="a ${CONTEXT:-local} build uses the pin"
 
-if [ -n "$PAIRING" ]; then
-  case "$PAIRING" in
-    '!'*)
-      echo "── The description has an ad4m pairing line this script cannot read:"
-      echo "     ${PAIRING#!}"
-      echo "   Write exactly one line, in one of these forms:"
-      echo "     ad4m: coasys/ad4m#<pull request number>"
-      echo "     ad4m: coasys/ad4m@<branch, tag or commit>"
-      exit 1
-      ;;
-    '#'*)
-      AD4M_PR="${PAIRING#\#}"
-      if ! [[ "$AD4M_PR" =~ ^[0-9]+$ ]]; then
-        echo "── The description names ad4m pull request '$AD4M_PR', which is not a number."
-        exit 1
-      fi
-      AD4M_PR_JSON="$(github_api "repos/$AD4M_REPO/pulls/$AD4M_PR" || true)"
-      if [ -z "$AD4M_PR_JSON" ]; then
-        # Asked for, so failing is right: silently building against the pin would
-        # show a preview that is not what the description says it is.
-        echo "── The description pairs this preview with $AD4M_REPO#$AD4M_PR, which could not be read."
-        exit 1
-      fi
-      MERGE_SHA="$(printf '%s' "$AD4M_PR_JSON" | json_field 'pr => pr.merged_at ? pr.merge_commit_sha : ""')"
-      if [ -n "$MERGE_SHA" ]; then
-        AD4M_REF="$MERGE_SHA"
-        REASON="the description pairs it with $AD4M_REPO#$AD4M_PR, which has merged"
-      else
-        # `pull/N/head` works for a pull request from a fork as well as from a branch.
-        AD4M_REF="pull/$AD4M_PR/head"
-        REASON="the description pairs it with $AD4M_REPO#$AD4M_PR"
-      fi
-      ;;
-    '@'*)
-      AD4M_REF="${PAIRING#@}"
-      REASON="the description pairs it with $AD4M_REPO@$AD4M_REF"
-      ;;
-  esac
+if [ -n "$PR_JSON" ]; then
+  PAIRING_OUT="$(printf '%s' "$PR_JSON" | json_field 'pr => pr.body' | node "$WE_ROOT/scripts/ad4m-pairing.mjs" --resolve)" || exit 1
+  if printf '%s\n' "$PAIRING_OUT" | grep -qx 'paired=true'; then
+    AD4M_REF="$(printf '%s\n' "$PAIRING_OUT" | sed -n 's/^ref=//p')"
+    REASON="$(printf '%s\n' "$PAIRING_OUT" | sed -n 's/^reason=//p')"
+  fi
 fi
 
 echo "── ad4m: $AD4M_REF ($REASON)"

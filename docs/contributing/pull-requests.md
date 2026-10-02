@@ -52,8 +52,10 @@ ad4m: coasys/ad4m@dev         an ad4m branch, tag or commit
 ```
 
 The preview then builds both `@coasys/ad4m` and `@coasys/ad4m-connect` from that change instead of
-installing the pin. Both live in the `coasys/ad4m` repository, so one line covers both. CI still
-builds against the pin.
+installing the pin. Both live in the `coasys/ad4m` repository, so one line covers both. The
+required checks still build against the pin, so they stay red until it moves; the
+`AD4M compatibility / Against coasys/ad4m#<N>` check builds the same commit against the pairing and
+says whether that red is only the pin.
 
 A line in any other form, such as a pasted link, fails the preview rather than being ignored.
 
