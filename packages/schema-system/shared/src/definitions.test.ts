@@ -178,3 +178,30 @@ describe('expanding it again', () => {
     expect(() => expandDefinitions(missing)).not.toThrow();
   });
 });
+
+describe('a compacted template is still validated as what it will be', () => {
+  it('reports a problem inside a shared shape, once per use', async () => {
+    const { buildValidationContext, validateSchema } = await import('./semanticValidation');
+    const { contextData } = await import('./generated/contextData');
+
+    // An offset in a tier bag: accepted by every other check and read by nothing, so the
+    // validator refuses it. Big enough to be hoisted, and used twice.
+    const broken = (): SchemaNode => ({
+      type: 'Column',
+      props: { gap: '300', p: '400', bg: 'surface', r: 'surface', width: '100%', mdUpProps: { left: '300px' } },
+      children: [{ type: 'we-text', children: ['A line long enough to clear the threshold.'] }],
+    });
+    const plain = root([broken(), broken()]);
+    const { schema, hoisted } = compactDefinitions(plain);
+    expect(hoisted).toBe(1);
+
+    const context = buildValidationContext(contextData);
+    const before = validateSchema(plain, context);
+    const after = validateSchema(schema, context);
+
+    // The same verdict and the same number of findings, because the same tree is checked.
+    expect(after.valid).toBe(before.valid);
+    expect(after.errors.map((e) => e.message)).toEqual(before.errors.map((e) => e.message));
+    expect(before.errors.length).toBeGreaterThan(0);
+  });
+});
