@@ -69,8 +69,16 @@ function sectionsByTitle(reference: string) {
   };
 }
 
+/*
+  Core, not behind a tool — including the one that explains `$defs` and `$ref`.
+
+  Every template sent to a model is compacted first, so a `$ref` node is not an advanced topic a
+  request might happen to raise: it is in the first screen of the document, and a model that had to
+  fetch the explanation would be reading a tree it cannot interpret until it thought to ask.
+*/
 const CORE_TITLES = [
   'Schema Structure',
+  'Shapes the template says once: $defs and $ref',
   'Rules & Best Practices',
   'Schema Validation',
   'Routing Structure',
