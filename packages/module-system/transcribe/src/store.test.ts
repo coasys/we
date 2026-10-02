@@ -55,7 +55,7 @@ interface HarnessDeps {
   transcription?: Record<string, unknown>;
   interpretation?: Record<string, unknown>;
   media?: { input: () => MediaStream | null };
-  records?: Partial<Record<'create' | 'link' | 'update' | 'find', unknown>>;
+  records?: Partial<Record<'create' | 'link' | 'update' | 'find' | 'remove', unknown>>;
   presence?: Record<string, unknown>;
   dataset?: () => unknown;
   settings?: (() => Record<string, boolean | string | number>) | undefined;
