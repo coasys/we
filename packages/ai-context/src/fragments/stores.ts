@@ -584,6 +584,13 @@ export const storeEntries: StoreEntry[] = [
     state: {},
     actions: ['create', 'update', 'delete'],
   },
+  // Pseudo-store for the clipboard.copy $action, wired the same way as `record` — documented in
+  // the descriptions below, since nothing else describes it.
+  {
+    name: 'clipboard',
+    state: {},
+    actions: ['copy'],
+  },
 ];
 
 /** Generate the stores text fragment from structured data */
@@ -597,6 +604,12 @@ export function generateStoresText(entries: StoreEntry[]): string {
   ];
 
   const descriptions: Record<string, { state: Record<string, string>; actions: Record<string, string> }> = {
+    clipboard: {
+      state: {},
+      actions: {
+        copy: "(text, what?: string): copies text to the clipboard and confirms with a toast — '<what> copied', or 'Text copied'. A non-string is copied as JSON. For a copy button beside something long: a prompt, a log, an id",
+      },
+    },
     sessionStore: {
       state: {
         client: 'the backend client handle | undefined',

@@ -2993,6 +2993,7 @@ export const contextData: ContextData = {
       ],
     },
     { name: 'record', state: {}, actions: ['create', 'update', 'delete'] },
+    { name: 'clipboard', state: {}, actions: ['copy'] },
   ],
   shellComponents: [
     'AiPanel',

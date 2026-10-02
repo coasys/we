@@ -8,6 +8,7 @@ import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegi
 import { provideChromeBag, provideTemplateBag } from '@shared/registries/templateBag';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
+import { copyText } from '@shared/utils';
 
 import { signalOptimism } from '../../../shared/signalOptimism';
 import { signalOrder } from '../../../shared/signalOrder';
@@ -376,6 +377,21 @@ export default function TemplateProvider() {
     modules: moduleStores,
     consoleStore,
     record: recordActions,
+    /*
+      Copy a string, and say so. A host action rather than a store's, because what is copied is
+      whatever the schema is showing — a prompt, a log, an id — and no store owns that. The toast is
+      the only sign a copy happened, so it names what was copied when the caller says.
+    */
+    clipboard: {
+      copy: async (text: unknown, what?: unknown) => {
+        const named = typeof what === 'string' && what ? what : 'Text';
+        if (await copyText(typeof text === 'string' ? text : JSON.stringify(text ?? ''))) {
+          toastService.success(`${named} copied`);
+        } else {
+          toastService.error(`Could not copy the ${named.toLowerCase()}`);
+        }
+      },
+    },
     // Host wiring, not backend adaptation — any backend would wire these the same way, so they stay
     // here rather than pretending to be AD4M-specific.
     $onError: (msg: string) => toastService.error(msg),

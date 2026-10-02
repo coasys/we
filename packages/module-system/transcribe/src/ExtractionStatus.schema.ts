@@ -254,26 +254,55 @@ export function codePane(options: {
         type: 'Column',
         props: { gap: '100', width: '100%' },
         children: [
+          /*
+            The heading and a copy button, side by side rather than one inside the other: the heading
+            is itself a button, and a button cannot hold another. Copy works closed as well as open,
+            since what somebody usually wants from a prompt is to paste it somewhere else, not read it.
+          */
           {
-            type: 'we-button',
-            props: {
-              variant: 'bare',
-              width: '100%',
-              onClick: { $toggleLocalIn: options.field, value: options.key ?? { $: 'pass.passId' } },
-            },
+            type: 'Row',
+            props: { ay: 'center', gap: '100', width: '100%' },
             children: [
               {
-                type: 'Row',
-                props: { ay: 'center', gap: '100', width: '100%' },
+                type: 'we-button',
+                props: {
+                  variant: 'bare',
+                  flex: '1',
+                  minWidth: '0',
+                  onClick: { $toggleLocalIn: options.field, value: options.key ?? { $: 'pass.passId' } },
+                },
                 children: [
-                  paneLabel(options.label),
                   {
-                    type: 'we-icon',
+                    type: 'Row',
+                    props: { ay: 'center', gap: '100', width: '100%' },
+                    children: [
+                      paneLabel(options.label),
+                      {
+                        type: 'we-icon',
+                        props: {
+                          size: CARET_SIZE,
+                          color: 'text-faint',
+                          name: expr`${options.isOpen} ? 'caret-up' : 'caret-down'`,
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                type: 'we-tooltip',
+                props: { content: `Copy ${options.label.toLowerCase()}` },
+                children: [
+                  {
+                    type: 'we-button',
                     props: {
-                      size: CARET_SIZE,
-                      color: 'text-faint',
-                      name: expr`${options.isOpen} ? 'caret-up' : 'caret-down'`,
+                      size: 'xs',
+                      variant: 'ghost',
+                      square: true,
+                      label: `Copy ${options.label.toLowerCase()}`,
+                      onClick: { $action: 'clipboard.copy', args: [options.value, options.label] },
                     },
+                    children: [{ type: 'we-icon', props: { name: 'copy' } }],
                   },
                 ],
               },

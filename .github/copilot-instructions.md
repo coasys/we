@@ -3279,6 +3279,11 @@ Record:
   - update(entity: string, id: string, fields: object, options?: { dataset?: string }): updates the named fields of one record, leaving the rest
   - delete(entity: string, id: string, options?: { dataset?: string }): deletes one record. Irreversible
 
+Clipboard:
+- State:
+- Actions:
+  - copy(text, what?: string): copies text to the clipboard and confirms with a toast — '<what> copied', or 'Text copied'. A non-string is copied as JSON. For a copy button beside something long: a prompt, a log, an id
+
 ---
 
 ## Feature Modules
