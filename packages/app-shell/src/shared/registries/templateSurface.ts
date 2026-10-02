@@ -787,6 +787,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // what this agent already holds. A space's template offering a drop target is the product.
     bringIn: action('content'),
     updateRecordField: action('content'),
+    // Follows a content write — a connection's label — made through `record.update`.
+    rekeyConnection: action('content'),
     setRecordEntity: action('content'),
     setRecordField: action('content'),
     setRecordPlace: action('content'),
