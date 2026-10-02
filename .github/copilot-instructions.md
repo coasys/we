@@ -3398,6 +3398,8 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - speaking — Whether the microphone level currently counts as speech.
   - status — What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error.
   - thresholdPercent — The speech-onset threshold as a CSS width, to mark on the same meter.
+  - tiedBusy — Whether a confirmed tied decision is still being written.
+  - tiedDecision — A decision waiting on confirmation because it decides others too — { kind, title, body, detail, confirmLabel } — or null.
   - transcribers — Everyone recording this call, this agent included — the numerator of coverage.
   - transcribing — Speech has gone to the model and its text has not come back yet.
   - transcriptFromStart — Whether the transcript is being read from its beginning rather than following the live end.
@@ -3409,8 +3411,10 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - addMessage — Writes something a person typed into a transcript, as a typed line.
   - applyChange — Applies one suggested change to an agreed record.
   - cancelProposalEdit — Closes the open draft, discarding what was typed.
+  - cancelTiedDecision — Puts the decision waiting in tiedDecision down without making it.
   - closeExtractionPanel — Closes the extraction panel.
   - closePanel — Closes the transcript panel.
+  - confirmTiedDecision — Carries out the decision waiting in tiedDecision, with everything tied to it.
   - dismissChange — Dismisses one suggested change, leaving the record as it was.
   - editProposal — Opens one suggestion for editing, seeded with what the model proposed.
   - editUtterance — Corrects the words on a line of the transcript, marking a spoken line as corrected.

@@ -108,3 +108,51 @@ describe('proposals, scoped to one conversation', () => {
     expect(scoped).toEqual(['we://task/mine']);
   });
 });
+
+/**
+ * What a decision about one record is tied to.
+ *
+ * A pass that connects a new task to an old one stages two records that only make sense together,
+ * and the executor decides each alone — rejecting the task deletes every link pointing at it, which
+ * cuts an accepted connection down to one end. The review surface can only decide them together if
+ * this says which they are.
+ */
+describe('connections', () => {
+  const port = createAd4mInterpretationPort();
+  const SOURCE = 'we://relationship_source';
+  const TARGET = 'we://relationship_target';
+
+  /** Links as (source, predicate, target), answered for whichever end a query names. */
+  function graph(links: [string, string, string][]) {
+    return {
+      runInterpretation: () => undefined,
+      get: async (query: { source?: string; target?: string; predicate?: string }) =>
+        links
+          .filter(
+            ([s, p, t]) =>
+              (!query.source || s === query.source) &&
+              (!query.target || t === query.target) &&
+              (!query.predicate || p === query.predicate),
+          )
+          .map(([source, predicate, target]) => ({ data: { source, predicate, target } })),
+    } as never;
+  }
+
+  it('names the ends of a connection, and the connections joining a record', async () => {
+    const handle = graph([
+      ['link-1', SOURCE, 'task-old'],
+      ['link-1', TARGET, 'task-new'],
+      ['link-2', SOURCE, 'task-new'],
+      ['link-2', TARGET, 'task-other'],
+      // Not a connection's end, so not a tie: a card's placement is the canvas's, not a claim.
+      ['placement', 'we://placed_node', 'task-new'],
+    ]);
+
+    expect(await port.connections!(handle, 'link-1')).toEqual({ ends: ['task-old', 'task-new'], connections: [] });
+    const joining = await port.connections!(handle, 'task-new');
+    expect(joining.ends).toEqual([]);
+    // Either end: `link-1` ends at the task and `link-2` starts from it, and both lose it on a discard.
+    expect(joining.connections.map((c) => c.id).sort()).toEqual(['link-1', 'link-2']);
+    expect(joining.connections.every((c) => c.entity === 'Relationship')).toBe(true);
+  });
+});

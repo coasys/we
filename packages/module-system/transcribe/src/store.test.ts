@@ -1399,6 +1399,102 @@ describe('staged suggestions', () => {
     expect(h.store.proposals()).toEqual([]);
   });
 
+  /*
+    A pass that connects a new task to an old one stages two records that only make sense together,
+    and the backend decides each alone: rejecting the task deletes every link pointing at it, which
+    cuts an accepted connection down to one end. So they are decided together, asked about first.
+  */
+  describe('a decision tied to a connection', () => {
+    const staged = [
+      { id: 'task-new', kind: 'create', entity: 'TaskBlock', values: { title: 'Take screenshots' } },
+      { id: 'link-1', kind: 'create', entity: 'Relationship', values: { label: 'depends on' } },
+    ];
+    /** `link-1` joins an agreed task to `task-new`; `link-2` is agreed and also joins `task-new`. */
+    const graph = async (id: string) =>
+      id === 'link-1'
+        ? { ends: ['task-old', 'task-new'], connections: [] }
+        : id === 'task-new'
+          ? {
+              ends: [],
+              connections: [
+                { id: 'link-1', entity: 'Relationship' },
+                { id: 'link-2', entity: 'Relationship' },
+              ],
+            }
+          : { ends: [], connections: [] };
+
+    async function setup() {
+      const i = interpreterWith(staged);
+      const removed: string[] = [];
+      const h = harness(inCall, {
+        interpretation: { ...i.port, connections: graph },
+        records: { remove: async (_entity: string, id: string) => void removed.push(id) },
+      });
+      await h.say('hello');
+      await h.store.extract();
+      return { i, h, removed };
+    }
+
+    it('asks before accepting a connection whose end is still a suggestion, then accepts the end first', async () => {
+      const { i, h } = await setup();
+
+      await h.store.acceptProposal('link-1');
+      expect(i.resolved).toEqual([]);
+      expect(h.store.tiedDecision()).toMatchObject({
+        kind: 'accept',
+        staged: ['task-new'],
+        confirmLabel: 'Accept both',
+      });
+      expect(h.store.tiedDecision()?.body).toContain('“Take screenshots”');
+
+      await h.store.confirmTiedDecision();
+      expect(i.resolved).toEqual([
+        { action: 'accept', id: 'task-new' },
+        { action: 'accept', id: 'link-1' },
+      ]);
+      expect(h.store.tiedDecision()).toBeNull();
+    });
+
+    it('asks before discarding a record connections join, then takes them with it', async () => {
+      const { i, h, removed } = await setup();
+
+      await h.store.rejectProposal('task-new');
+      expect(i.resolved).toEqual([]);
+      expect(h.store.tiedDecision()).toMatchObject({ kind: 'reject', staged: ['link-1'] });
+      // The accepted one is named, because it is the part of this nobody would guess.
+      expect(h.store.tiedDecision()?.detail).toContain('1 of them has already been accepted');
+
+      await h.store.confirmTiedDecision();
+      // Connections first, so none is ever left with one end.
+      expect(i.resolved).toEqual([
+        { action: 'reject', id: 'link-1' },
+        { action: 'reject', id: 'task-new' },
+      ]);
+      expect(removed).toEqual(['link-2']);
+    });
+
+    it('decides nothing when the held decision is put down', async () => {
+      const { i, h } = await setup();
+      await h.store.rejectProposal('task-new');
+
+      h.store.cancelTiedDecision();
+
+      expect(h.store.tiedDecision()).toBeNull();
+      expect(i.resolved).toEqual([]);
+    });
+
+    it('asks nothing where a decision stands alone', async () => {
+      // Accepting a record leaves its connections as suggestions; discarding a connection leaves its
+      // ends. Neither needs the other, so neither is a question.
+      const { i, h } = await setup();
+
+      await h.store.rejectProposal('link-1');
+
+      expect(h.store.tiedDecision()).toBeNull();
+      expect(i.resolved).toEqual([{ action: 'reject', id: 'link-1' }]);
+    });
+  });
+
   it('keeps a successful extraction successful when the review list cannot be read', async () => {
     // The pass already wrote its records. Reporting an error because a follow-up read failed would
     // be a lie about what happened, and would hide a result the user can see in the graph.

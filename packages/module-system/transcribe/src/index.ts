@@ -82,6 +82,7 @@ import {
   transcriptLines,
 } from './Panel.schema';
 import { createTranscribeStore } from './store';
+import { tiedDecisionModals } from './TiedDecision.schema';
 
 export { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
 export { extractionActivity } from './ExtractionStatus.schema';
@@ -211,6 +212,12 @@ export const transcribeModule = defineModule({
         decision it is. The call module's `call-status` anchor has nothing left to hold.
       */
       { anchor: CALL_CONTROLS_ANCHOR, node: callControl, order: 10 },
+      /*
+        The one "decide these together?" question every Accept and Discard can raise, wherever it was
+        pressed — see `TiedDecision.schema.ts`. Chrome rather than a panel's, because the buttons are
+        on surfaces this module does not own.
+      */
+      ...tiedDecisionModals.map((node) => ({ anchor: 'overlay', node, order: 200 })),
     ],
 
     /*
