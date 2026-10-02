@@ -1869,9 +1869,12 @@ Roles work anywhere a colour token does, including inside a border shorthand
 (`{ "$": "row.selected ? 'accent-muted' : 'surface-sunken'" }`).
 
 **Not `$if` in a prop.** `$if` is a *node* type and, in a value position, resolves to a handler —
-so the colour resolver is handed a function, paints nothing, and warns about nothing. The validator
-does not catch it either. A condition that chooses a value is a ternary, which is what the
-expression language has one for.
+so the colour resolver is handed a function, paints nothing, and warns about nothing at runtime. A
+condition that chooses a value is a ternary, which is what the expression language has one for.
+
+The validator refuses it. It asks whether the prop holds a function rather than whether its name
+starts with `on`, so a handler prop that is not an event — `we-modal`'s `close`, which every
+`discardGuard` passes a `$if` to — stays legal.
 
 **Always kebab-case: `"surface-sunken"`, never `"surfaceSunken"`.** The camelCase spelling is the
 TypeScript key of a `ThemeRole`; a schema writes the CSS spelling. Getting it wrong fails silently —
@@ -1914,10 +1917,11 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | mb | SpaceValue | Margin bottom |
 | ml | SpaceValue | Margin left |
 
-**`position`, `top`, `right`, `bottom` and `left` do not respond to a breakpoint.** They are
-excluded from the tier and state pipelines, so `mdUpProps: { left: '300px' }` validates and does
-nothing at all. To move something at a breakpoint, use `x` / `y` / `rotate` (see Visual), which
-compose into `transform` and do tier — as do `width`, `height` and `zIndex`.
+**`position`, `top`, `right`, `bottom` and `left` do not respond to a breakpoint or a state.**
+They are excluded from the tier and state pipelines, so `mdUpProps: { left: '300px' }` would set a
+variable nothing reads — **the validator refuses it** rather than letting it through silently. To
+move something at a breakpoint use `x` / `y` / `rotate` (see Visual), which compose into
+`transform` and do tier — as do `width`, `height` and `zIndex`.
 
 **A row that overflows is a row where nobody said who gives up space.** Inside a `Row`, a child's
 `maxWidth` is not a promise: a flex item's automatic minimum size is its *content*, so an item whose
