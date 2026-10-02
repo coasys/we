@@ -44,7 +44,12 @@ const AD4M_REPO = 'coasys/ad4m';
  */
 function parsePairing(body) {
   const text = (body ?? '').replace(/<!--[\s\S]*?-->/g, '').replace(/^[ \t]*```[\s\S]*?^[ \t]*```/gm, '');
-  const lines = text.split(/\r?\n/).filter((l) => /^[ \t]*ad4m:/i.test(l) && /coasys\/ad4m/i.test(l));
+  // A line written as a list item is picked up too, so that it fails below rather than being
+  // ignored: `- ad4m: coasys/ad4m#1187` looks like a pairing to whoever wrote it, and silently
+  // using the pin would leave them believing the pull request is paired when it is not.
+  const lines = text
+    .split(/\r?\n/)
+    .filter((l) => /^[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+)?ad4m:/i.test(l) && /coasys\/ad4m/i.test(l));
   if (!lines.length) return { kind: 'none' };
   if (lines.length > 1) return { kind: 'invalid', detail: lines.map((l) => l.trim()).join(' | ') };
 

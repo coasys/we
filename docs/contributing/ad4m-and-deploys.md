@@ -87,9 +87,13 @@ To pair with a branch, tag or commit instead, write `ad4m: coasys/ad4m@<ref>`, f
 To try an ad4m change in WE with no WE change to go with it, open a draft WE PR with an empty commit
 (`git commit --allow-empty`) and the line. Close it when you are done.
 
+Write the line on its own, not as a list item. A mention elsewhere in the description — in a
+sentence, a table or inline code — is not a pairing.
+
 Editing the line does not rebuild the preview: push again, or use "Retry deploy" in Netlify. If the
 line names something that cannot be found, or is not in one of the two forms, the preview fails rather
-than quietly using the pin. So does a description with two lines.
+than quietly using the pin. So does a description with two lines, and a line written as a list item
+(`- ad4m: …`), which looks paired to whoever wrote it and otherwise would not be.
 
 ## An example, end to end
 
