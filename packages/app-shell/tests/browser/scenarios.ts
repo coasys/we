@@ -828,6 +828,39 @@ const voicesPopover = (): Scenario => {
 };
 
 /**
+ * The same vocabulary panel with exactly ONE person's reaction on each type.
+ *
+ * Its own scenario rather than a width of the other one, because the count is the whole subject: a
+ * summary saying "1 person" behind a press that reveals one row is three pieces of indirection in
+ * front of something shorter than the thing hiding it, so one reactor is shown outright and the
+ * summary is not drawn at all.
+ *
+ * That used to be a `total == 1` branch with the list written into both of its sides. It is now two
+ * conditions over one list, which is the same answer in half the characters — and the case exists
+ * because nothing else measures the one-person path: `signals:vocabulary` seeds two reactions per
+ * type, so every assertion about it was about the crowd.
+ */
+const oneReactor = (): Scenario => {
+  const base = vocabulary();
+  /*
+    The reader's own, so the row has something to say.
+
+    This scenario seeds no profiles, so a peer resolves to no name and their row renders as an
+    empty string — which is why `reactorDisclosure` asserts on "You" as well. One reaction, and it
+    is the reader's.
+  */
+  const only = [
+    { signalTypeId: 'st-like', value: 1, author: 'did:me' },
+    { signalTypeId: 'st-stars', value: 5, author: 'did:me' },
+  ];
+  // The reactions are a literal on the `$each`, as they are in the scenario this builds on — the
+  // display reads `row.signals`, so there is no table to seed.
+  const each = base.node as SchemaNode & { props: { items: Record<string, unknown>[] } };
+  each.props.items = [{ id: 'card-1', signals: only }];
+  return base;
+};
+
+/**
  * One card, and a way to change its display mode while it is on screen.
  *
  * `cardShell` draws its body through a single `CollapsedContent` whose props carry the mode,
@@ -881,6 +914,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'cards:counts': countControls,
   'tooltip:rich': richTooltip,
   'signals:vocabulary': vocabulary,
+  'signals:one-reactor': oneReactor,
   'inspector:provenance': provenanceLine,
   'ds:nested-interactive': nestedInteractive,
   'ds:token-offsets': tokenOffsets,
