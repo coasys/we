@@ -62,6 +62,17 @@ import {
   syncSpaceToParent,
 } from '@shared/spaceSync';
 import { isSystemDataset } from '@shared/systemDatasets';
+import {
+  approvalsOf,
+  compileTaskFlow,
+  createTaskFlowActions,
+  flowStateOf,
+  needsAgreement,
+  openMoveOf,
+  TASK_FLOW,
+  type TaskStateRule,
+} from '@shared/taskFlow';
+import { taskFlowLive } from '@shared/taskFlowLive';
 import { resolveSpaceTheme, type ThemeResolutionInput } from '@shared/themeResolution';
 import { copyText, deriveSlug } from '@shared/utils';
 import type { ViewSetting } from '@shared/viewResolution';
@@ -73,7 +84,7 @@ import {
   routableSections,
   viewSettings,
 } from '@shared/viewResolution';
-import type { AgentProfileSummary, DatasetRef, NewRecord } from '@we/backend-shared';
+import type { AgentProfileSummary, DatasetRef, FlowSnapshot, NewRecord } from '@we/backend-shared';
 import { displayName, trace } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
@@ -343,6 +354,10 @@ export interface TaskStateView {
   icon: string;
   retired: boolean;
   defined: boolean;
+  /** How many distinct people must agree before a task enters this state. 1 is a plain drop. */
+  approvals: number;
+  /** The involvement kind whose holders' agreement counts, or empty for any member's. */
+  approverKind: string;
 }
 
 export interface SpaceMetaUpdate {
@@ -881,8 +896,25 @@ export interface SpaceStore {
    */
   updateTaskState: (
     slug: string,
-    updates: { name?: string; icon?: string; color?: string; semantic?: TaskStateView['semantic'] },
+    updates: {
+      name?: string;
+      icon?: string;
+      color?: string;
+      semantic?: TaskStateView['semantic'];
+      approvals?: number;
+      approverKind?: string;
+    },
   ) => Promise<void>;
+  /**
+   * Whether this space's task states ask for agreement — some state needs more than one approval, or
+   * names whose approval counts. Where they do, a card dragged into such a state waits rather than
+   * moving, and the board shows what it is waiting on.
+   */
+  taskFlowEnabled: Accessor<boolean>;
+  /** Agree with the move a task is waiting on — the same as dragging it there yourself. */
+  approveTaskMove: (taskId: string) => Promise<void>;
+  /** Take back this agent's own vote on the move a task is waiting on. Never touches anybody else's. */
+  withdrawTaskMove: (taskId: string) => Promise<void>;
   /**
    * Withdraw a state from use, or bring it back. Never touches the work sitting in it. By slug: a
    * default has no record until this, or a reorder, adopts it.
@@ -2118,6 +2150,14 @@ export function SpaceStoreProvider(props: ParentProps) {
     ...boardOptimism.ports,
     offeredStates: () => offeredTaskStates(),
     notify: (message) => toastService.error(message),
+    // Wrapped for `offeredStates`' reason: the flow is worked out from the states, further down.
+    flow: {
+      enabled: () => taskFlow.enabled(),
+      needsAgreement: (slug) => needsAgreement(taskFlowRules().find((state) => state.slug === slug)),
+      stateOf: (taskId) => flowStateOf(taskFlowLive.view(), taskId),
+      move: (taskId, from, to) => taskFlow.move(taskId, from, to),
+      entryFor: (to) => taskFlow.entryFor(to),
+    },
     /*
       A staged suggestion for one property, dropped — see `BoardDeps.resolveSuggestion`. Checked
       against the proposal list first rather than rejected blind, since a reject on a record with no
@@ -2904,7 +2944,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     return [...bySlug.values()];
   }
 
-  async function loadTaskStates(): Promise<void> {
+  /**
+   * Read the space's own states. `quiet` for a re-read after somebody changed one: the list is
+   * already on screen, and dropping back to "not loaded" would flash every surface gated on it.
+   */
+  async function loadTaskStates(quiet = false): Promise<void> {
     const dataset = datasetStore.currentDataset()?.handle;
     const uuid = datasetStore.currentDataset()?.id;
     const ports = session.backendPorts()?.schemas;
@@ -2913,7 +2957,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       setTaskStatesLoaded(true);
       return;
     }
-    setTaskStatesLoaded(false);
+    if (!quiet) setTaskStatesLoaded(false);
     try {
       // Every space predates this entity, so none of them have its shape installed. `ensure` is the
       // diff-first idempotent path — a read in the common case — and the same step `loadShapes`
@@ -2931,6 +2975,9 @@ export function SpaceStoreProvider(props: ParentProps) {
           icon: r.icon || '',
           retired: Boolean(r.retired),
           defined: true,
+          // A record written before these existed has neither: one approval, from anybody.
+          approvals: approvalsOf({ slug: '', approvals: r.approvals }),
+          approverKind: r.approverKind || '',
         })),
       );
     } catch (error) {
@@ -2941,9 +2988,36 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
+  /*
+    Read on entering the space, then follow it.
+
+    The states used to be read on entering and after this agent's own edits, and never otherwise —
+    so another member's rename, colour or new state reached nobody until they next switched space.
+    That was a cosmetic gap until a state could ask for agreement: a member still holding the old
+    rule was offered Approve on a move their vote no longer counted toward.
+
+    The watch starts after the first read, which is what installs the entity's shape on a space that
+    predates it — a query against a shape the dataset does not hold has nothing to watch.
+  */
   createEffect(() => {
-    void datasetStore.currentDataset()?.id;
-    void loadTaskStates();
+    const dataset = datasetStore.currentDataset()?.handle;
+    const weSpace = datasetStore.isWeSpace();
+    let stopped = false;
+    let watch: { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+    onCleanup(() => {
+      stopped = true;
+      watch?.dispose();
+    });
+    void loadTaskStates().then(() => {
+      if (stopped || !dataset || !weSpace) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      watch = (TaskState as any).query(dataset, {}) as typeof watch;
+      watch
+        ?.subscribe(() => void (!stopped && loadTaskStates(true)))
+        .catch((error: unknown) => {
+          console.warn('SpaceStore: could not watch task states', error);
+        });
+    });
   });
 
   /**
@@ -2996,7 +3070,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     a.color === b.color &&
     a.icon === b.icon &&
     a.retired === b.retired &&
-    a.defined === b.defined;
+    a.defined === b.defined &&
+    a.approvals === b.approvals &&
+    a.approverKind === b.approverKind;
 
   /**
    * The states this space uses — its own records, and beneath them every default nobody has
@@ -3022,6 +3098,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       semantic: d.semantic as TaskStateView['semantic'],
       retired: false,
       defined: false,
+      approvals: 1,
+      approverKind: '',
     }));
     const states = [...own, ...virtual];
     /*
@@ -3058,6 +3136,149 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   /** The states a person should be offered — the same list, without the withdrawn ones. */
   const offeredTaskStates = createMemo<TaskStateView[]>(() => taskStates().filter((s) => !s.retired));
+
+  /*
+    The space's task states as a flow — see `shared/taskFlow.ts` for when a space has one and what it
+    compiles to.
+
+    Every state, withdrawn ones included: work still sits in a withdrawn state, and a flow that did
+    not know it could not move that work out of it.
+  */
+  const taskFlowRules = createMemo<TaskStateRule[]>(
+    () => taskStates().map((s) => ({ slug: s.slug, approvals: s.approvals, approverKind: s.approverKind })),
+    [],
+    { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+  );
+  const taskFlowDefinition = createMemo(() => compileTaskFlow(taskFlowRules()));
+  const taskFlowEnabled = (): boolean =>
+    Boolean(taskFlowDefinition() && session.backendPorts()?.flows && datasetStore.isWeSpace());
+  const [taskFlowSnapshot, setTaskFlowSnapshot] = createSignal<FlowSnapshot | null>(null);
+
+  const taskFlow = createTaskFlowActions({
+    dataset: () => datasetStore.currentDataset()?.handle,
+    port: () => (taskFlowEnabled() ? session.backendPorts()?.flows : undefined),
+    states: () => taskFlowRules(),
+    snapshot: () => taskFlowSnapshot(),
+    me: () => session.me()?.did,
+  });
+
+  /*
+    Keep the definition installed, and watch the runs.
+
+    Keyed on the space and the definition's text, so a recompute of the states that changes nothing
+    about agreement — a rename, a colour — neither reinstalls nor re-subscribes.
+
+    **Installed only by whoever administers the space.** The definition is shared: every member's
+    board derives from the one copy the space holds, so one person owns writing it — the same person
+    the space's other shared settings answer to. A member's device only watches. The port diffs
+    before writing, so an administrator opening a space whose definition is already current writes
+    nothing.
+  */
+  const taskFlowKey = createMemo(() => {
+    const definition = taskFlowDefinition();
+    const id = datasetStore.currentDataset()?.id;
+    return definition && id && taskFlowEnabled() ? `${id}\u0000${JSON.stringify(definition)}` : '';
+  });
+  createEffect(() => {
+    const key = taskFlowKey();
+    setTaskFlowSnapshot(null);
+    if (!key) return;
+    const port = session.backendPorts()?.flows;
+    const dataset = datasetStore.currentDataset()?.handle;
+    const definition = untrack(taskFlowDefinition);
+    if (!port || !dataset || !definition) return;
+    let stop: (() => void) | undefined;
+    let cancelled = false;
+    onCleanup(() => {
+      cancelled = true;
+      stop?.();
+    });
+    void (async () => {
+      if (untrack(canAdministerCurrentSpace)) {
+        try {
+          await port.install(dataset, definition);
+        } catch (error) {
+          console.error('SpaceStore: could not install the task flow', error);
+          toastService.error('Could not save which moves need agreement');
+        }
+      }
+      if (cancelled) return;
+      try {
+        const unsubscribe = await port.watch(dataset, TASK_FLOW, (snapshot) => {
+          if (!cancelled) setTaskFlowSnapshot(snapshot);
+        });
+        if (cancelled) unsubscribe();
+        else stop = unsubscribe;
+      } catch (error) {
+        console.warn('SpaceStore: could not watch the task flow', error);
+      }
+    })();
+  });
+
+  // What the board draws from — the snapshot and the rules, together, or nothing.
+  createEffect(() => {
+    const snapshot = taskFlowSnapshot();
+    const rules = Object.fromEntries(
+      taskFlowRules().map((rule) => [
+        rule.slug,
+        { approvals: approvalsOf(rule), approverKind: rule.approverKind ?? '' },
+      ]),
+    );
+    taskFlowLive.set(taskFlowKey() && snapshot ? { snapshot, rules } : null);
+  });
+  onCleanup(() => taskFlowLive.set(null));
+
+  /**
+   * Write `status` to follow a move that happened, for every surface that reads it rather than the run.
+   * Whoever's action made the move writes it, so it is written once and by somebody who saw it happen.
+   */
+  async function mirrorTaskStatus(taskId: string, slug: string): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    const Task = p ? getEntityForDataset('TaskBlock', p) : undefined;
+    if (!p || !Task) return;
+    const task = (await Task.findOne(p, { where: { id: taskId } })) as
+      { status?: string; save(): Promise<unknown> } | null | undefined;
+    if (!task || task.status === slug) return;
+    task.status = slug;
+    const started = performance.now();
+    await task.save();
+    trace('flows', 'mirror', { taskId, slug, ms: Math.round(performance.now() - started) });
+  }
+
+  /**
+   * Agree with the move a task is waiting on — which is asking for the same move, so it is exactly
+   * what dragging the card there would do.
+   */
+  async function approveTaskMove(taskId: string): Promise<void> {
+    const view = taskFlowLive.view();
+    const move = openMoveOf(view, taskId);
+    const from = flowStateOf(view, taskId);
+    if (!move || !from) return;
+    try {
+      const outcome = await taskFlow.move(taskId, from, move.to);
+      if (outcome === 'moved' || outcome === 'already-there') await mirrorTaskStatus(taskId, move.to);
+      else if (outcome === 'stalled') {
+        toastService.error('That card is stuck between two moves — one of them has to be withdrawn');
+      } else if (outcome === 'slow') {
+        // Not a failure: the vote is usually counted after the call gives up waiting, and the board
+        // moves the card when it is.
+        toastService.info('The node is still counting your approval — the card will move when it has');
+      }
+    } catch (error) {
+      console.error('SpaceStore: could not agree with that move', error);
+      toastService.error('Could not agree with that move');
+    }
+  }
+
+  /** Take back this agent's vote on the move a task is waiting on. */
+  async function withdrawTaskMove(taskId: string): Promise<void> {
+    try {
+      await taskFlow.withdraw(taskId);
+    } catch (error) {
+      console.error('SpaceStore: could not withdraw that vote', error);
+      toastService.error('Could not withdraw that');
+    }
+  }
 
   /*
     Hand the record layer the vocabularies this community owns.
@@ -3234,7 +3455,14 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   async function updateTaskState(
     slug: string,
-    updates: { name?: string; icon?: string; color?: string; semantic?: TaskStateView['semantic'] },
+    updates: {
+      name?: string;
+      icon?: string;
+      color?: string;
+      semantic?: TaskStateView['semantic'];
+      approvals?: number;
+      approverKind?: string;
+    },
   ): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
     if (!p || !slug || !updates) return;
@@ -3248,6 +3476,13 @@ export function SpaceStoreProvider(props: ParentProps) {
       if (updates.semantic !== undefined && TASK_STATE_SEMANTICS.includes(updates.semantic)) {
         record.semantic = updates.semantic;
       }
+      /*
+        What agreement a state asks for. Changing either is what turns the space's states into a flow
+        or back — nothing else has to be switched — and the flow's definition follows from the states
+        on the next read, installed by whoever administers the space.
+      */
+      if (updates.approvals !== undefined) record.approvals = approvalsOf({ slug, approvals: updates.approvals });
+      if (updates.approverKind !== undefined) record.approverKind = updates.approverKind;
       await record.save();
       await loadTaskStates();
       await syncTaskStateHint();
@@ -5155,6 +5390,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     createTaskState,
     updateTaskState,
     setTaskStateRetired,
+    taskFlowEnabled,
+    approveTaskMove,
+    withdrawTaskMove,
     reorderTaskStates,
     setInvolvement: involvements.setInvolvement,
     respondTo: involvements.respond,

@@ -65,6 +65,7 @@ export {
 export { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './languageModelPort';
 export { connectToLocalExecutor, createLocalAd4mConnector, type LocalExecutorConnection } from './localExecutor';
 export { createAd4mTranscriptionPort } from './transcriptionAdapter';
+export { createAd4mFlowPort, FLOW_NAMESPACE } from './flowPort';
 export {
   createAd4mInterpretationPort,
   runtimeSupportsAutoProcessing,
