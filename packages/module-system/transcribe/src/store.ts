@@ -229,6 +229,32 @@ export interface ProposalView {
 }
 
 /**
+ * A decision about one suggestion that would decide others with it, held until somebody confirms.
+ *
+ * Connections are why it exists. A pass that connects a new task to an old one stages two records
+ * that only make sense together, and the executor decides each alone: rejecting the task deletes
+ * every link pointing at it, cutting an accepted connection down to one end, and accepting the
+ * connection alone keeps a claim about a task nobody has agreed exists. So the two are decided
+ * together — and because that decides something the reader did not press, it is said first.
+ *
+ * The sentences are composed here rather than in the schema because they turn on counts and names a
+ * schema expression cannot pluralise.
+ */
+export interface TiedDecision {
+  kind: 'accept' | 'reject';
+  /** The suggestion that was pressed. */
+  id: string;
+  /** Other suggestions decided with it — accepted beside it, or discarded with it. */
+  staged: string[];
+  /** Connections already accepted that would be left with one end, and are removed with it. */
+  agreed: { id: string; entity: string }[];
+  title: string;
+  body: string;
+  detail: string;
+  confirmLabel: string;
+}
+
+/**
  * Field names worth leading with, most identifying first. Anything else follows in map order.
  *
  * `label` is here because two models genuinely call their title that — `EmbedBlock` and
@@ -456,6 +482,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * panel again with two titlebars.
    */
   const [extractionOpen, setExtractionOpen] = signal(false);
+  /** A decision waiting on a confirmation because it would decide others too — see `TiedDecision`. */
+  const [tiedDecision, setTiedDecision] = signal<TiedDecision | null>(null);
+  /** Whether a confirmed tied decision is still being written. */
+  const [tiedBusy, setTiedBusy] = signal(false);
 
   /*
     How much of the transcript is loaded, and which end it is anchored to.
@@ -1143,6 +1173,131 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * predicate is without importing the entity layer it is deliberately not coupled to.
    */
   const AMENDMENT_PREDICATE = 'we://extraction_amendment';
+
+  /** What a suggestion is called, for a sentence about it — its leading field, quoted. */
+  function proposalName(id: string): string {
+    const proposal = allProposals().find((p) => p.id === id);
+    const field = proposal?.fields.find((f) => SUMMARY_FIELDS.includes(f.name)) ?? proposal?.fields[0];
+    return field?.value ? `“${cut(String(field.value), 60)}”` : 'a suggestion';
+  }
+
+  /** "“A”", "“A” and “B”", "“A”, “B” and “C”". */
+  function listed(names: string[]): string {
+    return names.length < 2 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  }
+
+  /**
+   * What deciding `id` would decide besides — `null` when nothing, or when the host cannot say.
+   *
+   * Accepting a connection takes its ends that are still suggestions with it. Discarding a record
+   * takes every connection joining it: the staged ones are discarded, the accepted ones removed.
+   * Accepting a record, or discarding a connection, decides nothing else — either stands alone.
+   */
+  async function tiesOf(id: string, kind: 'accept' | 'reject'): Promise<TiedDecision | null> {
+    if (typeof interpretation?.connections !== 'function') return null;
+    let ties: Awaited<ReturnType<NonNullable<typeof interpretation.connections>>> = null;
+    try {
+      ties = await interpretation.connections(id, callTarget());
+    } catch (error) {
+      // Deciding alone is what happened before this existed, and it is still a decision.
+      console.warn('transcribe: could not read what a suggestion is connected to —', error);
+      return null;
+    }
+    if (!ties) return null;
+    const unconfirmed = new Set(unconfirmedIds());
+
+    if (kind === 'accept') {
+      const staged = ties.ends.filter((end) => unconfirmed.has(end));
+      if (!staged.length) return null;
+      const names = staged.map(proposalName);
+      return {
+        kind,
+        id,
+        staged,
+        agreed: [],
+        title: 'Accept what this connects, too?',
+        body:
+          staged.length === 1
+            ? `This connects ${names[0]}, which nobody has accepted yet. A connection needs both of its ends, so accepting it accepts ${names[0]} as well.`
+            : `This connects ${listed(names)}, which nobody has accepted yet. A connection needs both of its ends, so accepting it accepts them as well.`,
+        detail: '',
+        confirmLabel: staged.length === 1 ? 'Accept both' : `Accept all ${staged.length + 1}`,
+      };
+    }
+
+    const staged = ties.connections.filter((c) => unconfirmed.has(c.id)).map((c) => c.id);
+    const agreed = ties.connections.filter((c) => !unconfirmed.has(c.id));
+    const total = staged.length + agreed.length;
+    if (!total) return null;
+    const name = proposalName(id);
+    return {
+      kind,
+      id,
+      staged,
+      agreed,
+      title: total === 1 ? 'Discard its connection, too?' : 'Discard its connections, too?',
+      body:
+        total === 1
+          ? `A connection joins ${name} to something else. A connection needs both of its ends, so discarding ${name} discards the connection as well.`
+          : `${total} connections join ${name} to other things. A connection needs both of its ends, so discarding ${name} discards them as well.`,
+      detail: !agreed.length
+        ? ''
+        : agreed.length === total
+          ? total === 1
+            ? 'That connection has already been accepted, and will be removed.'
+            : 'They have already been accepted, and will be removed.'
+          : `${agreed.length} of them ${agreed.length === 1 ? 'has' : 'have'} already been accepted, and will be removed.`,
+      confirmLabel: 'Discard',
+    };
+  }
+
+  /**
+   * Keep a suggestion — as proposed, or as edited. The body of `acceptProposal`, which asks first
+   * whether the decision is tied to another.
+   */
+  async function keep(id: string): Promise<void> {
+    if (!interpretation) return;
+    const edited = editingProposal() === id ? changedFields(id) : null;
+    /*
+      "Accept all" on a change comes through here too, so the same read has to happen first —
+      and only for a change: a *create* has no previous values, and reading a record that does not
+      exist yet would be a round trip to learn nothing.
+    */
+    const proposal = allProposals().find((p) => p.id === id);
+    const amending = proposal?.kind === 'update' ? proposal : null;
+    const before = amending ? await readBeforeChange(amending) : null;
+    await interpretation.accept(id, undefined, callTarget());
+    const entity = proposal?.entity;
+    forgetProposal(id);
+    if (amending) {
+      await recordAmendments(
+        amending,
+        amending.fields.map((f) => f.name),
+        before,
+        edited,
+      );
+    }
+    // Only if the draft belonged to *this* card. Keeping one suggestion must not throw away what
+    // was typed into another one that happens to be open beside it.
+    if (editingProposal() === id) closeProposalEdit();
+    if (!edited || !entity || !updateEntity) return;
+    try {
+      // The call's space, exactly as the accept just used — a call outlives the space on screen.
+      await updateEntity(entity, id, edited, callTarget());
+    } catch (error) {
+      console.warn('transcribe: kept the suggestion but could not apply the edit —', error);
+    }
+  }
+
+  /** Drop a suggestion. The body of `rejectProposal`, which asks first. */
+  async function drop(id: string): Promise<void> {
+    if (!interpretation) return;
+    await interpretation.reject(id, undefined, callTarget());
+    forgetProposal(id);
+    // Whatever was typed into it went with it. Leaving the draft open would leave a card's worth
+    // of edits attached to an id that no longer resolves.
+    if (editingProposal() === id) closeProposalEdit();
+  }
 
   /**
    * The record a change is about, as it stands *before* the change is applied.
@@ -2956,6 +3111,15 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * See {@link pendingIds} for why this is a union across calls rather than keyed by one.
      */
     unconfirmedIds: state(unconfirmedIds, 'Records a pass made that nobody has kept yet, by id.'),
+    /**
+     * An accept or discard that would decide other suggestions too, waiting on a confirmation — or
+     * `null`. Drawn by the module's own overlay; see `TiedDecision`.
+     */
+    tiedDecision: state(
+      tiedDecision,
+      'A decision waiting on confirmation because it decides others too — { kind, title, body, detail, confirmLabel } — or null.',
+    ),
+    tiedBusy: state(tiedBusy, 'Whether a confirmed tied decision is still being written.'),
     /** Agreed records carrying a suggested change — mark them, never fade or hide them. */
     changedIds: state(changedIds, 'Agreed records carrying a suggested change, by id.'),
     /**
@@ -3174,36 +3338,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      */
     acceptProposal: action(async (id: string) => {
       if (!interpretation) return;
-      const edited = editingProposal() === id ? changedFields(id) : null;
-      /*
-        "Accept all" on a change comes through here too, so the same read has to happen first —
-        and only for a change: a *create* has no previous values, and reading a record that does not
-        exist yet would be a round trip to learn nothing.
-      */
-      const proposal = allProposals().find((p) => p.id === id);
-      const amending = proposal?.kind === 'update' ? proposal : null;
-      const before = amending ? await readBeforeChange(amending) : null;
-      await interpretation.accept(id, undefined, callTarget());
-      const entity = proposal?.entity;
-      forgetProposal(id);
-      if (amending) {
-        await recordAmendments(
-          amending,
-          amending.fields.map((f) => f.name),
-          before,
-          edited,
-        );
-      }
-      // Only if the draft belonged to *this* card. Keeping one suggestion must not throw away what
-      // was typed into another one that happens to be open beside it.
-      if (editingProposal() === id) closeProposalEdit();
-      if (!edited || !entity || !updateEntity) return;
-      try {
-        // The call's space, exactly as the accept just used — a call outlives the space on screen.
-        await updateEntity(entity, id, edited, callTarget());
-      } catch (error) {
-        console.warn('transcribe: kept the suggestion but could not apply the edit —', error);
-      }
+      // A connection whose ends are still suggestions is decided with them, and asked about first.
+      const tied = await tiesOf(id, 'accept');
+      if (tied) return void setTiedDecision(tied);
+      await keep(id);
     }, 'Keeps a suggestion, as proposed or as edited.'),
     /** Open one suggestion for editing, seeded with what the model proposed. */
     editProposal: action((id: string) => {
@@ -3243,12 +3381,47 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     }, 'Dismisses one suggested change, leaving the record as it was.'),
     rejectProposal: action(async (id: string) => {
       if (!interpretation) return;
-      await interpretation.reject(id, undefined, callTarget());
-      forgetProposal(id);
-      // Whatever was typed into it went with it. Leaving the draft open would leave a card's worth
-      // of edits attached to an id that no longer resolves.
-      if (editingProposal() === id) closeProposalEdit();
+      // A record that connections join takes them with it, and is asked about first.
+      const tied = await tiesOf(id, 'reject');
+      if (tied) return void setTiedDecision(tied);
+      await drop(id);
     }, 'Drops a suggestion.'),
+    /**
+     * Carry out the decision held in `tiedDecision`, with everything it is tied to.
+     *
+     * Ends before the connection on an accept, so there is never a moment where an accepted claim
+     * names a record that is still only a suggestion. Connections before the record on a discard,
+     * for the same reason in reverse: the executor's own discard would otherwise cut them to one end
+     * first. An accepted connection is not a suggestion and cannot be rejected, so it is removed.
+     */
+    confirmTiedDecision: action(async () => {
+      const decision = tiedDecision();
+      if (!decision || tiedBusy()) return;
+      setTiedBusy(true);
+      try {
+        if (decision.kind === 'accept') {
+          for (const end of decision.staged) await keep(end);
+          await keep(decision.id);
+        } else {
+          for (const connection of decision.staged) await drop(connection);
+          if (decision.agreed.length && typeof records?.remove === 'function') {
+            for (const connection of decision.agreed)
+              await records.remove(connection.entity, connection.id, callTarget());
+          }
+          await drop(decision.id);
+        }
+        setTiedDecision(null);
+      } catch (error) {
+        console.warn('transcribe: a tied decision did not complete —', error);
+        notify?.('error', 'Could not finish that — some of it may not have been saved.');
+      } finally {
+        setTiedBusy(false);
+      }
+    }, 'Carries out the decision waiting in tiedDecision, with everything tied to it.'),
+    /** Put the held decision down without making it. */
+    cancelTiedDecision: action(() => {
+      if (!tiedBusy()) setTiedDecision(null);
+    }, 'Puts the decision waiting in tiedDecision down without making it.'),
     /**
      * Write something a person typed into the transcript, at the moment they typed it.
      *

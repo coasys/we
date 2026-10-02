@@ -57,7 +57,11 @@ export function toNeutralManifest(entries: EntityManifestEntry[], opts?: { versi
           warnings.push(`dropped relation "${entry.name}.${p.name}" → unknown entity "${p.relatedEntity}"`);
           continue;
         }
-        relations[p.name] = { target: p.relatedEntity, cardinality: p.isCollection ? 'many' : 'one' };
+        relations[p.name] = {
+          target: p.relatedEntity,
+          cardinality: p.isCollection ? 'many' : 'one',
+          ...(p.interpretationHint !== undefined ? { interpretationHint: p.interpretationHint } : {}),
+        };
       } else {
         properties[p.name] = {
           type: SCALAR[p.type],

@@ -574,10 +574,84 @@ describe('canvasSeed', () => {
     expect(nodes).toHaveLength(1);
   });
 
-  it('asks for no connections when nothing is placed', async () => {
+  it('draws a connection to a card still in the tray', async () => {
+    // The tray is on the canvas — it is where everything a call extracts lands — so a connection the
+    // extraction drew between a placed card and one nobody has positioned yet is a line between two
+    // cards somebody can see. Counting only placed cards meant it was never drawn, in freeform or tree.
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
+      CollectionBlock: [
+        { id: 'c1', title: 'Placed' },
+        { id: 'c2', title: 'In the tray' },
+      ],
+      Relationship: [
+        { id: 'r1', label: 'depends on', source: 'c1', sourceType: 'CollectionBlock', target: 'c2' },
+        { id: 'r2', label: 'blocks', source: 'c2', sourceType: 'CollectionBlock', target: 'c1' },
+      ],
+    });
+
+    const { edges } = await canvasSeed().seed({ canvas: 'b1', connections: 'Relationship' }, ctx);
+
+    expect(edges.map((edge) => edge.label).sort()).toEqual(['blocks', 'depends on']);
+  });
+
+  it('addresses an end by the card drawn, not the type the connection stored', async () => {
+    // An extraction pass writes whatever class name the model spelled. Trusted over the drawn card,
+    // a misspelt one addressed a node that does not exist and the layout dropped the line unseen.
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 },
+        { id: 'p2', node: 'c2', nodeType: 'CollectionBlock', x: 200, y: 0 },
+      ],
+      CollectionBlock: [
+        { id: 'c1', title: 'One' },
+        { id: 'c2', title: 'Two' },
+      ],
+      Relationship: [
+        { id: 'r1', label: 'contradicts', source: 'c1', sourceType: 'Collection', target: 'c2', targetType: 'Task' },
+      ],
+    });
+
+    const { edges, nodes } = await canvasSeed().seed({ canvas: 'b1', connections: 'Relationship' }, ctx);
+
+    expect(edges).toHaveLength(1);
+    expect(nodes.map((node) => node.id)).toEqual(expect.arrayContaining([edges[0].source, edges[0].target]));
+  });
+
+  it('marks a connection still only suggested, and leaves off one put away', async () => {
+    // An extraction pass stages connections as well as cards, so a line answers to the same two flags:
+    // drawn as the draft it is while nobody has agreed to it, and gone when suggestions are hidden.
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 },
+        { id: 'p2', node: 'c2', nodeType: 'CollectionBlock', x: 200, y: 0 },
+      ],
+      CollectionBlock: [
+        { id: 'c1', title: 'One' },
+        { id: 'c2', title: 'Two' },
+      ],
+      Relationship: [
+        { id: 'r1', label: 'depends on', source: 'c1', target: 'c2' },
+        { id: 'r2', label: 'blocks', source: 'c2', target: 'c1' },
+      ],
+    });
+
+    const shown = await canvasSeed().seed(
+      { canvas: 'b1', connections: 'Relationship', pending: ['r1'], changed: ['r2'] },
+      ctx,
+    );
+    expect(shown.edges.find((edge) => edge.label === 'depends on')?.data).toMatchObject({ pending: true });
+    expect(shown.edges.find((edge) => edge.label === 'blocks')?.data).toMatchObject({ changed: true });
+    expect(shown.edges.find((edge) => edge.label === 'blocks')?.data).not.toHaveProperty('pending');
+
+    const narrowed = await canvasSeed().seed({ canvas: 'b1', connections: 'Relationship', hidden: ['r1'] }, ctx);
+    expect(narrowed.edges.map((edge) => edge.label)).toEqual(['blocks']);
+  });
+
+  it('asks for no connections when nothing is on the canvas', async () => {
     // Nothing to connect, and the query would be `source: []` — which matches nothing, so asking is
     // a round trip for a known answer.
-    const { context: ctx, asked } = context({ CollectionBlock: [{ id: 'c1', title: 'One' }] });
+    const { context: ctx, asked } = context({});
 
     await canvasSeed().seed({ canvas: 'b1', connections: 'Relationship' }, ctx);
 

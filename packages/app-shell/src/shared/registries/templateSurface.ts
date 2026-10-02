@@ -63,6 +63,7 @@ export const CAPABILITY_GROUPS = {
   'runtime-admin': 'Administer the backend — trust, network, AI models, the database',
   editor: 'Drive the template and theme editing surface',
   'host-layout': "Move and resize the app's own panels and docks",
+  clipboard: 'Put text on your clipboard when you ask it to',
 } as const;
 
 export type CapabilityGroup = keyof typeof CAPABILITY_GROUPS;
@@ -113,6 +114,13 @@ export const CHROME_TIER: readonly CapabilityGroup[] = [
   'session',
   'runtime-admin',
   'editor',
+  /*
+    Chrome only, for now. Harmless in itself, but a template able to write to the clipboard can show
+    one thing beside its copy button and put another there — what you paste into a terminal is not
+    what you read. A community's template is the one whose author you have not vetted, so it waits
+    until somebody decides it should have it.
+  */
+  'clipboard',
 ];
 
 /** Host wiring: never in any template bag, at any tier. */
@@ -790,6 +798,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // what this agent already holds. A space's template offering a drop target is the product.
     bringIn: action('content'),
     updateRecordField: action('content'),
+    // Follows a content write — a connection's label — made through `record.update`.
+    rekeyConnection: action('content'),
     setRecordEntity: action('content'),
     setRecordField: action('content'),
     setRecordPlace: action('content'),
@@ -1286,6 +1296,11 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     create: action('content'),
     update: action('content'),
     delete: destructive('content'),
+  },
+
+  /** The host's copy action — see `clipboard` in `TemplateProvider`. */
+  clipboard: {
+    copy: action('clipboard'),
   },
 };
 

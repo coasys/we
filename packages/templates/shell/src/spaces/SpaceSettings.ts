@@ -1123,6 +1123,26 @@ const extractionTargetsSection: SchemaNode = {
                 },
               ],
             },
+            /*
+              What a connection can reach, said where the choice is made.
+
+              A pass is shown the existing records of the models it is looking for and no others, so a
+              connection can only join things of those models. Relationship on its own therefore finds
+              nothing to connect, every pass, with nothing anywhere saying why.
+            */
+            {
+              type: '$if',
+              props: {
+                condition: { $: "'Relationship' in spaceStore.extractionTargets" },
+                then: {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint' },
+                  children: [
+                    'Relationship connects things of the other models switched on here, new or already found. On its own it has nothing to connect.',
+                  ],
+                },
+              },
+            },
           ],
         },
         /*

@@ -190,6 +190,17 @@ export interface RelationSchema {
    * own fields are genuinely never read.
    */
   polymorphic?: boolean;
+
+  /**
+   * What an LLM is told about this relation when the entity is an extraction target — the
+   * counterpart of {@link PropertySchema.interpretationHint}, and prompt payload for the same reason.
+   *
+   * What it must carry that the declaration cannot is *which way round* the relation reads, and
+   * when to fill it. A relation's target class and cardinality reach the prompt on their own; that
+   * `source` is the broader end of a connection and `target` the narrower one does not, and without
+   * it a model connecting a goal to its prerequisites picks a direction by coin toss.
+   */
+  interpretationHint?: string;
 }
 
 /**

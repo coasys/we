@@ -590,6 +590,13 @@ export const storeEntries: StoreEntry[] = [
     state: {},
     actions: ['create', 'update', 'delete'],
   },
+  // Pseudo-store for the clipboard.copy $action, wired the same way as `record` — documented in
+  // the descriptions below, since nothing else describes it.
+  {
+    name: 'clipboard',
+    state: {},
+    actions: ['copy'],
+  },
 ];
 
 /** Generate the stores text fragment from structured data */
@@ -603,6 +610,12 @@ export function generateStoresText(entries: StoreEntry[]): string {
   ];
 
   const descriptions: Record<string, { state: Record<string, string>; actions: Record<string, string> }> = {
+    clipboard: {
+      state: {},
+      actions: {
+        copy: "(text, what?: string): copies text to the clipboard and confirms with a toast — '<what> copied', or 'Text copied'. A non-string is copied as JSON. For a copy button beside something long: a prompt, a log, an id. Host chrome only (the `clipboard` capability) — a space template's bag does not have it",
+      },
+    },
     sessionStore: {
       state: {
         client: 'the backend client handle | undefined',
@@ -1312,6 +1325,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "(payload): takes a `we-drop-zone`'s dropped detail ({ items }) into the space on screen as posts — `onDropped: { $action: 'recordStore.bringIn', args: [{ $: 'event.detail' }] }`. Your own note or post becomes a copy (a post from another shared space records sourceRef/sourceName, shown as 'Also posted in …'); anybody else's post or block becomes a new post quoting it through an EmbedBlock carrying sourceAuthor and sourceName. Things already in this space are ignored. Each new post shows a toast with Undo",
         updateRecordField:
           "(entity: string, id: string, field: string, value): changes one property of one record — the inspector's edit mode. Takes the field name so one action serves every control; the value is coerced by the field's declared kind and a control's { detail } is unwrapped. An empty string is not written, so a text field cannot be cleared this way",
+        rekeyConnection:
+          "(id: string): rewrites a Relationship's dedup key (`connection`) from its label and both ends' titles, which is how an extraction pass reads the structure people drew. updateRecordField does it already; call this after saving a Relationship's label through record.update",
         setSpaceTypeColor:
           "(spaceId: string, nodeType: string, color): sets the colour every card of one type is drawn in across the whole space — the community's key, which a canvas falls back to where it has no colour of its own for that type. Pass spaceStore.currentSpace.id. Read the result back with a TypeStyle query scoped { anchor: 'Space', via: 'typeStyles', anchorId: spaceStore.currentSpace.id }. An empty colour clears it",
         createOnCanvas:
@@ -1368,9 +1383,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
         hintEditorDirty:
           'whether the open hint editor holds edits that closing would lose. What a discard guard reads: the rows come from the model’s declaration, so a schema has no set of local names it could test. Compares against the state the editor opened in, so an editor somebody only read closes without a question',
         hintEntities:
-          "{ entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock) plus the space's own shapes",
+          "{ entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock, Relationship) plus the space's own shapes",
         extractionTargets:
-          'string[] — entity names an AI extraction pass may write in this space: core vocabulary marked extractable (TaskBlock, EventBlock) plus every adopted shape that is. What COULD be found here, not what a given pass will look for — a call may narrow it and the space may have auto-extraction off. Drive a findings list off this rather than off any per-call selection, so a card shows a record another member extracted',
+          'string[] — entity names an AI extraction pass may write in this space: core vocabulary marked extractable (TaskBlock, EventBlock, Relationship — a connection, drawn as a line rather than a card) plus every adopted shape that is. What COULD be found here, not what a given pass will look for — a call may narrow it and the space may have auto-extraction off. Drive a findings list off this rather than off any per-call selection, so a card shows a record another member extracted',
         relationshipTargets:
           "{ label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent",
         identityOptions:

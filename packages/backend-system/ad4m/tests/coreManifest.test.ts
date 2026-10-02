@@ -86,6 +86,19 @@ describe('core manifest ↔ hand-written classes', () => {
     expect(fromManifest, REGENERATE).toEqual(original);
   });
 
+  /*
+    The comparison above holds the two compilers to each other, which is no help if both drop the same
+    thing. A relation's hint is the newest field on that path — and the one an extraction pass needs to
+    tell a connection's parent end from its child end, so a tree it builds is not half upside down.
+  */
+  it('carries a relation’s hint into the shape the executor reads', () => {
+    for (const cls of [Classes.Relationship, compiled.Relationship]) {
+      const properties = (cls as unknown as Shaped).generateSHACL().shape?.properties ?? [];
+      const source = properties.find((p) => p.name === 'source');
+      expect(source?.interpretationHint).toContain('broader');
+    }
+  });
+
   it.each(entityNames)('%s starts new instances with the same field values', (name) => {
     const Original = (Classes as Record<string, unknown>)[name] as new () => Record<string, unknown>;
     const FromManifest = compiled[name] as unknown as new () => Record<string, unknown>;

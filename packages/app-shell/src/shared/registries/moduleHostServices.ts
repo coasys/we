@@ -576,6 +576,11 @@ export function createModuleStoreDeps(framework: {
         if (!dataset || !services.interpretation) return false;
         return services.interpretation.reject(dataset, id, property);
       },
+      connections: async (id, target) => {
+        const dataset = targeted(target);
+        if (!dataset || !services.interpretation?.connections) return null;
+        return services.interpretation.connections(dataset, id);
+      },
     },
     // `secrets` is built per module by the registry, which knows the module's group.
   };

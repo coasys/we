@@ -339,6 +339,16 @@ export function overlayKind(raw: unknown): 'create' | 'update' {
 const REFERENCE_PREDICATES = new Set(['we://relationship_source', 'we://relationship_target', 'we://placed_node']);
 
 /**
+ * The two ends of a connection, and the entity it is stored as — what `connections` reads.
+ *
+ * Spelled here for the reason {@link REFERENCE_PREDICATES} is: the adapter reads links, and asking
+ * the manifest which relations are a connection's ends would couple it to the entity layer to learn
+ * two strings that have never changed.
+ */
+const CONNECTION_ENDS = ['we://relationship_source', 'we://relationship_target'];
+const CONNECTION_ENTITY = 'Relationship';
+
+/**
  * Refuse to commit a proposal that points outside this perspective.
  *
  * ## What is being defended against
@@ -1070,6 +1080,21 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       const perspective = proxy(dataset);
       const predicate = property ? await toPredicate(perspective, property) : undefined;
       return alreadyResolvedIsFalse(() => perspective.rejectInterpretation(id, predicate));
+    },
+
+    async connections(dataset: DatasetHandle, id: string) {
+      const perspective = proxy(dataset);
+      const [ends, joining] = await Promise.all([
+        Promise.all(CONNECTION_ENDS.map((predicate) => perspective.get(new LinkQuery({ source: id, predicate })))),
+        Promise.all(CONNECTION_ENDS.map((predicate) => perspective.get(new LinkQuery({ target: id, predicate })))),
+      ]);
+      return {
+        ends: [...new Set(ends.flat().map((link) => link.data.target))],
+        connections: [...new Set(joining.flat().map((link) => link.data.source))].map((source) => ({
+          id: source,
+          entity: CONNECTION_ENTITY,
+        })),
+      };
     },
 
     async onProposalsChanged(dataset: DatasetHandle, cb: () => void): Promise<() => void> {

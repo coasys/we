@@ -2399,6 +2399,7 @@ export const contextData: ContextData = {
         'dropOnCanvas',
         'bringIn',
         'updateRecordField',
+        'rekeyConnection',
         'removeFromCanvas',
         'deleteRecords',
         'undoCanvas',
@@ -3000,6 +3001,7 @@ export const contextData: ContextData = {
       ],
     },
     { name: 'record', state: {}, actions: ['create', 'update', 'delete'] },
+    { name: 'clipboard', state: {}, actions: ['copy'] },
   ],
   shellComponents: [
     'AiPanel',
@@ -3361,6 +3363,7 @@ export const contextData: ContextData = {
         'kernel:interpretation',
         'dock',
         'slot:call-controls',
+        'slot:overlay',
       ],
       members: [
         { name: 'acceptProposal', kind: 'action', doc: 'Keeps a suggestion, as proposed or as edited.' },
@@ -3393,6 +3396,11 @@ export const contextData: ContextData = {
         },
         { name: 'callOnScreenLive', kind: 'state', doc: 'Somebody is in the call the address names right now.' },
         { name: 'cancelProposalEdit', kind: 'action', doc: 'Closes the open draft, discarding what was typed.' },
+        {
+          name: 'cancelTiedDecision',
+          kind: 'action',
+          doc: 'Puts the decision waiting in tiedDecision down without making it.',
+        },
         { name: 'canEditProposals', kind: 'state', doc: 'Whether an edited suggestion can be written back on accept.' },
         {
           name: 'canInstallModel',
@@ -3406,6 +3414,11 @@ export const contextData: ContextData = {
           name: 'collectionId',
           kind: 'state',
           doc: 'The record this call’s transcript lives in, or null until something has been said.',
+        },
+        {
+          name: 'confirmTiedDecision',
+          kind: 'action',
+          doc: 'Carries out the decision waiting in tiedDecision, with everything tied to it.',
         },
         { name: 'dismissChange', kind: 'action', doc: 'Dismisses one suggested change, leaving the record as it was.' },
         { name: 'editingProposal', kind: 'state', doc: 'The suggestion open for editing, or empty when none is.' },
@@ -3568,6 +3581,12 @@ export const contextData: ContextData = {
           name: 'thresholdPercent',
           kind: 'state',
           doc: 'The speech-onset threshold as a CSS width, to mark on the same meter.',
+        },
+        { name: 'tiedBusy', kind: 'state', doc: 'Whether a confirmed tied decision is still being written.' },
+        {
+          name: 'tiedDecision',
+          kind: 'state',
+          doc: 'A decision waiting on confirmation because it decides others too — { kind, title, body, detail, confirmLabel } — or null.',
         },
         {
           name: 'toggle',

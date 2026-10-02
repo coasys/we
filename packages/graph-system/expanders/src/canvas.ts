@@ -69,9 +69,9 @@ export interface CanvasSeedOptions {
   /**
    * Entity to draw as connections between the things on this canvas, if any.
    *
-   * Only those with *both* ends placed here are drawn. A canvas is a closed surface — a line to a
-   * record that is not on it would leave the canvas and end nowhere, and pulling the far end in to
-   * fix that would put things on the canvas that nobody placed.
+   * Only those with *both* ends on this canvas are drawn — placed, or waiting in the tray. A canvas
+   * is a closed surface: a line to a record that is not on it would leave the canvas and end nowhere,
+   * and pulling the far end in to fix that would put things on the canvas that nobody put there.
    */
   connections?: string;
   /**
@@ -95,7 +95,8 @@ export interface CanvasSeedOptions {
   /**
    * Record ids whose card stands for something **not yet agreed** — a suggestion awaiting a person.
    *
-   * Read onto the matching node's data as `pending: true`, for a style rule to pick up. Ids rather
+   * Read onto the matching node's data as `pending: true`, for a style rule to pick up — and onto a
+   * connection's line the same way, since a pass stages connections as well as cards. Ids rather
    * than a query, because what makes a record provisional is not a property of the record: an
    * extraction pass can stage a whole instance, so it is in the graph and answers every query the
    * accepted ones answer, and only the capability that staged it knows which those are. A canvas
@@ -116,7 +117,8 @@ export interface CanvasSeedOptions {
    */
   changed?: string[];
   /**
-   * Record ids to leave off the canvas altogether — no card, and no line to or from one.
+   * Record ids to leave off the canvas altogether — no card, and no line to or from one. A
+   * connection's own id here leaves off that one line.
    *
    * For a reader narrowing what is shown ("hide what nobody has agreed to"), where a style rule is
    * not enough: a card at zero opacity still takes a press and keeps its connections drawn.
@@ -542,20 +544,28 @@ export function canvasSeed(): SeedSource {
 
       const nodes: GraphNode[] = [];
       const seen = new Set<string>();
-      /** Record ids on this canvas, so a connection can be checked for having both ends here. */
-      // Less what is hidden, so a connection to a card nobody can see is not drawn either.
-      const placed = new Set<string>(
-        [...placedIds]
-          .filter(([entity]) => !hiddenTypes.has(entity))
-          .flatMap(([, ids]) => ids)
-          .filter((id) => !hidden.has(id)),
-      );
+      /**
+       * Record ids drawn on this canvas, so a connection can be checked for having both ends here.
+       *
+       * Filled as the cards are made rather than from the placements, so it holds exactly what is
+       * drawn: the tray as well as the board, and less anything hidden or no longer there. The tray
+       * counts because it is on the canvas — a row of cards somebody can see and drag — and it is
+       * where everything a call extracts lands. Counting only placed cards meant a connection the
+       * extraction drew between two of them was never drawn at all, in either reading of the canvas.
+       */
+      const onCanvas = new Set<string>();
       /** Record id → its entity name, so a connection's endpoints can be addressed. */
       const typeOf = new Map<string, string>();
-      for (const [entity, ids] of placedIds) for (const id of ids) typeOf.set(id, entity);
 
+      /*
+        The type of the card actually drawn wins over the one the connection stored. Both ends are
+        known to be on the canvas by the time this is asked, so the drawn type is always there — and
+        it is a fact, where the stored one is a claim: a connection an extraction pass wrote carries
+        whatever class name the model spelled, and a misspelt one addressed a node that does not
+        exist, so the line was silently dropped.
+      */
       const addressOf = (declared: unknown, id: string): string | undefined => {
-        const entity = typeof declared === 'string' && declared ? declared : typeOf.get(id);
+        const entity = typeOf.get(id) ?? (typeof declared === 'string' && declared ? declared : undefined);
         return entity ? entityAddress(dataset, entity, id) : undefined;
       };
 
@@ -571,7 +581,11 @@ export function canvasSeed(): SeedSource {
       */
       const passes: { entity: string; where?: Record<string, unknown> }[] = [
         ...[...placedIds].map(([entity, ids]) => ({ entity, where: { id: ids } })),
-        ...(options.contains ?? DEFAULT_CONTAINS).map((entity) => ({ entity })),
+        // Never the entity drawn as lines: a connection is not also a card. The workshop passes the
+        // call's extraction targets here, and a call can extract connections as well as things.
+        ...(options.contains ?? DEFAULT_CONTAINS)
+          .filter((entity) => entity !== options.connections)
+          .map((entity) => ({ entity })),
       ];
 
       /*
@@ -702,6 +716,10 @@ export function canvasSeed(): SeedSource {
             ...(at ? { ...at.style, x: at.x, y: at.y } : {}),
           };
           nodes.push({ ...node, data });
+          if (typeof row.id === 'string') {
+            onCanvas.add(row.id);
+            typeOf.set(row.id, entity);
+          }
         }
       }
 
@@ -712,15 +730,15 @@ export function canvasSeed(): SeedSource {
         hub-and-spoke diagram rather than the freeform surface the mode exists to be. What is worth
         drawing is what people asserted: a relationship between two cards that are both here.
 
-        Filtered to pairs that are both placed, and filtered *here* rather than in the query, because
-        "both ends in this set" is not a where-clause. The query narrows by source, which is the half
-        a backend can do, and the target check is a set lookup against what was just loaded.
+        Filtered to pairs that are both drawn here, and filtered *here* rather than in the query,
+        because "both ends in this set" is not a where-clause. The query narrows by source, which is
+        the half a backend can do, and the target check is a set lookup against what was just loaded.
       */
       const edges: GraphEdge[] = [];
       // Round three: the connections, which genuinely could not be asked for until the ends were known.
       const connections = options.connections;
-      if (connections && declared(connections) && placed.size) {
-        const ends = [...placed];
+      if (connections && declared(connections) && onCanvas.size) {
+        const ends = [...onCanvas];
         /*
           Counted like a card, so a line says what people have made of it too — and so a gesture that would
           remove one can tell, before it is let go, that this one has been discussed. Not weighed: a weight
@@ -729,12 +747,20 @@ export function canvasSeed(): SeedSource {
         for (const row of await read(connections, { source: ends }, countsFor(connections, false))) {
           const source = typeof row.source === 'string' ? row.source : undefined;
           const target = typeof row.target === 'string' ? row.target : undefined;
-          if (!source || !target || !placed.has(source) || !placed.has(target)) continue;
+          if (!source || !target || !onCanvas.has(source) || !onCanvas.has(target)) continue;
+          /*
+            A connection is a record too, so the two flags a card answers to apply to a line as well.
+            An extraction pass stages connections just as it stages cards: hidden when the reader has
+            put suggestions away, and marked when it is still one, so the line can be drawn as the
+            draft it is rather than as a claim somebody agreed to.
+          */
+          const id = typeof row.id === 'string' ? row.id : String(row.id);
+          if (hidden.has(id)) continue;
           const from = addressOf(row.sourceType, source);
           const to = addressOf(row.targetType, target);
           if (!from || !to) continue;
           edges.push({
-            id: `canvas-connection|${String(row.id)}`,
+            id: `canvas-connection|${id}`,
             source: from,
             target: to,
             type: 'relates',
@@ -742,10 +768,16 @@ export function canvasSeed(): SeedSource {
             // The connection's own scalars, then how this canvas draws it. Second, so a canvas's
             // routing wins over a like-named field on the connection — the same order a card's own
             // colour takes over its type's.
-            data: { ...scalarsOf(row), ...countsOf(row), ...(routeFor.get(String(row.id)) ?? {}) },
+            data: {
+              ...scalarsOf(row),
+              ...countsOf(row),
+              ...(pending.has(id) ? { pending: true } : {}),
+              ...(changed.has(id) ? { changed: true } : {}),
+              ...(routeFor.get(id) ?? {}),
+            },
             // Keeps the record reachable, exactly as the reified expander does: clicking the line
             // should be able to open the claim it stands for rather than dead-ending.
-            reifiedAs: entityAddress(dataset, connections, String(row.id)),
+            reifiedAs: entityAddress(dataset, connections, id),
           });
         }
       }
