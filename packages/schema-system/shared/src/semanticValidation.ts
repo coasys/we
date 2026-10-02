@@ -1,4 +1,4 @@
-import { BASE_CLASS_LAYERS, getKeysForLayers, layerKeyMap, tierKeys } from '@we/design-utils';
+import { BASE_CLASS_LAYERS, CSS_PROP_TO_VAR_SUFFIX, getKeysForLayers, layerKeyMap, tierKeys } from '@we/design-utils';
 import { role, semanticValues, space } from '@we/tokens';
 
 import type { ContextData, StateMemberMeta } from './contextTypes';
@@ -992,6 +992,26 @@ const SPACE_FAMILIES = {
 };
 /** The bags whose keys are DS props in their own right, so a `mdUpProps: { gap: '050' }` is caught too. */
 const PROP_BAGS = new Set(['hoverProps', 'activeProps', 'focusProps', 'disabledProps', ...tierKeys]);
+
+/**
+ * Props a state or tier bag accepts and then drops on the floor.
+ *
+ * Both bags go through one pipeline over `INTERACTIVE_SPECS`, and positioning is excluded from it
+ * on purpose: an offset that changed at a breakpoint would have to be animated and measured
+ * against a containing block that the tier itself can move. So `mdUpProps: { left: '300px' }`
+ * typechecks (the bag is a `Partial<DesignSystemProps>`), validates, and does nothing — and an
+ * unwritten variable renders as the base value, which looks exactly like a breakpoint that has not
+ * been crossed yet.
+ *
+ * DERIVED rather than listed, from the same table the pipeline reads. These five are the
+ * candidates, and each one is refused only while that table really has no declaration for it — so
+ * if positioning ever joins the interactive surface, this rule retires itself instead of becoming
+ * a lie. Their prop names and CSS property names are identical, which is what makes the lookup
+ * honest; a prop like `mx` or `rotate` maps to a different property and would need its own answer.
+ */
+const DROPPED_IN_BAGS = new Set(
+  ['position', 'top', 'right', 'bottom', 'left'].filter((prop) => !CSS_PROP_TO_VAR_SUFFIX.has(prop)),
+);
 const CSS_KEYWORD_RE = /^(auto|inherit|initial|unset|revert)$/i;
 
 function checkSpaceValue(propName: string, value: unknown, path: string, errors: ValidationError[]): void {
@@ -1078,6 +1098,15 @@ function checkProps(
     if (PROP_BAGS.has(propName) && propValue && typeof propValue === 'object' && !isTokenObject(propValue)) {
       for (const [bagProp, bagValue] of Object.entries(propValue)) {
         checkSpaceValue(bagProp, bagValue, `${propPath}.${bagProp}`, errors);
+        if (DROPPED_IN_BAGS.has(bagProp)) {
+          errors.push({
+            path: `${propPath}.${bagProp}`,
+            message:
+              `"${bagProp}" does not vary by state or breakpoint — "${propName}" accepts it and nothing reads it. ` +
+              `Move something at a breakpoint with "x", "y" or "rotate", which compose into a transform and do vary.`,
+            severity: 'error',
+          });
+        }
       }
     }
 

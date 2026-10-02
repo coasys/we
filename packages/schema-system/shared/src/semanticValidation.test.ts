@@ -359,6 +359,34 @@ describe('breakpoint tiers', () => {
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain('did you mean "mdUpProps"');
   });
+
+  /*
+    An offset in a tier bag is accepted by every check an author has and read by nothing.
+
+    Both bags resolve through one pipeline over `INTERACTIVE_SPECS`, which excludes positioning —
+    see "what the state and tier axes cover" in `@we/design-utils`, which pins that exclusion from
+    the other side. The bag is a `Partial<DesignSystemProps>`, so it typechecks; the prop is a real
+    DS prop, so it validated; and an unwritten variable renders as the base value, which is exactly
+    what a breakpoint that has not been crossed looks like.
+  */
+  it('refuses an offset in a tier or state bag, and says what to use instead', () => {
+    for (const bag of ['mdUpProps', 'hoverProps']) {
+      const errors = messages({ type: 'Column', props: { [bag]: { left: '300px' } } }, 'error');
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain('does not vary by state or breakpoint');
+      expect(errors[0]).toContain('"x", "y" or "rotate"');
+    }
+  });
+
+  it('leaves an offset alone outside a bag, where it works', () => {
+    expect(messages({ type: 'Column', props: { position: 'absolute', left: '300px' } }, 'error')).toEqual([]);
+  });
+
+  it('still accepts what a tier does carry', () => {
+    // `x`/`y`/`rotate` compose into `transform`, which IS on the interactive surface — the whole
+    // point of the message above.
+    expect(messages({ type: 'Column', props: { mdUpProps: { x: 300, width: '50%' } } }, 'error')).toEqual([]);
+  });
 });
 
 describe('"open" on a panel that supplies its own node', () => {
