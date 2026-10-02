@@ -1797,20 +1797,31 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
                 state — and by now every query has answered, so it is an answer.
               */
               condition: { $: `count(${VIEW}.columns)` },
+              /*
+                One row, whichever arrangement it is holding.
+
+                The two arrangements differ in what comes FIRST — a row per person, or the board's
+                columns — and agree about everything after it, so the `$if` belongs around that
+                first position rather than around the whole row. Written as two rows it carried
+                `unplacedColumn` down both sides, and Unplaced holds a card for every kind of work
+                the board does not place: 28,398 characters a copy in the workshop template.
+
+                `addColumnButton` becomes conditional rather than duplicated. Not because rows mode
+                has nowhere to add a column — it does, and `personRows` draws its own button up in
+                its headings row, which is where that layout wants it. This is the button that sits
+                after the last column, and a board grouped by person has no last column on the row
+                it is in.
+              */
               then: {
-                type: '$if',
-                props: {
-                  condition: { $: `${VIEW}.show == 'rows'` },
-                  then: {
-                    type: 'Row',
-                    props: { width: '100%', gap: '400', ay: 'start', overflowX: 'auto' },
-                    children: [personRows(opts), ...(opts.lanesOnly ? [] : [unplacedColumn(opts)])],
-                  },
-                  else: {
-                    type: 'Row',
-                    props: { width: '100%', gap: '400', ay: 'start', overflowX: 'auto' },
-                    children: [
-                      {
+                type: 'Row',
+                props: { width: '100%', gap: '400', ay: 'start', overflowX: 'auto' },
+                children: [
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $: `${VIEW}.show == 'rows'` },
+                      then: personRows(opts),
+                      else: {
                         type: 'we-sortable',
                         props: {
                           // The columns are themselves a sortable, in its own group so a card can never
@@ -1833,14 +1844,17 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
                           },
                         ],
                       },
-                      // After the last column and before Unplaced, which is not one of the board's own.
-                      addColumnButton('300'),
-                      // Outside the sortable, because it is not one of the board's columns: it has no
-                      // record and no id to reorder, and inside it looked draggable and did nothing.
-                      ...(opts.lanesOnly ? [] : [unplacedColumn(opts)]),
-                    ],
+                    },
                   },
-                },
+                  // After the last column and before Unplaced, which is not one of the board's own.
+                  {
+                    type: '$if',
+                    props: { condition: { $: `${VIEW}.show != 'rows'` }, then: addColumnButton('300') },
+                  },
+                  // Outside the sortable, because it is not one of the board's columns: it has no
+                  // record and no id to reorder, and inside it looked draggable and did nothing.
+                  ...(opts.lanesOnly ? [] : [unplacedColumn(opts)]),
+                ],
               },
               // A board with no columns has no last column to add after, so the empty state offers it.
               else: {
