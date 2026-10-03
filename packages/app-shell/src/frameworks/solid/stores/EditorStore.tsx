@@ -9,7 +9,7 @@
  * signals, and never learns which model or provider answered.
  */
 import { chatContext, formatExternalManifestForPrompt, requestMessage, updateSchemaTool } from '@shared/ai/aiInfra';
-import { runEditSession } from '@shared/ai/editSession';
+import { countedPatches, runEditSession } from '@shared/ai/editSession';
 import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
 import { deepClone } from '@shared/utils';
@@ -1058,11 +1058,21 @@ export function EditorStoreProvider(props: ParentProps) {
         setPendingTemplate(null);
         return 'Template updated successfully.';
       },
-      acceptedLine: () =>
+      acceptedLine: (patches) =>
         isReadOnly() && pendingTemplate() !== null
-          ? '<span class="warning">⚠ Changes are ready — fork this template to apply them.</span>'
-          : '<span class="success">✓ Template updated</span>',
+          ? `<span class="warning">⚠ ${countedPatches(patches)} ready — fork this template to apply them.</span>`
+          : `<span class="success">✓ Template updated (${countedPatches(patches)})</span>`,
     });
+
+    /*
+      What the session actually did, once, at the end.
+
+      A tick in the panel is drawn per accepted turn, so a count of them is a claim about how many
+      turns were accepted — and when those two disagreed there was no way to tell a display fault
+      from an extra write without reading every patch line and counting. `accepted` is the number
+      of times the template was written; this makes that answerable at a glance.
+    */
+    devLog('[editSession] session', result.outcome, result.stats);
 
     setStreamingContent('');
     if (result.outcome === 'truncated') {

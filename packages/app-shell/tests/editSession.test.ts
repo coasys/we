@@ -258,6 +258,39 @@ describe('an edit session', () => {
     expect(result.stats.structuralFailures).toBe(0);
   });
 
+  /*
+    A run of accepted turns is one thing that happened, and says how much it did.
+
+    Three identical ticks in a column are unreadable: they look like a repeat rather than three
+    changes, which is exactly how they were read the first time. Separated by what the model said,
+    they belong to that reasoning and stay; adjacent, they are one line that counts up.
+  */
+  it('counts a run of accepted turns as one line, and keeps the ones prose separates', async () => {
+    const { run } = session([
+      { text: 'First.', calls: [patch('c1', [addText('One')])], finish: 'tool_calls' },
+      { text: '', calls: [patch('c2', [addText('Two'), addText('Three')])], finish: 'tool_calls' },
+      { text: 'Done.', calls: [], finish: 'done' },
+    ]);
+    const { transcript } = await run;
+
+    // Turn two said nothing, so it folds into turn one's line and takes the total with it.
+    expect(transcript.match(/✓ Template updated/g)).toHaveLength(1);
+    expect(transcript).toContain('✓ Template updated (3 patches)');
+    expect(transcript).not.toContain('(1 patch)');
+    expect(transcript.indexOf('First.')).toBeLessThan(transcript.indexOf('✓'));
+  });
+
+  it('keeps a tick per turn when the model speaks between them', async () => {
+    const { run } = session([
+      { text: 'Doing the first.', calls: [patch('c1', [addText('One')])], finish: 'tool_calls' },
+      { text: 'Now the second.', calls: [patch('c2', [addText('Two')])], finish: 'tool_calls' },
+      { text: 'Done.', calls: [], finish: 'done' },
+    ]);
+    const { transcript } = await run;
+
+    expect(transcript.match(/✓ Template updated \(1 patch\)/g)).toHaveLength(2);
+  });
+
   it('passes a chosen model through, and measures what each call sends', async () => {
     const { run, model } = session([{ text: 'Hi.', calls: [], finish: 'done' }], { model: 'claude-sonnet-5' });
     const result = await run;

@@ -53,8 +53,12 @@ export interface EditSessionOptions {
    * model as the tool result. Whatever it returns, later turns patch this template.
    */
   accept: (template: TemplateSchema) => Promise<string> | string;
-  /** The line shown after a round of accepted patches. A read-only template says its changes await a fork. */
-  acceptedLine?: () => string;
+  /**
+   * The line shown after a run of accepted patches, given how many that run has applied so far —
+   * a run being consecutive turns with nothing said between them, which the caller may name. A
+   * read-only template says its changes await a fork.
+   */
+  acceptedLine?: (patches: number) => string;
   /** Called whenever what the conversation panel should show changes: the transcript so far, then a live tail. */
   onDisplay?: (display: string) => void;
   /** Development diagnostics — what the model asked for and why it was refused. */
@@ -93,6 +97,12 @@ export interface EditSessionResult {
 
 const issueKey = (e: { severity: string; path: string; message: string }) => `${e.severity}|${e.path}|${e.message}`;
 
+/** How many edits a tick stands for, so two of them in a row are told apart by what they did. */
+export const countedPatches = (patches: number) => `${patches} ${patches === 1 ? 'patch' : 'patches'}`;
+
+const defaultAcceptedLine = (patches: number) =>
+  `<span class="success">✓ Template updated (${countedPatches(patches)})</span>`;
+
 /**
  * A split's copy, as a list of ids the model can patch straight away.
  *
@@ -127,6 +137,14 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
   };
 
   let transcript = '';
+  /*
+    A run of accepted turns with nothing said between them is ONE thing that happened, so it gets
+    one line that counts up rather than a column of identical ticks. `runAt` is where that line
+    starts in the transcript, so the next accept in the same run rewrites it; anything the model
+    says ends the run, because then the ticks are separated by the reasoning they belong to.
+  */
+  let runAt = -1;
+  let runPatches = 0;
   const show = (tail = '') => options.onDisplay?.(transcript + (transcript && tail ? '\n\n' : '') + tail);
   const status = (words: string) => show(`<span class="shimmer">*${words}*</span>`);
 
@@ -154,7 +172,11 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
     );
     const { text, calls, finish } = await options.converse(request);
 
-    if (text) transcript += (transcript ? '\n\n' : '') + text;
+    if (text) {
+      transcript += (transcript ? '\n\n' : '') + text;
+      runAt = -1;
+      runPatches = 0;
+    }
 
     // Truncated, not finished: a reply cut off mid-call has dropped the call, and reporting that as
     // a completed turn tells the user an edit happened that did not.
@@ -194,6 +216,7 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
     const baseline = new Set(validateSemantic(asRendered(accumulated), validationContext).errors.map(issueKey));
     let patchesApplied = true;
     let patched = false;
+    let turnPatches = 0;
 
     for (const call of calls) {
       if (call.name !== 'update_schema') {
@@ -220,6 +243,7 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
         patchesApplied = false;
         continue;
       }
+      turnPatches += patches.length;
       debug(`[editSession] ${call.id}: ${patches.length} patch(es)`, JSON.stringify(patches, null, 2));
 
       /*
@@ -350,7 +374,10 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
 
     const failed = results.some((r) => r.isError);
     if (patched && !failed) {
-      transcript += `\n\n${options.acceptedLine?.() ?? '<span class="success">✓ Template updated</span>'}`;
+      if (runAt >= 0) transcript = transcript.slice(0, runAt);
+      else runAt = transcript.length;
+      runPatches += turnPatches;
+      transcript += `\n\n${options.acceptedLine?.(runPatches) ?? defaultAcceptedLine(runPatches)}`;
       show();
     }
     status(failed ? 'Retrying...' : 'Thinking...');
