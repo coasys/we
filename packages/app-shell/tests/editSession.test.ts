@@ -231,16 +231,38 @@ describe('an edit session', () => {
 
     `$defs` is the STRICTER path: a definition's body is checked as a node, where the same subtree
     in a prop is reached through a union that falls back to accepting a plain object. So a shape
-    that passes inline can fail once hoisted — on the workshop template, 91 faults that were
-    always there appeared the moment compaction moved them. Judged that way, every patch is
-    refused for something the model did not do and cannot fix.
+    that passes inline can fail once hoisted — on the workshop template that was 91 faults the
+    moment compaction moved them. Judged that way, every patch is refused for something the model
+    did not do and cannot fix.
+
+    The fixture repeats a handler carrying a key no resolver reads, which is the shape that
+    actually caused it: tolerated in a prop, refused as a definition. A real template was used
+    here until the fault it relied on was fixed — the hazard outlives any one template, so the
+    test should not need a broken one.
   */
   it('judges a compacted template by its rendered form, not its sent form', async () => {
-    const { workshopTemplate } = await import('@we/template-showcase');
-    const { schema, hoisted } = compactDefinitions(structuredClone(workshopTemplate) as unknown as SchemaNode);
+    const strayKey = { $if: { condition: { $: 'local.x' }, then: { $action: 'store.go' } }, onSuccess: [] };
+    // Held in a PROP, the only position the union has a fallback behind — and the wrappers differ,
+    // so what repeats, and so what gets hoisted onto the strict path, is the held shape itself.
+    const held = (): SchemaNode =>
+      ({
+        type: 'Column',
+        props: { gap: '300' },
+        children: [{ type: 'we-button', props: { onClick: strayKey }, children: ['Go'] }],
+      }) as unknown as SchemaNode;
+    const wrapper = (which: string): SchemaNode =>
+      ({ type: '$if', props: { condition: { $: `local.${which}` }, then: held() } }) as unknown as SchemaNode;
+    const { schema, hoisted } = compactDefinitions(
+      {
+        type: 'Column',
+        meta: { name: 'T', description: '', icon: 'cube' },
+        children: [wrapper('a'), wrapper('b')],
+      } as SchemaNode,
+      { minChars: 0 },
+    );
     expect(hoisted).toBeGreaterThan(0);
 
-    // The hazard this guards: hoisting alone makes the real template fail a structural check.
+    // The hazard this guards: hoisting alone flips the verdict on a tree nothing else changed.
     expect(validateStructure(schema).valid).toBe(false);
     expect(validateStructure(expandDefinitions(schema)).valid).toBe(true);
 
