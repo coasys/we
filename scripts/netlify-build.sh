@@ -5,13 +5,16 @@
 # change. That preview builds both packages from that change and links them into
 # the workspace before running the normal build.
 #
-# A pull request pairs itself with one line in its description:
+# A pull request pairs itself with a block at the top of its description:
 #
-#   ad4m: coasys/ad4m#1187        an ad4m pull request (its head, or its merge
-#                                 commit once merged)
-#   ad4m: coasys/ad4m@some-branch an ad4m branch, tag or commit
+#   > [!IMPORTANT]
+#   > ### Paired with: coasys/ad4m#1187
 #
-# The line rather than a label or a matching branch name: it is visible to reviewers,
+# naming an ad4m pull request (its head, or its merge commit once merged), or
+# `coasys/ad4m@some-branch` for an ad4m branch, tag or commit. It must be the first
+# thing in the description; scripts/ad4m-pairing.mjs has the exact rules.
+#
+# The description rather than a label or a matching branch name: it is visible to reviewers,
 # it is there before the first build, several WE pull requests can name one ad4m pull
 # request, and nothing is paired by accident. Editing it does not rebuild the preview;
 # push again, or use "Retry deploy".
@@ -79,10 +82,10 @@ if [ -n "$PR_JSON" ]; then
   WE_BRANCH="$(printf '%s' "$PR_JSON" | json_field 'pr => pr.head?.ref')"
 fi
 
-# The pairing line, if the description has one. Read by scripts/ad4m-pairing.mjs, which the CI jobs
-# share, so the preview and CI cannot disagree about whether this pull request is paired. A line it
-# cannot read, two lines, or a pull request that cannot be found fail the build rather than silently
-# using the pin: that would give a preview that looks paired and is not.
+# The pairing, if the description has one. Read by scripts/ad4m-pairing.mjs, which the CI jobs
+# share, so the preview and CI cannot disagree about whether this pull request is paired. A pairing
+# it cannot read, or a pull request that cannot be found, fails the build rather than silently using
+# the pin: that would give a preview that looks paired and is not.
 AD4M_REF='pin'
 REASON="a ${CONTEXT:-local} build uses the pin"
 
