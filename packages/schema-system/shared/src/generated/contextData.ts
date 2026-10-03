@@ -965,6 +965,12 @@ export const contextData: ContextData = {
         { name: 'onChange', type: '((code: string) => void)', optional: true },
         { name: 'onSave', type: '((code: string) => void)', optional: true },
         { name: 'maxHeight', type: 'string', optional: true },
+        { name: 'onReady', type: '((api: { find: () => void; }) => void)', optional: true },
+        {
+          name: 'onSearchMatches',
+          type: '((result: { query: string; matches: number; capped: boolean; }) => void)',
+          optional: true,
+        },
         { name: 'styles', type: 'Record<string, string | number>', optional: true },
       ],
       source: 'components',
