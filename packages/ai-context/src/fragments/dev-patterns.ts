@@ -97,6 +97,25 @@ asked to write one for a branch, create \`PR_<DESCRIPTIVE_NAME>.md\` at the repo
   it is wide, explaining *why* each changed rather than restating the diff.
 - **Test plan** — what was actually verified, ticked, and what was not, unticked with the reason.
 
+The file is the description and nothing else — no title heading above the sections, since it is
+passed as \`gh pr create --body-file\` and anything above a pairing block (below) breaks it. Give
+the **title** alongside it, for \`--title\`, in Conventional Commits form: \`type(scope):
+description\`, the type lowercase (\`feat\`, \`fix\`, \`refactor\`, \`perf\`, \`docs\`, \`test\`,
+\`ci\`, \`chore\`), the scope optional, and the description short — under 60 characters, naming the
+change rather than explaining it: \`ci: pair PRs with an ad4m alert block\`.
+
+**If the branch needs an ad4m change that has not been published yet**, the file must START with
+this block, exactly — the preview builds against it and a check tests the PR there, and
+anything close (no colon, another heading or alert, lower down) fails rather than pairing:
+
+\`\`\`markdown
+> [!IMPORTANT]
+> ### Paired with: coasys/ad4m#<N>
+\`\`\`
+
+\`coasys/ad4m@<branch>\` names an ad4m branch instead. The rules are in
+\`docs/contributing/ad4m-and-deploys.md\`.
+
 **Never commit \`PR_*.md\` files.** They're scratch documents for the PR description.
 
 ---

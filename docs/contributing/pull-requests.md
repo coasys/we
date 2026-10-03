@@ -14,8 +14,17 @@ breakage points at one cause.
 
 ## Title
 
-Conventional Commits, as the commit log uses: `fix(backend-ad4m): drop the removed subscribe
-argument`, `feat(board): …`, `docs: …`. A release is `Release v<version>`.
+[Conventional Commits](https://www.conventionalcommits.org): `type(scope): description`.
+
+- **The type is lowercase**: `feat`, `fix`, `refactor`, `perf`, `docs`, `test`, `ci`, `chore`.
+  That is the spec, and what the bots already write.
+- **The scope is optional**: the package or area, as in `fix(backend-ad4m)` or `ci(netlify)`.
+- **The description names the change and stops**: lowercase, imperative, no full stop, and short
+  enough that the title fits in the PR list, which cuts it off at about 70 characters — aim for
+  under 60. The why belongs in the description, not the title.
+
+`fix(backend-ad4m): drop the removed subscribe argument` · `feat(board): agree on moves with flows`
+· `ci: pair PRs with an ad4m alert block`. A release is `Release v<version>`.
 
 ## Description
 
@@ -88,4 +97,6 @@ into its individual commits.
 ## Local PR notes
 
 Drafts of a PR description can be kept as `PR_<NAME>.md` at the repository root while you work. They
-are ignored by git and never committed; paste the finished text into the PR.
+are ignored by git and never committed; paste the finished text into the PR, or pass the file to
+`gh pr create --body-file`. Keep the title out of the file and give it to `--title`: a heading above
+the sections would sit above a pairing block, which has to come first.
