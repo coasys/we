@@ -139,7 +139,16 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
     // The assistant's turn, calls included, goes into history before their results.
     turns.push({ role: 'assistant', text, calls });
 
-    const results: Array<{ callId: string; content: string; isError?: boolean; patch: boolean }> = [];
+    /*
+      `note` is what this CALL's patches did — how far they reached, and what a split's copy is
+      called. `content` is what became of the TURN, which a later step overwrites once every patch
+      has validated and the template is kept.
+
+      Two fields rather than one because they answer different questions and the second arrives
+      later. Written into `content` alone, the note was composed and then discarded by exactly the
+      path that matters: acceptance.
+    */
+    const results: Array<{ callId: string; content: string; note?: string; isError?: boolean; patch: boolean }> = [];
     let accumulated: SchemaNode = ensureNodeIds(structuredClone(workingSchema));
     // Only issues a patch introduces are held against it; a template may arrive already imperfect.
     const baseline = new Set(validateSemantic(accumulated as TemplateSchema, validationContext).errors.map(issueKey));
@@ -211,22 +220,24 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
       */
       const split = applied.splits.flatMap((copy) => (copy.id ? [copy.id] : []));
 
+      const note = [
+        reach.length > 0 &&
+          `${reach.length === 1 ? 'One patch' : `${reach.length} patches`} changed a shared shape, so the ` +
+            `change shows in ${reach.join(' and ')} places. If it was meant for one of them, split that ` +
+            `use out and patch the copy.`,
+        split.length > 0 &&
+          `${split.length === 1 ? 'The copy is' : 'The copies are'} ${split.join(', ')}, and patching ` +
+            `${split.length === 1 ? 'it' : 'them'} now changes nothing else. The nodes INSIDE a copy were ` +
+            `renumbered and their new ids arrive with the template next message, so make a change to the ` +
+            `copy as a whole this turn and reach inside it on the next one.`,
+      ]
+        .filter((line): line is string => typeof line === 'string')
+        .join(' ');
+
       results.push({
         callId: call.id,
-        content: [
-          'Patches applied.',
-          reach.length > 0 &&
-            `${reach.length === 1 ? 'One patch' : `${reach.length} patches`} changed a shared shape, so the ` +
-              `change shows in ${reach.join(' and ')} places. If it was meant for one of them, split that ` +
-              `use out and patch the copy.`,
-          split.length > 0 &&
-            `${split.length === 1 ? 'The copy is' : 'The copies are'} ${split.join(', ')}, and patching ` +
-              `${split.length === 1 ? 'it' : 'them'} now changes nothing else. The nodes INSIDE a copy were ` +
-              `renumbered and their new ids arrive with the template next message, so make a change to the ` +
-              `copy as a whole this turn and reach inside it on the next one.`,
-        ]
-          .filter((line): line is string => typeof line === 'string')
-          .join(' '),
+        content: ['Patches applied.', note].filter(Boolean).join(' '),
+        note,
         patch: true,
       });
     }
@@ -275,7 +286,9 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
           const said = await options.accept(merged);
           stats.accepted++;
           workingSchema = merged;
-          for (const r of patchResults) r.content = said;
+          // What became of the template, and then what the patches did — the note survives the
+          // one outcome it is about. A refusal drops it, since nothing was applied to report on.
+          for (const r of patchResults) r.content = [said, r.note].filter(Boolean).join(' ');
         }
       }
     }

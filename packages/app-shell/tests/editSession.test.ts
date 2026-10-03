@@ -8,7 +8,13 @@
  */
 import type { ConversationReply, ConversationRequest, ConversationTurn } from '@we/backend-shared';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
-import { buildValidationContext, contextData } from '@we/schema-shared';
+import {
+  buildValidationContext,
+  compactDefinitions,
+  contextData,
+  definitionsOf,
+  ensureNodeIds,
+} from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 import { updateSchemaTool } from '../src/shared/ai/aiInfra';
@@ -173,6 +179,49 @@ describe('an edit session', () => {
     const result = await run;
     expect(result.outcome).toBe('exhausted');
     expect(result.stats.modelCalls).toBe(3);
+  });
+
+  /*
+    What a patch DID survives being told what became of the template.
+
+    The two are written to the same field, the second overwriting the first, and acceptance is the
+    only path where the first is worth anything — so a note composed and then discarded looked
+    exactly like no note at all. Caught by driving the real editor and reading the tool result.
+  */
+  it('keeps the reach of a shared-shape patch in the result it accepts', async () => {
+    const shape = (): SchemaNode =>
+      ({
+        type: 'Column',
+        props: { gap: '300', p: '400', bg: 'surface' },
+        children: [{ type: 'we-text', children: ['Card'] }],
+      }) as SchemaNode;
+    const shared = compactDefinitions(
+      {
+        type: 'Column',
+        meta: { name: 'Test', description: '', icon: 'cube' },
+        children: [shape(), shape(), shape()],
+      } as unknown as SchemaNode,
+      { minChars: 0 }, // the fixture is small; what is under test is the reporting, not the threshold
+    );
+    expect(shared.hoisted).toBe(1);
+
+    const inside = Object.values(definitionsOf(ensureNodeIds(shared.schema)))[0].children![0] as SchemaNode;
+    const { run, turns } = session(
+      [
+        {
+          text: '',
+          calls: [patch('c1', [{ targetId: inside.id!, node: { props: { color: 'accent-text' } } }])],
+          finish: 'tool_calls',
+        },
+        { text: 'Done.', calls: [], finish: 'done' },
+      ],
+      { schema: shared.schema },
+    );
+    await run;
+
+    const result = (turns.find((t) => t.role === 'tool') as { result: string }).result;
+    expect(result).toContain('Template updated successfully.'); // what became of the template
+    expect(result).toContain('shows in 3 places'); // and what the patch did
   });
 
   it('passes a chosen model through, and measures what each call sends', async () => {
