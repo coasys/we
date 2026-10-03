@@ -1,0 +1,166 @@
+/**
+ * Structural validation reaches the nodes a template actually holds.
+ *
+ * `props` is a record of `zSchemaProp`, a union whose last branch accepts any plain object. That
+ * branch is right for a prop holding a shape nobody can enumerate — a graph's layout options, a
+ * transition — and it was swallowing NODES: a `$if`'s `then` holds a whole interface, and when
+ * anything inside one failed to parse, the union fell through and reported nothing.
+ *
+ * What it cost: a handler carrying a key no resolver reads, eighteen `props.then` hops down, in
+ * two shipped templates. It surfaced only when compaction moved the shape into `$defs`, where
+ * there is no fallback behind it.
+ *
+ * The two tests that matter are the pair: faults inside a prop-held node are reported, and the
+ * specs that merely look like nodes are still accepted. The second is why the obvious fix — "an
+ * object with a `type` must be a node" — is wrong, and it produced about 1,500 false positives.
+ */
+import { describe, expect, it } from 'vitest';
+
+import type { SchemaNode } from './types';
+import { validateStructure } from './validators';
+
+const template = (children: unknown[], extra: Record<string, unknown> = {}): SchemaNode =>
+  ({
+    type: 'Column',
+    meta: { name: 'T', description: '', icon: 'cube', ...(extra.meta ?? {}) },
+    props: { bg: 'page' },
+    children,
+  }) as unknown as SchemaNode;
+
+/** A handler with a key nothing reads — the fault that started this. */
+const strayKey = { $if: { condition: { $: 'local.x' }, then: { $action: 'store.go' } }, onSuccess: [] };
+
+describe('a node held in a prop', () => {
+  it('is checked, so a fault inside a $if branch is reported', () => {
+    const result = validateStructure(
+      template([
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'local.open' },
+            then: { type: 'Column', children: [{ type: 'we-button', props: { onClick: strayKey } }] },
+          },
+        },
+      ]),
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.path.includes('props.then'))).toBe(true);
+  });
+
+  it('is checked inside a panel, which was not checked at all', () => {
+    const result = validateStructure(
+      template([], {
+        meta: {
+          panels: [
+            { id: 'p1', node: { type: 'Column', children: [{ type: 'we-button', props: { onClick: strayKey } }] } },
+          ],
+        },
+      }),
+    );
+
+    expect(result.valid).toBe(false);
+  });
+
+  it('is still fine when the branch is sound', () => {
+    const result = validateStructure(
+      template([
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'local.open' },
+            then: { type: 'Column', children: [{ type: 'we-text', children: ['Hello'] }] },
+          },
+        },
+      ]),
+    );
+    expect(result.valid).toBe(true);
+  });
+});
+
+/*
+  The same hole, one layer along: a handler position that accepted anything.
+
+  `onSuccess` and friends were `z.array(z.unknown())` and a `$if` branch was `z.unknown()`, so a
+  misspelt token inside one was not a token and not an error either — it was simply kept. That is
+  how `{ $if: …, onSuccess: [close] }` survived: the key was legal to write and read by nothing.
+*/
+describe('a handler held by another handler', () => {
+  const button = (onClick: unknown) => template([{ type: 'we-button', props: { onClick }, children: ['Go'] }]);
+
+  it('is checked in a lifecycle list', () => {
+    const typo = { $action: 'store.save', onSuccess: [{ $setLokal: 'open', value: false }] };
+    expect(validateStructure(button(typo)).valid).toBe(false);
+  });
+
+  it('is checked down a $if branch', () => {
+    const bad = { $if: { condition: { $: 'local.x' }, then: { $setLokal: 'open', value: false } } };
+    expect(validateStructure(button(bad)).valid).toBe(false);
+  });
+
+  it('accepts the shapes that are actually written', () => {
+    const good = {
+      $if: {
+        condition: { $: 'local.existing' },
+        then: { $action: 'store.move', args: [''], onSuccess: [{ $setLocal: 'open', value: false }] },
+        else: [{ $touch: '$all' }, { $action: 'store.create' }],
+      },
+    };
+    expect(validateStructure(button(good)).errors).toEqual([]);
+  });
+});
+
+/*
+  The property all of this adds up to, and the one worth keeping.
+
+  Compacting a template moves shapes out of props and into `$defs`, where there has never been a
+  fallback — so for as long as a prop was the looser position, hoisting alone could turn a valid
+  template invalid. The editor hit that as every patch being refused for 91 faults the model had
+  not caused. Now that a prop checks what looks like a node, the two positions ask the same
+  question, and where a template sits in that spectrum stops being a thing anybody has to know.
+*/
+describe('where a node sits does not change the verdict', () => {
+  const strayKey = { $if: { condition: { $: 'local.x' }, then: { $action: 'store.go' } }, onSuccess: [] };
+  const held = (words: string) => ({
+    type: 'Column',
+    props: { gap: '300' },
+    children: [{ type: 'we-button', props: { onClick: strayKey }, children: [words] }],
+  });
+
+  it.each([
+    ['sound', { type: 'we-text', children: ['Fine'] }],
+    ['faulty', held('Go')],
+  ])('agrees compacted and expanded: %s', async (_name, body) => {
+    const { compactDefinitions, expandDefinitions } = await import('./definitions');
+    const wrapper = (which: string) => ({ type: '$if', props: { condition: { $: `local.${which}` }, then: body } });
+    const { schema, hoisted } = compactDefinitions(template([wrapper('a'), wrapper('b')]), { minChars: 0 });
+
+    expect(hoisted).toBeGreaterThan(0); // the body really did move into `$defs`
+    expect(validateStructure(schema).valid).toBe(validateStructure(expandDefinitions(schema)).valid);
+  });
+});
+
+describe('a prop that merely looks like a node', () => {
+  /*
+    Each of these names a KIND and is no part of the tree. Rejecting them is the trap: a `type`
+    string alone does not make a node, and treating it as one fails every template that animates
+    anything or draws a graph.
+  */
+  it.each([
+    ['a transition effect', { enterTransition: { type: 'fade', duration: 400, easing: 'ease-in-out' } }],
+    [
+      'a list of effects',
+      {
+        enterTransition: [
+          { type: 'reveal', duration: 300 },
+          { type: 'fade', delay: 20 },
+        ],
+      },
+    ],
+    ['a graph layout', { layout: { type: 'force', options: { distance: 140 } } }],
+    ['a graph behaviour', { behaviours: [{ type: 'drag-node', options: { pin: true } }] }],
+  ])('is accepted: %s', (_name, props) => {
+    const result = validateStructure(template([{ type: 'Column', props, children: ['x'] }]));
+    expect(result.errors).toEqual([]);
+  });
+});
