@@ -87,10 +87,57 @@ export interface FormModalOptions {
 export function formModal(opts: FormModalOptions): SchemaNode {
   const busy = opts.busy ?? (opts.busyLocal ? { $: `local.${opts.busyLocal}` } : undefined);
 
-  const submitAction = {
-    ...opts.submit,
-    onSuccess: [opts.close, ...((opts.submit.onSuccess as unknown[]) ?? [])],
+  /*
+    Close when the action succeeds — down each branch where the submit chooses between actions.
+
+    `onSuccess` belongs to the handler that settles, and a `$if` is not one: it picks a branch and
+    runs that, so a sibling `onSuccess` is read by nothing. Spreading onto the token therefore
+    produced `{ $if: …, onSuccess: [close] }`, which typechecked, validated and silently never
+    closed the modal — this fragment's whole promise, lost for every conditional submit. The one
+    caller that had one closed anyway, because its author had written the same close into both
+    branches by hand, which is the sort of accident that keeps a fault invisible.
+  */
+  /*
+    Attach the close to whatever actually SETTLES, wherever that turns out to be.
+
+    `onSuccess` waits for a promise, so it belongs on an `$action` and nowhere else. A `$if` picks
+    a branch and runs it, so an `onSuccess` beside one is read by nothing: spreading onto the token
+    gave `{ $if: …, onSuccess: [close] }`, which typechecked, validated and silently never closed
+    the modal — this fragment's whole promise, lost for every conditional submit. The one caller
+    that had one closed anyway, because its author had written the same close into both branches by
+    hand, which is the sort of accident that keeps a fault invisible.
+
+    A list runs in order, so appending the close there would fire it on dispatch rather than on
+    success — losing the spinner, which is the thing the house guidance warns about. It goes on the
+    last entry instead, recursively, and only falls back to appending where nothing in the branch
+    can carry it.
+  */
+  const closing = (handler: unknown): unknown => {
+    if (Array.isArray(handler)) {
+      if (handler.length === 0) return [opts.close];
+      const last = closing(handler[handler.length - 1]);
+      return [...handler.slice(0, -1), ...(Array.isArray(last) ? last : [last])];
+    }
+    if (!handler || typeof handler !== 'object') return [handler, opts.close];
+
+    const token = handler as Record<string, unknown>;
+    const branches = token.$if as { then?: unknown; else?: unknown } | undefined;
+    if (branches) {
+      return {
+        ...token,
+        $if: {
+          ...branches,
+          ...(branches.then !== undefined ? { then: closing(branches.then) } : {}),
+          ...(branches.else !== undefined ? { else: closing(branches.else) } : {}),
+        },
+      };
+    }
+    // Only an action settles; anything else is run and done, so the close follows it.
+    if (!('$action' in token)) return [token, opts.close];
+    return { ...token, onSuccess: [opts.close, ...((token.onSuccess as unknown[]) ?? [])] };
   };
+
+  const submitAction = closing(opts.submit) as Record<string, unknown>;
 
   const onClick = opts.busyLocal
     ? [

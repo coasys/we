@@ -1565,7 +1565,7 @@ when `relative` is enabled.
   Props: artboard: { width: number; height: number; }, fit?: "contain" | "none" | "stretch" | "scale", onMeasure?: ((box: { width: number; height: number; scale: number; }) => void)
 - Card (DesignSystemElement)
 - CodeEditor
-  Props: code: string, language?: CodeEditorLanguage, readOnly?: boolean, onChange?: ((code: string) => void), onSave?: ((code: string) => void), maxHeight?: string, styles?: Record<string, string | number>
+  Props: code: string, language?: CodeEditorLanguage, readOnly?: boolean, onChange?: ((code: string) => void), onSave?: ((code: string) => void), maxHeight?: string, onReady?: ((api: { find: () => void; }) => void), onSearchMatches?: ((result: { query: string; matches: number; capped: boolean; }) => void), styles?: Record<string, string | number>
 - CollapsedContent
   Props: collapsed: boolean, onExpandClick?: (() => void), showToggle?: boolean, icon?: string, maxHeight?: string, fadeColor?: string, children?: JSX.Element, class?: string, styles?: Record<string, string | number>
 - Column (DesignSystemElement)
