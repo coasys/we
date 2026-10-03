@@ -24,6 +24,10 @@ import { type BackendPorts, type DatasetHandle, RECORD_TYPE_KEY, type RendererDa
 import { getEntity } from '@we/entities';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { describeTemplateQueries, TEMPLATE_QUERY_CASES, type TemplateQueryCase } from './templateQueries';
+
+export { TEMPLATE_QUERY_CASES, type TemplateQueryCase };
+
 /** One fresh backend, ready for a case to write into. */
 export interface ConformanceSubject {
   ports: BackendPorts;
@@ -64,7 +68,8 @@ export const CONFORMANCE_CASES = [
   'ephemeral.no-echo',
 ] as const;
 
-export type ConformanceCase = (typeof CONFORMANCE_CASES)[number];
+/** Every case a harness can name in `knownGaps` — the per-case ones above and the template queries. */
+export type ConformanceCase = (typeof CONFORMANCE_CASES)[number] | TemplateQueryCase;
 
 interface Row {
   id: string;
@@ -347,4 +352,6 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
       });
     });
   });
+
+  describeTemplateQueries(name, harness, timeout);
 }

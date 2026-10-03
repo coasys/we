@@ -188,9 +188,8 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
       // children" rather than an error, and `CollectionBlock.children` — untyped by design, since a
       // collection holds any block type — is the relation every showcase template drills through.
       //
-      // The cost is that an `include` over an untyped relation now resolves to `[]` rather than
-      // being absent. That case is already documented as unsupported (a relation with no declared
-      // target cannot say which table to read), and both spellings render as nothing.
+      // An `include` over one reads every table, each member tagged with the entity it came from —
+      // see `resolveRelation` in the shared query engine.
       engineRelations[name][relName] = {
         target: info.target,
         cardinality,
@@ -203,6 +202,32 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
     }
     relationsByEntity[name] = infos;
   }
+
+  /*
+    The reverse relations, by the forward relation they read back: `comments` → `inReplyTo`.
+
+    A reverse relation (`reverseOf`) is the same link read from the other end, so nothing writes it
+    directly — and nothing here derived it either, so `inReplyTo` was empty on every record. Every
+    comment thread rebuilds its tree from it, and the feeds leave replies out with
+    `inReplyTo: { none: {} }`, so on this backend a reply showed up as a post of its own and a thread
+    had no shape. The forward write now stamps the parent on the child under the reverse relation's
+    name, which is where the query engine reads a to-one link from.
+  */
+  const reversesOf = new Map<string, string[]>();
+  for (const name of Object.keys(manifest.entities)) {
+    for (const [relName, spec] of Object.entries(resolved(name).relations)) {
+      if (!spec.reverseOf) continue;
+      const names = reversesOf.get(spec.reverseOf) ?? [];
+      if (!names.includes(relName)) reversesOf.set(spec.reverseOf, [...names, relName]);
+    }
+  }
+  const linkReverse = (forward: string, child: AnyRow, parentId: string, linked: boolean) => {
+    for (const reverse of reversesOf.get(forward) ?? []) {
+      if (linked) child[reverse] = parentId;
+      // Only if it still points here: a child since linked under another parent keeps that one.
+      else if (child[reverse] === parentId) delete child[reverse];
+    }
+  };
 
   const datasetOf = (handle: unknown): DatasetEntry => {
     const entry = handle as DatasetEntry | undefined;
@@ -507,7 +532,10 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
             : Object.values(dataset.tables)
                 .flatMap((rows) => rows as AnyRow[])
                 .find((r) => r.id === relatedId);
-          if (targetRow) targetRow[relation.foreignKey] = this.id;
+          if (targetRow) {
+            targetRow[relation.foreignKey] = this.id;
+            linkReverse(relation.name, targetRow, this.id as string, true);
+          }
           const current = Array.isArray(this[relation.name]) ? (this[relation.name] as unknown[]) : [];
           if (!current.includes(relatedId)) this[relation.name] = [...current, relatedId];
           const row = tableOf(dataset, name).find((r) => r.id === this.id);
@@ -538,10 +566,17 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           if (row) row[relation.foreignKey] = '';
           this[relation.name] = '';
         } else {
+          // Looked up across every table when the relation is untyped, as `add` does — otherwise
+          // removing from an untyped relation left the child's key behind.
           const targetRow = relation.target
             ? tableOf(dataset, relation.target).find((r) => r.id === relatedId)
-            : undefined;
-          if (targetRow) delete targetRow[relation.foreignKey];
+            : Object.values(dataset.tables)
+                .flatMap((rows) => rows as AnyRow[])
+                .find((r) => r.id === relatedId);
+          if (targetRow) {
+            delete targetRow[relation.foreignKey];
+            linkReverse(relation.name, targetRow, this.id as string, false);
+          }
           const current = Array.isArray(this[relation.name]) ? (this[relation.name] as unknown[]) : [];
           this[relation.name] = current.filter((id) => id !== relatedId);
           if (row) row[relation.name] = this[relation.name];
@@ -574,11 +609,17 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           for (const id of current) {
             if (next.includes(id)) continue;
             const targetRow = rowsOf(id);
-            if (targetRow) delete targetRow[relation.foreignKey];
+            if (targetRow) {
+              delete targetRow[relation.foreignKey];
+              linkReverse(relation.name, targetRow, this.id as string, false);
+            }
           }
           for (const id of next) {
             const targetRow = rowsOf(id);
-            if (targetRow) targetRow[relation.foreignKey] = this.id;
+            if (targetRow) {
+              targetRow[relation.foreignKey] = this.id;
+              linkReverse(relation.name, targetRow, this.id as string, true);
+            }
           }
           this[relation.name] = next;
           const row = tableOf(dataset, name).find((r) => r.id === this.id);
