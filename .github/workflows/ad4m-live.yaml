@@ -1,0 +1,181 @@
+# `pnpm verify:ad4m` in CI: WE's live tests against an executor built from the AD4M commit the pin
+# was published from. Two files run (`packages/backend-system/ad4m/tests/live/`): the capability
+# check, which says whether every query feature `ad4mCapabilities` claims really holds, and the
+# shared backend conformance suite, which says whether AD4M behaves the way the contract says
+# through the same ports the app uses. docs/contributing/ad4m-and-deploys.md has what each result
+# means.
+#
+# Not a required check, and not meant to become one: the suite lists cases AD4M is known to fail,
+# one of them intermittent, and a check that can go red for a reason in another repository should
+# inform a merge rather than decide it — the same reasoning that took the AD4M source build out of
+# `build.yaml`.
+#
+# ## Why the executor is cached by commit
+#
+# Building the executor is most of an hour: the Deno snapshot, the bootstrap languages and the
+# Rust workspace. The binary depends on nothing but the AD4M commit it was built from, so it is
+# built once per pin and cached under that commit; every later run is a restore and a few minutes
+# of tests. Only the binary is cached — the Rust target directory is tens of gigabytes, far past
+# what a repository's Actions cache holds.
+#
+# Built inside AD4M's own CI image, at the digest AD4M's release workflow names at that same commit.
+# That image is the toolchain AD4M's releases are built with, so the binary is the one AD4M would
+# ship, and it is Ubuntu 22.04 on purpose — for glibc compatibility with release binaries — which
+# is why it then runs on the plain runner the tests use.
+name: AD4M live
+
+on:
+  pull_request:
+    # What the tests exercise: the adapter, the contract, the entities its classes are generated
+    # from, and the pin itself. A template change cannot move any of it.
+    paths:
+      - 'packages/backend-system/**'
+      - 'packages/entities/**'
+      - 'package.json'
+      - '.github/workflows/ad4m-live.yaml'
+  # The ad4m bump workflow starts this on its branch, as it does CI — a PR it opens with
+  # GITHUB_TOKEN starts nothing. And by hand, from the Actions tab.
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: Resolve the pinned executor
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.pin.outputs.version }}
+      commit: ${{ steps.pin.outputs.commit }}
+      image: ${{ steps.pin.outputs.image }}
+      key: ${{ steps.pin.outputs.key }}
+      cached: ${{ steps.lookup.outputs.cache-hit }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: package.json
+          sparse-checkout-cone-mode: false
+
+      # The pin is a published npm version; the commit it was published from is recorded on the
+      # package itself, so no table here has to be kept in step with it.
+      - name: Read the pin
+        id: pin
+        run: |
+          VERSION="$(node -p "require('./package.json').pnpm.overrides['@coasys/ad4m']")"
+          COMMIT="$(npm view "@coasys/ad4m@$VERSION" gitHead)"
+          if [ -z "$COMMIT" ]; then
+            echo "::error::@coasys/ad4m@$VERSION records no gitHead, so there is no commit to build the executor from."
+            exit 1
+          fi
+          IMAGE="$(curl -fsSL "https://raw.githubusercontent.com/coasys/ad4m/$COMMIT/.github/workflows/publish_staging.yml" \
+            | grep -m1 -oE 'coasys/ad4m-ci-linux[^[:space:]]*')"
+          if [ -z "$IMAGE" ]; then
+            echo "::error::AD4M's publish_staging.yml at $COMMIT names no coasys/ad4m-ci-linux image to build in."
+            exit 1
+          fi
+          {
+            echo "version=$VERSION"
+            echo "commit=$COMMIT"
+            echo "image=$IMAGE"
+            echo "key=ad4m-executor-$COMMIT"
+          } >> "$GITHUB_OUTPUT"
+          echo "### @coasys/ad4m $VERSION → coasys/ad4m@${COMMIT:0:9}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Is it built already
+        id: lookup
+        uses: actions/cache/restore@v6
+        with:
+          path: .ad4m-executor
+          key: ${{ steps.pin.outputs.key }}
+          lookup-only: true
+
+  build:
+    name: Build the executor
+    needs: resolve
+    if: needs.resolve.outputs.cached != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    container:
+      image: ${{ needs.resolve.outputs.image }}
+    # Two PRs on the same pin should not both spend an hour on it. Never cancelled: a build that
+    # finishes fills the cache for every run after it, whoever started it.
+    concurrency:
+      group: ad4m-executor-${{ needs.resolve.outputs.commit }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: coasys/ad4m
+          ref: ${{ needs.resolve.outputs.commit }}
+
+      # The same steps as AD4M's own Linux release build, in the same order.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+      - uses: pnpm/action-setup@v4
+
+      - name: Install
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build
+        env:
+          RUSTY_V8_MIRROR: https://github.com/coasys/rusty_v8/releases/download
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: pnpm build-libs
+
+      # Handed to the test job as an artifact, and cached there rather than here: the cache key
+      # carries the archive format, and saving and restoring on the same kind of machine is what
+      # keeps a container's tar from disagreeing with the runner's.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ad4m-executor
+          path: target/release/ad4m-executor
+          retention-days: 1
+
+  live:
+    name: Live tests
+    needs: [resolve, build]
+    # Runs after a build, and also when the build was skipped because the binary was cached.
+    if: ${{ !cancelled() && needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      - name: Restore the executor
+        id: restore
+        uses: actions/cache/restore@v6
+        with:
+          path: .ad4m-executor
+          key: ${{ needs.resolve.outputs.key }}
+
+      - name: Fetch the executor just built
+        if: steps.restore.outputs.cache-hit != 'true'
+        uses: actions/download-artifact@v7
+        with:
+          name: ad4m-executor
+          path: .ad4m-executor
+
+      - name: Cache it for the next run
+        if: steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .ad4m-executor
+          key: ${{ needs.resolve.outputs.key }}
+
+      # The live tests import these by package name, which resolves to their built output. Only
+      # the adapter's own dependencies and the suite — not the monorepo.
+      - name: Build what the tests import
+        run: pnpm --filter "@we/backend-ad4m^..." --filter "@we/backend-conformance..." build
+
+      - name: Live tests
+        env:
+          AD4M_EXECUTOR: ${{ github.workspace }}/.ad4m-executor/ad4m-executor
+        run: |
+          chmod +x "$AD4M_EXECUTOR"
+          pnpm verify:ad4m

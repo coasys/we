@@ -7,6 +7,9 @@ export default defineConfig({
     include: ['tests/live/**/*.live.ts'],
     globalSetup: ['tests/live/executor.ts'],
     environment: 'node',
+    // Named rather than left to vitest, which picks a terse reporter under CI and agents: the
+    // capability table is console output from a file that passed, and those reporters drop it.
+    reporters: ['default'],
     // One executor serves every file, and its perspectives are cheap to keep apart but not free.
     fileParallelism: false,
     hookTimeout: 180_000,

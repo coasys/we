@@ -213,8 +213,11 @@ another, and `AD4M_LIVE_URL` with `AD4M_LIVE_TOKEN` uses one already running, it
 Build that executor from the commit the new pin was published from
 (`npm view @coasys/ad4m@<version> gitHead`), with `cargo build --release --bin ad4m-executor`.
 
-It runs locally rather than in CI because it needs an executor, which takes the better part of an
-hour to compile.
+It also runs in CI, as the `AD4M live` workflow (`.github/workflows/ad4m-live.yaml`): on a PR that
+touches the backend packages, the entities or the pin, and on the bump bot's branch. The executor
+takes the better part of an hour to compile, so the workflow builds it once per pinned commit, in
+AD4M's own CI image, and caches the binary — the first run after a bump is slow and the rest take
+minutes. It is not a required check: read it before merging a bump, the way you would the run here.
 
 ### Testing an ad4m branch against WE's tests
 
