@@ -641,11 +641,12 @@ export const EVAL_CASES: EvalCase[] = [
 
   // ─── Against a real template ───────────────────────────────────────────────
   /*
-    These exist because the cases above cannot fail for the reason PR2 is about. On `blank` the
-    template is ~400 chars of an ~86K payload, so a strategy that sent no template at all would
-    still pass most of them. Here the template is the larger half, there are 280 nodes to find the
-    right one among, and — the part that nothing else in this file reaches — four of those nodes
-    are the SAME node, shared through `$defs`.
+    These exist because the cases above cannot fail for the reason the planned work on bounding
+    what the editor sends — a skeleton of the template, plus full detail for the part a request
+    implicates — is about. On `blank` the template is ~400 chars of an ~86K payload, so a strategy
+    that sent no template at all would still pass most of them. Here the template is the larger
+    half, there are 280 nodes to find the right one among, and — the part that nothing else in
+    this file reaches — four of those nodes are the SAME node, shared through `$defs`.
 
     The two shared-shape cases are a matched pair on purpose: `kanban-card-radius` is right only
     when all four change together, `kanban-one-card-apart` only when exactly one does. A strategy
