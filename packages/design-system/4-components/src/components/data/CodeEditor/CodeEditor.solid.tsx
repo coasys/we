@@ -85,17 +85,28 @@ const baseThemeSpec: Record<string, Record<string, string>> = {
     position: 'relative',
     top: '-3px',
   },
-  // Search panel
-  '.cm-panels-bottom': {
-    all: 'unset',
+  /*
+    Search panel.
+
+    `EditorView.theme` defaults to `dark: false`, so CodeMirror applies its own LIGHT defaults
+    whatever the app's theme is doing — `.cm-panels { color: black }` and a `#ddd` rule under a
+    top panel. Black labels on a dark panel and a white line beneath it are both that, and the
+    previous `.cm-panels-bottom { all: unset }` was hiding the bottom twin rather than answering
+    it. Named here in roles instead, which follow the theme and survive moving the panel.
+  */
+  '.cm-panels': {
+    backgroundColor: 'var(--we-role-surface)',
+    color: 'var(--we-role-text)',
   },
+  '.cm-panels-top': { borderBottom: '1px solid var(--we-role-border)' },
+  '.cm-panels-bottom': { borderTop: '1px solid var(--we-role-border)' },
   '.cm-panel.cm-search': {
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
     padding: '6px 10px',
-    backgroundColor: 'var(--we-role-surface)',
-    borderTop: '1px solid var(--we-role-border)',
+    // The editor is monospace and its chrome is not: a find bar is UI, like the toolbar above it.
+    fontFamily: 'var(--we-font-family)',
     flexWrap: 'wrap',
     fontSize: 'var(--we-font-size-100)',
   },
@@ -114,6 +125,28 @@ const baseThemeSpec: Record<string, Record<string, string>> = {
     color: 'var(--we-role-text)',
     outline: 'none',
     height: '26px',
+    /*
+      Border-box and able to shrink, or the field leaves the panel.
+
+      A text input carries a default size in CHARACTERS, which is a width the panel never agreed
+      to; with the border counted outside it, the field crossed the edge as soon as the row ran
+      out of room. These two keep it inside whatever width it is given.
+    */
+    boxSizing: 'border-box',
+    minWidth: '0',
+    maxWidth: '100%',
+  },
+  /*
+    A tick is not a text field.
+
+    The rule above sizes the search box, and `.cm-search input` catches the checkboxes too — a
+    26px tall box with 8px of padding, which is why they sat oddly against their labels.
+  */
+  '.cm-search input[type=checkbox]': {
+    height: 'auto',
+    minWidth: 'auto',
+    padding: '0',
+    accentColor: 'var(--we-role-accent)',
   },
   '.cm-search input:focus': {
     borderColor: 'var(--we-role-accent)',
