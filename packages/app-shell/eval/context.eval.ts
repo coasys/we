@@ -20,7 +20,7 @@ import { createAd4mLanguageModelPort } from '@we/backend-ad4m';
 import { buildValidationContext, compactDefinitions, contextData, ensureNodeIds } from '@we/schema-shared';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 
-import { EVAL_CASES, startingTemplate } from './cases';
+import { EVAL_CASES, scaleOf, startingTemplate } from './cases';
 import { type EvalRecord, reportMarkdown } from './report';
 import { scoreCase } from './score';
 
@@ -38,7 +38,16 @@ const strategies = (list(env.WE_EVAL_STRATEGIES).length ? list(env.WE_EVAL_STRAT
   (s): s is ContextStrategyId => (CONTEXT_STRATEGIES as string[]).includes(s),
 );
 const caseIds = list(env.WE_EVAL_CASES);
-const cases = caseIds.length ? EVAL_CASES.filter((c) => caseIds.includes(c.id)) : EVAL_CASES;
+/*
+  Which scales to run. Defaults to `small` — the seventeen cases on `blank` and `feed` that every
+  recorded baseline is of, so an unqualified run stays comparable with `BASELINE.md` and stays
+  cheap. The large cases send a real template and cost several times as much per call, so asking
+  for them is deliberate: `WE_EVAL_SCALE=large`, or `small,large` for both.
+*/
+const scales = list(env.WE_EVAL_SCALE).length ? list(env.WE_EVAL_SCALE) : ['small'];
+const cases = caseIds.length
+  ? EVAL_CASES.filter((c) => caseIds.includes(c.id))
+  : EVAL_CASES.filter((c) => scales.includes(scaleOf(c.template)));
 const repeat = Math.max(1, Number(env.WE_EVAL_REPEAT) || 1);
 /**
  * How long one turn may take, in seconds.

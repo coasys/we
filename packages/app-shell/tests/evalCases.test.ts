@@ -6,17 +6,76 @@
  * check and validates. A case that broke either would score every strategy the same for reasons
  * that have nothing to do with context.
  */
-import { buildValidationContext, compactDefinitions, contextData, expandDefinitions } from '@we/schema-shared';
+import {
+  buildValidationContext,
+  compactDefinitions,
+  contextData,
+  ensureNodeIds,
+  expandDefinitions,
+} from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
-import { EVAL_CASES, startingTemplate } from '../eval/cases';
+import { EVAL_CASES, EVAL_TEMPLATES, nodes as allNodes, scaleOf, startingTemplate } from '../eval/cases';
 import { validationErrors } from '../eval/score';
 
 const context = buildValidationContext(contextData);
 
 describe('the eval’s starting templates', () => {
-  it.each(['blank', 'feed'] as const)('%s validates', (template) => {
+  it.each(EVAL_TEMPLATES)('%s validates', (template) => {
     expect(validationErrors(startingTemplate(template), context)).toEqual([]);
+  });
+
+  /*
+    The large suite only measures what it claims to while a `large` template is actually large.
+    `kanban` is imported live, so somebody could gut it and every case here would go on passing
+    against a template that no longer exercises the template half of the budget at all.
+  */
+  it.each(EVAL_TEMPLATES.filter((t) => scaleOf(t) === 'large'))('%s is big enough to be worth it', (template) => {
+    expect(JSON.stringify(startingTemplate(template)).length).toBeGreaterThan(20_000);
+  });
+
+  it('has a case at each scale', () => {
+    const scales = new Set(EVAL_CASES.map((c) => scaleOf(c.template)));
+    expect([...scales].sort()).toEqual(['large', 'small']);
+  });
+
+  /*
+    One id must mean one place, and on a real template only compaction makes that true.
+
+    An authored template aliases — a fragment called twice with the same arguments returns the
+    same object — so `ensureNodeIds` over an authored tree hands the same id to several positions:
+    62 of them on kanban, 343 on workshop. The editor never does that, because it compacts first
+    and compaction gives every use its own `$ref`. That ordering is the whole reason ids are
+    trustworthy, and it is one line in `EditorStore.sendMessage` with nothing holding it in place.
+
+    This fails if the two steps are ever swapped, or if something new numbers a tree it has not
+    compacted — which is a live risk for anything that builds a skeleton or an outline to send.
+    Getting it wrong is the #248 failure again: a patch resolving to a different node from the one
+    the model meant, landing plausibly enough that a green suite says nothing.
+  */
+  /*
+    The two shared-shape cases are a matched pair, and only worth having if they disagree.
+
+    Both ask about the same four cards, which are one shape used four times. One is satisfied only
+    by editing the shape; the other only by giving a single use a copy of its own. If either
+    answer satisfied both, the pair would be measuring "did something change" rather than "did the
+    model understand which of the two edits was asked for" — and a strategy could score full marks
+    on them while being wrong about the thing they exist to test.
+  */
+  it('the shared-shape pair rejects each other’s answer', () => {
+    const all = EVAL_CASES.find((c) => c.id === 'kanban-card-radius')!;
+    const one = EVAL_CASES.find((c) => c.id === 'kanban-one-card-apart')!;
+    expect(all.check(one.solve(startingTemplate('kanban')))).not.toBe(true);
+    expect(one.check(all.solve(startingTemplate('kanban')))).not.toBe(true);
+  });
+
+  it.each(EVAL_TEMPLATES)('%s: the editor’s compact-then-number order gives every position its own id', (template) => {
+    const numbered = ensureNodeIds(compactDefinitions(startingTemplate(template)).schema);
+    const ids = allNodes(numbered)
+      .map((n) => (n as { id?: string }).id)
+      .filter((id): id is string => typeof id === 'string');
+    expect(ids.length).toBeGreaterThan(0);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 });
 

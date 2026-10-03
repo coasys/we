@@ -6,11 +6,29 @@ repo, because these numbers decide which strategy the editor ships, and a decisi
 lives in one person's terminal is a decision nobody can revisit.
 
 Record the date, the commit, the models, the strategies, the repeat count and the table. Say what
-the payload was: that is the part that goes stale.
+the payload was: that is the part that goes stale. **Say which scale it was**, and keep the two in
+separate tables — `small` and `large` answer different questions and a combined pass rate is a
+figure about nothing. See "Two scales" in `README.md`.
 
 ---
 
-## 2026-10-03 — the current baseline
+## Not yet measured — the `large` scale
+
+Five cases on a real template (`kanban`), added so the harness can see the half of the budget it
+has been blind to. Nothing has been run against them; **this section is here so their absence is
+visible rather than implied.**
+
+What they are for: every figure below is from cases where the template is ~1% of the payload, so
+none of them says anything about what trimming a template costs or buys. Two of the five also
+test the shared-shape semantics `$defs` introduced in #248, which no run has ever exercised.
+
+Expect them to cost several times a small case per call — the template is 37,516 chars compacted
+against `blank`'s 394 — and the system prompt cache does not help, since the template rides in the
+user turn.
+
+---
+
+## 2026-10-03 — the current baseline (scale: `small`)
 
 `6788c202a`, the commit that made the harness send what the editor sends. 17 cases × 3 strategies
 × **3 repeats** = 153 runs. Model: the node's `Claude`, which is `claude-sonnet-5` over the
