@@ -19,7 +19,7 @@ import type {
   ConversationTurn,
 } from '@we/backend-shared';
 import type { SchemaNode, TemplateSchema, ValidationContext } from '@we/schema-shared';
-import { ensureNodeIds, useCountOf, validateSemantic, validateStructure } from '@we/schema-shared';
+import { ensureNodeIds, expandDefinitions, useCountOf, validateSemantic, validateStructure } from '@we/schema-shared';
 
 import { applySchemaPatches, type SchemaPatch } from './schemaPatches';
 
@@ -150,8 +150,22 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
     */
     const results: Array<{ callId: string; content: string; note?: string; isError?: boolean; patch: boolean }> = [];
     let accumulated: SchemaNode = ensureNodeIds(structuredClone(workingSchema));
+
+    /*
+      A template is judged as the tree it will RENDER, so it is expanded before it is validated —
+      the same decision `validateSchema` makes, for a sharper reason here.
+
+      `$defs` is not a looser place than the tree, it is a STRICTER one: a definition's body is
+      checked as a node, where the same subtree sitting in a prop is reached through a union that
+      falls back to accepting a plain object. So compacting a template moves nodes onto the strict
+      path and reports faults that were always there and never surfaced — 91 of them on the
+      workshop template, none of them introduced by the patch being judged. Validating what will
+      render keeps this pass about what the model did, which is the only thing it can act on.
+    */
+    const asRendered = (node: SchemaNode) => expandDefinitions(node) as TemplateSchema;
+
     // Only issues a patch introduces are held against it; a template may arrive already imperfect.
-    const baseline = new Set(validateSemantic(accumulated as TemplateSchema, validationContext).errors.map(issueKey));
+    const baseline = new Set(validateSemantic(asRendered(accumulated), validationContext).errors.map(issueKey));
     let patchesApplied = true;
     let patched = false;
 
@@ -247,6 +261,7 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
     if (patched && !patchesApplied) stats.patchFailures++;
     if (patched && patchesApplied) {
       const merged = accumulated as TemplateSchema;
+      const rendered = asRendered(accumulated);
       const patchResults = results.filter((r) => r.patch);
       const refuse = (message: string) => {
         for (const r of patchResults) {
@@ -255,7 +270,7 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
         }
       };
 
-      const structural = validateStructure(merged);
+      const structural = validateStructure(rendered);
       if (!structural.valid) {
         stats.structuralFailures++;
         debug('[editSession] structural validation failed', structural.errors);
@@ -269,7 +284,7 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
           `Structural validation failed (${structural.errors.length} issues). Top issues: ${top}. Fix the schema structure and retry.`,
         );
       } else {
-        const fresh = validateSemantic(merged, validationContext).errors.filter((e) => !baseline.has(issueKey(e)));
+        const fresh = validateSemantic(rendered, validationContext).errors.filter((e) => !baseline.has(issueKey(e)));
         if (fresh.length > 0) {
           stats.semanticFailures++;
           debug('[editSession] semantic validation failed', fresh);

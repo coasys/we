@@ -14,6 +14,8 @@ import {
   contextData,
   definitionsOf,
   ensureNodeIds,
+  expandDefinitions,
+  validateStructure,
 } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
@@ -222,6 +224,38 @@ describe('an edit session', () => {
     const result = (turns.find((t) => t.role === 'tool') as { result: string }).result;
     expect(result).toContain('Template updated successfully.'); // what became of the template
     expect(result).toContain('shows in 3 places'); // and what the patch did
+  });
+
+  /*
+    A template carrying definitions is judged as what it renders, not as what it is sent as.
+
+    `$defs` is the STRICTER path: a definition's body is checked as a node, where the same subtree
+    in a prop is reached through a union that falls back to accepting a plain object. So a shape
+    that passes inline can fail once hoisted — on the workshop template, 91 faults that were
+    always there appeared the moment compaction moved them. Judged that way, every patch is
+    refused for something the model did not do and cannot fix.
+  */
+  it('judges a compacted template by its rendered form, not its sent form', async () => {
+    const { workshopTemplate } = await import('@we/template-showcase');
+    const { schema, hoisted } = compactDefinitions(structuredClone(workshopTemplate) as unknown as SchemaNode);
+    expect(hoisted).toBeGreaterThan(0);
+
+    // The hazard this guards: hoisting alone makes the real template fail a structural check.
+    expect(validateStructure(schema).valid).toBe(false);
+    expect(validateStructure(expandDefinitions(schema)).valid).toBe(true);
+
+    const { run, accepted } = session(
+      [
+        { text: '', calls: [patch('c1', [addText('Added')])], finish: 'tool_calls' },
+        { text: 'Done.', calls: [], finish: 'done' },
+      ],
+      { schema },
+    );
+    const result = await run;
+
+    expect(result.outcome).toBe('done');
+    expect(accepted).toHaveLength(1); // not refused for a fault the patch did not introduce
+    expect(result.stats.structuralFailures).toBe(0);
   });
 
   it('passes a chosen model through, and measures what each call sends', async () => {
