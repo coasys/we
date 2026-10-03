@@ -58,6 +58,9 @@ export const CONFORMANCE_CASES = [
   'bindings.surface',
   'bindings.identities',
   'records.round-trip',
+  'records.empty-clears',
+  'schema.module-entity',
+  'schema.hints-round-trip',
   'relations.ordered-read',
   'relations.replace-whole',
   'relations.member-type',
@@ -211,6 +214,67 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
 
         await created.delete();
         expect(await Space.findAll(subject.dataset, {})).toHaveLength(0);
+      });
+
+      test('records.empty-clears', "'' clears a property, through update and through save", async () => {
+        // Four call sites in the app clear a field by writing ''. The backends once disagreed about
+        // it, in the direction that makes tests lie: one wrote the empty string, the other skipped
+        // the write, so every clear passed in tests and did nothing in production.
+        const Space = model('Space');
+        const first = await Space.create(subject.dataset, { name: 'First', description: 'Something' });
+        await Space.update(subject.dataset, first.id, { description: '' });
+
+        const second = await Space.create(subject.dataset, { name: 'Second', description: 'Something' });
+        const [instance] = await reader('Space').findAll(subject.dataset, { where: { id: second.id } });
+        (instance as unknown as { description: string }).description = '';
+        await (instance as unknown as { save(): Promise<void> }).save();
+
+        // Empty, however a backend spells it, and no longer findable by what it said.
+        const rows = await reader('Space').findAll(subject.dataset, {});
+        for (const row of rows) expect(row.description ?? '', `${row.name}'s description`).toBe('');
+        expect(rows.map((r) => r.name).sort()).toEqual(['First', 'Second']);
+        expect(await reader('Space').findAll(subject.dataset, { where: { description: 'Something' } })).toHaveLength(0);
+      });
+    });
+
+    describe('schema', () => {
+      // A module's entities are declared as data and compiled by whichever backend is running, the
+      // way the shell does it: `declare`, then `installModules` with what came back.
+      const NOTE = 'ConformanceNote';
+      const manifest = {
+        version: '1',
+        entities: {
+          [NOTE]: {
+            interpretationHint: 'A note somebody wrote',
+            properties: { body: { type: 'string' } },
+            relations: {},
+          },
+        },
+      } as unknown as Parameters<BackendPorts['schemas']['declare']>[0];
+
+      const install = async () => {
+        const compiled = subject.ports.schemas.declare(manifest, { moduleId: 'conformance' });
+        await subject.ports.schemas.installModules(subject.dataset, Object.values(compiled));
+      };
+
+      test('schema.module-entity', 'a module-declared entity can be written and queried once installed', async () => {
+        await install();
+        await model(NOTE).create(subject.dataset, { body: 'remember the milk' });
+        await model(NOTE).create(subject.dataset, { body: 'and the bread' });
+        const rows = await reader(NOTE).findAll(subject.dataset, { where: { body: 'remember the milk' } });
+        expect(rows.map((r) => r.body)).toEqual(['remember the milk']);
+      });
+
+      test('schema.hints-round-trip', 'interpretation hints read as declared, customise, and reset', async () => {
+        await install();
+        const hints = () => subject.ports.schemas.interpretationHints(subject.dataset, NOTE);
+        expect(await hints()).toMatchObject({ classHint: 'A note somebody wrote', customized: false });
+
+        await subject.ports.schemas.setInterpretationHints(subject.dataset, NOTE, { classHint: 'A reminder' });
+        expect(await hints()).toMatchObject({ classHint: 'A reminder', customized: true });
+
+        await subject.ports.schemas.resetInterpretationHints(subject.dataset, NOTE);
+        expect(await hints()).toMatchObject({ classHint: 'A note somebody wrote', customized: false });
       });
     });
 
