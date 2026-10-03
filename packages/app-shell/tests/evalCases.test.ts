@@ -6,7 +6,7 @@
  * check and validates. A case that broke either would score every strategy the same for reasons
  * that have nothing to do with context.
  */
-import { buildValidationContext, contextData } from '@we/schema-shared';
+import { buildValidationContext, compactDefinitions, contextData, expandDefinitions } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 import { EVAL_CASES, startingTemplate } from '../eval/cases';
@@ -34,6 +34,21 @@ describe('each eval case', () => {
       const solved = evalCase.solve(startingTemplate(evalCase.template));
       expect(evalCase.check(solved)).toBe(true);
       expect(validationErrors(solved, context)).toEqual([]);
+    });
+
+    /*
+      The harness's own payload is transparent to the check.
+
+      A run now works on a compacted tree, as the editor does, and is scored on the expanded one.
+      A check walks the tree looking for what the case asked for, so it would find nothing in a
+      `$ref` — and every case would fail for a reason that has nothing to do with the model. This
+      is the step between, asserted on its own, so a fault there cannot be read as a result.
+    */
+    it('survives the compaction the harness sends through', () => {
+      const solved = evalCase.solve(startingTemplate(evalCase.template));
+      const roundTripped = expandDefinitions(compactDefinitions(structuredClone(solved)).schema);
+      expect(evalCase.check(roundTripped as typeof solved)).toBe(true);
+      expect(validationErrors(roundTripped, context)).toEqual([]);
     });
   });
 });

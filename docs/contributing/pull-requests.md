@@ -49,8 +49,26 @@ helps when the change is wide. Explain the reason for a change the diff does not
 ones with the reason. "Not run on Netlify" is useful to a reviewer; a list of things that could be
 tested is not.
 
-**Docs kept in sync**, when it applies. The template's checklist names the documents that go stale
-silently. Tick what you updated, or say none applied.
+**A checkbox is a thing that must be true before this merges, and nothing else is a checkbox.**
+Anything that will never be ticked is a bullet.
+
+- `- [x]` — done, and what it showed.
+- `- [ ]` — **not done, and the PR is not finished.** Merging over one is merging over a gap
+  somebody meant to close.
+- `- **Deferred — …**` — a bullet, not a box: decided against, with the reason and where it goes
+  instead. A judgement on the record, which a reviewer can disagree with. _"Needs qwen3:4b pulled,
+  and `full` cannot run on it at all — belongs with the work that uses the answer."_
+
+This is why the rule is worth keeping: GitHub counts every checkbox in a description and shows
+"6 of 7 tasks" on the PR. If some boxes are never meant to be ticked, that number is wrong on every
+PR, and a number that is always wrong trains everybody to ignore it — including the real gap. Keep
+boxes for what must be true and the count means something, our own check is a one-line rule, and
+the two can never disagree.
+
+**Docs kept in sync**, when it applies. One checkbox — the docs this change touches are updated,
+or none applied — over a bulleted list of the places that go stale silently. One box because one
+thing has to be true before merge: that somebody looked. The list is a prompt, and a prompt is not
+a task, so it does not get boxes that nobody will ever tick.
 
 Write for the reviewer who has not followed the work. Plain sentences, no shorthand from the
 conversation the PR came out of.

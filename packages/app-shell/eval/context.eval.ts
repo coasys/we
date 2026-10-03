@@ -17,7 +17,7 @@ import { runEditSession } from '@shared/ai/editSession';
 import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
 import { schemaContext } from '@we/ai-context';
 import { createAd4mLanguageModelPort } from '@we/backend-ad4m';
-import { buildValidationContext, contextData, ensureNodeIds } from '@we/schema-shared';
+import { buildValidationContext, compactDefinitions, contextData, ensureNodeIds } from '@we/schema-shared';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 
 import { EVAL_CASES, startingTemplate } from './cases';
@@ -119,9 +119,23 @@ for (const model of models) {
         for (let run = 1; run <= repeat; run++) {
           it(`${evalCase.id}${repeat > 1 ? ` #${run}` : ''}`, async () => {
             const start = startingTemplate(evalCase.template);
+            /*
+              One tree, compacted and numbered once, exactly as `EditorStore.sendMessage` does.
+
+              This harness exists so a result describes what the editor actually does, and the
+              editor stopped sending the authored template when `$defs` landed — it sends a
+              compacted one, which is a different payload and a different set of ids. Measured
+              against the authored form, every number here would be about a product that is no
+              longer shipped.
+
+              One tree and not two for the reason the editor had to learn: numbering walks in
+              order and compaction changes the order, so a second derivation drifts and the ids
+              the model is given stop meaning what the patcher resolves them to.
+            */
+            const sent = ensureNodeIds(compactDefinitions(structuredClone(start)).schema);
             const prepared = prepareContext(strategy, chatSystemPreamble, schemaContext, {
               request: evalCase.request,
-              schema: start,
+              schema: sent,
             });
             const began = Date.now();
             const record: EvalRecord = {
@@ -146,12 +160,10 @@ for (const model of models) {
               const result = await runEditSession({
                 converse: port.converse!,
                 system: prepared.system,
-                turns: [
-                  { role: 'user', text: requestMessage(evalCase.request, ensureNodeIds(structuredClone(start))) },
-                ],
+                turns: [{ role: 'user', text: requestMessage(evalCase.request, sent) }],
                 tools: [updateSchemaTool, ...prepared.tools],
                 resolveTool: prepared.resolveTool,
-                schema: start,
+                schema: sent,
                 validationContext,
                 model: model === 'default' ? undefined : model,
                 accept: () => 'Template updated successfully.',

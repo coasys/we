@@ -6,7 +6,10 @@ might for small local models) or hurts (it might for large cached ones). Answer 
 rather than from reasoning about it.
 
 It runs the editor's own request loop (`src/shared/ai/editSession.ts`) against a live node, so a
-result describes what the editor actually does.
+result describes what the editor actually does. That means the payload too: the template is
+compacted and numbered once before it is sent, exactly as `EditorStore.sendMessage` does, and
+scored expanded, as `accept` stores it. A harness measuring the authored form would be describing
+a product that has not shipped since #248.
 
 ## What it compares
 
@@ -51,6 +54,9 @@ pnpm --filter @we/app-shell eval:context
 
 Start small: `WE_EVAL_CASES=rename-heading,todo-tasks WE_EVAL_STRATEGIES=full` confirms the setup
 before a full run.
+
+**Put the summary in `BASELINE.md` after a run.** `eval/results/` is gitignored, so a run that
+chooses a default and is not written down leaves nothing behind — which has happened once already.
 
 Results go to `eval/results/<timestamp>/`, which is gitignored: `report.md` (a summary table,
 a case × combination grid, and every failure with its reason) and `results.json`.

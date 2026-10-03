@@ -91,8 +91,17 @@ jobs:
         with:
           sparse-checkout: |
             scripts/ad4m-pairing.mjs
+            scripts/ad4m-pairing.test.mjs
             .github/actions/pairing-status
           sparse-checkout-cone-mode: false
+
+      # The parser's own cases, run where the parser is used — the repository root has no test
+      # runner to keep them in. They matter because the parser's contract is that a near miss
+      # FAILS rather than reading as unpaired: one that quietly stopped refusing would build a
+      # paired PR against the pin and say nothing about it.
+      - name: The pairing parser still refuses what it should
+        if: github.event_name == 'pull_request'
+        run: node --test scripts/ad4m-pairing.test.mjs
 
       # Inputs and the description reach the shell as environment variables rather than being
       # interpolated into the script text, so they are always data and never something that can

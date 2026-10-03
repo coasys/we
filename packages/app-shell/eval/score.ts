@@ -3,7 +3,7 @@
  * validates.
  */
 import type { SchemaNode, TemplateSchema, ValidationContext } from '@we/schema-shared';
-import { stripNodeIds, validateSemantic, validateStructure } from '@we/schema-shared';
+import { expandDefinitions, stripNodeIds, validateSemantic, validateStructure } from '@we/schema-shared';
 
 import type { EditSessionResult } from '../src/shared/ai/editSession';
 import type { EvalCase } from './cases';
@@ -34,7 +34,16 @@ export function scoreCase(
   result: EditSessionResult,
   context: ValidationContext,
 ): CaseScore {
-  const final = stripNodeIds(structuredClone(result.schema));
+  /*
+    Scored as the template the editor would STORE, which is the expanded form.
+
+    A session now works on a compacted tree, so `result.schema` carries `$defs` and the `$ref`
+    nodes standing for them — and a case's check walks the tree looking for what it asked for. Left
+    compacted, a check would look straight at a reference and find nothing, and every case would
+    fail for a reason that has nothing to do with the model. `EditorStore.accept` expands before
+    storing for the same reason; this is the same step, so the thing judged is the thing kept.
+  */
+  const final = stripNodeIds(expandDefinitions(structuredClone(result.schema)));
   const errors = validationErrors(final, context);
   const changed = JSON.stringify(final) !== JSON.stringify(stripNodeIds(structuredClone(start)));
   const check = evalCase.check(final);

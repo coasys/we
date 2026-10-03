@@ -5121,6 +5121,12 @@ asked to write one for a branch, create `PR_<DESCRIPTIVE_NAME>.md` at the repo r
 - **How** — where a reviewer should start and the route through the change; a table of files when
   it is wide, explaining *why* each changed rather than restating the diff.
 - **Test plan** — what was actually verified, ticked, and what was not, unticked with the reason.
+  **A checkbox is a thing that must be true before this merges, and nothing else is a checkbox.**
+  `- [x]` done; `- [ ]` not done, and the PR is not finished. Anything that will never be
+  ticked is a BULLET, not a box — a deferral is `- **Deferred — …**` with the reason and where it
+  goes instead. GitHub counts every checkbox in a description and prints "6 of 7 tasks" on the PR,
+  so a box nobody intends to tick makes that number wrong on every PR, and a number that is always
+  wrong is one everybody learns to ignore. `scripts/pr-tasks.mjs` fails CI on an unticked box.
 
 The file is the description and nothing else — no title heading above the sections, since it is
 passed as `gh pr create --body-file` and anything above a pairing block (below) breaks it. Give

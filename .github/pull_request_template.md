@@ -28,12 +28,17 @@ See docs/contributing/ad4m-and-deploys.md.
 
 <!-- The stale-docs failure mode here is silence: docs rot because nothing forces the update. -->
 
-- [ ] Store surface changed → `ai-context/src/fragments/stores.ts` updated and context regenerated (`pnpm --filter @we/ai-context generate-context`; CI diffs the outputs)
-- [ ] Architecture/layering changed → `docs/architecture/codebase-map.md` (and its sync partner `ai-context/src/fragments/architecture.ts`)
-- [ ] Seed shape changed → `packages/app-shell/src/types/seed.ts` comments + `docs/getting-started/seed-system.md` + `seed-examples/`
-- [ ] A package's public surface changed → that package's README/CONVENTIONS
-- [ ] N/A — no doc-bearing surface touched
+<!-- A box is a thing that must be true before this merges. The list below is a prompt, not a task
+     list, so it is bullets — see docs/contributing/pull-requests.md. -->
+
+- [ ] The docs this change touches are updated, or none applied
+
+- Store surface changed → `ai-context/src/fragments/stores.ts` updated and context regenerated (`pnpm --filter @we/ai-context generate-context`; CI diffs the outputs)
+- Architecture/layering changed → `docs/architecture/codebase-map.md` (and its sync partner `ai-context/src/fragments/architecture.ts`)
+- Seed shape changed → `packages/app-shell/src/types/seed.ts` comments + `docs/getting-started/seed-system.md` + `seed-examples/`
+- A package's public surface changed → that package's README/CONVENTIONS
 
 ## Test plan
 
-<!-- What was actually verified, ticked. What was not, unticked, with the reason. -->
+<!-- What was actually verified, ticked. What is still to do, unticked — those block the merge.
+     What was decided against is a bullet beginning **Deferred —**, with the reason. -->
