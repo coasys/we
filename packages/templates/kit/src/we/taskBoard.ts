@@ -843,12 +843,10 @@ const addTaskModal: SchemaNode = formModal({
       then: {
         $action: 'spaceStore.moveCardToColumn',
         args: ['', { $: 'col.id' }, { $: 'local.addExisting' }, [], { $: `${CELL}.slug` }],
-        onSuccess: [{ $setLocal: 'addOpen', value: false }],
       },
       else: {
         $action: 'spaceStore.addTaskToColumn',
         args: [{ $: 'col.id' }, { $: 'local.addTitle' }, { $: ANCHOR }],
-        onSuccess: [{ $setLocal: 'addOpen', value: false }],
       },
     },
   },
