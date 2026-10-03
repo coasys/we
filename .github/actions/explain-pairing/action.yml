@@ -1,7 +1,7 @@
 name: Explain a failure while paired with ad4m
 description: When a paired pull request fails a job that uses the pinned ad4m, name the check that says whether the failure is only the pin.
 
-# A pull request whose description pairs it with an unpublished ad4m change (`ad4m: coasys/ad4m#N`)
+# A pull request whose description pairs it with an unpublished ad4m change (`Paired with: coasys/ad4m#N`)
 # fails the required jobs until that change is published and `pnpm bump:ad4m` moves the pin. That is
 # deliberate — these jobs test against the pin, so another repository's branch cannot decide whether
 # a WE change merges — but a red check reads the same whether it is waiting on ad4m or broken, and

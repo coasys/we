@@ -5079,6 +5079,25 @@ asked to write one for a branch, create `PR_<DESCRIPTIVE_NAME>.md` at the repo r
   it is wide, explaining *why* each changed rather than restating the diff.
 - **Test plan** — what was actually verified, ticked, and what was not, unticked with the reason.
 
+The file is the description and nothing else — no title heading above the sections, since it is
+passed as `gh pr create --body-file` and anything above a pairing block (below) breaks it. Give
+the **title** alongside it, for `--title`, in Conventional Commits form: `type(scope):
+description`, the type lowercase (`feat`, `fix`, `refactor`, `perf`, `docs`, `test`,
+`ci`, `chore`), the scope optional, and the description short — under 60 characters, naming the
+change rather than explaining it: `ci: pair PRs with an ad4m alert block`.
+
+**If the branch needs an ad4m change that has not been published yet**, the file must START with
+this block, exactly — the preview builds against it and a check tests the PR there, and
+anything close (no colon, another heading or alert, lower down) fails rather than pairing:
+
+```markdown
+> [!IMPORTANT]
+> ### Paired with: coasys/ad4m#<N>
+```
+
+`coasys/ad4m@<branch>` names an ad4m branch instead. The rules are in
+`docs/contributing/ad4m-and-deploys.md`.
+
 **Never commit `PR_*.md` files.** They're scratch documents for the PR description.
 
 ---
@@ -5111,8 +5130,16 @@ strings target/release/ad4m-executor | grep "your log string"
 
 The root `package.json`'s pnpm `overrides` pin `@coasys/ad4m` and `@coasys/ad4m-connect` to a
 **published version**, not a local `file:` link, and every WE build uses that pin except a deploy
-preview whose PR description pairs it with an ad4m change (`ad4m: coasys/ad4m#<N>` as the description's
-first line, on its own — anywhere else it is an error, not a pairing). So a local
+preview whose PR description pairs it with an ad4m change. The pairing is this exact block, first in
+the description — anything close (no colon, another heading or alert, lower down, the old
+`ad4m: coasys/ad4m#<N>` line) is an error, not a pairing:
+
+```markdown
+> [!IMPORTANT]
+> ### Paired with: coasys/ad4m#<N>
+```
+
+So a local
 `cd ad4m/core && pnpm run build` does NOT get picked up by WE — changes to `@coasys/ad4m` reach WE
 once a version is published from the ad4m repo and the pin moves. A bot keeps one PR open that moves
 it to the newest ad4m `dev` version (`.github/workflows/bump-ad4m.yaml`); a feature that needs a
