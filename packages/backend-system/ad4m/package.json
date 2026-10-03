@@ -9,8 +9,7 @@
     "test": "vitest run",
     "test:live": "vitest run --config vitest.live.config.ts",
     "typecheck": "tsc --noEmit",
-    "generate:classes": "tsx scripts/generateClasses.mjs",
-    "verify": "tsx scripts/verifyCapabilities.ts"
+    "generate:classes": "tsx scripts/generateClasses.mjs"
   },
   "types": "dist/index.d.ts",
   "exports": {

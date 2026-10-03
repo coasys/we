@@ -14,6 +14,11 @@
  * A case a backend is known to fail is listed in its harness's `knownGaps` with the reason, and runs
  * inverted: it passes while the gap is open and fails the day the gap closes, which is the reminder
  * to delete the entry. A gap is never a skip — a skipped case says nothing when the behaviour moves.
+ *
+ * A case a backend fails only some of the time cannot run inverted — it would flake the other way —
+ * so it goes in `knownIntermittent` instead, and is retried on a fresh subject. That still catches a
+ * backend that gets it wrong every time; what it cannot do is say when the gap closes, so the reason
+ * should name where the fix is being tracked.
  */
 import { type BackendPorts, type DatasetHandle, RECORD_TYPE_KEY, type RendererDataBindings } from '@we/backend-shared';
 import { getEntity } from '@we/entities';
@@ -41,6 +46,8 @@ export interface ConformanceHarness {
   timing?: { settle?: number; quiet?: number };
   /** Cases this backend is known to fail, each with what is wrong. See the module comment. */
   knownGaps?: Partial<Record<ConformanceCase, string>>;
+  /** Cases this backend fails some of the time, each with what is wrong. See the module comment. */
+  knownIntermittent?: Partial<Record<ConformanceCase, string>>;
 }
 
 export const CONFORMANCE_CASES = [
@@ -153,7 +160,10 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
 
     const test = (id: ConformanceCase, title: string, body: () => Promise<void>) => {
       const gap = harness.knownGaps?.[id];
+      const intermittent = harness.knownIntermittent?.[id];
       if (gap) it.fails(`${title} [known gap: ${gap}]`, body, timeout);
+      // Each retry runs the hooks again, so every attempt gets a fresh subject.
+      else if (intermittent) it(`${title} [intermittent: ${intermittent}]`, { timeout, retry: 4 }, body);
       else it(title, body, timeout);
     };
 
@@ -206,20 +216,20 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
       // data problems rather than backend ones.
 
       test('relations.ordered-read', 'reads an ordered collection in the order it was arranged', async () => {
+        // Composed in the reverse of the order the blocks were made: creation order is an accident of
+        // typing, and the arrangement is the data.
         const Collection = model('CollectionBlock');
         const post = await Collection.create(subject.dataset, { kind: 'post' });
-        const paragraph = await Collection.create(subject.dataset, { kind: 'text' });
-        const image = await Collection.create(subject.dataset, { kind: 'image' });
-        // Created paragraph-then-image, composed image-then-paragraph. Creation order is an accident
-        // of typing; the arrangement is the data.
-        await post.addChildren(image);
-        await post.addChildren(paragraph);
+        const blocks: Instance[] = [];
+        for (let i = 0; i < 3; i++) blocks.push(await Collection.create(subject.dataset, { kind: 'text' }));
+        const arranged = [...blocks].reverse();
+        for (const block of arranged) await post.addChildren(block);
 
         const [row] = await reader('CollectionBlock').findAll(subject.dataset, {
           where: { id: post.id },
           include: { children: true },
         });
-        expect((row.children as Row[]).map((c) => c.id)).toEqual([image.id, paragraph.id]);
+        expect((row.children as Row[]).map((c) => c.id)).toEqual(arranged.map((b) => b.id));
       });
 
       test(

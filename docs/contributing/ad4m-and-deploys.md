@@ -184,11 +184,15 @@ It refuses:
 
 ### What `pnpm verify:ad4m` checks
 
-WE declares what the ad4m executor can do natively (`ad4mCapabilities` in `@we/backend-ad4m`), so
-it can refuse a query ad4m would answer wrongly instead of showing wrong rows. Nothing else checks
-that declaration against ad4m. For each claim (each operator, sort, traversal, and so on), the
-script runs one query against the executor and the same query against WE's in-memory engine over
-the same records, then compares:
+It runs WE's live tests (`pnpm --filter @we/backend-ad4m test:live`) against a real executor. There
+are two files in `packages/backend-system/ad4m/tests/live/`, and either one failing means do not
+merge the bump.
+
+**`capabilities.live.ts`.** WE declares what the ad4m executor can do natively (`ad4mCapabilities`
+in `@we/backend-ad4m`), so it can refuse a query ad4m would answer wrongly instead of showing wrong
+rows. Nothing else checks that declaration against ad4m. For each claim (each operator, sort,
+traversal, and so on), it runs one query against the executor and the same query against WE's
+in-memory engine over the same records, then compares, printing a table at the end:
 
 | Result                 | Meaning                                     | Action                                 |
 | ---------------------- | ------------------------------------------- | -------------------------------------- |
@@ -196,14 +200,21 @@ the same records, then compares:
 | **claimed but fails**  | The declaration is wrong, or ad4m regressed | Do not merge the bump                  |
 | **not claimed, works** | ad4m can do something WE does not use       | Consider claiming it, in a separate PR |
 
-It starts its own executor in a temporary directory and removes it afterwards. By default it uses
-`../ad4m/target/release/ad4m-executor`; `--executor <path>` names another, and `--port` with
-`--token` uses one that is already running. Build that executor from the commit the new pin was
-published from (`npm view @coasys/ad4m@<version> gitHead`), with
-`cargo build --release --bin ad4m-executor`.
+Only "claimed but fails" fails a test; "not claimed, works" is reported, not failed.
+
+**`conformance.live.ts`.** The suite every backend runs (`@we/backend-conformance`): records,
+relations and live queries through the backend's ports. The cases ad4m is known to fail are listed
+in that file with what is wrong, and run inverted — they pass while the gap is open, and fail when
+an ad4m change closes it, which is the cue to delete the entry.
+
+Both start one executor in a temporary directory, on free ports and with no network, and remove it
+afterwards. By default it is `../ad4m/target/release/ad4m-executor`; `AD4M_EXECUTOR=<path>` names
+another, and `AD4M_LIVE_URL` with `AD4M_LIVE_TOKEN` uses one already running, its agent unlocked.
+Build that executor from the commit the new pin was published from
+(`npm view @coasys/ad4m@<version> gitHead`), with `cargo build --release --bin ad4m-executor`.
 
 It runs locally rather than in CI because it needs an executor, which takes the better part of an
-hour to compile. Live queries are not checked.
+hour to compile.
 
 ### Testing an ad4m branch against WE's tests
 

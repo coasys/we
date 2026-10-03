@@ -51,4 +51,10 @@ describeBackendConformance('AD4M', {
     'live.identical-queries-independent':
       'identical subscriptions share one server-side id with no holder count, so disposing one ends both',
   },
+  knownIntermittent: {
+    // Seen in 3 of 10 runs, only ever on the first post in a fresh perspective: the first two
+    // children read back swapped. Probably the ordering-strategy lookup racing the SHACL install.
+    'relations.ordered-read':
+      'the first ordered write after the space SDNA is installed sometimes records no order (not yet filed with ad4m)',
+  },
 });

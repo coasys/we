@@ -1,9 +1,10 @@
 /**
- * Starts a throwaway executor for the live suite, and stops it afterwards.
+ * Starts a throwaway executor for the live tests, and stops it afterwards.
  *
- * Every live test file talks to the one process this starts, through the connection it provides —
- * an executor takes far longer to start than a test takes to run, and a perspective per case
- * already keeps the cases apart.
+ * Both live files talk to the one process this starts, through the connection it provides — the
+ * capability check (`capabilities.live.ts`, which is what `pnpm verify:ad4m` runs) and the shared
+ * conformance suite. An executor takes far longer to start than a test takes to run, and each file
+ * works in perspectives of its own.
  *
  * The executor is isolated from anything else on the machine on purpose: a fresh data directory in
  * the temp dir, free ports for the API and for Holochain (whose defaults a desktop executor already
@@ -11,8 +12,8 @@
  * peers — which is all the cases ask about.
  *
  * Which binary: `AD4M_EXECUTOR`, else the sibling checkout's release build. To run against an
- * executor that is already running instead, set `AD4M_LIVE_URL` and `AD4M_LIVE_TOKEN` — and know
- * that the suite then writes its perspectives into that agent.
+ * executor that is already running instead, set `AD4M_LIVE_URL` and `AD4M_LIVE_TOKEN` — its agent
+ * unlocked — and know that the tests then write their perspectives into that agent.
  */
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -35,7 +36,7 @@ declare module 'vitest' {
   }
 }
 
-const PASSPHRASE = 'conformance';
+const PASSPHRASE = 'we-live';
 
 function freePort(): Promise<number> {
   return new Promise((done, fail) => {
@@ -91,11 +92,12 @@ async function waitUntilAnswering(url: string, token: string, exited: () => stri
   }
 }
 
-/** A fresh executor has no agent; one that is already running may have a locked one. */
+/** A fresh executor has no agent. One already running has somebody's, whose passphrase is not ours. */
 async function ensureUnlockedAgent(client: Ad4mClient): Promise<void> {
   const status = await client.agent.status();
   if (!status.isInitialized) await client.agent.generate(PASSPHRASE);
-  else if (!status.isUnlocked) await client.agent.unlock(PASSPHRASE);
+  else if (!status.isUnlocked)
+    throw new Error('The agent is locked. Unlock it, or let the tests start their own executor.');
 }
 
 export default async function setup(project: TestProject): Promise<() => Promise<void>> {
@@ -149,7 +151,12 @@ export default async function setup(project: TestProject): Promise<() => Promise
   executor.stdout?.on('data', (chunk) => output.push(String(chunk)));
   executor.stderr?.on('data', (chunk) => output.push(String(chunk)));
   let exit: string | null = null;
-  executor.on('exit', (code, signal) => (exit = `code ${code}, signal ${signal}`));
+  const exited = new Promise<void>((done) =>
+    executor.on('exit', (code, signal) => {
+      exit = `code ${code}, signal ${signal}`;
+      done();
+    }),
+  );
 
   // An interrupted run skips teardown, and the executor outlives it holding its ports — so it goes
   // when this process does, however that happens.
@@ -161,9 +168,12 @@ export default async function setup(project: TestProject): Promise<() => Promise
     if (exit === null) {
       // It does not always honour SIGTERM, hence the escalation.
       executor.kill('SIGTERM');
-      await new Promise((r) => setTimeout(r, 2_000));
+      await Promise.race([exited, new Promise((r) => setTimeout(r, 10_000))]);
       if (exit === null) executor.kill('SIGKILL');
+      await exited;
     }
+    // Only once it has gone: it writes while shutting down, and a directory removed before that is
+    // recreated behind it.
     rmSync(dataPath, { recursive: true, force: true });
   };
 

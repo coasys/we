@@ -1,63 +1,39 @@
 /**
- * pnpm verify:ad4m — checks `ad4mCapabilities` against a real executor.
+ * `ad4mCapabilities`, checked against a real executor.
  *
- * Every entry in `ad4mCapabilities` is a claim about the executor, and the planner believes it:
- * a claimed feature is pushed down, and if the executor answers it wrongly the result is wrong
- * rows with no error. The unit tests cannot catch that, because they only exercise the planner.
+ * Every entry in `ad4mCapabilities` is a claim about the executor, and the planner believes it: a
+ * claimed feature is pushed down, and if the executor answers it wrongly the result is wrong rows
+ * with no error. The unit tests cannot catch that, because they only exercise the planner.
  *
- * So this seeds one small tree of records into a throwaway perspective, and the same records into
- * the in-memory engine (`executeQueryIR`, WE's reference implementation of the query IR). Then it
- * runs one query per capability against both, and compares:
+ * So this seeds one small tree of records into a perspective, and the same records into the
+ * reference engine (`executeQueryIR`, WE's in-memory implementation of the query IR), runs one query
+ * per capability against both, and compares:
  *
  *   holds                   claimed, and the executor agrees with the reference
- *   claimed but fails       claimed, and it does not. Do not merge the bump.
+ *   claimed but fails       claimed, and it does not — the test fails. Do not merge the bump.
  *   not claimed, works      the executor could do more than WE asks of it. Consider claiming it.
  *   not claimed             not claimed, and it does not work. Nothing to do.
  *
- * By default it starts its own executor in a temporary directory and removes both afterwards:
+ * Only the second fails a test. The third is reported, not failed: claiming more is a decision for
+ * a PR of its own, never a reason to hold a bump. The table prints after the last case.
  *
- *   pnpm verify:ad4m                              # ../ad4m/target/release/ad4m-executor
- *   pnpm verify:ad4m --executor <path>
- *   pnpm verify:ad4m --port 12000 --token <cred>  # an executor already running, agent unlocked
- *
- * Build the executor from the commit the pinned @coasys/ad4m was published from; the release
- * workflow does the same (`npm view @coasys/ad4m@<pin> gitHead`).
- *
- * Live queries (`live: 'push'`) are not checked: a subscription needs a second writer and a wait,
- * which is a different kind of test.
+ * Run with `pnpm verify:ad4m`, against an executor built from the commit the pinned `@coasys/ad4m`
+ * was published from (`npm view @coasys/ad4m@<pin> gitHead`). Live queries are not checked here;
+ * `conformance.live.ts` covers those.
  */
-import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { connect, createServer } from 'node:net';
-import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import { Ad4mClient, type Ad4mModel, type PerspectiveProxy } from '@coasys/ad4m';
+import { executeQueryIR, type InMemoryDataset, planQuery, type QueryIR, type Row } from '@we/backend-shared';
+import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
+
 import {
   ad4mCapabilities,
   buildEntityFromEntry,
   createAd4mQueryAdapter,
   type EntityManifestEntry,
-} from '@we/backend-ad4m';
-import { executeQueryIR, type InMemoryDataset, planQuery, type QueryIR, type Row } from '@we/backend-shared';
-
-const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO = resolve(HERE, '../../../..');
-
-// ── Arguments ──────────────────────────────────────────────────────────────
-
-const argv = process.argv.slice(2);
-const arg = (name: string) => {
-  const i = argv.indexOf(`--${name}`);
-  return i >= 0 ? argv[i + 1] : undefined;
-};
-const givenPort = arg('port') ?? process.env.AD4M_PORT;
-const givenToken = arg('token') ?? process.env.AD4M_TOKEN;
-const executorPath = resolve(
-  arg('executor') ?? process.env.AD4M_EXECUTOR ?? join(REPO, '..', 'ad4m', 'target', 'release', 'ad4m-executor'),
-);
+} from '../../src/index';
 
 // ── The records ────────────────────────────────────────────────────────────
 //
@@ -318,113 +294,6 @@ function project(rows: Row[], compare: Compare, groupNames: Map<string, string>)
   return rows.map((r) => r[compare.field] ?? null);
 }
 
-// ── The executor ───────────────────────────────────────────────────────────
-
-async function freePort(): Promise<number> {
-  return new Promise((done, fail) => {
-    const server = createServer();
-    server.unref();
-    server.on('error', fail);
-    server.listen(0, () => {
-      const address = server.address();
-      server.close(() => done(typeof address === 'object' && address ? address.port : 0));
-    });
-  });
-}
-
-async function startExecutor(): Promise<{ port: number; token: string; stop: () => Promise<void> }> {
-  if (!existsSync(executorPath)) {
-    throw new Error(
-      `No executor at ${executorPath}. Build one (cargo build --release --bin ad4m-executor in ad4m), ` +
-        'pass --executor <path>, or point at a running one with --port and --token.',
-    );
-  }
-  const dataPath = mkdtempSync(join(tmpdir(), 'we-verify-ad4m-'));
-  const init = spawnSync(executorPath, ['init', '--data-path', dataPath], { encoding: 'utf8' });
-  if (init.status !== 0) throw new Error(`executor init failed:\n${init.stderr || init.stdout}`);
-
-  const port = await freePort();
-  const token = randomBytes(16).toString('hex');
-  // Nothing here needs the network: a local perspective is answered by the executor alone.
-  const child: ChildProcess = spawn(
-    executorPath,
-    [
-      'run',
-      '--port',
-      String(port),
-      '--app-data-path',
-      dataPath,
-      '--run-dapp-server',
-      'false',
-      '--hc-use-bootstrap',
-      'false',
-      '--hc-use-proxy',
-      'false',
-      '--hc-use-mdns',
-      'false',
-    ],
-    { env: { ...process.env, AD4M_ADMIN_CREDENTIAL: token }, stdio: ['ignore', 'ignore', 'pipe'] },
-  );
-  let stderr = '';
-  child.stderr?.on('data', (chunk) => (stderr = (stderr + chunk).slice(-4000)));
-  let stopping = false;
-  child.on('exit', (code) => {
-    if (code && !stopping) console.error(`\nexecutor exited with ${code}:\n${stderr}`);
-  });
-
-  return {
-    port,
-    token,
-    // Removes the directory only once the executor has gone: it writes while shutting down, and a
-    // directory removed before that is recreated behind it.
-    stop: async () => {
-      stopping = true;
-      if (child.exitCode === null) {
-        const exited = new Promise((done) => child.once('exit', done));
-        child.kill('SIGTERM');
-        await Promise.race([exited, new Promise((done) => setTimeout(done, 10_000))]);
-        if (child.exitCode === null) child.kill('SIGKILL');
-      }
-      rmSync(dataPath, { recursive: true, force: true });
-    },
-  };
-}
-
-/**
- * Resolves once something accepts connections on the port. The client has to wait for this: one
- * made before the executor listens gets a socket error and then waits forever on its first call,
- * rather than failing it.
- */
-async function waitForPort(port: number): Promise<void> {
-  const deadline = Date.now() + 180_000;
-  for (;;) {
-    const open = await new Promise<boolean>((done) => {
-      const socket = connect(port, '127.0.0.1');
-      socket.once('connect', () => (socket.destroy(), done(true)));
-      socket.once('error', () => (socket.destroy(), done(false)));
-    });
-    if (open) return;
-    if (Date.now() > deadline) throw new Error(`nothing listened on port ${port} within three minutes`);
-    await new Promise((r) => setTimeout(r, 500));
-  }
-}
-
-function withTimeout<T>(what: string, promise: Promise<T>, ms = 60_000): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, fail) =>
-      setTimeout(() => fail(new Error(`${what} did not answer within ${ms / 1000}s`)), ms),
-    ),
-  ]);
-}
-
-async function readyAgent(client: Ad4mClient): Promise<void> {
-  const status = await withTimeout('agent.status', client.agent.status());
-  if (!status.isInitialized) await withTimeout('agent.generate', client.agent.generate('we-verify'), 180_000);
-  else if (!status.isUnlocked)
-    throw new Error('the agent is locked. Unlock it, or let this script start its own executor.');
-}
-
 // ── Seeding ────────────────────────────────────────────────────────────────
 
 type ModelClass = typeof Ad4mModel & {
@@ -473,115 +342,95 @@ async function seed(perspective: PerspectiveProxy, Group: ModelClass, Item: Mode
 
 // ── Run ────────────────────────────────────────────────────────────────────
 
-async function main() {
-  const root = JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8'));
-  const pins = root.pnpm?.overrides ?? {};
-  console.log(`Pinned: @coasys/ad4m ${pins['@coasys/ad4m']}, @coasys/ad4m-connect ${pins['@coasys/ad4m-connect']}`);
-  if (pins['@coasys/ad4m'] !== pins['@coasys/ad4m-connect']) {
-    console.log('  The two pins differ. The app talks through the SDK inside ad4m-connect, so check both.');
-  }
+const MARK: Record<Outcome, string> = {
+  holds: '✓',
+  'claimed but fails': '✗',
+  'not claimed, works': '+',
+  'not claimed': '·',
+};
 
-  const own = givenPort && givenToken ? null : await startExecutor();
-  const port = Number(givenPort ?? own!.port);
-  const token = givenToken ?? own!.token;
-  if (own) console.log(`Started an executor from ${executorPath} on port ${port}`);
-
-  await waitForPort(port);
-  const client = new Ad4mClient(`http://localhost:${port}`, token);
+describe('ad4mCapabilities against the executor', () => {
+  let client: Ad4mClient;
   let perspective: PerspectiveProxy | undefined;
-  try {
-    await readyAgent(client);
-    console.log('Agent ready');
-    const info = await client.runtime.info().catch(() => null);
-    if (info)
-      console.log(`Executor: ${(info as { ad4mExecutorVersion?: string }).ad4mExecutorVersion ?? 'unknown version'}`);
+  let Item: ModelClass;
+  let seeded: Awaited<ReturnType<typeof seed>>;
+  const results: { name: string; outcome: Outcome }[] = [];
+  const adapter = createAd4mQueryAdapter(() => ENTRIES);
 
-    perspective = await withTimeout('perspective.add', client.perspective.add(`we-verify-${Date.now()}`));
+  beforeAll(async () => {
+    const { url, token } = inject('ad4mExecutor');
+    client = new Ad4mClient(url, token);
+    perspective = await client.perspective.add(`we-verify-${Date.now()}`);
+
     const flag = (value: string) => ({ through: 'ad4m://type', value });
     const classes: Record<string, ModelClass> = {};
-    const resolveClass = (name: string) => classes[name];
     classes.VerifyGroup = buildEntityFromEntry(ENTRIES[0], { flag: flag(`${P}group`) }) as ModelClass;
     classes.VerifyItem = buildEntityFromEntry(ENTRIES[1], {
       flag: flag(`${P}item`),
-      classResolver: resolveClass,
+      classResolver: (name: string) => classes[name],
     }) as ModelClass;
     await perspective.ensureSDNASubjectClass(classes.VerifyGroup);
     await perspective.ensureSDNASubjectClass(classes.VerifyItem);
+    Item = classes.VerifyItem;
+    seeded = await seed(perspective, classes.VerifyGroup, Item);
+  }, 180_000);
 
-    const { keys, dataset, groupNames } = await withTimeout(
-      'seeding',
-      seed(perspective, classes.VerifyGroup, classes.VerifyItem),
-    );
-    console.log(`Seeded ${ITEMS.length} records`);
-    const adapter = createAd4mQueryAdapter(() => ENTRIES);
-
-    const results: { name: string; outcome: Outcome; detail?: string }[] = [];
-    for (const c of CASES) {
-      const ir: QueryIR = { irVersion: 1, entity: 'VerifyItem', ...c.ir(keys) };
-      const gaps = planQuery(ir, ad4mCapabilities).gaps;
-      const claimed = gaps.length === 0;
-
-      const expected = project(executeQueryIR(ir, dataset) as Row[], c.compare, groupNames);
-      let actual: unknown;
-      let error: string | undefined;
-      try {
-        const rows = await withTimeout(c.name, classes.VerifyItem.findAll(perspective, adapter.lower(ir)), 30_000);
-        actual = project(rows, c.compare, groupNames);
-      } catch (e) {
-        error = e instanceof Error ? e.message.split('\n')[0] : String(e);
-      }
-
-      const agrees = !error && JSON.stringify(actual) === JSON.stringify(expected);
-      const outcome: Outcome = claimed
-        ? agrees
-          ? 'holds'
-          : 'claimed but fails'
-        : agrees
-          ? 'not claimed, works'
-          : 'not claimed';
-      // Ids back to the letters in the diagram above, so a failure can be read.
-      const letters = (value: unknown) =>
-        Object.entries(keys).reduce((text, [key, id]) => text.split(id).join(key), JSON.stringify(value));
-      const detail =
-        outcome === 'holds' || outcome === 'not claimed, works'
-          ? undefined
-          : error
-            ? `error: ${error}`
-            : `expected ${letters(expected)}, got ${letters(actual)}`;
-      results.push({ name: c.name, outcome, detail });
-    }
-
+  afterAll(async () => {
+    // The pins and the four-way table — what a person reading a bump wants, in one place.
+    const pins = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../../../package.json'), 'utf8')).pnpm
+      ?.overrides as Record<string, string> | undefined;
+    const info = (await client?.runtime.info().catch(() => null)) as { ad4mExecutorVersion?: string } | null;
     const width = Math.max(...results.map((r) => r.name.length));
-    console.log('');
-    for (const r of results) {
-      const mark = { holds: '✓', 'claimed but fails': '✗', 'not claimed, works': '+', 'not claimed': '·' }[r.outcome];
-      console.log(`${mark} ${r.name.padEnd(width)}  ${r.outcome}`);
-      if (r.outcome === 'claimed but fails' && r.detail) console.log(`    ${r.detail}`);
-    }
-    console.log('\n(live queries are not checked)');
+    const lines = [
+      `Pinned: @coasys/ad4m ${pins?.['@coasys/ad4m']}, @coasys/ad4m-connect ${pins?.['@coasys/ad4m-connect']}`,
+      `Executor: ${info?.ad4mExecutorVersion ?? 'unknown version'}`,
+      '',
+      ...results.map((r) => `${MARK[r.outcome]} ${r.name.padEnd(width)}  ${r.outcome}`),
+    ];
+    const extra = results.filter((r) => r.outcome === 'not claimed, works').length;
+    if (extra) lines.push('', `${extra} not claimed but working: consider claiming them, in a PR of their own.`);
+    console.log(lines.join('\n'));
 
-    const failed = results.filter((r) => r.outcome === 'claimed but fails');
-    const extra = results.filter((r) => r.outcome === 'not claimed, works');
-    if (extra.length) {
-      console.log(
-        `\n${extra.length} not claimed but working: consider claiming them in ad4mCapabilities, in a PR of their own.`,
-      );
-    }
-    if (failed.length) {
-      console.log(`\n✗ ${failed.length} claimed capabilities do not hold. Do not merge the bump.`);
-      process.exitCode = 1;
-    } else {
-      console.log('\n✓ Every claimed capability holds.');
-    }
-  } finally {
     if (perspective) await client.perspective.remove(perspective.uuid).catch(() => undefined);
-    await own?.stop();
-    // The client keeps a socket open; nothing else is pending once the report is written.
-    setTimeout(() => process.exit(), 200).unref();
-  }
-}
+    client?.close();
+  });
 
-main().catch((e) => {
-  console.error(`\n✗ ${e instanceof Error ? e.message : e}`);
-  process.exit(2);
+  for (const c of CASES) {
+    it(
+      c.name,
+      async () => {
+        const ir: QueryIR = { irVersion: 1, entity: 'VerifyItem', ...c.ir(seeded.keys) };
+        const claimed = planQuery(ir, ad4mCapabilities).gaps.length === 0;
+        const expected = project(executeQueryIR(ir, seeded.dataset) as Row[], c.compare, seeded.groupNames);
+
+        let actual: unknown;
+        let error: string | undefined;
+        try {
+          actual = project(await Item.findAll(perspective!, adapter.lower(ir)), c.compare, seeded.groupNames);
+        } catch (e) {
+          error = e instanceof Error ? e.message.split('\n')[0] : String(e);
+        }
+
+        const agrees = !error && JSON.stringify(actual) === JSON.stringify(expected);
+        const outcome: Outcome = claimed
+          ? agrees
+            ? 'holds'
+            : 'claimed but fails'
+          : agrees
+            ? 'not claimed, works'
+            : 'not claimed';
+        results.push({ name: c.name, outcome });
+
+        if (outcome !== 'claimed but fails') return;
+        // Ids back to the letters in the diagram above, so a failure can be read.
+        const letters = (value: unknown) =>
+          Object.entries(seeded.keys).reduce((text, [key, id]) => text.split(id).join(key), JSON.stringify(value));
+        expect.fail(
+          `claimed in ad4mCapabilities, and the executor disagrees — do not merge the bump. ` +
+            (error ? `error: ${error}` : `expected ${letters(expected)}, got ${letters(actual)}`),
+        );
+      },
+      30_000,
+    );
+  }
 });
