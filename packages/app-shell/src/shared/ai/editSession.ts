@@ -283,6 +283,14 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
     // One result turn per call, so every call is answered by name.
     for (const r of results) {
       turns.push({ role: 'tool', callId: r.callId, result: r.isError ? `Error: ${r.content}` : r.content });
+      /*
+        What the model was told, logged beside what it asked for.
+
+        The reach of a patch and the id of a split's copy are said HERE and nowhere else — the
+        panel shows the model's prose, not the tool result — so without this the one thing worth
+        watching while testing is only observable by inferring it from what the model then says.
+      */
+      debug(`[editSession] → ${r.callId}: ${r.isError ? 'Error: ' : ''}${r.content}`);
     }
 
     const failed = results.some((r) => r.isError);
