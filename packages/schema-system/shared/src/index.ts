@@ -84,6 +84,8 @@ export {
   type CompactResult,
   definitionsOf,
   expandDefinitions,
+  type OutlineEntry,
+  outlineOf,
   REF_TYPE,
   type RefProps,
   useCountOf,

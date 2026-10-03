@@ -19,7 +19,14 @@ import type {
   ConversationTurn,
 } from '@we/backend-shared';
 import type { SchemaNode, TemplateSchema, ValidationContext } from '@we/schema-shared';
-import { ensureNodeIds, expandDefinitions, useCountOf, validateSemantic, validateStructure } from '@we/schema-shared';
+import {
+  ensureNodeIds,
+  expandDefinitions,
+  outlineOf,
+  useCountOf,
+  validateSemantic,
+  validateStructure,
+} from '@we/schema-shared';
 
 import { applySchemaPatches, type SchemaPatch } from './schemaPatches';
 
@@ -85,6 +92,25 @@ export interface EditSessionResult {
 }
 
 const issueKey = (e: { severity: string; path: string; message: string }) => `${e.severity}|${e.path}|${e.message}`;
+
+/**
+ * A split's copy, as a list of ids the model can patch straight away.
+ *
+ * The alternative is what it did without one: re-type the whole shape to change a prop on a node
+ * inside it, drop a `variant` in the retyping, and leave a heading the wrong size. An outline is a
+ * few hundred characters against the few thousand tokens that costs, and the clue per line is what
+ * makes it usable — four `we-text` nodes read the same without one.
+ */
+function describeCopy(copy: SchemaNode): string {
+  const { entries, omitted } = outlineOf(copy);
+  const lines = entries.map(
+    ({ id, type, depth, clue }) => `${'  '.repeat(depth)}${id} ${type}${clue ? ` "${clue}"` : ''}`,
+  );
+  return (
+    `The copy ${copy.id} holds:\n${lines.join('\n')}` +
+    (omitted > 0 ? `\n…and ${omitted} more, not listed. Ask for another split or patch what is here.` : '')
+  );
+}
 
 export async function runEditSession(options: EditSessionOptions): Promise<EditSessionResult> {
   const { turns, validationContext, debug = () => {} } = options;
@@ -240,10 +266,11 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
             `change shows in ${reach.join(' and ')} places. If it was meant for one of them, split that ` +
             `use out and patch the copy.`,
         split.length > 0 &&
-          `${split.length === 1 ? 'The copy is' : 'The copies are'} ${split.join(', ')}, and patching ` +
-            `${split.length === 1 ? 'it' : 'them'} now changes nothing else. The nodes INSIDE a copy were ` +
-            `renumbered and their new ids arrive with the template next message, so make a change to the ` +
-            `copy as a whole this turn and reach inside it on the next one.`,
+          `${split.length === 1 ? 'A use was split out; its copy is' : 'Uses were split out; their copies are'} ` +
+            `${split.join(', ')}, and patching ${split.length === 1 ? 'it' : 'them'} or anything inside ` +
+            `${split.length === 1 ? 'it' : 'them'} now changes nothing else. The copy is listed below, so ` +
+            `patch the node you want by its id — DO NOT re-send the shape.`,
+        ...applied.splits.map((copy) => describeCopy(copy)),
       ]
         .filter((line): line is string => typeof line === 'string')
         .join(' ');

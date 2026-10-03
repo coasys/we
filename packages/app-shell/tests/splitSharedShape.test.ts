@@ -13,7 +13,14 @@
  */
 import { applySchemaPatches } from '@shared/ai/schemaPatches';
 import type { SchemaNode } from '@we/schema-shared';
-import { compactDefinitions, definitionsOf, ensureNodeIds, expandDefinitions, findNodeById } from '@we/schema-shared';
+import {
+  compactDefinitions,
+  definitionsOf,
+  ensureNodeIds,
+  expandDefinitions,
+  findNodeById,
+  outlineOf,
+} from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 const card = (): SchemaNode => ({
@@ -104,6 +111,35 @@ describe('splitting one use out of a shared shape', () => {
     ensureNodeIds(out);
     expect(splits[0].id).toBeTruthy();
     expect(findNodeById(out, splits[0].id!)?.node).toBe(splits[0]);
+  });
+
+  /*
+    An outline is only worth sending if a node can be found in it, which means telling siblings
+    apart. The first real run failed exactly here: told the copy's own id and nothing else, the
+    model retyped the whole shape to reach a heading inside it and lost a `variant` doing so.
+  */
+  it('describes the copy well enough to patch a node inside it', () => {
+    const schema = threeCards();
+    const { schema: out } = applySchemaPatches(schema, [
+      { targetId: (refs(schema)[0] as SchemaNode).id!, split: true },
+    ]);
+    const copy = ensureNodeIds(out).children![0] as SchemaNode;
+
+    const { entries } = outlineOf(copy);
+    expect(entries[0]).toMatchObject({ depth: 0, type: 'Column', id: copy.id });
+
+    // The two headings differ only by their words, so the clue is what separates them.
+    const texts = entries.filter((e) => e.type === 'we-text');
+    expect(texts).toHaveLength(2);
+    expect(texts.map((t) => t.clue)).toEqual(['A card', 'With a second line for s']);
+
+    // And an id off the outline reaches the node it named.
+    const heading = texts[0];
+    const { schema: patched, error } = applySchemaPatches(out, [
+      { targetId: heading.id, node: { children: ['Only this one'] } },
+    ]);
+    expect(error).toBeUndefined();
+    expect(JSON.stringify(expandDefinitions(patched)).split('Only this one')).toHaveLength(2);
   });
 
   it('refuses a node that is not shared, and says why', () => {

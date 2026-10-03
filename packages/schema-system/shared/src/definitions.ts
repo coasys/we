@@ -366,3 +366,87 @@ export function expandDefinitions(schema: SchemaNode): SchemaNode {
   delete (out as { $defs?: unknown }).$defs;
   return out;
 }
+
+/** One node of an outline: enough to patch it, and enough to tell it from its siblings. */
+export interface OutlineEntry {
+  id: string;
+  type: string;
+  /** Nesting depth below the node the outline was taken from, the root being 0. */
+  depth: number;
+  /** A few words identifying it — its own text, or a prop that names it. Empty when nothing does. */
+  clue: string;
+}
+
+/**
+ * Props worth quoting to tell two nodes of the same type apart, most identifying first.
+ *
+ * `variant` is last on purpose: it is a style, so a column's heading and its count are both
+ * "footnote" and quoting it names neither. Anything carrying the node's own words comes first.
+ */
+const CLUE_PROPS = ['text', 'label', 'title', 'placeholder', 'name', 'icon', 'variant'] as const;
+
+/**
+ * A node's shape as ids and types — what something holding a subtree can say about it cheaply.
+ *
+ * The case it exists for is a split. The copy's descendants are numbered the moment the tree is,
+ * but the model has not SEEN them: the schema reaches it in the user's turn and nowhere else. Told
+ * only the copy's own id, it re-emits the whole shape by hand to change something inside — which
+ * is thousands of tokens and a transcription to get wrong, and in the first real run it was both:
+ * it dropped a `variant` while retyping and the heading came back the wrong size.
+ *
+ * So: the ids, the types, and a clue per node, which is the part that makes it usable. Four
+ * `we-text` nodes are indistinguishable without one, and a model picking among them is guessing.
+ *
+ * Bounded, because a copy can be enormous. Past the limit the outline says how much it left out,
+ * and the caller can say what to do about it — still far cheaper than the alternative it replaces.
+ */
+export function outlineOf(node: SchemaNode, limit = 80): { entries: OutlineEntry[]; omitted: number } {
+  const entries: OutlineEntry[] = [];
+  let omitted = 0;
+
+  /*
+    What a node SAYS, then what names it.
+
+    The words are what differ between siblings — two headings in a card are both
+    `variant: heading-sm` and only their text tells them apart, so leading with the prop would
+    name every node and identify none of them.
+
+    An expression is read from its END. A board's two labels are the same four-hundred-character
+    `arrangedBoard({…})` call differing in the last word, `.label` against `.count`, so the head
+    of one is the head of the other and the tail is the whole distinction.
+  */
+  const clueFrom = (value: unknown): string => {
+    if (typeof value === 'string' && value.trim()) return value.trim().slice(0, 24);
+    const expression = (value as { $?: unknown } | null)?.$;
+    if (typeof expression === 'string' && expression.trim()) {
+      const words = expression.trim();
+      return words.length > 24 ? `…${words.slice(-24)}` : words;
+    }
+    return '';
+  };
+
+  const clueOf = (n: SchemaNode): string => {
+    for (const child of n.children ?? []) {
+      const clue = clueFrom(child);
+      if (clue) return clue;
+    }
+    for (const key of CLUE_PROPS) {
+      const clue = clueFrom((n.props as Record<string, unknown> | undefined)?.[key]);
+      if (clue) return clue;
+    }
+    return '';
+  };
+
+  const walk = (n: SchemaNode, depth: number) => {
+    if (!n?.type) return;
+    if (entries.length >= limit) {
+      omitted++;
+    } else {
+      entries.push({ id: n.id ?? '', type: n.type, depth, clue: clueOf(n) });
+    }
+    for (const child of childPositions(n)) walk(child, depth + 1);
+  };
+  walk(node, 0);
+
+  return { entries, omitted };
+}
