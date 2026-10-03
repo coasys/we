@@ -46,6 +46,7 @@
 // ---------------------------------------------------------------------------
 
 import { readFileSync, writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 const AD4M_REPO = 'coasys/ad4m';
 
@@ -74,7 +75,7 @@ function block(target = '#<pull request number>') {
  *   | { kind: 'ref', ref: string }
  *   | { kind: 'invalid', problem: string, found: string, target?: string }}
  */
-function parsePairing(body) {
+export function parsePairing(body) {
   const lines = (body ?? '')
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/^[ \t]*```[\s\S]*?^[ \t]*```/gm, '')
@@ -205,4 +206,6 @@ async function main() {
   }
 }
 
-await main();
+// Run as a command; imported (by scripts/ad4m-ready-to-bump.mjs) it only lends its parser, so the
+// two cannot disagree about what a pairing is.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();
