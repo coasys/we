@@ -93,6 +93,7 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/backend-shared` | backend-system/shared | The backend contract: `DataSource`, query IR + engine, ephemeral, presence & transcription ports, model manifest | **Agnostic** |
 | `@we/backend-ad4m` | backend-system/ad4m | The AD4M adapter: query adapter, ports, agent identity, SDNA install — and the AD4M model classes, generated from @we/entities' manifest (src/models) | Agnostic |
 | `@we/backend-inmemory` | backend-system/inmemory | In-memory adapter — the reference implementation, and how stores test without an executor | Agnostic |
+| `@we/backend-conformance` | backend-system/conformance | One suite of the contract's behaviour every backend runs, with each backend's known gaps listed and run inverted | Agnostic |
 | `@we/module-shared` | module-system/shared | The feature-module contract — manifest, contributions, kernels, store markers, `lintModule` — what a module author installs | Agnostic |
 | `@we/module-testing` | module-system/testing | Fakes for testing a module store without a host: `fakeDeps`, `fakeRecords`, `fakePresence`, `buildStore` | Agnostic |
 | `@we/module-globe` · `-call` · `-notes` · `-pocket` · `-polls` · `-transcribe` · `-graph` | module-system/* | Bundled feature modules — each exports `createModule(host)` and the seed's `modules` list generates the registry; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
@@ -283,7 +284,7 @@ the seed's list is correct code that never appears.
 | Graph plugin | `graph-system/expanders/src/`, `layouts/src/` | `graph-system/CONVENTIONS.md` | package index **and** `GRAPH_PLUGIN_CATALOG` in `module-system/graph/src/catalog.ts` | `--filter @we/graph-core test`, then `generate-context` |
 | Globe layer | `module-system/globe/layers/src/` | its `README.md` / `EXAMPLES.md` | export from `index.ts` | `--filter @we/globe-layers typecheck` |
 | Seed | `we-seed.json` | `docs/getting-started/seed-system.md` | — | `pnpm validate:seed` |
-| Backend adapter | `backend-system/<name>/` | `backend-system/shared/README.md` | entity proxy registry | model the `inmemory` package |
+| Backend adapter | `backend-system/<name>/` | `backend-system/shared/README.md` | entity proxy registry | `describeBackendConformance` from `@we/backend-conformance` |
 | Platform host | `apps/<name>/` | — | — | `--filter <app> build` |
 
 Widgets (`design-system/5-widgets`) are the nineteenth and are **currently empty by design**: the one
