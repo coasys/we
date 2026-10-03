@@ -31,7 +31,7 @@ import type { ConformanceHarness, ConformanceSubject } from './index';
 export const TEMPLATE_QUERY_CASES = [
   'queries.vocabulary-by-name',
   'queries.blocks-of-a-post',
-  'queries.images-of-a-post',
+  'queries.links-of-a-post',
   'queries.calls-in-a-channel',
   'queries.posts-newest-first',
   'queries.posts-most-liked',
@@ -64,7 +64,7 @@ interface Model {
 
 // ── The space ──────────────────────────────────────────────────────────────
 //
-//   channel ─┬─ post 1 "hello world"   ─┬─ text 1, text 2, image 1     ♥♥
+//   channel ─┬─ post 1 "hello world"   ─┬─ text 1, text 2, link 1      ♥♥
 //            │                          └─ comment 1 ── comment 2
 //            ├─ post 2 "hello again"                                    ♥
 //            ├─ post 3 "hello there"  (also a reply to post 2)
@@ -82,7 +82,7 @@ type Key =
   | 'comment2'
   | 'text1'
   | 'text2'
-  | 'image1'
+  | 'link1'
   | 'call'
   | 'board'
   | 'column1'
@@ -124,7 +124,9 @@ async function seed(dataset: DatasetHandle): Promise<Record<Key, string>> {
   for (const key of ['text1', 'text2'] as const) {
     await made.post1.addChildren(await make(key, 'TextBlock', { text: key }));
   }
-  await made.post1.addChildren(await make('image1', 'ImageBlock', { src: 'image1.png' }));
+  // A link rather than an image: an image's `src` is a file, which one backend stores through a
+  // storage service a test executor with no network cannot reach. The query is the same either way.
+  await made.post1.addChildren(await make('link1', 'LinkBlock', { url: 'https://example.org', title: 'link1' }));
 
   await made.post1.addComments(await make('comment1', 'CollectionBlock', { kind: 'comment', textContent: 'a reply' }));
   await made.comment1.addComments(
@@ -190,15 +192,15 @@ const CASES: Record<TemplateQueryCase, QueryCase> = {
     }),
     expect: { order: ['text1', 'text2'] },
   },
-  'queries.images-of-a-post': {
+  'queries.links-of-a-post': {
     from: 'templates/views/src/views/CardsView/BlocksList.ts',
     query: (k) => ({
-      entity: 'ImageBlock',
+      entity: 'LinkBlock',
       scope: { anchor: 'CollectionBlock', via: 'children', anchorId: k.post1 },
       order: { createdAt: 'desc' },
       limit: 20,
     }),
-    expect: { order: ['image1'] },
+    expect: { order: ['link1'] },
   },
   'queries.calls-in-a-channel': {
     from: 'templates/views/src/views/CardsView/CallsList.ts',

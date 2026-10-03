@@ -50,6 +50,20 @@ interface RelationInfo {
 
 const manyForeignKey = (entity: string, relation: string) => `__${entity}_${relation}`;
 
+/**
+ * One field written to an existing row — where `''` clears it, as it does in production.
+ *
+ * Production removes a cleared property rather than storing an empty one, so the record then has no
+ * value for it: it still reads back as its declared default, and no query matches it — not
+ * `{ field: '' }`, not `{ field: { not: x } }`. This backend used to keep the `''`, so a cleared field
+ * went on matching a `not` here and dropped out of the same query in production. Creation is not a
+ * clear: a `''` written then, a default included, is a value on both backends.
+ */
+function writeField(row: Record<string, unknown>, key: string, value: unknown): void {
+  if (value === '') delete row[key];
+  else row[key] = value;
+}
+
 /** Writes notify per dataset, so a live query re-runs exactly when its dataset changed. */
 const listeners = new WeakMap<object, Set<() => void>>();
 
@@ -273,7 +287,9 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         if (!row) throw new Error(`${name}.save(): row ${(this as unknown as AnyRow).id} no longer exists`);
         for (const [key, value] of Object.entries(this as unknown as Record<string, unknown>)) {
           if (typeof value === 'function' || key.startsWith('$')) continue;
-          row[key] = value;
+          // Only what changed: an unchanged `''` from creation is a value, not a clear.
+          if (row[key] === value || (value === '' && !(key in row))) continue;
+          writeField(row, key, value);
         }
         notify(dataset);
       }
@@ -395,7 +411,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         if (!row) return null;
         for (const [key, value] of Object.entries(data)) {
           if (relationNames.has(key)) continue;
-          row[key] = value;
+          writeField(row, key, value);
         }
         row.updatedAt = new Date().toISOString();
         notify(dataset);

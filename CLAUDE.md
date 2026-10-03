@@ -579,12 +579,12 @@ link, so an unwritten one is simply not there. Three cases, and the middle one d
 is evaluated:
 
   { field: 'x' }             — does NOT match an absent value. Both agree.
-  { field: { not: 'x' } }    — MATCHES an absent value inside filter() and in the in-memory
-                               test backend (undefined !== 'x'), and does NOT match in a $query
-                               against the production backend, where != over an unbound value
-                               excludes the row, exactly as SQL's three-valued logic excludes
-                               NULL. A $query where written with "not" can therefore pass every
-                               test and come back empty in production.
+  { field: { not: 'x' } }    — does NOT match an absent value in a $query, on any backend: !=
+                               over an unbound value excludes the row, exactly as SQL's
+                               three-valued logic excludes NULL. Inside filter() it DOES match
+                               (undefined !== 'x'), because filter() is plain client-side
+                               comparison — so the same where-object can answer differently in
+                               the two places.
   { field: { exists: false } } — means absent, unambiguously — but see the warning below about
                                where it can be used.
 
@@ -592,6 +592,12 @@ A declared "default" does not rescue this. The manifest's default is applied whe
 CONSTRUCTED, so anything created normally does carry it — but a field added to an entity after
 some records already existed reads as absent on every one of them, and the query layer never
 consults the default when filtering.
+
+CLEARING is the other way to end up with no value. Writing '' to a property that has one removes
+it: the record then reads back as the field's default — usually '' — but no $query matches it, not
+{ field: '' } and not { field: { not: 'x' } }. A '' written at CREATION, a declared default of ''
+included, is different: it is stored, and both of those match it. So a task nobody was ever
+assigned is found by { assignee: { not: 'Ann' } }, and one whose assignee was removed is not.
 
 "exists" IS NOT AVAILABLE IN A $query — only inside filter(), where it is evaluated client-side.
 The backend has no such operator, so a $query using one is refused rather than run.
