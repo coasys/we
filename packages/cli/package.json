@@ -33,7 +33,7 @@
     "@types/node": "^26.4.0",
     "playwright-core": "^1.62.1",
     "tsup": "^8.5.1",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.2"
   },
   "publishConfig": {
     "access": "public"
