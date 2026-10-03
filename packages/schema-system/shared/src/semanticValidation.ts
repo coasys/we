@@ -2,7 +2,9 @@ import { BASE_CLASS_LAYERS, CSS_PROP_TO_VAR_SUFFIX, getKeysForLayers, layerKeyMa
 import { role, semanticValues, space } from '@we/tokens';
 
 import type { ContextData, StateMemberMeta } from './contextTypes';
+import { expandDefinitions } from './definitions';
 import { checkExpression, ExpressionSyntaxError, isCallTime, isExpressionToken, parseExpression } from './expressions';
+import type { SchemaNode } from './types';
 import type { ValidationError, ValidationResult } from './validators';
 import { validateStructure } from './validators';
 
@@ -2080,10 +2082,26 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
 }
 
 export function validateSchema(schema: unknown, context: ValidationContext): ValidationResult {
-  const structural = validateStructure(schema);
+  /*
+    A template that says a repeated shape once is checked as the tree it will BE.
+
+    Expanding first rather than teaching every rule about `$ref` — the same decision the renderer
+    makes, for the same reason: a reference is a node, and a rule that did not know about one would
+    pass by quietly skipping whatever it stands for. A check that silently stops checking is worse
+    than one that refuses.
+
+    It also puts each error at a position that exists on screen. A shape used five times is
+    reported five times, which is noisier than reporting its definition once and is the right way
+    round: the author is told where the problem shows, and five identical messages are themselves
+    the clue that the shape is shared.
+  */
+  const expanded =
+    schema && typeof schema === 'object' && !Array.isArray(schema) ? expandDefinitions(schema as SchemaNode) : schema;
+
+  const structural = validateStructure(expanded);
   if (!structural.valid) return structural;
 
-  const semantic = validateSemantic(schema, context);
+  const semantic = validateSemantic(expanded, context);
   return {
     valid: semantic.errors.filter((e) => e.severity === 'error').length === 0,
     errors: [...structural.errors, ...semantic.errors],

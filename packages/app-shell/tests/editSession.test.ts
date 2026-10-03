@@ -8,7 +8,15 @@
  */
 import type { ConversationReply, ConversationRequest, ConversationTurn } from '@we/backend-shared';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
-import { buildValidationContext, contextData } from '@we/schema-shared';
+import {
+  buildValidationContext,
+  compactDefinitions,
+  contextData,
+  definitionsOf,
+  ensureNodeIds,
+  expandDefinitions,
+  validateStructure,
+} from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 import { updateSchemaTool } from '../src/shared/ai/aiInfra';
@@ -173,6 +181,114 @@ describe('an edit session', () => {
     const result = await run;
     expect(result.outcome).toBe('exhausted');
     expect(result.stats.modelCalls).toBe(3);
+  });
+
+  /*
+    What a patch DID survives being told what became of the template.
+
+    The two are written to the same field, the second overwriting the first, and acceptance is the
+    only path where the first is worth anything — so a note composed and then discarded looked
+    exactly like no note at all. Caught by driving the real editor and reading the tool result.
+  */
+  it('keeps the reach of a shared-shape patch in the result it accepts', async () => {
+    const shape = (): SchemaNode =>
+      ({
+        type: 'Column',
+        props: { gap: '300', p: '400', bg: 'surface' },
+        children: [{ type: 'we-text', children: ['Card'] }],
+      }) as SchemaNode;
+    const shared = compactDefinitions(
+      {
+        type: 'Column',
+        meta: { name: 'Test', description: '', icon: 'cube' },
+        children: [shape(), shape(), shape()],
+      } as unknown as SchemaNode,
+      { minChars: 0 }, // the fixture is small; what is under test is the reporting, not the threshold
+    );
+    expect(shared.hoisted).toBe(1);
+
+    const inside = Object.values(definitionsOf(ensureNodeIds(shared.schema)))[0].children![0] as SchemaNode;
+    const { run, turns } = session(
+      [
+        {
+          text: '',
+          calls: [patch('c1', [{ targetId: inside.id!, node: { props: { color: 'accent-text' } } }])],
+          finish: 'tool_calls',
+        },
+        { text: 'Done.', calls: [], finish: 'done' },
+      ],
+      { schema: shared.schema },
+    );
+    await run;
+
+    const result = (turns.find((t) => t.role === 'tool') as { result: string }).result;
+    expect(result).toContain('Template updated successfully.'); // what became of the template
+    expect(result).toContain('shows in 3 places'); // and what the patch did
+  });
+
+  /*
+    A template carrying definitions is judged as what it renders, not as what it is sent as.
+
+    `$defs` is the STRICTER path: a definition's body is checked as a node, where the same subtree
+    in a prop is reached through a union that falls back to accepting a plain object. So a shape
+    that passes inline can fail once hoisted — on the workshop template, 91 faults that were
+    always there appeared the moment compaction moved them. Judged that way, every patch is
+    refused for something the model did not do and cannot fix.
+  */
+  it('judges a compacted template by its rendered form, not its sent form', async () => {
+    const { workshopTemplate } = await import('@we/template-showcase');
+    const { schema, hoisted } = compactDefinitions(structuredClone(workshopTemplate) as unknown as SchemaNode);
+    expect(hoisted).toBeGreaterThan(0);
+
+    // The hazard this guards: hoisting alone makes the real template fail a structural check.
+    expect(validateStructure(schema).valid).toBe(false);
+    expect(validateStructure(expandDefinitions(schema)).valid).toBe(true);
+
+    const { run, accepted } = session(
+      [
+        { text: '', calls: [patch('c1', [addText('Added')])], finish: 'tool_calls' },
+        { text: 'Done.', calls: [], finish: 'done' },
+      ],
+      { schema },
+    );
+    const result = await run;
+
+    expect(result.outcome).toBe('done');
+    expect(accepted).toHaveLength(1); // not refused for a fault the patch did not introduce
+    expect(result.stats.structuralFailures).toBe(0);
+  });
+
+  /*
+    A run of accepted turns is one thing that happened, and says how much it did.
+
+    Three identical ticks in a column are unreadable: they look like a repeat rather than three
+    changes, which is exactly how they were read the first time. Separated by what the model said,
+    they belong to that reasoning and stay; adjacent, they are one line that counts up.
+  */
+  it('counts a run of accepted turns as one line, and keeps the ones prose separates', async () => {
+    const { run } = session([
+      { text: 'First.', calls: [patch('c1', [addText('One')])], finish: 'tool_calls' },
+      { text: '', calls: [patch('c2', [addText('Two'), addText('Three')])], finish: 'tool_calls' },
+      { text: 'Done.', calls: [], finish: 'done' },
+    ]);
+    const { transcript } = await run;
+
+    // Turn two said nothing, so it folds into turn one's line and takes the total with it.
+    expect(transcript.match(/✓ Template updated/g)).toHaveLength(1);
+    expect(transcript).toContain('✓ Template updated (3 patches)');
+    expect(transcript).not.toContain('(1 patch)');
+    expect(transcript.indexOf('First.')).toBeLessThan(transcript.indexOf('✓'));
+  });
+
+  it('keeps a tick per turn when the model speaks between them', async () => {
+    const { run } = session([
+      { text: 'Doing the first.', calls: [patch('c1', [addText('One')])], finish: 'tool_calls' },
+      { text: 'Now the second.', calls: [patch('c2', [addText('Two')])], finish: 'tool_calls' },
+      { text: 'Done.', calls: [], finish: 'done' },
+    ]);
+    const { transcript } = await run;
+
+    expect(transcript.match(/✓ Template updated \(1 patch\)/g)).toHaveLength(2);
   });
 
   it('passes a chosen model through, and measures what each call sends', async () => {

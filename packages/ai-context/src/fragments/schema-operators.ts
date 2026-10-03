@@ -72,6 +72,49 @@ The ROOT node carries one more, and it is required:
   template was designed with, panels for the surfaces the interface has (see Panels), and
   chromeReserve for a band the shell pins over the content. A root node without meta is refused.
 
+## Shapes the template says once: $defs and $ref
+
+A template often uses the same shape in several places — a card drawn in two display modes, a
+column arrangement that appears per person and per status. The root may carry those shapes in
+**$defs**, with a **$ref** node standing at each place one is used:
+
+{
+  "type": "Column",
+  "meta": { "...": "..." },
+  "$defs": { "d1": { "type": "Card", "children": ["…the whole card…"] } },
+  "children": [
+    { "type": "$ref", "props": { "def": "d1" } },
+    { "type": "$ref", "props": { "def": "d1" } }
+  ]
+}
+
+Those two render exactly what two copies of the card would. The definitions live INSIDE the
+template, so everything that will render is still in the document — nothing is fetched, and a
+template can be read as the thing it will be.
+
+**You will meet these; you rarely need to write them.** Write ordinary nodes. Shapes are hoisted
+automatically, so a thing you write out twice becomes one definition without you doing anything.
+
+**Editing one is two different acts, and the difference is which node you patch:**
+
+- Patch a node **inside a definition** and the change shows at EVERY use of that shape. This is
+  usually what is wanted — "make the cards wider" is one shape and every card.
+- To make a single use differ, send a patch of { "targetId": "<the $ref's id>", "split": true }. That use
+  gets a copy of the shape to itself and everything else carries on sharing. The tool result lists
+  the copy's nodes by id, so the patch that changes one of them follows in the same turn. **Never
+  re-send the shape to do this** — it is thousands of tokens, and a shape retyped from memory loses
+  something every time, for a copy the editor is already holding and has just named for you.
+
+The tool result says which happened: a patch that reached a shared shape comes back naming how
+many places it changed. If that is not what the request meant, fix it in the same turn.
+
+**Where the words do not decide between the two, ask rather than guess.** "Make the card blue",
+said about a card on screen, is as likely to mean that one as all of them, and the two are not
+equally easy to undo: changing one of six is a split and a patch, where changing six when one was
+meant has already repainted five things somebody did not look at. Say which places are involved —
+the count is in the tool result — and let them choose. Guess only where the request names the
+scope itself ("all the cards", "this one").
+
 Example node:
 {
   "type": "we-button",

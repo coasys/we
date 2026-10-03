@@ -10,6 +10,7 @@ import type {
 import {
   applyThemeVars,
   deepUnwrap,
+  expandDefinitions,
   hasToken,
   markReactive,
   noMemo,
@@ -556,7 +557,24 @@ function isStaticValue(value: unknown): boolean {
   return !Object.keys(value).some((k) => k.startsWith('$')) && Object.values(value).every(isStaticValue);
 }
 
-export function RenderSchema({ node, stores, registry, context = {}, children }: RenderProps): RendererOutput {
+/**
+ * A template that says a repeated shape once is put back together here, and nowhere else.
+ *
+ * `$defs` lives on the root and only on the root, so this fires exactly once per mounted tree:
+ * the expansion carries no definitions of its own, and recursion goes through this same component,
+ * so no descendant pays the check more than a property read.
+ *
+ * Expanded at the boundary rather than resolved as a node type, deliberately. A `$ref` the
+ * renderer understood would be a node every OTHER consumer also has to understand — the indexer,
+ * the scope walker, the inspector, the validator, every audit that walks a composed tree — and
+ * each one that forgot would fail by quietly skipping a subtree. One place knows, and everything
+ * downstream sees the tree it has always seen.
+ */
+export function RenderSchema(props: RenderProps): RendererOutput {
+  return RenderNode(props.node?.$defs ? { ...props, node: expandDefinitions(props.node) } : props);
+}
+
+function RenderNode({ node, stores, registry, context = {}, children }: RenderProps): RendererOutput {
   if (!node) return null;
 
   const visualEditor = useVisualEditor();

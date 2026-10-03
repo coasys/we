@@ -73,7 +73,7 @@ export function chatSystemPrompt(): Promise<string> {
 export const updateSchemaTool: ConversationTool = {
   name: 'update_schema',
   description:
-    'Apply patches to the current template schema. Each patch targets a node by its id. Exactly one of node, insert, or remove must be provided per patch.',
+    'Apply patches to the current template schema. Each patch targets a node by its id. Exactly one of node, insert, remove or split must be provided per patch.',
   parameters: {
     type: 'object' as const,
     properties: {
@@ -126,6 +126,15 @@ export const updateSchemaTool: ConversationTool = {
                 routes: { type: 'string' as const, description: 'ID of route to remove.' },
               },
               description: 'Remove from children or routes array by child ID. Mutually exclusive with node/insert.',
+            },
+            split: {
+              type: 'boolean' as const,
+              description:
+                'targetId is a $ref: give THIS use of the shared shape a copy of its own, so a later patch to it ' +
+                'changes nowhere else. Every other use keeps sharing the definition. Use it when a request means ' +
+                'one of several places that currently look alike; patch the definition itself when it means all ' +
+                'of them. The copy is returned with fresh ids, so patch it on the next turn. Mutually exclusive ' +
+                'with node/insert/remove.',
             },
           },
           required: ['targetId'],

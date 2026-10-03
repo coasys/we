@@ -79,6 +79,18 @@ export * from './expressions';
 export { hasToken } from './predicates';
 export { isPropsSchemaNode, isSchemaChild, replaceNodeInTree } from './treeUtils';
 export {
+  type CompactOptions,
+  compactDefinitions,
+  type CompactResult,
+  definitionsOf,
+  expandDefinitions,
+  type OutlineEntry,
+  outlineOf,
+  REF_TYPE,
+  type RefProps,
+  useCountOf,
+} from './definitions';
+export {
   applyThemeVars,
   clearThemeVars,
   DARK_SURFACES,
