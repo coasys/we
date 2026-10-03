@@ -53,8 +53,8 @@ describeBackendConformance('AD4M', {
   },
   knownIntermittent: {
     // Seen in 3 of 10 runs, only ever on the first post in a fresh perspective: the first two
-    // children read back swapped. Probably the ordering-strategy lookup racing the SHACL install.
+    // children read back swapped. The issue names the two likely causes.
     'relations.ordered-read':
-      'the first ordered write after the space SDNA is installed sometimes records no order (not yet filed with ad4m)',
+      'the first ordered write after the space SDNA is installed sometimes reads back with its first two members swapped (coasys/ad4m#1304)',
   },
 });
