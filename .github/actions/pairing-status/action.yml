@@ -69,7 +69,11 @@ runs:
 
         case "$PAIRED" in
           true)
-            gh label create "$LABEL" -R "$REPO" --color FBCA04 --force \
+            # The label is defined HERE, not in the repository's settings: `--force` updates the one
+            # label in place, so a colour changed by hand reverts on the next run. Change it in this
+            # line. The purple is GitHub's own for `[!IMPORTANT]`, so it matches the alert the pairing
+            # is written as.
+            gh label create "$LABEL" -R "$REPO" --color 8250DF --force \
               --description "Paired with an unpublished ad4m change: required checks stay red until the pin moves" >/dev/null
             gh api -X POST "repos/$REPO/issues/$PR/labels" -f "labels[]=$LABEL" >/dev/null
             ;;
