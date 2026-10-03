@@ -82,6 +82,25 @@ export interface EditSessionStats {
   requestChars: number[];
 }
 
+/**
+ * One tool call, as the model made it and as it was answered.
+ *
+ * The stats say how many patches failed; this says WHICH patch, with what arguments, and what the
+ * model was told back. The difference decides what to do about a failure: a model that reached
+ * for the wrong tool, one that sent a malformed patch, and one that did exactly as asked against
+ * a node it had misidentified all show up as the same number otherwise.
+ */
+export interface SessionAction {
+  /** Which model call this came from — 1 for the first. */
+  turn: number;
+  tool: string;
+  /** The arguments verbatim, as the model sent them. */
+  input: unknown;
+  /** What the tool answered, as the model was told it — refusals and the accept message included. */
+  result: string;
+  isError: boolean;
+}
+
 export interface EditSessionResult {
   /**
    * `done`: the model finished with a reply that called no tool. `truncated`: a reply was cut off,
@@ -93,6 +112,11 @@ export interface EditSessionResult {
   /** The last accepted template, or the starting one when nothing was accepted. */
   schema: SchemaNode;
   stats: EditSessionStats;
+  /**
+   * Every tool call of the session, in order. The editor ignores it; it is what makes a failure
+   * diagnosable after the fact rather than only by running it again and watching.
+   */
+  log: SessionAction[];
 }
 
 const issueKey = (e: { severity: string; path: string; message: string }) => `${e.severity}|${e.path}|${e.message}`;
@@ -136,6 +160,7 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
     requestChars: [],
   };
 
+  const log: SessionAction[] = [];
   let transcript = '';
   /*
     A run of accepted turns with nothing said between them is ONE thing that happened, so it gets
@@ -180,8 +205,8 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
 
     // Truncated, not finished: a reply cut off mid-call has dropped the call, and reporting that as
     // a completed turn tells the user an edit happened that did not.
-    if (finish === 'truncated') return { outcome: 'truncated', transcript, schema: workingSchema, stats };
-    if (calls.length === 0) return { outcome: 'done', transcript, schema: workingSchema, stats };
+    if (finish === 'truncated') return { outcome: 'truncated', transcript, schema: workingSchema, stats, log };
+    if (calls.length === 0) return { outcome: 'done', transcript, schema: workingSchema, stats, log };
 
     status('Updating template...');
     // The assistant's turn, calls included, goes into history before their results.
@@ -363,6 +388,19 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
     for (const r of results) {
       turns.push({ role: 'tool', callId: r.callId, result: r.isError ? `Error: ${r.content}` : r.content });
       /*
+        Logged here rather than where the result was pushed, because `refuse` and the accept
+        message both REWRITE a result's content after the fact — so this is the only point at
+        which what the model was actually told is settled.
+      */
+      const call = calls.find((c) => c.id === r.callId);
+      log.push({
+        turn: stats.modelCalls,
+        tool: call?.name ?? 'unknown',
+        input: call?.arguments,
+        result: r.content,
+        isError: Boolean(r.isError),
+      });
+      /*
         What the model was told, logged beside what it asked for.
 
         The reach of a patch and the id of a split's copy are said HERE and nowhere else — the
@@ -383,5 +421,5 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
     status(failed ? 'Retrying...' : 'Thinking...');
   }
 
-  return { outcome: 'exhausted', transcript, schema: workingSchema, stats };
+  return { outcome: 'exhausted', transcript, schema: workingSchema, stats, log };
 }

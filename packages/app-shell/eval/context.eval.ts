@@ -13,14 +13,14 @@ import { join } from 'node:path';
 
 import { requestMessage, updateSchemaTool } from '@shared/ai/aiInfra';
 import { CONTEXT_STRATEGIES, type ContextStrategyId, prepareContext } from '@shared/ai/contextStrategies';
-import { runEditSession } from '@shared/ai/editSession';
+import { type EditSessionResult, runEditSession } from '@shared/ai/editSession';
 import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
 import { schemaContext } from '@we/ai-context';
 import { createAd4mLanguageModelPort } from '@we/backend-ad4m';
 import { buildValidationContext, compactDefinitions, contextData, ensureNodeIds } from '@we/schema-shared';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 
-import { EVAL_CASES, startingTemplate } from './cases';
+import { EVAL_CASES, scaleOf, startingTemplate } from './cases';
 import { type EvalRecord, reportMarkdown } from './report';
 import { scoreCase } from './score';
 
@@ -38,7 +38,16 @@ const strategies = (list(env.WE_EVAL_STRATEGIES).length ? list(env.WE_EVAL_STRAT
   (s): s is ContextStrategyId => (CONTEXT_STRATEGIES as string[]).includes(s),
 );
 const caseIds = list(env.WE_EVAL_CASES);
-const cases = caseIds.length ? EVAL_CASES.filter((c) => caseIds.includes(c.id)) : EVAL_CASES;
+/*
+  Which scales to run. Defaults to `small` — the seventeen cases on `blank` and `feed` that every
+  recorded baseline is of, so an unqualified run stays comparable with `BASELINE.md` and stays
+  cheap. The large cases send a real template and cost several times as much per call, so asking
+  for them is deliberate: `WE_EVAL_SCALE=large`, or `small,large` for both.
+*/
+const scales = list(env.WE_EVAL_SCALE).length ? list(env.WE_EVAL_SCALE) : ['small'];
+const cases = caseIds.length
+  ? EVAL_CASES.filter((c) => caseIds.includes(c.id))
+  : EVAL_CASES.filter((c) => scales.includes(scaleOf(c.template)));
 const repeat = Math.max(1, Number(env.WE_EVAL_REPEAT) || 1);
 /**
  * How long one turn may take, in seconds.
@@ -99,10 +108,46 @@ beforeAll(async () => {
   }
 });
 
+const runDir = join(__dirname, 'results', startedAt.toISOString().replace(/[:.]/g, '-'));
+
+/**
+ * What one failing case did, as a file a person can read.
+ *
+ * Written per failure rather than per case because these are large — the action log holds every
+ * patch verbatim — and a passing case has nothing to explain.
+ */
+function writeSession(caseId: string, record: EvalRecord, result: EditSessionResult): void {
+  mkdirSync(join(runDir, 'sessions'), { recursive: true });
+  const body = [
+    `# ${caseId} · ${record.model} · ${record.strategy} · run ${record.run}`,
+    '',
+    `**Outcome:** ${record.outcome} — ${record.reason || 'no reason recorded'}`,
+    `**Model calls:** ${record.modelCalls} · **context calls:** ${record.contextCalls} · ` +
+      `**validation retries:** ${record.validationRetries}`,
+    '',
+    '## What the model did',
+    '',
+    ...result.log.flatMap((action) => [
+      `### turn ${action.turn} · \`${action.tool}\`${action.isError ? ' · **error**' : ''}`,
+      '',
+      '```json',
+      JSON.stringify(action.input, null, 2),
+      '```',
+      '',
+      `**Answered:** ${action.result}`,
+      '',
+    ]),
+    '## What the panel showed',
+    '',
+    result.transcript || '(nothing)',
+    '',
+  ].join('\n');
+  writeFileSync(join(runDir, 'sessions', `${caseId}-${record.strategy}-run${record.run}.md`), body);
+}
+
 afterAll(() => {
   if (!records.length) return;
-  const stamp = startedAt.toISOString().replace(/[:.]/g, '-');
-  const dir = join(__dirname, 'results', stamp);
+  const dir = runDir;
   mkdirSync(dir, { recursive: true });
   const meta = { startedAt: startedAt.toISOString(), url, models, strategies, cases: cases.map((c) => c.id), repeat };
   writeFileSync(join(dir, 'results.json'), JSON.stringify({ meta, records }, null, 2));
@@ -176,6 +221,15 @@ for (const model of models) {
                 validationRetries:
                   result.stats.patchFailures + result.stats.structuralFailures + result.stats.semanticFailures,
               });
+              /*
+                What the model did, kept only for the cases that failed.
+
+                A score says a case did not pass; it never says why, and the three causes worth
+                telling apart — reached for the wrong tool, sent a malformed patch, patched the
+                wrong node — look identical from the outside. Keeping it for the failures only is
+                what makes that affordable: a passing case's log is noise, and these are large.
+              */
+              if (!record.passed) writeSession(evalCase.id, record, result);
             } catch (err) {
               record.reason = err instanceof Error ? err.message : String(err);
             }

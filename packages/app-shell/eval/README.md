@@ -48,12 +48,41 @@ pnpm --filter @we/app-shell eval:context
 | `WE_EVAL_TOKEN`      | none                     | A token with `AI_PROMPT`. For the desktop app's executor, the `--admin-credential` in `pgrep -fa ad4m-executor`. |
 | `WE_EVAL_MODELS`     | `default`                | Model names or ids as Settings → AI shows them, comma-separated. `default` is the node's default LLM.            |
 | `WE_EVAL_STRATEGIES` | all three                | Any of `full,sections,lookup`.                                                                                   |
-| `WE_EVAL_CASES`      | all                      | Case ids from `cases.ts`.                                                                                        |
+| `WE_EVAL_CASES`      | all at the chosen scale  | Case ids from `cases.ts`. Overrides `WE_EVAL_SCALE`.                                                             |
+| `WE_EVAL_SCALE`      | `small`                  | `small`, `large`, or both. See **Two scales** below — a large run costs several times more.                      |
 | `WE_EVAL_REPEAT`     | `1`                      | Runs per combination. Models are not deterministic; use 3 before drawing a conclusion.                           |
 | `WE_EVAL_TIMEOUT`    | `180`                    | Seconds one turn may take. Raise it for a local model — see below.                                               |
 
 Start small: `WE_EVAL_CASES=rename-heading,todo-tasks WE_EVAL_STRATEGIES=full` confirms the setup
 before a full run.
+
+## Two scales, and why a run has to say which
+
+The cases come in two groups, and mixing them in one run produces a number that cannot be compared
+with anything.
+
+**`small`** — seventeen cases on `blank` (394 chars) and `feed` (1,146). Every baseline so far is
+of these. The template is about 1% of an ~86K payload, so what they measure is the **reference**
+half of the context budget: which parts of the generated schema reference a strategy puts in front
+of the model. They are nearly blind to the template half — a strategy that sent no template at all
+would still pass most of them.
+
+**`large`** — four cases on `kanban`, a real template (57,440 chars, 37,516 compacted). Here the
+proportions invert and the template is the bigger half. These exist to measure what bounding the
+template does, which the small cases cannot see.
+
+One of the four turns on something no small case can reach. Kanban shares shapes: its card is one
+shape used four times, its column header one used twice. So `kanban-card-radius` ("the cards") is
+right only when the shape itself changes — a model that patches one use leaves three cards behind.
+
+A second case asked for the opposite, a `split`, and was removed after the calibration run
+recorded in `BASELINE.md`: the model correctly answered that restyling one column's cards wants a
+condition inside the shared shape, not a copy of it. **A split case needs two uses that differ by
+their context rather than by their data**; nobody has written one yet.
+
+`WE_EVAL_SCALE` defaults to `small` so an unqualified run stays comparable with `BASELINE.md` and
+stays cheap. Record the two in separate tables; a combined pass rate is not a figure about
+anything.
 
 **Put the summary in `BASELINE.md` after a run.** `eval/results/` is gitignored, so a run that
 chooses a default and is not written down leaves nothing behind — which has happened once already.

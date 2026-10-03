@@ -6,11 +6,47 @@ repo, because these numbers decide which strategy the editor ships, and a decisi
 lives in one person's terminal is a decision nobody can revisit.
 
 Record the date, the commit, the models, the strategies, the repeat count and the table. Say what
-the payload was: that is the part that goes stale.
+the payload was: that is the part that goes stale. **Say which scale it was**, and keep the two in
+separate tables — `small` and `large` answer different questions and a combined pass rate is a
+figure about nothing. See "Two scales" in `README.md`.
 
 ---
 
-## 2026-10-03 — the current baseline
+## 2026-10-04 — calibration of the `large` scale
+
+Not a baseline: one strategy, one repeat, five cases, run to find out whether the new cases
+discriminate at all before paying for a matrix. `lookup` against the node's `Claude`.
+
+| case                      | result                     |
+| ------------------------- | -------------------------- |
+| `kanban-card-radius`      | ✓ (9s)                     |
+| `kanban-one-card-apart`   | ✗ — **removed, see below** |
+| `kanban-empty-icon`       | ✓ (4s)                     |
+| `kanban-remove-load-more` | ✓ (7s)                     |
+| `kanban-back-tooltip`     | ✓ (15s)                    |
+
+4/5, valid 5/5, ~116K tokens sent per case against the small suite's 86K.
+
+**The failure was the case's fault, and finding that out is what the run was for.**
+`kanban-one-card-apart` asked for "just the cards in the unplaced column" to be restyled. Run
+once it changed all four cards; re-run with the session log captured, it made no tool call at all
+and asked a question instead — pointing out that nothing in this template draws the unplaced
+cards as their own group, and that the way to restyle one column's cards is a CONDITION inside
+the shared card shape rather than a copy of it.
+
+That is the better answer. The case was scoring the wrong thing, so it is gone. Two things to
+carry forward from it:
+
+- **A split case needs two uses that differ by their CONTEXT, not by their data.** Where the
+  difference is data, the right edit is a condition inside the shared shape, and asking for a
+  split is asking for worse code.
+- **A clarifying question scores as a failure.** It is indistinguishable here from a wrong edit,
+  which means an ambiguous case quietly rewards a model that guesses over one that asks. Worth
+  fixing before any case is written whose request could be read two ways.
+
+---
+
+## 2026-10-03 — the current baseline (scale: `small`)
 
 `6788c202a`, the commit that made the harness send what the editor sends. 17 cases × 3 strategies
 × **3 repeats** = 153 runs. Model: the node's `Claude`, which is `claude-sonnet-5` over the

@@ -30,7 +30,7 @@ describe('what counts as an unticked task', () => {
   for (const [name, line] of [
     ['a ticked box', '- [x] ran the thing'],
     ['a ticked box in capitals', '- [X] ran the thing'],
-    ['a bullet, which is what a deferral is', '- **Deferred — needs a GPU** and belongs with PR2'],
+    ['a bullet, which is what a deferral is', '- **Deferred — needs a GPU** and belongs with the eval work'],
     ['prose mentioning a box', 'the template has a `- [ ]` in it'],
     ['a bracket that is not a box', '- [note] see the table above'],
   ]) {

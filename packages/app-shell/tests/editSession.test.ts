@@ -114,6 +114,48 @@ describe('an edit session', () => {
     });
   });
 
+  /*
+    The log is the harness's only account of WHY a case failed. Pinned here rather than in the
+    eval, because the subtlety is in this file: a result's content is rewritten after it is first
+    pushed — `refuse` replaces it with the validation error, and acceptance replaces it with the
+    accept message plus any note. Log at the wrong moment and every entry says "Patches applied."
+  */
+  it('logs each call with the arguments sent and the answer finally given', async () => {
+    const bad = { targetId: '', insert: { children: { node: { type: 'we-nonexistent' } } } };
+    const { run } = session([
+      { text: '', calls: [patch('c1', [bad])], finish: 'tool_calls' },
+      { text: '', calls: [patch('c2', [addText('Fixed')])], finish: 'tool_calls' },
+      { text: 'Done.', calls: [], finish: 'done' },
+    ]);
+    const { log } = await run;
+
+    expect(log).toHaveLength(2);
+    expect(log[0]).toMatchObject({
+      turn: 1,
+      tool: 'update_schema',
+      isError: true,
+      result: expect.stringMatching(/^Semantic validation failed/),
+    });
+    // The arguments verbatim — what distinguishes "patched the wrong node" from "sent nonsense".
+    expect(log[0].input).toEqual({ patches: [bad] });
+    expect(log[1]).toMatchObject({ turn: 2, isError: false, result: 'Template updated successfully.' });
+  });
+
+  it('logs a context call too, so a session reads as the sequence it was', async () => {
+    const { run } = session(
+      [
+        { text: '', calls: [{ id: 'c1', name: 'lookup_context', arguments: { topic: 'Row' } }], finish: 'tool_calls' },
+        { text: 'Done.', calls: [], finish: 'done' },
+      ],
+      { resolveTool: () => 'Row takes gap and ay.' },
+    );
+    const { log } = await run;
+
+    expect(log).toEqual([
+      { turn: 1, tool: 'lookup_context', input: { topic: 'Row' }, result: 'Row takes gap and ay.', isError: false },
+    ]);
+  });
+
   it('answers every call in a turn by name, and keeps a failed turn off the template entirely', async () => {
     const { run, accepted, model } = session([
       {
