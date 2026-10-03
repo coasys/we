@@ -13,7 +13,7 @@ import { join } from 'node:path';
 
 import { requestMessage, updateSchemaTool } from '@shared/ai/aiInfra';
 import { CONTEXT_STRATEGIES, type ContextStrategyId, prepareContext } from '@shared/ai/contextStrategies';
-import { runEditSession } from '@shared/ai/editSession';
+import { type EditSessionResult, runEditSession } from '@shared/ai/editSession';
 import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
 import { schemaContext } from '@we/ai-context';
 import { createAd4mLanguageModelPort } from '@we/backend-ad4m';
@@ -108,10 +108,46 @@ beforeAll(async () => {
   }
 });
 
+const runDir = join(__dirname, 'results', startedAt.toISOString().replace(/[:.]/g, '-'));
+
+/**
+ * What one failing case did, as a file a person can read.
+ *
+ * Written per failure rather than per case because these are large — the action log holds every
+ * patch verbatim — and a passing case has nothing to explain.
+ */
+function writeSession(caseId: string, record: EvalRecord, result: EditSessionResult): void {
+  mkdirSync(join(runDir, 'sessions'), { recursive: true });
+  const body = [
+    `# ${caseId} · ${record.model} · ${record.strategy} · run ${record.run}`,
+    '',
+    `**Outcome:** ${record.outcome} — ${record.reason || 'no reason recorded'}`,
+    `**Model calls:** ${record.modelCalls} · **context calls:** ${record.contextCalls} · ` +
+      `**validation retries:** ${record.validationRetries}`,
+    '',
+    '## What the model did',
+    '',
+    ...result.log.flatMap((action) => [
+      `### turn ${action.turn} · \`${action.tool}\`${action.isError ? ' · **error**' : ''}`,
+      '',
+      '```json',
+      JSON.stringify(action.input, null, 2),
+      '```',
+      '',
+      `**Answered:** ${action.result}`,
+      '',
+    ]),
+    '## What the panel showed',
+    '',
+    result.transcript || '(nothing)',
+    '',
+  ].join('\n');
+  writeFileSync(join(runDir, 'sessions', `${caseId}-${record.strategy}-run${record.run}.md`), body);
+}
+
 afterAll(() => {
   if (!records.length) return;
-  const stamp = startedAt.toISOString().replace(/[:.]/g, '-');
-  const dir = join(__dirname, 'results', stamp);
+  const dir = runDir;
   mkdirSync(dir, { recursive: true });
   const meta = { startedAt: startedAt.toISOString(), url, models, strategies, cases: cases.map((c) => c.id), repeat };
   writeFileSync(join(dir, 'results.json'), JSON.stringify({ meta, records }, null, 2));
@@ -185,6 +221,15 @@ for (const model of models) {
                 validationRetries:
                   result.stats.patchFailures + result.stats.structuralFailures + result.stats.semanticFailures,
               });
+              /*
+                What the model did, kept only for the cases that failed.
+
+                A score says a case did not pass; it never says why, and the three causes worth
+                telling apart — reached for the wrong tool, sent a malformed patch, patched the
+                wrong node — look identical from the outside. Keeping it for the failures only is
+                what makes that affordable: a passing case's log is noise, and these are large.
+              */
+              if (!record.passed) writeSession(evalCase.id, record, result);
             } catch (err) {
               record.reason = err instanceof Error ? err.message : String(err);
             }

@@ -54,19 +54,23 @@ describe('the eval’s starting templates', () => {
     the model meant, landing plausibly enough that a green suite says nothing.
   */
   /*
-    The two shared-shape cases are a matched pair, and only worth having if they disagree.
+    The shared-shape case is only a shared-shape case while the shape is shared.
 
-    Both ask about the same four cards, which are one shape used four times. One is satisfied only
-    by editing the shape; the other only by giving a single use a copy of its own. If either
-    answer satisfied both, the pair would be measuring "did something change" rather than "did the
-    model understand which of the two edits was asked for" — and a strategy could score full marks
-    on them while being wrong about the thing they exist to test.
+    `kanban-card-radius` means something because the four cards are one definition: editing it
+    changes all four, and patching one use leaves three behind. If the template were edited so the
+    cards stopped being identical, compaction would stop hoisting them, every use would become
+    independent, and the case would quietly turn into "change four separate nodes" — still
+    passable, no longer about anything.
   */
-  it('the shared-shape pair rejects each other’s answer', () => {
-    const all = EVAL_CASES.find((c) => c.id === 'kanban-card-radius')!;
-    const one = EVAL_CASES.find((c) => c.id === 'kanban-one-card-apart')!;
-    expect(all.check(one.solve(startingTemplate('kanban')))).not.toBe(true);
-    expect(one.check(all.solve(startingTemplate('kanban')))).not.toBe(true);
+  it('kanban’s cards really are one shape, which is what its case is about', () => {
+    const { schema } = compactDefinitions(startingTemplate('kanban'));
+    const refs = allNodes(schema).filter((n) => n.type === '$ref');
+    const used = new Map<string, number>();
+    for (const ref of refs) {
+      const def = (ref.props as { def?: string } | undefined)?.def ?? '';
+      used.set(def, (used.get(def) ?? 0) + 1);
+    }
+    expect(Math.max(...used.values())).toBeGreaterThanOrEqual(4);
   });
 
   it.each(EVAL_TEMPLATES)('%s: the editor’s compact-then-number order gives every position its own id', (template) => {

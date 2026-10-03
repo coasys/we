@@ -67,15 +67,18 @@ half of the context budget: which parts of the generated schema reference a stra
 of the model. They are nearly blind to the template half — a strategy that sent no template at all
 would still pass most of them.
 
-**`large`** — five cases on `kanban`, a real template (57,440 chars, 37,516 compacted). Here the
+**`large`** — four cases on `kanban`, a real template (57,440 chars, 37,516 compacted). Here the
 proportions invert and the template is the bigger half. These exist to measure what bounding the
 template does, which the small cases cannot see.
 
-Two of the five turn on something no small case can reach. Kanban shares shapes: its card is one
+One of the four turns on something no small case can reach. Kanban shares shapes: its card is one
 shape used four times, its column header one used twice. So `kanban-card-radius` ("the cards") is
-right only when the shape itself changes, and `kanban-one-card-apart` ("just these ones") only when
-a single use is split off into a copy. They are a matched pair, and a test asserts each rejects the
-other's answer — without that they would be measuring "did anything change".
+right only when the shape itself changes — a model that patches one use leaves three cards behind.
+
+A second case asked for the opposite, a `split`, and was removed after the calibration run
+recorded in `BASELINE.md`: the model correctly answered that restyling one column's cards wants a
+condition inside the shared shape, not a copy of it. **A split case needs two uses that differ by
+their context rather than by their data**; nobody has written one yet.
 
 `WE_EVAL_SCALE` defaults to `small` so an unqualified run stays comparable with `BASELINE.md` and
 stays cheap. Record the two in separate tables; a combined pass rate is not a figure about

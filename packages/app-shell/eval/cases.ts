@@ -186,32 +186,6 @@ const postCard = (r: Node) => (postList(r)[0].children as Node[])[0];
 /** Every node matching, anywhere in the tree. */
 const matching = (schema: SchemaNode, is: (n: Node) => boolean) => nodes(schema).filter(is);
 
-/*
-  Every POSITION holding a matching node, as the array it sits in and the index it sits at.
-
-  Not the same as `matching`, and the difference is load-bearing here. An authored template
-  ALIASES: kanban's four cards are two objects used twice each (280 node positions, 211 distinct
-  objects), because a fragment called twice with the same arguments returns the same value. So
-  mutating a node found by `matching` silently changes every position it appears in — which is
-  the right thing for "change all the cards" and exactly wrong for "change one of them".
-*/
-const positionsOf = (schema: SchemaNode, is: (n: Node) => boolean): { list: unknown[]; index: number }[] => {
-  const found: { list: unknown[]; index: number }[] = [];
-  const visit = (value: unknown) => {
-    if (!value || typeof value !== 'object') return;
-    if (Array.isArray(value)) {
-      value.forEach((child, index) => {
-        if (child && typeof child === 'object' && is(child as Node)) found.push({ list: value, index });
-        visit(child);
-      });
-      return;
-    }
-    Object.values(value as Record<string, unknown>).forEach(visit);
-  };
-  visit(schema);
-  return found;
-};
-
 /** The one node matching — throws when a solve's assumption about the template has expired. */
 const only = (schema: SchemaNode, what: string, is: (n: Node) => boolean): Node => {
   const found = matching(schema, is);
@@ -224,7 +198,12 @@ const occurrences = (schema: SchemaNode, needle: string) => source(schema).split
 
 /**
  * The card: a `Column` carrying the card's own surface. Exactly four, identical, all `r: '300'` —
- * which is to say one shared shape used four times. The two cases below turn on that.
+ * which is to say one shared shape used four times.
+ *
+ * Worth knowing when writing a case against them: the authored template ALIASES, so those four
+ * positions are two objects used twice each (the whole template is 280 positions over 211
+ * objects, because a fragment called twice with the same arguments returns the same value).
+ * Mutating one of them in a `solve` therefore changes two cards, not one.
  */
 const isCardBody = (n: Node) =>
   n.type === 'Column' && n.props?.bg === 'surface' && 'border' in (n.props ?? {}) && 'r' in (n.props ?? {});
@@ -648,9 +627,17 @@ export const EVAL_CASES: EvalCase[] = [
     half, there are 280 nodes to find the right one among, and — the part that nothing else in
     this file reaches — four of those nodes are the SAME node, shared through `$defs`.
 
-    The two shared-shape cases are a matched pair on purpose: `kanban-card-radius` is right only
-    when all four change together, `kanban-one-card-apart` only when exactly one does. A strategy
-    cannot satisfy both by guessing which way to treat a `$ref`.
+    `kanban-card-radius` is the shared-shape case: the four cards are one shape, so the edit is
+    right only when all four change together. A model that patches a single use leaves three
+    cards square.
+
+    There was a second one — "change just these cards, leave the others" — meant to force a
+    `split`. It was removed after a calibration run, because the model was right and it was
+    wrong: asked to restyle the cards in one column, it pointed out that nothing in this template
+    draws the unplaced cards as their own group, and that the way to do it is a CONDITION inside
+    the shared shape rather than a copy of the shape. That is the better engineering answer, so
+    the case was scoring the wrong thing. A real split case needs two uses that differ by their
+    CONTEXT rather than by their data; see the follow-ups in the PR description.
   */
   {
     id: 'kanban-card-radius',
@@ -671,40 +658,6 @@ export const EVAL_CASES: EvalCase[] = [
       );
     },
     solve: (s) => edited(s, (r) => cardBodies(r as unknown as SchemaNode).forEach((n) => (n.props!.r = '500'))),
-  },
-  {
-    id: 'kanban-one-card-apart',
-    template: 'kanban',
-    request:
-      'I want just the cards in the unplaced column to stand out — give those a thicker border, and leave every other card alone.',
-    /*
-      The same shape, edited the other way: this one needs a SPLIT, giving one use a copy of its
-      own. Deliberately lenient about which of the four is singled out — asserting that would be
-      asserting which `$ref` the compactor happened to emit for the unplaced column, which is an
-      implementation detail of `compactDefinitions` and not something the request constrains. What
-      it does pin is the thing that matters: exactly one card differs and the rest are untouched.
-    */
-    check: (s) => {
-      const bodies = cardBodies(s);
-      const changed = bodies.filter((n) => n.props?.border !== '1px solid border');
-      return all(
-        expect(bodies.length === 4, `expected the four cards, found ${bodies.length}`),
-        expect(changed.length === 1, `${changed.length} cards have a different border, expected exactly 1`),
-      );
-    },
-    /*
-      De-aliased by hand, with a clone, because the authored template uses one object in two
-      places — mutating it would change two cards and the case would be unsatisfiable. A model
-      does the same thing through `split`, which is what this case is here to exercise.
-    */
-    solve: (s) =>
-      edited(s, (r) => {
-        const spots = positionsOf(r as unknown as SchemaNode, isCardBody);
-        const { list, index } = spots[spots.length - 1];
-        const copy = structuredClone(list[index]) as Node;
-        copy.props!.border = '2px solid border-strong';
-        list[index] = copy;
-      }),
   },
   {
     id: 'kanban-empty-icon',
