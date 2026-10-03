@@ -28,7 +28,12 @@ breakage points at one cause.
 
 ## Description
 
-Four parts, in this order.
+Four parts, in this order, and the first thing in the body is **What** — no heading above it.
+GitHub prints the title immediately over the description, so a title repeated as an `# H1` is the
+same sentence twice in the two places a reader looks. It also breaks pairing: the alert block
+below has to be the first thing in the body, and a heading above it means the PR reads as
+unpaired. `.github/pull_request_template.md` is the shape, and a description drafted elsewhere —
+in a file passed to `gh pr create --body-file`, say — matches it.
 
 **What.** What the PR changes, in a few bullets. Someone who reads only this should know what merging
 it does.
