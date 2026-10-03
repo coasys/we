@@ -200,13 +200,33 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
         continue;
       }
       accumulated = ensureNodeIds(applied.schema);
+
+      /*
+        A split's copy is numbered HERE, which is the only moment its id exists, so this is the
+        only place that can name it.
+
+        The schema reaches the model in the user's turn and nowhere else. Without the id in the
+        result, a model that split a use out has no name for the thing it just made and cannot
+        patch it until the next message — which is the whole point of having split it.
+      */
+      const split = applied.splits.flatMap((copy) => (copy.id ? [copy.id] : []));
+
       results.push({
         callId: call.id,
-        content: reach.length
-          ? `Patches applied. ${reach.length === 1 ? 'One patch' : `${reach.length} patches`} changed a shared ` +
-            `shape, so the change shows in ${reach.join(' and ')} places. If it was meant for one of them, ` +
-            `replace that use's $ref node with a copy of the shape and patch the copy.`
-          : 'Patches applied.',
+        content: [
+          'Patches applied.',
+          reach.length > 0 &&
+            `${reach.length === 1 ? 'One patch' : `${reach.length} patches`} changed a shared shape, so the ` +
+              `change shows in ${reach.join(' and ')} places. If it was meant for one of them, split that ` +
+              `use out and patch the copy.`,
+          split.length > 0 &&
+            `${split.length === 1 ? 'The copy is' : 'The copies are'} ${split.join(', ')}, and patching ` +
+              `${split.length === 1 ? 'it' : 'them'} now changes nothing else. The nodes INSIDE a copy were ` +
+              `renumbered and their new ids arrive with the template next message, so make a change to the ` +
+              `copy as a whole this turn and reach inside it on the next one.`,
+        ]
+          .filter((line): line is string => typeof line === 'string')
+          .join(' '),
         patch: true,
       });
     }

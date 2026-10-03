@@ -17,7 +17,10 @@ import { definitionsOf, findNodeById, insertChild, mergeNode, REF_TYPE, removeCh
  * step automatically — a fork that diverges while its source also changes is two-way drift, and
  * there is no honest automatic answer to that.
  */
-function splitSharedShape(schema: SchemaNode, targetId: string): { schema: SchemaNode; error?: string } {
+function splitSharedShape(
+  schema: SchemaNode,
+  targetId: string,
+): { schema: SchemaNode; copy?: SchemaNode; error?: string } {
   const found = findNodeById(schema, targetId);
   if (!found) return { schema, error: `No node with id "${targetId}" found in the current schema.` };
   if (found.node.type !== REF_TYPE) {
@@ -62,7 +65,9 @@ function splitSharedShape(schema: SchemaNode, targetId: string): { schema: Schem
     else (parent.props as Record<string, unknown>)[prop] = copy;
   } else return { schema, error: `Cannot split the $ref at "${targetId}": it sits at an unsupported position.` };
 
-  return { schema };
+  // The object itself, not a path: whoever numbers the tree next mutates in place, so reading
+  // `copy.id` afterwards is how the caller learns what to tell the model the copy is called.
+  return { schema, copy };
 }
 
 export type SchemaPatch = {
@@ -92,22 +97,34 @@ export type SchemaPatch = {
  * Apply a tool call's patches to a schema. Mutates/returns the working copy — callers pass a
  * clone and only promote it once validation passes. Returns `error` (and an unspecified partial
  * schema) on the first failing patch.
+ *
+ * `splits` holds the copy a `split` made, in patch order. A copy carries no ids — ids are per
+ * position and this is a new one — so the caller numbers the tree and then reads `.id` off these
+ * to tell the model what the copy is called. Without that the operation is a dead end inside a
+ * session: the schema reaches the model in the user's turn and nowhere else, so a model that
+ * split a use out would have no name for the thing it had just made, and nothing to patch.
  */
-export function applySchemaPatches(schema: SchemaNode, patches: SchemaPatch[]): { schema: SchemaNode; error?: string } {
+export function applySchemaPatches(
+  schema: SchemaNode,
+  patches: SchemaPatch[],
+): { schema: SchemaNode; splits: SchemaNode[]; error?: string } {
+  const splits: SchemaNode[] = [];
   try {
     for (const patch of patches) {
       const opCount = [patch.node, patch.insert, patch.remove, patch.split].filter(Boolean).length;
       if (opCount !== 1) {
         return {
           schema,
+          splits,
           error: `Patch for targetId "${patch.targetId}" must have exactly one of: node, insert, remove, split.`,
         };
       }
 
       if (patch.split) {
         const split = splitSharedShape(schema, patch.targetId);
-        if (split.error) return { schema, error: split.error };
+        if (split.error) return { schema, splits, error: split.error };
         schema = split.schema;
+        if (split.copy) splits.push(split.copy);
         continue;
       }
 
@@ -119,7 +136,7 @@ export function applySchemaPatches(schema: SchemaNode, patches: SchemaPatch[]): 
         } else {
           const found = findNodeById(schema, patch.targetId);
           if (!found) {
-            return { schema, error: `No node with id "${patch.targetId}" found in the current schema.` };
+            return { schema, splits, error: `No node with id "${patch.targetId}" found in the current schema.` };
           }
           const merged = mergeNode(found.node, patch.node);
           // Replace the node in its parent
@@ -153,7 +170,11 @@ export function applySchemaPatches(schema: SchemaNode, patches: SchemaPatch[]): 
         const insertSpec = patch.insert.children ?? patch.insert.routes;
         const arrayKey = patch.insert.children ? 'children' : 'routes';
         if (!insertSpec) {
-          return { schema, error: `Insert patch for targetId "${patch.targetId}" must specify children or routes.` };
+          return {
+            schema,
+            splits,
+            error: `Insert patch for targetId "${patch.targetId}" must specify children or routes.`,
+          };
         }
         const position = insertSpec.after
           ? { after: insertSpec.after }
@@ -169,25 +190,29 @@ export function applySchemaPatches(schema: SchemaNode, patches: SchemaPatch[]): 
         const nodeToInsert = cleanNode as SchemaNode;
         const err = insertChild(schema, patch.targetId, arrayKey, nodeToInsert, position);
         if (err) {
-          return { schema, error: err.error };
+          return { schema, splits, error: err.error };
         }
       } else if (patch.remove) {
         // Remove child or route
         const childId = patch.remove.children ?? patch.remove.routes;
         const arrayKey = patch.remove.children ? 'children' : 'routes';
         if (!childId) {
-          return { schema, error: `Remove patch for targetId "${patch.targetId}" must specify children or routes.` };
+          return {
+            schema,
+            splits,
+            error: `Remove patch for targetId "${patch.targetId}" must specify children or routes.`,
+          };
         }
         const err = removeChild(schema, patch.targetId, arrayKey, childId);
         if (err) {
-          return { schema, error: err.error };
+          return { schema, splits, error: err.error };
         }
       }
     }
 
-    return { schema };
+    return { schema, splits };
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : 'Unknown patching error';
-    return { schema, error: `${errMsg}. Please check your node structure and try again.` };
+    return { schema, splits, error: `${errMsg}. Please check your node structure and try again.` };
   }
 }

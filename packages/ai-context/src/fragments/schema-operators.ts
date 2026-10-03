@@ -100,9 +100,11 @@ automatically, so a thing you write out twice becomes one definition without you
 - Patch a node **inside a definition** and the change shows at EVERY use of that shape. This is
   usually what is wanted — "make the cards wider" is one shape and every card.
 - To make a single use differ, send a patch of { "targetId": "<the $ref's id>", "split": true }. That use
-  gets a copy of the shape to itself and everything else carries on sharing; patch the copy on the
-  next turn, once it has ids. Do not re-emit the shape by hand to do this — it is thousands of
-  tokens and a transcription to get wrong, for a copy the editor already has.
+  gets a copy of the shape to itself and everything else carries on sharing. The tool result names
+  the copy's id, so a patch to the copy AS A WHOLE can follow in the same turn; the nodes inside it
+  were renumbered and their ids arrive with the template next message. Do not re-emit the shape by
+  hand to do this — it is thousands of tokens and a transcription to get wrong, for a copy the
+  editor already has.
 
 The tool result says which happened: a patch that reached a shared shape comes back naming how
 many places it changed. If that is not what the request meant, fix it in the same turn.

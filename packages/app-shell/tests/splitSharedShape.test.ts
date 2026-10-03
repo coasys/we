@@ -13,7 +13,7 @@
  */
 import { applySchemaPatches } from '@shared/ai/schemaPatches';
 import type { SchemaNode } from '@we/schema-shared';
-import { compactDefinitions, definitionsOf, ensureNodeIds, expandDefinitions } from '@we/schema-shared';
+import { compactDefinitions, definitionsOf, ensureNodeIds, expandDefinitions, findNodeById } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 const card = (): SchemaNode => ({
@@ -83,6 +83,27 @@ describe('splitting one use out of a shared shape', () => {
     const rendered = JSON.stringify(expandDefinitions(out));
     expect(rendered.split('Only this one')).toHaveLength(2); // once
     expect(rendered.split('A card')).toHaveLength(3); // the two that kept sharing
+  });
+
+  /*
+    The one that makes `split` usable rather than merely correct.
+
+    A copy carries no ids of its own, and the template only reaches the model in the user's turn —
+    so without the copy coming back named, a model that split a use out could not patch the thing
+    it had just made until the next message, which is the whole reason it split.
+  */
+  it('hands back the copy, so the caller can name it once the tree is numbered', () => {
+    const schema = threeCards();
+    const { schema: out, splits } = applySchemaPatches(schema, [
+      { targetId: (refs(schema)[0] as SchemaNode).id!, split: true },
+    ]);
+
+    expect(splits).toHaveLength(1);
+    expect(splits[0].id).toBeUndefined(); // not numbered yet — that is the caller's next step
+
+    ensureNodeIds(out);
+    expect(splits[0].id).toBeTruthy();
+    expect(findNodeById(out, splits[0].id!)?.node).toBe(splits[0]);
   });
 
   it('refuses a node that is not shared, and says why', () => {
