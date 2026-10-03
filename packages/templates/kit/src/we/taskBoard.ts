@@ -810,23 +810,36 @@ const addTaskModal: SchemaNode = formModal({
   },
   children: [
     field({ name: 'addTitle', label: 'What needs doing?', placeholder: 'Ship the docs' }),
+    /*
+      Offered only when there is something to offer.
+
+      "Or bring in work that already exists" over an empty dropdown reads as a control that is
+      broken rather than one with nothing to do — and on a new space with one board that is the
+      normal state, since everything made here is already on it.
+    */
     {
-      type: 'we-form-field',
-      props: { label: 'Or bring in work that already exists' },
-      children: [
-        {
-          type: 'we-select',
-          props: {
-            placeholder: 'Nothing selected',
-            searchable: true,
-            value: { $: 'local.addExisting' },
-            // Anything in scope this board is not already holding — the whole space for a made
-            // board, and a call's work for a call's board.
-            options: { $: `${VIEW}.available.map(t, { label: t.title, value: t.id })` },
-            onChange: { $setLocal: 'addExisting', value: { $: 'event.detail' } },
-          },
+      type: '$if',
+      props: {
+        condition: { $: `count(${VIEW}.available)` },
+        then: {
+          type: 'we-form-field',
+          props: { label: 'Or bring in work that already exists' },
+          children: [
+            {
+              type: 'we-select',
+              props: {
+                placeholder: 'Nothing selected',
+                searchable: true,
+                value: { $: 'local.addExisting' },
+                // Anything in scope this board is not already SHOWING — the whole space for a
+                // made board, and a call's work for a call's board.
+                options: { $: `${VIEW}.available.map(t, { label: t.title, value: t.id })` },
+                onChange: { $setLocal: 'addExisting', value: { $: 'event.detail' } },
+              },
+            },
+          ],
         },
-      ],
+      },
     },
   ],
   disabled: { $: '!local.addTitle && !local.addExisting' },
