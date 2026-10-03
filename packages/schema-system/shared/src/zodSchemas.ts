@@ -283,6 +283,18 @@ export const zSchemaNode: z.ZodType<SchemaNode> = z
     // The actual routes array lives on the parent template or route node, not on the $routes node itself.
   });
 
+/**
+ * A `type` plus anything only a node carries.
+ *
+ * `type` alone is not enough: a transition effect is `{ type: 'fade', duration: 400 }`, a graph
+ * layout is `{ type: 'force', options: … }`, and a behaviour the same — specs that name a kind
+ * and are no part of the tree. What separates a node is that it also holds tree things.
+ */
+function looksLikeNode(val: object): boolean {
+  if (typeof (val as { type?: unknown }).type !== 'string') return false;
+  return ['props', 'children', 'slots', 'slot', 'routes', '$localState', '$queries'].some((key) => key in val);
+}
+
 export const zSchemaProp: z.ZodType<SchemaProp> = z.union([
   z.string(),
   z.number(),
@@ -301,7 +313,8 @@ export const zSchemaProp: z.ZodType<SchemaProp> = z.union([
       typeof val === 'object' &&
       val !== null &&
       !Array.isArray(val) &&
-      !Object.keys(val).some((k) => k.startsWith('$')),
+      !Object.keys(val).some((k) => k.startsWith('$')) &&
+      !looksLikeNode(val),
   ),
   z.array(lazySchemaProp),
   z.undefined(),
@@ -333,8 +346,10 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
     /**
      * The panels this interface has, and where each starts. See `TemplatePanel`.
      *
-     * `node` is typed but not structurally checked here: this schema is what *checks* a node, so
-     * recursing into it would be a cycle. The node inside a panel is walked like any other by the
+     * `node` is checked as a node, through the lazy reference every other nested position uses —
+     * the cycle this once worried about is what `z.lazy` is for. Unchecked, a shell's panels were
+     * the largest unvalidated region in the repo: 248k of the workshop template's 570k characters.
+     * The node inside a panel is walked like any other by the
      * validator's own traversal, which is where its props and component names are verified.
      */
     panels: z
@@ -344,7 +359,7 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
           module: z.string().optional(),
           /** Which of a module's panels this places, where it contributes several. */
           dock: z.string().optional(),
-          node: z.custom<SchemaNode>().optional(),
+          node: lazySchemaNode.optional(),
           title: z.string().optional(),
           snap: z
             .enum(['top-left', 'top', 'top-right', 'right', 'bottom-right', 'bottom', 'bottom-left', 'left'])
