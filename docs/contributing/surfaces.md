@@ -381,7 +381,7 @@ implementations in the entity proxy registry. Consumers never learn which backen
 - **Lives in** `packages/backend-system/<name>/`
 - **Conventions** [backend-system/shared/README.md](../../packages/backend-system/shared/README.md)
 - **Copy** `packages/backend-system/inmemory/` — the reference implementation, and how stores test without an executor
-- **Verify** `pnpm --filter @we/backend-inmemory test` as the shape to match
+- **Verify** run the shared suite, `describeBackendConformance` from `@we/backend-conformance`, against your ports — `inmemory/tests/portsConformance.test.ts` is a harness to copy, and `ad4m/tests/live/` shows one for a backend that needs a running process
 
 ### Platform hosts
 

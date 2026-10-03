@@ -7,9 +7,9 @@
     "build:steps": "tsup",
     "build": "we-build",
     "test": "vitest run",
+    "test:live": "vitest run --config vitest.live.config.ts",
     "typecheck": "tsc --noEmit",
-    "generate:classes": "tsx scripts/generateClasses.mjs",
-    "verify": "tsx scripts/verifyCapabilities.ts"
+    "generate:classes": "tsx scripts/generateClasses.mjs"
   },
   "types": "dist/index.d.ts",
   "exports": {
@@ -28,6 +28,7 @@
   "devDependencies": {
     "@coasys/ad4m": "0.13.0-test-flows-1",
     "@types/node": "^26.4.0",
+    "@we/backend-conformance": "workspace:*",
     "@we/cli": "workspace:*",
     "tsup": "^8.5.1",
     "vitest": "^5.0.2",

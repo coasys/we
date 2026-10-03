@@ -42,7 +42,7 @@ packages/
 ├── design-system/    ← @we/tokens, @we/primitives, @we/components, …
 ├── schema-system/    ← @we/schema-shared, @we/schema-solid
 ├── block-system/     ← @we/block-shared, @we/block-solid
-├── backend-system/   ← @we/backend-shared, @we/backend-ad4m, @we/backend-inmemory
+├── backend-system/   ← @we/backend-shared, @we/backend-ad4m, @we/backend-inmemory, @we/backend-conformance
 ├── module-system/    ← @we/module-shared, @we/module-globe, @we/module-call, …
 ├── templates/        ← @we/template-shell, @we/template-default  (data, no build step)
 ```
