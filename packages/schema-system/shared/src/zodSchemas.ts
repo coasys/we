@@ -100,13 +100,23 @@ const zDefined = z.custom<unknown>((v) => v !== undefined, 'Required');
  * can see by `semanticValidation`, which is where a column-precise error can be reported.
  */
 const zExpressionToken = z.object({ $: z.string().min(1) }).strict();
+
+/*
+  A handler, or a list run in order — the shape every lifecycle key and `$if` branch holds.
+
+  Annotated, and not merely inferred: a handler may carry handlers, so `zActionToken` reaches
+  `zPropToken` which reaches `zActionToken`, and TypeScript cannot infer its way around a cycle.
+  Saying `unknown` here costs nothing — the parse is what checks these, not the static type.
+*/
+const lazyToken = z.lazy((): z.ZodType<unknown> => zPropToken);
+const lazyHandler = z.lazy((): z.ZodType<unknown> => z.union([zPropToken, z.array(zPropToken)]));
 const zActionToken = z
   .object({
     $action: z.string().min(1),
     args: z.array(z.unknown()).optional(),
-    onSuccess: z.array(z.unknown()).optional(),
-    onError: z.array(z.unknown()).optional(),
-    onFinally: z.array(z.unknown()).optional(),
+    onSuccess: z.array(lazyToken).optional(),
+    onError: z.array(lazyToken).optional(),
+    onFinally: z.array(lazyToken).optional(),
   })
   .strict();
 // Neutral authoring DSL — `entity` (the entity to query) + `dataset` (the perspective/store handle).
@@ -166,8 +176,8 @@ const zIfToken = z
   .object({
     $if: z.object({
       condition: zDefined,
-      then: z.unknown().optional(),
-      else: z.unknown().optional(),
+      then: lazyHandler.optional(),
+      else: lazyHandler.optional(),
     }),
   })
   .strict();

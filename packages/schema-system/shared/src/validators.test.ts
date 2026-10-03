@@ -78,6 +78,68 @@ describe('a node held in a prop', () => {
   });
 });
 
+/*
+  The same hole, one layer along: a handler position that accepted anything.
+
+  `onSuccess` and friends were `z.array(z.unknown())` and a `$if` branch was `z.unknown()`, so a
+  misspelt token inside one was not a token and not an error either — it was simply kept. That is
+  how `{ $if: …, onSuccess: [close] }` survived: the key was legal to write and read by nothing.
+*/
+describe('a handler held by another handler', () => {
+  const button = (onClick: unknown) => template([{ type: 'we-button', props: { onClick }, children: ['Go'] }]);
+
+  it('is checked in a lifecycle list', () => {
+    const typo = { $action: 'store.save', onSuccess: [{ $setLokal: 'open', value: false }] };
+    expect(validateStructure(button(typo)).valid).toBe(false);
+  });
+
+  it('is checked down a $if branch', () => {
+    const bad = { $if: { condition: { $: 'local.x' }, then: { $setLokal: 'open', value: false } } };
+    expect(validateStructure(button(bad)).valid).toBe(false);
+  });
+
+  it('accepts the shapes that are actually written', () => {
+    const good = {
+      $if: {
+        condition: { $: 'local.existing' },
+        then: { $action: 'store.move', args: [''], onSuccess: [{ $setLocal: 'open', value: false }] },
+        else: [{ $touch: '$all' }, { $action: 'store.create' }],
+      },
+    };
+    expect(validateStructure(button(good)).errors).toEqual([]);
+  });
+});
+
+/*
+  The property all of this adds up to, and the one worth keeping.
+
+  Compacting a template moves shapes out of props and into `$defs`, where there has never been a
+  fallback — so for as long as a prop was the looser position, hoisting alone could turn a valid
+  template invalid. The editor hit that as every patch being refused for 91 faults the model had
+  not caused. Now that a prop checks what looks like a node, the two positions ask the same
+  question, and where a template sits in that spectrum stops being a thing anybody has to know.
+*/
+describe('where a node sits does not change the verdict', () => {
+  const strayKey = { $if: { condition: { $: 'local.x' }, then: { $action: 'store.go' } }, onSuccess: [] };
+  const held = (words: string) => ({
+    type: 'Column',
+    props: { gap: '300' },
+    children: [{ type: 'we-button', props: { onClick: strayKey }, children: [words] }],
+  });
+
+  it.each([
+    ['sound', { type: 'we-text', children: ['Fine'] }],
+    ['faulty', held('Go')],
+  ])('agrees compacted and expanded: %s', async (_name, body) => {
+    const { compactDefinitions, expandDefinitions } = await import('./definitions');
+    const wrapper = (which: string) => ({ type: '$if', props: { condition: { $: `local.${which}` }, then: body } });
+    const { schema, hoisted } = compactDefinitions(template([wrapper('a'), wrapper('b')]), { minChars: 0 });
+
+    expect(hoisted).toBeGreaterThan(0); // the body really did move into `$defs`
+    expect(validateStructure(schema).valid).toBe(validateStructure(expandDefinitions(schema)).valid);
+  });
+});
+
 describe('a prop that merely looks like a node', () => {
   /*
     Each of these names a KIND and is no part of the tree. Rejecting them is the trap: a `type`
