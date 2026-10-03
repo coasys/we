@@ -55,7 +55,11 @@ the smaller one are the same, which is not what the context plan assumed.
 
 ### Cost
 
-About $8 for all 153 runs, because the system prompt is cached. From the node's log:
+**About $12 for all 153 runs**, read off the Anthropic billing page rather than estimated — an
+arithmetic estimate from the cache figures below came out at $8, so treat a calculation here as a
+lower bound and the bill as the number.
+
+It is that low because the system prompt is cached. From the node's log:
 
 ```
 Anthropic usage (claude-sonnet-5): in=275 out=92  cache_read=0       cache_write=143507
