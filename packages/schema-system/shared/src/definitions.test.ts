@@ -271,4 +271,30 @@ describe('finding and patching a shared shape', () => {
     const { schema } = compactDefinitions(root([body('Same'), body('Same')]));
     expect(stripNodeIds(ensureNodeIds(structuredClone(schema)))).toEqual(schema);
   });
+
+  /*
+    An id means nothing without the tree it was assigned in — so ONE tree has to serve whoever
+    reads the ids and whoever resolves them.
+
+    Numbering walks in order, and compaction changes the order: a shape used twice is two inline
+    subtrees before and one definition after, so the counters diverge from the first hoisted
+    shape. The editor derived its two trees separately and they disagreed in exactly this way.
+    What made it expensive is that nothing failed — a patch written against a shared definition
+    resolved to one inline copy of it, validated, saved, and was explained as something else.
+  */
+  it('numbers a compacted tree differently from the same template uncompacted', async () => {
+    const { ensureNodeIds, findNodeById } = await import('./indexer');
+    const template = root([body('Same'), body('Same'), body('Other')]);
+
+    const sent = ensureNodeIds(compactDefinitions(structuredClone(template)).schema);
+    const uncompacted = ensureNodeIds(structuredClone(template));
+
+    // A node only the compacted tree has a name for: the shared shape, said once.
+    const shared = Object.values(definitionsOf(sent))[0];
+    expect(shared.id).toBeTruthy();
+
+    // The same id in the other numbering is a different node — or no node at all.
+    const elsewhere = findNodeById(uncompacted, shared.id!)?.node;
+    expect(elsewhere).not.toEqual(shared);
+  });
 });
