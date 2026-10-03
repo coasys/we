@@ -248,7 +248,15 @@ function MessageBubble(props: { message: ChatMessage; isStreaming?: boolean; str
       r="400"
       gap="300"
       p={isUser() ? '300' : '0'}
-      bg={isUser() ? 'accent-muted' : 'surface'}
+      /*
+        A bubble for what the reader wrote, and nothing behind what the assistant said.
+
+        The panel frame already paints `surface-raised`; a reply painted `surface` over it is a
+        second shade a few lightness points away, with no padding to read as a card — so it came
+        out as a stray rectangle behind the text rather than as anything holding it. The user's own
+        messages keep theirs, where the tint is doing the work of saying who is speaking.
+      */
+      bg={isUser() ? 'accent-muted' : undefined}
       maxWidth={isUser() ? '90%' : '100%'}
       alignSelf={isUser() ? 'flex-end' : 'flex-start'}
     >

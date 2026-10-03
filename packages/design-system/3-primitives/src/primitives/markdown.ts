@@ -126,18 +126,51 @@ const styles = css`
     margin: var(--we-markdown-gap, 0.5em) 0;
   }
 
-  /* Status markers */
+  /*
+    Status markers — a chip, because that is what these colours were measured against.
+
+    success-text and its pair are scale positions chosen as the lowest steps that clear AA ON THE
+    STATUS TINTS, which is a different question from how they read on a plain panel. As bare text
+    on a surface they came out pastel, and in a dark theme they are a light green or amber on a
+    dark ground, which is the washed-out end of the same mistake. Giving them the tint they were
+    tuned for restores the contrast they were picked for, and a marker in a transcript reads
+    better as a chip than as a coloured word anyway.
+
+    Inline-block with em padding, so a chip sits in the line and scales with the text around it.
+  */
+  [part='base'] .success,
+  [part='base'] .warning,
+  [part='base'] .danger {
+    display: inline-block;
+    /*
+      A badge's own measurements, and NOT its theme group — which is a gap worth knowing about.
+
+      These should follow --we-theme-control-radius, so a theme set sharp gets points here as it
+      does on every other small pressed-looking thing. A primitive may only read a group it is
+      registered for (themeReach.test.ts), registration applies the group to [part=base], and
+      [part=base] here is a block of prose rather than a control. The cascade is per component,
+      and this is one part of one.
+
+      So: the values a we-badge resolves to under the default theme, which is right until a theme
+      moves its control shape and these stay put. Reaching for we-badge itself would mean adding
+      a custom element to the markdown sanitiser's allowlist, which widens what any model-written
+      text may inject — too much to spend on a shape.
+    */
+    padding: 0.25em var(--we-space-300);
+    border-radius: var(--we-radius-400);
+    font-weight: 600;
+  }
   [part='base'] .success {
     color: var(--we-role-success-text);
-    font-weight: 600;
+    background: var(--we-role-success-surface);
   }
   [part='base'] .warning {
     color: var(--we-role-warning-text);
-    font-weight: 600;
+    background: var(--we-role-warning-surface);
   }
   [part='base'] .danger {
     color: var(--we-role-danger-text);
-    font-weight: 600;
+    background: var(--we-role-danger-surface);
   }
   [part='base'] .shimmer {
     color: var(--we-role-text-muted);
