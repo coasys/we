@@ -43,26 +43,30 @@ conversation the PR came out of.
 
 ## Pairing with an ad4m change
 
-When a WE change needs an ad4m change that has not been published yet, make the **first line** of
-the description one of these, on its own:
+When a WE change needs an ad4m change that has not been published yet, start the description with
+exactly this block, naming an ad4m pull request:
 
+```markdown
+> [!IMPORTANT]
+>
+> ### Paired with: coasys/ad4m#1187
 ```
-ad4m: coasys/ad4m#1187        an ad4m pull request
-ad4m: coasys/ad4m@dev         an ad4m branch, tag or commit
-```
+
+or `coasys/ad4m@dev` for an ad4m branch, tag or commit. The PR template carries it, commented out.
 
 The preview then builds both `@coasys/ad4m` and `@coasys/ad4m-connect` from that change instead of
-installing the pin. Both live in the `coasys/ad4m` repository, so one line covers both. The
+installing the pin. Both live in the `coasys/ad4m` repository, so one pairing covers both. The
 required checks still build against the pin, so they stay red until it moves; the
 `AD4M compatibility / Against the paired ad4m` check builds the same commit against the pairing and
 says whether that red is only the pin. It keeps a comment and a `paired with ad4m` label on the PR
 saying so, so a reviewer does not have to open the checks to find out.
 
-A line anywhere but first, or in any other form, such as a pasted link or a list item, fails the
-preview and the paired check rather than being ignored. A mention of an ad4m PR elsewhere in the
-description is not a pairing.
+One exact form, so every paired PR looks the same. Anything close — no colon, another heading level
+or alert, the old `ad4m: coasys/ad4m#N` line, the block lower down — fails the preview and the
+paired check rather than being ignored, and the PR gets a comment with the corrected block to paste.
+A mention of an ad4m PR elsewhere in the description is not a pairing.
 
-Remove the line before merging, once the pin has been bumped to a version that contains the change.
+Remove the block before merging, once the pin has been bumped to a version that contains the change.
 See [ad4m and deploys](./ad4m-and-deploys.md).
 
 ## Stacked PRs

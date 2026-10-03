@@ -1,15 +1,15 @@
 <!-- How to fill this in: docs/contributing/pull-requests.md -->
 
 <!--
-Needs an unpublished ad4m change? Make the FIRST LINE of this description (above this comment is
-fine) one of these, on its own, naming an ad4m pull request or an ad4m branch, tag or commit:
-
-    ad4m: coasys/ad4m#1187
-    ad4m: coasys/ad4m@dev
-
-The preview then builds against it, and a check typechecks and tests this PR there. Anywhere but
-the first line it is an error, not a pairing. Remove it once the pin is bumped, before merging.
+Needs an unpublished ad4m change? Delete the two lines that comment out the block below, and set
+the number — or write coasys/ad4m@<branch> for a branch, tag or commit. The preview then builds
+against it, and a check typechecks and tests this PR there. Anything but this exact block, first in
+the description, is an error. Remove it once the pin is bumped, before merging.
 See docs/contributing/ad4m-and-deploys.md.
+-->
+<!--
+> [!IMPORTANT]
+> ### Paired with: coasys/ad4m#1187
 -->
 
 ## What

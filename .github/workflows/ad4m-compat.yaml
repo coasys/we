@@ -3,16 +3,16 @@ name: AD4M compatibility
 # Does WE still build, typecheck and test against an AD4M change that is not published yet?
 #
 # The required build (`build.yaml`) installs the AD4M version this repo pins. A paired deploy
-# preview (an `ad4m:` line in a PR description) builds WE against an AD4M change, but only builds
+# preview (a `Paired with:` block in a PR description) builds WE against an AD4M change, but only builds
 # it. This job answers the remaining question: WE compiled against an AD4M change's *source*, with
 # its typecheck and tests, before that change is published. It runs two ways:
 #
-# - **On a paired pull request**, automatically. It reads the `ad4m:` line and tests the pull
+# - **On a paired pull request**, automatically. It reads the pairing and tests the pull
 #   request's own commit against what it names. This is the check that says whether a paired
 #   change works, while the required jobs are red waiting for the pin to move — without it, a
 #   paired pull request went days with Typecheck, Test and schemas never running at all, and a
 #   real regression could hide behind the failure everyone expected. Unpaired pull requests skip
-#   it. Editing the line does not start a run: push again, or re-run this one, which reads the
+#   it. Editing the pairing does not start a run: push again, or re-run this one, which reads the
 #   description as it is now rather than as it was when the run first started.
 # - **From the Actions tab**, naming an AD4M branch, against the last WE commit that passed CI.
 #
@@ -76,7 +76,7 @@ jobs:
   #
   # A job of its own so the job below can be skipped outright on an unpaired pull request: a
   # job-level `if` needs the answer before that job starts. It has to run on every pull request to
-  # find out — the PR template shows the line as an example inside a comment, so no filter on the
+  # find out — the PR template carries the block commented out, so no filter on the
   # raw description can tell a paired one apart.
   resolve:
     name: Read the ad4m pairing
@@ -109,17 +109,18 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = 'pull_request' ]; then
             # Paired → pairing, ref and reason; unpaired → nothing, and the job below is skipped.
-            # A line that cannot be read, or names a pull request that cannot be found, fails here
-            # with the reason, as the preview does.
-            # The reason is kept for the comment below as well as printed.
+            # A pairing that cannot be read, or names a pull request that cannot be found, fails
+            # here, as the preview does — and the parser writes the comment that says why, with the
+            # corrected block to paste.
+            #
             # The description as it is NOW, not the copy in the event: a re-run replays the event it
-            # was started by, description included, so reading the event would make "fix the line,
+            # was started by, description included, so reading the event would make "fix the pairing,
             # then re-run" silently test the old one. Falls back to the event if the API cannot answer.
             PR_BODY="$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.body // ""')" || PR_BODY="$EVENT_BODY"
-            printf '%s' "$PR_BODY" | node scripts/ad4m-pairing.mjs --resolve 2> pairing-error.txt | tee -a "$GITHUB_OUTPUT"
-            STATUS="${PIPESTATUS[1]}"
-            cat pairing-error.txt >&2
-            exit "$STATUS"
+            printf '%s' "$PR_BODY" \
+              | node scripts/ad4m-pairing.mjs --resolve --error-comment pairing-comment.md \
+              | tee -a "$GITHUB_OUTPUT"
+            exit "${PIPESTATUS[1]}"
           fi
 
           BRANCH="${REQUESTED_BRANCH:-dev}"
@@ -137,7 +138,7 @@ jobs:
       # Say on the pull request itself that it is paired, before the long check starts: the
       # required checks go red within minutes, and this is what tells a reviewer why. The job below
       # replaces it with what it found. An unpaired pull request loses the comment and label, which
-      # is how they go away once the pin has moved and the line is removed.
+      # is how they go away once the pin has moved and the block is removed.
       - name: Write the pending comment
         if: github.event_name == 'pull_request' && steps.resolve.outputs.paired == 'true'
         env:
@@ -145,12 +146,12 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           cat > pairing-comment.md <<EOF
-          ### :hourglass: Paired with $PAIRING
+          ### :hourglass: Testing this PR against $PAIRING
 
           The required checks build against the ad4m version WE pins, which does not have this change, so
-          they stay red until \`pnpm bump:ad4m\` moves the pin. **AD4M compatibility / Against the paired
-          ad4m** builds this pull request against $PAIRING instead. It is [running now]($RUN_URL), and this
-          comment will say what it found.
+          they stay red until it is published and \`pnpm bump:ad4m\` moves the pin. Whether this PR works
+          against $PAIRING is answered by **AD4M compatibility / Against the paired ad4m**, which is
+          [running now]($RUN_URL) and takes about ten minutes. This comment will say what it found.
           EOF
 
       - name: Show the pairing on the pull request
@@ -166,20 +167,19 @@ jobs:
         with:
           paired: 'false'
 
-      # A line that cannot be read fails this job, and the preview, with the reason — said here as
-      # well, since a failing "Read the ad4m pairing" row is easy to read past.
+      # A pairing that cannot be read fails this job, and the preview — said on the pull request as
+      # well, since a failing "Read the ad4m pairing" row is easy to read past. The parser wrote the
+      # comment, corrected block included; this is only for a failure it never reached.
       - name: Write the error comment
         if: failure() && github.event_name == 'pull_request'
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          [ -s pairing-comment.md ] && exit 0
           {
-            echo '### :x: The ad4m pairing line cannot be read'
+            echo '### :x: The ad4m pairing could not be read'
             echo
-            echo '~~~'
-            cat pairing-error.txt 2>/dev/null
-            echo '~~~'
-            echo
-            echo 'The preview and the paired check both fail until it is fixed. The line goes first in the'
-            echo 'description, on its own: see `docs/contributing/ad4m-and-deploys.md`.'
+            echo "Reading the description failed before it could be parsed — see [the run]($RUN_URL)."
           } > pairing-comment.md
 
       - name: Report the error on the pull request
@@ -498,16 +498,104 @@ jobs:
 
       # The same report, as the pull request's pairing comment — replacing the "running" one the
       # resolve job wrote.
+      #
+      # Its own layout rather than the run summary's, which also serves runs from the Actions tab: a
+      # reviewer wants the verdict, which stages passed, and what the red required checks mean — in
+      # that order. It names the branch's own head commit, not the commit the run checked out: on a
+      # pull request that is a merge with the base GitHub makes and never shows among the commits.
       - name: Write the result comment
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         env:
-          WE_REF: ${{ steps.we-ref.outputs.ref }}
+          PAIRING: ${{ needs.resolve.outputs.pairing }}
+          AD4M_HASH: ${{ steps.ad4m-hash.outputs.hash }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          JOB_STATUS: ${{ job.status }}
+          SDK_CACHED: ${{ steps.ad4m-cache.outputs.cache-hit }}
+          SDK: ${{ steps.ad4m-build.outcome }}
+          INSTALL: ${{ steps.install.outcome }}
+          BUILD: ${{ steps.build.outcome }}
+          TYPECHECK: ${{ steps.typecheck.outcome }}
+          TEST: ${{ steps.test.outcome }}
+          SCHEMAS: ${{ steps.schemas.outcome }}
+          BROWSER: ${{ steps.browser.outcome }}
         run: |
+          # One row per stage. A stage after a failure was never run, which is not the same as
+          # passing, so it says so.
+          row() {
+            case "$2" in
+              success) echo "- :white_check_mark: $1" ;;
+              failure) echo "- :x: **$1**" ;;
+              *)       echo "- :fast_forward: $1 — not run" ;;
+            esac
+          }
+
+          # The SDK step is skipped on a cache hit, which is a pass; installing WE against it is
+          # the same stage as far as a reader is concerned.
+          [ "$SDK_CACHED" = 'true' ] && SDK=success
+          [ "$SDK" = success ] && [ "$INSTALL" != success ] && SDK="$INSTALL"
+
+          FAILED=''
+          for o in "$SDK" "$BUILD" "$TYPECHECK" "$TEST" "$SCHEMAS" "$BROWSER"; do
+            [ "$o" = failure ] && FAILED=1
+          done
+
           {
-            sed '1s/^## /### /' report.md
+            if [ "$JOB_STATUS" = success ]; then
+              echo "### :white_check_mark: This PR works against $PAIRING"
+            elif [ -n "$FAILED" ]; then
+              echo "### :x: This PR fails against $PAIRING"
+            else
+              echo "### :x: This PR could not be tested against $PAIRING"
+            fi
             echo
-            echo "<sub>For \`${WE_REF:0:12}\` · [the run]($RUN_URL) · updated on every push</sub>"
+            VERB='Tested'
+            [ "$JOB_STATUS" = success ] || [ -n "$FAILED" ] || VERB='Tried'
+            TESTED="$VERB at [\`${HEAD_SHA:0:9}\`]($PR_URL/commits/$HEAD_SHA), merged with \`$BASE_REF\`"
+            if [ -n "$AD4M_HASH" ]; then
+              TESTED="$TESTED, against ad4m [\`${AD4M_HASH:0:9}\`](https://github.com/coasys/ad4m/commit/$AD4M_HASH)"
+            fi
+            echo "$TESTED."
+            echo
+
+            if [ "$JOB_STATUS" = success ]; then
+              echo "**The red required checks are only the ad4m pin.** They clear once $PAIRING is"
+              echo "published and \`pnpm bump:ad4m\` moves the pin."
+            elif [ -n "$FAILED" ]; then
+              echo "**Something is broken**, in this PR or in $PAIRING. The error below says which side."
+            else
+              echo "**The check failed before it could build anything** — see [the run]($RUN_URL)."
+            fi
+            echo
+
+            row "ad4m SDK, built from $PAIRING" "$SDK"
+            row 'Build' "$BUILD"
+            row 'Typecheck' "$TYPECHECK"
+            row 'Tests' "$TEST"
+            row 'Schemas and audits' "$SCHEMAS"
+            row 'Browser tests' "$BROWSER"
+
+            if [ -n "$FAILED" ] && [ -f compat.log ]; then
+              echo
+              echo '<details><summary>Error</summary>'
+              echo
+              echo '```'
+              # The lines a reader wants, out of a log whose first two thousand lines are install
+              # chatter — the same patterns the run summary uses.
+              if grep -qE 'error TS[0-9]+|ERR_PNPM|FAIL |✗ |AssertionError' compat.log; then
+                grep -E 'error TS[0-9]+|ERR_PNPM|FAIL |✗ |AssertionError' compat.log | head -25
+              else
+                tail -25 compat.log
+              fi
+              echo '```'
+              echo
+              echo '</details>'
+            fi
+
+            echo
+            echo "<sub>[The run]($RUN_URL) · updated on every push</sub>"
           } > pairing-comment.md
 
       - name: Report on the pull request
