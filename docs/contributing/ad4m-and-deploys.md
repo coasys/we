@@ -68,7 +68,7 @@ point at it. The pairing is this block, first in the WE PR description:
 | ---- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | 1    | Start the WE PR description with the pairing block, below | The preview builds both ad4m packages from that ad4m PR (its merge, once merged), and a check tests WE there |
 | 2    | Review and test on the preview                            | You see the two halves working together                                                                      |
-| 3    | Merge the ad4m PR first                                   | It is published under the `dev` tag (see below)                                                              |
+| 3    | Merge the ad4m PR first                                   | It is published under the `dev` tag (see below), and the WE PR is marked ready to bump                       |
 | 4    | Run `pnpm bump:ad4m` in the WE PR, and remove the block   | CI now tests the real combination                                                                            |
 | 5    | Merge the WE PR                                           | `dev` stays on a published, tested pin                                                                       |
 
@@ -92,6 +92,16 @@ on the first push after the block is removed. (GitHub has no
 badge beside a PR's title or above its description, so those two are the nearest it offers. A PR
 from a fork gets neither, since its workflow cannot write here; a failing required check still names
 the paired check there.)
+
+**When the ad4m change can be pinned, the PR says so.** Hourly, the bump workflow looks at every PR
+labelled `paired with ad4m` whose pairing names an ad4m PR. Once that PR has merged and a version of
+both `@coasys/ad4m` and `@coasys/ad4m-connect` is published from a commit containing the merge, the
+WE PR gets a second label, **`ready to bump ad4m`**, beside the first, and a comment naming the
+version and the steps: `pnpm bump:ad4m <version>`, remove the block, push. "Containing the merge"
+rather than "newer than it": a version published from just before the merge would look ready and
+not be. A pairing with a branch has no moment at which it is done, so it never gets this label.
+Both labels and both comments go together when the block is removed. The rules are in
+`scripts/ad4m-ready-to-bump.mjs`.
 
 The paired check tests the ad4m PR as it is now. If it changes before it is published, step 4 is
 where that shows: the required checks then test the real combination.

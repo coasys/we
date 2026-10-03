@@ -68,7 +68,9 @@ installing the pin. Both live in the `coasys/ad4m` repository, so one pairing co
 required checks still build against the pin, so they stay red until it moves; the
 `AD4M compatibility / Against the paired ad4m` check builds the same commit against the pairing and
 says whether that red is only the pin. It keeps a comment and a `paired with ad4m` label on the PR
-saying so, so a reviewer does not have to open the checks to find out.
+saying so, so a reviewer does not have to open the checks to find out. Once the ad4m PR has merged
+and a version containing it is published, a second label, `ready to bump ad4m`, and a comment naming
+that version say it is time to run `pnpm bump:ad4m` and remove the block.
 
 One exact form, so every paired PR looks the same. Anything close — no colon, another heading level
 or alert, the old `ad4m: coasys/ad4m#N` line, the block lower down — fails the preview and the

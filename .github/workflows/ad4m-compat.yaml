@@ -570,7 +570,9 @@ jobs:
             fi
             echo
 
-            row "ad4m SDK, built from $PAIRING" "$SDK"
+            # Never a PR reference in a row: GitHub expands one inside a list item into the
+            # referenced PR's whole title. The heading names the ad4m PR, once, as a link.
+            row 'ad4m SDK' "$SDK"
             row 'Build' "$BUILD"
             row 'Typecheck' "$TYPECHECK"
             row 'Tests' "$TEST"
