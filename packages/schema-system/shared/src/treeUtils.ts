@@ -109,5 +109,34 @@ export function replaceNodeInTree(schema: SchemaNode, target: SchemaNode, replac
     }
     if (changed) clone.props = newProps as SchemaNode['props'];
   }
+  /*
+    And the interfaces in `meta.panels`, which the visual editor reaches the moment they have ids.
+
+    This branch is here because giving panel nodes ids without it makes things WORSE rather than
+    better. `node.id` is what the renderer stamps as `data-we-node-id`, so before they were
+    numbered a node inside a panel could not be clicked at all — visibly inert. Numbered, it
+    selects, the inspector opens on it, `findNodeById` resolves it, `mergeNode` patches it — and
+    then this function returned a tree with the change dropped. An edit that silently does
+    nothing is a worse failure than a node that cannot be picked up.
+
+    Rebuilt immutably, like `props` above: `meta` is cloned only when a panel actually changed,
+    so a template with no panels, or none containing the target, is returned exactly as before.
+  */
+  const panels = panelsOf(schema);
+  if (panels) {
+    let changed = false;
+    const nextPanels = panels.map((panel) => {
+      const node = panel.node;
+      if (!isSchemaChild(node)) return panel;
+      const replaced = node === target ? replacement : replaceNodeInTree(node as SchemaNode, target, replacement);
+      if (replaced === node) return panel;
+      changed = true;
+      return { ...panel, node: replaced };
+    });
+    if (changed) {
+      const meta = (schema as { meta?: Record<string, unknown> }).meta ?? {};
+      (clone as { meta?: Record<string, unknown> }).meta = { ...meta, panels: nextPanels };
+    }
+  }
   return clone;
 }
