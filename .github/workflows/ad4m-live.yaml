@@ -10,33 +10,42 @@
 # inform a merge rather than decide it — the same reasoning that took the AD4M source build out of
 # `build.yaml`.
 #
-# ## Why the executor is cached by commit
+# ## The executor
 #
-# Building the executor is most of an hour on a hosted runner: the Holochain CLIs, the Deno snapshot
-# and the Rust workspace. The binary depends on nothing but the AD4M commit it was built from, so it
-# is built once per pin and cached under that commit; every later run is a restore and a few minutes
-# of tests. Only the binary is cached — the Rust target directory is tens of gigabytes, far past
-# what a repository's Actions cache holds. A build that fails caches nothing, so until it passes,
-# every run pays for it again.
+# `.github/actions/ad4m-executor` provides it — the same action, cache key and path the desktop
+# package uses, so the tests run the binary the app ships and either workflow's build serves the
+# other. It is cached by AD4M commit: building it is most of an hour, every later run on that commit
+# is a restore. Only the binary is cached; the Rust target directory is far past what a
+# repository's Actions cache holds. A build that fails caches nothing.
 #
-# ## Why a plain Ubuntu 24.04 runner
+# A cache is read only from the run's own branch and its base branch, so where it is saved decides
+# who can use it. One saved on a PR serves re-runs of that PR alone; one saved on `dev` serves every
+# PR. That is why this also runs on a push to `dev`: when a bump merges, `dev` builds the new
+# executor once, and every PR after it restores it.
 #
-# The steps are AD4M's own CircleCI build, which runs straight on the host rather than in AD4M's CI
-# image. That image is Ubuntu 22.04, and the executor no longer links there: the prebuilt V8 it pulls
-# in calls glibc 2.38 functions (`__isoc23_strtol` and kin), and 22.04 has 2.35. AD4M's GitHub release
-# workflow builds in that image, and has not passed since March. 24.04 has glibc 2.39 — what the binary
-# needs at run time too, so the tests run on the same image.
+# Ubuntu 24.04 because the executor needs glibc 2.38 or later, to link and to run: the prebuilt V8
+# calls `__isoc23_*` (coasys/ad4m#1305).
 name: AD4M live
 
 on:
   pull_request:
     # What the tests exercise: the adapter, the contract, the entities its classes are generated
-    # from, and the pin itself. A template change cannot move any of it.
+    # from, and the pin itself — plus what builds the executor. A template change moves none of it.
     paths:
       - 'packages/backend-system/**'
       - 'packages/entities/**'
       - 'package.json'
       - '.github/workflows/ad4m-live.yaml'
+      - '.github/actions/ad4m-executor/**'
+  # The same paths on `dev`, so a merged bump caches its executor where every PR can read it.
+  push:
+    branches: [dev]
+    paths:
+      - 'packages/backend-system/**'
+      - 'packages/entities/**'
+      - 'package.json'
+      - '.github/workflows/ad4m-live.yaml'
+      - '.github/actions/ad4m-executor/**'
   # The ad4m bump workflow starts this on its branch, as it does CI — a PR it opens with
   # GITHUB_TOKEN starts nothing. And by hand, from the Actions tab.
   workflow_dispatch:
@@ -54,10 +63,8 @@ jobs:
     name: Resolve the pinned executor
     runs-on: ubuntu-24.04
     outputs:
-      version: ${{ steps.pin.outputs.version }}
-      commit: ${{ steps.pin.outputs.commit }}
-      key: ${{ steps.pin.outputs.key }}
-      cached: ${{ steps.lookup.outputs.cache-hit }}
+      commit: ${{ steps.executor.outputs.sha }}
+      cached: ${{ steps.executor.outputs.cache-hit }}
       skip: ${{ steps.pairing.outputs.skip }}
     steps:
       - uses: actions/checkout@v7
@@ -65,25 +72,8 @@ jobs:
           sparse-checkout: |
             package.json
             scripts/ad4m-pairing.mjs
+            .github/actions/ad4m-executor
           sparse-checkout-cone-mode: false
-
-      # The pin is a published npm version; the commit it was published from is recorded on the
-      # package itself, so no table here has to be kept in step with it.
-      - name: Read the pin
-        id: pin
-        run: |
-          VERSION="$(node -p "require('./package.json').pnpm.overrides['@coasys/ad4m']")"
-          COMMIT="$(npm view "@coasys/ad4m@$VERSION" gitHead)"
-          if [ -z "$COMMIT" ]; then
-            echo "::error::@coasys/ad4m@$VERSION records no gitHead, so there is no commit to build the executor from."
-            exit 1
-          fi
-          {
-            echo "version=$VERSION"
-            echo "commit=$COMMIT"
-            echo "key=ad4m-executor-$COMMIT"
-          } >> "$GITHUB_OUTPUT"
-          echo "### @coasys/ad4m $VERSION → coasys/ad4m@${COMMIT:0:9}" >> "$GITHUB_STEP_SUMMARY"
 
       # A paired PR's own changes need an ad4m change nobody has published, so against the pin they
       # fail for the reason the required checks do and say nothing new — `AD4M compatibility /
@@ -97,8 +87,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          VERSION: ${{ steps.pin.outputs.version }}
         run: |
+          VERSION="$(node -p "require('./package.json').pnpm.overrides['@coasys/ad4m']")"
           # The description as it is now, not as the event recorded it: a re-run replays the event.
           BODY="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq '.body // ""')"
           # A malformed block is the pairing parser's to report, on the checks that read it; here it
@@ -115,14 +105,19 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Is it built already
-        id: lookup
+      - name: Is the pinned executor cached
+        id: executor
         if: steps.pairing.outputs.skip != 'true'
-        uses: actions/cache/restore@v6
+        uses: ./.github/actions/ad4m-executor
         with:
-          path: .ad4m-executor
-          key: ${{ steps.pin.outputs.key }}
-          lookup-only: true
+          mode: lookup
+
+      - name: Summary
+        if: steps.pairing.outputs.skip != 'true'
+        env:
+          SHA: ${{ steps.executor.outputs.sha }}
+          HIT: ${{ steps.executor.outputs.cache-hit }}
+        run: echo "### coasys/ad4m@${SHA:0:9} — $([ "$HIT" = true ] && echo 'cached' || echo 'not cached yet, building')" >> "$GITHUB_STEP_SUMMARY"
 
   build:
     name: Build the executor
@@ -130,98 +125,18 @@ jobs:
     if: needs.resolve.outputs.skip != 'true' && needs.resolve.outputs.cached != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 150
-    # Two runs on the same pin wait for each other rather than both spending an hour on it, and the
-    # second finds the first's binary (the check below). Never cancelled — see the top of the file.
+    # Two runs on the same commit wait for each other rather than both spending an hour on it; the
+    # second restores what the first saved. Never cancelled — see the top of the file.
     concurrency:
       group: ad4m-executor-${{ needs.resolve.outputs.commit }}
       cancel-in-progress: false
     steps:
-      - name: Built while this waited
-        id: again
-        uses: actions/cache/restore@v6
-        with:
-          path: .ad4m-executor
-          key: ${{ needs.resolve.outputs.key }}
-          lookup-only: true
-
-      # A Rust release build of the whole workspace outgrows a runner's free disk; the preinstalled
-      # .NET, Android and Haskell toolchains are the room it needs, and nothing here uses them.
-      - name: Free disk space
-        if: steps.again.outputs.cache-hit != 'true'
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
-          df -h /
-
       - uses: actions/checkout@v7
-        if: steps.again.outputs.cache-hit != 'true'
         with:
-          repository: coasys/ad4m
+          sparse-checkout: .github/actions/ad4m-executor
+      - uses: ./.github/actions/ad4m-executor
+        with:
           ref: ${{ needs.resolve.outputs.commit }}
-
-      # What AD4M's CI image installs, less the launcher's desktop libraries: the executor needs
-      # none of GTK, WebKit or AppImage tooling.
-      - name: System packages
-        if: steps.again.outputs.cache-hit != 'true'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler cmake clang libclang-dev pkg-config libssl-dev libasound2-dev
-
-      # The rest is what AD4M's CircleCI host provides (`setup_env` in its config): Node, pnpm,
-      # Deno, Go, and wasm-bindgen-cli at the version it pins. Rust comes from the repo's own
-      # rust-toolchain.toml, which rustup reads on first use.
-      - uses: actions/setup-node@v7
-        if: steps.again.outputs.cache-hit != 'true'
-        with:
-          node-version: 24.x
-      - uses: pnpm/action-setup@v4
-        if: steps.again.outputs.cache-hit != 'true'
-      - uses: denoland/setup-deno@v2.0.5
-        if: steps.again.outputs.cache-hit != 'true'
-        with:
-          deno-version: v2.x
-      - uses: actions/setup-go@v7
-        if: steps.again.outputs.cache-hit != 'true'
-        with:
-          go-version: stable
-          cache: false
-      - name: wasm-bindgen-cli
-        if: steps.again.outputs.cache-hit != 'true'
-        run: cargo install wasm-bindgen-cli --version 0.2.118 --locked
-
-      # AD4M's CircleCI build job, step for step.
-      - name: Holochain CLIs pinned by Cargo.lock
-        if: steps.again.outputs.cache-hit != 'true'
-        run: bash scripts/install-hc-toolchain.sh
-      - name: Install
-        if: steps.again.outputs.cache-hit != 'true'
-        run: pnpm install --no-frozen-lockfile
-      - name: Build the dapp
-        if: steps.again.outputs.cache-hit != 'true'
-        run: pnpm build-dapp
-      - name: Install core
-        if: steps.again.outputs.cache-hit != 'true'
-        run: cd core && pnpm install --no-frozen-lockfile
-      - name: Build the Deno snapshot
-        if: steps.again.outputs.cache-hit != 'true'
-        run: pnpm run build-deno-snapshot
-      - name: Build the executor
-        if: steps.again.outputs.cache-hit != 'true'
-        env:
-          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
-        run: pnpm run build-libs
-
-      # Cached here, on the same kind of runner the tests restore it on, so the two agree about the
-      # archive format and the key's version.
-      - name: Keep the binary
-        if: steps.again.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p .ad4m-executor
-          cp target/release/ad4m-executor .ad4m-executor/
-      - uses: actions/cache/save@v6
-        if: steps.again.outputs.cache-hit != 'true'
-        with:
-          path: .ad4m-executor
-          key: ${{ needs.resolve.outputs.key }}
 
   live:
     name: Live tests
@@ -239,11 +154,11 @@ jobs:
       - uses: ./.github/actions/setup
 
       - name: Restore the executor
-        uses: actions/cache/restore@v6
+        id: executor
+        uses: ./.github/actions/ad4m-executor
         with:
-          path: .ad4m-executor
-          key: ${{ needs.resolve.outputs.key }}
-          fail-on-cache-miss: true
+          ref: ${{ needs.resolve.outputs.commit }}
+          mode: restore
 
       # The live tests import these by package name, which resolves to their built output. Only
       # the adapter's own dependencies and the suite — not the monorepo.
@@ -252,7 +167,7 @@ jobs:
 
       - name: Live tests
         env:
-          AD4M_EXECUTOR: ${{ github.workspace }}/.ad4m-executor/ad4m-executor
+          AD4M_EXECUTOR: ${{ steps.executor.outputs.path }}
         run: |
           chmod +x "$AD4M_EXECUTOR"
           pnpm verify:ad4m
