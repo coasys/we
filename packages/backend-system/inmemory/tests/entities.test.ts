@@ -303,10 +303,10 @@ describe('an absent property, and what the two backends do with it', () => {
 
     A property is a *link* in production, so a record that never had one written has no value at all —
     where this backend holds a row and simply lacks the key. The three cases below are not the same
-    across the two, and the middle one is a genuine conformance divergence:
+    across the two, and the middle one was a genuine conformance divergence:
 
     - `{ field: '' }` does not match an absent value on either. They agree.
-    - `{ field: { not: x } }` MATCHES an absent value here, because `undefined !== x` is true in
+    - `{ field: { not: x } }` MATCHED an absent value here, because `undefined !== x` is true in
       JavaScript — and does NOT match in production, because `!=` over an unbound variable excludes the
       row, exactly as SQL's three-valued logic excludes NULL. **A `where` written with `not` is
       therefore green in this suite and silently empty against a real executor**, which is the same
@@ -316,10 +316,10 @@ describe('an absent property, and what the two backends do with it', () => {
     This is why `OFFERED_SIGNAL_TYPES` filters client-side instead of pushing
     `{ retired: { not: true } }` down. The `not` form would have passed every test here.
 
-    Not "fixed" by making this backend exclude absent values from `not`: which of the two is right
-    is a contract decision (SQL says exclude, JavaScript says match), it would change the meaning of
-    every existing `not` query, and the honest first step is that the difference is written down and
-    has a test. See the PR's Known follow-ups.
+    Since resolved in production's favour (October 2026): the shared query engine now excludes an
+    absent value — and `''`, which production never stores — from `not`, so this backend answers what
+    a real executor does. The shared conformance suite (`records.not-excludes-absent`) holds both
+    backends to it.
   */
   it('writes a declared default, so a record created normally is filterable on it', async () => {
     // The half that works, and why the exposure is narrow: anything built through `create` carries
@@ -341,17 +341,15 @@ describe('an absent property, and what the two backends do with it', () => {
     expect(await Space.findAll(dataset, { where: { avatar: '' } })).toHaveLength(0);
   });
 
-  it('DOES match an absent property against `not` — where production would not', async () => {
-    /*
-      The divergence, asserted so it is a known quantity rather than a surprise. Do not read this
-      as an endorsement: it is what this backend does today, and a `where` relying on it will not
-      behave the same way in production.
-    */
+  it('does not match an absent property against `not` either, as production does not', async () => {
+    // The divergence this block was written to record, closed in production's favour: a `where`
+    // written with `not` means the same on both backends now.
     await Space.create(dataset, { name: 'Bare' });
     await Space.create(dataset, { name: 'Pictured', avatar: 'inmemory://pic.png' });
+    await Space.create(dataset, { name: 'Other', avatar: 'inmemory://other.png' });
 
     const matched = await Space.findAll(dataset, { where: { avatar: { not: 'inmemory://pic.png' } } });
-    expect(matched.map((s) => s.name)).toEqual(['Bare']);
+    expect(matched.map((s) => s.name)).toEqual(['Other']);
   });
 
   it('means absent unambiguously with `exists`, on either backend', async () => {

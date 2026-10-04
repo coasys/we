@@ -105,7 +105,7 @@ the seed's list is correct code that never appears.
 | Graph plugin | \`graph-system/expanders/src/\`, \`layouts/src/\` | \`graph-system/CONVENTIONS.md\` | package index **and** \`GRAPH_PLUGIN_CATALOG\` in \`module-system/graph/src/catalog.ts\` | \`--filter @we/graph-core test\`, then \`generate-context\` |
 | Globe layer | \`module-system/globe/layers/src/\` | its \`README.md\` / \`EXAMPLES.md\` | export from \`index.ts\` | \`--filter @we/globe-layers typecheck\` |
 | Seed | \`we-seed.json\` | \`docs/getting-started/seed-system.md\` | — | \`pnpm validate:seed\` |
-| Backend adapter | \`backend-system/<name>/\` | \`backend-system/shared/README.md\` | entity proxy registry | model the \`inmemory\` package |
+| Backend adapter | \`backend-system/<name>/\` | \`backend-system/shared/README.md\` | entity proxy registry | \`describeBackendConformance\` from \`@we/backend-conformance\` |
 | Platform host | \`apps/<name>/\` | — | — | \`--filter <app> build\` |
 
 Widgets (\`design-system/5-widgets\`) are the nineteenth and are **currently empty by design**: the one
