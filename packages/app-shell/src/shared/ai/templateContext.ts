@@ -11,6 +11,24 @@
  * thing first and stopping when it is full sends everything when everything fits. So `blank` and
  * `feed` behave exactly as they did, and nothing changes shape at a boundary.
  *
+ * ## What this buys, measured rather than predicted
+ *
+ * 24 runs over four `kanban` cases, whole against bounded, in `eval/BASELINE.md`:
+ *
+ * - **Accuracy is untouched** — 8/8 on every arm. A model edits from an outline plus the parts it
+ *   was handed exactly as well as from the whole tree. Not obvious beforehand, and the finding
+ *   the whole approach needed.
+ * - **Cost is round trips, not payload.** The system prompt is 46K tokens and is re-sent on every
+ *   call, so one extra call costs far more than a smaller template saves. Bounding kanban saves
+ *   ~8.7K tokens a call and an extra call costs over 50K.
+ * - **So the budget's real job is to buy preselection**, not to shrink what is sent. Detail sent
+ *   unasked is what stops the model calling `we_template`, and a budget generous enough to
+ *   preselect well is nearly free: 120K tokens a case against 116K whole, where a mean budget was
+ *   150K.
+ *
+ * Which makes this a FIT mechanism rather than a cost one. It is roughly cost-neutral on a
+ * template that already fits; its value is `workshopTemplate`, which does not fit at all.
+ *
  * Above the budget the model gets:
  *
  * - **an outline** — every node's id, type and a clue, nothing else. 12% of the compacted template

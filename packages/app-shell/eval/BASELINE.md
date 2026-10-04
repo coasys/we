@@ -12,6 +12,45 @@ figure about nothing. See "Two scales" in `README.md`.
 
 ---
 
+## 2026-10-04 — bounding the template, three arms
+
+Does sending an outline instead of the template cost accuracy, and what does it cost in tokens?
+Same four `kanban` cases, same `lookup` strategy, same node, same session — only the template
+budget differs. 2 repeats, 24 runs in all.
+
+| arm                    | passed  | valid | model calls | context calls | sent per case |
+| ---------------------- | ------- | ----- | ----------- | ------------- | ------------- |
+| whole template         | **8/8** | 8/8   | 2.0         | 0.0           | 116K          |
+| bounded, budget 20,000 | **8/8** | 8/8   | 2.4         | 0.4           | 120K          |
+| bounded, budget 4,000  | **8/8** | 8/8   | 3.0         | 1.0           | 150K          |
+
+**Accuracy is untouched: 24 of 24, every arm.** This is the finding the approach needed. A model
+edits from an outline plus the parts it was handed exactly as well as from the whole tree, so
+bounding is not a trade of correctness for size — and that was not obvious beforehand.
+
+**Cost is round trips, not payload.** The system prompt is 46K tokens and is re-sent on every
+call, so one extra call costs far more than the template saved. Kanban's template is 39,412
+characters and its outline 4,776: a saving of about 8.7K tokens per call against an extra call
+costing over 50K. That is the whole of the 29% penalty in the bottom row.
+
+**So the budget's real job is to buy preselection, not to shrink the payload.** The only
+difference between the middle row and the bottom one is how much detail was sent unasked —
+10,000 characters against 2,000 — and that halves the tool calls and nearly closes the cost gap.
+Where preselection guesses right, there is no second call at all: `kanban-remove-load-more` took
+2 calls at 20,000 and 3 at 4,000.
+
+**Which makes bounding a FIT mechanism rather than a cost one.** On this template it is roughly
+cost-neutral at a sensible budget. Its value is the template it makes editable at all: applying
+the same arithmetic to `workshopTemplate` — 400,460 characters, outline 96,706 — bounding takes a
+turn from about 292K tokens to 211K, and the first of those does not fit a 200K window. The plan
+listed fit, cost and accuracy as three benefits; measured, it is fit, with cost a wash and
+accuracy neutral.
+
+**Not measured:** any of this on `workshopTemplate` itself, because no case uses it. The numbers
+above for it are arithmetic from the measured per-call cost, not observation.
+
+---
+
 ## 2026-10-04 — calibration of the `large` scale
 
 Not a baseline: one strategy, one repeat, five cases, run to find out whether the new cases
