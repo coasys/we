@@ -12,7 +12,14 @@
  */
 import { render } from '@solidjs/testing-library';
 import type { ExecutorHost, ExecutorSettings } from '@we/app-shell/shared';
-import type { AiModel, BackendPorts, ConsentRequest, PeerRecords, RuntimeAdminPort } from '@we/backend-shared';
+import type {
+  AiModel,
+  AiModelDraft,
+  BackendPorts,
+  ConsentRequest,
+  PeerRecords,
+  RuntimeAdminPort,
+} from '@we/backend-shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 let ports: Partial<BackendPorts> | null = null;
@@ -359,6 +366,33 @@ describe('AI models', () => {
     store.setAiService('custom');
     expect(store.aiForm()).toMatchObject({ apiService: 'custom', apiProtocol: 'anthropic' });
     expect(store.aiServiceOptions().at(-1)).toEqual({ label: 'Custom endpoint', value: 'custom' });
+  });
+
+  it('saves an Ollama model with its context limit, and says why a limit it cannot read holds Save', async () => {
+    const saved: AiModelDraft[] = [];
+    const { port } = aiPort({
+      async addAiModel(draft) {
+        saved.push(draft);
+      },
+    });
+    ports = { runtime: port };
+    const store = mount();
+
+    store.newAiModel();
+    store.setAiFormField('name', 'Qwen');
+    store.setAiFormField('sourceKind', 'api');
+    store.setAiService('ollama');
+    store.setAiFormField('apiModel', 'qwen3:4b');
+    expect(store.aiForm()).toMatchObject({ apiProtocol: 'ollama', apiBaseUrl: 'http://localhost:11434' });
+
+    store.setAiFormField('apiMaxContext', '40k');
+    expect(store.aiFormComplete()).toBe(false);
+    expect(store.aiMaxContextError()).not.toBe('');
+
+    store.setAiFormField('apiMaxContext', '40960');
+    expect(store.aiMaxContextError()).toBe('');
+    await store.saveAiModel();
+    expect(saved[0].source).toMatchObject({ kind: 'api', protocol: 'ollama', maxContext: 40960 });
   });
 
   it('offers no model listing where the backend cannot ask', () => {

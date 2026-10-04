@@ -6421,6 +6421,7 @@
             "apiBaseUrl",
             "apiKey",
             "apiModel",
+            "apiMaxContext",
             "hfRepo",
             "hfRevision",
             "hfFileName",
@@ -6437,6 +6438,9 @@
         },
         "aiFormComplete": {
           "type": "boolean"
+        },
+        "aiMaxContextError": {
+          "type": "string"
         },
         "aiServiceOptions": {
           "type": "array",
