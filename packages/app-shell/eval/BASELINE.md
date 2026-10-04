@@ -12,6 +12,75 @@ figure about nothing. See "Two scales" in `README.md`.
 
 ---
 
+## 2026-10-04 — bounding `workshopTemplate`, and the bug it found
+
+The template the bounding work exists for: 400,460 characters compacted, 3,068 nodes. Two cases,
+`lookup`, whole against bounded at the shipped 60,000 budget.
+
+**The first run was 0/2 on both arms, and that was not about bounding.** The session capture
+showed the model asking `find: "No replies yet."`, getting back `? we-text — No replies yet.`,
+and stopping: the node had no id, so there was nothing to patch. `ensureNodeIds` never walked
+`meta.panels`, which on this template is 1,127 of 1,807 nodes — the Inspector panel's 870 among
+them. Rendered, shown to the model, unaddressable. See the commit; the fix is in `indexer.ts` and
+`treeUtils.ts`, and `findNodeById` needed it too.
+
+After the fix:
+
+| arm                    | passed  | valid | model calls | context calls | sent per case | median time |
+| ---------------------- | ------- | ----- | ----------- | ------------- | ------------- | ----------- |
+| whole template         | **2/2** | 2/2   | 2.0         | 0.0           | 354K          | 7s          |
+| bounded, budget 60,000 | **2/2** | 2/2   | 2.0         | 0.0           | **183K**      | 4s          |
+
+**Bounding halves the cost at identical accuracy, and adds no round trip.** 183K against 354K
+tokens a case, and both arms answered in two calls — preselection found the target each time, so
+`we_template` was never needed.
+
+**This reverses the conclusion drawn from kanban alone.** Bounding costs ~3% there and saves ~48%
+here, and the arithmetic says why: the saving is the template minus its outline, the cost is one
+more call at system-prompt price, and the first grows with the template while the second does
+not. Kanban is below the crossover and workshop is well above it. So it is a cost mechanism after
+all — on the templates where cost is a problem, which is the only place the question arises.
+
+What stands from the kanban run is narrower and still true: **where preselection misses, the
+extra round trip can cost more than bounding saves.** That is the thing to protect, and it makes
+preselection quality the lever rather than outline size.
+
+---
+
+## 2026-10-04 — bounding the template, three arms
+
+Does sending an outline instead of the template cost accuracy, and what does it cost in tokens?
+Same four `kanban` cases, same `lookup` strategy, same node, same session — only the template
+budget differs. 2 repeats, 24 runs in all.
+
+| arm                    | passed  | valid | model calls | context calls | sent per case |
+| ---------------------- | ------- | ----- | ----------- | ------------- | ------------- |
+| whole template         | **8/8** | 8/8   | 2.0         | 0.0           | 116K          |
+| bounded, budget 20,000 | **8/8** | 8/8   | 2.4         | 0.4           | 120K          |
+| bounded, budget 4,000  | **8/8** | 8/8   | 3.0         | 1.0           | 150K          |
+
+**Accuracy is untouched: 24 of 24, every arm.** This is the finding the approach needed. A model
+edits from an outline plus the parts it was handed exactly as well as from the whole tree, so
+bounding is not a trade of correctness for size — and that was not obvious beforehand.
+
+**Cost is round trips, not payload.** The system prompt is 46K tokens and is re-sent on every
+call, so one extra call costs far more than the template saved. Kanban's template is 39,412
+characters and its outline 4,776: a saving of about 8.7K tokens per call against an extra call
+costing over 50K. That is the whole of the 29% penalty in the bottom row.
+
+**So the budget's real job is to buy preselection, not to shrink the payload.** The only
+difference between the middle row and the bottom one is how much detail was sent unasked —
+10,000 characters against 2,000 — and that halves the tool calls and nearly closes the cost gap.
+Where preselection guesses right, there is no second call at all: `kanban-remove-load-more` took
+2 calls at 20,000 and 3 at 4,000.
+
+**On THIS template bounding is roughly cost-neutral**, and at the time that read as "a fit
+mechanism, not a cost one". The workshop run above corrects it: kanban is simply below the
+crossover. The saving grows with the template and the extra call does not, so a small template
+pays for bounding and a large one is paid by it.
+
+---
+
 ## 2026-10-04 — calibration of the `large` scale
 
 Not a baseline: one strategy, one repeat, five cases, run to find out whether the new cases

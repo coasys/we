@@ -13,9 +13,9 @@
  * accident, would read as a result.
  */
 import type { SchemaNode } from '@we/schema-shared';
-import { kanbanTemplate } from '@we/template-showcase';
+import { kanbanTemplate, workshopTemplate } from '@we/template-showcase';
 
-export type EvalTemplate = 'blank' | 'feed' | 'kanban';
+export type EvalTemplate = 'blank' | 'feed' | 'kanban' | 'workshop';
 
 /**
  * How big the template a case is made against is.
@@ -38,7 +38,8 @@ export interface EvalCase {
   solve: (schema: SchemaNode) => SchemaNode;
 }
 
-export const scaleOf = (template: EvalTemplate): EvalScale => (template === 'kanban' ? 'large' : 'small');
+export const scaleOf = (template: EvalTemplate): EvalScale =>
+  template === 'kanban' || template === 'workshop' ? 'large' : 'small';
 
 // ─── The starting templates ───────────────────────────────────────────────────
 
@@ -102,6 +103,18 @@ const TEMPLATES: Record<EvalTemplate, SchemaNode> = {
     this one card" are different edits with different correct answers.
   */
   kanban: kanbanTemplate as unknown as SchemaNode,
+
+  /*
+    The template the bounding work exists for, and the only one here that does not fit.
+
+    571,024 characters authored, 400,460 compacted — about 100K tokens, so a whole-template turn
+    is ~146K against a 200K window and an outline turn is ~73K. Both run, which is what makes the
+    comparison possible at all; a year of template growth and only one of them would.
+
+    Two cases, deliberately few: each whole-template call costs about as much as a whole run of
+    the kanban suite.
+  */
+  workshop: workshopTemplate as unknown as SchemaNode,
 };
 
 export function startingTemplate(template: EvalTemplate): SchemaNode {
@@ -658,6 +671,65 @@ export const EVAL_CASES: EvalCase[] = [
       );
     },
     solve: (s) => edited(s, (r) => cardBodies(r as unknown as SchemaNode).forEach((n) => (n.props!.r = '500'))),
+  },
+  // ─── Against the template that does not fit ───────────────────────────────
+  /*
+    Two cases on `workshopTemplate`, which is the one the bounding work exists for: 3,068 nodes
+    and 400,460 characters compacted, so a whole-template turn is ~146K tokens and an outline
+    turn ~73K. Both still run, which is the only reason the two can be compared — the point of
+    measuring now rather than after another year of template growth.
+
+    Each asks for a change to one node among three thousand, which is the thing bounding makes
+    harder: with the whole tree present the node is simply there, and from an outline it has to
+    be found by what it says and then fetched or patched blind. Both targets appear exactly once
+    in the template, so neither request can be read two ways — the lesson of the case #253
+    removed.
+  */
+  {
+    id: 'workshop-empty-replies',
+    template: 'workshop',
+    request:
+      "The discussion panel says 'No replies yet.' when a thread is empty — change it to 'Nothing here yet — start the conversation.'",
+    check: (s) =>
+      all(
+        expect(occurrences(s, 'Nothing here yet') > 0, 'the new empty-state text is not there'),
+        expect(occurrences(s, 'No replies yet.') === 0, 'the old text is still there'),
+      ),
+    solve: (s) =>
+      edited(s, (r) => {
+        const text = only(r as unknown as SchemaNode, "'No replies yet.' node", (n) =>
+          (n.children ?? []).includes('No replies yet.'),
+        );
+        text.children = ['Nothing here yet — start the conversation.'];
+      }),
+  },
+  {
+    id: 'workshop-unfold-variant',
+    template: 'workshop',
+    request: "Make the 'Unfold all' button a secondary button instead of a ghost one.",
+    /*
+      A PROP change on a node found by its text, which is the case bounding is most exposed on:
+      an outline carries no props at all, so the model either fetches the node or patches it
+      blind. Blind is safe here — `mergeNode` preserves what a patch does not mention — and the
+      second clause is what proves it: the button's `onClick` must survive. A model that replaced
+      the node wholesale instead of merging would lose it, and the button would go dead while
+      looking right.
+    */
+    check: (s) => {
+      const button = matching(s, (n) => (n.children ?? []).includes('Unfold all'));
+      return all(
+        expect(button.length === 1, `expected one 'Unfold all' button, found ${button.length}`),
+        expect(button[0]?.props?.variant === 'secondary', `variant is ${String(button[0]?.props?.variant)}`),
+        expect(Boolean(button[0]?.props?.onClick), 'the button lost its onClick'),
+      );
+    },
+    solve: (s) =>
+      edited(s, (r) => {
+        const button = only(r as unknown as SchemaNode, "'Unfold all' button", (n) =>
+          (n.children ?? []).includes('Unfold all'),
+        );
+        button.props!.variant = 'secondary';
+      }),
   },
   {
     id: 'kanban-empty-icon',
