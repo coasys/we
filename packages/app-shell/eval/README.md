@@ -152,9 +152,12 @@ OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1 ollama serve
 `q8_0` roughly halves the cache and is near-lossless; `q4_0` quarters it and is a quality confound
 worth avoiding while measuring quality. qwen3:4b then loads at 6.4GB, `100% GPU`, 40,960 tokens.
 
-Then register a model entry pointing at that port, and **set `maxNumCtx`**. Without it the node asks
-for the model's own maximum: qwen3:4b advertises a 256K window, so the node clamps to its 131,072
-default and allocates ~14GB, which spills to CPU and is _worse_ than leaving it alone.
+Then register a model entry pointing at that port, and **set a context limit**. Without one the
+node asks for the model's own maximum: qwen3:4b advertises a 256K window, so the node clamps to its
+131,072 default and allocates ~14GB, which spills to CPU and is _worse_ than leaving it alone.
+Settings → AI does both: a custom endpoint with the Ollama protocol and `http://127.0.0.1:11435`
+offers a "Context limit" field. It has to be the Ollama protocol. Through the OpenAI-compatible
+`/v1` the limit is ignored.
 
 Two things about changing a model entry, both learned the hard way:
 
