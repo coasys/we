@@ -16,6 +16,17 @@ export interface CaseScore {
   valid: boolean;
   changed: boolean;
   outcome: EditSessionResult['outcome'];
+  /**
+   * The model finished without attempting a single edit — it asked something, or declined.
+   *
+   * Scored as a failure like any other, because the request did not get done. Recorded
+   * separately because it is a DIFFERENT failure, and the eval was silently conflating the two:
+   * a case whose request can be read two ways rewards a model that guesses over one that asks,
+   * and the only visible difference was the reason string. The case that found this had been
+   * read correctly — the model pointed out that the template did not contain what the request
+   * named — and scored identically to one that edited the wrong node.
+   */
+  asked: boolean;
 }
 
 /** Error-severity issues only; warnings are advice, and a template ships with them. */
@@ -48,9 +59,13 @@ export function scoreCase(
   const changed = JSON.stringify(final) !== JSON.stringify(stripNodeIds(structuredClone(start)));
   const check = evalCase.check(final);
 
+  const asked = !result.log.some((action) => action.tool === 'update_schema');
+
   const reason =
     check !== true
-      ? `${check}${result.outcome !== 'done' ? ` (session ${result.outcome})` : ''}`
+      ? `${asked ? 'asked rather than edited: ' : ''}${check}${
+          result.outcome !== 'done' ? ` (session ${result.outcome})` : ''
+        }`
       : errors.length
         ? `invalid: ${errors.slice(0, 3).join('; ')}`
         : '';
@@ -61,5 +76,6 @@ export function scoreCase(
     valid: errors.length === 0,
     changed,
     outcome: result.outcome,
+    asked,
   };
 }

@@ -10,6 +10,7 @@
  */
 import { chatContext, formatExternalManifestForPrompt, requestMessage, updateSchemaTool } from '@shared/ai/aiInfra';
 import { countedPatches, runEditSession } from '@shared/ai/editSession';
+import { boundTemplate } from '@shared/ai/templateContext';
 import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
 import { deepClone } from '@shared/utils';
@@ -1024,13 +1025,21 @@ export function EditorStoreProvider(props: ParentProps) {
       compactDefinitions(deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode).schema,
     );
     const prepared = await chatContext({ request: text, schema: schemaForRequest });
+    /*
+      How much of the TEMPLATE goes with it. `chatContext` bounds the reference; this bounds the
+      other half, which on a real template is the larger one. A template inside the budget is
+      sent exactly as before — kanban is, workshop is not.
+    */
+    const bounded = boundTemplate(schemaForRequest, text);
+    devLog('[editSession] template', bounded.whole ? 'whole' : 'bounded', bounded.stats);
 
     const result = await runEditSession({
       converse,
       system: prepared.system,
-      turns: buildTurns(text, schemaForRequest),
-      tools: [updateSchemaTool, ...prepared.tools],
-      resolveTool: prepared.resolveTool,
+      turns: buildTurns(text, bounded.sent),
+      tools: [updateSchemaTool, ...prepared.tools, ...bounded.tools],
+      // Whichever tool owns the name answers; a tool nobody claims is reported by the session.
+      resolveTool: (call) => prepared.resolveTool?.(call) ?? bounded.resolveTool?.(call),
       // Buffered changes if there are any, so a conversation resumed against a read-only template
       // continues from them rather than reverting them.
       schema: schemaForRequest,
@@ -1095,7 +1104,7 @@ export function EditorStoreProvider(props: ParentProps) {
    * The currentSchema is included in the latest user message so the AI
    * always sees the current template state.
    */
-  function buildTurns(latestText: string, schemaWithIds: SchemaNode): ConversationTurn[] {
+  function buildTurns(latestText: string, template: unknown): ConversationTurn[] {
     const history: ConversationTurn[] = [];
 
     // Include prior conversation (skip system messages)
@@ -1115,11 +1124,13 @@ export function EditorStoreProvider(props: ParentProps) {
     }
 
     /*
-      `schemaWithIds` is the caller's — compacted and numbered once in `sendMessage`, and the same
-      object the session resolves the model's ids against. It carries buffered changes where there
-      are any, which matters on a read-only template: patched into `pendingTemplate` while the
-      store is deliberately untouched, so showing `currentTemplate` would show the model a tree
-      without its own last answer in it.
+      `template` is what `boundTemplate` decided to send — the tree itself when it fits the
+      budget, an outline plus the parts the request implicates when it does not. Either way it
+      comes from the one tree compacted and numbered in `sendMessage`, which is the same object
+      the session resolves the model's ids against. It carries buffered changes where there are
+      any, which matters on a read-only template: patched into `pendingTemplate` while the store
+      is deliberately untouched, so showing `currentTemplate` would show the model a tree without
+      its own last answer in it.
 
       Compaction is why it is worth the care. A template repeats itself because a fragment stamps
       its whole tree at every call site, and the editor is where that is most expensive — the
@@ -1143,7 +1154,7 @@ export function EditorStoreProvider(props: ParentProps) {
     }
     history.push({
       role: 'user',
-      text: requestMessage(latestText, schemaWithIds, extras),
+      text: requestMessage(latestText, template, extras),
     });
 
     return history;

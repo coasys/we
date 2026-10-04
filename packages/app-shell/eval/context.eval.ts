@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { requestMessage, updateSchemaTool } from '@shared/ai/aiInfra';
 import { CONTEXT_STRATEGIES, type ContextStrategyId, prepareContext } from '@shared/ai/contextStrategies';
 import { type EditSessionResult, runEditSession } from '@shared/ai/editSession';
+import { boundTemplate, DEFAULT_TEMPLATE_BUDGET } from '@shared/ai/templateContext';
 import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
 import { schemaContext } from '@we/ai-context';
 import { createAd4mLanguageModelPort } from '@we/backend-ad4m';
@@ -45,6 +46,12 @@ const caseIds = list(env.WE_EVAL_CASES);
   for them is deliberate: `WE_EVAL_SCALE=large`, or `small,large` for both.
 */
 const scales = list(env.WE_EVAL_SCALE).length ? list(env.WE_EVAL_SCALE) : ['small'];
+/*
+  The template budget, in characters. Defaults high enough that every template in the suite is
+  sent whole, so an unqualified run measures exactly what it measured before and stays comparable
+  with the baselines in `BASELINE.md`. Lower it to measure what bounding costs or buys.
+*/
+const templateBudget = Number(env.WE_EVAL_TEMPLATE_BUDGET) || DEFAULT_TEMPLATE_BUDGET;
 const cases = caseIds.length
   ? EVAL_CASES.filter((c) => caseIds.includes(c.id))
   : EVAL_CASES.filter((c) => scales.includes(scaleOf(c.template)));
@@ -182,6 +189,13 @@ for (const model of models) {
               request: evalCase.request,
               schema: sent,
             });
+            /*
+              The template half of the budget, on the same tree. Its default budget sends every
+              template in the suite whole, so an unqualified run is unchanged and stays
+              comparable with BASELINE.md; `WE_EVAL_TEMPLATE_BUDGET=4000` is how a run measures
+              what bounding does.
+            */
+            const bounded = boundTemplate(sent, evalCase.request, templateBudget);
             const began = Date.now();
             const record: EvalRecord = {
               model,
@@ -199,15 +213,18 @@ for (const model of models) {
               modelCalls: 0,
               contextCalls: 0,
               validationRetries: 0,
+              // A run that errors before the model answers attempted no edit, which is true but
+              // not the thing `asked` is about; the reason string carries the error.
+              asked: false,
             };
 
             try {
               const result = await runEditSession({
                 converse: port.converse!,
                 system: prepared.system,
-                turns: [{ role: 'user', text: requestMessage(evalCase.request, sent) }],
-                tools: [updateSchemaTool, ...prepared.tools],
-                resolveTool: prepared.resolveTool,
+                turns: [{ role: 'user', text: requestMessage(evalCase.request, bounded.sent) }],
+                tools: [updateSchemaTool, ...prepared.tools, ...bounded.tools],
+                resolveTool: (call) => prepared.resolveTool?.(call) ?? bounded.resolveTool?.(call),
                 schema: sent,
                 validationContext,
                 model: model === 'default' ? undefined : model,
