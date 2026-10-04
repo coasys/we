@@ -161,8 +161,10 @@ offers a "Context limit" field. It has to be the Ollama protocol. Through the Op
 
 Two things about changing a model entry, both learned the hard way:
 
-- **`removeModel` + `addModel` picks up new config; `updateModel` does not.** A provider captures its
-  base URL and context ceiling when its worker thread spawns, and an update does not rebuild them.
+- **An update does pick up a new context limit**, despite an earlier note here saying only
+  `removeModel` + `addModel` did. Measured on a 29 September 2026 executor build with qwen3:8b,
+  `ollama ps` showed CONTEXT 8192 after adding the model with that limit, and 16384 after an
+  update. After an update that cleared the limit it showed 40960, the model's own maximum.
 - **Never change model config while a run is in flight.** `updateModel` tears down the LLM channel,
   and the run fails with `Model '<id>' not found in LLM channel` partway through.
 
