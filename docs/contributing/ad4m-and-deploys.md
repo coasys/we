@@ -215,9 +215,12 @@ Build that executor from the commit the new pin was published from
 
 It also runs in CI, as the `AD4M live` workflow (`.github/workflows/ad4m-live.yaml`): on a PR that
 touches the backend packages, the entities or the pin, and on the bump bot's branch. The executor
-takes the better part of an hour to compile, so the workflow builds it once per pinned commit, in
-AD4M's own CI image, and caches the binary — the first run after a bump is slow and the rest take
-minutes. It is not a required check: read it before merging a bump, the way you would the run here.
+takes the better part of an hour to compile, so the workflow builds it once per pinned commit — the
+steps of ad4m's own CircleCI build, on Ubuntu 24.04 — and caches the binary: the first run after a
+bump is slow and the rest take minutes. A push never cancels a build in progress, only the tests.
+It is not a required check: read it before merging a bump, the way you would the run here. It skips
+a paired PR until that PR moves the pin, since before then the pin cannot answer for its changes —
+the paired check above does.
 
 ### Testing an ad4m branch against WE's tests
 
