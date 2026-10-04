@@ -19,7 +19,7 @@
  * - "panel"      — large child subtrees within a route (keyed by qualifier)
  */
 
-import { isPropsSchemaNode, isSchemaChild } from './treeUtils';
+import { isPropsSchemaNode, isSchemaChild, panelsOf } from './treeUtils';
 import type { RouteSchema, SchemaNode, TemplateSchema } from './types';
 
 /**
@@ -53,6 +53,23 @@ function forEachPropsNode(node: SchemaNode, fn: (child: SchemaNode) => void): vo
     } else if (isPropsSchemaNode(val)) {
       fn(val as SchemaNode);
     }
+  }
+}
+
+/**
+ * The node each `meta.panels` entry carries, if any.
+ *
+ * Walked for the same reason compaction walks it: a shell keeps whole interfaces in `meta.panels`
+ * and they are most of a big template. Missing them here meant every node inside a panel was
+ * rendered and had no id — so the model could see it and could not patch it, which is not an
+ * error anywhere, just an edit that never lands. 1,127 of `workshopTemplate`'s 1,807 nodes.
+ *
+ * `strip` walks it too. An id left behind in a panel would be stored in the template, which is
+ * the thing `stripNodeIds` exists to prevent.
+ */
+function forEachPanelNode(node: SchemaNode, fn: (child: SchemaNode) => void): void {
+  for (const panel of panelsOf(node) ?? []) {
+    if (isSchemaChild(panel.node)) fn(panel.node as SchemaNode);
   }
 }
 
@@ -342,6 +359,7 @@ export function ensureNodeIds(schema: SchemaNode): SchemaNode {
     }
     forEachPropsNode(node, collectIds);
     forEachDefinition(node, collectIds);
+    forEachPanelNode(node, collectIds);
   }
   collectIds(schema);
 
@@ -370,6 +388,7 @@ export function ensureNodeIds(schema: SchemaNode): SchemaNode {
     }
     forEachPropsNode(node, assignIds);
     forEachDefinition(node, assignIds);
+    forEachPanelNode(node, assignIds);
   }
   assignIds(schema);
 
@@ -397,6 +416,7 @@ export function stripNodeIds(schema: SchemaNode): SchemaNode {
     }
     forEachPropsNode(node, strip);
     forEachDefinition(node, strip);
+    forEachPanelNode(node, strip);
   }
   strip(schema);
   return schema;
@@ -463,6 +483,25 @@ export function findNodeById(schema: SchemaNode, targetId: string): FindNodeResu
     if (node.$defs) {
       for (const [name, def] of Object.entries(node.$defs)) {
         const result = search(def, node, `$defs.${name}`, 0);
+        if (result) return result;
+      }
+    }
+    /*
+      And the interfaces a shell keeps in `meta.panels`, for the same reason as `$defs` above:
+      the model is handed these nodes with ids on them, so being unable to find one again means
+      answering "no node with that id" about something the model was just shown.
+      `forEachPanelNode` is what gives them ids; this is what lets a patch land on them.
+
+      Reported with a `meta.panels.<i>` key, as `$defs` reports its own, so a caller can tell the
+      position apart from an ordinary child. Nothing moves a panel's own root node, and anything
+      INSIDE one has a real node as its parent and is handled by the branches above.
+    */
+    const panels = panelsOf(node);
+    if (panels) {
+      for (let i = 0; i < panels.length; i++) {
+        const panelNode = panels[i].node;
+        if (!isSchemaChild(panelNode)) continue;
+        const result = search(panelNode as SchemaNode, node, `meta.panels.${i}`, 0);
         if (result) return result;
       }
     }

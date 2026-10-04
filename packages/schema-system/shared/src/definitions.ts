@@ -39,7 +39,7 @@
  * run, re-run, and re-merge freely. The one invariant that must hold is that an edit never leaks
  * from one use to another.
  */
-import { isPropsSchemaNode, isSchemaChild } from './treeUtils';
+import { isPropsSchemaNode, isSchemaChild, panelsOf } from './treeUtils';
 import type { SchemaNode } from './types';
 
 /** The node left behind at each occurrence. A node type, so every existing walk already sees it. */
@@ -107,17 +107,6 @@ function canonical(value: unknown): string {
   CANON.set(value, out);
   return out;
 }
-
-/** A `meta.panels` entry: configuration that may carry a node, rather than a node itself. */
-interface PanelEntry {
-  node?: unknown;
-  [k: string]: unknown;
-}
-
-const panelsOf = (node: SchemaNode): PanelEntry[] | undefined => {
-  const panels = (node as { meta?: { panels?: unknown } }).meta?.panels;
-  return Array.isArray(panels) ? (panels as PanelEntry[]) : undefined;
-};
 
 /**
  * Every child position a node holds — the same edges the renderer walks.
@@ -439,6 +428,22 @@ export function outlineOf(node: SchemaNode, limit = 80): { entries: OutlineEntry
 
   const walk = (n: SchemaNode, depth: number) => {
     if (!n?.type) return;
+    /*
+      An outline names nodes so they can be patched by id, so something with no id does not
+      belong in one — it is not addressable, and listing it invites an edit that cannot land.
+
+      After `ensureNodeIds` the only things left without one are not nodes at all: a transition
+      config like `{ type: 'fade', duration: 250 }` sitting in a prop, which `isSchemaChild` calls
+      a node because it has a `type`. `childPositions` is deliberately left loose — it is shared
+      with `mapChildren`, and the two disagreeing about what the tree contains is the bug this
+      file's own history is made of — so the judgement is made here instead, where "can a patch
+      reach it" is the question being answered.
+    */
+    const addressable = typeof n.id === 'string' && n.id !== '';
+    if (!addressable) {
+      for (const child of childPositions(n)) walk(child, depth);
+      return;
+    }
     if (entries.length >= limit) {
       omitted++;
     } else {

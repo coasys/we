@@ -221,3 +221,75 @@ describe('ensureSections', () => {
     expect(result.sections.length).toBeGreaterThan(0);
   });
 });
+
+/*
+  A node is addressable or it is invisible to the editor.
+
+  Ids are how a patch names what it changes, so a node that never gets one is rendered, is seen
+  by the model, and cannot be edited — which is not an error anywhere. It simply does not land.
+
+  `meta.panels` was exactly that. A shell keeps whole interfaces there and compaction has always
+  walked them, but `ensureNodeIds` did not: on `workshopTemplate` that left 1,127 of 1,807 nodes
+  unaddressable, the Inspector panel's 870 among them. It surfaced as a model being handed a node
+  and answering that it could not find an id for it.
+*/
+describe('ids reach every node the renderer does', () => {
+  const panelled = (): SchemaNode =>
+    ({
+      type: 'Column',
+      meta: {
+        name: 'Shell',
+        panels: [
+          {
+            id: 'inspector',
+            snap: 'right',
+            node: { type: 'Column', children: [{ type: 'we-text', children: ['Inside'] }] },
+          },
+          { id: 'from-a-module', module: 'transcribe' },
+        ],
+      },
+      children: [{ type: 'we-text', children: ['Outside'] }],
+    }) as unknown as SchemaNode;
+
+  const panelNode = (schema: SchemaNode) =>
+    (schema as unknown as { meta: { panels: { node?: SchemaNode }[] } }).meta.panels[0].node!;
+
+  it('gives a node inside meta.panels an id, like any other', async () => {
+    const { ensureNodeIds } = await import('../src/indexer');
+    const panel = panelNode(ensureNodeIds(panelled()));
+
+    expect(panel.id).toBeDefined();
+    expect((panel.children as SchemaNode[])[0].id).toBeDefined();
+  });
+
+  it('finds that node by its id, so a patch can land on it', async () => {
+    const { ensureNodeIds, findNodeById } = await import('../src/indexer');
+    const schema = ensureNodeIds(panelled());
+    const inner = (panelNode(schema).children as SchemaNode[])[0];
+
+    expect(findNodeById(schema, inner.id!)?.node).toBe(inner);
+  });
+
+  /*
+    The other half, and the one that would bite silently: ids are transient and `stripNodeIds`
+    is what keeps them out of the stored template. Numbering panels without stripping them would
+    write `n12` into every panel of every template anybody saved.
+  */
+  it('strips them again, panels included', async () => {
+    const { ensureNodeIds, stripNodeIds } = await import('../src/indexer');
+    const schema = stripNodeIds(ensureNodeIds(panelled()));
+    const panel = panelNode(schema);
+
+    expect(panel.id).toBeUndefined();
+    expect((panel.children as SchemaNode[])[0].id).toBeUndefined();
+    expect(JSON.stringify(schema)).not.toMatch(/"id":"n\d+"/);
+  });
+
+  it('leaves a panel entry that carries no node alone', async () => {
+    const { ensureNodeIds } = await import('../src/indexer');
+    const panels = (ensureNodeIds(panelled()) as unknown as { meta: { panels: Record<string, unknown>[] } }).meta
+      .panels;
+
+    expect(panels[1]).toEqual({ id: 'from-a-module', module: 'transcribe' });
+  });
+});

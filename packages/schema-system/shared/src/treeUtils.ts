@@ -27,6 +27,30 @@ export function isSchemaChild(child: string | SchemaNode | OperatorToken | unkno
  * appear in props — TransitionConfig ({ type: 'fade' }), styles objects, data items,
  * and operator tokens — which must not be treated as nodes.
  */
+/** A `meta.panels` entry: configuration that may carry a node, rather than a node itself. */
+interface PanelEntry {
+  node?: unknown;
+  [k: string]: unknown;
+}
+
+/**
+ * The `meta.panels` entries of a root node, if it has any.
+ *
+ * Lives here, with the other tree-shape guards, because two walkers disagreeing about whether
+ * panels are part of the tree is exactly the divergence this file exists to prevent — and they
+ * did: compaction walked them and `ensureNodeIds` did not, so every node inside a panel was
+ * rendered and could not be addressed by a patch. On `workshopTemplate` that was 1,127 nodes,
+ * 62% of the template.
+ *
+ * Each entry is CONFIGURATION — `{ id, snap, node }` — so what is walked is its `node`, not the
+ * entry. An entry carries an `id`, which is enough for `isSchemaChild` to call it a node, and
+ * treating it as one walks straight past the interface hanging off it.
+ */
+export const panelsOf = (node: SchemaNode): PanelEntry[] | undefined => {
+  const panels = (node as { meta?: { panels?: unknown } }).meta?.panels;
+  return Array.isArray(panels) ? (panels as PanelEntry[]) : undefined;
+};
+
 export function isPropsSchemaNode(val: unknown): val is SchemaNode {
   if (typeof val !== 'object' || val === null || Array.isArray(val)) return false;
   const type = (val as Record<string, unknown>).type;
