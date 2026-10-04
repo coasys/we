@@ -152,14 +152,19 @@ OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1 ollama serve
 `q8_0` roughly halves the cache and is near-lossless; `q4_0` quarters it and is a quality confound
 worth avoiding while measuring quality. qwen3:4b then loads at 6.4GB, `100% GPU`, 40,960 tokens.
 
-Then register a model entry pointing at that port, and **set `maxNumCtx`**. Without it the node asks
-for the model's own maximum: qwen3:4b advertises a 256K window, so the node clamps to its 131,072
-default and allocates ~14GB, which spills to CPU and is _worse_ than leaving it alone.
+Then register a model entry pointing at that port, and **set a context limit**. Without one the
+node asks for the model's own maximum: qwen3:4b advertises a 256K window, so the node clamps to its
+131,072 default and allocates ~14GB, which spills to CPU and is _worse_ than leaving it alone.
+Settings → AI does both: a custom endpoint with the Ollama protocol and `http://127.0.0.1:11435`
+offers a "Context limit" field. It has to be the Ollama protocol. Through the OpenAI-compatible
+`/v1` the limit is ignored.
 
 Two things about changing a model entry, both learned the hard way:
 
-- **`removeModel` + `addModel` picks up new config; `updateModel` does not.** A provider captures its
-  base URL and context ceiling when its worker thread spawns, and an update does not rebuild them.
+- **An update does pick up a new context limit**, despite an earlier note here saying only
+  `removeModel` + `addModel` did. Measured on a 29 September 2026 executor build with qwen3:8b,
+  `ollama ps` showed CONTEXT 8192 after adding the model with that limit, and 16384 after an
+  update. After an update that cleared the limit it showed 40960, the model's own maximum.
 - **Never change model config while a run is in flight.** `updateModel` tears down the LLM channel,
   and the run fails with `Model '<id>' not found in LLM channel` partway through.
 

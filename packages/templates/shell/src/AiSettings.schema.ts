@@ -208,9 +208,10 @@ const modelForm: SchemaNode = {
                     props: {
                       label: 'Protocol',
                       // Most services speak OpenAI's format; Anthropic's own is what carries prompt caching and
-                      // native tool calls for Claude, so it is worth choosing where it is on offer.
+                      // native tool calls for Claude, and Ollama's own is where the context window can be
+                      // capped, so each is worth choosing where it is on offer.
                       description: {
-                        $: "runtimeStore.aiForm.apiProtocol == 'anthropic' ? 'Claude’s own API — prompt caching and native tool calls.' : 'The format OpenAI, OpenRouter, Groq, Gemini and local servers share.'",
+                        $: "runtimeStore.aiForm.apiProtocol == 'anthropic' ? 'Claude’s own API — prompt caching and native tool calls.' : runtimeStore.aiForm.apiProtocol == 'ollama' ? 'Ollama’s own API — native tool calls, and a context window you can cap.' : 'The format OpenAI, OpenRouter, Groq, Gemini and local servers share.'",
                       },
                     },
                     children: [
@@ -221,6 +222,7 @@ const modelForm: SchemaNode = {
                           options: [
                             { label: 'OpenAI-compatible', value: 'openai' },
                             { label: 'Anthropic', value: 'anthropic' },
+                            { label: 'Ollama', value: 'ollama' },
                           ],
                           onChange: {
                             $action: 'runtimeStore.setAiFormField',
@@ -298,6 +300,42 @@ const modelForm: SchemaNode = {
                 },
               },
             ],
+          },
+          /*
+            Only Ollama's own protocol reads it. Empty by default, because the right number depends on
+            the machine running the model rather than on the model, and an empty field leaves the
+            node's own default in place.
+          */
+          {
+            type: '$if',
+            props: {
+              condition: { $: "runtimeStore.aiForm.apiProtocol == 'ollama'" },
+              then: {
+                type: 'we-form-field',
+                props: {
+                  label: 'Context limit',
+                  error: { $: 'runtimeStore.aiMaxContextError' },
+                  description:
+                    'The most tokens of context to load the model with — a limit, not a request. Ollama reserves memory for the whole window up front, so a model advertising a long one can spill off a small graphics card onto the CPU and answer several times slower. Leave empty for the default.',
+                },
+                children: [
+                  {
+                    type: 'we-input',
+                    props: {
+                      type: 'number',
+                      min: '1',
+                      step: '1024',
+                      placeholder: 'e.g. 32768',
+                      value: { $: 'runtimeStore.aiForm.apiMaxContext' },
+                      onInput: {
+                        $action: 'runtimeStore.setAiFormField',
+                        args: ['apiMaxContext', { $: 'event.detail' }],
+                      },
+                    },
+                  },
+                ],
+              },
+            },
           },
         ]),
 

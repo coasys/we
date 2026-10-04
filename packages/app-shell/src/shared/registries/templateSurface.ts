@@ -257,6 +257,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     aiForm: state('runtime-admin'),
     aiPresetOptions: state('runtime-admin'),
     aiFormComplete: state('runtime-admin'),
+    aiMaxContextError: state('runtime-admin'),
     aiFormDirty: state('runtime-admin'),
     aiServiceOptions: state('runtime-admin'),
     canDiscoverAiModels: state('runtime-admin'),

@@ -108,6 +108,7 @@ export const storeEntries: StoreEntry[] = [
           'apiBaseUrl',
           'apiKey',
           'apiModel',
+          'apiMaxContext',
           'hfRepo',
           'hfRevision',
           'hfFileName',
@@ -120,6 +121,7 @@ export const storeEntries: StoreEntry[] = [
       },
       aiPresetOptions: { type: 'array', properties: ['label', 'value'] },
       aiFormComplete: { type: 'boolean' },
+      aiMaxContextError: { type: 'string' },
       aiFormDirty: { type: 'boolean' },
       aiServiceOptions: { type: 'array', properties: ['label', 'value'] },
       canDiscoverAiModels: { type: 'boolean' },
@@ -717,6 +719,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>',
         aiPresetOptions: '{ label, value }[] — model names the backend can fetch itself, for the open form kind',
         aiFormComplete: 'boolean — the open form has every field its chosen source needs',
+        aiMaxContextError:
+          "string — why the open form's context limit (aiForm.apiMaxContext) cannot be saved, or empty. Bind it to that field's error: a limit that does not parse holds Save disabled, and nothing else says which field is doing it",
         aiFormDirty:
           "boolean — the open form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing",
         aiServiceOptions:
