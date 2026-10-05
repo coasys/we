@@ -21,18 +21,24 @@
  * it has fetched (GIBS sends three days of `max-age`), so an offline globe draws whatever was seen
  * recently at full detail and Natural Earth II everywhere else.
  *
- * A deployment or a person with their own ion account gets ion's world imagery instead of GIBS. The
- * token is theirs, so the terms they accepted with Cesium are theirs as well. WE never ships one.
+ * A deployment or a person with an account at a commercial imagery provider (Cesium ion's Bing
+ * aerial, Esri World Imagery, Mapbox Satellite) can choose it instead, with their own key, and see
+ * street-level detail. The key is theirs, so the terms they accepted with that provider are theirs as
+ * well; WE never ships one. A key that is refused, or a provider chosen with no key, draws NASA's.
  */
 import {
+  ArcGisBaseMapType,
+  ArcGisMapServerImageryProvider,
   buildModuleUrl,
   Color,
   ImageryLayer,
   IonImageryProvider,
+  MapboxImageryProvider,
   TileMapServiceImageryProvider,
   UrlTemplateImageryProvider,
 } from 'cesium';
 
+import type { ImageryChoice } from './CesiumGlobe.types';
 import { LandOnlyImageryProvider } from './landOnly';
 
 /**
@@ -109,26 +115,77 @@ function landsat(): LandOnlyImageryProvider {
 }
 
 /**
- * The layers above the base, bottom first: ion's world imagery with a token, NASA's without.
+ * The layers above the base, bottom first: the chosen provider's imagery, or NASA's when none is
+ * chosen.
  *
  * New layers every call. Cesium never asks again for a tile that failed, so a globe that started
  * offline keeps Natural Earth II after the network comes back unless these are replaced.
+ *
+ * `onRefused` is called when the provider will not serve this key: wrong, revoked, expired or over
+ * quota. The caller then asks again without a choice, and gets NASA's imagery rather than nothing.
  */
-export function detailImagery(ionAccessToken?: string, onIonRefused?: () => void): ImageryLayer[] {
-  if (ionAccessToken) {
-    const ion = ImageryLayer.fromProviderAsync(
-      IonImageryProvider.fromAssetId(ION_WORLD_IMAGERY, { accessToken: ionAccessToken }),
-    );
-    // A token that is wrong, revoked, expired or out of quota fails here, once — as does any token
-    // with no network. The caller then asks again without it and gets NASA's imagery.
-    ion.errorEvent.addEventListener((error: unknown) => {
-      if (navigator.onLine)
-        console.warn("[globe] Cesium ion refused the token; showing NASA's imagery instead.", error);
-      onIonRefused?.();
-    });
-    return [ion];
-  }
+export function detailImagery(choice?: ImageryChoice, onRefused?: () => void): ImageryLayer[] {
+  if (!choice) return nasaImagery();
 
+  const refused = (error: unknown) => {
+    if (navigator.onLine)
+      console.warn(
+        `[globe] ${PROVIDER_NAMES[choice.provider]} refused the key; showing NASA's imagery instead.`,
+        error,
+      );
+    onRefused?.();
+  };
+
+  switch (choice.provider) {
+    case 'ion': {
+      const layer = ImageryLayer.fromProviderAsync(
+        IonImageryProvider.fromAssetId(ION_WORLD_IMAGERY, { accessToken: choice.key }),
+      );
+      // Ion checks the token when the provider is made, so a bad one fails here, once.
+      layer.errorEvent.addEventListener(refused);
+      return [layer];
+    }
+    case 'esri': {
+      // `token` is read by Cesium and missing from its typings; see `ArcGisMapServerImageryProvider.fromBasemapType`.
+      const options = { token: choice.key } as ArcGisMapServerImageryProvider.ConstructorOptions;
+      const layer = ImageryLayer.fromProviderAsync(
+        ArcGisMapServerImageryProvider.fromBasemapType(ArcGisBaseMapType.SATELLITE, options),
+      );
+      layer.errorEvent.addEventListener(refused);
+      return [layer];
+    }
+    case 'mapbox': {
+      // Mapbox's provider is made synchronously and its tile host sends no CORS headers on a refusal,
+      // so a bad token would look like a tile that failed for no reason and leave the globe bare. The
+      // token is checked first, against Mapbox's own endpoint for that, and a token it does not call
+      // valid fails the layer once, like ion's and Esri's.
+      const layer = ImageryLayer.fromProviderAsync(
+        checkMapboxToken(choice.key).then(
+          () => new MapboxImageryProvider({ mapId: 'mapbox.satellite', accessToken: choice.key }),
+        ),
+      );
+      layer.errorEvent.addEventListener(refused);
+      return [layer];
+    }
+  }
+}
+
+/** Resolves when Mapbox says the token is valid; rejects with what it said otherwise. */
+async function checkMapboxToken(token: string): Promise<void> {
+  const response = await fetch(`https://api.mapbox.com/tokens/v2?access_token=${encodeURIComponent(token)}`);
+  const { code } = (await response.json()) as { code?: string };
+  if (code !== 'TokenValid') throw new Error(`Mapbox says the token is ${code ?? `refused (${response.status})`}.`);
+}
+
+/** How each provider is named in a warning. */
+const PROVIDER_NAMES: Record<ImageryChoice['provider'], string> = {
+  ion: 'Cesium ion',
+  esri: 'Esri World Imagery',
+  mapbox: 'Mapbox Satellite',
+};
+
+/** NASA's imagery: Blue Marble, and Landsat over the land from country scale in. */
+function nasaImagery(): ImageryLayer[] {
   return [
     new ImageryLayer(gibsProvider(GIBS_BLUE_MARBLE, 8)),
     new ImageryLayer(landsat(), {

@@ -19,21 +19,24 @@ import { moduleRegistry } from '../../../shared/registries/moduleRegistry';
 /**
  * Cesium, three, and the layer stack — several times the size of the rest of the app.
  *
- * The ion token is filled in here from the globe module's setting, and after the template's own
- * props so a template cannot supply one: see `CesiumGlobeProps.ionAccessToken`.
+ * The imagery choice and its key are filled in here from the globe module's settings, and after the
+ * template's own props so a template cannot supply them: see `CesiumGlobeProps.imagery`.
  */
 export const CesiumGlobeOnDemand = lazy(async () => {
-  const [{ CesiumGlobe }, { layerFactoryRegistry }] = await Promise.all([
+  const [{ CesiumGlobe }, { layerFactoryRegistry }, { imageryChoiceFrom, ionTokenFrom }] = await Promise.all([
     import('@we/globe-widget'),
     import('@we/module-globe/layers'),
+    import('@we/module-globe'),
   ]);
-  const ionAccessToken = () => {
-    const token = moduleRegistry.settingsOf('globe').ionAccessToken;
-    return typeof token === 'string' && token.trim() ? token.trim() : undefined;
-  };
+  const settings = () => moduleRegistry.settingsOf('globe');
   return {
     default: (props: Record<string, unknown>) => (
-      <CesiumGlobe {...props} layerFactoryRegistry={layerFactoryRegistry} ionAccessToken={ionAccessToken()} />
+      <CesiumGlobe
+        {...props}
+        layerFactoryRegistry={layerFactoryRegistry}
+        imagery={imageryChoiceFrom(settings())}
+        ionAccessToken={ionTokenFrom(settings())}
+      />
     ),
   };
 });

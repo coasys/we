@@ -70,6 +70,20 @@ describe('the content security policy', () => {
     expect(SKYBOX_TEXTURES.endsWith('/')).toBe(true);
   });
 
+  it('draws the imagery each commercial provider the globe offers serves, and only over https', () => {
+    // Without these a provider somebody chose and keyed draws nothing, with only a CSP line in the
+    // console to say why. Bing alone also needs http, for the reason given beside its entry.
+    const images = sources(production, 'img-src');
+    expect(images).toEqual(
+      expect.arrayContaining([
+        'https://*.tiles.virtualearth.net',
+        'https://ibasemaps-api.arcgis.com',
+        'https://*.tiles.mapbox.com',
+      ]),
+    );
+    expect(images.filter((source) => source.startsWith('http://'))).toEqual(['http://*.tiles.virtualearth.net']);
+  });
+
   it('lets the app reach its executor wherever it is, and nothing else in cleartext', () => {
     const connect = sources(production, 'connect-src');
     expect(connect).toEqual(expect.arrayContaining(['https:', 'wss:', 'http://localhost:*', 'ws://localhost:*']));

@@ -74,6 +74,14 @@ export const DEFAULT_SOURCES = Object.freeze({
     */
     'https://*.tiles.virtualearth.net',
     'http://*.tiles.virtualearth.net',
+    /*
+      The globe's other commercial imagery, for a deployment or a person who chooses it and gives a
+      key: Esri World Imagery, which serves tiles from its API host, and Mapbox Satellite, from its tile
+      hosts (the token check goes to api.mapbox.com, through connect-src). An account there sees how
+      much its key was used, not the paths requested, so these are no more readable than Bing's above.
+    */
+    'https://ibasemaps-api.arcgis.com',
+    'https://*.tiles.mapbox.com',
   ]),
   media: Object.freeze([]),
   frames: Object.freeze(['https://www.youtube.com', 'https://www.youtube-nocookie.com', 'https://player.vimeo.com']),

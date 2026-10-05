@@ -12,7 +12,7 @@ export type * from './CesiumGlobe.types';
 import type { CesiumLayer, LayerConfig, LayerEventBus, LayerFactory, LayerStore } from '@we/globe-protocol';
 
 import type {} from './cesium-env';
-import type { CesiumGlobeProps } from './CesiumGlobe.types';
+import type { CesiumGlobeProps, ImageryChoice } from './CesiumGlobe.types';
 import { baseImagery, detailImagery } from './imagery';
 
 /**
@@ -240,24 +240,34 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
   });
 
   /**
-   * The token as a value, not as whatever the host reads to produce it. The host resolves it through
-   * the module settings, which re-emit whenever the space or the agent's settings do; read directly,
-   * every re-emission rebuilt the imagery and the surface flashed blue while the new tiles loaded.
+   * The imagery choice as a value, not as whatever the host reads to produce it. The host resolves it
+   * through the module settings, which re-emit whenever the space or the agent's settings do; read
+   * directly, every re-emission rebuilt the imagery and the surface flashed blue while the new tiles
+   * loaded. Compared by content, since the host builds a new object each time.
    */
-  const suppliedToken = createMemo(() => props.ionAccessToken || undefined);
+  const suppliedImagery = createMemo<ImageryChoice | undefined>(() => props.imagery, undefined, {
+    equals: (a, b) => a?.provider === b?.provider && a?.key === b?.key,
+  });
 
   /**
-   * A token ion has refused: expired (a release's demo token lives about two months), revoked, over
-   * quota, or unreachable offline. Held so the globe can carry on without it, and cleared when the
-   * network comes back, since an offline refusal says nothing about the token.
+   * A key its provider has refused: expired (a release's demo token lives about two months), revoked,
+   * over quota, or unreachable offline. Held so the globe can carry on without it, and cleared when the
+   * network comes back, since an offline refusal says nothing about the key.
    */
-  const [refusedToken, setRefusedToken] = createSignal<string>();
+  const [refusedKey, setRefusedKey] = createSignal<string>();
 
-  /** The token in use: the one supplied, unless ion has refused it. */
-  const ionToken = createMemo(() => {
-    const token = suppliedToken();
-    return token && token !== refusedToken() ? token : undefined;
-  });
+  /** The imagery in use: the one supplied, unless its provider has refused the key. */
+  const imageryChoice = createMemo<ImageryChoice | undefined>(
+    () => {
+      const choice = suppliedImagery();
+      return choice && choice.key !== refusedKey() ? choice : undefined;
+    },
+    undefined,
+    { equals: (a, b) => a?.provider === b?.provider && a?.key === b?.key },
+  );
+
+  /** For layers that need an ion account, whatever imagery is drawn. */
+  const ionToken = createMemo(() => props.ionAccessToken || undefined);
 
   /**
    * Bumped when the browser reports the network is back. Cesium never asks again for a tile that
@@ -265,7 +275,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
    */
   const [onlineEpoch, setOnlineEpoch] = createSignal(0);
   const onOnline = () => {
-    setRefusedToken(undefined);
+    setRefusedKey(undefined);
     setOnlineEpoch((n) => n + 1);
   };
   window.addEventListener('online', onOnline);
@@ -274,15 +284,15 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
   /** The layers above Natural Earth II that this globe added, so it replaces exactly those. */
   let detail: ImageryLayer[] = [];
 
-  // Detail imagery: replaced when the ion token arrives, changes or goes away, and when the network
+  // Detail imagery: replaced when the choice of imagery or its key changes, and when the network
   // comes back. Natural Earth II stays underneath throughout, so a replacement never shows bare blue.
   createEffect(() => {
     onlineEpoch();
-    const token = ionToken();
+    const choice = imageryChoice();
     if (!viewerReady() || !viewer) return;
     const imagery = viewer.imageryLayers;
-    // Refused, the token is set aside and this runs again without it: NASA's imagery, not nothing.
-    const next = detailImagery(token, () => setRefusedToken(token));
+    // Refused, the key is set aside and this runs again without it: NASA's imagery, not nothing.
+    const next = detailImagery(choice, () => setRefusedKey(choice?.key));
     // Directly above the base, in order, beneath any imagery a WE layer has added.
     next.forEach((layer, index) => imagery.add(layer, 1 + index));
     for (const layer of detail) imagery.remove(layer, true);

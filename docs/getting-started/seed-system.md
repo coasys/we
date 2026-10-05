@@ -85,10 +85,19 @@ A module cannot _ship_ a relay — infrastructure somebody has to run is not a m
 require — so a deployment that runs one says so here. One URL per line, or a JSON array of
 `RTCIceServer` objects if that is the shape your relay provider hands you.
 
-**`globe.ionAccessToken`** swaps the globe's imagery for Cesium ion's. Without it the globe
-draws NASA's Blue Marble over Cesium's bundled Natural Earth II, which needs no account. A
-deployment with its own agreement with Cesium sets the token here; a person can also set one for
-themselves. A space cannot, since the token is somebody's account.
+**`globe.imagery`** chooses what the globe's surface is drawn with: `nasa` (the default, no
+account, sharp to about 30 m), or `ion`, `esri` or `mapbox` (street level, each with a key from
+your own account). Each provider has its own key setting, `globe.ionAccessToken`,
+`globe.esriApiKey` and `globe.mapboxAccessToken`, so a choice never picks up another provider's
+key. A provider with no key, or a key it refuses, draws NASA's.
+
+```json
+"settings": { "globe": { "imagery": "esri", "esriApiKey": "AAPK…" } }
+```
+
+A deployment with its own agreement with a provider sets these here; a person can also set them for
+themselves. A space cannot, since a key is somebody's account. Whoever supplies a key accepts that
+provider's terms; WE ships none.
 
 ### `elements`
 
