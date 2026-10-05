@@ -265,6 +265,9 @@ importers:
       '@we/cli':
         specifier: workspace:*
         version: link:../../packages/cli
+      '@we/globe-layers':
+        specifier: workspace:*
+        version: link:../../packages/module-system/globe/layers
       '@we/globe-widget':
         specifier: workspace:*
         version: link:../../packages/module-system/globe/widget
@@ -332,6 +335,9 @@ importers:
       '@we/cli':
         specifier: workspace:*
         version: link:../../packages/cli
+      '@we/globe-layers':
+        specifier: workspace:*
+        version: link:../../packages/module-system/globe/layers
       '@we/globe-widget':
         specifier: workspace:*
         version: link:../../packages/module-system/globe/widget
@@ -381,6 +387,9 @@ importers:
       '@we/cli':
         specifier: workspace:*
         version: link:../../packages/cli
+      '@we/globe-layers':
+        specifier: workspace:*
+        version: link:../../packages/module-system/globe/layers
       '@we/globe-widget':
         specifier: workspace:*
         version: link:../../packages/module-system/globe/widget
@@ -424,6 +433,9 @@ importers:
       '@we/cli':
         specifier: workspace:*
         version: link:../../packages/cli
+      '@we/globe-layers':
+        specifier: workspace:*
+        version: link:../../packages/module-system/globe/layers
       '@we/globe-widget':
         specifier: workspace:*
         version: link:../../packages/module-system/globe/widget
@@ -1493,6 +1505,9 @@ importers:
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
+      vite:
+        specifier: ^8.2.2
+        version: 8.2.2(@types/node@26.4.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.13)(yaml@2.9.0)
 
   packages/module-system/globe/module:
     dependencies:

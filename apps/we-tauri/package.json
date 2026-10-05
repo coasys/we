@@ -30,6 +30,7 @@
     "@types/three": "^0.185.4",
     "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
+    "@we/globe-layers": "workspace:*",
     "@we/globe-widget": "workspace:*",
     "concurrently": "^10.0.5",
     "typescript": "^6.0.3",

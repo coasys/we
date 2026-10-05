@@ -17,10 +17,17 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./vite": {
+      "types": "./vite-plugin.d.mts",
+      "import": "./vite-plugin.mjs"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "assets",
+    "vite-plugin.mjs",
+    "vite-plugin.d.mts"
   ],
   "keywords": [
     "cesium",
@@ -40,8 +47,9 @@
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
+    "@we/globe-protocol": "workspace:*",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "@we/globe-protocol": "workspace:*"
+    "vite": "^8.2.2"
   }
 }

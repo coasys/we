@@ -72,6 +72,14 @@ export interface SkyboxLayerOptions {
 export const SKYBOX_CDN_BASE =
   'https://cdn.jsdelivr.net/gh/coasys/we@2e624fafd56762e9c8bbce119f9ac2877124bc0a/packages/module-system/globe/layers/src/background/skybox/assets';
 
+/** One cube face, decoded. CORS-enabled, since WebGL refuses a texture from another origin without it. */
+function loadFace(url: string): Promise<HTMLImageElement> {
+  const image = new Image();
+  image.crossOrigin = 'anonymous';
+  image.src = url;
+  return image.decode().then(() => image);
+}
+
 export const skyboxLayer: LayerFactory<SkyboxLayerOptions> = (options?: SkyboxLayerOptions) => ({
   name: 'skybox',
 
@@ -80,9 +88,28 @@ export const skyboxLayer: LayerFactory<SkyboxLayerOptions> = (options?: SkyboxLa
     description: 'Display a skybox with star textures in the background.',
   },
 
+  /*
+    Cesium's own skybox first, the requested one once it has arrived.
+
+    Cesium keeps a cube map that failed to load and throws it on the next frame, and an error thrown
+    while rendering stops the render loop. So a skybox that could not be fetched (offline, or a CDN
+    outage) took the whole globe down with it, not just the stars. Now the requested faces are loaded
+    here, all six, and only handed to Cesium once they exist. Until then, and for good if they never
+    arrive, the sky is Cesium's built-in one: the same Tycho-2 catalogue at a lower resolution, served
+    by the app with Cesium's other files, so it is there offline.
+  */
   onMount: (context: LayerContext) => {
     const { viewer, onCleanup } = context;
     const { textureSet = 'tycho2-1k', customPaths, cdnBaseUrl = SKYBOX_CDN_BASE } = options || {};
+    let cancelled = false;
+    let current: SkyBox = SkyBox.createEarthSkyBox();
+    viewer.scene.skyBox = current;
+    onCleanup(() => {
+      cancelled = true;
+      if (viewer.scene.skyBox === current) {
+        viewer.scene.skyBox = undefined as unknown as SkyBox;
+      }
+    });
     // TODO: brightness is not yet implemented, needs custom shader
     // const brightness = options?.brightness ?? 1.0;
 
@@ -129,19 +156,18 @@ export const skyboxLayer: LayerFactory<SkyboxLayerOptions> = (options?: SkyboxLa
       };
     }
 
-    // Create the skybox
-    const skybox = new SkyBox({ sources });
-
-    // Set the skybox
-    viewer.scene.skyBox = skybox;
-
-    // Register cleanup
-    onCleanup(() => {
-      // Remove the skybox when layer is unmounted
-      if (viewer.scene.skyBox === skybox) {
-        viewer.scene.skyBox = undefined as unknown as SkyBox;
-      }
-    });
+    const faces = Object.entries(sources) as [string, string][];
+    Promise.all(faces.map(([face, url]) => loadFace(url).then((image) => [face, image] as const)))
+      .then((loaded) => {
+        if (cancelled || viewer.isDestroyed() || viewer.scene.skyBox !== current) return;
+        current = new SkyBox({ sources: Object.fromEntries(loaded) });
+        viewer.scene.skyBox = current;
+      })
+      .catch(() => {
+        // Keeps Cesium's sky. Expected offline; worth a line otherwise, since the sky looks fine.
+        if (!cancelled && navigator.onLine)
+          console.warn(`[skybox] Could not load "${textureSet}"; using Cesium's sky.`);
+      });
   },
 
   onUnmount: () => {

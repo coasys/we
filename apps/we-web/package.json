@@ -22,6 +22,7 @@
   "devDependencies": {
     "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
+    "@we/globe-layers": "workspace:*",
     "@we/globe-widget": "workspace:*",
     "typescript": "^6.0.3",
     "vite": "^8.2.2",

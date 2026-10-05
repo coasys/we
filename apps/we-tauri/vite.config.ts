@@ -1,3 +1,4 @@
+import { globeLayerAssets } from '@we/globe-layers/vite';
 import { cesiumAssets } from '@we/globe-widget/vite';
 import { resolve } from 'path';
 import { defineConfig } from 'vite';
@@ -7,7 +8,7 @@ const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  plugins: [solid(), cesiumAssets()],
+  plugins: [solid(), cesiumAssets(), globeLayerAssets()],
 
   // Use relative base path for Tauri builds
   base: './',
