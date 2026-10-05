@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildContentSecurityPolicy, CESIUM_CDN, seedSources } from './index.js';
+import { buildContentSecurityPolicy, seedSources, SKYBOX_TEXTURES } from './index.js';
 
 /** One directive's sources, as a list — so a substring of one source cannot pass for another. */
 function sources(policy, name) {
@@ -47,9 +47,27 @@ describe('the content security policy', () => {
     expect(sources(production, 'font-src')).toEqual(["'self'", 'data:']);
   });
 
-  it('names the Cesium CDN, which the globe genuinely loads code from', () => {
-    for (const name of ['script-src', 'worker-src', 'style-src'])
-      expect(sources(production, name)).toContain(CESIUM_CDN);
+  it('lets no third-party host run script, style or workers in the app', () => {
+    // Cesium's workers, wasm and widget CSS came from jsDelivr until the globe served them from the
+    // app's own origin. Script from anywhere but 'self' would be a host that can run code in WE.
+    for (const host of ['electron', 'tauri', 'web']) {
+      const policy = buildContentSecurityPolicy({ host });
+      for (const name of ['script-src', 'worker-src', 'style-src']) {
+        expect(
+          sources(policy, name).filter((source) => /^https?:\/\//.test(source)),
+          `${host} ${name}`,
+        ).toEqual([]);
+      }
+    }
+  });
+
+  it("draws the globe's surface and sky, and the sky only from its pinned folder", () => {
+    const images = sources(production, 'img-src');
+    expect(images).toContain('https://gibs.earthdata.nasa.gov');
+    expect(images).toContain(SKYBOX_TEXTURES);
+    // Not the whole CDN: its public per-file statistics would let a template read back a path it built.
+    expect(images).not.toContain('https://cdn.jsdelivr.net');
+    expect(SKYBOX_TEXTURES.endsWith('/')).toBe(true);
   });
 
   it('lets the app reach its executor wherever it is, and nothing else in cleartext', () => {

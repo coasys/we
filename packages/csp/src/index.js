@@ -28,8 +28,22 @@
  * of a policy drift; one cannot.
  */
 
-/** Cesium's workers, WebAssembly, widget stylesheet and the globe's textures, until they are self-hosted. */
-export const CESIUM_CDN = 'https://cdn.jsdelivr.net';
+/**
+ * The globe's 4k skybox, by its pinned path rather than its host.
+ *
+ * Cesium's own files are served by the app (`cesiumAssets()` in `@we/globe-widget/vite`), so the
+ * CDN runs no script here. The sky's six large textures still load from jsDelivr when online, over
+ * Cesium's bundled sky. The source is the full pinned path, not `https://cdn.jsdelivr.net`, because
+ * jsDelivr publishes per-file download statistics: with the whole host allowed, a template could put
+ * what it read into the path of a file in its own repository and read it back from those numbers.
+ * CSP matches a source ending in `/` as a path prefix, so only files under this commit's folder load.
+ *
+ * Pinned to the same commit as `SKYBOX_CDN_BASE` in `@we/globe-layers`' skybox layer; when that moves,
+ * this moves with it. If they drift the sky falls back to Cesium's bundled one, so the failure is a
+ * duller sky, not a broken globe.
+ */
+export const SKYBOX_TEXTURES =
+  'https://cdn.jsdelivr.net/gh/coasys/we@2e624fafd56762e9c8bbce119f9ac2877124bc0a/packages/module-system/globe/layers/src/background/skybox/assets/';
 
 /**
  * Sources every deployment allows, beyond its own origin, `data:` and `blob:`.
@@ -44,8 +58,10 @@ export const DEFAULT_SOURCES = Object.freeze({
     // Hosts' pictures in the directory, and the app's icon, on the connection screen.
     'https://hosting.ad4m.dev',
     'https://avatars.githubusercontent.com',
-    // The globe's skybox textures and Cesium's own assets.
-    CESIUM_CDN,
+    // The globe's surface: NASA Blue Marble, Landsat, and the land mask Landsat is cut to.
+    'https://gibs.earthdata.nasa.gov',
+    // The globe's 4k sky, when online. See SKYBOX_TEXTURES.
+    SKYBOX_TEXTURES,
     /*
       Cesium ion's imagery, for a deployment that supplies a token. Over http as well, because
       Cesium's Bing provider takes the tile protocol from the page, and the desktop app is served from
@@ -136,16 +152,17 @@ export function buildContentSecurityPolicy({ host = 'web', dev = false, seed = {
       adoptedStyleSheets. `'unsafe-inline'` for *styles* is the known-acceptable relaxation: it grants
       no script, and a stylesheet's way to reach the network is `url()`, which `img-src` governs.
     */
-    `style-src ${list("'self'", "'unsafe-inline'", CESIUM_CDN)}`,
+    `style-src ${list("'self'", "'unsafe-inline'")}`,
     /*
-      `blob:` because the transcribe module compiles its AudioWorklet from a Blob URL and Cesium
-      starts its cross-origin workers from one. `'wasm-unsafe-eval'` lets WebAssembly compile and
-      nothing else — no `eval`, no `new Function` — which Cesium's decoders need.
+      No third-party host: Cesium's workers, decoders and widget CSS are served by the app. `blob:`
+      because the transcribe module compiles its AudioWorklet from a Blob URL and Cesium starts
+      workers from one. `'wasm-unsafe-eval'` lets WebAssembly compile and nothing else — no `eval`,
+      no `new Function` — which Cesium's decoders need.
     */
     dev
-      ? `script-src ${list("'self'", 'blob:', CESIUM_CDN, "'unsafe-eval'", "'unsafe-inline'")}`
-      : `script-src ${list("'self'", 'blob:', CESIUM_CDN, "'wasm-unsafe-eval'")}`,
-    `worker-src ${list("'self'", 'blob:', CESIUM_CDN)}`,
+      ? `script-src ${list("'self'", 'blob:', "'unsafe-eval'", "'unsafe-inline'")}`
+      : `script-src ${list("'self'", 'blob:', "'wasm-unsafe-eval'")}`,
+    `worker-src ${list("'self'", 'blob:')}`,
     // `data:` is how uploaded files are displayed — a node's file storage is read into a data URI —
     // and the bundled icons; `blob:` a picked image before it is uploaded.
     `img-src ${list("'self'", 'data:', 'blob:', DEFAULT_SOURCES.images, extra.images)}`,

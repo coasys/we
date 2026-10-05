@@ -12,7 +12,7 @@ export interface SeedLike {
   apps?: Array<{ paths?: { webUrl?: string } }>;
 }
 
-export const CESIUM_CDN: string;
+export const SKYBOX_TEXTURES: string;
 export const DEFAULT_SOURCES: Readonly<{
   images: readonly string[];
   media: readonly string[];
