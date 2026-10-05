@@ -3982,18 +3982,54 @@ export const contextData: ContextData = {
       description: '3D globe with a modular layer system — locations, country outlines, H3 hexagons.',
       icon: 'globe-hemisphere-west',
       scope: 'space',
-      requires: { frameworks: ['solid'], permissions: ['network:gibs.earthdata.nasa.gov', 'network:cesium-ion'] },
-      capabilities: ['network:gibs.earthdata.nasa.gov', 'network:cesium-ion', 'components'],
+      requires: {
+        frameworks: ['solid'],
+        permissions: [
+          'network:gibs.earthdata.nasa.gov',
+          'network:cesium-ion',
+          'network:arcgis.com',
+          'network:mapbox.com',
+        ],
+      },
+      capabilities: [
+        'network:gibs.earthdata.nasa.gov',
+        'network:cesium-ion',
+        'network:arcgis.com',
+        'network:mapbox.com',
+        'components',
+      ],
       members: [],
       parts: [],
       panels: [],
       launchers: [],
       settings: [
         {
+          key: 'imagery',
+          label: 'Globe imagery',
+          description:
+            "What the globe's surface is drawn with. NASA's needs no account and is sharp to about 30 m. The others are sharp to street level and need a key from your own account, set below; using one means accepting that provider's terms. A provider with no key, or a key it refuses, draws NASA's.",
+          type: 'enum',
+          levels: ['deployment', 'agent'],
+        },
+        {
           key: 'ionAccessToken',
           label: 'Cesium ion access token',
+          description: 'From ion.cesium.com → Access Tokens. Used when the imagery is Cesium ion.',
+          type: 'string',
+          levels: ['deployment', 'agent'],
+        },
+        {
+          key: 'esriApiKey',
+          label: 'Esri API key',
           description:
-            "Shows Cesium ion's world imagery instead of NASA's. Empty uses NASA Blue Marble, which needs no account. The token is sent to Cesium ion from your browser, and using it means accepting ion's terms.",
+            'From developers.arcgis.com → API keys, with the basemap styles privilege. Used when the imagery is Esri World Imagery. Esri serves the imagery even for a key it does not recognise, so check this one carefully: a mistyped key draws the imagery without your account being used.',
+          type: 'string',
+          levels: ['deployment', 'agent'],
+        },
+        {
+          key: 'mapboxAccessToken',
+          label: 'Mapbox access token',
+          description: 'From account.mapbox.com → Tokens; a public token. Used when the imagery is Mapbox Satellite.',
           type: 'string',
           levels: ['deployment', 'agent'],
         },

@@ -92,7 +92,8 @@ Two entries of one kind each need an `id`. Without one they share a key, collide
 
 ## What a template cannot write
 
-- **The imagery.** It is the globe's own: NASA's imagery by default, Cesium ion's where the deployment
-  or the person has set the globe module's `ionAccessToken`. A template never carries a token.
+- **The imagery.** It is the globe's own: NASA's by default, or Cesium ion's, Esri's or Mapbox's
+  where the deployment or the person has chosen one in the globe module's `imagery` setting and
+  given its key. A template never carries a key.
 - **A layer by code.** A layer kind is code merged into this package and listed in the catalogue; a
   template names one. What none of the kinds can draw is a contribution here, not a template.

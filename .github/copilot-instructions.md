@@ -3619,9 +3619,9 @@ Needs: kernels agentData, records.
 
 ### Globe (`globe`)
 3D globe with a modular layer system — locations, country outlines, H3 hexagons.
-Needs: permissions network:gibs.earthdata.nasa.gov, network:cesium-ion.
+Needs: permissions network:gibs.earthdata.nasa.gov, network:cesium-ion, network:arcgis.com, network:mapbox.com.
 - No store: everything this module does is declared.
-- Settings: `ionAccessToken` (string; deployment, agent) — Cesium ion access token
+- Settings: `imagery` (enum; deployment, agent) — Globe imagery; `ionAccessToken` (string; deployment, agent) — Cesium ion access token; `esriApiKey` (string; deployment, agent) — Esri API key; `mapboxAccessToken` (string; deployment, agent) — Mapbox access token
 - Components: CesiumGlobe
 
 ### Graph (`graph`)
