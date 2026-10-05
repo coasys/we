@@ -41,15 +41,25 @@ const GIBS_CREDIT = 'Imagery: NASA Blue Marble, via NASA GIBS';
 const ION_WORLD_IMAGERY = 2;
 
 /**
- * The imagery layers for a globe, bottom first.
+ * The bottom layer, which never changes: added once, when the viewer is built.
  *
- * Each call builds new layers, so a caller replacing the set removes the old ones and adds these.
+ * Kept apart from {@link detailImagery} because replacing a layer leaves its area blank until the
+ * new one's tiles arrive. With this one left in place, replacing the layer above it only drops the
+ * surface to Natural Earth II for a moment, and never to the bare blue of an empty globe.
  */
-export function imageryLayers(ionAccessToken?: string): ImageryLayer[] {
-  const naturalEarth = ImageryLayer.fromProviderAsync(
+export function baseImagery(): ImageryLayer {
+  return ImageryLayer.fromProviderAsync(
     TileMapServiceImageryProvider.fromUrl(buildModuleUrl('Assets/Textures/NaturalEarthII')),
   );
+}
 
+/**
+ * The layer above the base: ion's world imagery with a token, NASA's Blue Marble without.
+ *
+ * A new layer every call. Cesium never asks again for a tile that failed, so a globe that started
+ * offline keeps Natural Earth II after the network comes back unless this layer is replaced.
+ */
+export function detailImagery(ionAccessToken?: string): ImageryLayer {
   if (ionAccessToken) {
     const ion = ImageryLayer.fromProviderAsync(
       IonImageryProvider.fromAssetId(ION_WORLD_IMAGERY, { accessToken: ionAccessToken }),
@@ -59,7 +69,7 @@ export function imageryLayers(ionAccessToken?: string): ImageryLayer[] {
     ion.errorEvent.addEventListener((error: unknown) => {
       console.warn('[globe] Cesium ion imagery is unavailable; showing Natural Earth II instead.', error);
     });
-    return [naturalEarth, ion];
+    return ion;
   }
 
   const gibs = new UrlTemplateImageryProvider({ url: GIBS_BLUE_MARBLE, maximumLevel: 8, credit: GIBS_CREDIT });
@@ -67,5 +77,5 @@ export function imageryLayers(ionAccessToken?: string): ImageryLayer[] {
   // errorEvent has a listener, so listening and doing nothing keeps an offline globe quiet. Nothing
   // is lost: the tile it could not fetch is drawn from Natural Earth II below.
   gibs.errorEvent.addEventListener(() => {});
-  return [naturalEarth, new ImageryLayer(gibs)];
+  return new ImageryLayer(gibs);
 }

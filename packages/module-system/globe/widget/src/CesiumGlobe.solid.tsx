@@ -6,14 +6,14 @@
  */
 
 import { Cartesian3, type ImageryLayer, VERSION, Viewer } from 'cesium';
-import { createEffect, createSignal, onCleanup, onMount } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
 
 export type * from './CesiumGlobe.types';
 import type { CesiumLayer, LayerConfig, LayerEventBus, LayerFactory, LayerStore } from '@we/globe-protocol';
 
 import type {} from './cesium-env';
 import type { CesiumGlobeProps } from './CesiumGlobe.types';
-import { imageryLayers } from './imagery';
+import { baseImagery, detailImagery } from './imagery';
 
 /**
  * Where Cesium's workers, wasm, widget CSS and textures are served from.
@@ -158,9 +158,9 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
 
       // Create Cesium viewer with minimal UI
       viewer = new Viewer(containerRef, {
-        // Never Cesium's default, which is ion imagery behind a demo token that expires. The
-        // imagery effect below adds ours. See `imagery.ts`.
-        baseLayer: false,
+        // Never Cesium's default, which is ion imagery behind a demo token that expires. The detail
+        // imagery effect below adds the layer above this one. See `imagery.ts`.
+        baseLayer: baseImagery(),
         timeline: false,
         animation: false,
         baseLayerPicker: false,
@@ -239,25 +239,44 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
     });
   });
 
-  /** The imagery this globe added, so a new token replaces exactly these and nobody else's. */
-  let ownImagery: ImageryLayer[] = [];
+  /**
+   * The token as a value, not as whatever the host reads to produce it. The host resolves it through
+   * the module settings, which re-emit whenever the space or the agent's settings do; read directly,
+   * every re-emission rebuilt the imagery and the surface flashed blue while the new tiles loaded.
+   */
+  const ionToken = createMemo(() => props.ionAccessToken || undefined);
 
-  // Base imagery, rebuilt when the ion token arrives, changes or goes away.
+  /**
+   * Bumped when the browser reports the network is back. Cesium never asks again for a tile that
+   * failed, so a globe opened offline would otherwise keep Natural Earth II for good.
+   */
+  const [onlineEpoch, setOnlineEpoch] = createSignal(0);
+  const onOnline = () => setOnlineEpoch((n) => n + 1);
+  window.addEventListener('online', onOnline);
+  onCleanup(() => window.removeEventListener('online', onOnline));
+
+  /** The layer above Natural Earth II that this globe added, so it replaces exactly that one. */
+  let detail: ImageryLayer | undefined;
+
+  // Detail imagery: replaced when the ion token arrives, changes or goes away, and when the network
+  // comes back. Natural Earth II stays underneath throughout, so a replacement never shows bare blue.
   createEffect(() => {
+    onlineEpoch();
+    const token = ionToken();
     if (!viewerReady() || !viewer) return;
     const imagery = viewer.imageryLayers;
-    const next = imageryLayers(props.ionAccessToken);
-    for (const layer of ownImagery) imagery.remove(layer, true);
-    // At the bottom of the stack, in order, beneath any imagery a WE layer has added.
-    next.forEach((layer, index) => imagery.add(layer, index));
-    ownImagery = next;
+    const next = detailImagery(token);
+    // Directly above the base, beneath any imagery a WE layer has added.
+    imagery.add(next, 1);
+    if (detail) imagery.remove(detail, true);
+    detail = next;
   });
 
   /**
    * A layer that needs an ion account is left out when there is no token, rather than mounted to
    * fail. Absent, as a kind with no renderer will be: nothing errors and nothing is drawn.
    */
-  const needsMissingIon = (instance: CesiumLayer) => !!instance.metadata?.requiresIonAccount && !props.ionAccessToken;
+  const needsMissingIon = (instance: CesiumLayer) => !!instance.metadata?.requiresIonAccount && !ionToken();
 
   // Reactive background layer mounting/unmounting
   createEffect(() => {
