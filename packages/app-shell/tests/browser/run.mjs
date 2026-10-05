@@ -17,11 +17,15 @@ import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { compile } from 'sass';
 import { chromium } from 'playwright-core';
+import { buildContentSecurityPolicy } from '@we/csp';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..', '..', '..');
 const PORT = Number(process.env.WE_BROWSER_PORT ?? 8791);
 const CHROME = process.env.WE_CHROME ?? '/usr/bin/google-chrome';
+
+/** The production web policy, as the harness page's header. See the server below. */
+const PAGE_POLICY = buildContentSecurityPolicy({ host: 'web', dev: false });
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.map': 'application/json' };
 
@@ -133,7 +137,15 @@ async function main() {
   const server = createServer((req, res) => {
     const url = (req.url ?? '/').split('?')[0];
     const send = (body, type) => res.writeHead(200, { 'content-type': type }).end(body);
-    if (url === '/' || url === '/index.html') return send(html, MIME['.html']);
+    /*
+      The page carries the policy a shipped web build serves, so every case is also a check that the
+      renderer and the design system still work under it. Chrome reports anything the policy refuses
+      as a console error, which the run already collects and fails on — a blocked stylesheet or icon
+      cannot pass quietly here as it would in jsdom, which enforces no policy at all.
+    */
+    if (url === '/' || url === '/index.html') {
+      return res.writeHead(200, { 'content-type': MIME['.html'], 'content-security-policy': PAGE_POLICY }).end(html);
+    }
     if (url === '/imported.css') return send(importedCss, MIME['.css']);
     if (url === '/shell.css') return send(shell, MIME['.css']);
     if (url === '/components.css') return send(components, MIME['.css']);

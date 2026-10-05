@@ -148,6 +148,22 @@ export interface WeSeedFile {
    */
   views?: string[];
 
+  /**
+   * Sites this deployment lets content load from, beyond its own origin.
+   *
+   * The Content-Security-Policy (`@we/csp`) names its sources for images, video and audio, and frames
+   * rather than allowing every https site — a template that could load from anywhere could send what
+   * it reads anywhere, in the URL. These are added to the defaults (map tiles, YouTube and Vimeo, the
+   * hosting directory). Each is `https://host` or `https://*.host`, with no path; a scheme alone or a
+   * bare `*` fails the build. List a host only if nobody but its owner can read its request logs.
+   * Embedded apps' `paths.webUrl` are added to `frames` without being listed here.
+   */
+  contentSecurity?: {
+    images?: string[];
+    media?: string[];
+    frames?: string[];
+  };
+
   /** Host app customization (WE shell) — optional white-labeling */
   host?: {
     /** Theme overrides for the host */

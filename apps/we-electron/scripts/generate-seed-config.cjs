@@ -23,6 +23,7 @@ const OUTPUT_DIR = path.join(__dirname, '../electron');
 const PORT_MAP_FILE = path.join(OUTPUT_DIR, 'seed-port-map.json');
 const EXTRA_RESOURCES_FILE = path.join(OUTPUT_DIR, 'seed-extra-resources.json');
 const RUNTIME_FILE = path.join(OUTPUT_DIR, 'seed-runtime.json');
+const CSP_FILE = path.join(OUTPUT_DIR, 'seed-csp.json');
 
 /** Where the executor keeps its data when the seed says nothing. Also the launcher's location. */
 const DEFAULT_AD4M_DATA_PATH = '~/.ad4m';
@@ -286,5 +287,25 @@ export function setupSeedServers() {
 `;
 }
 
+/**
+ * The Content-Security-Policy, built by `@we/csp` — the same builder the web and Tauri builds use —
+ * from the seed's content sources, for main.js to set as a header. See `contentSecurityPolicy` there
+ * for why it is built here rather than at runtime.
+ */
+async function writeContentSecurityPolicy() {
+  const seed = JSON.parse(fs.readFileSync(SEED_FILE, 'utf8'));
+  const { buildContentSecurityPolicy } = await import('@we/csp');
+  const policies = {
+    production: buildContentSecurityPolicy({ host: 'electron', dev: false, seed }),
+    development: buildContentSecurityPolicy({ host: 'electron', dev: true, seed }),
+  };
+  fs.writeFileSync(CSP_FILE, JSON.stringify(policies, null, 2) + '\n', 'utf8');
+  console.log(`✅ Content-Security-Policy written to: ${path.relative(process.cwd(), CSP_FILE)}`);
+}
+
 // Run
 main();
+writeContentSecurityPolicy().catch((error) => {
+  console.error(`❌ ${error.message}`);
+  process.exit(1);
+});

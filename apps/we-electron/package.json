@@ -36,6 +36,7 @@
     "@we/backend-ad4m": "workspace:*",
     "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
+    "@we/csp": "workspace:*",
     "@we/globe-layers": "workspace:*",
     "@we/globe-widget": "workspace:*",
     "concurrently": "^10.0.5",

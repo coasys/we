@@ -271,6 +271,20 @@ function main() {
     }
   });
 
+  // Content sources: the same check the build makes, so a bad entry fails here first.
+  return import('@we/csp')
+    .then(({ seedSources }) => {
+      try {
+        seedSources(seed);
+        if (seed.contentSecurity) success('contentSecurity sources are valid origins');
+      } catch (e) {
+        error(e.message);
+      }
+    })
+    .then(summarise);
+}
+
+function summarise() {
   // Summary
   console.log('\n' + '='.repeat(50));
 
