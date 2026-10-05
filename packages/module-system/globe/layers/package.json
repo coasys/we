@@ -40,7 +40,8 @@
     "maps"
   ],
   "dependencies": {
-    "h3-js": "^4.1.0"
+    "h3-js": "^4.1.0",
+    "@we/globe-core": "workspace:*"
   },
   "peerDependencies": {
     "cesium": "^1.144.0",

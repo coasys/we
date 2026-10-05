@@ -21,13 +21,57 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
     'when one kind appears twice, or the two collide and one is not drawn; enabled takes an expression, so a ' +
     "layer can follow a toggle; zIndex is a planet layer's stacking order, which each kind interprets. Options take expressions and handlers like any prop, so a layer can draw " +
     'what a $queries entry fetched: read it with { "$": "local.rows.map(…)" }. The imagery is the globe\'s own ' +
-    'and is not a layer.',
+    'and is not a layer. ' +
+    'The data kinds (pointsLayer, pathsLayer, areasLayer, hexbinLayer) each take rows as `data`, field paths saying ' +
+    'where in a row its geometry is (dotted for nested fields: "location.latitude"), and `style`: rules in the ' +
+    "GraphView's dialect, [{ when?, style }], applied in order with later matches winning per property. A rule's " +
+    '`when` reads a row\'s fields as "data.<field>"; a style value is a literal, { "from": "data.<field>" } to read ' +
+    'it off the row, or { "metric": "field", "options": { "from": "<field>" }, "range": [min, max] } (a number) or ' +
+    '"scale": "heat" | "cool" | "categorical" | { "from": colour, "to": colour } (a colour) to scale it across all ' +
+    'the rows. Colours are roles or tokens ("accent", "warning-500") or CSS. Pressing a feature calls onSelect.',
   placements: [
     { prop: 'planetLayers', key: 'factory', categories: ['planet'] },
     { prop: 'backgroundLayers', key: 'factory', categories: ['background'] },
   ],
   plugins: [
     // ─── Planet ────────────────────────────────────────────────────────────────
+    {
+      id: 'pointsLayer',
+      category: 'planet',
+      description:
+        'A marker per row: a dot, or a picture, with a label. For members, spaces, events, sightings — anything with a place. Thousands are fine; close together they can cluster into one marker with a count.',
+      options: [
+        { name: 'data', type: 'object[]', description: 'The rows. Rows without a place are left out.' },
+        { name: 'latitude', type: 'string', description: 'Field path to the latitude. Default "latitude".' },
+        { name: 'longitude', type: 'string', description: 'Field path to the longitude. Default "longitude".' },
+        {
+          name: 'id',
+          type: 'string',
+          description: 'Field naming each row, so an update restyles rather than redraws. Default "id".',
+        },
+        { name: 'label', type: 'string', description: 'Field shown beside each marker. Default "name"; "" for none.' },
+        {
+          name: 'labelMaxAltitude',
+          type: 'number',
+          description:
+            'Labels show only while the camera is below this many metres — e.g. 2000000 to hide them from orbit.',
+        },
+        {
+          name: 'style',
+          type: 'rules',
+          description:
+            'Properties: size (pixels, default 12), color, opacity, borderColor (default white), borderWidth (default 2), image (a picture instead of a dot, usually { "from": "data.avatar" }), labelColor.',
+        },
+        {
+          name: 'cluster',
+          type: 'boolean | { radius?, color? }',
+          description:
+            'Draw markers within radius pixels (default 60) of each other as one, with a count; pressing one zooms in.',
+        },
+        { name: 'onSelect', type: 'handler', description: 'Runs when a marker is pressed, with its row as event.' },
+      ],
+      example: `{ "factory": "pointsLayer", "id": "members", "options": { "data": { "$": "spaceStore.members.filter(m, m.location)" }, "latitude": "location.latitude", "longitude": "location.longitude", "label": "name", "style": [{ "style": { "color": "accent", "image": { "from": "data.avatar" } } }, { "when": { "data.role": "admin" }, "style": { "borderColor": "warning-500" } }], "cluster": true, "onSelect": { "$setLocal": "selected", "value": { "$": "event" } } } }`,
+    },
     {
       id: 'pointLocationsLayer',
       category: 'planet',

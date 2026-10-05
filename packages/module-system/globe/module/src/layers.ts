@@ -19,6 +19,7 @@ import {
   h3HexagonsLayer,
   type LayerKinds,
   pointLocationsLayer,
+  pointsLayer,
   proceduralStarsLayer,
   skyboxLayer,
   solarSystemLayer,
@@ -32,7 +33,13 @@ import {
  * drift apart.
  */
 export const layerKinds: LayerKinds = Object.fromEntries(
-  [pointLocationsLayer, countryOutlinesLayer, h3HexagonsLayer, skyboxLayer, proceduralStarsLayer, solarSystemLayer].map(
-    (kind) => [kind.id, kind],
-  ),
+  [
+    pointsLayer,
+    pointLocationsLayer,
+    countryOutlinesLayer,
+    h3HexagonsLayer,
+    skyboxLayer,
+    proceduralStarsLayer,
+    solarSystemLayer,
+  ].map((kind) => [kind.id, kind]),
 );

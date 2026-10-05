@@ -1547,6 +1547,9 @@ importers:
 
   packages/module-system/globe/layers:
     dependencies:
+      '@we/globe-core':
+        specifier: workspace:*
+        version: link:../core
       cesium:
         specifier: ^1.144.0
         version: 1.144.0
