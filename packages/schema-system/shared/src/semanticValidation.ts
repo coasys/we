@@ -44,10 +44,14 @@ export type ValidationContext = {
   gatedActions?: Set<string>;
   /**
    * Where a component's catalogued plugin names are written, by component and prop — see
-   * `PluginPlacement`. `names` maps every name the catalogue knows to its category, so a name in the
-   * wrong slot can be told from a name that does not exist.
+   * `PluginPlacement`. `names` maps every name the catalogue knows to its categories (a graph has a
+   * seed and an expander both called `schema`), so a name in the wrong slot can be told from a name
+   * that does not exist.
    */
-  pluginPlacements?: Map<string, Map<string, { key: string; categories: string[]; names: Map<string, string> }>>;
+  pluginPlacements?: Map<
+    string,
+    Map<string, { key: string; categories: string[]; names: Map<string, string[]>; bare?: boolean }>
+  >;
 };
 
 // ── Constants ──────────────────────────────────────────────────────
@@ -371,9 +375,11 @@ export function buildValidationContext(data: ContextData): ValidationContext {
   const pluginPlacements: NonNullable<ValidationContext['pluginPlacements']> = new Map();
   for (const catalog of data.pluginCatalogs ?? []) {
     if (!catalog.placements?.length) continue;
-    const names = new Map(catalog.plugins.map((plugin) => [plugin.id, plugin.category]));
+    const names = new Map<string, string[]>();
+    for (const plugin of catalog.plugins) names.set(plugin.id, [...(names.get(plugin.id) ?? []), plugin.category]);
     const byProp = pluginPlacements.get(catalog.component) ?? new Map();
-    for (const { prop, key, categories } of catalog.placements) byProp.set(prop, { key, categories, names });
+    for (const { prop, key, categories, bare } of catalog.placements)
+      byProp.set(prop, { key, categories, names, bare });
     pluginPlacements.set(catalog.component, byProp);
   }
 
@@ -1139,19 +1145,16 @@ function checkPluginNames(
 ): void {
   const placements = ctx.pluginPlacements?.get(componentType);
   if (!placements) return;
-  for (const [prop, { key, categories, names }] of placements) {
+  for (const [prop, { key, categories, names, bare }] of placements) {
     const value = props[prop];
     if (value === undefined || value === null || isTokenObject(value)) continue;
-    const entries = Array.isArray(value) ? value : [value];
-    entries.forEach((entry, index) => {
-      if (!entry || typeof entry !== 'object' || isTokenObject(entry)) return;
-      const name = (entry as Record<string, unknown>)[key];
-      // An expression is checked when it runs, not here: the validator cannot know what it will be.
-      if (typeof name !== 'string') return;
-      const where = `${path}.props.${prop}${Array.isArray(value) ? `.${index}` : ''}.${key}`;
-      const category = names.get(name);
-      if (category === undefined) {
-        const accepted = [...names].filter(([, c]) => categories.includes(c)).map(([id]) => id);
+    const listed = Array.isArray(value);
+    const entries: unknown[] = listed ? value : [value];
+
+    const check = (name: string, where: string) => {
+      const found = names.get(name);
+      if (found === undefined) {
+        const accepted = [...names].filter(([, cs]) => cs.some((c) => categories.includes(c))).map(([id]) => id);
         const suggestion = suggest(name, accepted);
         errors.push({
           path: where,
@@ -1160,12 +1163,24 @@ function checkPluginNames(
             (suggestion ? ` Did you mean "${suggestion}"?` : ` Known: ${accepted.join(', ')}.`),
           severity: 'error',
         });
-      } else if (!categories.includes(category)) {
+      } else if (!found.some((c) => categories.includes(c))) {
         errors.push({
           path: where,
-          message: `"${name}" is a ${category} plugin and does nothing in "${prop}" of "${componentType}", which takes ${categories.join(' or ')} plugins.`,
+          message: `"${name}" is a ${found.join(' or ')} plugin and does nothing in "${prop}" of "${componentType}", which takes ${categories.join(' or ')} plugins.`,
           severity: 'error',
         });
+      }
+    };
+
+    entries.forEach((entry, index) => {
+      const at = `${path}.props.${prop}${listed ? `.${index}` : ''}`;
+      if (bare && typeof entry === 'string') return check(entry, at);
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry) || isTokenObject(entry)) return;
+      const named = (entry as Record<string, unknown>)[key];
+      // An expression is checked when it runs, not here: the validator cannot know what it will be.
+      if (typeof named === 'string') return check(named, `${at}.${key}`);
+      if (Array.isArray(named)) {
+        named.forEach((name, i) => typeof name === 'string' && check(name, `${at}.${key}.${i}`));
       }
     });
   }

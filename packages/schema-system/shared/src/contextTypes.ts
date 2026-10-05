@@ -120,8 +120,14 @@ export interface PluginEntry {
  */
 export interface PluginPlacement {
   prop: string;
+  /** The key in each entry holding the name: one name, or a list of names (`expansion.expanders`). */
   key: string;
   categories: string[];
+  /**
+   * An entry may also be the name itself rather than an object holding it, as in
+   * `behaviours: ['select', { type: 'drag-node' }]` or `controls: ['zoom-in', 'fit']`.
+   */
+  bare?: boolean;
 }
 
 /** A component's plugin registry, as documented for schema authors. */
