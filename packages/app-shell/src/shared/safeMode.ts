@@ -23,7 +23,9 @@
  *   template mounts and {@link settleRender} clears it once the app has stayed responsive with it
  *   for a few seconds, or once it has been replaced. A page that hung or crashed clears nothing, so
  *   the record is still there at the next boot — and that boot starts in safe mode and says why.
- *   This is the door that actually rescues people: it needs nobody to know anything.
+ *   This is the door that actually rescues people: it needs nobody to know anything. Records name
+ *   their tab, so a second tab opened while the first is still rendering does not mistake that
+ *   for a hang — see {@link STALE_MS}.
  *
  * The desktop app's menu has a fourth door that opens the address above.
  *
@@ -48,8 +50,27 @@ export const SAFE_MODE_PARAM = 'safe';
 const SESSION_KEY = 'we.safeMode';
 /** Templates whose render began and has not been seen to settle. Survives the page, by design. */
 const RENDERING_KEY = 'we.rendering';
+/** Which tab wrote a render record. Per tab, so it survives that tab reloading and nothing else. */
+const TAB_KEY = 'we.tab';
 /** How long a template must leave the app responsive before its render counts as finished. */
 export const SETTLE_MS = 4000;
+/**
+ * How old another tab's unsettled record must be before it counts against this one.
+ *
+ * The records are in `localStorage`, which every tab of the origin shares, and a second tab opened
+ * while the first is still inside its few seconds would otherwise read the first one's render as a
+ * hang. A tab whose record is still there this long after it began has not run a timer in that
+ * time, which is what a hang is — and is the case the desktop needs, where a relaunch is a new
+ * session and the record of the hang was written by a tab that no longer exists.
+ */
+export const STALE_MS = 10_000;
+
+/** One template, mid-render, in one tab. */
+interface RenderRecord {
+  id: string;
+  tab: string;
+  at: number;
+}
 
 const OFF: SafeModeState = { on: false, reason: null, template: '' };
 
@@ -72,19 +93,39 @@ function write(storage: Storage | undefined, key: string, value: string | null):
   }
 }
 
-function renderingNow(): string[] {
+function renderingNow(): RenderRecord[] {
   const raw = read(globalThis.localStorage, RENDERING_KEY);
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (r): r is RenderRecord =>
+        !!r && typeof r.id === 'string' && typeof r.tab === 'string' && typeof r.at === 'number',
+    );
   } catch {
     return [];
   }
 }
-function setRendering(ids: string[]): void {
-  write(globalThis.localStorage, RENDERING_KEY, ids.length ? JSON.stringify(ids) : null);
+function setRendering(records: RenderRecord[]): void {
+  write(globalThis.localStorage, RENDERING_KEY, records.length ? JSON.stringify(records) : null);
 }
+
+let tab = '';
+/** This tab's id, made on first use and kept in `sessionStorage` so a reload is the same tab. */
+function thisTab(): string {
+  if (tab) return tab;
+  tab = read(globalThis.sessionStorage, TAB_KEY) ?? '';
+  if (!tab) {
+    tab = Math.random().toString(36).slice(2);
+    write(globalThis.sessionStorage, TAB_KEY, tab);
+  }
+  return tab;
+}
+
+/** Whether a record says a render died: this tab's own, or anybody's long enough ago. */
+const unfinished = (record: RenderRecord, now: number): boolean =>
+  record.tab === thisTab() || now - record.at > STALE_MS;
 
 /**
  * Whether this page is in safe mode, decided on the first call and fixed for the page's life.
@@ -124,11 +165,13 @@ function decide(): SafeModeState {
     }
   }
 
-  const unfinished = renderingNow();
-  if (unfinished.length) {
+  const now = Date.now();
+  const records = renderingNow();
+  const died = records.filter((record) => unfinished(record, now));
+  if (died.length) {
     // Cleared now, so leaving safe mode is a fresh start rather than straight back into it.
-    setRendering([]);
-    return remember({ on: true, reason: 'unfinished-render', template: unfinished[unfinished.length - 1] });
+    setRendering(records.filter((record) => !died.includes(record)));
+    return remember({ on: true, reason: 'unfinished-render', template: died[died.length - 1].id });
   }
 
   return OFF;
@@ -151,7 +194,7 @@ export function enterSafeMode(): void {
 export function leaveSafeMode(): void {
   const win = globalThis.window as Window | undefined;
   write(globalThis.sessionStorage, SESSION_KEY, null);
-  setRendering([]);
+  setRendering(renderingNow().filter((record) => record.tab !== thisTab()));
   win?.location.reload();
 }
 
@@ -161,8 +204,9 @@ export function leaveSafeMode(): void {
  */
 export function beginRender(templateId: string, settleAfter = SETTLE_MS): () => void {
   if (!templateId || safeMode().on) return () => {};
-  const ids = renderingNow().filter((id) => id !== templateId);
-  setRendering([...ids, templateId]);
+  const own = thisTab();
+  const others = renderingNow().filter((record) => !(record.id === templateId && record.tab === own));
+  setRendering([...others, { id: templateId, tab: own, at: Date.now() }]);
   const timer = setTimeout(() => settleRender(templateId), settleAfter);
   return () => {
     clearTimeout(timer);
@@ -172,17 +216,19 @@ export function beginRender(templateId: string, settleAfter = SETTLE_MS): () => 
 
 /** The template rendered and the app stayed responsive — or it was replaced, which also needs a live page. */
 export function settleRender(templateId: string): void {
-  const ids = renderingNow();
-  if (!ids.includes(templateId)) return;
-  setRendering(ids.filter((id) => id !== templateId));
+  const own = thisTab();
+  const records = renderingNow();
+  const kept = records.filter((record) => !(record.id === templateId && record.tab === own));
+  if (kept.length !== records.length) setRendering(kept);
 }
 
 /**
  * The page is going away with JavaScript still running — a reload, a close, a navigation. Whatever
- * was mid-render did not hang it, so it is not a reason to start in safe mode next time.
+ * this tab was mid-render did not hang it, so it is not a reason to start in safe mode next time.
+ * Only this tab's: another tab may be in the middle of a render of its own.
  */
 export function installRenderSettleOnExit(win: Window = window): () => void {
-  const clear = () => setRendering([]);
+  const clear = () => setRendering(renderingNow().filter((record) => record.tab !== thisTab()));
   win.addEventListener('pagehide', clear);
   return () => win.removeEventListener('pagehide', clear);
 }
@@ -211,4 +257,5 @@ export function installSafeModeShortcut(win: Window = window, onPress: () => voi
 /** Forget the decision. Tests only — a page decides once. */
 export function resetSafeModeForTests(): void {
   decided = null;
+  tab = '';
 }

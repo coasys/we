@@ -90,6 +90,24 @@ describe('a render that never finished', () => {
     expect(safeMode().template).toBe('strangers-template');
   });
 
+  it('does not mistake another tab rendering at the same moment for a hang', () => {
+    beginRender('strangers-template');
+    // A second tab: same storage for the origin, its own tab id.
+    sessionStorage.clear();
+    nextPage();
+    expect(safeMode().on).toBe(false);
+  });
+
+  it("counts another tab's render once it is too old to be anything but a hang", () => {
+    vi.useFakeTimers();
+    beginRender('strangers-template');
+    vi.setSystemTime(Date.now() + 11_000);
+    // A relaunched desktop app is a new session, so its tab is not the one that hung.
+    sessionStorage.clear();
+    nextPage();
+    expect(safeMode()).toEqual({ on: true, reason: 'unfinished-render', template: 'strangers-template' });
+  });
+
   it('is a fresh start once safe mode has been entered for it', () => {
     beginRender('strangers-template');
     nextPage();
