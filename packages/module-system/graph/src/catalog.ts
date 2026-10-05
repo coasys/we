@@ -22,6 +22,18 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
   component: 'GraphView',
   description:
     'Names resolvable inside GraphView props: seed sources (seeds.source), expanders (expansion.expanders), layouts (layout.type) and behaviours (behaviours[]).',
+  /*
+    Where each name is written, so the validator refuses one that does not exist rather than leaving
+    the graph to render nothing. Style fields and metrics are not here: they sit deep in style rules,
+    and a metric is as often computed as written.
+  */
+  placements: [
+    { prop: 'seeds', key: 'source', categories: ['seed'] },
+    { prop: 'layout', key: 'type', categories: ['layout'] },
+    { prop: 'expansion', key: 'expanders', categories: ['expander'] },
+    { prop: 'behaviours', key: 'type', categories: ['behaviour'], bare: true },
+    { prop: 'controls', key: 'type', categories: ['control'], bare: true },
+  ],
   plugins: [
     // ─── Seed sources ──────────────────────────────────────────────────────────
     {
