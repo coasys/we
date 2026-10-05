@@ -31,6 +31,10 @@
  * the message and keeps its stale connection, then renegotiates when the fresh offer arrives — one
  * side recovering rather than two, which still converges. Bumping `v` would instead make old and new
  * peers drop *every* message from each other, turning a recoverable call into an impossible one.
+ *
+ * {@link CallGenerations} were added on the same terms. An old peer's parser rebuilds each message
+ * field by field and never sees them; a new peer reading a message without them treats it exactly
+ * as it always did.
  */
 
 export const CALL_PROTOCOL_VERSION = 1;
@@ -48,9 +52,28 @@ export const CALL_PROTOCOL_VERSION = 1;
 export type CallMessage = CallEnvelope & CallBody;
 
 /** What every message carries regardless of kind. */
-export interface CallEnvelope {
+export interface CallEnvelope extends CallGenerations {
   v: number;
   call: string;
+}
+
+/**
+ * Which of the sender's connections a message comes from, and which of the receiver's it is for.
+ *
+ * `call` and the sender say which *pair* a message belongs to, and nothing said which connection
+ * within it. A pair has many over its life — a rebuild, a reset, a peer that reloads — and a
+ * description from one cannot be applied to another: a fresh connection numbers its media sections
+ * from scratch, and the browser refuses it with "The order of m-lines in subsequent offer doesn't
+ * match order from previous offer/answer". On an unordered transport the two sides routinely hold
+ * different generations of the pair for a moment, so the message has to say which it means.
+ *
+ * Both are optional, and a message with neither is read the way it always was — see Versioning.
+ */
+export interface CallGenerations {
+  /** The sender's connection, an id it chose when it made the connection. */
+  gen?: string;
+  /** The receiver's connection as the sender last heard it named. Absent until the sender has. */
+  peerGen?: string;
 }
 
 /**
@@ -71,8 +94,10 @@ export type CallBody =
    * carrying a dead transport and a stale ICE generation until it happens to notice. Saying so makes
    * the two sides start from the same place.
    *
-   * Carries nothing. "Which connection" is already the `call` id plus the sender, and there is no
-   * reason to give: a reset is a request to start over, not a diagnosis.
+   * Carries nothing beyond its generations, and there is no reason to give: a reset is a request to
+   * start over, not a diagnosis. The generations matter here more than anywhere — the new
+   * connection's offer can overtake the reset, and a reset that arrives late must not tear down the
+   * connection that offer has just made.
    */
   | { kind: 'reset' };
 
@@ -91,22 +116,28 @@ export function parseCallMessage(payload: unknown): CallMessage | null {
   if (msg.v !== CALL_PROTOCOL_VERSION) return null;
   if (typeof msg.call !== 'string' || !msg.call) return null;
 
+  // A malformed generation is dropped rather than failing the message, which leaves it read as a
+  // message from a peer that predates generations.
+  const envelope: CallEnvelope = { v: msg.v, call: msg.call };
+  if (typeof msg.gen === 'string' && msg.gen) envelope.gen = msg.gen;
+  if (typeof msg.peerGen === 'string' && msg.peerGen) envelope.peerGen = msg.peerGen;
+
   if (msg.kind === 'description') {
     const description = (msg as { description?: unknown }).description;
     if (typeof description !== 'object' || description === null) return null;
     const { type, sdp } = description as RTCSessionDescriptionInit;
     if (type !== 'offer' && type !== 'answer' && type !== 'pranswer' && type !== 'rollback') return null;
     if (sdp !== undefined && typeof sdp !== 'string') return null;
-    return { v: msg.v, call: msg.call, kind: 'description', description: { type, sdp } };
+    return { ...envelope, kind: 'description', description: { type, sdp } };
   }
 
   if (msg.kind === 'ice') {
     const candidate = (msg as { candidate?: unknown }).candidate;
     if (typeof candidate !== 'object' || candidate === null) return null;
-    return { v: msg.v, call: msg.call, kind: 'ice', candidate: candidate as RTCIceCandidateInit };
+    return { ...envelope, kind: 'ice', candidate: candidate as RTCIceCandidateInit };
   }
 
-  if (msg.kind === 'reset') return { v: msg.v, call: msg.call, kind: 'reset' };
+  if (msg.kind === 'reset') return { ...envelope, kind: 'reset' };
 
   return null;
 }
