@@ -14,7 +14,6 @@ import { createAccountRegistry, expandHome } from './accounts.js';
 import { openExecutorLog } from './executorLog.js';
 import {
   allowMediaPermission,
-  contentSecurityPolicy,
   isExternallyOpenable,
   isTrusted,
   MEDIA_PERMISSIONS,
@@ -645,10 +644,7 @@ function createWindow() {
  * embedded app's own security headers stay its own.
  */
 function installContentSecurityPolicy(session) {
-  const policy = contentSecurityPolicy({
-    dev: Boolean(process.env.VITE_DEV_SERVER_URL),
-    origins: trustedOrigins(policyOptions()),
-  });
+  const policy = contentSecurityPolicy(Boolean(process.env.VITE_DEV_SERVER_URL));
   const appOrigin = safeOrigin(appUrl());
 
   session.webRequest.onHeadersReceived((details, callback) => {
@@ -657,6 +653,26 @@ function installContentSecurityPolicy(session) {
 
     callback({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [policy] } });
   });
+}
+
+/**
+ * The policy, as `@we/csp` built it at prebuild time into `seed-csp.json`.
+ *
+ * Read from a generated file rather than imported because the packaged main process holds only
+ * `electron/` and `dist/` — a workspace package is not there to import. The policy depends on nothing
+ * known only at runtime (the app's own origins are all localhost, which it allows already), so
+ * building it ahead of time loses nothing.
+ *
+ * A missing file is a thrown error, not a missing policy: an app that silently ran without one is the
+ * failure this exists to prevent.
+ */
+function contentSecurityPolicy(dev) {
+  const file = join(__dirname, 'seed-csp.json');
+  if (!existsSync(file)) {
+    throw new Error('[we] electron/seed-csp.json is missing — run scripts/generate-seed-config.cjs before starting.');
+  }
+  const policies = JSON.parse(readFileSync(file, 'utf8'));
+  return dev ? policies.development : policies.production;
 }
 
 /**

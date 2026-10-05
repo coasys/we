@@ -527,3 +527,17 @@ describe('a write wired to an event nobody causes', () => {
     expect(unasked({ type: 'we-input', props: { onBlur: create } })).toEqual([]);
   });
 });
+
+describe('native elements outside the allowlist', () => {
+  const errors = (node: SchemaNode) =>
+    messages(node, 'error').filter((m) => m.includes('not an element a template may mount'));
+
+  it('reports a script or an iframe, which render nothing', () => {
+    expect(errors({ type: 'script', children: ['x'] })).toHaveLength(1);
+    expect(errors({ type: 'Column', children: [{ type: 'iframe', props: { srcdoc: 'x' } }] })).toHaveLength(1);
+  });
+
+  it('says nothing about an element on the list', () => {
+    expect(errors({ type: 'div', children: [{ type: 'img', props: { src: 'a.png', alt: '' } }] })).toEqual([]);
+  });
+});

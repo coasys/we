@@ -95,6 +95,7 @@
     "@we/backend-inmemory": "workspace:*",
     "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
+    "@we/csp": "workspace:*",
     "esbuild": "^0.28.2",
     "jsdom": "^30.0.1",
     "playwright-core": "^1.56.0",
