@@ -4,14 +4,24 @@ WE's first-party globe layers: what can be drawn on the earth (`planet`) and in 
 (`background`). Part of the globe family in `packages/module-system/globe/`: **module** (registry and
 catalogue) · **protocol** (the contract) · **layers** (this) · **widget** (`CesiumGlobe`).
 
-| Kind                   | Slot       | What it draws                                                    |
-| ---------------------- | ---------- | ---------------------------------------------------------------- |
-| `pointLocationsLayer`  | planet     | Markers with labels, avatars when given; pressing one reports it |
-| `countryOutlinesLayer` | planet     | Country borders, Natural Earth 1:50m, served by the app          |
-| `h3HexagonsLayer`      | planet     | The H3 grid, finer as the camera comes closer                    |
-| `skyboxLayer`          | background | NASA's Tycho-2 star map                                          |
-| `proceduralStarsLayer` | background | Stars at random depths, with parallax                            |
-| `solarSystemLayer`     | background | The sun, the planets for today, and their orbits                 |
+| Kind                   | Slot       | What it draws                                                             |
+| ---------------------- | ---------- | ------------------------------------------------------------------------- |
+| `pointsLayer`          | planet     | A marker per row — a dot or a picture, labelled, clustered if asked       |
+| `pathsLayer`           | planet     | A line per row, between two places or along several, arcing               |
+| `areasLayer`           | planet     | Filled shapes, a row's own or the countries the rows name                 |
+| `hexbinLayer`          | planet     | Rows gathered into H3 cells, shaded and raised by what is in each         |
+| `pointLocationsLayer`  | planet     | `pointsLayer` with its earlier option names, for the templates using them |
+| `countryOutlinesLayer` | planet     | Country borders, Natural Earth 1:50m, served by the app                   |
+| `h3HexagonsLayer`      | planet     | The H3 grid, finer as the camera comes closer                             |
+| `skyboxLayer`          | background | NASA's Tycho-2 star map                                                   |
+| `proceduralStarsLayer` | background | Stars at random depths, with parallax                                     |
+| `solarSystemLayer`     | background | The sun, the planets for today, and their orbits                          |
+
+The first four are the **data kinds**: each takes rows (`data`), field paths saying where in a row its
+geometry is, and `style` rules in the GraphView's dialect, so a globe can draw a template's own data —
+members coloured by role, countries shaded by how many posts came from them, a heat of activity. They
+are general on purpose: a layer somebody shares is a configuration of these, as data, and a new
+drawing need grows this list rather than living in a template.
 
 ## Using them in a template
 
@@ -57,14 +67,18 @@ export const pulseLayer: LayerKind<PulseLayerOptions> = {
 - **`slot`** says which list the kind belongs in. The catalogue files it there and the validator
   refuses it in the other list.
 - **A renderer per engine.** A kind with no renderer for the globe's engine is absent there, not
-  broken. Keep everything that is not drawing (reading rows, resolving style) in `@we/globe-core`, so
-  a second engine's renderer stays thin.
+  broken. Keep everything that is not drawing in `@we/globe-core`, so a second engine's renderer
+  stays thin: the data kinds are each a function there (`pointFeatures`, `pathFeatures`,
+  `areaFeatures`, `hexFeatures`) turning options into placed, styled features, and a renderer only
+  turns those into its engine's primitives, applying a `FeatureDiffer`'s diff on an update. Colours
+  come out of the core as CSS (roles, tokens, `color-mix()`); `createColorResolver` turns them into
+  RGBA under the theme of the globe's own element.
 - **Clean up everything you add**, through `onCleanup`. A layer toggled off and on mounts again.
 - **`update`**, returned by the renderer, runs when this layer's own options change and only then.
   Without it the layer is remounted on a change, which is correct and slower. Handlers in the options
   always call the template's newest one.
 - **`zIndex`** arrives in the context for planet layers. Turn it into whatever ordering your drawing
-  needs; `pointLocationsLayer` turns it into altitude.
+  needs; the markers and lines turn it into altitude.
 
 ### Three registrations, all of which fail silently if missed
 
@@ -94,4 +108,4 @@ can take the globe down with it (a skybox whose textures failed stopped Cesium's
 
 `context.events` is a bus the layers on one globe share: `emit`, `on`, `off`, `once`. Use it for
 layer-to-layer coordination. What a template reacts to goes through a handler option instead
-(`onLocationClick`, `onHexagonClick`), which the template wires to an action like any prop.
+(`onSelect` on the data kinds), which the template wires to an action like any prop.
