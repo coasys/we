@@ -741,6 +741,12 @@ Simple include — hydrate all related instances:
 { "$query": { "entity": "Channel", "include": { "conversations": true } } }
 Each item in the result will have a conversations array of hydrated Conversation objects.
 
+An included relation is the RECORD, not its id — and without the include the same field is the id.
+So a comparison written for one breaks silently against the other: with include: { item: true },
+row.item == x never matches and a where-object { item: x } finds nothing. Compare row.item.id, or
+in a where-object over included rows, use a comprehension: local.loans.find(l, l.item.id == x).
+The validator warns about both.
+
 Sub-query include — filter, sort, or limit the related records:
 { "$query": { "entity": "Channel", "include": { "conversations": { "order": { "createdAt": "desc" }, "limit": 10 } } } }
 
