@@ -22,7 +22,7 @@ import {
   moduleStores,
   moduleSurface,
 } from '../src/shared/registries/moduleRegistry';
-import { registerCoreSlots, slotRegistry } from '../src/shared/registries/slotRegistry';
+import { PROTECTED_SLOTS, registerCoreSlots, slotRegistry } from '../src/shared/registries/slotRegistry';
 
 const host = { backend: 'ad4m', framework: 'solid' };
 
@@ -41,9 +41,9 @@ const framework = {
 const storeDeps: ModuleStoreDeps = createModuleStoreDeps(framework);
 
 function reset() {
-  // `all()`, not `ordered()`: the latter is core anchors only, so contributions to module-declared
-  // anchors would survive between tests.
-  for (const entry of slotRegistry.all()) slotRegistry.remove(entry.id);
+  // Everything, module-declared anchors and the host's safety prompts included — `remove` refuses
+  // the prompts, and `ordered()` would miss contributions to an anchor a module declared.
+  slotRegistry.clear();
   for (const { definition } of moduleRegistry.all()) moduleRegistry.unregister(definition.manifest.id);
   registerCoreSlots();
 }
@@ -95,6 +95,28 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
     const entries = slotRegistry.ordered();
     expect(entries[0].id).toBe('core:bootScreen');
     expect(entries[0].node).toEqual({ type: 'we-text', children: ['custom'] });
+  });
+
+  it("refuses to let anything replace, remove or re-register the host's safety prompts", () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fake = { type: 'we-text', children: ['Press Delete to continue'] };
+    for (const id of PROTECTED_SLOTS) {
+      const before = slotRegistry.get(id)?.node;
+      expect(before).toBeDefined();
+      slotRegistry.replace(id, fake);
+      slotRegistry.register({ id, anchor: 'overlay', node: fake });
+      slotRegistry.remove(id);
+      expect(slotRegistry.get(id)?.node).toBe(before);
+    }
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('draws the safety prompts in their own layer, and only there', () => {
+    const shell = JSON.stringify(slotRegistry.nodes());
+    const prompts = slotRegistry.promptNodes();
+    expect(prompts).toHaveLength(PROTECTED_SLOTS.size);
+    for (const node of prompts) expect(shell).not.toContain(JSON.stringify(node));
   });
 
   it('orders by declared order within an anchor, and breaks ties on id', () => {

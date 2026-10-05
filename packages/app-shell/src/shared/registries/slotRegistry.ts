@@ -175,29 +175,84 @@ function resolveValue(value: unknown): unknown {
   return value;
 }
 
+/**
+ * The host's safety prompts — the slots nothing may replace, remove or re-register.
+ *
+ * Each of these asks a person a question whose answer protects them: whether to let an app in,
+ * whether to install a stranger's template, whether to delete something, which screen to share,
+ * whether to remove an account. A prompt drawn by anything other than the host is worth nothing,
+ * because the thing being asked about could word it, restyle it or leave it out. So they are fixed:
+ * a seed white-labels everything else through {@link slotRegistry.replace}, and is refused these.
+ *
+ * They also render apart from the rest of the chrome, in a layer of their own that holds the top
+ * layer while one is open and makes everything else inert — see `TemplateProvider`. A new safety
+ * prompt is one more id here, and gets all of that by being listed.
+ */
+export const PROTECTED_SLOTS: ReadonlySet<string> = new Set([
+  'core:consentPrompt',
+  'core:consentSecret',
+  'core:removeAccount',
+  'core:screenSource',
+  'core:installPrompt',
+  'core:destructivePrompt',
+]);
+
+export const isProtectedSlot = (id: string): boolean => PROTECTED_SLOTS.has(id);
+
+/** Say once that something tried, rather than failing silently or loudly per render. */
+function refuseProtected(id: string, what: string): void {
+  console.warn(`slotRegistry: ${id} is one of the host's safety prompts and cannot be ${what}.`);
+}
+
 /** Subscribe to contribution changes. Returns an unsubscribe. */
 export const onSlotRegistryChanged = registry.subscribe;
 
 export const slotRegistry = {
-  /** Add a contribution. Replaces any entry with the same id, so re-registration is idempotent. */
-  register: registry.register,
+  /**
+   * Add a contribution. Replaces any entry with the same id, so re-registration is idempotent —
+   * except over a safety prompt, where only the very same node is accepted back (which is what
+   * `registerCoreSlots` running twice does).
+   */
+  register(entry: SlotEntry): void {
+    const existing = registry.get(entry.id);
+    if (existing && isProtectedSlot(entry.id) && existing.node !== entry.node) {
+      refuseProtected(entry.id, 'registered over');
+      return;
+    }
+    registry.register(entry);
+  },
 
   /**
    * Swap the node of an existing entry, keeping its anchor and order. How a seed white-labels host
-   * chrome — the mechanism `initializeIntegrations` already used for `bootScreen`.
+   * chrome — the mechanism `initializeIntegrations` already used for `bootScreen`. Refused for a
+   * safety prompt: see {@link PROTECTED_SLOTS}.
    */
   replace(id: string, node: SchemaNode): void {
     const existing = registry.get(id);
     if (!existing) return;
+    if (isProtectedSlot(id)) {
+      refuseProtected(id, 'replaced');
+      return;
+    }
     registry.register({ ...existing, node });
   },
 
-  /** Remove a contribution — a module being disabled. */
+  /** Remove a contribution — a module being disabled. Refused for a safety prompt. */
   remove(id: string): void {
+    if (isProtectedSlot(id)) {
+      refuseProtected(id, 'removed');
+      return;
+    }
     registry.remove(id);
   },
 
   get: registry.get,
+
+  /**
+   * Empty the registry, safety prompts included — what a test does between cases before calling
+   * `registerCoreSlots` again. Nothing in the app calls it: the registry lives as long as the page.
+   */
+  clear: registry.clear,
 
   /**
    * Every contribution, in render order: by anchor, then by declared `order`, then by id — the
@@ -241,12 +296,27 @@ export const slotRegistry = {
     return [...new Set(registry.all().map((entry) => entry.anchor))].filter((a) => !isCoreAnchor(a));
   },
 
-  /** Just the nodes, ready to compose into the shell schema, with `$slot` markers filled in. */
+  /**
+   * Just the nodes, ready to compose into the shell schema, with `$slot` markers filled in.
+   *
+   * Everything but the safety prompts, which render in a layer of their own — {@link promptNodes}.
+   */
   nodes(): SchemaNode[] {
-    return slotRegistry.ordered().flatMap((entry) => {
-      const resolved = resolveAnchors(entry.node);
-      return Array.isArray(resolved) ? resolved : [resolved];
-    });
+    return slotRegistry
+      .ordered()
+      .filter((entry) => !isProtectedSlot(entry.id))
+      .flatMap((entry) => {
+        const resolved = resolveAnchors(entry.node);
+        return Array.isArray(resolved) ? resolved : [resolved];
+      });
+  },
+
+  /** The safety prompts, in order — the host's own layer above everything {@link nodes} draws. */
+  promptNodes(): SchemaNode[] {
+    return slotRegistry
+      .ordered()
+      .filter((entry) => isProtectedSlot(entry.id))
+      .map((entry) => entry.node);
   },
 };
 

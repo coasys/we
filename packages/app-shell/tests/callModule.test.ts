@@ -28,7 +28,7 @@ const launcher = () => callModule.contributes!.launchers![0];
 const stage = () => callModule.contributes!.panels!.find((panel) => panel.name === 'stage')!;
 
 beforeEach(() => {
-  for (const entry of slotRegistry.ordered()) slotRegistry.remove(entry.id);
+  slotRegistry.clear();
   for (const { definition } of moduleRegistry.all()) moduleRegistry.unregister(definition.manifest.id);
   registerCoreSlots();
 });
