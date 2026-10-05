@@ -175,6 +175,14 @@ called with `$action` and cannot be read. The description is what the generated 
 what the validator checks a template's `modules.<id>.<name>` against — a member you did not mark is
 as unknown to a template as one you never had.
 
+**A template's call to an action runs only when somebody asked for it** — a press, key or typing that
+reached the element calling it. An image finishing loading cannot call your action. That needs nothing
+from your components, however late they emit; the renderer handles it. What it needs from you is one
+decision per action: if it changes only what this agent is looking at — opens your panel, pages a list,
+reports a measured box — publish it with `deps.action(fn, doc, { ambient: true })` so it works from any
+event. Anything that stores, publishes, spends tokens or reaches a device stays as it is. When unsure,
+leave it off: a template can always put the call on a click.
+
 Teardown goes through `deps.onDispose(fn)`, never a `destroy` key on the store: store keys are
 template-callable vocabulary.
 

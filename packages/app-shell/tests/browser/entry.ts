@@ -14,10 +14,12 @@
  */
 import '@we/primitives';
 
+import { buildTemplateBag, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
 import { injectDSInteropStyles } from '@solid/dsInterop';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import { createInMemoryBackend } from '@we/backend-inmemory';
+import { installGestureTracking } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { createStore } from 'solid-js/store';
 import { render } from 'solid-js/web';
@@ -26,6 +28,26 @@ import { installLayoutCounter, profile } from './instrument';
 import { type Scenario, scenarios } from './scenarios';
 
 installLayoutCounter();
+// As the app does, so a scenario rendered against a gated bag is judged by the same tracker.
+installGestureTracking(window);
+
+/*
+  An element that answers late, standing in for one nobody here can edit — a library's custom element
+  a deployment bundled. Pressed, it emits `done` a moment afterwards, once the press has finished
+  dispatching; with `auto` it emits once after mounting with nobody pressing anything. The gesture
+  gate must let the first through and refuse the second, without the element knowing it exists.
+*/
+customElements.define(
+  'x-late-emitter',
+  class extends HTMLElement {
+    connectedCallback() {
+      this.textContent = this.textContent || 'late';
+      const emit = () => setTimeout(() => this.dispatchEvent(new CustomEvent('done')), 50);
+      if (this.hasAttribute('auto')) emit();
+      else this.addEventListener('click', emit);
+    }
+  },
+);
 
 /** Set by `mount`, so an interaction can make a profile arrive the way the network does. */
 let arriveProfile: ((profile: { did: string } & Record<string, unknown>) => void) | undefined;
@@ -98,8 +120,10 @@ function mount(name: string, width: number, scale?: number): void {
     get: (did: string) => identityOf[did],
     fetch: () => {},
   };
+  // A scenario about the trust boundary renders against what a space template is actually handed.
+  const bag = scenario.bag === 'space' ? buildTemplateBag(stores, { grants: SPACE_TIER, gesture: 'enforce' }) : stores;
   disposeMount = render(
-    () => RenderSchema({ node: scenario.node, stores, registry: componentRegistry } as never) as never,
+    () => RenderSchema({ node: scenario.node, stores: bag, registry: componentRegistry } as never) as never,
     host,
   );
 }

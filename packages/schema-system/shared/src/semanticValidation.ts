@@ -36,6 +36,11 @@ export type ValidationContext = {
     /** Panel names by module id. */
     panels: Map<string, Set<string>>;
   };
+  /**
+   * Action paths known to need somebody to have asked — every classified action not marked `ambient`.
+   * Only what the context knows: an action it has no classification for is never warned about.
+   */
+  gatedActions?: Set<string>;
 };
 
 // ── Constants ──────────────────────────────────────────────────────
@@ -438,7 +443,23 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     }
   }
 
+  /*
+    What needs somebody to have asked: every action the context classifies, less the ambient ones.
+    `record.*` is a pseudo-store with no `ambient` list, so all three are gated — which they are.
+  */
+  const gatedActions = new Set<string>();
+  for (const store of data.storeEntries) {
+    const ambient = new Set(store.ambient ?? []);
+    for (const action of store.actions) if (!ambient.has(action)) gatedActions.add(`${store.name}.${action}`);
+  }
+  for (const entry of data.modules ?? []) {
+    for (const member of entry.members) {
+      if (member.kind === 'action' && !member.ambient) gatedActions.add(`modules.${entry.id}.${member.name}`);
+    }
+  }
+
   return {
+    gatedActions,
     componentNames,
     componentProps,
     componentPropTypes,
@@ -656,8 +677,12 @@ function walkNode(
     return;
   }
 
-  // Skip HTML elements
+  // Skip HTML elements — except a write on an event nobody causes, which native elements are the
+  // commonest way to reach: an `img` that loads, a `details` that starts open, an `input` that autofocuses.
   if (HTML_ELEMENTS.has(type)) {
+    for (const [propName, propValue] of Object.entries((n.props as Record<string, unknown>) ?? {})) {
+      checkUnaskedWrite(propName, propValue, `${path}.props.${propName}`, ctx, errors);
+    }
     walkChildren(n, path, ctx, state, errors);
     return;
   }
@@ -1074,6 +1099,93 @@ function checkLegacyReference(value: unknown, path: string, errors: ValidationEr
   });
 }
 
+/**
+ * Events that happen to an element rather than being done to it by a person.
+ *
+ * A template's write runs only when somebody asked, so an action wired to one of these is refused
+ * when it fires on its own — an image loading, a section starting open, a component reporting its
+ * size. Listed rather than inferred, and short on purpose: a prop missing from it is not warned about,
+ * because a warning on a prop that IS a press would teach authors to ignore this one. `onBlur` is
+ * absent because leaving a field somebody typed into counts as asking.
+ */
+const UNASKED_EVENTS = new Set([
+  'onLoad',
+  'onError',
+  'onToggle',
+  'onFocus',
+  'onFocusIn',
+  'onScroll',
+  'onScrollEnd',
+  'onResize',
+  'onAnimationStart',
+  'onAnimationEnd',
+  'onAnimationIteration',
+  'onTransitionRun',
+  'onTransitionStart',
+  'onTransitionEnd',
+  'onMouseEnter',
+  'onMouseLeave',
+  'onMouseOver',
+  'onMouseOut',
+  'onMouseMove',
+  'onPointerEnter',
+  'onPointerLeave',
+  'onPointerOver',
+  'onPointerOut',
+  'onPointerMove',
+  'onLoadedData',
+  'onLoadedMetadata',
+  'onCanPlay',
+  'onEnded',
+  'onTimeUpdate',
+  'onMeasure',
+  'onArrange',
+  'onReady',
+  'onViewport',
+  'onSeedSummary',
+  'onPointerAt',
+]);
+
+/** Every `$action` path anywhere inside a handler value, lifecycle callbacks included. */
+function actionPathsIn(value: unknown, into: string[] = []): string[] {
+  if (Array.isArray(value)) {
+    for (const item of value) actionPathsIn(item, into);
+  } else if (value && typeof value === 'object') {
+    const token = value as Record<string, unknown>;
+    if (typeof token.$action === 'string') into.push(token.$action);
+    for (const nested of Object.values(token)) actionPathsIn(nested, into);
+  }
+  return into;
+}
+
+/**
+ * A write wired to an event nobody causes — which the host refuses at runtime.
+ *
+ * A warning rather than an error: the runtime gate is the enforcement and holds whatever this says.
+ * This is the same answer given earlier, to the person writing the template and to whoever is asked
+ * to install it, instead of as a write that silently never happens.
+ */
+function checkUnaskedWrite(
+  propName: string,
+  value: unknown,
+  path: string,
+  ctx: ValidationContext,
+  errors: ValidationError[],
+): void {
+  if (!ctx.gatedActions || !UNASKED_EVENTS.has(propName)) return;
+  for (const action of actionPathsIn(value)) {
+    if (!ctx.gatedActions.has(action)) continue;
+    errors.push({
+      path,
+      message:
+        `"${action}" is wired to ${propName}, which fires without anybody doing anything — and an action ` +
+        `like this one runs only when somebody asked, so it will not run. Put it on a press or a key ` +
+        `(onClick, onKeyDown), or on what the person does to finish (onChange, onSave).`,
+      severity: 'warning',
+    });
+  }
+}
+
 function checkProps(
   props: Record<string, unknown>,
   path: string,
@@ -1115,6 +1227,10 @@ function checkProps(
         }
       }
     }
+
+    // A handler is valid on anything — but one that writes on an event nobody causes is worth a word.
+    // Asked before the universal props, which list the common events and would skip it.
+    checkUnaskedWrite(propName, propValue, propPath, ctx, errors);
 
     // Universal props are always valid
     if (ctx.universalProps.has(propName)) continue;

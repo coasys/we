@@ -1663,6 +1663,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     setArrangement: action(
       setArrangement,
       'Report the { columns, rows } a stage grid settled on, so fit-to-content can solve for it.',
+      { ambient: true },
     ),
     arrangement: state(arrangement, 'The { columns, rows } the stage is currently laid out in.'),
     setStageBox,
@@ -1857,7 +1858,9 @@ export function createCallStore(deps: ModuleStoreDeps) {
     }, 'The space the call is in as { uri, name, avatar } — name and avatar empty until the host knows them — or null between calls.'),
 
     /** Go back to the space the call is in. No-op outside a call. */
-    returnToCall: action(returnToCall, 'Go back to the space the call is in; does nothing outside a call.'),
+    returnToCall: action(returnToCall, 'Go back to the space the call is in; does nothing outside a call.', {
+      ambient: true,
+    }),
 
     /**
      * The band this module's fixed chrome occupies, for panels to keep clear of.
@@ -2100,7 +2103,9 @@ export function createCallStore(deps: ModuleStoreDeps) {
      * is a question for the host and most of the app never asks it. The list keeps itself current
      * from then on — the store watches for hardware moving.
      */
-    refreshDevices: action(() => void refreshDevices(), 'Re-read which microphones and cameras this machine has.'),
+    refreshDevices: action(() => void refreshDevices(), 'Re-read which microphones and cameras this machine has.', {
+      ambient: true,
+    }),
     /**
      * Open the chooser, and ask what is here on the way in.
      *
@@ -2108,11 +2113,17 @@ export function createCallStore(deps: ModuleStoreDeps) {
      * a list from before anything was plugged in, and the moment somebody opens a chooser is the
      * moment it has to be true.
      */
-    openDeviceSettings: action(() => {
-      void refreshDevices();
-      setDeviceSettingsOpen(true);
-    }, 'Open the camera and microphone chooser.'),
-    closeDeviceSettings: action(() => setDeviceSettingsOpen(false), 'Close the camera and microphone chooser.'),
+    openDeviceSettings: action(
+      () => {
+        void refreshDevices();
+        setDeviceSettingsOpen(true);
+      },
+      'Open the camera and microphone chooser.',
+      { ambient: true },
+    ),
+    closeDeviceSettings: action(() => setDeviceSettingsOpen(false), 'Close the camera and microphone chooser.', {
+      ambient: true,
+    }),
     /**
      * Ask for a device once, purely so the machine will say what its hardware is called.
      *
@@ -2162,17 +2173,21 @@ export function createCallStore(deps: ModuleStoreDeps) {
      * on the next heartbeat. Clearing focus counts as a choice too — "show me everyone" is an
      * instruction, not an absence of one.
      */
-    focusTile: action((id: string) => {
-      const next = focusedId() === id ? null : id;
-      focusIsManual = true;
-      setFocusedId(next);
-      // Letting everyone back on the stage ends solo with it: it is a property of *having* a
-      // spotlight, and a mode left armed with nothing to apply to would take effect on whoever was
-      // focused next, which nobody asked for.
-      if (next === null) setSolo(false);
-      // The states array carries `focused`, so the change has to reach it for the layout to move.
-      rebuildTiles();
-    }, 'Give the participant with this id the spotlight, or take it back if they already have it.'),
+    focusTile: action(
+      (id: string) => {
+        const next = focusedId() === id ? null : id;
+        focusIsManual = true;
+        setFocusedId(next);
+        // Letting everyone back on the stage ends solo with it: it is a property of *having* a
+        // spotlight, and a mode left armed with nothing to apply to would take effect on whoever was
+        // focused next, which nobody asked for.
+        if (next === null) setSolo(false);
+        // The states array carries `focused`, so the change has to reach it for the layout to move.
+        rebuildTiles();
+      },
+      'Give the participant with this id the spotlight, or take it back if they already have it.',
+      { ambient: true },
+    ),
 
     /**
      * Give the spotlight the stage to itself, or bring the others back.
@@ -2180,12 +2195,16 @@ export function createCallStore(deps: ModuleStoreDeps) {
      * Only meaningful while something is focused, and the bar only shows it then — but guarded here
      * too, since a store method is reachable by anything a template can write.
      */
-    toggleSolo: action(() => {
-      if (focusedId() === null) return;
-      setSolo(!solo());
-    }, 'Hide everyone but the spotlight, or bring them back; does nothing while nobody is focused.'),
+    toggleSolo: action(
+      () => {
+        if (focusedId() === null) return;
+        setSolo(!solo());
+      },
+      'Hide everyone but the spotlight, or bring them back; does nothing while nobody is focused.',
+      { ambient: true },
+    ),
 
-    dismissProblem: action(() => setProblem(null), 'Dismiss the problem message.'),
+    dismissProblem: action(() => setProblem(null), 'Dismiss the problem message.', { ambient: true }),
 
     /**
      * Build this one peer's connection again, and tell them to do the same.

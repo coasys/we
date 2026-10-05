@@ -2708,8 +2708,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     open: state(open, 'Whether the transcript panel is open.'),
     // The panel's `show` and `close`: what the rail and the titlebar call, since the module owns
     // the flag.
-    openPanel: action(() => setOpen(true), 'Opens the transcript panel.'),
-    closePanel: action(() => setOpen(false), 'Closes the transcript panel.'),
+    openPanel: action(() => setOpen(true), 'Opens the transcript panel.', { ambient: true }),
+    closePanel: action(() => setOpen(false), 'Closes the transcript panel.', { ambient: true }),
     /**
      * The record this call's transcript lives in, or `null` when there is not one yet.
      *
@@ -2741,6 +2741,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     showMoreTranscript: action(
       () => setTranscriptShown(transcriptShown() + TRANSCRIPT_PAGE),
       'Loads one more page of the transcript, in whichever direction it is being read.',
+      { ambient: true },
     ),
     /**
      * Read from the beginning — a different query, not a scroll.
@@ -2753,14 +2754,22 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * the two ends was never on screen to travel through, and `we-scroll-area` already takes the
      * same view of any move too long to sit through.
      */
-    readTranscriptFromStart: action(() => {
-      setTranscriptFromStart(true);
-      setTranscriptShown(TRANSCRIPT_FIRST_PAGE);
-    }, 'Shows the beginning of the transcript, to be read forwards.'),
-    readTranscriptLive: action(() => {
-      setTranscriptFromStart(false);
-      setTranscriptShown(TRANSCRIPT_FIRST_PAGE);
-    }, 'Goes back to following the end of the transcript.'),
+    readTranscriptFromStart: action(
+      () => {
+        setTranscriptFromStart(true);
+        setTranscriptShown(TRANSCRIPT_FIRST_PAGE);
+      },
+      'Shows the beginning of the transcript, to be read forwards.',
+      { ambient: true },
+    ),
+    readTranscriptLive: action(
+      () => {
+        setTranscriptFromStart(false);
+        setTranscriptShown(TRANSCRIPT_FIRST_PAGE);
+      },
+      'Goes back to following the end of the transcript.',
+      { ambient: true },
+    ),
 
     /*
       Where a panel opens is no longer answered here.
@@ -2781,8 +2790,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * need telling, and a host-held flag would leave the module no way to tell them.
      */
     extractionOpen: state(extractionOpen, 'Whether the extraction panel is open.'),
-    openExtractionPanel: action(() => setExtractionOpen(true), 'Opens the extraction panel.'),
-    closeExtractionPanel: action(() => setExtractionOpen(false), 'Closes the extraction panel.'),
+    openExtractionPanel: action(() => setExtractionOpen(true), 'Opens the extraction panel.', { ambient: true }),
+    closeExtractionPanel: action(() => setExtractionOpen(false), 'Closes the extraction panel.', { ambient: true }),
     level: state(level, 'Microphone loudness as the voice detector measures it, 0–1.'),
     speaking: state(speaking, 'Whether the microphone level currently counts as speech.'),
     /**
@@ -3305,6 +3314,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     refreshProposals: action(
       (collection?: string) => loadProposals(collection),
       'Re-reads what is staged on a call, or on the live one.',
+      { ambient: true },
     ),
     /**
      * Keep a suggestion, or drop it.
@@ -3344,19 +3354,26 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       await keep(id);
     }, 'Keeps a suggestion, as proposed or as edited.'),
     /** Open one suggestion for editing, seeded with what the model proposed. */
-    editProposal: action((id: string) => {
-      const proposal = allProposals().find((p) => p.id === id);
-      if (!proposal) return;
-      setProposalDraft(Object.fromEntries(proposal.fields.map((f) => [f.name, f.value])));
-      setEditingProposal(id);
-    }, 'Opens one suggestion for editing, seeded with what the model proposed.'),
+    editProposal: action(
+      (id: string) => {
+        const proposal = allProposals().find((p) => p.id === id);
+        if (!proposal) return;
+        setProposalDraft(Object.fromEntries(proposal.fields.map((f) => [f.name, f.value])));
+        setEditingProposal(id);
+      },
+      'Opens one suggestion for editing, seeded with what the model proposed.',
+      { ambient: true },
+    ),
     /** Set one field of the open draft. Takes the name, so one action serves every control. */
     setProposalField: action(
       (name: string, value: string) => setProposalDraft({ ...proposalDraft(), [name]: value }),
       'Sets one field of the open draft, by property name.',
+      { ambient: true },
     ),
     /** Close the open draft, discarding what was typed. */
-    cancelProposalEdit: action(() => closeProposalEdit(), 'Closes the open draft, discarding what was typed.'),
+    cancelProposalEdit: action(() => closeProposalEdit(), 'Closes the open draft, discarding what was typed.', {
+      ambient: true,
+    }),
     /**
      * Apply one suggested change to an agreed record: the staged value becomes the real one.
      *
@@ -3419,9 +3436,13 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       }
     }, 'Carries out the decision waiting in tiedDecision, with everything tied to it.'),
     /** Put the held decision down without making it. */
-    cancelTiedDecision: action(() => {
-      if (!tiedBusy()) setTiedDecision(null);
-    }, 'Puts the decision waiting in tiedDecision down without making it.'),
+    cancelTiedDecision: action(
+      () => {
+        if (!tiedBusy()) setTiedDecision(null);
+      },
+      'Puts the decision waiting in tiedDecision down without making it.',
+      { ambient: true },
+    ),
     /**
      * Write something a person typed into the transcript, at the moment they typed it.
      *

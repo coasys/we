@@ -507,9 +507,12 @@ export function createPocketStore(deps: ModuleStoreDeps) {
     toggle: deps.action(
       () => (open() ? setOpen(false) : openPanel()),
       'Opens the Pocket panel, or closes it if it is open.',
+      { ambient: true },
     ),
-    close: deps.action(() => setOpen(false), 'Closes the Pocket panel.'),
-    show: deps.action(openPanel, 'Opens the Pocket panel and resolves the folder it was last looking at.'),
+    close: deps.action(() => setOpen(false), 'Closes the Pocket panel.', { ambient: true }),
+    show: deps.action(openPanel, 'Opens the Pocket panel and resolves the folder it was last looking at.', {
+      ambient: true,
+    }),
 
     // ── Where in the Pocket you are ──────────────────────────────────────────
     /** The folder being looked at. Empty only until the root has been resolved. */

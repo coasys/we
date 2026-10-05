@@ -73,6 +73,12 @@ export interface StoreEntry {
   name: string;
   state: Record<string, StateMemberMeta>;
   actions: string[];
+  /**
+   * Actions safe to run with nobody asking — navigating, opening a surface, editing an unsaved draft.
+   * Every other action runs only when somebody did something to the part of the template calling it,
+   * so the validator can say so when one is wired to an event that happens by itself.
+   */
+  ambient?: string[];
 }
 
 /** A token category (e.g. space, color, size) */
@@ -177,7 +183,7 @@ export interface ModuleCatalogEntry {
   /** What a person agrees to, derived. */
   capabilities: string[];
   /** The store's public members — `modules.<id>.<name>` — with what each is and means. */
-  members: { name: string; kind: 'state' | 'action'; doc: string }[];
+  members: { name: string; kind: 'state' | 'action'; doc: string; ambient?: true }[];
   /** Fragments a template may place with `$part` as `<id>.<name>`. */
   parts: { name: string; subject?: string }[];
   /** Panels, by the name `meta.panels[].dock` addresses. */

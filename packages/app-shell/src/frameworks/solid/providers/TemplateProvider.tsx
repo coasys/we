@@ -49,7 +49,7 @@ import { CollectionBlock, getEntity } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import type { DocumentAccess } from '@we/module-shared';
 import type { TemplateSchema } from '@we/schema-shared';
-import { expandViewRoutes, hasViewsMarker, SPACE_ROUTE_PATH } from '@we/schema-shared';
+import { expandViewRoutes, hasViewsMarker, installGestureTracking, SPACE_ROUTE_PATH } from '@we/schema-shared';
 import type { VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
 import { CHROME_RAIL_WIDTH } from '@we/template-shell';
@@ -736,7 +736,18 @@ export default function TemplateProvider() {
     who wrote this schema — and the renderer has no way to know that. It stays neutral and walks
     whatever bag it is given, which is the same division that keeps `ModuleStoreDeps` honest.
   */
-  const chromeBag = buildTemplateBag(stores, { grants: CHROME_TIER });
+  /*
+    Whether somebody asked, for the gesture gate on both bags below: an action other than an
+    `ambient` one runs only when a press, a key or typing reached the part of the template calling
+    it, so an image that finishes loading cannot write into a space. See `gesture.ts` in
+    `@we/schema-shared`.
+
+    Chrome only reports — runs the action and says so in the console. It is authored here and
+    reviewed, so refusing there buys little and could break something nobody has exercised since;
+    the report is how anything that slips through gets found before it is turned on.
+  */
+  onCleanup(installGestureTracking(window));
+  const chromeBag = buildTemplateBag(stores, { grants: CHROME_TIER, gesture: 'report' });
   /*
     The space bag, with the host's own confirmation in front of every destructive action.
 
@@ -753,6 +764,8 @@ export default function TemplateProvider() {
   const templateBag = buildTemplateBag(stores, {
     grants: SPACE_TIER,
     onDestructive: (path, args) => shellStore.requestDestructive(path, args),
+    // Enforced: this is the bag a stranger's template renders against.
+    gesture: 'enforce',
   });
 
   onCleanup(provideTemplateBag(templateBag));

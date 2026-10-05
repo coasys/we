@@ -13,11 +13,14 @@ import {
   expandDefinitions,
   hasToken,
   markReactive,
+  newGestureOwner,
   noMemo,
   pruneUnresolvedWhere,
   REACTIVE_ACCESSOR,
+  registerGestureOwner,
   resolveProp,
   resolveQueryProp,
+  runAsOwner,
   scopeIsAnchored,
   validateField,
 } from '@we/schema-shared';
@@ -1305,6 +1308,29 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
   });
 
   /*
+    Gesture credit: every handler this node hands a component runs as this node.
+
+    A template's write runs only when somebody asked, and "asked" usually means a press still being
+    dispatched. Some components answer a press later — after encoding a crop, after a lookup — and by
+    then it has finished. A press that passed through this node's wrapper credits it, and a handler
+    called afterwards may spend that credit once (see `gesture.ts` in `@we/schema-shared`).
+
+    Done here, around every handler, because this is the one place every handler is built. The
+    alternative is each component carrying the press across its own awaits — a convention no foreign
+    element bundled from a library could follow.
+  */
+  const gestureOwner = newGestureOwner();
+  if (Object.keys(node.props ?? {}).some(isEventProp)) {
+    createEffect(() => {
+      if (wrapperRef) registerGestureOwner(wrapperRef, gestureOwner);
+    });
+  }
+  const asThisNode = (handler: unknown): unknown =>
+    typeof handler === 'function'
+      ? (...args: unknown[]) => runAsOwner(gestureOwner, () => (handler as (...a: unknown[]) => unknown)(...args))
+      : handler;
+
+  /*
     A themed node is *applied*, not declared — the same distinction the document root, the scoped
     template wrapper, the theme editor's preview and its role swatches all needed.
 
@@ -1395,7 +1421,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
       for (const [key, memo] of Object.entries(propMemos)) {
         if (isEventProp(key)) {
           const val = memo();
-          attrs[key] = Array.isArray(val) ? composeHandlers(val) : val;
+          attrs[key] = asThisNode(Array.isArray(val) ? composeHandlers(val) : val);
         }
       }
       return attrs;
@@ -1425,15 +1451,16 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
     const attrs: Record<string, unknown> = {};
     for (const [key, memo] of Object.entries(propMemos)) {
       const val = memo();
-      attrs[key] = isEventProp(key) && Array.isArray(val) ? composeHandlers(val) : val;
+      if (isEventProp(key)) attrs[key] = asThisNode(Array.isArray(val) ? composeHandlers(val) : val);
+      else attrs[key] = val;
     }
     // Pick up props added dynamically via updateSchema that had no memo at mount time
     const currentProps = node.props as Record<string, unknown> | undefined;
     if (currentProps) {
       for (const key of Object.keys(currentProps)) {
         if (!(key in propMemos)) {
-          const resolved = resolveProp(currentProps[key], stores, effectiveContext, createMemo);
-          attrs[key] = deepUnwrap(resolved);
+          const resolved = deepUnwrap(resolveProp(currentProps[key], stores, effectiveContext, createMemo));
+          attrs[key] = isEventProp(key) ? asThisNode(resolved) : resolved;
         }
       }
     }
