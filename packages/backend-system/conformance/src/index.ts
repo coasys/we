@@ -63,6 +63,8 @@ export const CONFORMANCE_CASES = [
   'schema.module-entity',
   'schema.hints-round-trip',
   'relations.ordered-read',
+  'relations.create-links-one',
+  'relations.create-links-many',
   'relations.replace-whole',
   'relations.member-type',
   'live.pushes-writes',
@@ -357,6 +359,44 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           expect((row.children as Row[]).map((r) => r.id)).toEqual([c.id, a.id]);
         },
       );
+
+      /*
+        A create that names a relation links it.
+
+        What `record.create('Loan', { status, item })` relies on, and the only way a template can make
+        a record that points at another. The in-memory backend used to drop relation keys on create
+        while AD4M's `save()` sets them, so a template worked in the app and was broken in the preview
+        — and nothing compared the two.
+      */
+      test('relations.create-links-one', 'links a to-one relation named in a create', async () => {
+        const place = await model('LocationBlock').create(subject.dataset, { name: 'Ham Wall' });
+        const event = await model('EventBlock').create(subject.dataset, {
+          title: 'Dawn walk',
+          startDate: '2026-10-10',
+          location: place.id,
+        });
+
+        const [row] = await reader('EventBlock').findAll(subject.dataset, {
+          where: { id: event.id },
+          include: { location: true },
+        });
+        expect((row.location as Row | undefined)?.id).toBe(place.id);
+      });
+
+      test('relations.create-links-many', 'links a to-many relation named in a create', async () => {
+        const Collection = model('CollectionBlock');
+        const [a, b] = [
+          await Collection.create(subject.dataset, { kind: 'text' }),
+          await Collection.create(subject.dataset, { kind: 'text' }),
+        ];
+        const post = await Collection.create(subject.dataset, { kind: 'post', children: [a.id, b.id] });
+
+        const [row] = await reader('CollectionBlock').findAll(subject.dataset, {
+          where: { id: post.id },
+          include: { children: true },
+        });
+        expect((row.children as Row[]).map((r) => r.id)).toEqual([a.id, b.id]);
+      });
 
       test('relations.member-type', 'says what each member of a heterogeneous relation is', async () => {
         // Without this a consumer holding a mixed bag can do nothing with it — a graph cannot address

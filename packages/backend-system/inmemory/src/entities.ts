@@ -402,7 +402,28 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         }
         tableOf(dataset, name).push(row);
         notify(dataset);
-        return Entity.hydrate(dataset, row);
+        const instance = Entity.hydrate(dataset, row);
+        /*
+          Relations named in the data are linked, not dropped.
+
+          They used to be skipped, so `record.create('Loan', { item })` wrote a loan pointing at
+          nothing — while AD4M's `save()` sets relations on a new instance, so the two backends
+          disagreed and the preview, built on this one, showed a template broken that was not. Linked
+          through the same accessors as `add<Relation>`, so this write and that one keep the foreign
+          keys in step in one place. An id or an instance, one or a list.
+        */
+        for (const [key, value] of Object.entries(data)) {
+          if (!relationNames.has(key) || value == null) continue;
+          const add = (instance as unknown as Record<string, unknown>)[
+            `add${key.charAt(0).toUpperCase()}${key.slice(1)}`
+          ];
+          if (typeof add !== 'function') continue;
+          for (const one of Array.isArray(value) ? value : [value]) {
+            const id = typeof one === 'string' ? one : (one as AnyRow | null)?.id;
+            if (typeof id === 'string' && id) await (add as (target: string) => Promise<void>).call(instance, id);
+          }
+        }
+        return instance;
       }
 
       static async update(handle: unknown, id: string, data: Record<string, unknown>): Promise<Entity | null> {
