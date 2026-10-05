@@ -8,6 +8,7 @@
  * Options:
  *   --output, -o <path>   Output file (default: <stem>.png or <stem>.svg)
  *   --fixture <id>        Bundled fixture for sample data (discord, twitter, instagram, youtube, kanban, events)
+ *   --fixture-file <path> A fixture from a file; with no template given, renders the template it carries
  *   --viewport <WxH>      Viewport dimensions (default: 1440x900)
  *   --scale <n>           Device scale factor (default: 2)
  *   --svg                 Produce SVG via foreignObject instead of PNG
@@ -63,8 +64,9 @@ function findPreviewDist(): string {
 
 async function startServer(
   distDir: string,
-  templateJson: string,
+  templateJson: string | undefined,
   port: number,
+  fixtureJson?: string,
 ): Promise<{ server: ReturnType<typeof createServer>; port: number }> {
   const indexHtml = await readFile(resolve(distDir, 'index.html'), 'utf-8');
 
@@ -72,10 +74,15 @@ async function startServer(
     const url = new URL(req.url ?? '/', 'http://localhost');
     const pathname = url.pathname;
 
-    if (pathname === '/__cli_template__') {
+    if (pathname === '/__cli_template__' && templateJson !== undefined) {
       // Same origin as the page asking for it, so no CORS header: nothing else should read it.
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(templateJson);
+      return;
+    }
+    if (pathname === '/__cli_fixture__' && fixtureJson !== undefined) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(fixtureJson);
       return;
     }
 
@@ -144,31 +151,44 @@ async function render(args: RenderArgs): Promise<void> {
     process.exit(1);
   }
 
-  const templatePath = resolve(process.cwd(), args.templatePath);
-  let templateJson: string;
-  try {
-    templateJson = await readFile(templatePath, 'utf-8');
-  } catch {
-    console.error(`Cannot read template: ${templatePath}`);
-    process.exit(1);
+  let template: Record<string, unknown> = {};
+  let templateJson: string | undefined;
+  if (args.templatePath) {
+    const templatePath = resolve(process.cwd(), args.templatePath);
+    try {
+      templateJson = await readFile(templatePath, 'utf-8');
+    } catch {
+      console.error(`Cannot read template: ${templatePath}`);
+      process.exit(1);
+    }
+    try {
+      template = JSON.parse(templateJson);
+    } catch (e) {
+      console.error(`Invalid JSON: ${(e as Error).message}`);
+      process.exit(1);
+    }
+
+    const version = (template.schemaVersion as number | undefined) ?? SUPPORTED_SCHEMA_VERSION;
+    if (version > SUPPORTED_SCHEMA_VERSION) {
+      console.error(`Schema version ${version} exceeds supported version ${SUPPORTED_SCHEMA_VERSION}. Update @we/cli.`);
+      process.exit(1);
+    }
+
+    if (!template.id) template.id = 'cli-external';
+    templateJson = JSON.stringify(template);
   }
 
-  let template: Record<string, unknown>;
-  try {
-    template = JSON.parse(templateJson);
-  } catch (e) {
-    console.error(`Invalid JSON: ${(e as Error).message}`);
-    process.exit(1);
+  // A fixture from a file — a cartridge's content, shapes and templates — served beside the page.
+  let fixtureJson: string | undefined;
+  if (args.fixtureFile) {
+    const fixturePath = resolve(process.cwd(), args.fixtureFile);
+    try {
+      fixtureJson = JSON.stringify(JSON.parse(await readFile(fixturePath, 'utf-8')));
+    } catch (e) {
+      console.error(`Cannot read fixture: ${fixturePath}\n  ${(e as Error).message}`);
+      process.exit(1);
+    }
   }
-
-  const version = (template.schemaVersion as number | undefined) ?? SUPPORTED_SCHEMA_VERSION;
-  if (version > SUPPORTED_SCHEMA_VERSION) {
-    console.error(`Schema version ${version} exceeds supported version ${SUPPORTED_SCHEMA_VERSION}. Update @we/cli.`);
-    process.exit(1);
-  }
-
-  if (!template.id) template.id = 'cli-external';
-  templateJson = JSON.stringify(template);
 
   const distDir = findPreviewDist();
   try {
@@ -178,7 +198,7 @@ async function render(args: RenderArgs): Promise<void> {
     process.exit(1);
   }
 
-  const { server, port } = await startServer(distDir, templateJson, args.port);
+  const { server, port } = await startServer(distDir, templateJson, args.port, fixtureJson);
   const base = `http://127.0.0.1:${port}`;
 
   try {
@@ -205,7 +225,9 @@ async function render(args: RenderArgs): Promise<void> {
       });
       page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
 
-      const params = new URLSearchParams({ templateUrl: `${base}/__cli_template__` });
+      const params = new URLSearchParams();
+      if (templateJson !== undefined) params.set('templateUrl', `${base}/__cli_template__`);
+      if (fixtureJson !== undefined) params.set('fixtureUrl', `${base}/__cli_fixture__`);
       if (args.route) params.set('route', args.route);
       if (args.fixture) params.set('fixture', args.fixture);
       if (args.bare) params.set('bare', '1');
@@ -234,8 +256,8 @@ async function render(args: RenderArgs): Promise<void> {
         await page.screenshot({ path: outputPath, fullPage: args.fullPage });
       }
 
-      console.log(`\ntemplate  ${template.id}`);
-      console.log(`fixture   ${args.bare ? '(bare: no shell)' : (args.fixture ?? '(default)')}`);
+      console.log(`\ntemplate  ${template.id ?? "(the fixture's own)"}`);
+      console.log(`fixture   ${args.bare ? '(bare: no shell)' : (args.fixtureFile ?? args.fixture ?? '(default)')}`);
       console.log(`viewport  ${args.width}x${args.height} @${args.scale}x`);
       console.log(`output    ${outputPath}`);
       if (info?.path) console.log(`route     ${info.path}`);

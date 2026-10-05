@@ -122,18 +122,87 @@ export interface FixturePresence {
   path?: string;
 }
 
+/**
+ * A kind of record this space defines — written as a `Shape`, the record the model wizard saves, and
+ * adopted the same way, so a template can `$query` it like a core model.
+ *
+ * This is what a space's own data model looks like on disk, and what a cartridge carries: the
+ * showcase templates claim nothing new was added; a cartridge's claim is the opposite, that new kinds
+ * of thing can be defined as data.
+ */
+export interface FixtureShape {
+  /** The entity's name. Must be the key of its one entry in `manifest.entities`. */
+  name: string;
+  icon?: string;
+  description?: string;
+  /** The definition, as `draftToManifest` would write it: one entity extending `WeNode`. */
+  manifest: { version: string; entities: Record<string, unknown> };
+}
+
+/**
+ * One record of any entity — a shape this fixture defines, or a core model such as `LocationBlock`,
+ * `ImageBlock`, `TaskState` or `EventBlock`.
+ *
+ * Relations are written after every record exists, because a link names its target by id and the
+ * target has to be there: the same reason `arranges` is deferred.
+ */
+export interface FixtureRecord {
+  entity: string;
+  id: string;
+  fields?: Record<string, unknown>;
+  /** By relation name: one id for a to-one relation, a list for a to-many one. */
+  relations?: Record<string, string | string[]>;
+  author?: string;
+  createdAt?: string;
+}
+
+/** A theme this space carries, as the parameter object a theme is (see `THEME_AUTHORING.md`). */
+export interface FixtureTheme {
+  id: string;
+  name: string;
+  icon?: string;
+  overrides: Record<string, unknown>;
+}
+
 export interface Fixture {
   /** Stable id — what the shoot script takes on the command line. */
   id: string;
-  /** The template this content is shaped for, matching a bundled template id. */
+  /**
+   * The template this content is shaped for: a bundled template's id, or the id of one of
+   * {@link templates}.
+   */
   templateId: string;
   /** Optional theme override, when the fixture is for judging a theme rather than a template. */
   themeId?: string;
-  space: { name: string; description: string; avatar?: string };
+  space: {
+    name: string;
+    description: string;
+    avatar?: string;
+    /** The sections the community has on, in order — `Space.enabledViews`. Absent means the default. */
+    enabledViews?: string[];
+    /** The modules the community has on — `Space.enabledModules`. Absent means the default. */
+    enabledModules?: string[];
+  };
   agents: FixtureAgent[];
   signalTypes?: FixtureSignalType[];
   presence?: FixturePresence[];
   content: FixtureNode[];
+  /** Kinds of record this space defines. Written and adopted before {@link records}. */
+  shapes?: FixtureShape[];
+  /** Records of shapes and core models, beyond the posts in {@link content}. */
+  records?: FixtureRecord[];
+  /**
+   * Templates this space carries — a shell, and sections (`meta.role: 'view'`) — stored as the
+   * space's own `Template` records, which is how an installed template arrives in the real app.
+   */
+  templates?: Array<{ id: string; meta: Record<string, unknown> } & Record<string, unknown>>;
+  /** A theme this space carries, stored as the space's own `Theme` record. */
+  theme?: FixtureTheme;
+  /**
+   * Modules the preview host should register. It registers none by default — a globe or a call in a
+   * headless screenshot only adds noise — so a fixture whose template needs one says so.
+   */
+  modules?: string[];
   /**
    * Route within the template where a screenshot of this fixture should land — e.g.
    * `/channel/discord-general`. Node ids are deterministic (see {@link FixtureNode.id}), so this is

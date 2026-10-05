@@ -21,7 +21,14 @@ import { applyFixture, datasetIdFor, type Fixture, type FixtureId, FIXTURES, pat
  */
 
 /** Which fixture to load, from `?fixture=`. Defaults to the first — the host must show *something*. */
+/** A fixture loaded from a URL (`?fixtureUrl=`), which wins over a bundled id. Set by the entry. */
+let externalFixture: Fixture | undefined;
+export function useExternalFixture(fixture: Fixture): void {
+  externalFixture = fixture;
+}
+
 export function requestedFixture(): Fixture {
+  if (externalFixture) return externalFixture;
   const id = new URLSearchParams(window.location.search).get('fixture') as FixtureId | null;
   if (id && id in FIXTURES) return FIXTURES[id];
   if (id) console.warn(`[we-preview] no fixture '${id}' — have ${Object.keys(FIXTURES).join(', ')}`);
@@ -89,7 +96,16 @@ export const inMemoryConnector: BackendConnector = {
     if (!dataset) throw new Error(`[we-preview] seeded dataset '${datasetId}' is missing`);
 
     const applied = await applyFixture(
-      { getEntity, dataset: dataset.handle, datasetId, sharedId: dataset.sharedId },
+      {
+        getEntity,
+        dataset: dataset.handle,
+        datasetId,
+        sharedId: dataset.sharedId,
+        // So a fixture's own shapes exist before their records are written; the app adopts them
+        // again from the `Shape` records on entry, as it would any space's.
+        declareShape: (manifest, moduleId) =>
+          ports.schemas.declareInDataset(dataset.handle, manifest as never, { moduleId }),
+      },
       fixture,
     );
 

@@ -13,7 +13,7 @@
  * loading the page to discover it, and the second load would produce different ids anyway.
  */
 import { editorState, textBlockId, textContent } from './editorState';
-import type { Fixture, FixtureNode } from './types';
+import type { Fixture, FixtureNode, FixtureShape } from './types';
 
 /** The pieces of the host a fixture needs. Passed in rather than imported, so this stays neutral. */
 export interface ApplyDeps {
@@ -41,6 +41,11 @@ export interface ApplyDeps {
    * quietly renders the *default* template over it. Cost an hour; hence this comment.
    */
   sharedId?: string;
+  /**
+   * Declare a shape's entity in the dataset, so its records can be written before the app adopts it.
+   * The backend's `schemas.declareInDataset`. Required only by a fixture that carries `shapes`.
+   */
+  declareShape?(manifest: FixtureShape['manifest'], moduleId: string): unknown;
 }
 
 /** Only what this file touches — what the loose registry type above is narrowed to on the way in. */
@@ -103,8 +108,12 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
     // What the space opens as. Without these the preview shows whichever template the *agent*
     // defaults to, which is `default` — so every fixture would photograph the same layout.
     defaultTemplateId: fixture.templateId,
-    ...(fixture.themeId ? { defaultThemeId: fixture.themeId } : {}),
+    ...(fixture.themeId || fixture.theme ? { defaultThemeId: fixture.themeId ?? fixture.theme!.id } : {}),
+    ...(fixture.space.enabledViews ? { enabledViews: JSON.stringify(fixture.space.enabledViews) } : {}),
+    ...(fixture.space.enabledModules ? { enabledModules: JSON.stringify(fixture.space.enabledModules) } : {}),
   });
+
+  await writeCarried(deps, fixture, getEntity);
 
   // Signal types first, and by slug: a fixture says a message was hearted, and the id that means
   // "heart" in this space does not exist until the type does. Templates resolve them the same way,
@@ -222,4 +231,115 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
   }
 
   return { datasetId, nodes: created, path: pathFor(fixture) };
+}
+
+/**
+ * A JSON document as the file field the app reads it from.
+ *
+ * `Template.schema`, `Theme.overrides` and `Shape.definition` are `format: 'file'`, and the app decodes
+ * them with `decodeFileAsJson` / `decodeFileAsString`, which take a `data:` URI — the form AD4M's file
+ * storage hands back. The in-memory backend stores whatever it is given, so the fixture writes that
+ * form itself. UTF-8 first, because `btoa` only takes Latin-1 and a template is full of em dashes.
+ */
+function asFile(value: unknown, mime = 'application/json'): string {
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  const bytes = new TextEncoder().encode(text);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return `data:${mime};base64,${btoa(binary)}`;
+}
+
+const toSnake = (value: string) => value.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+
+/**
+ * What a space carries beyond its posts: its templates, its theme, its own kinds of record, and
+ * records of those and of core models — written as the records the real app would hold after an
+ * install, so the app reads them through its ordinary paths rather than a preview-only one.
+ */
+async function writeCarried(
+  deps: ApplyDeps,
+  fixture: Fixture,
+  getEntity: (name: string) => EntityClass,
+): Promise<void> {
+  const { dataset } = deps;
+
+  for (const template of fixture.templates ?? []) {
+    const meta = template.meta as { name?: string; description?: string; icon?: string; role?: string };
+    await getEntity('Template').create(dataset, {
+      id: `${fixture.id}-template-${template.id}`,
+      name: meta.name ?? template.id,
+      description: meta.description ?? '',
+      icon: meta.icon ?? 'layout',
+      origin: 'custom',
+      version: 1,
+      slug: template.id,
+      ...(meta.role ? { role: meta.role } : {}),
+      schema: asFile(template),
+    });
+  }
+
+  if (fixture.theme) {
+    const { id, name, icon, overrides } = fixture.theme;
+    await getEntity('Theme').create(dataset, {
+      id,
+      name,
+      icon: icon ?? 'palette',
+      origin: 'custom',
+      version: 1,
+      slug: id,
+      overrides: asFile(JSON.stringify(overrides)),
+    });
+  }
+
+  /*
+    Shapes before records: a record of a shape cannot be written until its entity exists. The
+    `Shape` record is what the app adopts on entry (ShapeStore reads every one in the dataset); the
+    declaration here is only so this function can write the records first.
+  */
+  for (const shape of fixture.shapes ?? []) {
+    if (!deps.declareShape) {
+      throw new Error(`fixture '${fixture.id}' carries shapes, so applyFixture needs a declareShape dependency`);
+    }
+    const shapeId = `we://shapes/${fixture.id}-${toSnake(shape.name)}`;
+    await getEntity('Shape').create(dataset, {
+      id: `${fixture.id}-shape-${toSnake(shape.name)}`,
+      name: shape.name,
+      ...(shape.description ? { description: shape.description } : {}),
+      ...(shape.icon ? { icon: shape.icon } : {}),
+      shapeId,
+      version: 1,
+      definition: asFile(shape.manifest),
+    });
+    await deps.declareShape(shape.manifest, `shape/${shapeId}`);
+  }
+
+  /*
+    Records in two passes. A relation names its target by id, and the in-memory backend keeps a
+    to-many link as a foreign key on the target row, so the target must exist before the link does —
+    the same reason `arranges` is deferred.
+  */
+  const instances = new Map<string, RecordInstance & Record<string, unknown>>();
+  for (const record of fixture.records ?? []) {
+    const instance = await getEntity(record.entity).create(dataset, {
+      id: record.id,
+      ...(record.fields ?? {}),
+      ...(record.author ? { author: record.author } : {}),
+      ...(record.createdAt ? { createdAt: record.createdAt, timestamp: record.createdAt } : {}),
+    });
+    instances.set(record.id, instance as RecordInstance & Record<string, unknown>);
+  }
+  for (const record of fixture.records ?? []) {
+    const instance = instances.get(record.id)!;
+    for (const [relation, targets] of Object.entries(record.relations ?? {})) {
+      const add = instance[`add${relation.charAt(0).toUpperCase()}${relation.slice(1)}`];
+      if (typeof add !== 'function') {
+        throw new Error(
+          `fixture '${fixture.id}': ${record.entity} has no relation "${relation}" (record ${record.id})`,
+        );
+      }
+      for (const target of Array.isArray(targets) ? targets : [targets]) {
+        await (add as (id: string) => Promise<void>).call(instance, target);
+      }
+    }
+  }
 }
