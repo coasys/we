@@ -4,6 +4,7 @@ import { role, semanticValues, space } from '@we/tokens';
 import type { ContextData, StateMemberMeta } from './contextTypes';
 import { expandDefinitions } from './definitions';
 import { checkExpression, ExpressionSyntaxError, isCallTime, isExpressionToken, parseExpression } from './expressions';
+import type { Expr } from './expressions/ast';
 import { isTemplateElement } from './templateElements';
 import type { SchemaNode } from './types';
 import type { ValidationError, ValidationResult } from './validators';
@@ -186,6 +187,19 @@ function isTokenObject(value: unknown): boolean {
 }
 
 // ── Build context ──────────────────────────────────────────────────
+
+/**
+ * The same context, knowing some more kinds of record — a space's own shapes, a foreign app's models,
+ * the shapes a cartridge carries.
+ *
+ * The generated context knows WE's models and nothing a space defines, so a template judged without
+ * this reports every query on a community's own `Sighting` as an unknown entity. The editor adds the
+ * space it is editing in; anything judging a template away from its space adds what it will meet.
+ */
+export function withEntities(context: ValidationContext, names: Iterable<string>): ValidationContext {
+  const extra = [...names].filter((name) => !context.entityNames.has(name));
+  return extra.length ? { ...context, entityNames: new Set([...context.entityNames, ...extra]) } : context;
+}
 
 export function buildValidationContext(data: ContextData): ValidationContext {
   const componentNames = new Set<string>();
@@ -413,6 +427,14 @@ interface WalkState {
    * to the console and no-ops, so the control renders, takes the click and does nothing.
    */
   queryScope: Set<string>;
+  /**
+   * The relations each hoisted query in scope `include`s, by query name.
+   *
+   * An included relation arrives as the related record, where an un-included one is its id — so the
+   * same comparison works against one query and silently matches nothing against the other. See
+   * {@link includedRelationComparisons}.
+   */
+  queryIncludes: Map<string, Set<string>>;
   /**
    * The declared `type` of each `$localState` field in scope, for the checks that care.
    *
@@ -774,6 +796,91 @@ function checkExpressionToken(
       severity: issue.severity,
     });
   }
+  for (const message of includedRelationComparisons(ast, state.queryIncludes)) {
+    errors.push({ path: `${path}.$`, message, severity: 'warning' });
+  }
+}
+
+/** `local.<name>`, as the expression tree spells it — or undefined. */
+function localQueryName(expr: Expr | undefined): string | undefined {
+  if (expr?.kind !== 'member' || expr.object.kind !== 'ident' || expr.object.name !== 'local') return undefined;
+  return expr.property;
+}
+
+/** Every sub-expression of a node, whatever its kind. */
+function subExpressions(expr: Expr): Expr[] {
+  const out: Expr[] = [];
+  const take = (value: unknown) => {
+    if (!value || typeof value !== 'object') return;
+    if ('kind' in value && 'span' in value) out.push(value as Expr);
+    else if ('key' in value && 'value' in value) take((value as { value: unknown }).value);
+  };
+  for (const value of Object.values(expr)) {
+    if (Array.isArray(value)) value.forEach(take);
+    else take(value);
+  }
+  return out;
+}
+
+/**
+ * Comparisons that treat an included relation as an id — which it is not, so they never match.
+ *
+ * With `include: { item: true }`, `loan.item` is the item record; without it, the item's id. So
+ * `local.loans.find(l, l.item == it.id)` and `find(local.loans, { item: it.id })` work against one
+ * query and match nothing against the other, with no error anywhere: a tool library read every tool
+ * as available because of it. Two shapes are reported:
+ *
+ * - a comprehension over an including query comparing `row.<relation>` itself (not `.id`), and
+ * - a `find`/`filter` over one with a where-object keyed by the included relation.
+ *
+ * A warning rather than an error: comparing two records is legal, just almost never meant.
+ */
+function includedRelationComparisons(ast: Expr, includes: Map<string, Set<string>>): string[] {
+  if (!includes.size) return [];
+  const found: string[] = [];
+  const visit = (expr: Expr, rows: Map<string, { query: string; relations: Set<string> }>) => {
+    if (expr.kind === 'macro') {
+      const query = localQueryName(expr.receiver);
+      const relations = query ? includes.get(query) : undefined;
+      visit(expr.receiver, rows);
+      const inner = new Map(rows);
+      if (query && relations) inner.set(expr.variable, { query, relations });
+      else inner.delete(expr.variable);
+      visit(expr.body, inner);
+      return;
+    }
+    if (expr.kind === 'binary' && (expr.op === '==' || expr.op === '!=' || expr.op === 'in')) {
+      for (const side of [expr.left, expr.right]) {
+        if (side.kind !== 'member' || side.object.kind !== 'ident') continue;
+        const row = rows.get(side.object.name);
+        if (!row?.relations.has(side.property)) continue;
+        found.push(
+          `"${side.object.name}.${side.property}" is the included ${side.property} record, not its id, because ` +
+            `the query "${row.query}" includes ${side.property} — so this comparison never matches. ` +
+            `Compare "${side.object.name}.${side.property}.id".`,
+        );
+      }
+    }
+    if (expr.kind === 'call' && (expr.callee === 'find' || expr.callee === 'filter')) {
+      const operands = expr.receiver ? [expr.receiver, ...expr.args] : expr.args;
+      const query = localQueryName(operands[0]);
+      const relations = query ? includes.get(query) : undefined;
+      const where = operands[1];
+      if (query && relations && where?.kind === 'object') {
+        for (const entry of where.entries) {
+          if (!relations.has(entry.key)) continue;
+          found.push(
+            `The where-object key "${entry.key}" compares the included ${entry.key} record, because the query ` +
+              `"${query}" includes ${entry.key} — so it never equals an id. Use a comprehension: ` +
+              `local.${query}.${expr.callee}(row, row.${entry.key}.id == …).`,
+          );
+        }
+      }
+    }
+    for (const child of subExpressions(expr)) visit(child, rows);
+  };
+  visit(ast, new Map());
+  return found;
 }
 
 /**
@@ -861,7 +968,23 @@ function updateLocalScope(n: Record<string, unknown>, state: WalkState): WalkSta
   // check below must not treat it as read-only any more.
   if (hasState) for (const key of Object.keys(localState)) newQueries.delete(key);
   for (const key of newQueries) newFields.add(key);
-  return { ...state, localScope: newFields, queryScope: newQueries, localTypes: newTypes };
+  const newIncludes = new Map(state.queryIncludes);
+  if (hasQueries)
+    for (const [key, query] of Object.entries(queries as Record<string, unknown>)) {
+      const include = (query as { include?: unknown } | null)?.include;
+      const relations =
+        include && typeof include === 'object' ? Object.keys(include).filter((name) => !name.startsWith('$')) : [];
+      if (relations.length) newIncludes.set(key, new Set(relations));
+      else newIncludes.delete(key);
+    }
+  if (hasState) for (const key of Object.keys(localState)) newIncludes.delete(key);
+  return {
+    ...state,
+    localScope: newFields,
+    queryScope: newQueries,
+    queryIncludes: newIncludes,
+    localTypes: newTypes,
+  };
 }
 
 /**
@@ -1920,6 +2043,7 @@ function checkRoutes(
     localScope: new Set<string>(),
     localTypes: new Map<string, string>(),
     queryScope: new Set<string>(),
+    queryIncludes: new Map(),
     contextScope: new Set<string>(),
   };
   for (let i = 0; i < routes.length; i++) {
@@ -2091,6 +2215,7 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
     localScope: null,
     localTypes: new Map<string, string>(),
     queryScope: new Set(),
+    queryIncludes: new Map(),
     contextScope: new Set(),
     hasRoutesAncestor: false,
     isRouteEligible: true,

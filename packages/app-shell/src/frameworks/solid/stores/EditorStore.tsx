@@ -34,6 +34,7 @@ import {
   ensureNodeIds,
   expandDefinitions,
   stripNodeIds,
+  withEntities,
 } from '@we/schema-shared';
 import {
   Accessor,
@@ -262,8 +263,7 @@ export function EditorStoreProvider(props: ParentProps) {
   const getValidationCtx = createMemo(() => {
     const foreign = datasetStore.currentDatasetEntities().map((m) => m.name);
     const shapes = shapeStore.spaceShapes().map((s) => s.name);
-    if (foreign.length === 0 && shapes.length === 0) return baseValidationCtx;
-    return { ...baseValidationCtx, entityNames: new Set([...baseValidationCtx.entityNames, ...foreign, ...shapes]) };
+    return withEntities(baseValidationCtx, [...foreign, ...shapes]);
   });
 
   // --- Chat state ---
