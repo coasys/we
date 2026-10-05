@@ -50,7 +50,9 @@ export function asPointsOptions(options: PointLocationsOptions): PointsOptions {
     data: locationsOf(options) as unknown as PointsOptions['data'],
     label: 'name',
     style: [
-      { style: { size: options.markerSize ?? 15, color: options.defaultColor ?? '#00ffff', borderColor: '#ffffff' } },
+      // role-audit: palette — a pin's colour says which set it belongs to, not what it is for; the
+      // default is the one this layer has always documented.
+      { style: { size: options.markerSize ?? 15, color: options.defaultColor ?? '#00ffff', borderColor: 'white' } },
       // A field a row does not have leaves the rule above standing, so a location without a colour
       // takes the default and one without an avatar is a dot.
       { style: { color: { from: 'data.color' }, image: { from: 'data.avatar' } } },
