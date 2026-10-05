@@ -7313,6 +7313,10 @@
         "pendingInstall": {
           "type": "object"
         },
+        "safeMode": {
+          "type": "object",
+          "properties": ["on", "reason", "template"]
+        },
         "operationLoading": {
           "type": "string"
         }
@@ -7335,7 +7339,8 @@
         "publishToSpace",
         "deleteMarketplaceTemplate",
         "publishToMarketplace",
-        "refreshSpaceTemplates"
+        "refreshSpaceTemplates",
+        "leaveSafeMode"
       ],
       "ambient": ["cancelInstall", "refreshSpaceTemplates"]
     },

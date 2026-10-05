@@ -38,6 +38,7 @@ import {
   joinSpaceModalMount,
   namePrompt,
   removeAccountModal,
+  safeModeBanner,
   screenSourcePrompt,
   sidebar,
   templateEditor,
@@ -385,6 +386,9 @@ export function registerCoreSlots(): void {
     never resolves. See DestructivePrompt.schema.ts.
   */
   slotRegistry.register({ id: 'core:destructivePrompt', anchor: 'overlay', node: destructivePrompt, order: 9 });
+  // What safe mode is, and the way out of it. Not a safety prompt — it asks nothing — so a seed may
+  // restyle it like any other chrome. See `safeMode.ts`.
+  slotRegistry.register({ id: 'core:safeModeBanner', anchor: 'overlay', node: safeModeBanner, order: 10 });
   slotRegistry.register({ id: 'core:sidebar', anchor: 'dock-left', node: sidebar, order: 0 });
   slotRegistry.register({ id: 'core:templateEditor', anchor: 'dock-right', node: templateEditor, order: 0 });
   // The editor's panels, as docks — see `editorDocks.ts` for why they are not part of the node above.

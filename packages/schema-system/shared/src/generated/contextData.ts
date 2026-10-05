@@ -3037,6 +3037,7 @@ export const contextData: ContextData = {
         loading: { type: 'boolean' },
         defaultTemplateId: { type: 'string' },
         pendingInstall: { type: 'object' },
+        safeMode: { type: 'object', properties: ['on', 'reason', 'template'] },
         operationLoading: { type: 'string' },
       },
       actions: [
@@ -3058,6 +3059,7 @@ export const contextData: ContextData = {
         'deleteMarketplaceTemplate',
         'publishToMarketplace',
         'refreshSpaceTemplates',
+        'leaveSafeMode',
       ],
       ambient: ['cancelInstall', 'refreshSpaceTemplates'],
     },

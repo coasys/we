@@ -294,6 +294,7 @@ export const storeEntries: StoreEntry[] = [
       },
       refusedTemplates: { type: 'array', properties: ['id', 'name', 'icon', 'reason'] },
       switcherGroups: { type: 'array', properties: ['label', 'items'] },
+      safeMode: { type: 'object', properties: ['on', 'reason', 'template'] },
     },
     actions: [
       'switchTemplate',
@@ -1005,10 +1006,13 @@ export function generateStoresText(entries: StoreEntry[]): string {
         loading: 'boolean — the template lists are still being read. Gate empty states on it',
         defaultTemplateId:
           "string — id of the agent's preferred default template, used where no space or override decides. Persisted to AgentSettings.defaultTemplateId",
+        safeMode:
+          "{ on, reason, template } — whether this tab is in safe mode, where WE's own templates and themes are drawn in place of the chosen ones. reason is 'asked' (the ?safe address, the key or the menu) or 'unfinished-render' (a template did not finish loading last time — template is its id). Decided before anything rendered; fixed for the page",
         operationLoading:
           "string | null — the id of the template operation in flight, namespaced by kind ('marketplace-install:<id>', 'space-install:<id>'), or null. A key rather than a boolean so one row's spinner does not appear on every row",
       },
       actions: {
+        leaveSafeMode: '(): leaves safe mode and reloads with the templates and themes that were chosen',
         deleteTemplate: '(templateId: string): permanently deletes a custom template from the library',
         deleteRefusedTemplate:
           '(id: string): permanently deletes a library template that could not be loaded, by its refusedTemplates id',

@@ -57,6 +57,8 @@ const SOLID_TESTS = [
   'tests/reactionBadge.test.tsx',
   // Types into the host's password field through real primitives and watches where the value goes.
   'tests/credentialField.test.tsx',
+  // Safe mode reads the address, both storages and keys on a real window.
+  'tests/safeMode.test.ts',
   // Nothing renders, but every case measures a real element's box and reads real attributes off a
   // real tree — the DOM is the subject, and the frame maths is what a live cursor is right or
   // silently wrong by.

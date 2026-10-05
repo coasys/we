@@ -78,6 +78,7 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
       'core:namePrompt',
       'core:installPrompt',
       'core:destructivePrompt',
+      'core:safeModeBanner',
       'core:sidebar',
       'core:templateEditor',
       'core:chromeRail',
@@ -344,9 +345,11 @@ describe('module-declared anchors', () => {
   };
 
   function barChildren(): { type?: string }[] {
-    const gated = slotRegistry
-      .nodes()
-      .find((n) => n.type === '$if' && (n.props as { then?: { type?: string } } | undefined)?.then?.type === 'Row');
+    // The provider's bar by its first control — host chrome has gated rows of its own.
+    const gated = slotRegistry.nodes().find((n) => {
+      const then = (n.props as { then?: { type?: string; children?: { type?: string }[] } } | undefined)?.then;
+      return n.type === '$if' && then?.type === 'Row' && then.children?.[0]?.type === 'we-button';
+    });
     const row = (gated?.props as { then?: { children?: unknown[] } } | undefined)?.then;
     return (row?.children ?? []) as { type?: string }[];
   }

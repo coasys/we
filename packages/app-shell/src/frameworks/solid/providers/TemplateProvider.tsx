@@ -7,6 +7,7 @@ import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry'
 import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegistry';
 import { provideChromeBag, provideTemplateBag } from '@shared/registries/templateBag';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
+import { installRenderSettleOnExit, installSafeModeShortcut } from '@shared/safeMode';
 import { hostSourceBag } from '@shared/sources';
 import { flowStateOf } from '@shared/taskFlow';
 import { taskFlowLive } from '@shared/taskFlowLive';
@@ -748,6 +749,14 @@ export default function TemplateProvider() {
     the report is how anything that slips through gets found before it is turned on.
   */
   onCleanup(installGestureTracking(window));
+  /*
+    Two of safe mode's doors, opened before anything a template renders can listen: the key, heard
+    in the capture phase on the window, and the record of a render in progress, cleared when the
+    page leaves with JavaScript still running — so only a page that hung or crashed leaves it
+    behind for the next boot. See `safeMode.ts`.
+  */
+  onCleanup(installSafeModeShortcut(window));
+  onCleanup(installRenderSettleOnExit(window));
   const chromeBag = buildTemplateBag(stores, { grants: CHROME_TIER, gesture: 'report' });
   /*
     The space bag, with the host's own confirmation in front of every destructive action.
