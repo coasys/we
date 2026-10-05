@@ -150,3 +150,31 @@ describe('finding the references at all', () => {
     expect(inspectTemplateSurface(schema, SPACE_TIER).groups.sort()).toEqual(['content', 'navigation']);
   });
 });
+
+describe('elements a template may not mount', () => {
+  it('admits the template and names them, wherever they are in the tree', () => {
+    const accepted = acceptTemplate(
+      {
+        type: 'Column',
+        meta: { name: 'T', description: 'd', icon: 'x' },
+        $defs: { d1: { type: 'iframe', props: { srcdoc: 'x' } } },
+        children: [{ type: 'div', children: [{ type: 'script', children: ['x'] }] }],
+      },
+      { origin: 'a space' },
+    );
+    expect(accepted.schema).not.toBeNull();
+    expect(accepted.refusedElements).toEqual(['iframe', 'script']);
+  });
+
+  it('names nothing for a template of permitted elements', () => {
+    const accepted = acceptTemplate(
+      {
+        type: 'div',
+        meta: { name: 'T', description: 'd', icon: 'x' },
+        children: [{ type: 'img', props: { src: 'a.png' } }],
+      },
+      { origin: 'a space' },
+    );
+    expect(accepted.refusedElements).toEqual([]);
+  });
+});

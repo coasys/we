@@ -139,6 +139,32 @@ the seed in.
 Optional shell white-labeling: `host.theme` (color/font overrides) and
 `host.ui.bootScreen` (a schema node replacing the default boot screen).
 
+### `contentSecurity`
+
+Sites this deployment lets content load from, beyond its own origin. The app's
+Content-Security-Policy names its sources for images (`images`), video and audio
+(`media`) and embedded pages (`frames`) instead of allowing every https site,
+because a template that could load from anywhere could send whatever it reads
+there, in the URL. So a hot-linked image or an embedded page from a site not on
+the list does not load.
+
+```json
+"contentSecurity": {
+  "images": ["https://upload.wikimedia.org"],
+  "media": [],
+  "frames": ["https://www.openstreetmap.org"]
+}
+```
+
+These add to the defaults: map tiles, YouTube and Vimeo, the hosting directory
+and the globe's assets (see `DEFAULT_SOURCES` in `packages/csp/src/index.js`).
+Each entry is `https://host` or `https://*.host` with no path. A scheme alone
+(`https:`) or a bare `*` fails the build. List only hosts where nobody but the
+owner can read the request logs: a cloud storage bucket, GitHub Pages or any
+domain somebody can register would let them read whatever a template put in a
+URL. Embedded apps' `paths.webUrl` are added to `frames` automatically. A change
+needs a rebuild, or a restart of the dev server.
+
 ### `ad4m`
 
 How the bundled executor is set up:

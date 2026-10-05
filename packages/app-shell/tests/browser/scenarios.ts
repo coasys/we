@@ -1011,8 +1011,48 @@ const selfFiringEvents = (): Scenario => {
   };
 };
 
+/**
+ * Ways a template might run code of its own, rendered as a space template is.
+ *
+ * Each tries to mark the page, and before the element allowlist three of them did: a `script` ran, an
+ * `iframe` with `srcdoc` ran with access to the page, and a `javascript:` link ran on a click. A
+ * string `onerror` did not run but threw while mounting, taking the whole render down — so the
+ * marker at the end is a check that the rest of the template still drew.
+ */
+const codeInTemplate = (): Scenario => {
+  const mark = (name: string) => `document.body.setAttribute('data-ran-${name}', '')`;
+  return {
+    node: {
+      type: 'Column',
+      props: { width: '100%', gap: '200' },
+      children: [
+        { type: 'script', children: [mark('script')] },
+        { type: 'iframe', props: { srcdoc: `<script>parent.${mark('srcdoc')}</script>` } },
+        { type: 'img', props: { src: '/does-not-exist.png', alt: '', onerror: mark('onerror') } },
+        { type: 'a', props: { id: 'js-link', href: `javascript:${mark('jshref')}` }, children: ['link'] },
+        // The same URL, built by an expression rather than written down.
+        {
+          type: 'a',
+          props: { id: 'js-expr', href: { $: `'javascript:' + "${mark('jsexpr').replace(/"/g, '\\"')}"` } },
+          children: ['built'],
+        },
+        // And handed to a design-system link, which draws its own anchor inside a shadow root.
+        { type: 'we-link', props: { id: 'js-we-link', href: `javascript:${mark('welink')}` }, children: ['we-link'] },
+        {
+          type: 'embed',
+          props: { src: `data:text/html,<script>parent.${mark('embed')}</script>`, type: 'text/html' },
+        },
+        { type: 'span', props: { id: 'still-here' }, children: ['the rest of the template drew'] },
+      ],
+    },
+    tables: {},
+    bag: 'space',
+  };
+};
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'security:self-firing-events': selfFiringEvents,
+  'security:code-in-template': codeInTemplate,
   'canvas:tree-strip': treeStripOverCanvas,
   'canvas:voices': voicesPopover,
   'perf:transcript': (scale) => transcriptAt(scale ?? 100),

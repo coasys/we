@@ -66,7 +66,8 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
         {
           name: 'dataUrl',
           type: 'string',
-          description: 'Another GeoJSON of boundaries to draw instead. Fetched over the network, so not offline.',
+          description:
+            "Another GeoJSON of boundaries to draw instead. Only a URL on the app's own origin is fetched; any other is ignored, with a warning, and the default drawn.",
         },
       ],
       example: `{ "factory": "countryOutlinesLayer", "options": { "color": "#ffffff", "opacity": 0.5, "width": 2 } }`,

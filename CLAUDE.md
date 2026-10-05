@@ -1648,7 +1648,7 @@ Layers are listed in two props: planetLayers (drawn on the earth) and background
   - color: string — CSS colour of the lines. Default "#ffffff".
   - opacity: number — 0 to 1. Default 0.5.
   - width: number — Line width in pixels. Default 2.
-  - dataUrl: string — Another GeoJSON of boundaries to draw instead. Fetched over the network, so not offline.
+  - dataUrl: string — Another GeoJSON of boundaries to draw instead. Only a URL on the app's own origin is fetched; any other is ignored, with a warning, and the default drawn.
   - Example: `{ "factory": "countryOutlinesLayer", "options": { "color": "#ffffff", "opacity": 0.5, "width": 2 } }`
 - `h3HexagonsLayer` — The H3 hexagon grid, finer as the camera comes closer: each zoom draws the resolution whose cells suit it. A hovered cell is highlighted.
   - maxResolution: number — Finest H3 resolution drawn, 0–15. Default 8.
@@ -5092,6 +5092,17 @@ Native HTML elements (lowercase tags render directly without registry entries):
 - Forms: form, input, button, label, select, textarea
 - Media: img, video, audio, canvas, figure, figcaption
 - Other: a, table, tr, td, th, details, summary, dialog
+
+Only elements that display, group or take input may be mounted; the full list is
+TEMPLATE_HTML_ELEMENTS in @we/schema-shared. Anything else renders nothing and the validator reports
+it — script, style, link, meta, base, iframe, object, embed, template, svg among them, because each
+runs code, loads something into the page or makes a document of its own. For an embedded page use
+we-iframe; for formatted markup use we-html or we-markdown.
+
+A URL prop (href, src, action, poster and the like) may not hold a javascript: URL, or a data: URL
+other than an image, audio or video — it is dropped, whether written out or built by an expression.
+srcdoc is dropped everywhere, and a lowercase on… prop such as onerror is dropped from a native
+element: handlers are written onError and hold a handler token, never a string.
 
 ## Schema Validation
 

@@ -8,7 +8,8 @@
     "build:steps": "tsup",
     "build": "we-build",
     "dev": "tsup --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -50,6 +51,7 @@
     "@we/globe-protocol": "workspace:*",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "vitest": "^5.0.2"
   }
 }

