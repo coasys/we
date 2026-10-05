@@ -164,3 +164,29 @@ describe('a prop that merely looks like a node', () => {
     expect(result.errors).toEqual([]);
   });
 });
+
+/*
+  What a refusal says. A child is a node, a string or a token, and when a node fails zod reports
+  every branch it tried, in the order they were declared — "expected string", then a line of
+  "unrecognized keys" per token kind, then the node's own fault. A template refused from somebody's
+  library printed its first five lines, which were all noise, so the reason never appeared.
+*/
+describe('a refused node is reported by its own fault', () => {
+  const routed = (child: unknown) =>
+    ({ ...template([]), routes: [{ path: '/', type: 'Column', children: [child] }] }) as unknown as SchemaNode;
+
+  it.each([
+    ['a style that is neither a string nor a number', { styles: { gap: true } }, 'children.0.styles.gap'],
+    [
+      'a local of a type that does not exist',
+      { $localState: { open: { type: 'flag', initial: false } } },
+      '$localState.open.type',
+    ],
+  ])('names the fault, not the branches it was never meant to be: %s', (_name, extra, where) => {
+    const result = validateStructure(routed({ type: 'Row', id: 'n', props: {}, children: ['x'], ...extra }));
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].path).toContain(where);
+    expect(result.errors.some((e) => e.message.includes('Unrecognized keys'))).toBe(false);
+    expect(result.errors.some((e) => e.message.includes('expected string, received object'))).toBe(false);
+  });
+});
