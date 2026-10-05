@@ -96,9 +96,12 @@ const CESIUM_CDN = 'https://cdn.jsdelivr.net';
  *
  * **This entry is a symptom.** Requesting map tiles over cleartext leaks which tiles a user is
  * looking at — where on Earth they are looking — to anyone on the network, and lets them replace
- * what is shown. The CSP only made an existing defect visible. Two real fixes, either of which
- * retires this line: serve the app over https so Cesium mirrors *that*, or give the globe a base
- * layer built with `tileProtocol: 'https'` instead of Ion's default.
+ * what is shown. The CSP only made an existing defect visible.
+ *
+ * The globe's default imagery no longer comes from ion (Natural Earth II under NASA GIBS, both over
+ * https — see `imagery.ts` in `@we/globe-widget`), so Bing is reached only where somebody has set
+ * the globe's `ionAccessToken`. That path still has the defect; serving the app over https is what
+ * would retire this line.
  */
 const BING_TILES = 'http://*.tiles.virtualearth.net';
 

@@ -5,23 +5,29 @@
  * Uses CDN for all Cesium assets (no local bundling required).
  */
 
-import { Cartesian3, Ion, Viewer } from 'cesium';
+import { Cartesian3, type ImageryLayer, VERSION, Viewer } from 'cesium';
 import { createEffect, createSignal, onCleanup, onMount } from 'solid-js';
 
 export type * from './CesiumGlobe.types';
 import type { CesiumLayer, LayerConfig, LayerEventBus, LayerFactory, LayerStore } from '@we/globe-protocol';
 
+import type {} from './cesium-version';
 import type { CesiumGlobeProps } from './CesiumGlobe.types';
+import { imageryLayers } from './imagery';
 
-// Configure Cesium CDN
-(window as Window & { CESIUM_BASE_URL?: string }).CESIUM_BASE_URL =
-  'https://cdn.jsdelivr.net/npm/cesium@1.136.0/Build/Cesium/';
+/**
+ * Cesium's workers, wasm, widget CSS and textures, at the version of the engine that is installed.
+ * A hand-typed version here once drifted eight releases behind the package.
+ */
+const CESIUM_BASE_URL = `https://cdn.jsdelivr.net/npm/cesium@${VERSION}/Build/Cesium/`;
+
+(window as Window & { CESIUM_BASE_URL?: string }).CESIUM_BASE_URL = CESIUM_BASE_URL;
 
 // Load Cesium CSS
 if (typeof document !== 'undefined' && !document.querySelector('link[href*="cesium"]')) {
   const cesiumCss = document.createElement('link');
   cesiumCss.rel = 'stylesheet';
-  cesiumCss.href = 'https://cdn.jsdelivr.net/npm/cesium@1.136.0/Build/Cesium/Widgets/widgets.css';
+  cesiumCss.href = `${CESIUM_BASE_URL}Widgets/widgets.css`;
   document.head.appendChild(cesiumCss);
 }
 
@@ -130,11 +136,6 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
 
   const [viewerReady, setViewerReady] = createSignal(false);
 
-  // Set Ion token if provided
-  if (props.ionAccessToken) {
-    Ion.defaultAccessToken = props.ionAccessToken;
-  }
-
   onMount(() => {
     if (!containerRef) return;
 
@@ -151,6 +152,9 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
 
       // Create Cesium viewer with minimal UI
       viewer = new Viewer(containerRef, {
+        // Never Cesium's default, which is ion imagery behind a demo token that expires. The
+        // imagery effect below adds ours. See `imagery.ts`.
+        baseLayer: false,
         timeline: false,
         animation: false,
         baseLayerPicker: false,
@@ -229,6 +233,26 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
     });
   });
 
+  /** The imagery this globe added, so a new token replaces exactly these and nobody else's. */
+  let ownImagery: ImageryLayer[] = [];
+
+  // Base imagery, rebuilt when the ion token arrives, changes or goes away.
+  createEffect(() => {
+    if (!viewerReady() || !viewer) return;
+    const imagery = viewer.imageryLayers;
+    const next = imageryLayers(props.ionAccessToken);
+    for (const layer of ownImagery) imagery.remove(layer, true);
+    // At the bottom of the stack, in order, beneath any imagery a WE layer has added.
+    next.forEach((layer, index) => imagery.add(layer, index));
+    ownImagery = next;
+  });
+
+  /**
+   * A layer that needs an ion account is left out when there is no token, rather than mounted to
+   * fail. Absent, as a kind with no renderer will be: nothing errors and nothing is drawn.
+   */
+  const needsMissingIon = (instance: CesiumLayer) => !!instance.metadata?.requiresIonAccount && !props.ionAccessToken;
+
   // Reactive background layer mounting/unmounting
   createEffect(() => {
     // Track viewer readiness signal
@@ -252,6 +276,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
       try {
         const factory = resolveLayerFactory(config.factory, props.layerFactoryRegistry);
         const instance = factory(config.options);
+        if (needsMissingIon(instance)) continue;
         enabledResolved.push({ config, instance, layerKey: config.id ?? instance.name });
       } catch (err) {
         console.error(`Error resolving background layer factory:`, err);
@@ -333,6 +358,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
       try {
         const factory = resolveLayerFactory(config.factory, props.layerFactoryRegistry);
         const instance = factory(config.options);
+        if (needsMissingIon(instance)) continue;
         enabledResolved.push({ config, instance, layerKey: config.id ?? instance.name });
       } catch (err) {
         console.error(`Error resolving layer factory:`, err);

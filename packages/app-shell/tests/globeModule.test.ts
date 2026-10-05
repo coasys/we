@@ -5,7 +5,7 @@
  * contribution points can carry it *unchanged*, they are sufficient. A throwaway "hello" module could
  * only show that wiring exists.
  *
- * Rendering the globe needs WebGL and a Cesium Ion token, so visual verification is manual. What can
+ * Rendering the globe needs WebGL, so visual verification is manual. What can
  * be asserted here is the part that actually moved — that the layer set resolves identically from its
  * new owner, and that the module declares itself honestly.
  */
@@ -72,6 +72,13 @@ describe('globe module — what it declares', () => {
     expect(result.registered).toBe(true);
     expect(moduleRegistry.components().CesiumGlobe).toBeDefined();
     moduleRegistry.unregister('globe');
+  });
+
+  it('lets a deployment or a person supply an ion token, and never a space', () => {
+    // A token is an account and a quota. A space level would spend one member's for everybody.
+    const token = definition.contributes?.settings?.find((s) => s.key === 'ionAccessToken');
+    expect(token?.levels).toEqual(['deployment', 'agent']);
+    expect(token?.default).toBe('');
   });
 
   it('owns no store, which is a legitimate module shape', () => {

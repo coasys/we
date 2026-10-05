@@ -36,11 +36,41 @@ export function createGlobeModule(cesiumGlobeComponent: unknown): ModuleDefiniti
       description: '3D globe with a modular layer system — locations, country outlines, H3 hexagons.',
       icon: 'globe-hemisphere-west',
       // Backend-agnostic: no owned entities, so no manifest→SDNA gap to fall into. The globe renders a
-      // WebGL canvas and reaches Cesium Ion for terrain and imagery, which is what a person is told.
-      requires: { frameworks: ['solid'], permissions: ['network:cesium-ion'] },
+      // WebGL canvas from Cesium's CDN and paints it with NASA's imagery, and with ion's only when
+      // somebody has supplied a token, which is what a person is told.
+      requires: {
+        frameworks: ['solid'],
+        permissions: ['network:cdn.jsdelivr.net', 'network:gibs.earthdata.nasa.gov', 'network:cesium-ion'],
+      },
     },
     contributes: {
       components: { CesiumGlobe: cesiumGlobeComponent },
+      /**
+       * The one thing that turns ion on. The host hands it to `CesiumGlobe` itself, so no template
+       * names it.
+       *
+       * Two levels. A deployment with its own agreement with Cesium sets it in the seed; a person
+       * with their own ion account sets it for themselves. No `space` level: a token is an account
+       * and a quota, and a community setting would spend one member's for everybody.
+       *
+       * `string` rather than `secret`, for `call.iceServers`' reason: a `secret` is agent-level only,
+       * which would take the deployment level away. An ion token is a client-side token by design —
+       * it is sent from the browser to ion on every request — so it is scoped by the restrictions set
+       * on it in the ion dashboard (allowed URLs, assets), not by being hidden.
+       */
+      settings: [
+        {
+          key: 'ionAccessToken',
+          label: 'Cesium ion access token',
+          description:
+            "Shows Cesium ion's world imagery instead of NASA's. Empty uses NASA Blue Marble, which " +
+            'needs no account. The token is sent to Cesium ion from your browser, and using it ' +
+            "means accepting ion's terms.",
+          type: 'string',
+          default: '',
+          levels: ['deployment', 'agent'],
+        },
+      ],
     },
   });
 }
