@@ -6664,10 +6664,24 @@
         },
         "devTools": {
           "type": "boolean"
+        },
+        "credentialEntered": {
+          "type": "boolean"
+        },
+        "credentialConfirmed": {
+          "type": "boolean"
         }
       },
-      "actions": ["setDevTools", "login", "createAgent", "clearPasswordError", "finishSetup", "logout", "retryBoot"],
-      "ambient": ["clearPasswordError"]
+      "actions": [
+        "setDevTools",
+        "unlock",
+        "touchCredential",
+        "clearPasswordError",
+        "finishSetup",
+        "logout",
+        "retryBoot"
+      ],
+      "ambient": ["touchCredential", "clearPasswordError"]
     },
     {
       "name": "shapeStore",
@@ -7441,6 +7455,7 @@
   ],
   "shellComponents": [
     "AiPanel",
+    "CredentialField",
     "EditingBar",
     "EditorCodePanel",
     "EditorInspectorPanel",

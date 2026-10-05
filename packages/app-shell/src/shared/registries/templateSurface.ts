@@ -210,8 +210,18 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     isDevelopment: state('session'),
     devTools: state('session'),
     setDevTools: action('session'),
-    login: action('session'),
-    createAgent: action('session'),
+    credentialEntered: state('session'),
+    credentialConfirmed: state('session'),
+    // Signs in with the host field's password. No argument, so nothing a template collected can be
+    // handed to it — see `credential.ts`.
+    unlock: action('session'),
+    // Only asks a field to show what is wrong with it.
+    touchCredential: ambient('session'),
+    // The two that take a password as an argument. Host code only, at every tier: an action a
+    // template could pass a password to is an action a template-drawn password field could feed,
+    // which is the whole attack the host field exists to close.
+    login: WIRING,
+    createAgent: WIRING,
     clearPasswordError: ambient('session'),
     finishSetup: action('session'),
     logout: action('session'),

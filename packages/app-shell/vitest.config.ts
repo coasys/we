@@ -55,6 +55,8 @@ const SOLID_TESTS = [
   'tests/treeUndo.test.tsx',
   // Mounts a card's reaction mark and presses it.
   'tests/reactionBadge.test.tsx',
+  // Types into the host's password field through real primitives and watches where the value goes.
+  'tests/credentialField.test.tsx',
   // Nothing renders, but every case measures a real element's box and reads real attributes off a
   // real tree — the DOM is the subject, and the frame maths is what a live cursor is right or
   // silently wrong by.

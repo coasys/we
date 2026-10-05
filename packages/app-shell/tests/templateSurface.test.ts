@@ -152,6 +152,17 @@ describe('what the space tier can reach', () => {
     }
   });
 
+  it('offers no action a template could hand a password to, at any tier', () => {
+    // The host's password field holds what is typed; these two take a password as an argument, so a
+    // field a template drew itself could feed them. Signing in is `unlock`, which takes nothing.
+    for (const path of ['sessionStore.login', 'sessionStore.createAgent']) {
+      expect(reaches(spaceBag, path), `space: ${path}`).toBe(false);
+      expect(reaches(chromeBag, path), `chrome: ${path}`).toBe(false);
+    }
+    expect(reaches(chromeBag, 'sessionStore.unlock')).toBe(true);
+    expect(reaches(chromeBag, 'sessionStore.credentialEntered')).toBe(true);
+  });
+
   it('keeps the agent root dataset for chrome, and away from a space', () => {
     /*
       A handle to the agent's own perspective is what a `$query`'s `dataset` resolves against, and

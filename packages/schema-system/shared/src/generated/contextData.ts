@@ -2631,9 +2631,11 @@ export const contextData: ContextData = {
         isGuest: { type: 'boolean' },
         isDevelopment: { type: 'boolean' },
         devTools: { type: 'boolean' },
+        credentialEntered: { type: 'boolean' },
+        credentialConfirmed: { type: 'boolean' },
       },
-      actions: ['setDevTools', 'login', 'createAgent', 'clearPasswordError', 'finishSetup', 'logout', 'retryBoot'],
-      ambient: ['clearPasswordError'],
+      actions: ['setDevTools', 'unlock', 'touchCredential', 'clearPasswordError', 'finishSetup', 'logout', 'retryBoot'],
+      ambient: ['touchCredential', 'clearPasswordError'],
     },
     {
       name: 'shapeStore',
@@ -3121,6 +3123,7 @@ export const contextData: ContextData = {
   ],
   shellComponents: [
     'AiPanel',
+    'CredentialField',
     'EditingBar',
     'EditorCodePanel',
     'EditorInspectorPanel',
