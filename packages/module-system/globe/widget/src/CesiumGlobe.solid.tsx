@@ -255,8 +255,8 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
   window.addEventListener('online', onOnline);
   onCleanup(() => window.removeEventListener('online', onOnline));
 
-  /** The layer above Natural Earth II that this globe added, so it replaces exactly that one. */
-  let detail: ImageryLayer | undefined;
+  /** The layers above Natural Earth II that this globe added, so it replaces exactly those. */
+  let detail: ImageryLayer[] = [];
 
   // Detail imagery: replaced when the ion token arrives, changes or goes away, and when the network
   // comes back. Natural Earth II stays underneath throughout, so a replacement never shows bare blue.
@@ -266,9 +266,9 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
     if (!viewerReady() || !viewer) return;
     const imagery = viewer.imageryLayers;
     const next = detailImagery(token);
-    // Directly above the base, beneath any imagery a WE layer has added.
-    imagery.add(next, 1);
-    if (detail) imagery.remove(detail, true);
+    // Directly above the base, in order, beneath any imagery a WE layer has added.
+    next.forEach((layer, index) => imagery.add(layer, 1 + index));
+    for (const layer of detail) imagery.remove(layer, true);
     detail = next;
   });
 
