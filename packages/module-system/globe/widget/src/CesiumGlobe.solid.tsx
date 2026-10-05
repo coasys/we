@@ -244,14 +244,30 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
    * the module settings, which re-emit whenever the space or the agent's settings do; read directly,
    * every re-emission rebuilt the imagery and the surface flashed blue while the new tiles loaded.
    */
-  const ionToken = createMemo(() => props.ionAccessToken || undefined);
+  const suppliedToken = createMemo(() => props.ionAccessToken || undefined);
+
+  /**
+   * A token ion has refused: expired (a release's demo token lives about two months), revoked, over
+   * quota, or unreachable offline. Held so the globe can carry on without it, and cleared when the
+   * network comes back, since an offline refusal says nothing about the token.
+   */
+  const [refusedToken, setRefusedToken] = createSignal<string>();
+
+  /** The token in use: the one supplied, unless ion has refused it. */
+  const ionToken = createMemo(() => {
+    const token = suppliedToken();
+    return token && token !== refusedToken() ? token : undefined;
+  });
 
   /**
    * Bumped when the browser reports the network is back. Cesium never asks again for a tile that
    * failed, so a globe opened offline would otherwise keep Natural Earth II for good.
    */
   const [onlineEpoch, setOnlineEpoch] = createSignal(0);
-  const onOnline = () => setOnlineEpoch((n) => n + 1);
+  const onOnline = () => {
+    setRefusedToken(undefined);
+    setOnlineEpoch((n) => n + 1);
+  };
   window.addEventListener('online', onOnline);
   onCleanup(() => window.removeEventListener('online', onOnline));
 
@@ -265,7 +281,8 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
     const token = ionToken();
     if (!viewerReady() || !viewer) return;
     const imagery = viewer.imageryLayers;
-    const next = detailImagery(token);
+    // Refused, the token is set aside and this runs again without it: NASA's imagery, not nothing.
+    const next = detailImagery(token, () => setRefusedToken(token));
     // Directly above the base, in order, beneath any imagery a WE layer has added.
     next.forEach((layer, index) => imagery.add(layer, 1 + index));
     for (const layer of detail) imagery.remove(layer, true);

@@ -114,15 +114,17 @@ function landsat(): LandOnlyImageryProvider {
  * New layers every call. Cesium never asks again for a tile that failed, so a globe that started
  * offline keeps Natural Earth II after the network comes back unless these are replaced.
  */
-export function detailImagery(ionAccessToken?: string): ImageryLayer[] {
+export function detailImagery(ionAccessToken?: string, onIonRefused?: () => void): ImageryLayer[] {
   if (ionAccessToken) {
     const ion = ImageryLayer.fromProviderAsync(
       IonImageryProvider.fromAssetId(ION_WORLD_IMAGERY, { accessToken: ionAccessToken }),
     );
-    // A token that is wrong, revoked or out of quota fails here, once. Natural Earth II is still
-    // underneath, so the globe keeps a surface and this is the only sign of why it is not ion's.
+    // A token that is wrong, revoked, expired or out of quota fails here, once — as does any token
+    // with no network. The caller then asks again without it and gets NASA's imagery.
     ion.errorEvent.addEventListener((error: unknown) => {
-      console.warn('[globe] Cesium ion imagery is unavailable; showing Natural Earth II instead.', error);
+      if (navigator.onLine)
+        console.warn("[globe] Cesium ion refused the token; showing NASA's imagery instead.", error);
+      onIonRefused?.();
     });
     return [ion];
   }
