@@ -77,3 +77,5 @@ export function createGlobeModule(cesiumGlobeComponent: unknown): ModuleDefiniti
 
 /** The one factory shape every module package exports — the generated registry imports it. */
 export const createModule = (host: ModuleHost): ModuleDefinition => createGlobeModule(host.components.CesiumGlobe);
+
+export { GLOBE_LAYER_CATALOG } from './catalog';

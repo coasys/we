@@ -345,6 +345,7 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initial
     name: 'point-locations',
 
     metadata: {
+      slot: 'planet',
       requiresIonAccount: false,
       description: 'Display named point location markers with labels and click interactions.',
     },

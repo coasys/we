@@ -194,6 +194,7 @@ export const solarSystemLayer: LayerFactory<SolarSystemLayerOptions> = (options?
   name: 'solar-system',
 
   metadata: {
+    slot: 'background',
     requiresIonAccount: false,
     description: 'Display planets and their orbital paths in the solar system.',
   },

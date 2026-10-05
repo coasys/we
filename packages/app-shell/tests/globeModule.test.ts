@@ -9,7 +9,7 @@
  * be asserted here is the part that actually moved — that the layer set resolves identically from its
  * new owner, and that the module declares itself honestly.
  */
-import { createGlobeModule } from '@we/module-globe';
+import { createGlobeModule, GLOBE_LAYER_CATALOG } from '@we/module-globe';
 import { layerFactoryRegistry } from '@we/module-globe/layers';
 import { checkModuleCompatibility } from '@we/module-shared';
 import { describe, expect, it } from 'vitest';
@@ -85,5 +85,44 @@ describe('globe module — what it declares', () => {
     // Layer visibility is $local state in the route schema. Inventing a store would be new behaviour
     // and would break the "identical afterwards" property this conversion exists to prove.
     expect(definition.createStore).toBeUndefined();
+  });
+});
+
+/*
+  The catalogue is the only thing that tells a template author, or an LLM, which `factory` strings a
+  globe accepts, and the validator checks against it. A name catalogued and not registered is a
+  template written from the documentation that draws nothing; a layer registered and not catalogued
+  is one nobody can find. Both fail silently, so both directions are asserted here, against the
+  registry `CesiumGlobe` is actually given.
+*/
+describe('globe module — the layer catalogue', () => {
+  const byId = new Map(GLOBE_LAYER_CATALOG.plugins.map((plugin) => [plugin.id, plugin]));
+
+  it('names exactly the layers the registry holds', () => {
+    expect([...byId.keys()].sort()).toEqual(Object.keys(layerFactoryRegistry).sort());
+  });
+
+  it('files each layer under the slot the layer itself declares', () => {
+    for (const [id, factory] of Object.entries(layerFactoryRegistry)) {
+      expect(byId.get(id)?.category, id).toBe(factory().metadata?.slot);
+    }
+  });
+
+  it('says what each one is for, and shows one being used under its own name', () => {
+    for (const plugin of GLOBE_LAYER_CATALOG.plugins) {
+      expect(plugin.description?.trim(), `${plugin.id} has no description`).toBeTruthy();
+      for (const option of plugin.options ?? []) {
+        expect(option.description?.trim(), `${plugin.id}.${option.name} has no description`).toBeTruthy();
+      }
+      // Valid JSON, and naming itself: an example copied into a template must work as it stands.
+      expect(JSON.parse(plugin.example ?? '{}').factory, `${plugin.id}'s example`).toBe(plugin.id);
+    }
+  });
+
+  it('places planet layers and background layers in their own lists', () => {
+    expect(GLOBE_LAYER_CATALOG.placements).toEqual([
+      { prop: 'planetLayers', key: 'factory', categories: ['planet'] },
+      { prop: 'backgroundLayers', key: 'factory', categories: ['background'] },
+    ]);
   });
 });

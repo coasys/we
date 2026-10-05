@@ -12,8 +12,8 @@
  * Both directions fail silently and neither is visible in review: the catalogue is a list of object
  * literals hundreds of lines from the code it describes, and adding a plugin does not touch it.
  * `docs/contributing/surfaces.md` already names this as the registration step whose omission is
- * invisible — the globe is the cautionary case it cites, where a good layer protocol has no
- * catalogue and so cannot be authored against at all.
+ * invisible — the globe is the cautionary case it cites, where a good layer protocol had no
+ * catalogue and so could not be authored against at all (it has one now, checked the same way).
  *
  * Asserted against what `GraphView` actually constructs, so a plugin is covered by being reachable
  * rather than by somebody remembering to add it here.

@@ -71,8 +71,8 @@ from slowly becoming a rendering-engine config file. `{ "metric": "degree", "ran
 data; the arithmetic behind it is code with a name.
 
 **A plugin that is not in the catalog does not exist.** `@we/module-graph/src/catalog.ts` is what
-reaches the generated AI reference, and the globe is the cautionary tale: a well-designed layer
-protocol that an LLM cannot author for, because no catalog of layer names ever reached the docs. If
+reaches the generated AI reference, and the globe was the cautionary tale: a well-designed layer
+protocol that no LLM could author for until a catalog of layer names reached the docs. If
 you add a plugin, add its entry — id, one-line description a non-expert understands, options, and a
 worked example. If you cannot write that description, the thing is not ready to be public.
 

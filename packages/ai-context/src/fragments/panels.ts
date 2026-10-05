@@ -2,8 +2,8 @@
  * Panels — what a template can say about them, and when something should be one at all.
  *
  * Written down here because the capability does not exist until it reaches the generated context.
- * The globe is the cautionary case in this repo: a good layer protocol, no catalogue of layer names
- * in the context, and the conclusion on record is that an LLM cannot author a globe template.
+ * The globe was the cautionary case in this repo: a good layer protocol, no catalogue of layer names
+ * in the context, and so no LLM could author a globe template until the catalogue was written.
  */
 export const panels = `## Panels
 

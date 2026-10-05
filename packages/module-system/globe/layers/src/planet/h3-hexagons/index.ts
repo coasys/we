@@ -77,6 +77,7 @@ export const h3HexagonsLayer: LayerFactory<H3HexagonsOptions> = (options?: H3Hex
   name: 'h3-hexagons',
 
   metadata: {
+    slot: 'planet',
     requiresIonAccount: false,
     description: 'H3 hexagonal grid with fractal zoom, hover effects, and click interactions.',
   },

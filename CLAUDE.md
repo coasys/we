@@ -282,7 +282,7 @@ the seed's list is correct code that never appears.
 | Entity | `entities/src/manifest/` | `entities/CONVENTIONS.md` + `docs/architecture/relations.md` | `--filter @we/entities generate:types` **and** `--filter @we/backend-ad4m generate:classes` | `--filter @we/backend-ad4m test` |
 | Feature module | `module-system/<id>/` (or any package exporting `createModule`) | `docs/guides/writing-a-module.md`, then `module-system/shared/src/module.ts` | seed `modules` — the registry is generated from it by `--filter @we/app-shell generate-modules` | `--filter @we/module-shared test`, `validate:schemas`, then `generate-context` |
 | Graph plugin | `graph-system/expanders/src/`, `layouts/src/` | `graph-system/CONVENTIONS.md` | package index **and** `GRAPH_PLUGIN_CATALOG` in `module-system/graph/src/catalog.ts` | `--filter @we/graph-core test`, then `generate-context` |
-| Globe layer | `module-system/globe/layers/src/` | its `README.md` / `EXAMPLES.md` | export from `index.ts` | `--filter @we/globe-layers typecheck` |
+| Globe layer | `module-system/globe/layers/src/` | its `README.md` / `EXAMPLES.md` | export from `index.ts`, `layerFactoryRegistry` in `module-system/globe/module/src/layers.ts` **and** `GLOBE_LAYER_CATALOG` in `module-system/globe/module/src/catalog.ts` | `--filter @we/app-shell test` (`globeModule`), then `generate-context` |
 | Seed | `we-seed.json` | `docs/getting-started/seed-system.md` | — | `pnpm validate:seed` |
 | Backend adapter | `backend-system/<name>/` | `backend-system/shared/README.md` | entity proxy registry | `describeBackendConformance` from `@we/backend-conformance` |
 | Platform host | `apps/<name>/` | — | — | `--filter <app> build` |
@@ -300,8 +300,8 @@ works.
 
 **The graph catalog entry is not bookkeeping.** Props tell an author that `layout.type` is a string;
 nothing in a prop list says which strings exist, so a plugin nobody can name might as well not be
-registered. The globe is the cautionary case — its layer protocol is good, no catalog of layer names
-reaches the generated context, and so an LLM cannot author a globe template.
+registered. The globe was the cautionary case — a good layer protocol, no catalog of layer names in
+the generated context, and so no LLM could author a globe template until it got one.
 
 ### Distribution — what is real
 
@@ -1631,6 +1631,62 @@ the relations between them. Picks up model types added later with no template ch
 
 Some components resolve named plugins from their props. These are the names each accepts —
 a name not listed here does not exist, and the component will warn rather than render.
+
+### CesiumGlobe
+
+Layers are listed in two props: planetLayers (drawn on the earth) and backgroundLayers (the space around it). Each entry is { factory, id?, enabled?, zIndex?, options? }: factory names the kind below; id is required when one kind appears twice, or the two collide and one is not drawn; enabled takes an expression, so a layer can follow a toggle; zIndex is a planet layer's stacking order, which each kind interprets. Options take expressions and handlers like any prop, so a layer can draw what a $queries entry fetched: read it with { "$": "local.rows.map(…)" }. The imagery is the globe's own and is not a layer.
+
+**planet**
+
+- `pointLocationsLayer` — Markers at places on the earth, each with a label, drawn as the avatar when one is given and as a coloured dot otherwise. Pressing one calls onLocationClick with that location, every field included, so a location can carry what a modal needs (a kind, an id).
+  - locations: { id, name, latitude, longitude, avatar?, color? }[] — What to mark. Usually an expression over a query or a store — any extra fields ride along to onLocationClick.
+  - markerSize: number — Diameter in pixels. Default 15.
+  - defaultColor: string — CSS colour of a dot with no avatar or color. Default "#00ffff".
+  - onLocationClick: handler — Runs when a marker is pressed, with the location as event.
+  - Example: `{ "factory": "pointLocationsLayer", "id": "space-locations", "enabled": { "$": "local.showSpaces" }, "options": { "locations": { "$": "local.spaceRows.map(s, { id: s.id, kind: 'space', name: s.name, latitude: s.location.latitude, longitude: s.location.longitude, avatar: s.avatar })" }, "markerSize": 20, "defaultColor": "#a855f7", "onLocationClick": { "$setLocal": "selectedPin", "value": { "$": "event" } } } }`
+- `countryOutlinesLayer` — Country borders, from Natural Earth 1:50m. The app serves the data itself, so the borders draw offline. Draped on the surface, so markers and hexagons always sit above them.
+  - color: string — CSS colour of the lines. Default "#ffffff".
+  - opacity: number — 0 to 1. Default 0.5.
+  - width: number — Line width in pixels. Default 2.
+  - dataUrl: string — Another GeoJSON of boundaries to draw instead. Only a URL on the app's own origin is fetched; any other is ignored, with a warning, and the default drawn.
+  - Example: `{ "factory": "countryOutlinesLayer", "options": { "color": "#ffffff", "opacity": 0.5, "width": 2 } }`
+- `h3HexagonsLayer` — The H3 hexagon grid, finer as the camera comes closer: each zoom draws the resolution whose cells suit it. A hovered cell is highlighted.
+  - maxResolution: number — Finest H3 resolution drawn, 0–15. Default 8.
+  - color: string — CSS colour of the cell edges. Default "#3388ff".
+  - opacity: number — Edge opacity, 0 to 1. Default 0.6.
+  - width: number — Edge width in pixels. Default 2.
+  - hoverColor: string — CSS colour of a hovered cell. Default "#3388ff".
+  - hoverOpacity: number — Opacity of a hovered cell. Default 0.3.
+  - onHexagonClick: handler — Runs when a cell is pressed, with the cell's H3 index as event.
+  - Example: `{ "factory": "h3HexagonsLayer", "enabled": { "$": "local.showHexagons" }, "options": { "maxResolution": 8, "color": "#3388ff", "opacity": 0.6 } }`
+
+**background**
+
+- `skyboxLayer` — A star map around the globe, from NASA's Tycho-2 catalogue. Cesium's own copy shows at once and offline; the set asked for replaces it once it has loaded.
+  - textureSet: "tycho2-1k" | "tycho2-2k" | "tycho2-4k" | "custom" — Resolution of each face: 1k is 2.4 MB, 2k 5.8 MB, 4k 20 MB. Default "tycho2-1k".
+  - customPaths: { px, nx, py, ny, pz, nz } — One image URL per cube face, with textureSet "custom".
+  - Example: `{ "factory": "skyboxLayer", "enabled": { "$": "local.showSkybox" }, "options": { "textureSet": "tycho2-4k" } }`
+- `proceduralStarsLayer` — Points of light at random depths around the earth, which move against each other as the camera turns.
+  - count: number — How many stars. Default 5000.
+  - minDistance: number — Nearest star, in metres from the surface.
+  - maxDistance: number — Farthest star, in metres from the surface.
+  - minBrightness: number — Dimmest star, 0 to 1. Default 0.3.
+  - maxBrightness: number — Brightest star, 0 to 1. Default 1.
+  - minSize: number — Smallest star in pixels. Default 1.
+  - maxSize: number — Largest star in pixels. Default 3.
+  - color: string — CSS colour. Default "#ffffff".
+  - Example: `{ "factory": "proceduralStarsLayer", "enabled": { "$": "local.showStars" }, "options": { "count": 2000, "minDistance": 10000, "maxDistance": 100000000 } }`
+- `solarSystemLayer` — The sun, the planets at their positions for today, and their orbits, scaled down to be seen from the earth.
+  - planets: string[] — Which to draw: mercury, venus, earth, mars, jupiter, saturn, uranus, neptune.
+  - showSun: boolean — Default true.
+  - showOrbits: boolean — Default true.
+  - showPlanets: boolean — Default true.
+  - showLabels: boolean — Default true.
+  - planetScale: number — Multiplies the size of each planet’s point. Default 1.
+  - orbitScale: number — Shrinks the orbits to fit the view; the real system is far too large. Default 0.0001.
+  - orbitWidth: number — Orbit line width in pixels. Default 2.
+  - orbitResolution: number — Points per orbit; more is smoother. Default 360.
+  - Example: `{ "factory": "solarSystemLayer", "enabled": { "$": "local.showSolarSystem" }, "options": { "planets": ["mercury", "venus", "earth", "mars"], "orbitScale": 0.01 } }`
 
 ### GraphView
 
