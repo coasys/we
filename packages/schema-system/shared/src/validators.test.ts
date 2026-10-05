@@ -190,3 +190,25 @@ describe('a refused node is reported by its own fault', () => {
     expect(result.errors.some((e) => e.message.includes('expected string, received object'))).toBe(false);
   });
 });
+
+/*
+  The same, one position along: a node held in a prop. A prop may also be a number, a boolean or a
+  plain object, and the plain-object fallback refuses anything shaped like a node, so two branches
+  looked plausible and every branch was reported again. A `$if`'s `then` with a bad style printed
+  "expected string", "expected number", "expected boolean" and a run of token noise first.
+*/
+describe('a refused node held in a prop is reported by its own fault', () => {
+  const held = (then: unknown) => template([{ type: '$if', props: { condition: { $: 'local.open' }, then } }]);
+
+  it.each([
+    ['a style that is neither a string nor a number', { styles: { gap: true } }, 'props.then.styles.gap'],
+    ['a query whose entity is a number', { $queries: { rows: { entity: 5 } } }, 'props.then.$queries.rows.entity'],
+  ])('%s', (_name, extra, where) => {
+    const result = validateStructure(held({ type: 'Column', id: 'n', props: {}, children: ['x'], ...extra }));
+    expect(result.valid).toBe(false);
+    expect(
+      result.errors.every((e) => e.path.includes(where)),
+      JSON.stringify(result.errors),
+    ).toBe(true);
+  });
+});
