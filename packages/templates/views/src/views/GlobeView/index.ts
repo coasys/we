@@ -44,6 +44,7 @@ export const globeView: TemplateSchema = {
     showH3Hexagons: { type: 'boolean', initial: false },
     showUserLocations: { type: 'boolean', initial: true },
     showSpaceLocations: { type: 'boolean', initial: true },
+    showSpaceHeat: { type: 'boolean', initial: false },
     // Currently selected pin (from clicking a location on the globe)
     selectedPin: { type: 'object', initial: null },
     // Modal open states
@@ -148,6 +149,14 @@ export const globeView: TemplateSchema = {
                             checked: { $: 'local.showSpaceLocations' },
                             onToggle: { $toggleLocal: 'showSpaceLocations' },
                           },
+                          {
+                            type: 'toggle',
+                            id: 'space-heat',
+                            label: 'Space Heat',
+                            icon: 'fire',
+                            checked: { $: 'local.showSpaceHeat' },
+                            onToggle: { $toggleLocal: 'showSpaceHeat' },
+                          },
                         ],
                       },
                     ],
@@ -242,6 +251,27 @@ export const globeView: TemplateSchema = {
               markerSize: 30,
               defaultColor: '#f97316',
               onLocationClick: { $setLocal: 'selectedPin', value: { $: 'event' } },
+            },
+          },
+          // Where spaces gather: the same rows as the pins, binned into cells and raised by how many.
+          {
+            factory: 'hexbinLayer',
+            id: 'space-heat',
+            enabled: { $: 'local.showSpaceHeat' },
+            options: {
+              data: { $: 'local.spaceRows' },
+              latitude: 'location.latitude',
+              longitude: 'location.longitude',
+              resolution: 3,
+              style: [
+                {
+                  style: {
+                    color: { metric: 'field', options: { from: 'value' }, scale: 'heat' },
+                    opacity: 0.6,
+                    height: { metric: 'field', options: { from: 'value' }, range: [0, 300000] },
+                  },
+                },
+              ],
             },
           },
           {

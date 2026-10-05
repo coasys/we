@@ -177,6 +177,37 @@ arcs in proportion; a rule can read the length, in kilometres, as `data.length`.
 }
 ```
 
+## A layer to share is a configuration
+
+What somebody publishes as "a layer" — members by country, a heat of activity — is one or more entries
+like the ones above, as data: it installs with a template or a fragment, from anyone, and needs no code.
+`GlobeView`'s "Space Heat" toggle is one, a `hexbinLayer` over the same rows its pins draw:
+
+```json
+{
+  "factory": "hexbinLayer",
+  "id": "space-heat",
+  "enabled": { "$": "local.showSpaceHeat" },
+  "options": {
+    "data": { "$": "local.spaceRows" },
+    "latitude": "location.latitude",
+    "longitude": "location.longitude",
+    "resolution": 3,
+    "style": [
+      {
+        "style": {
+          "color": { "metric": "field", "options": { "from": "value" }, "scale": "heat" },
+          "opacity": 0.6,
+          "height": { "metric": "field", "options": { "from": "value" }, "range": [0, 300000] }
+        }
+      }
+    ]
+  }
+}
+```
+
+A drawing none of the kinds can make is a new kind, merged here, rather than a template.
+
 ## The same kind twice
 
 Two entries of one kind each need an `id`. Without one they share a key, collide, and only one is drawn.
