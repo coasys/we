@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { buildValidationContext, validateSemantic } from '@we/schema-shared';
+import { buildValidationContext, validateSemantic, withEntities } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 import { type Cartridge, fieldGuide, toolLibrary } from './index.ts';
@@ -17,8 +17,13 @@ import { type Cartridge, fieldGuide, toolLibrary } from './index.ts';
 const contextData = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../ai-context/context.json'), 'utf-8'));
 
 function errorsFor(cartridge: Cartridge, withShapes: boolean): string[] {
-  const context = buildValidationContext(contextData);
-  if (withShapes) for (const shape of cartridge.shapes) context.entityNames.add(shape.name);
+  const base = buildValidationContext(contextData);
+  const context = withShapes
+    ? withEntities(
+        base,
+        cartridge.shapes.map((shape) => shape.name),
+      )
+    : base;
   return [cartridge.shell, ...cartridge.sections].flatMap((template) =>
     validateSemantic(template, context)
       .errors.filter((e) => e.severity === 'error')
@@ -35,5 +40,30 @@ describe.each([fieldGuide, toolLibrary])('the $name cartridge', (cartridge) => {
     const errors = errorsFor(cartridge, false);
     expect(errors.length).toBeGreaterThan(0);
     for (const shape of cartridge.shapes) expect(errors.join('\n')).toContain(shape.name);
+  });
+});
+
+describe('the lookup that read every tool as available', () => {
+  /*
+    The catalogue first found an item's open loan with `find(local.loans, { item: it.id })`. Its
+    query includes `item`, so `item` was the record, the lookup matched nothing, and every tool
+    showed "available" with no error. The validator now says so; this puts the original back into a
+    copy of the catalogue to keep it saying so.
+  */
+  it('is reported by the validator', () => {
+    const broken = JSON.parse(
+      JSON.stringify(toolLibrary.sections[0]).replaceAll(
+        'local.loans.find(l, l.item.id == it.id)',
+        'find(local.loans, { item: it.id })',
+      ),
+    );
+    const context = withEntities(
+      buildValidationContext(contextData),
+      toolLibrary.shapes.map((s) => s.name),
+    );
+    const warnings = validateSemantic(broken, context).errors.filter((e) =>
+      e.message.includes('compares the included item'),
+    );
+    expect(warnings.length).toBeGreaterThan(0);
   });
 });
