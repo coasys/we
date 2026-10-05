@@ -19,10 +19,21 @@ export type {
 } from './types';
 
 // Export planet layers (surface layers)
-export { countryOutlinesLayer, h3HexagonsLayer, pointLocationsLayer, pointsLayer } from './planet';
+export {
+  areasLayer,
+  countryOutlinesLayer,
+  h3HexagonsLayer,
+  hexbinLayer,
+  pathsLayer,
+  pointLocationsLayer,
+  pointsLayer,
+} from './planet';
 export type {
+  AreasOptions,
   CountryOutlinesOptions,
   H3HexagonsOptions,
+  HexbinOptions,
+  PathsOptions,
   PointLocationsOptions,
   PointsOptions,
   UserLocation,

@@ -73,6 +73,121 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
       example: `{ "factory": "pointsLayer", "id": "members", "options": { "data": { "$": "spaceStore.members.filter(m, m.location)" }, "latitude": "location.latitude", "longitude": "location.longitude", "label": "name", "style": [{ "style": { "color": "accent", "image": { "from": "data.avatar" } } }, { "when": { "data.role": "admin" }, "style": { "borderColor": "warning-500" } }], "cluster": true, "onSelect": { "$setLocal": "selected", "value": { "$": "event" } } } }`,
     },
     {
+      id: 'pathsLayer',
+      category: 'planet',
+      description:
+        "A line per row: between two places, or along a list of them. Follows the earth's curve, and can arc — a share of its own length, so longer routes arc higher. For travel, routes between events, who replied to whom across the world.",
+      options: [
+        { name: 'data', type: 'object[]', description: 'The rows. Rows without both ends are left out.' },
+        {
+          name: 'from',
+          type: '{ latitude, longitude }',
+          description: 'Field paths to where each line starts. Default "from.latitude" / "from.longitude".',
+        },
+        {
+          name: 'to',
+          type: '{ latitude, longitude }',
+          description: 'Field paths to where it ends. Default "to.latitude" / "to.longitude".',
+        },
+        {
+          name: 'coordinates',
+          type: 'string',
+          description: 'Instead of from/to: a field holding the whole line as [longitude, latitude] pairs.',
+        },
+        { name: 'id', type: 'string', description: 'Field naming each row. Default "id".' },
+        {
+          name: 'style',
+          type: 'rules',
+          description:
+            'Properties: width (pixels, default 2), color, opacity, dashed (true/false), arcHeight (0 flat … 0.5 tall, a share of the line\'s length; default 0). A rule can read a line\'s length in kilometres as "data.length".',
+        },
+        { name: 'onSelect', type: 'handler', description: 'Runs when a line is pressed, with its row as event.' },
+      ],
+      example: `{ "factory": "pathsLayer", "id": "trips", "options": { "data": { "$": "local.trips" }, "from": { "latitude": "origin.latitude", "longitude": "origin.longitude" }, "to": { "latitude": "destination.latitude", "longitude": "destination.longitude" }, "style": [{ "style": { "color": "accent", "width": 2, "arcHeight": 0.2 } }, { "when": { "data.length": { "gt": 5000 } }, "style": { "color": "warning-500" } }] } }`,
+    },
+    {
+      id: 'areasLayer',
+      category: 'planet',
+      description:
+        'Filled shapes. Either each row carries its own (GeoJSON), or the rows name countries and are grouped into them: rows naming the same country become one shaded country, with how many rows (or the sum, mean, least or greatest of a field) as data.value — shaded cool to hot by it when no style is given. For choropleths: members per country, posts per country, a region somebody drew.',
+      options: [
+        { name: 'data', type: 'object[]', description: 'The rows.' },
+        {
+          name: 'area',
+          type: '"countries"',
+          description: 'Group the rows into the countries they name, rather than drawing their own shapes.',
+        },
+        {
+          name: 'key',
+          type: 'string',
+          description: 'With area: the field naming a row\'s country. Default "country".',
+        },
+        {
+          name: 'match',
+          type: '"iso_a2" | "iso_a3" | "name"',
+          description: 'With area: what key holds — "FR", "FRA" or "France". Default "iso_a2". Case does not matter.',
+        },
+        {
+          name: 'aggregate',
+          type: '"count" | "sum" | "mean" | "min" | "max"',
+          description: 'With area: how a country\'s rows become data.value. Default "count".',
+        },
+        { name: 'value', type: 'string', description: 'With area: the field summed, averaged or compared.' },
+        {
+          name: 'geometry',
+          type: 'string',
+          description:
+            'Without area: the field holding each row\'s shape as a GeoJSON Polygon or MultiPolygon. Default "geometry".',
+        },
+        {
+          name: 'style',
+          type: 'rules',
+          description:
+            'Properties: color (the fill), opacity (default 0.6), borderColor, borderWidth (default 1 with a border colour), height (metres to raise it as a solid; default 0, flat). With area, a rule reads "data.value", "data.count" and "data.name".',
+        },
+        {
+          name: 'onSelect',
+          type: 'handler',
+          description: 'Runs when a shape is pressed: with the row, or with area, { key, name, rows, count, value }.',
+        },
+      ],
+      example: `{ "factory": "areasLayer", "id": "members-by-country", "options": { "data": { "$": "spaceStore.members.filter(m, m.location)" }, "area": "countries", "key": "location.countryCode", "style": [{ "style": { "color": { "metric": "field", "options": { "from": "value" }, "scale": { "from": "surface-sunken", "to": "accent" } }, "opacity": 0.7, "height": { "metric": "field", "options": { "from": "value" }, "range": [0, 400000] } } }] } }`,
+    },
+    {
+      id: 'hexbinLayer',
+      category: 'planet',
+      description:
+        "Rows gathered into hexagonal H3 cells, one shaded cell per place with rows in it, so density reads without placing every row. A cell's data.value is how many rows (or the sum, mean, least or greatest of a field); shaded cool to hot by it when no style is given, and raised into a column by a height rule. Different from h3HexagonsLayer, which draws the empty grid.",
+      options: [
+        { name: 'data', type: 'object[]', description: 'The rows. Rows without a place are left out.' },
+        { name: 'latitude', type: 'string', description: 'Field path to the latitude. Default "latitude".' },
+        { name: 'longitude', type: 'string', description: 'Field path to the longitude. Default "longitude".' },
+        {
+          name: 'resolution',
+          type: 'number',
+          description: 'Cell size: 2 is countries, 4 (default) about 22 km across, 7 a town, 10 a few streets.',
+        },
+        {
+          name: 'aggregate',
+          type: '"count" | "sum" | "mean" | "min" | "max"',
+          description: 'How a cell\'s rows become data.value. Default "count".',
+        },
+        { name: 'value', type: 'string', description: 'The field summed, averaged or compared.' },
+        {
+          name: 'style',
+          type: 'rules',
+          description:
+            'Properties: color, opacity (default 0.7), height (metres to raise the cell; default 0). A rule reads "data.value" and "data.count".',
+        },
+        {
+          name: 'onSelect',
+          type: 'handler',
+          description: 'Runs when a cell is pressed, with { cell, rows, count, value }.',
+        },
+      ],
+      example: `{ "factory": "hexbinLayer", "id": "post-heat", "enabled": { "$": "local.showHeat" }, "options": { "data": { "$": "local.posts" }, "latitude": "location.latitude", "longitude": "location.longitude", "resolution": 3, "style": [{ "style": { "color": { "metric": "field", "options": { "from": "value" }, "scale": "heat" }, "height": { "metric": "field", "options": { "from": "value" }, "range": [0, 300000] } } }], "onSelect": { "$setLocal": "cell", "value": { "$": "event" } } } }`,
+    },
+    {
       id: 'pointLocationsLayer',
       category: 'planet',
       description:

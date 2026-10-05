@@ -32,6 +32,8 @@ export interface NamedArea {
 /** An area set, indexed by each of the names a row may use for an area, lower-cased. */
 export type AreaIndex = Map<string, NamedArea>;
 
+const UPSTREAM: Record<string, string> = { name: 'NAME', iso_a2: 'ISO_A2_EH', iso_a3: 'ISO_A3_EH' };
+
 /** Index a FeatureCollection by `name`, `iso_a2` and `iso_a3`, whichever each feature carries. */
 export function indexAreas(collection: unknown): AreaIndex {
   const index: AreaIndex = new Map();
@@ -41,11 +43,16 @@ export function indexAreas(collection: unknown): AreaIndex {
     const { properties, geometry } = (feature ?? {}) as { properties?: Record<string, unknown>; geometry?: unknown };
     const polygons = polygonsOf(geometry);
     if (!polygons.length) continue;
-    const name = typeof properties?.name === 'string' ? properties.name : '';
-    const area: NamedArea = { name, polygons };
+    const read = (key: string) => {
+      // The app's reduced copy names them in lower case; Natural Earth's own file, which a host that
+      // does not serve the copy falls back to, in its own columns.
+      const value = properties?.[key] ?? properties?.[UPSTREAM[key]];
+      return typeof value === 'string' && value && value !== '-99' ? value : undefined;
+    };
+    const area: NamedArea = { name: read('name') ?? '', polygons };
     for (const property of ['name', 'iso_a2', 'iso_a3']) {
-      const value = properties?.[property];
-      if (typeof value === 'string' && value) index.set(`${property}:${value.toLowerCase()}`, area);
+      const value = read(property);
+      if (value) index.set(`${property}:${value.toLowerCase()}`, area);
     }
   }
   return index;

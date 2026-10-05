@@ -78,7 +78,13 @@ export function groupByCell(rows: readonly Row[], paths: PositionPaths, resoluti
 
 /** A cell's outline as [longitude, latitude] pairs, and its centre. */
 export function cellShape(cell: string): { boundary: LonLat[]; center: LonLat } {
-  const boundary = cellToBoundary(cell, true) as [number, number][];
+  let boundary = cellToBoundary(cell, true) as [number, number][];
   const [lat, lon] = cellToLatLng(cell);
+  // A cell across the antimeridian has corners at 179° and -179°; drawn as given it would wrap the
+  // long way round the earth. Continue past 180° instead, which both engines draw correctly.
+  const longitudes = boundary.map(([x]) => x);
+  if (Math.max(...longitudes) - Math.min(...longitudes) > 180) {
+    boundary = boundary.map(([x, y]) => [x < 0 ? x + 360 : x, y]);
+  }
   return { boundary, center: [lon, lat] };
 }

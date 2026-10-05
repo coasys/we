@@ -19,6 +19,9 @@ import { moduleRegistry } from '../src/shared/registries/moduleRegistry';
 /** Exactly the set `componentRegistry.tsx` held before the conversion. */
 const EXPECTED_LAYERS = [
   'pointsLayer',
+  'pathsLayer',
+  'areasLayer',
+  'hexbinLayer',
   'pointLocationsLayer',
   'countryOutlinesLayer',
   'h3HexagonsLayer',

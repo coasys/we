@@ -4,6 +4,9 @@
  * Layers that render on or near the planet surface.
  */
 
+export * from './areas';
+export * from './hexbin';
+export * from './paths';
 export * from './points';
 export * from './point-locations';
 export * from './country-outlines';

@@ -1,3 +1,4 @@
+import { permittedDataUrl } from '@we/globe-core';
 import { Cartesian3, Color } from 'cesium';
 
 import type {} from '../../env';
@@ -19,24 +20,8 @@ export interface CountryOutlinesOptions {
   dataUrl?: string;
 }
 
-/**
- * A `dataUrl` if it may be fetched, or undefined to fall back to the default.
- *
- * Layer options come from the template, and this layer `fetch`es whatever the option says. A template
- * could build `https://attacker.example/?data=…` out of what it reads and have the layer send it —
- * and the Content-Security-Policy cannot stop that, because `connect-src` has to allow any https
- * host: the node's address is chosen at runtime. So the rule is here instead: the app's own origin
- * only, which is where every WE app serves the boundaries anyway. A deployment wanting other borders
- * serves them itself.
- */
-export function permittedDataUrl(url: string | undefined, pageOrigin: string): string | undefined {
-  if (!url) return undefined;
-  try {
-    return new URL(url, pageOrigin).origin === new URL(pageOrigin).origin ? url : undefined;
-  } catch {
-    return undefined;
-  }
-}
+/** Only a URL on the app's own origin is fetched; see `permittedDataUrl` in `@we/globe-core`. */
+export { permittedDataUrl };
 
 /**
  * Country Outlines Layer

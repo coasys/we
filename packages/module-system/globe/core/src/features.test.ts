@@ -226,6 +226,16 @@ describe('hexbins', () => {
   });
 });
 
+describe('cells', () => {
+  it('draws a cell across the antimeridian without wrapping round the earth', async () => {
+    const { cellShape } = await import('./aggregate');
+    const { latLngToCell } = await import('h3-js');
+    const { boundary } = cellShape(latLngToCell(0, 179.99, 3));
+    const longitudes = boundary.map(([x]) => x);
+    expect(Math.max(...longitudes) - Math.min(...longitudes)).toBeLessThan(10);
+  });
+});
+
 describe('clustering', () => {
   const points = [
     { id: 'p', position: [2.35, 48.85] as const },

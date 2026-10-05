@@ -15,9 +15,12 @@
  * actually mounts.
  */
 import {
+  areasLayer,
   countryOutlinesLayer,
   h3HexagonsLayer,
+  hexbinLayer,
   type LayerKinds,
+  pathsLayer,
   pointLocationsLayer,
   pointsLayer,
   proceduralStarsLayer,
@@ -35,6 +38,9 @@ import {
 export const layerKinds: LayerKinds = Object.fromEntries(
   [
     pointsLayer,
+    pathsLayer,
+    areasLayer,
+    hexbinLayer,
     pointLocationsLayer,
     countryOutlinesLayer,
     h3HexagonsLayer,
