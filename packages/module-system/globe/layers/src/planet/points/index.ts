@@ -37,7 +37,14 @@ import { cesiumColors, markerAltitude, metresPerPixel, pickFeatures } from '../c
 
 export type { PointsOptions };
 
-const HOVER_SCALE = 1.35;
+/** How much a hovered dot grows, and a hovered picture — a picture's ring makes it read larger. */
+const DOT_HOVER_SCALE = 1.4;
+const PICTURE_HOVER_SCALE = 1.3;
+/**
+ * The share of the distance to its target a marker's size closes each frame: about four frames to
+ * cover nine tenths, quick enough to follow the pointer and slow enough to read as growing.
+ */
+const HOVER_EASE = 0.2;
 const DEFAULT_CLUSTER_RADIUS = 60;
 
 /** A thing drawn: one feature, or a cluster standing for several. */
@@ -268,6 +275,11 @@ export async function renderPoints(
     for (const mark of diff.changed) remove(mark.id);
     await Promise.all([...diff.added, ...diff.changed].map((mark) => add(mark)));
     if (hovered && !drawn.has(hovered)) hovered = null;
+    // A redrawn marker starts at its own size; one still hovered picks up where its easing is.
+    for (const [id, state] of easing) {
+      if (!drawn.has(id)) easing.delete(id);
+      else applyScale(id, state.scale);
+    }
     viewer.scene.requestRender();
   };
 
@@ -301,18 +313,46 @@ export async function renderPoints(
   };
   const removeFollow = viewer.scene.preRender.addEventListener(followCamera);
 
+  /**
+   * Hovered markers grow and settle back by easing. Only markers that are moving are held here — the
+   * one entered and the one left — so the frame loop runs while something moves and stops after.
+   */
+  const easing = new Map<string, { scale: number; target: number }>();
+  let frame: number | null = null;
+
+  const applyScale = (id: string, scale: number) => {
+    const entry = drawn.get(id);
+    if (!entry) return;
+    if (entry.point) entry.point.pixelSize = entry.mark.size * scale;
+    if (entry.billboard) entry.billboard.scale = scale;
+  };
+
+  const tick = () => {
+    for (const [id, state] of easing) {
+      state.scale += (state.target - state.scale) * HOVER_EASE;
+      if (Math.abs(state.target - state.scale) < 0.005) state.scale = state.target;
+      applyScale(id, state.scale);
+      if (state.scale === state.target && state.target === 1) easing.delete(id);
+    }
+    viewer.scene.requestRender();
+    const moving = [...easing.values()].some((state) => state.scale !== state.target);
+    frame = moving ? requestAnimationFrame(tick) : null;
+  };
+
   const setHover = (feature: string | null) => {
-    for (const [id, scale] of [
-      [hovered, 1],
-      [feature, HOVER_SCALE],
-    ] as const) {
-      const entry = id ? drawn.get(id) : undefined;
-      if (!entry) continue;
-      if (entry.point) entry.point.pixelSize = entry.mark.size * scale;
-      if (entry.billboard) entry.billboard.scale = scale;
+    if (hovered) {
+      const state = easing.get(hovered);
+      if (state) state.target = 1;
+    }
+    const entry = feature ? drawn.get(feature) : undefined;
+    if (feature && entry) {
+      const target = entry.billboard ? PICTURE_HOVER_SCALE : DOT_HOVER_SCALE;
+      const state = easing.get(feature);
+      if (state) state.target = target;
+      else easing.set(feature, { scale: 1, target });
     }
     hovered = feature;
-    viewer.scene.requestRender();
+    if (frame === null) frame = requestAnimationFrame(tick);
   };
 
   pickFeatures(context, {
@@ -339,6 +379,7 @@ export async function renderPoints(
   });
 
   context.onCleanup(() => {
+    if (frame !== null) cancelAnimationFrame(frame);
     removeFollow();
     viewer.scene.primitives.remove(points);
     viewer.scene.primitives.remove(billboards);
