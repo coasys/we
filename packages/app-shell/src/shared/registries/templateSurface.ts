@@ -37,8 +37,8 @@
  * store member fails that test until it is classified, so this cannot quietly fall behind the code
  * it describes — the failure mode an allowlist beside the thing it allows usually has.
  */
-import { memberKind } from '@we/module-shared';
-import { isExpressionToken, markReactive, parseExpression, referencedPaths } from '@we/schema-shared';
+import { memberAmbient, memberKind } from '@we/module-shared';
+import { claimGesture, isExpressionToken, markReactive, parseExpression, referencedPaths } from '@we/schema-shared';
 
 /**
  * What a group of capabilities lets a template do, in the words a person would use.
@@ -136,6 +136,21 @@ interface MemberSpec {
    */
   destructive?: true;
   /**
+   * Safe to run with nobody asking: it changes what this agent is looking at and nothing else.
+   *
+   * Every other action runs only while somebody is doing something — a press, a key, typing — and is
+   * refused when an image finishing loading or a field taking focus on mount tries to call it. That is
+   * the default because an unclassified action is one nobody has thought about, and the safe answer
+   * to an undecided question is "not without a person". See `gesture.ts` in `@we/schema-shared`.
+   *
+   * What qualifies: navigating, opening and closing the app's own surfaces, reporting a measurement,
+   * editing a draft that nothing has saved. What never does, however small: anything stored — in a
+   * shared space or in this agent's own settings, since a template that quietly makes itself your
+   * default template has written nothing to the space and taken over everything — and anything that
+   * leaves the device or reaches one: publishing presence, starting a call, the clipboard, a download.
+   */
+  ambient?: true;
+  /**
    * Arguments this action may be given; anything beyond is dropped.
    *
    * There is one thing this is for. Every space-configuring action takes the space as a trailing
@@ -164,6 +179,8 @@ type Classification = MemberSpec | typeof WIRING;
 const state = (group: CapabilityGroup): MemberSpec => ({ group, kind: 'state' });
 const action = (group: CapabilityGroup): MemberSpec => ({ group, kind: 'action' });
 const destructive = (group: CapabilityGroup): MemberSpec => ({ group, kind: 'action', destructive: true });
+/** An action safe to run unasked — see {@link MemberSpec.ambient}. */
+const ambient = (group: CapabilityGroup): MemberSpec => ({ group, kind: 'action', ambient: true });
 /**
  * An action pinned to the space on screen: its trailing `spaceUuid` argument is unreachable, unless
  * the bag holds `space-admin` — see {@link MemberSpec.arity}.
@@ -195,7 +212,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setDevTools: action('session'),
     login: action('session'),
     createAgent: action('session'),
-    clearPasswordError: action('session'),
+    clearPasswordError: ambient('session'),
     finishSetup: action('session'),
     logout: action('session'),
     retryBoot: action('session'),
@@ -228,14 +245,14 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     creating: state('session'),
     error: state('session'),
     pendingRemoval: state('session'),
-    refresh: action('session'),
+    refresh: ambient('session'),
     createAccount: action('session'),
     switchAccount: action('session'),
     removeAccount: destructive('session'),
-    requestRemoval: action('session'),
-    cancelRemoval: action('session'),
+    requestRemoval: ambient('session'),
+    cancelRemoval: ambient('session'),
     confirmRemoval: destructive('session'),
-    clearError: action('session'),
+    clearError: ambient('session'),
 
     // Called by ProfileStore to mirror the profile onto the locked sign-in screen.
     syncDisplay: WIRING,
@@ -279,31 +296,31 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     executorRestartPending: state('runtime-admin'),
     pendingConsent: state('runtime-admin'),
     consentSecret: state('runtime-admin'),
-    loadAiModels: action('runtime-admin'),
-    loadAiTasks: action('runtime-admin'),
-    newAiModel: action('runtime-admin'),
-    editAiModel: action('runtime-admin'),
-    setAiFormField: action('runtime-admin'),
-    setAiService: action('runtime-admin'),
+    loadAiModels: ambient('runtime-admin'),
+    loadAiTasks: ambient('runtime-admin'),
+    newAiModel: ambient('runtime-admin'),
+    editAiModel: ambient('runtime-admin'),
+    setAiFormField: ambient('runtime-admin'),
+    setAiService: ambient('runtime-admin'),
     discoverAiModels: action('runtime-admin'),
-    closeAiForm: action('runtime-admin'),
+    closeAiForm: ambient('runtime-admin'),
     saveAiModel: action('runtime-admin'),
     removeAiModel: destructive('runtime-admin'),
     setDefaultAiModel: action('runtime-admin'),
     removeAiTask: destructive('runtime-admin'),
-    loadLanguages: action('runtime-admin'),
+    loadLanguages: ambient('runtime-admin'),
     installLanguage: action('runtime-admin'),
     removeLanguage: destructive('runtime-admin'),
-    loadTrustedAgents: action('runtime-admin'),
+    loadTrustedAgents: ambient('runtime-admin'),
     trustAgent: destructive('runtime-admin'),
     untrustAgent: destructive('runtime-admin'),
-    loadAuthorizedApps: action('runtime-admin'),
+    loadAuthorizedApps: ambient('runtime-admin'),
     revokeApp: destructive('runtime-admin'),
     removeApp: destructive('runtime-admin'),
-    loadNetworkMetrics: action('runtime-admin'),
+    loadNetworkMetrics: ambient('runtime-admin'),
     copyNetworkMetrics: action('runtime-admin'),
     restartNetwork: destructive('runtime-admin'),
-    loadPeerInfos: action('runtime-admin'),
+    loadPeerInfos: ambient('runtime-admin'),
     copyPeerInfos: action('runtime-admin'),
     addPeerInfos: action('runtime-admin'),
     setMcpEnabled: action('runtime-admin'),
@@ -315,7 +332,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     restartExecutor: destructive('runtime-admin'),
     approveConsent: destructive('runtime-admin'),
     denyConsent: action('runtime-admin'),
-    dismissConsentSecret: action('runtime-admin'),
+    dismissConsentSecret: ambient('runtime-admin'),
   },
 
   datasetStore: {
@@ -334,7 +351,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     marketplaceConfigured: state('navigation'),
     marketplaceId: state('navigation'),
     marketplaceJoined: state('navigation'),
-    switchDataset: action('navigation'),
+    switchDataset: ambient('navigation'),
     reorderDatasets: action('agent'),
     removeDataset: destructive('space-admin'),
     cleanupSpaceSdna: action('space-admin'),
@@ -415,7 +432,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     profileFor: WIRING,
     ownProfile: state('identity'),
     ownProfileLoaded: state('identity'),
-    fetchProfile: action('identity'),
+    fetchProfile: ambient('identity'),
     pendingAvatar: state('agent'),
     setPendingAvatar: action('agent'),
     // 'agent' rather than 'identity': needsName reports something about the viewer's own account
@@ -463,7 +480,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     mutedDids: state('content'),
     mutedAgents: state('content'),
     setAgentMuted: action('content'),
-    getSubgroupMessages: action('content'),
+    getSubgroupMessages: ambient('content'),
     exportCallTranscript: action('content'),
     exportExtractionLog: action('content'),
     // A board is a collection like a call, and arranging one is content work rather than
@@ -529,9 +546,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     joinSlow: state('navigation'),
     joinError: state('navigation'),
     joinSpace: action('navigation'),
-    navigateToSpace: action('navigation'),
-    openRecordRef: action('navigation'),
-    canAdministerSpace: action('navigation'),
+    navigateToSpace: ambient('navigation'),
+    openRecordRef: ambient('navigation'),
+    canAdministerSpace: ambient('navigation'),
     canAdministerCurrentSpace: state('navigation'),
     copyShareLink: action('navigation'),
     copyGuestLink: action('navigation'),
@@ -590,7 +607,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       and the same reason: stopping a standing pass mid-meeting is about that meeting, and gating it
       on administering the space makes the honest response "leave the call".
     */
-    autoInterpretForCall: action('content'),
+    autoInterpretForCall: ambient('content'),
     /*
       A capability's settings, at each of the three levels a screen can edit.
 
@@ -698,39 +715,39 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     nameOptions: state('space-settings'),
     hintEditor: state('space-settings'),
     hintBusy: state('space-settings'),
-    openShapeWizard: action('space-settings'),
-    cancelShapeWizard: action('space-settings'),
-    setShapeField: action('space-settings'),
-    setIdentityMember: action('space-settings'),
-    setNameMember: action('space-settings'),
-    setExtractable: action('space-settings'),
-    addProperty: action('space-settings'),
-    addRelationship: action('space-settings'),
-    removeMember: action('space-settings'),
-    setMemberField: action('space-settings'),
-    reorderMembers: action('space-settings'),
+    openShapeWizard: ambient('space-settings'),
+    cancelShapeWizard: ambient('space-settings'),
+    setShapeField: ambient('space-settings'),
+    setIdentityMember: ambient('space-settings'),
+    setNameMember: ambient('space-settings'),
+    setExtractable: ambient('space-settings'),
+    addProperty: ambient('space-settings'),
+    addRelationship: ambient('space-settings'),
+    removeMember: ambient('space-settings'),
+    setMemberField: ambient('space-settings'),
+    reorderMembers: ambient('space-settings'),
     expandedMembers: state('space-settings'),
     memberOptions: state('space-settings'),
     confirmDiscard: state('space-settings'),
-    requestCloseWizard: action('space-settings'),
-    cancelDiscard: action('space-settings'),
-    toggleMemberExpanded: action('space-settings'),
-    commitDraft: action('space-settings'),
-    replaceDraft: action('space-settings'),
+    requestCloseWizard: ambient('space-settings'),
+    cancelDiscard: ambient('space-settings'),
+    toggleMemberExpanded: ambient('space-settings'),
+    commitDraft: ambient('space-settings'),
+    replaceDraft: ambient('space-settings'),
     generateShapeDraft: action('space-settings'),
     generateShapeFields: action('space-settings'),
     generateIntent: state('space-settings'),
     requestGenerateFields: action('space-settings'),
     confirmReplaceFields: state('space-settings'),
-    cancelReplaceFields: action('space-settings'),
+    cancelReplaceFields: ambient('space-settings'),
     saveShapeDraft: action('space-settings'),
     // Destructive in the "expensive to reverse" sense: the record goes, and although data and SDNA
     // remain, re-creating the model needs its definition re-authored.
     deleteShape: destructive('space-settings'),
-    openHintEditor: action('space-settings'),
-    closeHintEditor: action('space-settings'),
+    openHintEditor: ambient('space-settings'),
+    closeHintEditor: ambient('space-settings'),
     hintEditorDirty: state('space-settings'),
-    setHintDraft: action('space-settings'),
+    setHintDraft: ambient('space-settings'),
     saveHintEditor: action('space-settings'),
     resetHintEditor: action('space-settings'),
   },
@@ -751,10 +768,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     savingRecord: state('content'),
     lastCreatedId: state('content'),
     pendingLink: state('content'),
-    openRecordForm: action('content'),
-    connectNodes: action('content'),
+    openRecordForm: ambient('content'),
+    connectNodes: ambient('content'),
     connectNodesNow: action('content'),
-    createOnCanvas: action('content'),
+    createOnCanvas: ambient('content'),
     createCardOnCanvas: action('content'),
     placeOnCanvas: action('content'),
     dragOnCanvas: action('content'),
@@ -790,7 +807,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     observeConnections: WIRING,
     // Template-facing: a control that reports while it moves previews through this and writes on
     // release, which is what makes a slider show its result before the drag ends.
-    previewCardStyle: action('content'),
+    previewCardStyle: ambient('content'),
     setCardStyle: action('content'),
     setTypeColor: action('content'),
     setSpaceTypeColor: action('content'),
@@ -801,23 +818,23 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     updateRecordField: action('content'),
     // Follows a content write — a connection's label — made through `record.update`.
     rekeyConnection: action('content'),
-    setRecordEntity: action('content'),
-    setRecordField: action('content'),
-    setRecordPlace: action('content'),
+    setRecordEntity: ambient('content'),
+    setRecordField: ambient('content'),
+    setRecordPlace: ambient('content'),
     relationDraft: state('content'),
     relationErrors: state('content'),
-    openRelationForm: action('content'),
-    setRelationField: action('content'),
-    saveRelationForm: action('content'),
-    cancelRelationForm: action('content'),
-    pickRelation: action('content'),
-    removeRelationEntry: action('content'),
-    setRelationLocation: action('content'),
-    setRelationEntryField: action('content'),
-    addRelationImage: action('content'),
+    openRelationForm: ambient('content'),
+    setRelationField: ambient('content'),
+    saveRelationForm: ambient('content'),
+    cancelRelationForm: ambient('content'),
+    pickRelation: ambient('content'),
+    removeRelationEntry: ambient('content'),
+    setRelationLocation: ambient('content'),
+    setRelationEntryField: ambient('content'),
+    addRelationImage: ambient('content'),
     relationshipKind: state('content'),
-    setRelationshipKind: action('content'),
-    cancelRecordForm: action('content'),
+    setRelationshipKind: ambient('content'),
+    cancelRecordForm: ambient('content'),
     saveRecord: action('content'),
   },
 
@@ -858,7 +875,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setDefaultTheme: action('library'),
     setSystemTheme: action('agent'),
     setThemeInstalled: action('library'),
-    previewThemeScope: action('editor'),
+    previewThemeScope: ambient('editor'),
     setThemeScopeGlobal: action('agent'),
     setUseTemplateTheme: action('agent'),
     /*
@@ -873,7 +890,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // The editor tier, with `startEditing` — this is the second half of the same gesture: open the
     // theme editor, and say which role you came for. Nothing a template has any business setting.
     focusedRole: state('editor'),
-    focusRole: action('editor'),
+    focusRole: ambient('editor'),
     changeBasePreset: action('editor'),
     updateEditingOverrides: action('editor'),
     updateEditingCss: action('editor'),
@@ -900,7 +917,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // document whenever it liked, which is the surface the declarative form exists to bound.
     requestNamedThemes: WIRING,
     loadInstalledThemes: WIRING,
-    refreshSpaceThemes: action('appearance'),
+    refreshSpaceThemes: ambient('appearance'),
   },
 
   templateStore: {
@@ -935,7 +952,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     pendingInstall: state('library'),
     confirmInstall: action('library'),
-    cancelInstall: action('library'),
+    cancelInstall: ambient('library'),
     setDefaultTemplate: action('library'),
     saveTemplate: action('editor'),
     saveTemplateAs: action('editor'),
@@ -964,7 +981,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     provideSpaceLookup: WIRING,
     preloadSpaceTemplates: WIRING,
     loadSpaceTemplates: WIRING,
-    refreshSpaceTemplates: action('appearance'),
+    refreshSpaceTemplates: ambient('appearance'),
     clearSpaceTemplates: WIRING,
     // The host's own sequencing — whether a route guard may act yet — not something a template reads.
     spaceTemplatePending: WIRING,
@@ -976,9 +993,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     segments: state('view-state'),
     templateSegments: state('view-state'),
     params: state('view-state'),
-    navigate: action('navigation'),
-    setParam: action('view-state'),
-    back: action('navigation'),
+    navigate: ambient('navigation'),
+    setParam: ambient('view-state'),
+    back: ambient('navigation'),
 
     setNavigateFunction: WIRING,
     setCurrentPath: WIRING,
@@ -986,8 +1003,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
 
   shellStore: {
     activeShellView: state('navigation'),
-    openShellView: action('navigation'),
-    closeShellView: action('navigation'),
+    openShellView: ambient('navigation'),
+    closeShellView: ambient('navigation'),
     /*
       Host wiring, not a capability. The overlay's own router calls this on every move so a remount
       can put it back; a template has no overlay to report about, and letting one write another
@@ -1002,7 +1019,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       rather than administration: the template can request a destination, never arrive at one on the
       user's behalf.
     */
-    setCreateSpaceOpen: action('navigation'),
+    setCreateSpaceOpen: ambient('navigation'),
     joinSpaceOpen: state('space-admin'),
     /*
       And the same for the join dialog, by exactly the same argument: asking for chrome's own dialog
@@ -1010,7 +1027,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       it keeps its own grant — a template that could join a space on the user's behalf could add
       them to a stranger's neighbourhood without a word.
     */
-    setJoinSpaceOpen: action('navigation'),
+    setJoinSpaceOpen: ambient('navigation'),
     /*
       `host-layout`, like the destructive prompt beside it and for the same reason: the *chrome*
       draws this, and chrome renders at a tier that sees everything, so the classification is about
@@ -1061,13 +1078,13 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     spaceSettingsOpen: state('navigation'),
     spaceSettingsTab: state('navigation'),
-    openSpaceSettings: action('navigation'),
-    closeSpaceSettings: action('navigation'),
-    toggleSpaceSettings: action('navigation'),
+    openSpaceSettings: ambient('navigation'),
+    closeSpaceSettings: ambient('navigation'),
+    toggleSpaceSettings: ambient('navigation'),
     // Where the host should put that panel — read by the dock resolver in TypeScript, never by a
     // schema, which addresses a dock through `shellStore.dockGeometry` instead.
     spaceSettingsEdge: WIRING,
-    scrollToId: action('view-state'),
+    scrollToId: ambient('view-state'),
 
     takePendingPath: WIRING,
 
@@ -1117,7 +1134,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     dragGhost: state('host-layout'),
     insertDock: action('host-layout'),
     beginDockMove: action('host-layout'),
-    raiseDock: action('host-layout'),
+    raiseDock: ambient('host-layout'),
     moveDock: action('host-layout'),
     beginTabDrag: action('host-layout'),
     moveTab: action('host-layout'),
@@ -1132,15 +1149,15 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // hidden — the first is what the titlebar and the strip press, the second what the module rail
     // does on a panel that is open but out of view.
     toggleStowLane: action('host-layout'),
-    revealDock: action('host-layout'),
+    revealDock: ambient('host-layout'),
     // The host's half of a module panel's openness. Chrome — the rail, a titlebar — is what asks.
-    openModulePanel: action('host-layout'),
-    closeModulePanel: action('host-layout'),
-    toggleModulePanel: action('host-layout'),
+    openModulePanel: ambient('host-layout'),
+    closeModulePanel: ambient('host-layout'),
+    toggleModulePanel: ambient('host-layout'),
     // Every panel put away at once, which the rail's toggle reads and presses.
     panelsHidden: state('host-layout'),
     hasPanels: state('host-layout'),
-    togglePanelsHidden: action('host-layout'),
+    togglePanelsHidden: ambient('host-layout'),
     breakOut: action('host-layout'),
     returnHome: action('host-layout'),
     stackDock: action('host-layout'),
@@ -1199,15 +1216,15 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     runningPasses: state('presence'),
     settledPasses: state('presence'),
     settledCount: state('presence'),
-    dismissSettled: action('view-state'),
+    dismissSettled: ambient('view-state'),
   },
 
   appStore: {
     apps: state('navigation'),
     appsWithWe: state('navigation'),
     activeAppId: state('navigation'),
-    activateApp: action('navigation'),
-    deactivateApp: action('navigation'),
+    activateApp: ambient('navigation'),
+    deactivateApp: ambient('navigation'),
 
     provideInstalledModules: WIRING,
   },
@@ -1219,7 +1236,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     streamingContent: state('editor'),
     assistantAvailable: state('editor'),
     assistantStatus: state('editor'),
-    refreshAssistant: action('editor'),
+    refreshAssistant: ambient('editor'),
     templateName: state('editor'),
     templateIcon: state('editor'),
     isReadOnly: state('editor'),
@@ -1257,25 +1274,25 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     newChat: action('editor'),
     switchSession: action('editor'),
     deleteSession: destructive('editor'),
-    setContentMode: action('editor'),
+    setContentMode: ambient('editor'),
     undo: action('editor'),
     redo: action('editor'),
-    startFork: action('editor'),
-    startFresh: action('editor'),
+    startFork: ambient('editor'),
+    startFresh: ambient('editor'),
     confirmPicker: action('editor'),
-    cancelPicker: action('editor'),
+    cancelPicker: ambient('editor'),
     enterTemplateEditing: action('editor'),
     exitTemplateEditing: action('editor'),
-    toggle: action('editor'),
-    open: action('editor'),
-    close: action('editor'),
-    toggleCodePanel: action('editor'),
-    openCodePanel: action('editor'),
-    closeCodePanel: action('editor'),
-    toggleThemePanel: action('editor'),
-    openThemePanel: action('editor'),
-    closeThemePanel: action('editor'),
-    toggleVisualPanel: action('editor'),
+    toggle: ambient('editor'),
+    open: ambient('editor'),
+    close: ambient('editor'),
+    toggleCodePanel: ambient('editor'),
+    openCodePanel: ambient('editor'),
+    closeCodePanel: ambient('editor'),
+    toggleThemePanel: ambient('editor'),
+    openThemePanel: ambient('editor'),
+    closeThemePanel: ambient('editor'),
+    toggleVisualPanel: ambient('editor'),
     enterThemeEditing: action('editor'),
     exitThemeEditing: action('editor'),
     toggleThemeEditing: action('editor'),
@@ -1352,6 +1369,7 @@ const ALWAYS_PRESENT = new Set([
 function taggedModuleStores(
   modules: Record<string, Record<string, unknown>>,
   publicOnly: boolean,
+  gate: GestureGate,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [id, store] of Object.entries(modules ?? {})) {
@@ -1360,7 +1378,8 @@ function taggedModuleStores(
     for (const [name, member] of Object.entries(store)) {
       const kind = memberKind(member);
       if (publicOnly && !kind) continue;
-      if (kind === 'action') tagged[name] = member;
+      if (kind === 'action')
+        tagged[name] = memberAmbient(member) ? member : gated(`modules.${id}.${name}`, member as AnyFn, gate);
       else tagged[name] = typeof member === 'function' ? markReactive(member) : member;
     }
     out[id] = tagged;
@@ -1386,6 +1405,39 @@ export interface BuildBagOptions {
    * resolves — so `onSuccess` does not fire on a cancel.
    */
   onDestructive?: (path: string, args: unknown[]) => boolean | Promise<boolean>;
+  /**
+   * Whether an action needs somebody to be doing something before it runs.
+   *
+   * `enforce` refuses one called with no gesture live, resolving `undefined` like any refused
+   * action; `report` runs it anyway and says so, which is how a change to what counts is measured
+   * against real templates before anything is refused; absent is no gate. Members marked `ambient`
+   * are never gated. See {@link MemberSpec.ambient}.
+   */
+  gesture?: GestureGate;
+}
+
+type GestureGate = 'enforce' | 'report' | undefined;
+type AnyFn = (...args: unknown[]) => unknown;
+
+/** Paths already reported, so a handler on a re-rendering row says so once rather than per frame. */
+const reported = new Set<string>();
+
+/** `method`, refused unless somebody is doing something. */
+function gated(path: string, method: AnyFn, gate: GestureGate): AnyFn {
+  if (!gate) return method;
+  return (...args: unknown[]) => {
+    if (claimGesture()) return method(...args);
+    if (!reported.has(path)) {
+      reported.add(path);
+      console.warn(
+        `[template] ${path} was called with nobody having asked — no press, key or typing reached the part of the template calling it.` +
+          (gate === 'enforce'
+            ? ' It did not run. Put it on a click, or a key, rather than on an event that happens by itself.'
+            : ' It ran, because the gate is reporting rather than enforcing.'),
+      );
+    }
+    return gate === 'enforce' ? undefined : method(...args);
+  };
 }
 
 /**
@@ -1416,7 +1468,11 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
         enumerable: true,
         // Chrome sees every member; anything below it sees what the module marked public.
         get: () =>
-          taggedModuleStores(stores[key] as Record<string, Record<string, unknown>>, !granted.has('host-layout')),
+          taggedModuleStores(
+            stores[key] as Record<string, Record<string, unknown>>,
+            !granted.has('host-layout'),
+            options.gesture,
+          ),
       });
       continue;
     }
@@ -1473,7 +1529,9 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
         method = async (...args: unknown[]) => ((await guard(path, args)) ? bound(...args) : undefined);
       }
 
-      filtered[name] = method;
+      // Outermost, so the question is asked of the call as it arrives — before a destructive
+      // confirmation, whose answer comes back after the press that asked has finished.
+      filtered[name] = spec.ambient ? method : gated(path, method, options.gesture);
     }
     bag[key] = filtered;
   }

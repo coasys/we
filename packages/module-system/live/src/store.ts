@@ -940,7 +940,7 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     follow: action(follow, 'Follow whoever has the wheel.'),
     unfollow: action(unfollow, 'Stop following.'),
     toggleFollow: action(toggleFollow, 'Follow whoever has the wheel, or stop — whichever this press means.'),
-    dismissProblem: action(() => setProblem(''), 'Dismiss the problem message.'),
+    dismissProblem: action(() => setProblem(''), 'Dismiss the problem message.', { ambient: true }),
   };
 }
 

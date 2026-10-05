@@ -30,6 +30,7 @@
 
 const KIND = Symbol.for('we.module.member.kind');
 const DOC = Symbol.for('we.module.member.doc');
+const AMBIENT = Symbol.for('we.module.member.ambient');
 
 export type ModuleMemberKind = 'state' | 'action';
 
@@ -40,12 +41,14 @@ export type ModuleStore = Record<string, unknown>;
 export interface ModuleMemberSurface {
   kind: ModuleMemberKind;
   doc: string;
+  /** An action published as safe to run with nobody asking. See {@link markAction}. */
+  ambient?: true;
 }
 
 /** Every public member of a store, by name. Unmarked members are absent. */
 export type ModuleStoreSurface = Record<string, ModuleMemberSurface>;
 
-type Marked = { [KIND]?: ModuleMemberKind; [DOC]?: string };
+type Marked = { [KIND]?: ModuleMemberKind; [DOC]?: string; [AMBIENT]?: true };
 
 function mark<T>(member: T, kind: ModuleMemberKind, doc: string): T {
   // A value that is not a function cannot carry a symbol, so it is wrapped in an accessor — which is
@@ -66,9 +69,28 @@ export function markState<T>(accessor: T, doc: string): T extends (...args: neve
   return mark(accessor, 'state', doc) as never;
 }
 
-/** Publish an action. Templates call it through `$action`; an expression reading it gets nothing. */
-export function markAction<T extends (...args: never[]) => unknown>(fn: T, doc: string): T {
-  return mark(fn, 'action', doc);
+/**
+ * Publish an action. Templates call it through `$action`; an expression reading it gets nothing.
+ *
+ * A template's action runs only while somebody is doing something — a press, a key, typing — so one
+ * wired to an image loading does nothing. `ambient: true` lifts that, and is a claim the action is
+ * safe to run unasked: it changes what this agent is looking at and nothing else. It stores nothing,
+ * publishes nothing, and touches no device. Reporting a measured box qualifies; starting a call does
+ * not, however small the call. When in doubt, leave it off — a template can always put it on a click.
+ */
+export function markAction<T extends (...args: never[]) => unknown>(
+  fn: T,
+  doc: string,
+  options: { ambient?: boolean } = {},
+): T {
+  const marked = mark(fn, 'action', doc);
+  if (options.ambient) (marked as Marked)[AMBIENT] = true;
+  return marked;
+}
+
+/** Whether an action was published as safe to run without a person asking. See {@link markAction}. */
+export function memberAmbient(member: unknown): boolean {
+  return typeof member === 'function' && (member as Marked)[AMBIENT] === true;
 }
 
 /** Which kind a member was marked as, or `undefined` for one the module kept to itself. */
@@ -88,7 +110,7 @@ export function storeSurface(store: ModuleStore | undefined): ModuleStoreSurface
   const out: ModuleStoreSurface = {};
   for (const [name, member] of Object.entries(store ?? {})) {
     const kind = memberKind(member);
-    if (kind) out[name] = { kind, doc: memberDoc(member) ?? '' };
+    if (kind) out[name] = { kind, doc: memberDoc(member) ?? '', ...(memberAmbient(member) ? { ambient: true } : {}) };
   }
   return out;
 }
