@@ -77,6 +77,19 @@ export type { LocalFieldMeta, LocalMetaMap } from './propResolvers';
 export { DEFERRED_ARG, isDeferredArg, setExpressionWarningSink } from './propResolvers/expression';
 export * from './expressions';
 export { hasToken } from './predicates';
+export {
+  captureGesture,
+  claimGesture,
+  CREDIT_MS,
+  gestureTrackingInstalled,
+  hasGesture,
+  installGestureTracking,
+  newGestureOwner,
+  registerGestureOwner,
+  runAsOwner,
+  runWithGesture,
+} from './gesture';
+export type { GestureOwner, GestureToken } from './gesture';
 export { isPropsSchemaNode, isSchemaChild, replaceNodeInTree } from './treeUtils';
 export {
   type CompactOptions,
