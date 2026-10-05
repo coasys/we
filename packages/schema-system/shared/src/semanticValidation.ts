@@ -41,6 +41,12 @@ export type ValidationContext = {
    * Only what the context knows: an action it has no classification for is never warned about.
    */
   gatedActions?: Set<string>;
+  /**
+   * Where a component's catalogued plugin names are written, by component and prop — see
+   * `PluginPlacement`. `names` maps every name the catalogue knows to its category, so a name in the
+   * wrong slot can be told from a name that does not exist.
+   */
+  pluginPlacements?: Map<string, Map<string, { key: string; categories: string[]; names: Map<string, string> }>>;
 };
 
 // ── Constants ──────────────────────────────────────────────────────
@@ -458,8 +464,18 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     }
   }
 
+  const pluginPlacements: NonNullable<ValidationContext['pluginPlacements']> = new Map();
+  for (const catalog of data.pluginCatalogs ?? []) {
+    if (!catalog.placements?.length) continue;
+    const names = new Map(catalog.plugins.map((plugin) => [plugin.id, plugin.category]));
+    const byProp = pluginPlacements.get(catalog.component) ?? new Map();
+    for (const { prop, key, categories } of catalog.placements) byProp.set(prop, { key, categories, names });
+    pluginPlacements.set(catalog.component, byProp);
+  }
+
   return {
     gatedActions,
+    pluginPlacements,
     componentNames,
     componentProps,
     componentPropTypes,
@@ -1186,6 +1202,55 @@ function checkUnaskedWrite(
   }
 }
 
+/**
+ * A plugin name a component resolves at runtime, checked against its catalogue.
+ *
+ * Without this a misspelt name renders nothing: the component looks the name up, finds no plugin and
+ * logs to the console of whoever opens the page. The globe was the case that made it worth checking,
+ * since a layer list is exactly what an LLM writes from the documentation, and a layer in the wrong
+ * list (a skybox among the planet layers) is as quiet as one that does not exist.
+ */
+function checkPluginNames(
+  props: Record<string, unknown>,
+  path: string,
+  componentType: string,
+  ctx: ValidationContext,
+  errors: ValidationError[],
+): void {
+  const placements = ctx.pluginPlacements?.get(componentType);
+  if (!placements) return;
+  for (const [prop, { key, categories, names }] of placements) {
+    const value = props[prop];
+    if (value === undefined || value === null || isTokenObject(value)) continue;
+    const entries = Array.isArray(value) ? value : [value];
+    entries.forEach((entry, index) => {
+      if (!entry || typeof entry !== 'object' || isTokenObject(entry)) return;
+      const name = (entry as Record<string, unknown>)[key];
+      // An expression is checked when it runs, not here: the validator cannot know what it will be.
+      if (typeof name !== 'string') return;
+      const where = `${path}.props.${prop}${Array.isArray(value) ? `.${index}` : ''}.${key}`;
+      const category = names.get(name);
+      if (category === undefined) {
+        const accepted = [...names].filter(([, c]) => categories.includes(c)).map(([id]) => id);
+        const suggestion = suggest(name, accepted);
+        errors.push({
+          path: where,
+          message:
+            `Unknown ${categories.join(' or ')} plugin "${name}" in "${prop}" of "${componentType}".` +
+            (suggestion ? ` Did you mean "${suggestion}"?` : ` Known: ${accepted.join(', ')}.`),
+          severity: 'error',
+        });
+      } else if (!categories.includes(category)) {
+        errors.push({
+          path: where,
+          message: `"${name}" is a ${category} plugin and does nothing in "${prop}" of "${componentType}", which takes ${categories.join(' or ')} plugins.`,
+          severity: 'error',
+        });
+      }
+    });
+  }
+}
+
 function checkProps(
   props: Record<string, unknown>,
   path: string,
@@ -1198,6 +1263,7 @@ function checkProps(
   const propTypes = ctx.componentPropTypes.get(componentType);
 
   checkComposerHandshake(props, path, componentType, errors);
+  checkPluginNames(props, path, componentType, ctx, errors);
 
   for (const [propName, propValue] of Object.entries(props)) {
     // Skip internal schema props

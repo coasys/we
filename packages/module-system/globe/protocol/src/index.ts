@@ -95,6 +95,12 @@ export interface LayerContext<TOptions = unknown> {
  * Metadata about layer requirements and capabilities
  */
 export interface LayerMetadata {
+  /**
+   * Which list of the globe this kind belongs in: `planet` for what is drawn on the earth
+   * (`planetLayers`), `background` for the space around it (`backgroundLayers`). The catalogue
+   * documents each kind under its slot, and the validator refuses one placed in the other list.
+   */
+  slot?: 'planet' | 'background';
   /** Whether this layer requires a Cesium Ion account */
   requiresIonAccount?: boolean;
   /** Specific Ion asset IDs required by this layer */

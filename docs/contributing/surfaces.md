@@ -345,8 +345,8 @@ change to the core. Layouts, renderers and behaviours plug in the same way.
 
 > The catalog step is not optional bookkeeping. Props tell an author that `layout.type` is a string;
 > nothing in a prop list says which strings exist, and a plugin nobody can name might as well not be
-> registered. The globe is the cautionary case — its layer protocol is good, and no catalog of layer
-> names ever reaches the generated context, so an LLM cannot author a globe template.
+> registered. The globe was the cautionary case — its layer protocol is good, and until it had a
+> catalog of layer names nothing reached the generated context, so no LLM could author a globe template.
 
 ### Globe layers
 
@@ -355,8 +355,11 @@ layers (skybox, stars, solar system).
 
 - **Lives in** `packages/module-system/globe/layers/src/planet/` or `background/`
 - **Conventions** [globe/layers/README.md](../../packages/module-system/globe/layers/README.md) and its `EXAMPLES.md`
-- **Register** export from `src/index.ts`
-- **Verify** `pnpm --filter @we/globe-layers typecheck`
+- **Register** export from `src/index.ts`, add it to `layerFactoryRegistry` in
+  `packages/module-system/globe/module/src/layers.ts`, **and add an entry to `GLOBE_LAYER_CATALOG`**
+  in `packages/module-system/globe/module/src/catalog.ts`, filed under the `slot` its metadata declares
+- **Verify** `pnpm --filter @we/app-shell test` (`globeModule.test.ts` checks the catalogue against the
+  registry), then `generate-context`
 
 ---
 

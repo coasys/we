@@ -41,5 +41,9 @@
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "@we/module-shared": "workspace:*"
+  },
+  "context": {
+    "type": "plugins",
+    "src": "src/catalog.ts"
   }
 }

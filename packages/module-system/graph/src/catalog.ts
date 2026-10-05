@@ -3,9 +3,9 @@
  *
  * This file is the reason the plugin system is usable rather than merely well-designed. Props tell an
  * author that `layout.type` is a string; nothing in a prop list says which strings exist, and a plugin
- * nobody can name might as well not be registered. The globe is the cautionary case — its layer
- * protocol is good, and an LLM still cannot author a globe template, because no catalog of layer names
- * ever reaches the generated context.
+ * nobody can name might as well not be registered. The globe was the cautionary case — a good layer
+ * protocol that no LLM could author a template for, because no catalog of layer names reached the
+ * generated context — until it got one (`GLOBE_LAYER_CATALOG` in `@we/module-globe`).
  *
  * So the catalog is declared here and picked up by `@we/ai-context` (`context: { type: 'plugins' }` in
  * this package's `package.json`), landing in CLAUDE.md alongside the component registry. A module

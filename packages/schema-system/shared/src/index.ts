@@ -48,6 +48,7 @@ export type {
   StateMemberMeta,
   TokenCategory,
   PluginCatalog,
+  PluginPlacement,
   PluginEntry,
   ModuleCatalogEntry,
   ForeignElementEntry,

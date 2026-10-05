@@ -45,6 +45,7 @@ export const countryOutlinesLayer: LayerFactory<CountryOutlinesOptions> = (optio
   name: 'country-outlines',
 
   metadata: {
+    slot: 'planet',
     requiresIonAccount: false,
     description: 'Country boundaries from Natural Earth 50m data. Good balance of detail and performance.',
   },

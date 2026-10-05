@@ -93,8 +93,8 @@ export interface TokenCategory {
  *
  * Components with a sub-registry are otherwise invisible to schema authoring: their props document
  * that a `layout.type` is a string, and nothing says which strings exist. The globe demonstrated the
- * failure mode — its layer system is well-designed, and an LLM cannot author a globe template
- * because no catalog of layer names ever reaches the context. A component that resolves plugins by
+ * failure mode — its layer system is well-designed, and an LLM could not author a globe template
+ * until a catalog of layer names reached the context. A component that resolves plugins by
  * name declares them here so the names are as documented as the props are.
  */
 export interface PluginEntry {
@@ -109,12 +109,29 @@ export interface PluginEntry {
   example?: string;
 }
 
+/**
+ * Where a catalogued name is written in a component's props, so the validator can check it.
+ *
+ * `{ prop: 'planetLayers', key: 'factory', categories: ['planet'] }` reads: `planetLayers` is a list
+ * of objects (or one object), and each one's `factory` must be a `planet` plugin. A literal name not in
+ * those categories is an error, with the nearest catalogued name as a suggestion; a name from another
+ * category is reported as being in the wrong place. A value computed by an expression is not checked,
+ * since the validator cannot know what it will be.
+ */
+export interface PluginPlacement {
+  prop: string;
+  key: string;
+  categories: string[];
+}
+
 /** A component's plugin registry, as documented for schema authors. */
 export interface PluginCatalog {
   /** The component whose props these names appear in. */
   component: string;
   description?: string;
   plugins: PluginEntry[];
+  /** Where the names are written, for the validator. Without it the names are documented, not checked. */
+  placements?: PluginPlacement[];
 }
 
 /**

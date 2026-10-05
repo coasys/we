@@ -72,6 +72,7 @@ export const proceduralStarsLayer: LayerFactory<ProceduralStarsLayerOptions> = (
   name: 'procedural-stars',
 
   metadata: {
+    slot: 'background',
     requiresIonAccount: false,
     description: 'Generate a random field of point stars with 3D parallax effect.',
   },

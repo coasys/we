@@ -84,6 +84,7 @@ export const skyboxLayer: LayerFactory<SkyboxLayerOptions> = (options?: SkyboxLa
   name: 'skybox',
 
   metadata: {
+    slot: 'background',
     requiresIonAccount: false,
     description: 'Display a skybox with star textures in the background.',
   },
