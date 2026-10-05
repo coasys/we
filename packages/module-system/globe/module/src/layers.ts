@@ -17,7 +17,7 @@
 import {
   countryOutlinesLayer,
   h3HexagonsLayer,
-  type LayerFactory,
+  type LayerKinds,
   pointLocationsLayer,
   proceduralStarsLayer,
   skyboxLayer,
@@ -25,21 +25,14 @@ import {
 } from '@we/globe-layers';
 
 /**
- * The layer set this module ships — a **module-private registry**, nested inside the module system.
+ * The kinds this module ships, by id: what a template's `factory` resolves against. A module-private
+ * registry; a third-party kind is a package exporting a `LayerKind`, added here.
  *
- * Worth noting as a shape: a module may own a plugin system of its own without the host needing a
- * generic "sub-registry" concept. Third-party layers do not need to live in this package either, since
- * `CesiumGlobe` resolves layers through an injected `Record<string, LayerFactory>` — an external layer
- * is just a package exporting a factory.
+ * Keyed by each kind's own `id`, so the name a template writes and the name a kind declares cannot
+ * drift apart.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const layerFactoryRegistry: Record<string, LayerFactory<any>> = {
-  // Planet layers
-  pointLocationsLayer,
-  countryOutlinesLayer,
-  h3HexagonsLayer,
-  // Background layers
-  skyboxLayer,
-  proceduralStarsLayer,
-  solarSystemLayer,
-};
+export const layerKinds: LayerKinds = Object.fromEntries(
+  [pointLocationsLayer, countryOutlinesLayer, h3HexagonsLayer, skyboxLayer, proceduralStarsLayer, solarSystemLayer].map(
+    (kind) => [kind.id, kind],
+  ),
+);

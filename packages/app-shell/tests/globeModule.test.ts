@@ -10,7 +10,7 @@
  * new owner, and that the module declares itself honestly.
  */
 import { createGlobeModule, GLOBE_LAYER_CATALOG, imageryChoiceFrom, ionTokenFrom } from '@we/module-globe';
-import { layerFactoryRegistry } from '@we/module-globe/layers';
+import { layerKinds } from '@we/module-globe/layers';
 import { checkModuleCompatibility } from '@we/module-shared';
 import { describe, expect, it } from 'vitest';
 
@@ -28,14 +28,15 @@ const EXPECTED_LAYERS = [
 
 describe('globe module — the layer set survived the move', () => {
   it('ships every layer the app-framework registry used to hold', () => {
-    expect(Object.keys(layerFactoryRegistry).sort()).toEqual([...EXPECTED_LAYERS].sort());
+    expect(Object.keys(layerKinds).sort()).toEqual([...EXPECTED_LAYERS].sort());
   });
 
-  it('exposes each layer as a callable factory, not just a key', () => {
-    // The registry resolving by name is what CesiumGlobe depends on; a missing factory would only
-    // surface as a blank globe at runtime.
+  it('holds each kind under its own id, with a Cesium renderer', () => {
+    // The registry resolving by name is what CesiumGlobe depends on; a kind filed under the wrong
+    // name, or with no renderer for the engine, would only surface as a blank globe at runtime.
     for (const name of EXPECTED_LAYERS) {
-      expect(typeof layerFactoryRegistry[name]).toBe('function');
+      expect(layerKinds[name]?.id).toBe(name);
+      expect(typeof layerKinds[name]?.renderers.cesium).toBe('function');
     }
   });
 
@@ -103,12 +104,12 @@ describe('globe module — the layer catalogue', () => {
   const byId = new Map(GLOBE_LAYER_CATALOG.plugins.map((plugin) => [plugin.id, plugin]));
 
   it('names exactly the layers the registry holds', () => {
-    expect([...byId.keys()].sort()).toEqual(Object.keys(layerFactoryRegistry).sort());
+    expect([...byId.keys()].sort()).toEqual(Object.keys(layerKinds).sort());
   });
 
   it('files each layer under the slot the layer itself declares', () => {
-    for (const [id, factory] of Object.entries(layerFactoryRegistry)) {
-      expect(byId.get(id)?.category, id).toBe(factory().metadata?.slot);
+    for (const [id, kind] of Object.entries(layerKinds)) {
+      expect(byId.get(id)?.category, id).toBe(kind.slot);
     }
   });
 

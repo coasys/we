@@ -23,7 +23,7 @@ import { moduleRegistry } from '../../../shared/registries/moduleRegistry';
  * template's own props so a template cannot supply them: see `CesiumGlobeProps.imagery`.
  */
 export const CesiumGlobeOnDemand = lazy(async () => {
-  const [{ CesiumGlobe }, { layerFactoryRegistry }, { imageryChoiceFrom, ionTokenFrom }] = await Promise.all([
+  const [{ CesiumGlobe }, { layerKinds }, { imageryChoiceFrom, ionTokenFrom }] = await Promise.all([
     import('@we/globe-widget'),
     import('@we/module-globe/layers'),
     import('@we/module-globe'),
@@ -33,7 +33,7 @@ export const CesiumGlobeOnDemand = lazy(async () => {
     default: (props: Record<string, unknown>) => (
       <CesiumGlobe
         {...props}
-        layerFactoryRegistry={layerFactoryRegistry}
+        layerKinds={layerKinds}
         imagery={imageryChoiceFrom(settings())}
         ionAccessToken={ionTokenFrom(settings())}
       />

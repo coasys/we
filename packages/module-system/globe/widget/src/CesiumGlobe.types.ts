@@ -7,7 +7,7 @@
  */
 export type * from '@we/globe-protocol';
 
-import type { LayerConfig, LayerFactory } from '@we/globe-protocol';
+import type { LayerConfig, LayerKinds } from '@we/globe-protocol';
 
 /** A commercial imagery provider and the key to reach it. See `imagery.ts`. */
 export interface ImageryChoice {
@@ -17,9 +17,9 @@ export interface ImageryChoice {
 
 /**
  * @ai 3D globe widget using CesiumJS with a modular layer system.
- * Layers are injected via factory functions (planet surface + background).
- * Registered in the app's component registry, which injects `layerFactoryRegistry` — so templates
- * place it as `CesiumGlobe` without supplying that prop themselves.
+ * Layers are named by kind in two lists (planet surface + background).
+ * Registered in the app's component registry, which injects `layerKinds`, so templates place it as
+ * `CesiumGlobe` without supplying that prop themselves.
  */
 export interface CesiumGlobeProps {
   /**
@@ -37,7 +37,6 @@ export interface CesiumGlobeProps {
   planetLayers?: LayerConfig[];
   /** Background/space layer configurations (skybox, stars, etc.) */
   backgroundLayers?: LayerConfig[];
-  /** Layer factory registry - injected from app */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  layerFactoryRegistry: Record<string, LayerFactory<any>>;
+  /** The kinds `factory` resolves against, by id. Injected by the host. */
+  layerKinds: LayerKinds;
 }

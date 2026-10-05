@@ -11,7 +11,7 @@ import {
   Viewer,
 } from 'cesium';
 
-import type { LayerContext, LayerFactory } from '../../types';
+import type { CesiumRendererContext, LayerKind, LayerRenderer } from '../../types';
 
 /**
  * How far a marker floats above the ground, per zIndex level: a share of the camera's own altitude,
@@ -142,7 +142,18 @@ function buildAvatarDataUrl(url: string, displaySize: number): Promise<string | 
  *  - Avatar: when `location.avatar` is provided the pin is rendered as a
  *    circular image billboard with a white ring border instead of a plain colored dot.
  */
-export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initialOptions?: PointLocationsOptions) => {
+export const pointLocationsLayer: LayerKind<PointLocationsOptions> = {
+  id: 'pointLocationsLayer',
+  slot: 'planet',
+  description: 'Display named point location markers with labels and click interactions.',
+  renderers: { cesium: renderPointLocations },
+};
+
+/** The Cesium renderer. Its state lives for one mount; the layer set calls `update` on a change. */
+async function renderPointLocations(
+  context: CesiumRendererContext,
+  initialOptions: PointLocationsOptions,
+): Promise<LayerRenderer<PointLocationsOptions>> {
   let entityIds: string[] = [];
   let onLocationClick: ((location: UserLocation) => void) | undefined = initialOptions?.onLocationClick;
   const entityMeta = new Map<string, EntityMeta>();
@@ -339,105 +350,88 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initial
     });
   }
 
-  // ─── layer factory ──────────────────────────────────────────────────────────
+  // ─── mount ──────────────────────────────────────────────────────────────────
+
+  const { viewer, events, id: layerKey, onCleanup } = context;
+  const opts = initialOptions;
+  onLocationClick = opts?.onLocationClick;
+  activeViewer = viewer;
+
+  const followCamera = () => {
+    const height = viewer.camera.positionCartographic.height;
+    metersPerLevel = Math.min(
+      MAX_METERS_PER_Z_LEVEL,
+      Math.max(MIN_METERS_PER_Z_LEVEL, height * ALTITUDE_PER_CAMERA_METRE),
+    );
+  };
+  followCamera();
+  const removeFollow = viewer.scene.preRender.addEventListener(followCamera);
+
+  const gen = ++renderGeneration;
+  await renderEntities(viewer, layerKey, opts, context.zIndex, gen);
+
+  const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
+
+  // Click handler
+  handler.setInputAction((click: { position: Cartesian2 }) => {
+    const drillPicked = viewer.scene.drillPick(click.position);
+    const hit = drillPicked.find((p) => defined(p.id) && p.id?.properties?.locationData);
+    if (hit) {
+      const locationData = hit.id.properties.locationData.getValue();
+      events.emit('location-clicked', locationData);
+      onLocationClick?.(locationData);
+    }
+  }, ScreenSpaceEventType.LEFT_CLICK);
+
+  // Hover handler — update targetSize then kick the rAF loop.
+  // Use drillPick to reliably hit billboards which may sit behind the globe
+  // surface in the pick buffer despite rendering on top visually.
+  let hoveredEntityId: string | null = null;
+
+  handler.setInputAction((movement: { endPosition: Cartesian2 }) => {
+    const drillPicked = viewer.scene.drillPick(movement.endPosition);
+    const hit = drillPicked.find((p) => defined(p.id) && p.id?.properties?.locationData);
+    const hitEntityId: string | null = hit ? (hit.id.id as string) : null;
+
+    if (hoveredEntityId === hitEntityId) return; // nothing changed
+
+    // Restore previous hover target
+    if (hoveredEntityId !== null) {
+      const meta = entityMeta.get(hoveredEntityId);
+      if (meta) meta.targetSize = meta.baseSize;
+      hoveredEntityId = null;
+      viewer.scene.canvas.style.cursor = '';
+    }
+
+    // Apply new hover target
+    if (hitEntityId !== null) {
+      const meta = entityMeta.get(hitEntityId);
+      if (meta) {
+        meta.targetSize =
+          meta.type === 'billboard' ? meta.baseSize * BILLBOARD_HOVER_SCALE : meta.baseSize * HOVER_SCALE;
+        hoveredEntityId = hitEntityId;
+        viewer.scene.canvas.style.cursor = 'pointer';
+      }
+    }
+
+    startAnimLoop();
+  }, ScreenSpaceEventType.MOUSE_MOVE);
+
+  onCleanup(() => {
+    removeFollow();
+    handler.destroy();
+    stopAnimLoop();
+    activeViewer = null;
+    viewer.scene.canvas.style.cursor = '';
+    clearEntities(viewer);
+  });
 
   return {
-    name: 'point-locations',
-
-    metadata: {
-      slot: 'planet',
-      requiresIonAccount: false,
-      description: 'Display named point location markers with labels and click interactions.',
-    },
-
-    onMount: async (context: LayerContext) => {
-      const { viewer, events, id: layerKey, onCleanup } = context;
-      const opts = (context.options as PointLocationsOptions | undefined) ?? initialOptions;
-      onLocationClick = opts?.onLocationClick;
-      activeViewer = viewer;
-
-      const followCamera = () => {
-        const height = viewer.camera.positionCartographic.height;
-        metersPerLevel = Math.min(
-          MAX_METERS_PER_Z_LEVEL,
-          Math.max(MIN_METERS_PER_Z_LEVEL, height * ALTITUDE_PER_CAMERA_METRE),
-        );
-      };
-      followCamera();
-      const removeFollow = viewer.scene.preRender.addEventListener(followCamera);
-
-      const gen = ++renderGeneration;
-      await renderEntities(viewer, layerKey, opts, context.zIndex, gen);
-
-      const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
-
-      // Click handler
-      handler.setInputAction((click: { position: Cartesian2 }) => {
-        const drillPicked = viewer.scene.drillPick(click.position);
-        const hit = drillPicked.find((p) => defined(p.id) && p.id?.properties?.locationData);
-        if (hit) {
-          const locationData = hit.id.properties.locationData.getValue();
-          events.emit('location-clicked', locationData);
-          onLocationClick?.(locationData);
-        }
-      }, ScreenSpaceEventType.LEFT_CLICK);
-
-      // Hover handler — update targetSize then kick the rAF loop.
-      // Use drillPick to reliably hit billboards which may sit behind the globe
-      // surface in the pick buffer despite rendering on top visually.
-      let hoveredEntityId: string | null = null;
-
-      handler.setInputAction((movement: { endPosition: Cartesian2 }) => {
-        const drillPicked = viewer.scene.drillPick(movement.endPosition);
-        const hit = drillPicked.find((p) => defined(p.id) && p.id?.properties?.locationData);
-        const hitEntityId: string | null = hit ? (hit.id.id as string) : null;
-
-        if (hoveredEntityId === hitEntityId) return; // nothing changed
-
-        // Restore previous hover target
-        if (hoveredEntityId !== null) {
-          const meta = entityMeta.get(hoveredEntityId);
-          if (meta) meta.targetSize = meta.baseSize;
-          hoveredEntityId = null;
-          viewer.scene.canvas.style.cursor = '';
-        }
-
-        // Apply new hover target
-        if (hitEntityId !== null) {
-          const meta = entityMeta.get(hitEntityId);
-          if (meta) {
-            meta.targetSize =
-              meta.type === 'billboard' ? meta.baseSize * BILLBOARD_HOVER_SCALE : meta.baseSize * HOVER_SCALE;
-            hoveredEntityId = hitEntityId;
-            viewer.scene.canvas.style.cursor = 'pointer';
-          }
-        }
-
-        startAnimLoop();
-      }, ScreenSpaceEventType.MOUSE_MOVE);
-
-      onCleanup(() => {
-        removeFollow();
-        handler.destroy();
-        stopAnimLoop();
-        activeViewer = null;
-        viewer.scene.canvas.style.cursor = '';
-        clearEntities(viewer);
-      });
-    },
-
-    onUpdate: async (context: LayerContext) => {
-      const { viewer, id: layerKey } = context;
-      const opts = context.options as PointLocationsOptions | undefined;
-      onLocationClick = opts?.onLocationClick;
-      activeViewer = viewer;
-      const gen = ++renderGeneration;
+    update: async (next) => {
+      onLocationClick = next.onLocationClick;
+      const generation = ++renderGeneration;
       clearEntities(viewer);
-      await renderEntities(viewer, layerKey, opts, context.zIndex, gen);
-    },
-
-    onUnmount: () => {
-      // Cleanup handled by onCleanup callbacks registered in onMount
+      await renderEntities(viewer, layerKey, next, context.zIndex, generation);
     },
   };
-};
+}

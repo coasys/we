@@ -4,16 +4,18 @@
  * Modular layer system for CesiumJS globe
  */
 
-// Export layer types
+// Export the layer contract
 export type {
-  CesiumLayer,
-  LayerFactory,
+  CesiumRendererContext,
+  GlobeEngine,
   LayerConfig,
-  LayerContext,
   LayerEventBus,
-  LayerStore,
-  LayerMetadata,
-  CameraState,
+  LayerKind,
+  LayerKinds,
+  LayerRenderer,
+  LayerRenderers,
+  RendererContext,
+  RendererFactory,
 } from './types';
 
 // Export planet layers (surface layers)
