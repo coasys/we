@@ -1,4 +1,5 @@
 import {
+  CallbackPositionProperty,
   Cartesian2,
   Cartesian3,
   Color,
@@ -13,11 +14,18 @@ import {
 import type { LayerContext, LayerFactory } from '../../types';
 
 /**
- * Metres of altitude added per zIndex level.
- * Keeps point markers above ground-level layers (borders, hexagons, etc.)
- * while remaining visually imperceptible from typical globe zoom levels.
+ * How far a marker floats above the ground, per zIndex level: a share of the camera's own altitude,
+ * between a floor and a ceiling.
+ *
+ * Some height keeps a marker clear of what is drawn on the surface (borders, hexagons). It used to
+ * be a fixed 5 km per level, which is right from orbit and absurd up close: zoom towards a house and
+ * the marker stayed 5 km overhead, sliding away across the screen as the camera came down beneath
+ * it. Proportional to the camera's height, a marker sits where it belongs at every zoom: still 5 km
+ * per level from far out, as before, and a metre or two at street level.
  */
-const METERS_PER_Z_LEVEL = 5_000;
+const ALTITUDE_PER_CAMERA_METRE = 0.002;
+const MIN_METERS_PER_Z_LEVEL = 1;
+const MAX_METERS_PER_Z_LEVEL = 5_000;
 
 /** How much the marker expands on hover (multiplied by base pixel size). */
 const HOVER_SCALE = 1.4;
@@ -139,6 +147,8 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initial
   let onLocationClick: ((location: UserLocation) => void) | undefined = initialOptions?.onLocationClick;
   const entityMeta = new Map<string, EntityMeta>();
   let renderGeneration = 0;
+  /** Metres per zIndex level for this frame, from the camera's altitude. See {@link ALTITUDE_PER_CAMERA_METRE}. */
+  let metersPerLevel = MAX_METERS_PER_Z_LEVEL;
   // rAF-based animation state
   let animFrameId: number | null = null;
   let activeViewer: Viewer | null = null;
@@ -223,7 +233,15 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initial
     const parsedLocations = resolveLocations(opts);
     const markerSize = opts?.markerSize ?? 15;
     const defaultColor = opts?.defaultColor ?? '#00ffff';
-    const height = (zIndex ?? 1) * METERS_PER_Z_LEVEL;
+    const levels = zIndex ?? 1;
+    // Read every frame, so the marker follows the camera's altitude. `result` is reused, since this
+    // runs per marker per frame.
+    const positionOf = (loc: UserLocation) =>
+      new CallbackPositionProperty(
+        (_time, result) =>
+          Cartesian3.fromDegrees(loc.longitude, loc.latitude, levels * metersPerLevel, undefined, result),
+        false,
+      );
 
     // Total display size for avatar billboards.
     // A plain-color point with pixelSize N and outlineWidth W renders a total visual
@@ -252,7 +270,7 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initial
         try {
           const entity = viewer.entities.add({
             id: entityId,
-            position: Cartesian3.fromDegrees(loc.longitude, loc.latitude, height),
+            position: positionOf(loc),
             billboard: {
               image: avatarDataUrl,
               width: avatarDisplaySize,
@@ -285,7 +303,7 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initial
         try {
           const entity = viewer.entities.add({
             id: entityId,
-            position: Cartesian3.fromDegrees(loc.longitude, loc.latitude, height),
+            position: positionOf(loc),
             point: {
               // pixelSize = filled-circle diameter; outlineWidth adds OUTLINE_WIDTH px on each
               // side → total visual diameter = markerSize + OUTLINE_WIDTH * 2 = avatarDisplaySize.
@@ -336,6 +354,16 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initial
       const opts = (context.options as PointLocationsOptions | undefined) ?? initialOptions;
       onLocationClick = opts?.onLocationClick;
       activeViewer = viewer;
+
+      const followCamera = () => {
+        const height = viewer.camera.positionCartographic.height;
+        metersPerLevel = Math.min(
+          MAX_METERS_PER_Z_LEVEL,
+          Math.max(MIN_METERS_PER_Z_LEVEL, height * ALTITUDE_PER_CAMERA_METRE),
+        );
+      };
+      followCamera();
+      const removeFollow = viewer.scene.preRender.addEventListener(followCamera);
 
       const gen = ++renderGeneration;
       await renderEntities(viewer, layerKey, opts, context.zIndex, gen);
@@ -388,6 +416,7 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initial
       }, ScreenSpaceEventType.MOUSE_MOVE);
 
       onCleanup(() => {
+        removeFollow();
         handler.destroy();
         stopAnimLoop();
         activeViewer = null;
