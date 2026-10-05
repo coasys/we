@@ -341,7 +341,8 @@ export function TemplateStoreProvider(props: ParentProps) {
           console.warn(describeAcceptance(accepted, 'your library').join('\n'));
           continue;
         }
-        if (accepted.blocked.length) console.warn(describeAcceptance(accepted, 'your library').join('\n'));
+        if (accepted.blocked.length || accepted.refusedElements.length)
+          console.warn(describeAcceptance(accepted, 'your library').join('\n'));
         const schema = accepted.schema;
         // Prefer the ID embedded in the schema (set during save) over deriving from name
         const requested = schema.id || template.name?.toLowerCase().replace(/\s+/g, '-') || template.id;
@@ -426,7 +427,8 @@ export function TemplateStoreProvider(props: ParentProps) {
           console.warn(describeAcceptance(accepted, origin).join('\n'));
           continue;
         }
-        if (accepted.blocked.length) console.warn(describeAcceptance(accepted, origin).join('\n'));
+        if (accepted.blocked.length || accepted.refusedElements.length)
+          console.warn(describeAcceptance(accepted, origin).join('\n'));
         const schema = accepted.schema;
         const templateId = schema.id || template.name?.toLowerCase().replace(/\s+/g, '-') || template.id;
 
@@ -1041,7 +1043,11 @@ export function TemplateStoreProvider(props: ParentProps) {
         capabilities: describeCapabilities(accepted.groups),
         // Named rather than counted: "one reference is not allowed here" says nothing about which
         // part of the template will be inert, and the path is the only thing that does.
-        blocked: [...new Set(accepted.blocked.map((reference) => reference.path))],
+        blocked: [
+          ...new Set(accepted.blocked.map((reference) => reference.path)),
+          // And any element it may not mount — a `script`, an `iframe` — which will render nothing.
+          ...accepted.refusedElements.map((tag) => `<${tag}>`),
+        ],
       });
     } catch (error) {
       toastService.error(explain(error, 'Could not read that template'));

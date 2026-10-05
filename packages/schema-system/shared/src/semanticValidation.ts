@@ -4,6 +4,7 @@ import { role, semanticValues, space } from '@we/tokens';
 import type { ContextData, StateMemberMeta } from './contextTypes';
 import { expandDefinitions } from './definitions';
 import { checkExpression, ExpressionSyntaxError, isCallTime, isExpressionToken, parseExpression } from './expressions';
+import { isTemplateElement } from './templateElements';
 import type { SchemaNode } from './types';
 import type { ValidationError, ValidationResult } from './validators';
 import { validateStructure } from './validators';
@@ -44,103 +45,6 @@ export type ValidationContext = {
 };
 
 // ── Constants ──────────────────────────────────────────────────────
-
-const HTML_ELEMENTS = new Set([
-  'div',
-  'span',
-  'p',
-  'a',
-  'img',
-  'br',
-  'hr',
-  'h1',
-  'h2',
-  'h3',
-  'h4',
-  'h5',
-  'h6',
-  'ul',
-  'ol',
-  'li',
-  'dl',
-  'dt',
-  'dd',
-  'table',
-  'thead',
-  'tbody',
-  'tfoot',
-  'tr',
-  'td',
-  'th',
-  'caption',
-  'colgroup',
-  'col',
-  'form',
-  'input',
-  'button',
-  'select',
-  'option',
-  'optgroup',
-  'textarea',
-  'label',
-  'fieldset',
-  'legend',
-  'section',
-  'article',
-  'nav',
-  'header',
-  'footer',
-  'main',
-  'aside',
-  'figure',
-  'figcaption',
-  'blockquote',
-  'pre',
-  'code',
-  'em',
-  'strong',
-  'small',
-  'sub',
-  'sup',
-  'video',
-  'audio',
-  'source',
-  'canvas',
-  'svg',
-  'iframe',
-  'details',
-  'summary',
-  'dialog',
-  'menu',
-  'slot',
-  'template',
-  'abbr',
-  'address',
-  'b',
-  'bdi',
-  'bdo',
-  'cite',
-  'data',
-  'del',
-  'dfn',
-  'i',
-  'ins',
-  'kbd',
-  'mark',
-  'meter',
-  'output',
-  'progress',
-  'q',
-  'rp',
-  'rt',
-  'ruby',
-  's',
-  'samp',
-  'time',
-  'u',
-  'var',
-  'wbr',
-]);
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -677,9 +581,25 @@ function walkNode(
     return;
   }
 
+  /*
+    A native element outside the allowlist is refused by the renderer — it renders nothing — so say
+    so here, where an author can act on it, rather than leave it to look like a typo.
+  */
+  if (/^[a-z][a-z0-9]*$/.test(type) && !isTemplateElement(type)) {
+    errors.push({
+      path: `${path}.type`,
+      message:
+        `<${type}> is not an element a template may mount: it runs code, loads something into the page, ` +
+        `or creates a document of its own, so it renders nothing. For an embedded page use we-iframe; for ` +
+        `formatted markup use we-html or we-markdown.`,
+      severity: 'error',
+    });
+    return;
+  }
+
   // Skip HTML elements — except a write on an event nobody causes, which native elements are the
   // commonest way to reach: an `img` that loads, a `details` that starts open, an `input` that autofocuses.
-  if (HTML_ELEMENTS.has(type)) {
+  if (isTemplateElement(type)) {
     for (const [propName, propValue] of Object.entries((n.props as Record<string, unknown>) ?? {})) {
       checkUnaskedWrite(propName, propValue, `${path}.props.${propName}`, ctx, errors);
     }
