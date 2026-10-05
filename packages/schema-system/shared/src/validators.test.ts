@@ -212,3 +212,17 @@ describe('a refused node held in a prop is reported by its own fault', () => {
     ).toBe(true);
   });
 });
+
+/*
+  A token with a stray key fails every branch at once — it is not a string, not a number, and
+  every other token kind is missing its own key — so the furthest-got rule ties. The branch that
+  found all it requires and objects only to the extra key is the one meant. This is the exact shape
+  of a pre-October template's `{ $if: …, onSuccess: [close] }`, which refused a whole template from
+  somebody's library while printing five lines that never said "onSuccess".
+*/
+describe('a token with a stray key is reported as that key', () => {
+  it('names the key and nothing else', () => {
+    const result = validateStructure(template([{ type: 'we-button', props: { onClick: strayKey }, children: ['Go'] }]));
+    expect(result.errors.map((e) => e.message)).toEqual(['Unrecognized key: "onSuccess"']);
+  });
+});

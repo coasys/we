@@ -28,6 +28,22 @@ function progress(branch: readonly Issue[]): number {
 }
 
 /**
+ * Of branches that got equally far, the ones that fit best: those whose only complaint is keys they
+ * do not know, fewest first. Such a branch found everything it requires and objects to something
+ * extra, which is the shape of a token with a stray key — `{ $if: …, onSuccess: [] }` is a `$if` with
+ * one key too many, not a string, a number, or a `$setLocal` missing its name. When no branch is like
+ * that, they are all kept.
+ */
+function closestFits(branches: (readonly Issue[])[]): (readonly Issue[])[] {
+  const extraKeys = (branch: readonly Issue[]) =>
+    branch.every((issue) => issue.code === 'unrecognized_keys')
+      ? branch.reduce((count, issue) => count + (issue.code === 'unrecognized_keys' ? issue.keys.length : 0), 0)
+      : Infinity;
+  const fewest = Math.min(...branches.map(extraKeys));
+  return fewest === Infinity ? branches : branches.filter((branch) => extraKeys(branch) === fewest);
+}
+
+/**
  * The issues worth reporting, with each failed union narrowed to the branches that got furthest.
  *
  * A child is a node, a string or a token, and a prop is any of those or a plain object. When a node
@@ -47,7 +63,8 @@ function flattenIssues(issues: readonly Issue[], prefix: Path = []): { path: Pat
     const path = [...prefix, ...issue.path];
     if (issue.code !== 'invalid_union' || !issue.errors.length) return [{ path, message: issue.message }];
     const best = Math.max(...issue.errors.map(progress));
-    return issue.errors.filter((branch) => progress(branch) === best).flatMap((branch) => flattenIssues(branch, path));
+    const furthest = issue.errors.filter((branch) => progress(branch) === best);
+    return closestFits(furthest).flatMap((branch) => flattenIssues(branch, path));
   });
 }
 
