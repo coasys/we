@@ -1510,9 +1510,21 @@ importers:
 
   packages/module-system/globe/core:
     dependencies:
+      '@we/design-utils':
+        specifier: workspace:*
+        version: link:../../../design-system/utils
       '@we/globe-protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@we/graph-core':
+        specifier: workspace:*
+        version: link:../../../graph-system/core
+      '@we/graph-protocol':
+        specifier: workspace:*
+        version: link:../../../graph-system/protocol
+      h3-js:
+        specifier: ^4.1.0
+        version: 4.5.0
     devDependencies:
       '@types/node':
         specifier: ^26.4.0

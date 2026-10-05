@@ -21,7 +21,11 @@
     "dist"
   ],
   "dependencies": {
-    "@we/globe-protocol": "workspace:*"
+    "@we/design-utils": "workspace:*",
+    "@we/globe-protocol": "workspace:*",
+    "@we/graph-core": "workspace:*",
+    "@we/graph-protocol": "workspace:*",
+    "h3-js": "^4.1.0"
   },
   "devDependencies": {
     "@types/node": "^26.4.0",
