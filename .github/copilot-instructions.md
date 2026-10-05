@@ -3315,6 +3315,7 @@ TemplateStore:
   - myTemplates: array of TemplateSchema objects — user's installed custom templates only (excludes built-in and space templates)
   - allTemplates: array of TemplateSchema objects — union of built-in + personal + space templates
   - templateManagementList: TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault)
+  - refusedTemplates: RefusedTemplate[] — templates in this agent's library that no longer validate, so they cannot be loaded (id, name, icon, reason). `reason` is the validator's first complaint with where it is. Listed so they can be seen and deleted; they are in no other list. `id` is the record's own, for deleteRefusedTemplate
   - switcherGroups: TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon, editable }[] }. Groups: "Space templates", "My templates", "Built-in". Use filter(group.items, { name: { contains: local.search } }) for search since items have a flat name field. `editable` says whether editing THAT row would open a session that can be saved — gate a per-row edit control on it rather than on editorStore.isReadOnly, which answers for whichever template is currently rendered and so gives every row the same verdict.
   - currentSwitcherId: string — the id the template switcher should show as selected. The switcher's own spelling of the current template: it differs from currentTemplate.id while a space override or a preview is in effect
   - currentTemplate: TemplateSchema (the active template)
@@ -3326,6 +3327,7 @@ TemplateStore:
   - switchTemplate(newTemplateId: string): switches to another template
   - removeTemplate(): removes the current template
   - deleteTemplate(templateId: string): permanently deletes a custom template from the library
+  - deleteRefusedTemplate(id: string): permanently deletes a library template that could not be loaded, by its refusedTemplates id
   - installTemplate(templateId: string): marks an installed custom template visible in the pickers
   - uninstallTemplate(templateId: string): hides a custom template from the pickers without deleting it. The counterpart of installTemplate
   - installFromMarketplace(marketplaceTemplateId: string): copies a marketplace template into your own library. A personal act — use installToSpace to give the community a template. Asks first: the template is fetched and inspected, and the host raises a dialog naming what it will be able to do. Nothing is written until that is confirmed, so treat this as "start an install", not "install"

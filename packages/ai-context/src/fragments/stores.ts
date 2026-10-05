@@ -290,6 +290,7 @@ export const storeEntries: StoreEntry[] = [
         type: 'array',
         properties: ['id', 'name', 'icon', 'description', 'isBuiltIn', 'isInstalled', 'isDefault'],
       },
+      refusedTemplates: { type: 'array', properties: ['id', 'name', 'icon', 'reason'] },
       switcherGroups: { type: 'array', properties: ['label', 'items'] },
     },
     actions: [
@@ -300,6 +301,7 @@ export const storeEntries: StoreEntry[] = [
       'installToSpace',
       'setDefaultTemplate',
       'deleteTemplate',
+      'deleteRefusedTemplate',
     ],
   },
   {
@@ -987,6 +989,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         currentTemplate: 'TemplateSchema (the active template)',
         templateManagementList:
           'TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault)',
+        refusedTemplates:
+          "RefusedTemplate[] — templates in this agent's library that no longer validate, so they cannot be loaded (id, name, icon, reason). `reason` is the validator's first complaint with where it is. Listed so they can be seen and deleted; they are in no other list. `id` is the record's own, for deleteRefusedTemplate",
         switcherGroups:
           'TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon, editable }[] }. Groups: "Space templates", "My templates", "Built-in". Use filter(group.items, { name: { contains: local.search } }) for search since items have a flat name field. `editable` says whether editing THAT row would open a session that can be saved — gate a per-row edit control on it rather than on editorStore.isReadOnly, which answers for whichever template is currently rendered and so gives every row the same verdict.',
         currentSwitcherId:
@@ -999,6 +1003,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
       },
       actions: {
         deleteTemplate: '(templateId: string): permanently deletes a custom template from the library',
+        deleteRefusedTemplate:
+          '(id: string): permanently deletes a library template that could not be loaded, by its refusedTemplates id',
         installTemplate: '(templateId: string): marks an installed custom template visible in the pickers',
         uninstallTemplate:
           '(templateId: string): hides a custom template from the pickers without deleting it. The counterpart of installTemplate',

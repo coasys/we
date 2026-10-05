@@ -7275,6 +7275,10 @@
           "type": "array",
           "properties": ["id", "name", "icon", "description", "isBuiltIn", "isInstalled", "isDefault"]
         },
+        "refusedTemplates": {
+          "type": "array",
+          "properties": ["id", "name", "icon", "reason"]
+        },
         "switcherGroups": {
           "type": "array",
           "properties": ["label", "items"]
@@ -7303,6 +7307,7 @@
         "switchTemplate",
         "removeTemplate",
         "deleteTemplate",
+        "deleteRefusedTemplate",
         "installTemplate",
         "uninstallTemplate",
         "installFromMarketplace",
