@@ -271,8 +271,15 @@ function main() {
     }
   });
 
-  // Content sources: the same check the build makes, so a bad entry fails here first.
-  return import('@we/csp')
+  /*
+    Content sources: the same check the build makes, so a bad entry fails here first.
+
+    Imported by path rather than as a dependency of the root. A workspace dependency on the root
+    project moves the root's `prepare` — which builds `@we/cli` — after that package in pnpm's
+    install order, and every package linked before it is left without a `we-build` binary, so a
+    fresh install (CI's) cannot build anything.
+  */
+  return import(require('url').pathToFileURL(path.join(WORKSPACE_ROOT, 'packages/csp/src/index.js')).href)
     .then(({ seedSources }) => {
       try {
         seedSources(seed);

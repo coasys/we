@@ -32,9 +32,6 @@ importers:
       '@typescript-eslint/parser':
         specifier: ^8.70.1
         version: 8.70.1(eslint@10.9.1(jiti@2.7.0))(typescript@6.0.3)
-      '@we/csp':
-        specifier: workspace:*
-        version: link:packages/csp
       eslint:
         specifier: ^10.9.1
         version: 10.9.1(jiti@2.7.0)
