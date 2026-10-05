@@ -1938,6 +1938,28 @@ importers:
         specifier: ^5.0.2
         version: 5.0.2(@types/node@26.4.0)(@vitest/coverage-v8@5.0.2)(happy-dom@20.12.0)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.4.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.13)(yaml@2.9.0))
 
+  packages/templates/cartridges:
+    dependencies:
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../../schema-system/shared
+      '@we/template-fixtures':
+        specifier: workspace:*
+        version: link:../fixtures
+      '@we/template-kit':
+        specifier: workspace:*
+        version: link:../kit
+    devDependencies:
+      '@types/node':
+        specifier: ^26.4.0
+        version: 26.4.0
+      tsx:
+        specifier: ^4.23.13
+        version: 4.23.13
+      vitest:
+        specifier: ^5.0.2
+        version: 5.0.2(@types/node@26.4.0)(@vitest/coverage-v8@5.0.2)(happy-dom@20.12.0)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.4.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.13)(yaml@2.9.0))
+
   packages/templates/default:
     dependencies:
       '@we/schema-shared':

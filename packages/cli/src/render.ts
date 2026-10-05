@@ -5,9 +5,12 @@
 import { basename, extname, resolve, sep } from 'node:path';
 
 export interface RenderArgs {
-  templatePath: string;
+  /** Absent when a fixture file carries its own templates — a cartridge's shell travels in its fixture. */
+  templatePath?: string;
   output: string;
   fixture?: string;
+  /** A fixture from a file: content, shapes, records and templates the space should carry. */
+  fixtureFile?: string;
   width: number;
   height: number;
   scale: number;
@@ -26,6 +29,7 @@ export const USAGE =
   'Options:\n' +
   '  --output, -o <path>   Output file path\n' +
   '  --fixture <id>        Bundled fixture: discord, twitter, instagram, youtube, kanban, events\n' +
+  '  --fixture-file <path> A fixture from a file; with no template, renders the template it carries\n' +
   '  --viewport <WxH>      Viewport size (default: 1440x900)\n' +
   '  --scale <n>           Device pixel ratio (default: 2)\n' +
   '  --svg                 SVG output via foreignObject\n' +
@@ -73,6 +77,7 @@ export function parseRenderArgs(argv: readonly string[]): RenderArgs {
 
     if (arg === '--output' || arg === '-o') args.output = value();
     else if (arg === '--fixture') args.fixture = value();
+    else if (arg === '--fixture-file') args.fixtureFile = value();
     else if (arg === '--viewport') {
       const raw = value();
       const match = /^(\d+)x(\d+)$/.exec(raw);
@@ -94,10 +99,11 @@ export function parseRenderArgs(argv: readonly string[]): RenderArgs {
     else throw new UsageError(`One template at a time — got "${args.templatePath}" and "${arg}"`);
   }
 
-  if (!args.templatePath) throw new UsageError('No template given');
-  const output =
-    args.output ?? `${basename(args.templatePath, extname(args.templatePath))}.${args.svg ? 'svg' : 'png'}`;
-  return { ...args, templatePath: args.templatePath, output };
+  const source = args.templatePath ?? args.fixtureFile;
+  if (!source) throw new UsageError('No template given');
+  if (args.fixture && args.fixtureFile) throw new UsageError('--fixture and --fixture-file are one or the other');
+  const output = args.output ?? `${basename(source, extname(source))}.${args.svg ? 'svg' : 'png'}`;
+  return { ...args, output };
 }
 
 /**
