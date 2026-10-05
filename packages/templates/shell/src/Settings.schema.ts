@@ -225,8 +225,78 @@ const templatesSection: SchemaNode = {
         },
       ],
     },
+    refusedTemplatesGroup(),
   ],
 };
+
+/**
+ * Templates in the library that no longer validate. Without this they were in no list at all: not
+ * offered, not deletable, and present only as a warning in the console on every boot.
+ */
+function refusedTemplatesGroup(): SchemaNode {
+  return {
+    type: '$if',
+    props: {
+      condition: { $: 'count(templateStore.refusedTemplates)' },
+      then: {
+        type: 'Column',
+        props: { gap: '200', pt: '300' },
+        children: [
+          { type: 'we-text', props: { fontWeight: 'semibold' }, children: ["Couldn't load"] },
+          {
+            type: 'we-text',
+            props: { variant: 'label', color: 'text-muted' },
+            children: [
+              'These templates in your library no longer pass validation, so they cannot be used. ' +
+                'Usually a copy made before a change to the template rules. Delete them, then copy the ' +
+                'built-in again if you want it back.',
+            ],
+          },
+          {
+            type: '$each',
+            props: { items: { $: 'templateStore.refusedTemplates' }, as: 'refused' },
+            children: [
+              {
+                type: 'Row',
+                props: { gap: '300', ay: 'center', p: '300', r: '200', bg: 'surface' },
+                children: [
+                  { type: 'we-icon', props: { name: 'warning', size: '20px', color: 'warning-text' } },
+                  {
+                    type: 'Column',
+                    props: { flex: '1', minWidth: '0' },
+                    children: [
+                      {
+                        type: 'we-text',
+                        props: { variant: 'body', fontWeight: 'medium' },
+                        children: [{ $: 'refused.name' }],
+                      },
+                      {
+                        type: 'we-text',
+                        props: { variant: 'label', color: 'text-muted' },
+                        children: [{ $: 'refused.reason' }],
+                      },
+                    ],
+                  },
+                  {
+                    type: 'we-button',
+                    props: {
+                      variant: 'ghost',
+                      size: 'sm',
+                      label: 'Delete',
+                      loading: { $: 'templateStore.operationLoading == `delete:${refused.id}`' },
+                      onClick: { $action: 'templateStore.deleteRefusedTemplate', args: [{ $: 'refused.id' }] },
+                    },
+                    children: [{ type: 'we-icon', props: { name: 'trash', size: '16px', color: 'danger-text' } }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+}
 
 /**
  * Whether a space's theme covers the whole window, or only the space's own content.

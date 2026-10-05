@@ -158,3 +158,16 @@ export function describeAcceptance(acceptance: TemplateAcceptance, origin: strin
   }
   return lines;
 }
+
+/**
+ * The first reason a refused template gives, short enough for a settings row. A path into a template
+ * can run to thirty segments, and only the last few say where to look.
+ */
+export function describeRefusal(acceptance: TemplateAcceptance): string {
+  const first = acceptance.refusals[1] ?? acceptance.refusals[0] ?? '';
+  const split = first.indexOf(': ');
+  if (split < 0) return first;
+  const segments = first.slice(0, split).split('.');
+  const where = segments.length > 4 ? `…${segments.slice(-4).join('.')}` : segments.join('.');
+  return `${first.slice(split + 2)} (at ${where})`;
+}

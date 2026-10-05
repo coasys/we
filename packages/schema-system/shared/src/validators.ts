@@ -9,39 +9,62 @@ type Issue = z.core.$ZodIssue;
 type Path = readonly PropertyKey[];
 
 /**
- * Whether a union branch failed on the value's shape itself, at the union's own position: the
- * wrong type outright, or keys it does not recognise at all. Such a branch is not the one the
- * value was meant to be, so what it says about the value is noise. A branch that is itself a union
- * (`$setLocal` has two forms) rejects the shape when every one of its own branches does.
+ * How far into the value an issue is, counting into the branches of a union it reports: a union two
+ * keys down whose best branch got one key further reaches three.
  */
-function rejectsTheShape(branch: readonly Issue[]): boolean {
-  return branch.some((issue) => {
-    if (issue.path.length !== 0) return false;
-    if (issue.code === 'invalid_type' || issue.code === 'unrecognized_keys') return true;
-    return issue.code === 'invalid_union' && issue.errors.length > 0 && issue.errors.every(rejectsTheShape);
-  });
+function reach(issue: Issue): number {
+  if (issue.code !== 'invalid_union' || !issue.errors.length) return issue.path.length;
+  return issue.path.length + Math.max(...issue.errors.map(progress));
 }
 
 /**
- * The issues worth reporting, with each failed union narrowed to the branch the value was meant to
- * be.
+ * How far a union branch got before it failed: the reach of its shallowest issue. A branch that is
+ * not what the value was meant to be fails at once (the wrong type, keys it does not know, a fallback
+ * refusing the whole value), so it scores 0; the branch the value was meant to be fails somewhere
+ * inside it.
+ */
+function progress(branch: readonly Issue[]): number {
+  return branch.length ? Math.min(...branch.map(reach)) : 0;
+}
+
+/**
+ * Of branches that got equally far, the ones that fit best: those whose only complaint is keys they
+ * do not know, fewest first. Such a branch found everything it requires and objects to something
+ * extra, which is the shape of a token with a stray key — `{ $if: …, onSuccess: [] }` is a `$if` with
+ * one key too many, not a string, a number, or a `$setLocal` missing its name. When no branch is like
+ * that, they are all kept.
+ */
+function closestFits(branches: (readonly Issue[])[]): (readonly Issue[])[] {
+  const extraKeys = (branch: readonly Issue[]) =>
+    branch.every((issue) => issue.code === 'unrecognized_keys')
+      ? branch.reduce((count, issue) => count + (issue.code === 'unrecognized_keys' ? issue.keys.length : 0), 0)
+      : Infinity;
+  const fewest = Math.min(...branches.map(extraKeys));
+  return fewest === Infinity ? branches : branches.filter((branch) => extraKeys(branch) === fewest);
+}
+
+/**
+ * The issues worth reporting, with each failed union narrowed to the branches that got furthest.
  *
- * A child is a node, a string or a token, and when a node fails zod reports every branch it tried.
- * In the order they were declared, which puts "expected string" and a line of "unrecognized keys"
- * per token kind ahead of the node's own fault. A caller showing the first five lines then showed
- * only those, and the reason the template was refused never appeared.
+ * A child is a node, a string or a token, and a prop is any of those or a plain object. When a node
+ * fails, zod reports every branch it tried, in the order they were declared, which puts "expected
+ * string", "expected number" and a line of "unrecognized keys" per token kind ahead of the node's own
+ * fault. A caller printing the first five lines printed only those, so the reason a template was
+ * refused never appeared.
  *
- * The branch kept is the one that accepted the value's shape. When no branch did, or more than one
- * did, nothing can be said about which was meant, and every branch is reported as before.
+ * The branches kept are those that got furthest into the value before failing, which is the node
+ * wherever the node was meant: it fails inside itself, and everything else fails at its door. Where
+ * the furthest is shared (a value no branch got into at all) every one of those is reported, since
+ * nothing says which was meant.
  */
 function flattenIssues(issues: readonly Issue[], prefix: Path = []): { path: Path; message: string }[] {
   return issues.flatMap((issue) => {
     // A branch's issues are relative to the union. Joined once here, so a nested union compounds.
     const path = [...prefix, ...issue.path];
     if (issue.code !== 'invalid_union' || !issue.errors.length) return [{ path, message: issue.message }];
-    const plausible = issue.errors.filter((branch) => !rejectsTheShape(branch));
-    const branches = plausible.length === 1 ? plausible : issue.errors;
-    return branches.flatMap((branch) => flattenIssues(branch, path));
+    const best = Math.max(...issue.errors.map(progress));
+    const furthest = issue.errors.filter((branch) => progress(branch) === best);
+    return closestFits(furthest).flatMap((branch) => flattenIssues(branch, path));
   });
 }
 

@@ -927,6 +927,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     myTemplates: state('library'),
     allTemplates: state('appearance'),
     templateManagementList: state('library'),
+    refusedTemplates: state('library'),
     switcherGroups: state('appearance'),
     // Beside `switcherGroups` rather than with `currentTemplate`: it is the switcher's spelling of
     // the current id, meaningless to anything not rendering those rows.
@@ -938,6 +939,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     switchTemplate: action('appearance'),
     removeTemplate: destructive('library'),
     deleteTemplate: destructive('library'),
+    deleteRefusedTemplate: destructive('library'),
     installTemplate: action('library'),
     uninstallTemplate: action('library'),
     installFromMarketplace: action('library'),

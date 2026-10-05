@@ -24,7 +24,12 @@ import { Accessor, createContext, createEffect, createSignal, ParentProps, useCo
 import { createStore, reconcile } from 'solid-js/store';
 
 import { CHROME_TIER, SPACE_TIER } from '../../../shared/registries/templateSurface';
-import { acceptTemplate, describeAcceptance, describeCapabilities } from '../../../shared/templateAcceptance';
+import {
+  acceptTemplate,
+  describeAcceptance,
+  describeCapabilities,
+  describeRefusal,
+} from '../../../shared/templateAcceptance';
 import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
@@ -40,6 +45,23 @@ export type TemplateManagementItem = {
   isBuiltIn: boolean;
   isInstalled: boolean;
   isDefault: boolean;
+};
+
+/**
+ * A template in your library that could not be loaded, because it no longer validates.
+ *
+ * Listed so it can be seen and deleted. It used to be skipped before it reached any list, which made
+ * it invisible and also undeletable, since every library action finds a template by the id it was
+ * listed under. A copy of a built-in made before a validator was tightened lived on that way, with
+ * nothing but a console warning to say it existed.
+ */
+export type RefusedTemplate = {
+  /** The record's own id: a refused template has no schema id anyone may trust. */
+  id: string;
+  name: string;
+  icon: string;
+  /** Why it was refused, as the validator put it, with where in the template it is. */
+  reason: string;
 };
 
 export type TemplateSwitcherItem = {
@@ -101,6 +123,7 @@ export interface TemplateStore {
   myTemplates: Accessor<TemplateSchema[]>;
   allTemplates: Accessor<TemplateSchema[]>;
   templateManagementList: Accessor<TemplateManagementItem[]>;
+  refusedTemplates: Accessor<RefusedTemplate[]>;
   switcherGroups: Accessor<TemplateSwitcherGroup[]>;
   currentSwitcherId: Accessor<string>;
   currentTemplate: TemplateSchema;
@@ -113,6 +136,7 @@ export interface TemplateStore {
   switchTemplate: (newTemplateId: string) => void;
   removeTemplate: () => Promise<void>;
   deleteTemplate: (templateId: string) => Promise<void>;
+  deleteRefusedTemplate: (recordId: string) => Promise<void>;
   installTemplate: (templateId: string) => Promise<void>;
   uninstallTemplate: (templateId: string) => Promise<void>;
   installFromMarketplace: (marketplaceTemplateId: string) => Promise<void>;
@@ -198,6 +222,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     fills agree, rather than leaving a `screenshots` nobody may trust on half the entries.
   */
   const savedTemplateMap = new Map<string, NewRecord<Template>>();
+  /** Library records that failed validation, by record id. See {@link RefusedTemplate}. */
+  const refusedRecords = new Map<string, NewRecord<Template>>();
+  const [refusedTemplates, setRefusedTemplates] = createSignal<RefusedTemplate[]>([]);
   const spaceTemplateMap = new Map<string, NewRecord<Template>>();
 
   // Per-session cache of space templates keyed by perspective UUID.
@@ -322,7 +349,9 @@ export function TemplateStoreProvider(props: ParentProps) {
       const allDbTemplates = await Template.findAll(perspective);
 
       savedTemplateMap.clear();
+      refusedRecords.clear();
       const savedTemplates: TemplateSchema[] = [];
+      const refused: RefusedTemplate[] = [];
 
       for (const template of allDbTemplates) {
         const decoded = decodeFileAsJson(template.schema);
@@ -339,6 +368,13 @@ export function TemplateStoreProvider(props: ParentProps) {
         const accepted = acceptTemplate(raw, { origin: 'your library', grants: CHROME_TIER });
         if (!accepted.schema) {
           console.warn(describeAcceptance(accepted, 'your library').join('\n'));
+          refusedRecords.set(template.id, template);
+          refused.push({
+            id: template.id,
+            name: template.name || (raw as Partial<TemplateSchema>).meta?.name || 'Untitled template',
+            icon: template.icon || (raw as Partial<TemplateSchema>).meta?.icon || 'warning',
+            reason: describeRefusal(accepted),
+          });
           continue;
         }
         if (accepted.blocked.length || accepted.refusedElements.length)
@@ -353,6 +389,8 @@ export function TemplateStoreProvider(props: ParentProps) {
         savedTemplates.push(entry);
         savedTemplateMap.set(templateId, template);
       }
+
+      setRefusedTemplates(refused);
 
       // If a saved template shares an ID with a core template, use the saved version
       const savedIds = new Set(savedTemplates.map((t) => t.id));
@@ -805,6 +843,28 @@ export function TemplateStoreProvider(props: ParentProps) {
       commitTemplate(fallback);
     }
     setOperationLoading(null);
+  }
+
+  /**
+   * Delete a library template that could not be loaded. By record id, since a refused template was
+   * never given a library id; see {@link RefusedTemplate}.
+   */
+  async function deleteRefusedTemplate(recordId: string): Promise<void> {
+    const template = refusedRecords.get(recordId);
+    if (!template) return;
+    setOperationLoading(`delete:${recordId}`);
+    try {
+      const prefs = datasetStore.agentSettings();
+      if (prefs) await prefs.removeInstalledTemplates(template).catch(() => {});
+      await template.delete();
+      refusedRecords.delete(recordId);
+      setRefusedTemplates((rows) => rows.filter((row) => row.id !== recordId));
+    } catch (err) {
+      console.error('TemplateStore: deleteRefusedTemplate AD4M error', err);
+      toastService.error('Failed to delete template');
+    } finally {
+      setOperationLoading(null);
+    }
   }
 
   /** Add a template to the installed set (appears in sidebar) */
@@ -1592,6 +1652,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     myTemplates,
     allTemplates,
     templateManagementList,
+    refusedTemplates,
     switcherGroups,
     currentSwitcherId,
     currentTemplate,
@@ -1604,6 +1665,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     switchTemplate,
     removeTemplate,
     deleteTemplate,
+    deleteRefusedTemplate,
     installTemplate,
     uninstallTemplate,
     installFromMarketplace,
