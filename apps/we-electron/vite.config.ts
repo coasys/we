@@ -1,3 +1,5 @@
+import { globeLayerAssets } from '@we/globe-layers/vite';
+import { cesiumAssets } from '@we/globe-widget/vite';
 import { resolve } from 'path';
 import { defineConfig } from 'vite';
 import solid from 'vite-plugin-solid';
@@ -46,7 +48,7 @@ function rewriteKnockoutGlobalEval() {
 }
 
 export default defineConfig({
-  plugins: [solid(), rewriteKnockoutGlobalEval()],
+  plugins: [solid(), rewriteKnockoutGlobalEval(), cesiumAssets(), globeLayerAssets()],
   assetsInclude: ['**/*.glb'],
   // Absolute, because the packaged app is served over HTTP from the root of the launcher server and
   // routes are client-side. A relative base resolves `./assets/…` against the current URL, so a

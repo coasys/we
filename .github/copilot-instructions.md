@@ -3561,8 +3561,9 @@ Needs: kernels agentData, records.
 
 ### Globe (`globe`)
 3D globe with a modular layer system — locations, country outlines, H3 hexagons.
-Needs: permissions network:cesium-ion.
+Needs: permissions network:gibs.earthdata.nasa.gov, network:cesium-ion.
 - No store: everything this module does is declared.
+- Settings: `ionAccessToken` (string; deployment, agent) — Cesium ion access token
 - Components: CesiumGlobe
 
 ### Graph (`graph`)

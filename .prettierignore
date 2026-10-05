@@ -22,3 +22,6 @@ CLAUDE.md
 AGENTS.md
 .cursor/rules/we-schema.mdc
 packages/ai-context/src/schemaContext.ts
+
+# Map data shipped as-is: minified on purpose, and formatting it would multiply its size.
+packages/module-system/globe/layers/assets/*.geojson

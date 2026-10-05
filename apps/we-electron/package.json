@@ -36,6 +36,8 @@
     "@we/backend-ad4m": "workspace:*",
     "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
+    "@we/globe-layers": "workspace:*",
+    "@we/globe-widget": "workspace:*",
     "concurrently": "^10.0.5",
     "electron": "^44.2.0",
     "electron-builder": "^26.15.3",

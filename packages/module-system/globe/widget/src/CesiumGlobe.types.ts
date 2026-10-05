@@ -17,8 +17,10 @@ import type { LayerConfig, LayerFactory } from '@we/globe-protocol';
  */
 export interface CesiumGlobeProps {
   /**
-   * Cesium Ion access token. Get one free at https://ion.cesium.com/
-   * If not provided, uses Cesium's default demo token (limited quota)
+   * A Cesium ion access token, which swaps the default imagery (Natural Earth II under NASA GIBS
+   * Blue Marble) for ion's world imagery and admits layers that declare `requiresIonAccount`.
+   * Injected by the host from the globe module's `ionAccessToken` setting, never written in a
+   * template: a token in a schema is a credential handed to everyone who reads it.
    */
   ionAccessToken?: string;
   /** Planet surface layer configurations (locations, outlines, hexagons, etc.) */

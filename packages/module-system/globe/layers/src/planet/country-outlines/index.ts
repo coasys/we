@@ -1,5 +1,6 @@
 import { Cartesian3, Color } from 'cesium';
 
+import type {} from '../../env';
 import type { LayerContext, LayerFactory } from '../../types';
 
 export interface CountryOutlinesOptions {
@@ -9,7 +10,10 @@ export interface CountryOutlinesOptions {
   opacity?: number;
   /** Line width in pixels */
   width?: number;
-  /** GeoJSON URL for country boundaries (defaults to Natural Earth 50m balanced) */
+  /**
+   * GeoJSON URL for country boundaries. Defaults to Natural Earth 50m, served by the app itself (see
+   * `assets/README.md`), or to the same release on GitHub in a host that does not serve it.
+   */
   dataUrl?: string;
 }
 
@@ -22,7 +26,9 @@ export interface CountryOutlinesOptions {
  */
 
 /**
- * Where the country boundaries come from — a **tagged release**, not a branch.
+ * Where the country boundaries come from in a host that does not serve them itself — a **tagged
+ * release**, not a branch. Every WE app serves a reduced copy of this same file (`assets/`), which is
+ * what lets the borders draw offline; this is the fallback.
  *
  * This was `.../natural-earth-vector/master/...`, which is a third party's moving branch: every
  * globe in every deployment fetched whatever was at the tip of somebody else's repository at page
@@ -45,7 +51,13 @@ export const countryOutlinesLayer: LayerFactory<CountryOutlinesOptions> = (optio
 
   onMount: async (context: LayerContext) => {
     const { viewer, events, onCleanup } = context;
-    const { color = '#ffffff', opacity = 0.5, width = 2, dataUrl = COUNTRY_OUTLINES_URL } = options || {};
+    const served = import.meta.env.WE_GLOBE_LAYER_ASSETS_URL;
+    const {
+      color = '#ffffff',
+      opacity = 0.5,
+      width = 2,
+      dataUrl = served ? `${served}country-outlines.geojson` : COUNTRY_OUTLINES_URL,
+    } = options || {};
 
     const entities: string[] = [];
     let cancelled = false;
@@ -66,6 +78,7 @@ export const countryOutlinesLayer: LayerFactory<CountryOutlinesOptions> = (optio
       // Fetch GeoJSON data
       const response = await fetch(dataUrl);
       if (cancelled) return;
+      if (!response.ok) throw new Error(`${dataUrl} answered ${response.status}`);
 
       const geojson = await response.json();
       if (cancelled) return;

@@ -8798,14 +8798,22 @@
       "scope": "space",
       "requires": {
         "frameworks": ["solid"],
-        "permissions": ["network:cesium-ion"]
+        "permissions": ["network:gibs.earthdata.nasa.gov", "network:cesium-ion"]
       },
-      "capabilities": ["network:cesium-ion", "components"],
+      "capabilities": ["network:gibs.earthdata.nasa.gov", "network:cesium-ion", "components"],
       "members": [],
       "parts": [],
       "panels": [],
       "launchers": [],
-      "settings": [],
+      "settings": [
+        {
+          "key": "ionAccessToken",
+          "label": "Cesium ion access token",
+          "description": "Shows Cesium ion's world imagery instead of NASA's. Empty uses NASA Blue Marble, which needs no account. The token is sent to Cesium ion from your browser, and using it means accepting ion's terms.",
+          "type": "string",
+          "levels": ["deployment", "agent"]
+        }
+      ],
       "activities": {},
       "components": ["CesiumGlobe"],
       "functions": [],

@@ -67,18 +67,6 @@ export function safeProtocol(url) {
 }
 
 /**
- * The one third-party host the app genuinely loads code from.
- *
- * `@we/module-globe` sets `CESIUM_BASE_URL` to jsDelivr and pulls Cesium's workers, wasm, widget
- * CSS and images from there at runtime — "Uses CDN for all Cesium assets (no local bundling
- * required)", as its own header says. So this is not a policy choice, it is a dependency the code
- * already has; the CSP can only decide whether it is *named*. Naming it is strictly better than the
- * blanket `https:` the alternative would need, and it makes the cost visible: bundling Cesium
- * locally would remove the last host that can run script in WE's origin.
- */
-const CESIUM_CDN = 'https://cdn.jsdelivr.net';
-
-/**
  * Map tiles, over cleartext, because Cesium asks for them that way.
  *
  * Cesium's Bing provider chooses the tile protocol from the page it is running in:
@@ -96,9 +84,12 @@ const CESIUM_CDN = 'https://cdn.jsdelivr.net';
  *
  * **This entry is a symptom.** Requesting map tiles over cleartext leaks which tiles a user is
  * looking at — where on Earth they are looking — to anyone on the network, and lets them replace
- * what is shown. The CSP only made an existing defect visible. Two real fixes, either of which
- * retires this line: serve the app over https so Cesium mirrors *that*, or give the globe a base
- * layer built with `tileProtocol: 'https'` instead of Ion's default.
+ * what is shown. The CSP only made an existing defect visible.
+ *
+ * The globe's default imagery no longer comes from ion (Natural Earth II under NASA GIBS, both over
+ * https — see `imagery.ts` in `@we/globe-widget`), so Bing is reached only where somebody has set
+ * the globe's `ionAccessToken`. That path still has the defect; serving the app over https is what
+ * would retire this line.
  */
 const BING_TILES = 'http://*.tiles.virtualearth.net';
 
@@ -124,7 +115,7 @@ export function contentSecurityPolicy({ dev = false, origins = [] } = {}) {
       makes it acceptable is that `sanitiseCss` has already removed what a stylesheet could do with
       it. For scripts it would not be acceptable, and is not granted outside dev.
     */
-    `style-src 'self' 'unsafe-inline' ${CESIUM_CDN}`,
+    "style-src 'self' 'unsafe-inline'",
     /*
       `blob:` is a requirement rather than a loophole: the transcribe module compiles its
       AudioWorklet from a Blob URL, and worklet module loading is governed by script-src. Dev adds
@@ -139,10 +130,13 @@ export function contentSecurityPolicy({ dev = false, origins = [] } = {}) {
       module" the moment the globe chunk loads. Dev needs no separate clause: `'unsafe-eval'`
       already covers WASM.
     */
-    dev
-      ? `script-src 'self' blob: ${CESIUM_CDN} 'unsafe-eval' 'unsafe-inline'`
-      : `script-src 'self' blob: ${CESIUM_CDN} 'wasm-unsafe-eval'`,
-    `worker-src 'self' blob: ${CESIUM_CDN}`,
+    dev ? "script-src 'self' blob: 'unsafe-eval' 'unsafe-inline'" : "script-src 'self' blob: 'wasm-unsafe-eval'",
+    /*
+      No third-party host runs script here. Cesium's workers, wasm and widget CSS used to come from
+      jsDelivr; `cesiumAssets()` from `@we/globe-widget/vite` now copies them into the build and the
+      globe loads them from this origin.
+    */
+    "worker-src 'self' blob:",
     // `data:` covers the bundled icon set; `blob:` the object URL for a picked image before it is
     // uploaded; `https:` the avatars, thumbnails and map tiles a post or a template can point at.
     // Same story as `connect-src`: the tiles arrive as images too, over the protocol Cesium asked for.
