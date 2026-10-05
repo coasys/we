@@ -498,3 +498,32 @@ describe('space values', () => {
     expect(messages({ type: 'Column', props: { m: 'surface' } }, 'error')).toHaveLength(1);
   });
 });
+
+describe('a write wired to an event nobody causes', () => {
+  const unasked = (node: SchemaNode) => messages(node, 'warning').filter((m) => m.includes('fires without anybody'));
+  const create = { $action: 'record.create', args: ['TaskBlock', { title: 'x' }] };
+
+  it('warns when an image loading would write', () => {
+    expect(unasked({ type: 'img', props: { src: 'a.png', onLoad: create } })).toHaveLength(1);
+  });
+
+  it('finds the write inside a handler list and inside a lifecycle callback', () => {
+    const nested = { $action: 'routeStore.navigate', args: ['/'], onSuccess: [create] };
+    expect(unasked({ type: 'details', props: { onToggle: [{ $setLocal: 'x', value: 1 }, nested] } })).toHaveLength(1);
+  });
+
+  it('says nothing about the same write on a press', () => {
+    expect(unasked({ type: 'we-button', props: { onClick: create } })).toEqual([]);
+  });
+
+  it('says nothing about an action that may run unasked', () => {
+    expect(
+      unasked({ type: 'img', props: { src: 'a.png', onLoad: { $action: 'routeStore.navigate', args: ['/'] } } }),
+    ).toEqual([]);
+    expect(unasked({ type: 'Grid', props: { onArrange: { $action: 'modules.call.setArrangement' } } })).toEqual([]);
+  });
+
+  it('says nothing about a blur, which counts as asking once somebody typed', () => {
+    expect(unasked({ type: 'we-input', props: { onBlur: create } })).toEqual([]);
+  });
+});

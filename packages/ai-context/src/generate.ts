@@ -23,6 +23,7 @@ import { format, resolveConfig } from 'prettier';
 import { aggregateFragments } from './aggregate.js';
 import { assembleReference } from './assembler.js';
 import {
+  extractAmbientMembers,
   type ExtractedStore,
   extractHostSources,
   extractRegisteredComponents,
@@ -259,6 +260,14 @@ async function main() {
     storeEntries,
     extractWiringMembers(resolve(repoRoot, 'packages/app-shell/src/shared/registries/templateSurface.ts')),
   );
+  // Which actions may run with nobody asking — the rest need a press. See `MemberSpec.ambient`.
+  const ambient = extractAmbientMembers(
+    resolve(repoRoot, 'packages/app-shell/src/shared/registries/templateSurface.ts'),
+  );
+  for (const store of contextData.storeEntries) {
+    const names = ambient.get(store.name);
+    if (names) store.ambient = store.actions.filter((action) => names.has(action));
+  }
 
   /*
     Components the host registers that the design-system packages don't document — shell chrome,
