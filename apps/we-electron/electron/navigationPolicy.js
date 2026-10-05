@@ -67,18 +67,6 @@ export function safeProtocol(url) {
 }
 
 /**
- * The one third-party host the app genuinely loads code from.
- *
- * `@we/module-globe` sets `CESIUM_BASE_URL` to jsDelivr and pulls Cesium's workers, wasm, widget
- * CSS and images from there at runtime — "Uses CDN for all Cesium assets (no local bundling
- * required)", as its own header says. So this is not a policy choice, it is a dependency the code
- * already has; the CSP can only decide whether it is *named*. Naming it is strictly better than the
- * blanket `https:` the alternative would need, and it makes the cost visible: bundling Cesium
- * locally would remove the last host that can run script in WE's origin.
- */
-const CESIUM_CDN = 'https://cdn.jsdelivr.net';
-
-/**
  * Map tiles, over cleartext, because Cesium asks for them that way.
  *
  * Cesium's Bing provider chooses the tile protocol from the page it is running in:
@@ -127,7 +115,7 @@ export function contentSecurityPolicy({ dev = false, origins = [] } = {}) {
       makes it acceptable is that `sanitiseCss` has already removed what a stylesheet could do with
       it. For scripts it would not be acceptable, and is not granted outside dev.
     */
-    `style-src 'self' 'unsafe-inline' ${CESIUM_CDN}`,
+    "style-src 'self' 'unsafe-inline'",
     /*
       `blob:` is a requirement rather than a loophole: the transcribe module compiles its
       AudioWorklet from a Blob URL, and worklet module loading is governed by script-src. Dev adds
@@ -142,10 +130,13 @@ export function contentSecurityPolicy({ dev = false, origins = [] } = {}) {
       module" the moment the globe chunk loads. Dev needs no separate clause: `'unsafe-eval'`
       already covers WASM.
     */
-    dev
-      ? `script-src 'self' blob: ${CESIUM_CDN} 'unsafe-eval' 'unsafe-inline'`
-      : `script-src 'self' blob: ${CESIUM_CDN} 'wasm-unsafe-eval'`,
-    `worker-src 'self' blob: ${CESIUM_CDN}`,
+    dev ? "script-src 'self' blob: 'unsafe-eval' 'unsafe-inline'" : "script-src 'self' blob: 'wasm-unsafe-eval'",
+    /*
+      No third-party host runs script here. Cesium's workers, wasm and widget CSS used to come from
+      jsDelivr; `cesiumAssets()` from `@we/globe-widget/vite` now copies them into the build and the
+      globe loads them from this origin.
+    */
+    "worker-src 'self' blob:",
     // `data:` covers the bundled icon set; `blob:` the object URL for a picked image before it is
     // uploaded; `https:` the avatars, thumbnails and map tiles a post or a template can point at.
     // Same story as `connect-src`: the tiles arrive as images too, over the protocol Cesium asked for.

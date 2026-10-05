@@ -35,12 +35,12 @@ export function createGlobeModule(cesiumGlobeComponent: unknown): ModuleDefiniti
       name: 'Globe',
       description: '3D globe with a modular layer system — locations, country outlines, H3 hexagons.',
       icon: 'globe-hemisphere-west',
-      // Backend-agnostic: no owned entities, so no manifest→SDNA gap to fall into. The globe renders a
-      // WebGL canvas from Cesium's CDN and paints it with NASA's imagery, and with ion's only when
-      // somebody has supplied a token, which is what a person is told.
+      // Backend-agnostic: no owned entities, so no manifest→SDNA gap to fall into. Cesium's own files
+      // are served by the app, so what reaches the network is the imagery: NASA's, and ion's only
+      // when somebody has supplied a token. That is what a person is told.
       requires: {
         frameworks: ['solid'],
-        permissions: ['network:cdn.jsdelivr.net', 'network:gibs.earthdata.nasa.gov', 'network:cesium-ion'],
+        permissions: ['network:gibs.earthdata.nasa.gov', 'network:cesium-ion'],
       },
     },
     contributes: {

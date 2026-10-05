@@ -156,13 +156,13 @@ describe('the content security policy', () => {
     expect(fontSrc).toBe("font-src 'self' data:");
   });
 
-  it('names the Cesium CDN, which the globe genuinely loads code from', () => {
-    // The other half of the same regression: `CESIUM_BASE_URL` points at jsDelivr and Cesium pulls
-    // its workers, wasm and widget CSS from there. Naming the host is the honest reading — the
-    // dependency is real — and it is far narrower than the blanket `https:` it would otherwise need.
-    expect(production.split('; ').find((d) => d.startsWith('script-src'))).toContain('https://cdn.jsdelivr.net');
-    expect(production.split('; ').find((d) => d.startsWith('worker-src'))).toContain('https://cdn.jsdelivr.net');
-    expect(production.split('; ').find((d) => d.startsWith('style-src'))).toContain('https://cdn.jsdelivr.net');
+  it('lets no third-party host run script, style or workers in the app', () => {
+    // Cesium's workers, wasm and widget CSS came from jsDelivr until the globe served them from
+    // the app's own origin. Script from anywhere but 'self' would be a host that can run code in WE.
+    for (const directive of ['script-src', 'worker-src', 'style-src']) {
+      const value = production.split('; ').find((d) => d.startsWith(directive));
+      expect(value).not.toMatch(/https?:\/\//);
+    }
   });
 
   it('allows cleartext only to the map tile host, not in general', () => {

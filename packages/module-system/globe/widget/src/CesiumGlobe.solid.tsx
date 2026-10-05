@@ -2,7 +2,7 @@
  * Cesium Globe Widget
  *
  * A 3D globe with modular layer system.
- * Uses CDN for all Cesium assets (no local bundling required).
+ * Cesium's runtime files are served by the host app — see `CESIUM_BASE_URL` below.
  */
 
 import { Cartesian3, type ImageryLayer, VERSION, Viewer } from 'cesium';
@@ -11,15 +11,21 @@ import { createEffect, createSignal, onCleanup, onMount } from 'solid-js';
 export type * from './CesiumGlobe.types';
 import type { CesiumLayer, LayerConfig, LayerEventBus, LayerFactory, LayerStore } from '@we/globe-protocol';
 
-import type {} from './cesium-version';
+import type {} from './cesium-env';
 import type { CesiumGlobeProps } from './CesiumGlobe.types';
 import { imageryLayers } from './imagery';
 
 /**
- * Cesium's workers, wasm, widget CSS and textures, at the version of the engine that is installed.
- * A hand-typed version here once drifted eight releases behind the package.
+ * Where Cesium's workers, wasm, widget CSS and textures are served from.
+ *
+ * From the app's own origin wherever the host builds with `cesiumAssets()` from
+ * `@we/globe-widget/vite`, which every WE app does: that is what lets the globe draw offline, and
+ * what keeps a CDN out of the content security policy. A host without the plugin falls back to
+ * jsDelivr, at the installed engine's own version — a hand-typed one once drifted eight releases
+ * behind the package.
  */
-const CESIUM_BASE_URL = `https://cdn.jsdelivr.net/npm/cesium@${VERSION}/Build/Cesium/`;
+const CESIUM_BASE_URL =
+  import.meta.env.WE_CESIUM_BASE_URL ?? `https://cdn.jsdelivr.net/npm/cesium@${VERSION}/Build/Cesium/`;
 
 (window as Window & { CESIUM_BASE_URL?: string }).CESIUM_BASE_URL = CESIUM_BASE_URL;
 

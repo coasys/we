@@ -1,10 +1,11 @@
+import { cesiumAssets } from '@we/globe-widget/vite';
 import path from 'path';
 import { defineConfig } from 'vite';
 import solidPlugin from 'vite-plugin-solid';
 
 export default defineConfig({
   assetsInclude: ['**/*.glb'],
-  plugins: [solidPlugin()],
+  plugins: [solidPlugin(), cesiumAssets()],
   server: {
     port: 3000,
     fs: {

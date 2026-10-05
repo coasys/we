@@ -9,7 +9,7 @@
  * So the default needs no account and no key:
  *
  * - **Natural Earth II** at the bottom. It ships inside Cesium's own assets (42 tiles, about 600 KB,
- *   zoom levels 0–2), so it comes from wherever Cesium's other assets do and never fails on its own.
+ *   zoom levels 0–2), which the app serves itself, so it draws with no network at all.
  *   Sharp at whole-globe scale and soft from country scale in. It also covers the poles, which the
  *   Web Mercator layer above it cannot.
  * - **NASA GIBS Blue Marble** above it: about 500 m per pixel, to zoom level 8, public NASA imagery

@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
+    "@we/globe-widget": "workspace:*",
     "playwright-core": "^1.62.1",
     "typescript": "^6.0.3",
     "vite": "^8.2.2",

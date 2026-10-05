@@ -1,10 +1,11 @@
+import { cesiumAssets } from '@we/globe-widget/vite';
 import path from 'path';
 import { defineConfig } from 'vite';
 import solidPlugin from 'vite-plugin-solid';
 
 export default defineConfig({
   assetsInclude: ['**/*.glb'],
-  plugins: [solidPlugin()],
+  plugins: [solidPlugin(), cesiumAssets()],
   server: {
     // 3000 is we-web, 3200 is the portable-slice playground. Distinct so the preview host can run
     // beside a real app — comparing the two is how you find out the preview is lying.
