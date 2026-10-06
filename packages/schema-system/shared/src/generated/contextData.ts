@@ -2211,6 +2211,7 @@ export const contextData: ContextData = {
         'clearError',
       ],
       ambient: ['refresh', 'requestRemoval', 'cancelRemoval', 'clearError'],
+      destructive: ['removeAccount', 'confirmRemoval'],
     },
     {
       name: 'appStore',
@@ -2247,6 +2248,7 @@ export const contextData: ContextData = {
       },
       actions: ['switchDataset', 'reorderDatasets', 'removeDataset', 'cleanupSpaceSdna'],
       ambient: ['switchDataset'],
+      destructive: ['removeDataset'],
     },
     {
       name: 'editorStore',
@@ -2332,6 +2334,7 @@ export const contextData: ContextData = {
         'closeThemePanel',
         'toggleVisualPanel',
       ],
+      destructive: ['deleteSession', 'clearHistory'],
     },
     {
       name: 'interpretationStore',
@@ -2464,6 +2467,7 @@ export const contextData: ContextData = {
         'previewCardStyle',
         'createOnCanvas',
       ],
+      destructive: ['deleteRecords'],
     },
     {
       name: 'routeStore',
@@ -2611,6 +2615,19 @@ export const contextData: ContextData = {
         'loadPeerInfos',
         'dismissConsentSecret',
       ],
+      destructive: [
+        'removeAiModel',
+        'removeAiTask',
+        'removeLanguage',
+        'trustAgent',
+        'untrustAgent',
+        'revokeApp',
+        'removeApp',
+        'restartNetwork',
+        'importDatabase',
+        'restartExecutor',
+        'approveConsent',
+      ],
     },
     {
       name: 'sessionStore',
@@ -2631,9 +2648,11 @@ export const contextData: ContextData = {
         isGuest: { type: 'boolean' },
         isDevelopment: { type: 'boolean' },
         devTools: { type: 'boolean' },
+        credentialEntered: { type: 'boolean' },
+        credentialConfirmed: { type: 'boolean' },
       },
-      actions: ['setDevTools', 'login', 'createAgent', 'clearPasswordError', 'finishSetup', 'logout', 'retryBoot'],
-      ambient: ['clearPasswordError'],
+      actions: ['setDevTools', 'unlock', 'touchCredential', 'clearPasswordError', 'finishSetup', 'logout', 'retryBoot'],
+      ambient: ['touchCredential', 'clearPasswordError'],
     },
     {
       name: 'shapeStore',
@@ -2728,6 +2747,7 @@ export const contextData: ContextData = {
         'closeHintEditor',
         'setHintDraft',
       ],
+      destructive: ['deleteShape'],
     },
     {
       name: 'shellStore',
@@ -3015,6 +3035,7 @@ export const contextData: ContextData = {
         'canAdministerSpace',
         'getSubgroupMessages',
       ],
+      destructive: ['removeSpace', 'deleteCollection', 'removeSpaceFromGlobal'],
     },
     {
       name: 'templateStore',
@@ -3035,6 +3056,7 @@ export const contextData: ContextData = {
         loading: { type: 'boolean' },
         defaultTemplateId: { type: 'string' },
         pendingInstall: { type: 'object' },
+        safeMode: { type: 'object', properties: ['on', 'reason', 'template'] },
         operationLoading: { type: 'string' },
       },
       actions: [
@@ -3056,8 +3078,10 @@ export const contextData: ContextData = {
         'deleteMarketplaceTemplate',
         'publishToMarketplace',
         'refreshSpaceTemplates',
+        'leaveSafeMode',
       ],
       ambient: ['cancelInstall', 'refreshSpaceTemplates'],
+      destructive: ['removeTemplate', 'deleteTemplate', 'deleteRefusedTemplate', 'deleteMarketplaceTemplate'],
     },
     {
       name: 'themeStore',
@@ -3115,12 +3139,14 @@ export const contextData: ContextData = {
         'refreshSpaceThemes',
       ],
       ambient: ['focusRole', 'previewThemeScope', 'refreshSpaceThemes'],
+      destructive: ['deleteTheme', 'uninstallTheme', 'deleteMarketplaceTheme'],
     },
-    { name: 'record', state: {}, actions: ['create', 'update', 'delete'] },
+    { name: 'record', state: {}, actions: ['create', 'update', 'delete'], destructive: ['delete'] },
     { name: 'clipboard', state: {}, actions: ['copy'] },
   ],
   shellComponents: [
     'AiPanel',
+    'CredentialField',
     'EditingBar',
     'EditorCodePanel',
     'EditorInspectorPanel',

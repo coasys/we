@@ -24,6 +24,7 @@ import { Accessor, createContext, createEffect, createSignal, ParentProps, useCo
 import { createStore, reconcile } from 'solid-js/store';
 
 import { CHROME_TIER, SPACE_TIER } from '../../../shared/registries/templateSurface';
+import { beginRender, leaveSafeMode, safeMode, type SafeModeState } from '../../../shared/safeMode';
 import {
   acceptTemplate,
   describeAcceptance,
@@ -174,6 +175,14 @@ export interface TemplateStore {
    */
   spaceTemplatePending: Accessor<boolean>;
 
+  /**
+   * Whether this tab is in safe mode — WE's own templates and themes in place of what was chosen —
+   * and why. Decided before the first template rendered and fixed for the page; see `safeMode.ts`.
+   */
+  safeMode: Accessor<SafeModeState>;
+  /** Leave safe mode, reloading with the templates and themes that were chosen. */
+  leaveSafeMode: () => void;
+
   // Loading state
   operationLoading: Accessor<string | null>;
 
@@ -275,6 +284,12 @@ export function TemplateStoreProvider(props: ParentProps) {
     Every other route into `currentTemplate` ensures. This one is a raw clone, so the boot template
     was the one tree in the app that could not be edited visually.
   */
+  /*
+    Decided now, before anything is committed: the address, the tab's memory and the record of a
+    render that never finished are all read before the first template could run. See `safeMode.ts`.
+  */
+  const safe = safeMode();
+
   const initialTemplate = deepClone(
     builtInTemplates.find((t) => t.id === 'launcher') || builtInTemplates[0] || emptyTemplate,
   );
@@ -695,6 +710,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     initialRestoreDone = true;
   });
 
+  /** Settles the template on screen's render record. Replaced on every commit. */
+  let settleRendering: () => void = () => {};
+
   /**
    * The only way a schema becomes the live template.
    *
@@ -711,11 +729,43 @@ export function TemplateStoreProvider(props: ParentProps) {
    * So there is one committer and `setCurrentTemplate` is not called anywhere else. Ensuring at the
    * point of commit rather than at each call site is what makes "did this path remember?" a question
    * with one answer instead of six.
+   *
+   * The same argument puts safe mode here: being the one door, this is the only place that has to
+   * know a chosen template is not to be drawn. In safe mode a template that is not WE's own is
+   * committed as the bundled one in its place, however it arrived — a boot restore, a space's
+   * default, a link's `?template=`, a switch.
    */
   function commitTemplate(schema: TemplateSchema | SchemaNode) {
-    const clone = deepClone(schema) as SchemaNode;
+    const chosen = safe.on ? bundledInPlaceOf(schema as TemplateSchema) : (schema as TemplateSchema);
+    // Recorded before it renders, so a render that hangs the page leaves the record behind; the one
+    // it replaces is settled, since replacing it took a live page. See `beginRender`.
+    settleRendering();
+    settleRendering = isBundled(chosen) ? () => {} : beginRender(chosen.id || '');
+    const clone = deepClone(chosen) as SchemaNode;
     ensureNodeIds(clone);
     setCurrentTemplate(reconcile(clone as TemplateSchema));
+  }
+
+  /**
+   * One of WE's own templates — bundled with the app, so not something safe mode protects anybody
+   * from. By identity with the bundled copy's id and not from a space: a space can carry a template
+   * under a built-in's id, and that copy is the space's.
+   */
+  function isBundled(schema: TemplateSchema): boolean {
+    if (schema._fromSpace) return false;
+    return builtInTemplates.some((t) => t.id === schema.id) || shellTemplates.some((t) => t.id === schema.id);
+  }
+
+  /**
+   * What safe mode draws in place of a template: the bundled copy under the same id when there is
+   * one — so the switcher and the settings pages keep working — and otherwise WE's default.
+   */
+  function bundledInPlaceOf(schema: TemplateSchema): TemplateSchema {
+    if (!schema._fromSpace) {
+      const same = builtInTemplates.find((t) => t.id === schema.id) ?? shellTemplates.find((t) => t.id === schema.id);
+      if (same) return same;
+    }
+    return builtInTemplates.find((t) => t.id === 'default') ?? builtInTemplates[0] ?? emptyTemplate;
   }
 
   // Actions
@@ -1686,6 +1736,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     loadSpaceTemplates,
     clearSpaceTemplates,
     spaceTemplatePending,
+    safeMode: () => safe,
+    leaveSafeMode,
 
     // Loading state
     operationLoading,

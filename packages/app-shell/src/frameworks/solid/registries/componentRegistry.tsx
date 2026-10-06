@@ -47,6 +47,8 @@ import {
 import type { ComponentRegistry } from '@we/schema-solid';
 import { lazy } from 'solid-js';
 
+import CredentialField from '../components/CredentialField';
+
 /**
  * Components fetched when something first renders them, rather than before anything renders at all.
  *
@@ -146,6 +148,11 @@ export const componentRegistry: ComponentRegistry = {
   // Host-only: a template names panels, never this. It is what a panel's *frame* wraps around the
   // template's node so the two can be rendered with different grants.
   TemplatePanelBody: TemplatePanelBodyOnDemand,
+  /*
+    The password field, which a sign-in screen places and cannot replace or read. Eager: it is on
+    the first screen anybody sees. See `CredentialField.tsx`.
+  */
+  CredentialField,
   // Host-only for the same reason: a template writes `$panels`, never this.
   PanelLane: PanelLaneOnDemand,
   SignalControl,

@@ -158,6 +158,15 @@ export function extractAmbientMembers(surfaceFile: string): Map<string, Set<stri
   return extractClassified(surfaceFile, (init) => init.startsWith('ambient('));
 }
 
+/**
+ * Actions marked `destructive`, per store — the ones the host asks about itself before a space
+ * template's call runs. Lets the validator tell a template that its own "are you sure?" in front of
+ * one is a second question about the same click.
+ */
+export function extractDestructiveMembers(surfaceFile: string): Map<string, Set<string>> {
+  return extractClassified(surfaceFile, (init) => init.startsWith('destructive('));
+}
+
 /** Members of `TEMPLATE_SURFACE` whose classification's source text passes `test`, per store. */
 function extractClassified(surfaceFile: string, test: (initializer: string) => boolean): Map<string, Set<string>> {
   const project = new Project({ skipAddingFilesFromTsConfig: true });

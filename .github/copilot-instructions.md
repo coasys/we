@@ -169,6 +169,9 @@ that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/pack
   its data binding lives at `packages/app-shell/src/frameworks/solid/components/GraphHost.tsx`.
 - App chrome and module panels (the sidebar, the module rail, floating vs displacing, who moves for
   whom) → `packages/app-shell/src/shared/dockGeometry.ts` (see docs/architecture/chrome-and-panels.md).
+- What no template may replace — the password field, the safety prompts, safe mode — and the one
+  place each is enforced → docs/architecture/protected-pieces.md. Read it before touching the boot
+  screen, a confirmation the host raises, or how a template becomes the live one.
 
 **Where a new thing goes** — module or host store, panel or fragment, who decides placement, and how
 two capabilities cooperate without depending on each other — is
@@ -2926,7 +2929,7 @@ ProfileStore:
   - setPendingAvatar(file: File): holds a picture chosen before an agent exists; uploaded by completeAccountSetup
   - saveNameFromPrompt(name: string): sets the name and stops asking. Dismisses before publishing, so a failed write cannot re-raise the prompt on top of the toast explaining it — which is why this exists rather than calling updateOwnProfile from the schema
   - dismissNamePrompt(): stops asking for a name until the next launch. Not persisted: a nameless agent degrades every other member's experience, so the only permanent exit is setting a name
-  - completeAccountSetup(name: string, password: string): the whole of first-run setup — creates the agent, then publishes the name and picture, then lets the app appear
+  - completeAccountSetup(name: string): the whole of first-run setup — creates the agent with the password typed into the host's CredentialField (purpose 'new'), then publishes the name and picture, then lets the app appear. Does nothing but ask the field to show its errors when that password is missing or its confirmation differs
   - fetchProfile(did: string): fetches and caches an agent's profile from their public dataset
   - updateOwnProfile(fields: { firstName?, lastName?, handle?, bio? }): updates own profile text fields and publishes to the public dataset
   - updateProfileImage(field: "avatar" | "coverImage", imageFile: File): uploads the image and publishes its expression URL to the public dataset
@@ -3092,11 +3095,13 @@ SessionStore:
   - isGuest: boolean — this identity was minted for somebody who arrived on a guest invite link rather than chosen by them. NOT the same question as `host`: an ordinary member of a hosted deployment has a host and is not a guest. Read it where the app explains itself to the person using it — why it is asking for a name, what "log out" would mean for an identity with no other way back
   - isDevelopment: boolean — whether this is a development build. A fact about the build. Do NOT gate developer-only UI on it; gate on devTools, which is the same answer plus a switch
   - devTools: boolean — whether developer affordances should be VISIBLE. True in a development build unless a developer has thrown the Settings → Developer switch to see what a shipped app looks like. Reactive, so a control gated on it appears and disappears on the press. Gate any developer-only control on this — a schema-test page, a fixture toggle — and wrap it in $if rather than hiding it, since a hidden row is still in the accessibility tree and still found by find-in-page. Never true in a production build, whatever the switch says
+  - credentialEntered: boolean — something has been typed into the host's password field. The password itself is never readable from a template — see CredentialField — so gate a Sign in button on this
+  - credentialConfirmed: boolean — a CredentialField with purpose 'new' holds a password typed twice and the same both times. Gate the call to profileStore.completeAccountSetup on it
 - Actions:
   - setDevTools(on: boolean): shows or hides developer affordances for this session. Takes the value the control shows, so a we-switch can pass `event.detail` bare. Cannot turn developer UI on in a production build
-  - login(password: string): unlocks the agent and loads user data
-  - createAgent(password: string): creates the agent, loads user data, and lands on the 'finishing' boot state (not 'ready')
-  - clearPasswordError(): clears the failed-unlock flag. Chain it after the password field's $setLocal — the verdict was on the submitted password, so editing that password retracts it and a stale "Incorrect password" should not sit over the correction
+  - unlock(): signs in with what was typed into the host's password field (a CredentialField with purpose 'unlock'), and loads user data. Takes no password, on purpose: nothing a template collected can be handed to it. Rejects when the unlock fails
+  - touchCredential(): asks a CredentialField with purpose 'new' to show what is wrong with it — the $touch: '$all' for fields a template cannot reach. Put it beside $touch in a Create account button's handler
+  - clearPasswordError(): clears the failed-unlock flag. Wire it to the CredentialField's onEdit — the verdict was on the submitted password, so editing that password retracts it and a stale "Incorrect password" should not sit over the correction
   - finishSetup(): leaves 'finishing' for the running app — sets bootState to 'ready'
   - logout(): locks the agent and returns to the login screen
   - retryBoot(): starts the whole boot again from the failure screen, by reloading. A failed boot can have got anywhere before it threw, so retrying in place would race the remains of the first attempt
@@ -3369,6 +3374,7 @@ TemplateStore:
   - loading: boolean — the template lists are still being read. Gate empty states on it
   - defaultTemplateId: string — id of the agent's preferred default template, used where no space or override decides. Persisted to AgentSettings.defaultTemplateId
   - pendingInstall: the template an install dialog is showing ({ marketplaceId, destination, name, icon, version, capabilities, blocked }), or null when none is open. `capabilities` is already in the words a person reads. Host chrome renders it: a dialog vouching for a template must not be drawn by a template
+  - safeMode: { on, reason, template } — whether this tab is in safe mode, where WE's own templates and themes are drawn in place of the chosen ones. reason is 'asked' (the ?safe address, the key or the menu) or 'unfinished-render' (a template did not finish loading last time — template is its id). Decided before anything rendered; fixed for the page
   - operationLoading: string | null — the id of the template operation in flight, namespaced by kind ('marketplace-install:<id>', 'space-install:<id>'), or null. A key rather than a boolean so one row's spinner does not appear on every row
 - Actions:
   - switchTemplate(newTemplateId: string): switches to another template
@@ -3389,6 +3395,7 @@ TemplateStore:
   - deleteMarketplaceTemplate(templateId: string): removes a template this agent published from the marketplace. Only its author may
   - publishToMarketplace(options: { name, description, icon?, themeId?, slug?, screenshots: File[] }): publishes the current template to the marketplace under those details. Resolves true on success
   - refreshSpaceTemplates(): re-reads the current space's templates. The list follows the space on its own; call this after a publish the subscription might have missed
+  - leaveSafeMode(): leaves safe mode and reloads with the templates and themes that were chosen
 
 ThemeStore:
 - State:
@@ -4179,14 +4186,19 @@ they share an icon, a heading, a width and a button row:
 
 ```ts
 confirmModal({
-  open: { $: 'local.confirmDeleteOpen' },
-  close: { $setLocal: 'confirmDeleteOpen', value: false },
-  title: 'Delete post?',
-  body: 'This will permanently delete the post and everything inside it. This cannot be undone.',
-  confirmLabel: 'Delete',
-  confirm: { $action: 'spaceStore.deleteCollection', args: [{ $: 'post.id' }] },
+  open: { $: 'local.confirmRemoveOpen' },
+  close: { $setLocal: 'confirmRemoveOpen', value: false },
+  title: 'Remove this column?',
+  body: 'The cards in it stay on the board, in the state they are in.',
+  confirmLabel: 'Remove',
+  confirm: { $action: 'spaceStore.removeBoardColumn', args: [{ $: 'board.id' }, { $: 'column.id' }] },
 })
 ```
+
+**Never in front of a delete.** The host asks before every destructive action a space template runs
+— `spaceStore.deleteCollection`, `record.delete`, `recordStore.deleteRecords` and the rest —
+in its own words, saying what goes with it. Call one straight from the button. A dialog of your own
+in front of it is a second question about one click, and the validator warns about it.
 
 It returns the `$if` as well as the modal, and clears `open` from all three exits — the backdrop,
 Cancel, and the action's `onSuccess`.
@@ -4198,7 +4210,7 @@ Cancel, and the action's `onSuccess`.
 - `tone: 'primary'` for a question with no casualty; the default `danger` picks a warning icon and
   a danger confirm button.
 - `detail` for a quieter second line, `children` for a `we-alert` naming a surprising consequence.
-- `busyLocal` if the action is not instant — a recursive delete walks its whole collection, and
+- `busyLocal` if the action is not instant — a write that walks a board or a thread takes a while, and
   without a spinner the button absorbs the click and invites a second one. `busy` instead when a
   store already owns the flag.
 

@@ -50,7 +50,14 @@ export abstract class OverlayElement extends DesignSystemElement {
    * drawer closes; something with an inner editor may want to swallow it first).
    */
   protected isTopmostOverlay(): boolean {
-    return openOverlays[openOverlays.length - 1] === this;
+    /*
+      The newest overlay that is actually SHOWN. One mounted while the host holds the top layer is
+      connected and waiting — not shown, and drawn nowhere (see `top-layer.ts`) — and counting it
+      would hand it the Escape meant for the host's own prompt, so a template could dismiss "delete
+      this?" by mounting something behind it.
+    */
+    const shown = openOverlays.filter(isInTopLayer);
+    return shown[shown.length - 1] === this;
   }
 
   override connectedCallback() {
@@ -338,6 +345,20 @@ function skipsInitialFocus(el: HTMLElement): boolean {
 function hostOf(el: HTMLElement): HTMLElement {
   const root = el.getRootNode();
   return root instanceof ShadowRoot ? (root.host as HTMLElement) : el;
+}
+
+/**
+ * Whether an overlay has been promoted, as far as anyone can tell.
+ *
+ * Where the Popover API is missing nothing is ever promoted, and every connected overlay counts —
+ * which is what the stack meant before anything could be held back.
+ */
+function isInTopLayer(overlay: OverlayElement): boolean {
+  try {
+    return overlay.matches(':popover-open');
+  } catch {
+    return true;
+  }
 }
 
 /** The focused element, through shadow roots — `document.activeElement` stops at the host. */

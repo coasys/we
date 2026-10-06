@@ -63,5 +63,11 @@ export { buildCdnUrl, setIconResolver } from './primitives/icon';
  */
 export { type ComponentCascade, componentCascadeFor, registerComponentCascade } from './shared/helpers';
 
+/**
+ * The top layer, held for the host while it asks somebody something — so nothing a template opens
+ * can be drawn over the question. See `shared/top-layer.ts`.
+ */
+export { holdTopLayer, installTopLayerGuard, mayEnterTopLayer } from './shared/top-layer';
+
 /** One icon per status variant — the redundancy that carries status without colour. */
 export { ALERT_VARIANT_ICONS } from './primitives/alert';

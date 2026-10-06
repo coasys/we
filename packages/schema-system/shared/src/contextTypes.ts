@@ -79,6 +79,11 @@ export interface StoreEntry {
    * so the validator can say so when one is wired to an event that happens by itself.
    */
   ambient?: string[];
+  /**
+   * Actions the host confirms itself, in its own words, before a space template's call runs — a
+   * delete, an uninstall. A template asking first as well puts two questions in front of one click.
+   */
+  destructive?: string[];
 }
 
 /** A token category (e.g. space, color, size) */

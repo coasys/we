@@ -5,7 +5,7 @@ import { register } from 'node:module';
 import { relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { buildValidationContext, validateSemantic, withOwnModule } from '../semanticValidation.js';
+import { asHostChrome, buildValidationContext, validateSemantic, withOwnModule } from '../semanticValidation.js';
 import { validateStructure } from '../validators.js';
 
 // Validating a schema means importing it, which means resolving its asset imports — see assetHooks.
@@ -159,6 +159,12 @@ function ownModuleOf(filePath: string): string | undefined {
   return undefined;
 }
 
+/** The host's own chrome: the shell's templates and the app shell's schemas. */
+function isHostChrome(filePath: string): boolean {
+  const rel = relative(repoRoot, filePath);
+  return rel.startsWith('packages/templates/shell/') || rel.startsWith('packages/app-shell/src/shared/schemas/');
+}
+
 // Validate each file
 let totalErrors = 0;
 let totalWarnings = 0;
@@ -182,7 +188,9 @@ for (const filePath of files) {
 
     // Run semantic validation (even if structural fails, to show all issues)
     const own = ownModuleOf(filePath);
-    const semantic = validateSemantic(result.schema, own ? withOwnModule(validationContext, own) : validationContext);
+    const judged = own ? withOwnModule(validationContext, own) : validationContext;
+    // A module's own panels and the host's shell render as chrome — see `asHostChrome`.
+    const semantic = validateSemantic(result.schema, own || isHostChrome(filePath) ? asHostChrome(judged) : judged);
 
     const allErrors = [...structural.errors, ...semantic.errors];
     if (allErrors.length === 0) continue;

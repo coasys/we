@@ -148,6 +148,26 @@ the seed in.
 Optional shell white-labeling: `host.theme` (color/font overrides) and
 `host.ui.bootScreen` (a schema node replacing the default boot screen).
 
+A replacement boot screen draws everything except the password field. It places
+the host's own field, `CredentialField`, which keeps what is typed out of
+template state, so a screen cannot keep or forward a password:
+
+```json
+{ "type": "CredentialField", "props": { "purpose": "unlock", "onSubmit": { "$action": "sessionStore.unlock" } } }
+```
+
+Gate the Sign in button on `sessionStore.credentialEntered` and call
+`sessionStore.unlock`, which takes no argument. For a new account use
+`"purpose": "new"`, which draws the password and its confirmation, and call
+`profileStore.completeAccountSetup` with the name alone. There is no action a
+template can hand a password to, so a field of the screen's own drawing signs
+nobody in.
+
+The safety prompts (`consentPrompt`, `consentSecret`, `installPrompt`,
+`destructivePrompt`, `screenSource`, `removeAccount`) cannot be replaced: they
+are the host asking somebody a question, and a question drawn by anything else
+is worth nothing. See `PROTECTED_SLOTS` in the slot registry.
+
 ### `contentSecurity`
 
 Sites this deployment lets content load from, beyond its own origin. The app's

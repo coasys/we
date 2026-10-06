@@ -24,6 +24,7 @@ import { aggregateFragments } from './aggregate.js';
 import { assembleReference } from './assembler.js';
 import {
   extractAmbientMembers,
+  extractDestructiveMembers,
   type ExtractedStore,
   extractHostSources,
   extractRegisteredComponents,
@@ -264,9 +265,15 @@ async function main() {
   const ambient = extractAmbientMembers(
     resolve(repoRoot, 'packages/app-shell/src/shared/registries/templateSurface.ts'),
   );
+  // And which the host confirms itself before a space template's call runs. See `MemberSpec.destructive`.
+  const destructive = extractDestructiveMembers(
+    resolve(repoRoot, 'packages/app-shell/src/shared/registries/templateSurface.ts'),
+  );
   for (const store of contextData.storeEntries) {
     const names = ambient.get(store.name);
     if (names) store.ambient = store.actions.filter((action) => names.has(action));
+    const asked = destructive.get(store.name);
+    if (asked) store.destructive = store.actions.filter((action) => asked.has(action));
   }
 
   /*

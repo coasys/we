@@ -22,6 +22,10 @@
       "import": "./dist/index.js",
       "types": "./dist/types/global/index.d.ts"
     },
+    "./top-layer": {
+      "import": "./dist/top-layer.js",
+      "types": "./src/shared/top-layer.ts"
+    },
     "./*": {
       "import": "./dist/primitives/*.js",
       "types": "./dist/types/global/primitives/*.d.ts"

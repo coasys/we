@@ -5948,7 +5948,8 @@
         "confirmRemoval",
         "clearError"
       ],
-      "ambient": ["refresh", "requestRemoval", "cancelRemoval", "clearError"]
+      "ambient": ["refresh", "requestRemoval", "cancelRemoval", "clearError"],
+      "destructive": ["removeAccount", "confirmRemoval"]
     },
     {
       "name": "appStore",
@@ -6037,7 +6038,8 @@
         }
       },
       "actions": ["switchDataset", "reorderDatasets", "removeDataset", "cleanupSpaceSdna"],
-      "ambient": ["switchDataset"]
+      "ambient": ["switchDataset"],
+      "destructive": ["removeDataset"]
     },
     {
       "name": "editorStore",
@@ -6189,7 +6191,8 @@
         "openThemePanel",
         "closeThemePanel",
         "toggleVisualPanel"
-      ]
+      ],
+      "destructive": ["deleteSession", "clearHistory"]
     },
     {
       "name": "interpretationStore",
@@ -6377,7 +6380,8 @@
         "cancelRecordForm",
         "previewCardStyle",
         "createOnCanvas"
-      ]
+      ],
+      "destructive": ["deleteRecords"]
     },
     {
       "name": "routeStore",
@@ -6608,6 +6612,19 @@
         "loadNetworkMetrics",
         "loadPeerInfos",
         "dismissConsentSecret"
+      ],
+      "destructive": [
+        "removeAiModel",
+        "removeAiTask",
+        "removeLanguage",
+        "trustAgent",
+        "untrustAgent",
+        "revokeApp",
+        "removeApp",
+        "restartNetwork",
+        "importDatabase",
+        "restartExecutor",
+        "approveConsent"
       ]
     },
     {
@@ -6664,10 +6681,24 @@
         },
         "devTools": {
           "type": "boolean"
+        },
+        "credentialEntered": {
+          "type": "boolean"
+        },
+        "credentialConfirmed": {
+          "type": "boolean"
         }
       },
-      "actions": ["setDevTools", "login", "createAgent", "clearPasswordError", "finishSetup", "logout", "retryBoot"],
-      "ambient": ["clearPasswordError"]
+      "actions": [
+        "setDevTools",
+        "unlock",
+        "touchCredential",
+        "clearPasswordError",
+        "finishSetup",
+        "logout",
+        "retryBoot"
+      ],
+      "ambient": ["touchCredential", "clearPasswordError"]
     },
     {
       "name": "shapeStore",
@@ -6807,7 +6838,8 @@
         "openHintEditor",
         "closeHintEditor",
         "setHintDraft"
-      ]
+      ],
+      "destructive": ["deleteShape"]
     },
     {
       "name": "shellStore",
@@ -7246,7 +7278,8 @@
         "openRecordRef",
         "canAdministerSpace",
         "getSubgroupMessages"
-      ]
+      ],
+      "destructive": ["removeSpace", "deleteCollection", "removeSpaceFromGlobal"]
     },
     {
       "name": "templateStore",
@@ -7299,6 +7332,10 @@
         "pendingInstall": {
           "type": "object"
         },
+        "safeMode": {
+          "type": "object",
+          "properties": ["on", "reason", "template"]
+        },
         "operationLoading": {
           "type": "string"
         }
@@ -7321,9 +7358,11 @@
         "publishToSpace",
         "deleteMarketplaceTemplate",
         "publishToMarketplace",
-        "refreshSpaceTemplates"
+        "refreshSpaceTemplates",
+        "leaveSafeMode"
       ],
-      "ambient": ["cancelInstall", "refreshSpaceTemplates"]
+      "ambient": ["cancelInstall", "refreshSpaceTemplates"],
+      "destructive": ["removeTemplate", "deleteTemplate", "deleteRefusedTemplate", "deleteMarketplaceTemplate"]
     },
     {
       "name": "themeStore",
@@ -7426,12 +7465,14 @@
         "publishToSpace",
         "refreshSpaceThemes"
       ],
-      "ambient": ["focusRole", "previewThemeScope", "refreshSpaceThemes"]
+      "ambient": ["focusRole", "previewThemeScope", "refreshSpaceThemes"],
+      "destructive": ["deleteTheme", "uninstallTheme", "deleteMarketplaceTheme"]
     },
     {
       "name": "record",
       "state": {},
-      "actions": ["create", "update", "delete"]
+      "actions": ["create", "update", "delete"],
+      "destructive": ["delete"]
     },
     {
       "name": "clipboard",
@@ -7441,6 +7482,7 @@
   ],
   "shellComponents": [
     "AiPanel",
+    "CredentialField",
     "EditingBar",
     "EditorCodePanel",
     "EditorInspectorPanel",
