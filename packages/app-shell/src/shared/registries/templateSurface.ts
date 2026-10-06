@@ -1235,6 +1235,24 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     dismissSettled: ambient('view-state'),
   },
 
+  /*
+    `view-state`, and every action ambient. A clock is what this agent is looking at — which moment
+    a globe shows — on this screen only: nothing is stored, nothing is sent, and nobody else sees it
+    move. So a template may play one on load as freely as on a press, which is what an animation that
+    starts by itself is.
+  */
+  clockStore: {
+    clocks: state('view-state'),
+    play: ambient('view-state'),
+    pause: ambient('view-state'),
+    toggle: ambient('view-state'),
+    seek: ambient('view-state'),
+    seekProgress: ambient('view-state'),
+    setSpeed: ambient('view-state'),
+    setLoop: ambient('view-state'),
+    configure: ambient('view-state'),
+  },
+
   appStore: {
     apps: state('navigation'),
     appsWithWe: state('navigation'),

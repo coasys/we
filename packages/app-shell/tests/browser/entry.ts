@@ -201,6 +201,24 @@ function measurePart(selector: string, part = 'base', nth = 0) {
   return el ? box(el) : null;
 }
 
+/**
+ * Every instance of one part in the nth host's shadow, unrounded — a 1px mark's centre is a half
+ * pixel, and rounding it is the error a placement check is looking for.
+ */
+function measureParts(selector: string, part: string, nth = 0) {
+  const host = document.querySelectorAll(selector)[nth];
+  return [...(host?.shadowRoot?.querySelectorAll(`[part='${part}']`) ?? [])].map((el) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.x, y: r.y, w: r.width, h: r.height, cx: r.x + r.width / 2, cy: r.y + r.height / 2 };
+  });
+}
+
+/** One property of the nth element matching — a control's value, read rather than inferred. */
+function prop(selector: string, name: string, nth = 0) {
+  const el = document.querySelectorAll(selector)[nth] as unknown as Record<string, unknown> | undefined;
+  return el?.[name];
+}
+
 /** Every element matching, so a case can assert about a row of siblings. */
 function measureAll(selector: string) {
   return [...document.querySelectorAll(selector)].map(box);
@@ -512,6 +530,8 @@ injectDSInteropStyles();
   measureAll,
   scrollers,
   measurePart,
+  measureParts,
+  prop,
   measureControl,
   measureText,
   chain,

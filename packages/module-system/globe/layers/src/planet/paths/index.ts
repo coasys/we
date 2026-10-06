@@ -8,6 +8,7 @@
 import {
   arcPositions,
   FeatureDiffer,
+  followTime,
   type LonLat,
   type PathFeature,
   pathFeatures,
@@ -66,9 +67,11 @@ export async function renderPaths(
       : Material.fromType('Color', { color });
   };
 
+  const time = followTime(context, () => rebuild(options));
+
   const rebuild = (next: PathsOptions) => {
     options = next;
-    const features = pathFeatures(next);
+    const features = pathFeatures(next, time.slice(next.data, next));
     byId = new Map(features.map((f) => [f.id, f]));
     const diff = differ.diff(features);
     for (const id of [...diff.removed, ...diff.changed.map((f) => f.id)]) {

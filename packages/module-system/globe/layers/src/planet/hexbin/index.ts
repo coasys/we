@@ -6,7 +6,7 @@
  * many posts there are. The kind is `@we/globe-core`'s {@link hexFeatures}; this is its Cesium
  * renderer. Not to be confused with `h3HexagonsLayer`, which draws the empty grid.
  */
-import { FeatureDiffer, type HexbinOptions, type HexFeature, hexFeatures } from '@we/globe-core';
+import { FeatureDiffer, followTime, type HexbinOptions, type HexFeature, hexFeatures } from '@we/globe-core';
 
 import { HEXBIN } from '../../meta';
 import type { CesiumRendererContext, LayerKind, LayerRenderer } from '../../types';
@@ -33,9 +33,12 @@ export function renderHexbin(context: CesiumRendererContext, initial: HexbinOpti
   let byId = new Map<string, HexFeature>();
   context.onCleanup(() => drawer.dispose());
 
+  // Regrouping rebuilds the whole batch of cells, so it follows the clock a few times a second.
+  const time = followTime(context, () => update(options), { minInterval: 250 });
+
   const update = (next: HexbinOptions) => {
     options = next;
-    const features = hexFeatures(next);
+    const features = hexFeatures(next, time.slice(next.data, next));
     byId = new Map(features.map((f) => [f.id, f]));
     const diff = differ.diff(features);
     if (!diff.added.length && !diff.changed.length && !diff.removed.length) return;

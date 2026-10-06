@@ -223,6 +223,13 @@ async function main() {
         measureAll: (sel) => page.evaluate((s) => window.__harness.measureAll(s), sel),
         scrollers: (sel) => page.evaluate((s) => window.__harness.scrollers(s), sel),
         measurePart: (sel, part, nth) => page.evaluate((a) => window.__harness.measurePart(...a), [sel, part, nth]),
+        measureParts: (sel, part, nth) => page.evaluate((a) => window.__harness.measureParts(...a), [sel, part, nth]),
+        prop: (sel, name, nth) => page.evaluate((a) => window.__harness.prop(...a), [sel, name, nth]),
+        /** A real press at a point on the page, for a control that answers by where it is pressed. */
+        pressAt: async (x, y) => {
+          await page.mouse.click(x, y);
+          await page.waitForTimeout(120);
+        },
         measureControl: (label, sel) => page.evaluate((a) => window.__harness.measureControl(...a), [label, sel]),
         measureText: (text, sel) => page.evaluate((a) => window.__harness.measureText(...a), [text, sel]),
         pageColor: () => page.evaluate(() => window.__harness.pageColor()),
