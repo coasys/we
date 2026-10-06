@@ -419,6 +419,9 @@ function editorProbe(): void {
   panel.append(titlebar, body);
 
   document.body.append(content, panel);
+  // The scenario mounted beside this one autofocuses a field, and a key typed there is typing — which
+  // the editor rightly ignores. Nothing here should have focus to begin with.
+  (document.activeElement as HTMLElement | null)?.blur();
 
   const template = {
     id: 'probe',
@@ -445,7 +448,7 @@ function editorProbe(): void {
   };
   const host = {
     session: { contentMode: () => 'visual', isStreaming: () => false, pushSnapshot() {}, commitEdit: async () => {} },
-    template: { currentTemplate: template, updateTemplate() {} },
+    template: { currentTemplate: template, updateTemplate: () => record('__probeUpdated', true) },
   };
 
   const root = document.createElement('div');
@@ -474,6 +477,21 @@ function editorProbe(): void {
   probeDisposers.unshift(dispose);
 }
 
+/**
+ * A page over the template, standing in for settings opened mid-edit: a fixed sheet above the content,
+ * as the shell's own view is.
+ */
+function editorProbeCover(on: boolean): void {
+  const existing = document.getElementById('probe-cover');
+  if (!on) return existing?.remove();
+  if (existing) return;
+  const cover = document.createElement('div');
+  cover.id = 'probe-cover';
+  cover.style.cssText = 'position: fixed; left: 0; top: 0; width: 400px; height: 400px; z-index: 50; background: #fff;';
+  document.body.append(cover);
+  probeDisposers.push(() => cover.remove());
+}
+
 const probeDisposers: (() => void)[] = [];
 function editorProbeDispose(): void {
   for (const dispose of probeDisposers.splice(0)) dispose();
@@ -482,6 +500,7 @@ function editorProbeDispose(): void {
 injectDSInteropStyles();
 (window as unknown as Record<string, unknown>).__harness = {
   editorProbe,
+  editorProbeCover,
   editorProbeDispose,
   mount,
   profile,

@@ -1004,6 +1004,9 @@ function VisualEditorLayer() {
     const target = (e.composedPath()[0] as HTMLElement | undefined) ?? (e.target as HTMLElement | null);
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
     if (!canDeleteSelected()) return;
+    // Nothing is deleted that cannot be seen. The selection outlives a settings page opened over the
+    // template, and a Backspace on that page must not take out a node somebody is not looking at.
+    if (!selectRect()) return;
     e.preventDefault();
     deleteSelectedNode();
   }

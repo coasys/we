@@ -15,16 +15,16 @@ export const name = 'the editor selects in a panel, and leaves the app alone';
 export const scenario = 'security:self-firing-events';
 export const widths = [320];
 
-export async function check({ call, clickAt, moveTo, cursorAt, count, recorded }) {
+export async function check({ call, clickAt, moveTo, cursorAt, count, key, recorded }) {
   await call('editorProbe');
   try {
-    return await probe({ clickAt, moveTo, cursorAt, count, recorded });
+    return await probe({ call, clickAt, moveTo, cursorAt, count, key, recorded });
   } finally {
     await call('editorProbeDispose');
   }
 }
 
-async function probe({ clickAt, moveTo, cursorAt, count, recorded }) {
+async function probe({ call, clickAt, moveTo, cursorAt, count, key, recorded }) {
   const problems = [];
 
   /*
@@ -51,6 +51,17 @@ async function probe({ clickAt, moveTo, cursorAt, count, recorded }) {
   if (selected.at(-1) !== 'n-content')
     problems.push(`a press on the content's node selected ${selected.at(-1) ?? 'nothing'}`);
   if (pressed.includes('n-content')) problems.push("the template's control in the content fired while being selected");
+
+  /*
+    A settings page opened over the template pauses the session rather than ending it, so the
+    selection is still there underneath. Backspace on that page must not delete a node nobody can see.
+  */
+  await call('editorProbeCover', true);
+  // A frame or two, for the editor to see the node is covered — as it would long before a person typed.
+  await call('idleFrames', 2);
+  await key('Backspace');
+  if ((await recorded('__probeUpdated')).length) problems.push('Backspace deleted a node hidden under a page on top');
+  await call('editorProbeCover', false);
 
   const before = selected.length;
   await clickAt('#probe-titlebar');

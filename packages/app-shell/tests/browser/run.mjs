@@ -331,6 +331,11 @@ async function main() {
           await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
           await page.waitForTimeout(100);
         },
+        /** A key pressed on whatever has focus, the way a person would. */
+        key: async (name) => {
+          await page.keyboard.press(name);
+          await page.waitForTimeout(50);
+        },
         /** The cursor the page shows at an element's middle. */
         cursorAt: (sel) =>
           page.evaluate((s) => {

@@ -297,10 +297,14 @@ export function TemplateLayout(
   // record page to the next. See `setCurrentPath`.
   createEffect(() => stores.routeStore.setCurrentPath(location.pathname, location.search));
 
-  // Exit template editing when a shell view (settings, profile, marketplace) opens.
-  createEffect(() => {
-    if (stores.shellStore.activeShellView()) stores.editorStore.exitTemplateEditing();
-  });
+  /*
+    A shell view (settings, profile, the marketplace) opening over the template no longer ends an
+    editing session: it pauses it, and closing the view returns to it as it was. Ending it was the old
+    way of keeping the editor out of the way of the page on top, and each part now keeps out of the
+    way by itself: the editing bar and every panel hide while a shell view is up, the selection ring
+    draws only where its node can be seen, and the editor answers presses only inside the template.
+    Switching template still ends the session — EditorStore does that whenever the template changes.
+  */
 
   // Scoped space theme — applied to the template content area only.
   // activeTemplateTheme() returns the editing theme (when editing in scoped mode) or the
