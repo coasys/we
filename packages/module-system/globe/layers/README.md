@@ -30,11 +30,27 @@ in `GLOBE_LAYER_CATALOG` (`packages/module-system/globe/module/src/catalog.ts`),
 generated reference and the validator; [EXAMPLES.md](./EXAMPLES.md) shows the patterns a globe
 template is built from. The imagery under every layer is the widget's own, not a layer.
 
+## Two engines
+
+A globe is drawn by **Cesium**, the full 3D globe, or **MapLibre**, a lighter one for phones and
+light builds. The globe module's `engine` setting chooses (`auto` picks MapLibre on a touchscreen or
+a small machine); a template never names one. Each engine has its own registry so a MapLibre build
+never loads Cesium:
+
+| Engine   | Registry                                           | Draws                                                                 |
+| -------- | -------------------------------------------------- | --------------------------------------------------------------------- |
+| Cesium   | `layerKinds` (`@we/module-globe/layers`)           | every kind                                                            |
+| MapLibre | `maplibreLayerKinds` (`@we/globe-layers/maplibre`) | the data kinds, `pointLocationsLayer` and the borders; lines lie flat |
+
+The MapLibre registry lists the Cesium-only kinds too, with no renderer, so a template using one is
+told once that it is not drawn there rather than that it does not exist.
+
 ## Writing a layer
 
 A layer kind says what it is (an id, a slot, a description) and how it is drawn on each engine: a
 **renderer** per engine, which is the only place that engine's API appears. The contract is in
-`@we/globe-protocol`; import it from here.
+`@we/globe-protocol`; import it from here. A kind both engines draw takes its meaning from
+`src/meta.ts`, which each engine's registry spreads over its own renderer.
 
 ```typescript
 import { Cartesian3, Color } from 'cesium';
@@ -82,9 +98,10 @@ export const pulseLayer: LayerKind<PulseLayerOptions> = {
 
 ### Three registrations, all of which fail silently if missed
 
-1. Export the factory from `src/index.ts`.
-2. Add it to `layerKinds` in `packages/module-system/globe/module/src/layers.ts`; it is filed under
-   its own `id`, which is the name templates write.
+1. Export the factory from `src/index.ts`, and, for a MapLibre renderer, from `src/maplibre/index.ts`.
+2. Add it to `layerKinds` in `packages/module-system/globe/module/src/layers.ts`, and to
+   `maplibreLayerKinds` in `src/maplibre/index.ts` (with no renderer, if MapLibre does not draw it);
+   it is filed under its own `id`, which is the name templates write.
 3. Add an entry to `GLOBE_LAYER_CATALOG`, under its slot, with a description, its options and an
    example. `pnpm --filter @we/app-shell test` fails if the catalogue and the registry disagree.
 

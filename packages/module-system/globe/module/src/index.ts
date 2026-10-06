@@ -33,7 +33,8 @@ export function createGlobeModule(cesiumGlobeComponent: unknown): ModuleDefiniti
     manifest: {
       id: 'globe',
       name: 'Globe',
-      description: '3D globe with a modular layer system — locations, country outlines, H3 hexagons.',
+      description:
+        'A globe with a modular layer system — data on the earth, borders, the sky — drawn by Cesium or MapLibre.',
       icon: 'globe-hemisphere-west',
       // Backend-agnostic: no owned entities, so no manifest→SDNA gap to fall into. Cesium's own files
       // are served by the app, so what reaches the network is the imagery: NASA's, and a commercial

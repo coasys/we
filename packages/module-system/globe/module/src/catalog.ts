@@ -21,7 +21,10 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
     'when one kind appears twice, or the two collide and one is not drawn; enabled takes an expression, so a ' +
     "layer can follow a toggle; zIndex is a planet layer's stacking order, which each kind interprets. Options take expressions and handlers like any prop, so a layer can draw " +
     'what a $queries entry fetched: read it with { "$": "local.rows.map(…)" }. The imagery is the globe\'s own ' +
-    'and is not a layer. ' +
+    'and is not a layer. A globe is drawn by one of two engines, which the deployment or the person chooses and ' +
+    'a template never names: Cesium, the full 3D globe, or MapLibre, a lighter one for phones. Both draw every ' +
+    'planet kind but h3HexagonsLayer; only Cesium draws the background kinds, and on MapLibre lines lie flat. ' +
+    'A kind an engine does not draw is simply absent there, so place them as you would anyway. ' +
     'The data kinds (pointsLayer, pathsLayer, areasLayer, hexbinLayer) each take rows as `data`, field paths saying ' +
     'where in a row its geometry is (dotted for nested fields: "location.latitude"), and `style`: rules in the ' +
     "GraphView's dialect, [{ when?, style }], applied in order with later matches winning per property. A rule's " +
@@ -102,7 +105,7 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
           name: 'style',
           type: 'rules',
           description:
-            'Properties: width (pixels, default 2), color, opacity, dashed (true/false), arcHeight (0 flat … 0.5 tall, a share of the line\'s length; default 0). A rule can read a line\'s length in kilometres as "data.length".',
+            'Properties: width (pixels, default 2), color, opacity, dashed (true/false), arcHeight (0 flat … 0.5 tall, a share of the line\'s length; default 0; drawn flat on the MapLibre engine). A rule can read a line\'s length in kilometres as "data.length".',
         },
         { name: 'onSelect', type: 'handler', description: 'Runs when a line is pressed, with its row as event.' },
       ],
@@ -238,7 +241,7 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
       id: 'h3HexagonsLayer',
       category: 'planet',
       description:
-        'The H3 hexagon grid, finer as the camera comes closer: each zoom draws the resolution whose cells suit it. A hovered cell is highlighted.',
+        'The H3 hexagon grid, finer as the camera comes closer: each zoom draws the resolution whose cells suit it. A hovered cell is highlighted. Drawn by the Cesium engine only.',
       options: [
         { name: 'maxResolution', type: 'number', description: 'Finest H3 resolution drawn, 0–15. Default 8.' },
         { name: 'color', type: 'string', description: 'CSS colour of the cell edges. Default "#3388ff".' },
@@ -260,7 +263,7 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
       id: 'skyboxLayer',
       category: 'background',
       description:
-        "A star map around the globe, from NASA's Tycho-2 catalogue. Cesium's own copy shows at once and offline; the set asked for replaces it once it has loaded.",
+        "A star map around the globe, from NASA's Tycho-2 catalogue. Cesium's own copy shows at once and offline; the set asked for replaces it once it has loaded. Drawn by the Cesium engine only.",
       options: [
         {
           name: 'textureSet',
@@ -279,7 +282,7 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
       id: 'proceduralStarsLayer',
       category: 'background',
       description:
-        'Points of light at random depths around the earth, which move against each other as the camera turns.',
+        'Points of light at random depths around the earth, which move against each other as the camera turns. Drawn by the Cesium engine only.',
       options: [
         { name: 'count', type: 'number', description: 'How many stars. Default 5000.' },
         { name: 'minDistance', type: 'number', description: 'Nearest star, in metres from the surface.' },
@@ -296,7 +299,7 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
       id: 'solarSystemLayer',
       category: 'background',
       description:
-        'The sun, the planets at their positions for today, and their orbits, scaled down to be seen from the earth.',
+        'The sun, the planets at their positions for today, and their orbits, scaled down to be seen from the earth. Drawn by the Cesium engine only.',
       options: [
         {
           name: 'planets',
