@@ -12,8 +12,11 @@ import { describe, expect, it } from 'vitest';
 
 import { boundTemplate, outlineText } from '../src/shared/ai/templateContext';
 
-const prepared = (template: unknown) =>
-  ensureNodeIds(compactDefinitions(structuredClone(template) as SchemaNode).schema);
+// Numbered the way the model is shown a tree: short aliases, not permanent ids.
+const prepared = (template: unknown) => {
+  let n = 0;
+  return ensureNodeIds(compactDefinitions(structuredClone(template) as SchemaNode).schema, () => `n${++n}`);
+};
 
 const kanban = () => prepared(kanbanTemplate);
 

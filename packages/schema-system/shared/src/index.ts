@@ -103,12 +103,15 @@ export {
   type CompactOptions,
   compactDefinitions,
   type CompactResult,
+  type DefinitionUses,
+  definitionHolding,
   definitionsOf,
   expandDefinitions,
   type OutlineEntry,
   outlineOf,
   REF_TYPE,
   type RefProps,
+  splitUse,
   useCountOf,
 } from './definitions';
 export {
