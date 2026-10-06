@@ -5155,19 +5155,6 @@
           "default": "false"
         },
         {
-          "name": "approvals",
-          "type": "number",
-          "predicate": "we://approvals",
-          "required": false,
-          "default": "1"
-        },
-        {
-          "name": "approverKind",
-          "type": "string",
-          "predicate": "we://approver_kind",
-          "required": false
-        },
-        {
           "name": "schemaVersion",
           "type": "number",
           "predicate": "we://schema_version",
@@ -7656,8 +7643,7 @@
         {
           "name": "closeDeviceSettings",
           "kind": "action",
-          "doc": "Close the camera and microphone chooser.",
-          "ambient": true
+          "doc": "Close the camera and microphone chooser."
         },
         {
           "name": "continueCall",
@@ -7682,8 +7668,7 @@
         {
           "name": "dismissProblem",
           "kind": "action",
-          "doc": "Dismiss the problem message.",
-          "ambient": true
+          "doc": "Dismiss the problem message."
         },
         {
           "name": "elsewhere",
@@ -7698,8 +7683,7 @@
         {
           "name": "focusTile",
           "kind": "action",
-          "doc": "Give the participant with this id the spotlight, or take it back if they already have it.",
-          "ambient": true
+          "doc": "Give the participant with this id the spotlight, or take it back if they already have it."
         },
         {
           "name": "goToCall",
@@ -7754,8 +7738,7 @@
         {
           "name": "openDeviceSettings",
           "kind": "action",
-          "doc": "Open the camera and microphone chooser.",
-          "ambient": true
+          "doc": "Open the camera and microphone chooser."
         },
         {
           "name": "problem",
@@ -7770,20 +7753,17 @@
         {
           "name": "refreshDevices",
           "kind": "action",
-          "doc": "Re-read which microphones and cameras this machine has.",
-          "ambient": true
+          "doc": "Re-read which microphones and cameras this machine has."
         },
         {
           "name": "returnToCall",
           "kind": "action",
-          "doc": "Go back to the space the call is in; does nothing outside a call.",
-          "ambient": true
+          "doc": "Go back to the space the call is in; does nothing outside a call."
         },
         {
           "name": "setArrangement",
           "kind": "action",
-          "doc": "Report the { columns, rows } a stage grid settled on, so fit-to-content can solve for it.",
-          "ambient": true
+          "doc": "Report the { columns, rows } a stage grid settled on, so fit-to-content can solve for it."
         },
         {
           "name": "setDevice",
@@ -7823,8 +7803,7 @@
         {
           "name": "toggleSolo",
           "kind": "action",
-          "doc": "Hide everyone but the spotlight, or bring them back; does nothing while nobody is focused.",
-          "ambient": true
+          "doc": "Hide everyone but the spotlight, or bring them back; does nothing while nobody is focused."
         },
         {
           "name": "toggleVideo",
@@ -7909,8 +7888,7 @@
         "kernel:transcription",
         "kernel:interpretation",
         "dock",
-        "slot:call-controls",
-        "slot:overlay"
+        "slot:call-controls"
       ],
       "members": [
         {
@@ -7961,14 +7939,7 @@
         {
           "name": "cancelProposalEdit",
           "kind": "action",
-          "doc": "Closes the open draft, discarding what was typed.",
-          "ambient": true
-        },
-        {
-          "name": "cancelTiedDecision",
-          "kind": "action",
-          "doc": "Puts the decision waiting in tiedDecision down without making it.",
-          "ambient": true
+          "doc": "Closes the open draft, discarding what was typed."
         },
         {
           "name": "canEditProposals",
@@ -7988,24 +7959,17 @@
         {
           "name": "closeExtractionPanel",
           "kind": "action",
-          "doc": "Closes the extraction panel.",
-          "ambient": true
+          "doc": "Closes the extraction panel."
         },
         {
           "name": "closePanel",
           "kind": "action",
-          "doc": "Closes the transcript panel.",
-          "ambient": true
+          "doc": "Closes the transcript panel."
         },
         {
           "name": "collectionId",
           "kind": "state",
           "doc": "The record this call’s transcript lives in, or null until something has been said."
-        },
-        {
-          "name": "confirmTiedDecision",
-          "kind": "action",
-          "doc": "Carries out the decision waiting in tiedDecision, with everything tied to it."
         },
         {
           "name": "dismissChange",
@@ -8020,8 +7984,7 @@
         {
           "name": "editProposal",
           "kind": "action",
-          "doc": "Opens one suggestion for editing, seeded with what the model proposed.",
-          "ambient": true
+          "doc": "Opens one suggestion for editing, seeded with what the model proposed."
         },
         {
           "name": "editUtterance",
@@ -8181,14 +8144,12 @@
         {
           "name": "openExtractionPanel",
           "kind": "action",
-          "doc": "Opens the extraction panel.",
-          "ambient": true
+          "doc": "Opens the extraction panel."
         },
         {
           "name": "openPanel",
           "kind": "action",
-          "doc": "Opens the transcript panel.",
-          "ambient": true
+          "doc": "Opens the transcript panel."
         },
         {
           "name": "partialCoverage",
@@ -8233,14 +8194,12 @@
         {
           "name": "readTranscriptFromStart",
           "kind": "action",
-          "doc": "Shows the beginning of the transcript, to be read forwards.",
-          "ambient": true
+          "doc": "Shows the beginning of the transcript, to be read forwards."
         },
         {
           "name": "readTranscriptLive",
           "kind": "action",
-          "doc": "Goes back to following the end of the transcript.",
-          "ambient": true
+          "doc": "Goes back to following the end of the transcript."
         },
         {
           "name": "reconnecting",
@@ -8250,8 +8209,7 @@
         {
           "name": "refreshProposals",
           "kind": "action",
-          "doc": "Re-reads what is staged on a call, or on the live one.",
-          "ambient": true
+          "doc": "Re-reads what is staged on a call, or on the live one."
         },
         {
           "name": "rejectProposal",
@@ -8261,14 +8219,12 @@
         {
           "name": "setProposalField",
           "kind": "action",
-          "doc": "Sets one field of the open draft, by property name.",
-          "ambient": true
+          "doc": "Sets one field of the open draft, by property name."
         },
         {
           "name": "showMoreTranscript",
           "kind": "action",
-          "doc": "Loads one more page of the transcript, in whichever direction it is being read.",
-          "ambient": true
+          "doc": "Loads one more page of the transcript, in whichever direction it is being read."
         },
         {
           "name": "speaking",
@@ -8284,16 +8240,6 @@
           "name": "thresholdPercent",
           "kind": "state",
           "doc": "The speech-onset threshold as a CSS width, to mark on the same meter."
-        },
-        {
-          "name": "tiedBusy",
-          "kind": "state",
-          "doc": "Whether a confirmed tied decision is still being written."
-        },
-        {
-          "name": "tiedDecision",
-          "kind": "state",
-          "doc": "A decision waiting on confirmation because it decides others too — { kind, title, body, detail, confirmLabel } — or null."
         },
         {
           "name": "toggle",
@@ -8393,14 +8339,7 @@
           "levels": ["deployment", "agent", "space", "agent-in-space"]
         }
       ],
-      "activities": {
-        "transcribe": {
-          "id": "string",
-          "recording": "boolean",
-          "anchor": "object",
-          "collection": "string"
-        }
-      },
+      "activities": {},
       "components": [],
       "functions": [],
       "views": [],
@@ -8446,8 +8385,7 @@
         {
           "name": "dismissProblem",
           "kind": "action",
-          "doc": "Dismiss the problem message.",
-          "ambient": true
+          "doc": "Dismiss the problem message."
         },
         {
           "name": "driverName",
@@ -8593,8 +8531,7 @@
         {
           "name": "close",
           "kind": "action",
-          "doc": "Closes the Pocket panel.",
-          "ambient": true
+          "doc": "Closes the Pocket panel."
         },
         {
           "name": "open",
@@ -8604,14 +8541,12 @@
         {
           "name": "show",
           "kind": "action",
-          "doc": "Opens the Pocket panel and resolves the folder it was last looking at.",
-          "ambient": true
+          "doc": "Opens the Pocket panel and resolves the folder it was last looking at."
         },
         {
           "name": "toggle",
           "kind": "action",
-          "doc": "Opens the Pocket panel, or closes it if it is open.",
-          "ambient": true
+          "doc": "Opens the Pocket panel, or closes it if it is open."
         }
       ],
       "parts": [
@@ -8840,77 +8775,19 @@
     {
       "id": "globe",
       "name": "Globe",
-      "description": "A globe with a modular layer system — data on the earth, borders, the sky — drawn by Cesium or MapLibre.",
+      "description": "3D globe with a modular layer system — locations, country outlines, H3 hexagons.",
       "icon": "globe-hemisphere-west",
       "scope": "space",
       "requires": {
         "frameworks": ["solid"],
-        "permissions": [
-          "network:gibs.earthdata.nasa.gov",
-          "network:cesium-ion",
-          "network:arcgis.com",
-          "network:mapbox.com"
-        ]
+        "permissions": ["network:cesium-ion"]
       },
-      "capabilities": [
-        "network:gibs.earthdata.nasa.gov",
-        "network:cesium-ion",
-        "network:arcgis.com",
-        "network:mapbox.com",
-        "components"
-      ],
-      "members": [
-        {
-          "name": "drawsSpace",
-          "kind": "state",
-          "doc": "Whether the globe draws the space around the earth — the skybox, stars and solar system. False on MapLibre."
-        },
-        {
-          "name": "engine",
-          "kind": "state",
-          "doc": "Which engine draws the globe here — \"cesium\" or \"maplibre\" — from the setting and this device."
-        }
-      ],
+      "capabilities": ["network:cesium-ion", "components"],
+      "members": [],
       "parts": [],
       "panels": [],
       "launchers": [],
-      "settings": [
-        {
-          "key": "engine",
-          "label": "Globe engine",
-          "description": "What draws the globe. Cesium is the full 3D globe, with the stars and planets around it and lines that arc. MapLibre is lighter and quicker on a phone: the same earth and the same data, with lines drawn flat and nothing around the earth. Automatic uses MapLibre on phones, tablets and small machines, and Cesium everywhere else.",
-          "type": "enum",
-          "levels": ["deployment", "agent"]
-        },
-        {
-          "key": "imagery",
-          "label": "Globe imagery",
-          "description": "What the globe's surface is drawn with. NASA's needs no account and is sharp to about 30 m. The others are sharp to street level and need a key from your own account, set below; using one means accepting that provider's terms. A provider with no key, or a key it refuses, draws NASA's.",
-          "type": "enum",
-          "levels": ["deployment", "agent"]
-        },
-        {
-          "key": "ionAccessToken",
-          "label": "Cesium ion access token",
-          "description": "From ion.cesium.com → Access Tokens. Used when the imagery is Cesium ion.",
-          "type": "string",
-          "levels": ["deployment", "agent"]
-        },
-        {
-          "key": "esriApiKey",
-          "label": "Esri API key",
-          "description": "From developers.arcgis.com → API keys, with the basemap styles privilege. Used when the imagery is Esri World Imagery. Esri serves the imagery even for a key it does not recognise, so check this one carefully: a mistyped key draws the imagery without your account being used.",
-          "type": "string",
-          "levels": ["deployment", "agent"]
-        },
-        {
-          "key": "mapboxAccessToken",
-          "label": "Mapbox access token",
-          "description": "From account.mapbox.com → Tokens; a public token. Used when the imagery is Mapbox Satellite.",
-          "type": "string",
-          "levels": ["deployment", "agent"]
-        }
-      ],
+      "settings": [],
       "activities": {},
       "components": ["CesiumGlobe"],
       "functions": [],
