@@ -16,13 +16,37 @@ export type Rgba = readonly [number, number, number, number];
 
 const TRANSPARENT: Rgba = [0, 0, 0, 0];
 
-/** Variables whose values change when the theme does, read to know when the cache is stale. */
-const THEME_PROBES = ['--we-role-page', '--we-role-accent', '--we-color-primary-500', '--we-color-neutral-500'];
+/**
+ * What a theme sets, read to tell whether it has changed: the inputs every colour is computed from —
+ * each hue, the saturation, the lightness range and which way the ramp runs — and two roles, which a
+ * theme may pin outright. A theme that changes none of these changes no colour a layer can paint.
+ */
+const THEME_INPUTS = [
+  '--we-color-primary-hue',
+  '--we-color-success-hue',
+  '--we-color-warning-hue',
+  '--we-color-danger-hue',
+  '--we-color-neutral-hue',
+  '--we-color-saturation',
+  '--we-color-neutral-saturation',
+  '--we-color-lightness-floor',
+  '--we-color-lightness-ceiling',
+  '--we-color-ramp-direction',
+  '--we-color-ramp-offset',
+  '--we-role-page',
+  '--we-role-accent',
+];
 
 export interface ColorResolver {
   /** A colour as a style rule writes it, as four numbers under the theme on screen. */
   rgba(value: string | undefined, fallback?: string): Rgba;
-  /** Forget what was resolved. Called when the globe goes. */
+  /**
+   * Call `listener` when the theme over the globe changes, so a layer can paint its colours again.
+   * Nothing else would tell it: a theme switch changes no layer's options, so no update arrives.
+   * Returns the unsubscribe.
+   */
+  onThemeChange(listener: () => void): () => void;
+  /** Stop watching and forget what was resolved. Called when the globe goes. */
   dispose(): void;
 }
 
@@ -30,6 +54,11 @@ export interface ColorResolver {
  * Resolves through the DOM: the value set as a probe's `color`, read back as computed, painted into
  * one canvas pixel. The canvas step is what turns every form a browser may compute (`rgb()`,
  * `oklch()`, `color(srgb …)`) into the same four bytes.
+ *
+ * A theme is applied by writing variables onto an element above the globe — the document root, or a
+ * template's own scope — and by injecting a stylesheet. So the ancestors' `style`, `class` and
+ * `data-we-theme` are watched, and the head's stylesheets; on any of those the theme's inputs are
+ * read again, and only a change to them clears the cache and tells the layers.
  */
 export function createColorResolver(host: HTMLElement): ColorResolver {
   const document = host.ownerDocument;
@@ -41,13 +70,36 @@ export function createColorResolver(host: HTMLElement): ColorResolver {
   const context = canvas.getContext('2d', { willReadFrequently: true });
 
   const cache = new Map<string, Rgba>();
-  let signature = '';
-  let checkedAt = -Infinity;
+  const listeners = new Set<() => void>();
 
   const themeSignature = () => {
     const computed = getComputedStyle(probe);
-    return THEME_PROBES.map((name) => computed.getPropertyValue(name)).join('|');
+    return THEME_INPUTS.map((name) => computed.getPropertyValue(name).trim()).join('|');
   };
+  let signature = themeSignature();
+
+  // Checked once a frame however many writes a theme switch makes: one applies dozens of variables.
+  let pending = 0;
+  const check = () => {
+    pending = 0;
+    const current = themeSignature();
+    if (current === signature) return;
+    signature = current;
+    cache.clear();
+    for (const listener of [...listeners]) listener();
+  };
+  const schedule = () => {
+    if (!pending) pending = requestAnimationFrame(check);
+  };
+
+  const observer = new MutationObserver(schedule);
+  for (let element: Element | null = host; element; element = element.parentElement) {
+    observer.observe(element, { attributes: true, attributeFilter: ['style', 'class', 'data-we-theme'] });
+  }
+  if (document.head) observer.observe(document.head, { childList: true, subtree: true, characterData: true });
+  // The OS switching between light and dark moves a theme that follows it.
+  const scheme = document.defaultView?.matchMedia?.('(prefers-color-scheme: dark)');
+  scheme?.addEventListener?.('change', schedule);
 
   const paint = (css: string): Rgba => {
     probe.style.color = '';
@@ -66,17 +118,6 @@ export function createColorResolver(host: HTMLElement): ColorResolver {
     rgba(value, fallback = 'primary-500') {
       const css = colorValueCss(value, fallback);
       if (!css) return TRANSPARENT;
-      // Checked at most once per batch: a layer of five thousand pins resolves its colours in one go,
-      // and reading the theme for each would cost more than the colours.
-      const now = performance.now();
-      if (now - checkedAt > 100) {
-        checkedAt = now;
-        const current = themeSignature();
-        if (current !== signature) {
-          cache.clear();
-          signature = current;
-        }
-      }
       let rgba = cache.get(css);
       if (!rgba) {
         rgba = paint(css);
@@ -84,7 +125,15 @@ export function createColorResolver(host: HTMLElement): ColorResolver {
       }
       return rgba;
     },
+    onThemeChange(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
     dispose() {
+      observer.disconnect();
+      scheme?.removeEventListener?.('change', schedule);
+      if (pending) cancelAnimationFrame(pending);
+      listeners.clear();
       probe.remove();
       cache.clear();
     },

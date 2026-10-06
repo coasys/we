@@ -216,6 +216,15 @@ describe('hexbins', () => {
     expect(paris.color).toBe('danger-500');
   });
 
+  it('keeps the heat under rules that do not set a colour, and yields to one that does', () => {
+    const base = { data: members, latitude: 'location.latitude', longitude: 'location.longitude' };
+    const heated = hexFeatures({ ...base, style: [{ style: { opacity: 1 } }] });
+    expect(heated.map((f) => f.color).sort()).toEqual(['danger-500', 'success-500']);
+    expect(heated.every((f) => f.opacity === 1)).toBe(true);
+    const coloured = hexFeatures({ ...base, style: [{ style: { color: 'accent' } }] });
+    expect(coloured.every((f) => f.color === 'accent')).toBe(true);
+  });
+
   it('raises a cell by a rule reading its value', () => {
     const features = hexFeatures({
       data: members,

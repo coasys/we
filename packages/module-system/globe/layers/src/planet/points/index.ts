@@ -152,7 +152,7 @@ export async function renderPoints(
   initial: PointsOptions,
 ): Promise<LayerRenderer<PointsOptions>> {
   const { viewer, id: layer } = context;
-  const colors = cesiumColors(context);
+  const colors = cesiumColors(context, () => repaint());
   const points = viewer.scene.primitives.add(new PointPrimitiveCollection()) as PointPrimitiveCollection;
   const billboards = viewer.scene.primitives.add(
     new BillboardCollection({ scene: viewer.scene }),
@@ -281,6 +281,13 @@ export async function renderPoints(
       else applyScale(id, state.scale);
     }
     viewer.scene.requestRender();
+  };
+
+  /** Everything drawn again, in the theme's new colours. */
+  const repaint = () => {
+    for (const id of [...drawn.keys()]) remove(id);
+    differ.reset();
+    void draw();
   };
 
   const rebuild = (next: PointsOptions) => {

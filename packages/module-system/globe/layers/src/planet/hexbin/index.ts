@@ -22,7 +22,12 @@ export const hexbinLayer: LayerKind<HexbinOptions> = {
 };
 
 export function renderHexbin(context: CesiumRendererContext, initial: HexbinOptions): LayerRenderer<HexbinOptions> {
-  const colors = cesiumColors(context);
+  // A theme change redraws every shape: the batch is rebuilt anyway, and the old one stays on screen
+  // until the new one is ready.
+  const colors = cesiumColors(context, () => {
+    differ.reset();
+    void update(options);
+  });
   const drawer = polygonDrawer(context);
   const differ = new FeatureDiffer<HexFeature>();
   let options = initial;

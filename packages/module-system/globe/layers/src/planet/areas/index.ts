@@ -39,7 +39,12 @@ export async function renderAreas(
   context: CesiumRendererContext,
   initial: AreasOptions,
 ): Promise<LayerRenderer<AreasOptions>> {
-  const colors = cesiumColors(context);
+  // A theme change redraws every shape: the batch is rebuilt anyway, and the old one stays on screen
+  // until the new one is ready.
+  const colors = cesiumColors(context, () => {
+    differ.reset();
+    void update(options);
+  });
   const drawer = polygonDrawer(context);
   const differ = new FeatureDiffer<AreaFeature>();
   let options = initial;

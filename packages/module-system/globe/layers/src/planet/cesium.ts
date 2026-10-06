@@ -29,10 +29,20 @@ export function isPickId(value: unknown, layer: string): value is PickId {
   return typeof value === 'object' && value !== null && (value as PickId).layer === layer;
 }
 
-/** A colour resolver for one mount, with Cesium colours out of it. Disposed with the layer. */
-export function cesiumColors(context: CesiumRendererContext) {
+/**
+ * A colour resolver for one mount, with Cesium colours out of it. Disposed with the layer.
+ *
+ * `repaint` runs when the theme over the globe changes. A layer must draw its colours again then:
+ * they were resolved to numbers when it drew, and a theme switch changes none of its options, so no
+ * update would ever arrive to do it.
+ */
+export function cesiumColors(context: CesiumRendererContext, repaint: () => void) {
   const resolver = createColorResolver(context.viewer.container as HTMLElement);
-  context.onCleanup(() => resolver.dispose());
+  const unsubscribe = resolver.onThemeChange(repaint);
+  context.onCleanup(() => {
+    unsubscribe();
+    resolver.dispose();
+  });
   const toColor = ([r, g, b, a]: Rgba) => new Color(r, g, b, a);
   return {
     /** A style value — a role, a token, CSS — as a Cesium colour, with `opacity` applied. */

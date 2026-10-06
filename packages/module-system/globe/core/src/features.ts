@@ -81,8 +81,10 @@ export interface HexFeature extends FeatureBase {
 }
 
 /**
- * What a grouping kind draws when no rules are given: each place shaded by its value, green for the
- * least to red for the most, blended through yellow.
+ * The first rule of a grouping kind, under whatever rules the template gives: each place shaded by
+ * its value, green for the least to red for the most, blended through yellow. First rather than in
+ * place of them, so a template that only sets an opacity or a height keeps the shading — it was
+ * replaced outright, which left such a layer with no colour at all.
  *
  * Not the graph's named `heat` scale. That steps along the primary ramp, which a dark theme turns
  * around, so the most came out near-white there and the least deep purple — right on a page, where
@@ -269,7 +271,7 @@ export function areaFeatures(options: AreasOptions, areas?: AreaIndex): AreaFeat
   }
   const styles = new StyleResolver<AreaStyle>(
     placed.map((p) => p.subject),
-    options.style ?? (options.area ? DEFAULT_HEAT : undefined),
+    options.area ? [...DEFAULT_HEAT, ...(options.style ?? [])] : options.style,
   );
   return placed.map(({ id, polygons, subject, selected }) => {
     const style = styles.style(subject);
@@ -298,7 +300,7 @@ export function hexFeatures(options: HexbinOptions): HexFeature[] {
   });
   const styles = new StyleResolver<HexbinStyle>(
     placed.map((p) => p.subject),
-    options.style ?? DEFAULT_HEAT,
+    [...DEFAULT_HEAT, ...(options.style ?? [])],
   );
   return placed.map(({ group, subject }) => {
     const style = styles.style(subject);

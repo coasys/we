@@ -48,7 +48,7 @@ export async function renderPaths(
   initial: PathsOptions,
 ): Promise<LayerRenderer<PathsOptions>> {
   const { viewer, id: layer } = context;
-  const colors = cesiumColors(context);
+  const colors = cesiumColors(context, () => repaint());
   const lines = viewer.scene.primitives.add(new PolylineCollection()) as PolylineCollection;
   const differ = new FeatureDiffer<PathFeature>();
   const drawn = new Map<string, { feature: PathFeature; polyline: Polyline }>();
@@ -87,6 +87,14 @@ export async function renderPaths(
       drawn.set(feature.id, { feature, polyline });
     }
     viewer.scene.requestRender();
+  };
+
+  /** Every line drawn again, in the theme's new colours. */
+  const repaint = () => {
+    for (const { polyline } of drawn.values()) lines.remove(polyline);
+    drawn.clear();
+    differ.reset();
+    rebuild(options);
   };
 
   const removeFollow = viewer.scene.preRender.addEventListener(() => {
