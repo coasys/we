@@ -542,7 +542,9 @@ export const globeView: TemplateSchema = {
                         step: 0.001,
                         label: 'Moment shown on the globe',
                         value: { $: 'clockStore.clocks.globe.progress' },
-                        valueText: { $: "clockStore.clocks.globe.atLabel || 'Everything'" },
+                        valueText: {
+                          $: "clockStore.clocks.globe.atLabel ? clockStore.clocks.globe.atLabel : 'Everything'",
+                        },
                         marks: {
                           $: 'clockStore.clocks.globe.ticks.map(tick, { value: tick.fraction, label: tick.label })',
                         },
@@ -552,7 +554,9 @@ export const globeView: TemplateSchema = {
                     {
                       type: 'we-text',
                       props: { color: 'text-muted', whiteSpace: 'nowrap' },
-                      children: [{ $: "clockStore.clocks.globe.atLabel || 'Everything'" }],
+                      children: [
+                        { $: "clockStore.clocks.globe.atLabel ? clockStore.clocks.globe.atLabel : 'Everything'" },
+                      ],
                     },
                     // Back to showing everything, as before anybody pressed play.
                     {

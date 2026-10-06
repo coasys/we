@@ -180,9 +180,13 @@ const styles = css`
     The marks hang below the input rather than taking part in the row's layout, and the wrapper keeps
     room for them with a margin rather than padding: padding would move the vertical middle the step
     ticks are centred on.
+
+    The same room is kept above as below, so the track stays the slider's vertical middle. Kept
+    below only, a slider in a row centred on its cross axis sat its track above the middle of the
+    row, out of line with the button and the label beside it.
   */
   [part='track-wrapper'].marked {
-    margin-bottom: calc(var(--we-font-size-100) * 1.4 + 7px);
+    margin-block: calc(var(--we-font-size-100) * 1.4 + 7px);
   }
 
   [part='marks'] {

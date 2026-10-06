@@ -9,7 +9,8 @@
  * reads back what the browser set the value to: if the mark is where the thumb goes at its value, a
  * press on it lands on that value. Three sizes, because the thumb is a different width at each.
  *
- * And the end labels stay over the control rather than hanging past it.
+ * And the end labels stay over the control rather than hanging past it, and the track stays the
+ * slider's vertical middle with the marks' room taken above as well as below.
  */
 export const name = 'a slider mark sits where the thumb goes at its value';
 export const scenario = 'ds:slider-marks';
@@ -39,6 +40,10 @@ export async function check({ measureParts, measure, prop, pressAt, count }) {
       }
     }
     const host = (await measure(`we-slider:nth-of-type(${nth + 1})`)) ?? null;
+    // The track is the slider's vertical middle, so a row centring it lines it up with its neighbours.
+    if (host && Math.abs(input.cy - (host.y + host.h / 2)) > 1.5) {
+      problems.push(`${size}: the track is ${Math.round(host.y + host.h / 2 - input.cy)}px above the slider's middle`);
+    }
     const labels = await measureParts('we-slider', 'mark-label', nth);
     if (host && labels.length) {
       const first = labels[0];
