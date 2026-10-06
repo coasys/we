@@ -94,6 +94,22 @@ describe('deriveNodeIds', () => {
     expect(allIds(after.children![1] as SchemaNode)).toEqual(allIds(before.children![0] as SchemaNode));
   });
 
+  it('tells apart two siblings given the same key', () => {
+    const schema = deriveNodeIds(
+      {
+        id: 'form',
+        type: 'Column',
+        children: [
+          { type: 'we-text', key: 'x' },
+          { type: 'we-text', key: 'x' },
+        ],
+      },
+      'form',
+    );
+    const [a, b] = schema.children as SchemaNode[];
+    expect(a.id).not.toBe(b.id);
+  });
+
   it('keeps an id a node already has', () => {
     const schema = build();
     (schema.children![0] as SchemaNode).id = 'k3j9x0q2pd';

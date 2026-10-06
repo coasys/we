@@ -23,8 +23,10 @@
  * is what makes the marketplace category honest rather than decorative.
  */
 import { bundledViews } from './bundledViews.generated';
+import { withDerivedIdsAll } from './derivedIds';
 
-export const viewRegistry = bundledViews;
+/** With the ids each view's nodes have in every build — see `derivedIds.ts`. */
+export const viewRegistry = withDerivedIdsAll(bundledViews);
 
 export type ViewId = keyof typeof viewRegistry;
 

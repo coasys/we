@@ -1,3 +1,4 @@
+import { withDerivedIds } from '@shared/registries/derivedIds';
 import { templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
 import { reserveId } from '@shared/templateIdentity';
@@ -256,8 +257,8 @@ export function TemplateStoreProvider(props: ParentProps) {
   // Shell templates — static system pages (profile, settings, testing)
   // landing-page is now an overlay (activeShellView), not a currentTemplate value
   const shellTemplates: TemplateSchema[] = [
-    { ...deepClone(profileTemplate), id: 'profile' },
-    { ...deepClone(settingsTemplate), id: 'settings' },
+    { ...deepClone(withDerivedIds(profileTemplate, 'profile')), id: 'profile' },
+    { ...deepClone(withDerivedIds(settingsTemplate, 'settings')), id: 'settings' },
     /*
       The schema-test harness is deliberately absent, and was dead weight here rather than a feature.
 

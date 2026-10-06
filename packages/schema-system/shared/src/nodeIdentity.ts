@@ -131,14 +131,16 @@ export function deriveNodeIds<T extends SchemaNode>(schema: T, seed: string): T 
     for (const { group, nodes } of namedPositions(node)) {
       const seen = new Map<string, number>();
       for (const child of nodes) {
-        let step: string;
-        if (typeof child.key === 'string' && child.key) step = `#${child.key}`;
-        else {
-          const kind = child.type ?? '';
-          const nth = seen.get(kind) ?? 0;
-          seen.set(kind, nth + 1);
-          step = `${kind}${nth}`;
-        }
+        // A key used twice among siblings counts like a type does, so the two still differ.
+        const name =
+          typeof child.key === 'string' && child.key
+            ? `#${child.key}`
+            : typeof child.type === 'string'
+              ? child.type
+              : '';
+        const nth = seen.get(name) ?? 0;
+        seen.set(name, nth + 1);
+        const step = name.startsWith('#') && nth === 0 ? name : `${name}${nth}`;
         const childPath = `${path}/${group}/${step}`;
         if (!child.id) child.id = derivedNodeId(`${seed}|${childPath}`);
         visit(child, childPath);

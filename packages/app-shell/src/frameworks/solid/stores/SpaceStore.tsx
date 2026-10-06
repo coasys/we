@@ -43,6 +43,7 @@ import {
   writeSetting,
 } from '@shared/moduleSettings';
 import { resolveRecordRef } from '@shared/recordNavigation';
+import { withDerivedIds } from '@shared/registries/derivedIds';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import {
   isCommunityDecided,
@@ -1247,7 +1248,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         console.warn(`module view "${id}" shares its id with a built-in section and will not be used`);
         continue;
       }
-      out.set(id, view);
+      out.set(id, withDerivedIds(view, id));
     }
     for (const template of templateStore.allTemplates()) {
       if (template.meta?.role !== 'view' || !template.id) continue;

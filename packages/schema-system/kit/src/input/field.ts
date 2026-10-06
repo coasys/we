@@ -66,6 +66,8 @@ export function field(opts: FieldOptions): SchemaNode {
 
   return {
     type: 'we-form-field',
+    // The field's name says which it is, so its id follows it if the form's fields are reordered.
+    key: opts.name,
     props: {
       ...(opts.label && { label: opts.label }),
       ...(opts.description && { description: opts.description }),
