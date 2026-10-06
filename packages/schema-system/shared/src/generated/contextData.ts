@@ -572,6 +572,8 @@ export const contextData: ContextData = {
         { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
         { name: 'showValue', type: 'boolean', optional: false, default: 'false' },
         { name: 'ticks', type: "'auto' | 'on' | 'off'", optional: false, default: "'auto'" },
+        { name: 'marks', type: 'SliderMark[]', optional: false, default: '[]' },
+        { name: 'valueText', type: 'string', optional: false, default: "''" },
       ],
     },
     {

@@ -530,61 +530,24 @@ export const globeView: TemplateSchema = {
                       ],
                     },
                     // The scrubber, with marks at round moments beneath it: hours across a day, days
-                    // across a month, months across a year, years across decades.
+                    // across a month, months across a year, years across decades. The slider places
+                    // them under where its thumb goes.
                     {
-                      type: 'Column',
-                      props: { flex: '1', minWidth: '0', gap: '100', pt: '200' },
-                      children: [
-                        {
-                          type: 'we-slider',
-                          props: {
-                            min: 0,
-                            max: 1,
-                            step: 0.001,
-                            value: { $: 'clockStore.clocks.globe.progress' },
-                            onInput: { $action: 'clockStore.seekProgress', args: ['globe', { $: 'event.detail' }] },
-                          },
+                      type: 'we-slider',
+                      props: {
+                        flex: '1',
+                        minWidth: '0',
+                        min: 0,
+                        max: 1,
+                        step: 0.001,
+                        label: 'Moment shown on the globe',
+                        value: { $: 'clockStore.clocks.globe.progress' },
+                        valueText: { $: "clockStore.clocks.globe.atLabel || 'Everything'" },
+                        marks: {
+                          $: 'clockStore.clocks.globe.ticks.map(tick, { value: tick.fraction, label: tick.label })',
                         },
-                        // Inset by half the thumb, so a mark sits where the thumb's centre would.
-                        {
-                          type: 'Row',
-                          props: { position: 'relative', height: '24px', px: '9px' },
-                          children: [
-                            {
-                              type: 'Row',
-                              props: { position: 'relative', flex: '1', height: '100%' },
-                              children: [
-                                {
-                                  type: '$each',
-                                  props: { items: { $: 'clockStore.clocks.globe.ticks' }, as: 'tick' },
-                                  children: [
-                                    {
-                                      type: 'Column',
-                                      props: {
-                                        position: 'absolute',
-                                        top: '0',
-                                        left: { $: '`${tick.fraction * 100}%`' },
-                                        x: '-50%',
-                                        ax: 'center',
-                                        gap: '2px',
-                                        pointerEvents: 'none',
-                                      },
-                                      children: [
-                                        { type: 'Column', props: { width: '1px', height: '5px', bg: 'border-strong' } },
-                                        {
-                                          type: 'we-text',
-                                          props: { variant: 'footnote', color: 'text-muted', whiteSpace: 'nowrap' },
-                                          children: [{ $: 'tick.label' }],
-                                        },
-                                      ],
-                                    },
-                                  ],
-                                },
-                              ],
-                            },
-                          ],
-                        },
-                      ],
+                        onInput: { $action: 'clockStore.seekProgress', args: ['globe', { $: 'event.detail' }] },
+                      },
                     },
                     {
                       type: 'we-text',
