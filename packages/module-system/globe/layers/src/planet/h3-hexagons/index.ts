@@ -16,6 +16,7 @@ import {
 } from 'cesium';
 import { cellToBoundary, getHexagonEdgeLengthAvg, gridDisk, latLngToCell } from 'h3-js';
 
+import { H3_GRID } from '../../meta';
 import type { CesiumRendererContext, LayerKind } from '../../types';
 
 // H3 Helper Functions
@@ -74,9 +75,7 @@ export interface H3HexagonsOptions {
 }
 
 export const h3HexagonsLayer: LayerKind<H3HexagonsOptions> = {
-  id: 'h3HexagonsLayer',
-  slot: 'planet',
-  description: 'H3 hexagonal grid with fractal zoom, hover effects, and click interactions.',
+  ...H3_GRID,
   renderers: {
     cesium: (context: CesiumRendererContext, options: H3HexagonsOptions) => {
       const { viewer, events, onCleanup } = context;

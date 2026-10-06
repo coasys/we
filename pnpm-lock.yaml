@@ -1560,6 +1560,9 @@ importers:
         specifier: ^6.12.0
         version: 6.12.0
     devDependencies:
+      '@types/geojson':
+        specifier: ^7946.0.16
+        version: 7946.0.16
       '@we/cli':
         specifier: workspace:*
         version: link:../../../cli

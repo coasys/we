@@ -1,5 +1,6 @@
 import { SkyBox } from 'cesium';
 
+import { SKYBOX } from '../../meta';
 import type { CesiumRendererContext, LayerKind } from '../../types';
 
 export interface SkyboxLayerOptions {
@@ -81,9 +82,7 @@ function loadFace(url: string): Promise<HTMLImageElement> {
 }
 
 export const skyboxLayer: LayerKind<SkyboxLayerOptions> = {
-  id: 'skyboxLayer',
-  slot: 'background',
-  description: 'Display a skybox with star textures in the background.',
+  ...SKYBOX,
   renderers: {
     /*
     Cesium's own skybox first, the requested one once it has arrived.

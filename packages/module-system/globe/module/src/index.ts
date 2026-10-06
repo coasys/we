@@ -69,6 +69,23 @@ export function createGlobeModule(cesiumGlobeComponent: unknown): ModuleDefiniti
        */
       settings: [
         {
+          key: 'engine',
+          label: 'Globe engine',
+          description:
+            'What draws the globe. Cesium is the full 3D globe, with the stars and planets around it and lines that ' +
+            'arc. MapLibre is lighter and quicker on a phone: the same earth and the same data, with lines drawn ' +
+            'flat and nothing around the earth. Automatic uses MapLibre on phones, tablets and small machines, and ' +
+            'Cesium everywhere else.',
+          type: 'enum',
+          options: [
+            { label: 'Automatic', value: 'auto' },
+            { label: 'Cesium (full 3D)', value: 'cesium' },
+            { label: 'MapLibre (lighter)', value: 'maplibre' },
+          ],
+          default: 'auto',
+          levels: ['deployment', 'agent'],
+        },
+        {
           key: 'imagery',
           label: 'Globe imagery',
           description:
@@ -122,4 +139,5 @@ export function createGlobeModule(cesiumGlobeComponent: unknown): ModuleDefiniti
 export const createModule = (host: ModuleHost): ModuleDefinition => createGlobeModule(host.components.CesiumGlobe);
 
 export { GLOBE_LAYER_CATALOG } from './catalog';
+export { type DeviceHints, deviceHints, engineChoiceFrom, type GlobeEngineChoice, resolveEngine } from './engine';
 export { type ImageryChoice, imageryChoiceFrom, ionTokenFrom } from './imagery';

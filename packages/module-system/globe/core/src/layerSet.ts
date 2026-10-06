@@ -120,10 +120,11 @@ export class LayerSet<TContext extends RendererContext> {
       return undefined;
     }
     if (!kind.renderers[this.config.engine]) {
-      this.warnOnce(
-        `engine:${factory}`,
-        `"${factory}" has no ${this.config.engine} renderer, so it is not drawn here.`,
-      );
+      // Expected rather than wrong — a kind one engine draws and another does not — so said once, quietly.
+      if (!this.warned.has(`engine:${factory}`)) {
+        this.warned.add(`engine:${factory}`);
+        console.info(`[globe] "${factory}" is not drawn on ${this.config.engine}.`);
+      }
       return undefined;
     }
     if (this.config.available && !this.config.available(kind)) return undefined;

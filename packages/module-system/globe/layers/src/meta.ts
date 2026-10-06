@@ -44,3 +44,30 @@ export const COUNTRY_OUTLINES: Meaning = {
   slot: 'planet',
   description: 'Country boundaries from Natural Earth 50m data. Good balance of detail and performance.',
 };
+
+// Drawn by Cesium only. Listed so the other engine can say a template's use of one is not drawn there,
+// rather than that no such kind exists.
+
+export const SKYBOX: Meaning = {
+  id: 'skyboxLayer',
+  slot: 'background',
+  description: 'Display a skybox with star textures in the background.',
+};
+
+export const PROCEDURAL_STARS: Meaning = {
+  id: 'proceduralStarsLayer',
+  slot: 'background',
+  description: 'Generate a random field of point stars with 3D parallax effect.',
+};
+
+export const SOLAR_SYSTEM: Meaning = {
+  id: 'solarSystemLayer',
+  slot: 'background',
+  description: 'Display planets and their orbital paths in the solar system.',
+};
+
+export const H3_GRID: Meaning = {
+  id: 'h3HexagonsLayer',
+  slot: 'planet',
+  description: 'H3 hexagonal grid with fractal zoom, hover effects, and click interactions.',
+};
