@@ -1,5 +1,5 @@
 import { execSync, spawn, spawnSync } from 'child_process';
-import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, shell } from 'electron';
 import contextMenu from 'electron-context-menu';
 import express from 'express';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
@@ -14,7 +14,6 @@ import { createAccountRegistry, expandHome } from './accounts.js';
 import { openExecutorLog } from './executorLog.js';
 import {
   allowMediaPermission,
-  contentSecurityPolicy,
   isExternallyOpenable,
   isTrusted,
   MEDIA_PERMISSIONS,
@@ -645,10 +644,7 @@ function createWindow() {
  * embedded app's own security headers stay its own.
  */
 function installContentSecurityPolicy(session) {
-  const policy = contentSecurityPolicy({
-    dev: Boolean(process.env.VITE_DEV_SERVER_URL),
-    origins: trustedOrigins(policyOptions()),
-  });
+  const policy = contentSecurityPolicy(Boolean(process.env.VITE_DEV_SERVER_URL));
   const appOrigin = safeOrigin(appUrl());
 
   session.webRequest.onHeadersReceived((details, callback) => {
@@ -657,6 +653,26 @@ function installContentSecurityPolicy(session) {
 
     callback({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [policy] } });
   });
+}
+
+/**
+ * The policy, as `@we/csp` built it at prebuild time into `seed-csp.json`.
+ *
+ * Read from a generated file rather than imported because the packaged main process holds only
+ * `electron/` and `dist/` — a workspace package is not there to import. The policy depends on nothing
+ * known only at runtime (the app's own origins are all localhost, which it allows already), so
+ * building it ahead of time loses nothing.
+ *
+ * A missing file is a thrown error, not a missing policy: an app that silently ran without one is the
+ * failure this exists to prevent.
+ */
+function contentSecurityPolicy(dev) {
+  const file = join(__dirname, 'seed-csp.json');
+  if (!existsSync(file)) {
+    throw new Error('[we] electron/seed-csp.json is missing — run scripts/generate-seed-config.cjs before starting.');
+  }
+  const policies = JSON.parse(readFileSync(file, 'utf8'));
+  return dev ? policies.development : policies.production;
 }
 
 /**
@@ -938,6 +954,7 @@ app.whenReady().then(async () => {
   await startExecutor();
 
   // Then create the window
+  installApplicationMenu();
   createWindow();
 
   app.on('activate', () => {
@@ -946,6 +963,42 @@ app.whenReady().then(async () => {
     }
   });
 });
+
+/**
+ * The menu bar — Electron's own menus, plus a way into safe mode.
+ *
+ * The menu bar is drawn by the operating system, so nothing a template renders can cover it or
+ * take it away. That makes it the desktop's door into safe mode for an interface that loads fine
+ * and offers no way out: it loads the same `?safe` address the web uses, which the app reads before
+ * any template renders. See `safeMode.ts` in `@we/app-shell`.
+ *
+ * Built from roles rather than taken from Electron's default menu, which cannot have an item added
+ * to it. Every menu here is the default one under its role; Help is the only one that differs.
+ */
+function installApplicationMenu() {
+  const isMac = process.platform === 'darwin';
+  const template = [
+    ...(isMac ? [{ role: 'appMenu' }] : []),
+    { role: 'fileMenu' },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' },
+    {
+      role: 'help',
+      submenu: [
+        {
+          label: 'Restart in Safe Mode',
+          click: () => {
+            const url = new URL(appUrl());
+            url.searchParams.set('safe', '');
+            mainWindow?.loadURL(url.toString());
+          },
+        },
+      ],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
 
 // Kill the executor AND its entire process group (holochain, lair-keystore, etc.)
 function killExecutor() {

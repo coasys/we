@@ -15,13 +15,18 @@ import { readdir, readFile } from 'node:fs/promises';
 import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { solidPlugin } from 'esbuild-plugin-solid';
 import { compile } from 'sass';
 import { chromium } from 'playwright-core';
+import { buildContentSecurityPolicy } from '@we/csp';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..', '..', '..');
 const PORT = Number(process.env.WE_BROWSER_PORT ?? 8791);
 const CHROME = process.env.WE_CHROME ?? '/usr/bin/google-chrome';
+
+/** The production web policy, as the harness page's header. See the server below. */
+const PAGE_POLICY = buildContentSecurityPolicy({ host: 'web', dev: false });
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.map': 'application/json' };
 
@@ -56,7 +61,12 @@ const cssPlugin = {
 /** Bundle the page entry, resolving the workspace aliases the app itself uses. */
 async function bundle() {
   const out = await build({
-    plugins: [cssPlugin],
+    /*
+      Solid's own compiler for TSX. Without it esbuild compiles JSX for React, and the packages that
+      ship as source — the editor, the app shell's own components — render nothing but a reference to
+      a `React` that is not there. Everything that already worked here came from built packages.
+    */
+    plugins: [cssPlugin, solidPlugin()],
     entryPoints: [join(HERE, 'entry.ts')],
     bundle: true,
     format: 'esm',
@@ -133,7 +143,15 @@ async function main() {
   const server = createServer((req, res) => {
     const url = (req.url ?? '/').split('?')[0];
     const send = (body, type) => res.writeHead(200, { 'content-type': type }).end(body);
-    if (url === '/' || url === '/index.html') return send(html, MIME['.html']);
+    /*
+      The page carries the policy a shipped web build serves, so every case is also a check that the
+      renderer and the design system still work under it. Chrome reports anything the policy refuses
+      as a console error, which the run already collects and fails on — a blocked stylesheet or icon
+      cannot pass quietly here as it would in jsdom, which enforces no policy at all.
+    */
+    if (url === '/' || url === '/index.html') {
+      return res.writeHead(200, { 'content-type': MIME['.html'], 'content-security-policy': PAGE_POLICY }).end(html);
+    }
     if (url === '/imported.css') return send(importedCss, MIME['.css']);
     if (url === '/shell.css') return send(shell, MIME['.css']);
     if (url === '/components.css') return send(components, MIME['.css']);
@@ -298,6 +316,35 @@ async function main() {
         },
         /** What a page-level listener recorded — for counting what a gesture actually emitted. */
         recorded: (key) => page.evaluate((k) => globalThis[k] ?? [], key),
+        /*
+          A press and a move at an element's middle, by coordinates. Playwright's own click refuses an
+          element that takes no pointer — the point, for a case about an editor that makes them so.
+        */
+        clickAt: async (sel) => {
+          const b = await page.locator(sel).first().boundingBox();
+          await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+          // Past the editor's 200 ms hold, so a press that wrongly became a drag would show it.
+          await page.waitForTimeout(300);
+        },
+        moveTo: async (sel) => {
+          const b = await page.locator(sel).first().boundingBox();
+          await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+          await page.waitForTimeout(100);
+        },
+        /** A key pressed on whatever has focus, the way a person would. */
+        key: async (name) => {
+          await page.keyboard.press(name);
+          await page.waitForTimeout(50);
+        },
+        /** The cursor the page shows at an element's middle. */
+        cursorAt: (sel) =>
+          page.evaluate((s) => {
+            const r = document.querySelector(s).getBoundingClientRect();
+            const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            return hit ? getComputedStyle(hit).cursor : '';
+          }, sel),
+        /** Run one of the page's own setups by name — for a case whose subject is not a schema. */
+        call: (fn, ...args) => page.evaluate(([n, a]) => window.__harness[n](...a), [fn, args]),
 
         // ── Performance ────────────────────────────────────────────────────
         /*

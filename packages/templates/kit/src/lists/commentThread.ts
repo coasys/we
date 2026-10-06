@@ -233,11 +233,19 @@ const THREAD_INCLUDE = {
  * to read it from. Where the caller has given no way to re-root, a deeper level stays quiet — a
  * note leading nowhere is worse than none.
  */
-function truncationNote(opts: CommentThreadOptions, level: number, itemsExpr: string): SchemaNode {
+function truncationNote(opts: CommentThreadOptions, level: number, itemsExpr: string): SchemaNode | undefined {
   const parentAs = level === 2 ? (opts.as ?? 'reply') : `${opts.as ?? 'reply'}${level - 1}`;
   const total = level === 1 ? opts.anchorTotal : `count(${parentAs}.comments)`;
-  const silent: SchemaNode = { type: '$if', props: { condition: { $: 'false' } } };
-  if (!total) return silent;
+  /*
+    Nothing, written as nothing.
+
+    This used to answer with `{ type: '$if', props: { condition: { $: 'false' } } }` — a node that
+    renders nothing because its condition never holds and it has no branch to render anyway. It
+    does the job and it is not a legal node: the schema says a `$if` carries a `then`, and three
+    shipped templates held three of these each, unreported because a node inside a prop was never
+    checked. A level with no note contributes no child instead.
+  */
+  if (!total) return undefined;
 
   // Parenthesised for the same reason the anchor is: `total` is the caller's expression and may be
   // anything — `discussionSection` passes a ternary, since the thread can be re-rooted. Spliced in
@@ -248,7 +256,7 @@ function truncationNote(opts: CommentThreadOptions, level: number, itemsExpr: st
   const condition = { $: `${hidden} > 0` };
 
   if (level > 1) {
-    return opts.more ? { type: '$if', props: { condition, then: opts.more(parentAs) } } : silent;
+    return opts.more ? { type: '$if', props: { condition, then: opts.more(parentAs) } } : undefined;
   }
   /*
     Whether the backend is still answering a press — derived, not stored.
@@ -558,6 +566,7 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
     nothing ever asked for that reply's own replies. `threadDepth.test.tsx` is the regression, and
     the validator now refuses a multi-child `$each` rather than dropping in silence.
   */
+  const note = truncationNote(opts, level, itemsExpr);
   const row: SchemaNode = opts.collapsible
     ? {
         type: 'Column',
@@ -644,7 +653,9 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
                     props: { items: { $: itemsExpr }, as },
                     children: [row],
                   },
-                  truncationNote(opts, level, itemsExpr),
+                  // Spread, because a level with no truncation note adds no child rather than
+                  // an invisible one — and `children` may not hold a hole.
+                  ...(note ? [note] : []),
                 ],
               },
               ...(opts.empty && level === 1 && { else: opts.empty }),

@@ -50,6 +50,20 @@ interface RelationInfo {
 
 const manyForeignKey = (entity: string, relation: string) => `__${entity}_${relation}`;
 
+/**
+ * One field written to an existing row — where `''` clears it, as it does in production.
+ *
+ * Production removes a cleared property rather than storing an empty one, so the record then has no
+ * value for it: it still reads back as its declared default, and no query matches it — not
+ * `{ field: '' }`, not `{ field: { not: x } }`. This backend used to keep the `''`, so a cleared field
+ * went on matching a `not` here and dropped out of the same query in production. Creation is not a
+ * clear: a `''` written then, a default included, is a value on both backends.
+ */
+function writeField(row: Record<string, unknown>, key: string, value: unknown): void {
+  if (value === '') delete row[key];
+  else row[key] = value;
+}
+
 /** Writes notify per dataset, so a live query re-runs exactly when its dataset changed. */
 const listeners = new WeakMap<object, Set<() => void>>();
 
@@ -188,9 +202,8 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
       // children" rather than an error, and `CollectionBlock.children` — untyped by design, since a
       // collection holds any block type — is the relation every showcase template drills through.
       //
-      // The cost is that an `include` over an untyped relation now resolves to `[]` rather than
-      // being absent. That case is already documented as unsupported (a relation with no declared
-      // target cannot say which table to read), and both spellings render as nothing.
+      // An `include` over one reads every table, each member tagged with the entity it came from —
+      // see `resolveRelation` in the shared query engine.
       engineRelations[name][relName] = {
         target: info.target,
         cardinality,
@@ -203,6 +216,32 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
     }
     relationsByEntity[name] = infos;
   }
+
+  /*
+    The reverse relations, by the forward relation they read back: `comments` → `inReplyTo`.
+
+    A reverse relation (`reverseOf`) is the same link read from the other end, so nothing writes it
+    directly — and nothing here derived it either, so `inReplyTo` was empty on every record. Every
+    comment thread rebuilds its tree from it, and the feeds leave replies out with
+    `inReplyTo: { none: {} }`, so on this backend a reply showed up as a post of its own and a thread
+    had no shape. The forward write now stamps the parent on the child under the reverse relation's
+    name, which is where the query engine reads a to-one link from.
+  */
+  const reversesOf = new Map<string, string[]>();
+  for (const name of Object.keys(manifest.entities)) {
+    for (const [relName, spec] of Object.entries(resolved(name).relations)) {
+      if (!spec.reverseOf) continue;
+      const names = reversesOf.get(spec.reverseOf) ?? [];
+      if (!names.includes(relName)) reversesOf.set(spec.reverseOf, [...names, relName]);
+    }
+  }
+  const linkReverse = (forward: string, child: AnyRow, parentId: string, linked: boolean) => {
+    for (const reverse of reversesOf.get(forward) ?? []) {
+      if (linked) child[reverse] = parentId;
+      // Only if it still points here: a child since linked under another parent keeps that one.
+      else if (child[reverse] === parentId) delete child[reverse];
+    }
+  };
 
   const datasetOf = (handle: unknown): DatasetEntry => {
     const entry = handle as DatasetEntry | undefined;
@@ -248,7 +287,9 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         if (!row) throw new Error(`${name}.save(): row ${(this as unknown as AnyRow).id} no longer exists`);
         for (const [key, value] of Object.entries(this as unknown as Record<string, unknown>)) {
           if (typeof value === 'function' || key.startsWith('$')) continue;
-          row[key] = value;
+          // Only what changed: an unchanged `''` from creation is a value, not a clear.
+          if (row[key] === value || (value === '' && !(key in row))) continue;
+          writeField(row, key, value);
         }
         notify(dataset);
       }
@@ -361,7 +402,28 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         }
         tableOf(dataset, name).push(row);
         notify(dataset);
-        return Entity.hydrate(dataset, row);
+        const instance = Entity.hydrate(dataset, row);
+        /*
+          Relations named in the data are linked, not dropped.
+
+          They used to be skipped, so `record.create('Loan', { item })` wrote a loan pointing at
+          nothing — while AD4M's `save()` sets relations on a new instance, so the two backends
+          disagreed and the preview, built on this one, showed a template broken that was not. Linked
+          through the same accessors as `add<Relation>`, so this write and that one keep the foreign
+          keys in step in one place. An id or an instance, one or a list.
+        */
+        for (const [key, value] of Object.entries(data)) {
+          if (!relationNames.has(key) || value == null) continue;
+          const add = (instance as unknown as Record<string, unknown>)[
+            `add${key.charAt(0).toUpperCase()}${key.slice(1)}`
+          ];
+          if (typeof add !== 'function') continue;
+          for (const one of Array.isArray(value) ? value : [value]) {
+            const id = typeof one === 'string' ? one : (one as AnyRow | null)?.id;
+            if (typeof id === 'string' && id) await (add as (target: string) => Promise<void>).call(instance, id);
+          }
+        }
+        return instance;
       }
 
       static async update(handle: unknown, id: string, data: Record<string, unknown>): Promise<Entity | null> {
@@ -370,7 +432,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         if (!row) return null;
         for (const [key, value] of Object.entries(data)) {
           if (relationNames.has(key)) continue;
-          row[key] = value;
+          writeField(row, key, value);
         }
         row.updatedAt = new Date().toISOString();
         notify(dataset);
@@ -507,7 +569,10 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
             : Object.values(dataset.tables)
                 .flatMap((rows) => rows as AnyRow[])
                 .find((r) => r.id === relatedId);
-          if (targetRow) targetRow[relation.foreignKey] = this.id;
+          if (targetRow) {
+            targetRow[relation.foreignKey] = this.id;
+            linkReverse(relation.name, targetRow, this.id as string, true);
+          }
           const current = Array.isArray(this[relation.name]) ? (this[relation.name] as unknown[]) : [];
           if (!current.includes(relatedId)) this[relation.name] = [...current, relatedId];
           const row = tableOf(dataset, name).find((r) => r.id === this.id);
@@ -538,10 +603,17 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           if (row) row[relation.foreignKey] = '';
           this[relation.name] = '';
         } else {
+          // Looked up across every table when the relation is untyped, as `add` does — otherwise
+          // removing from an untyped relation left the child's key behind.
           const targetRow = relation.target
             ? tableOf(dataset, relation.target).find((r) => r.id === relatedId)
-            : undefined;
-          if (targetRow) delete targetRow[relation.foreignKey];
+            : Object.values(dataset.tables)
+                .flatMap((rows) => rows as AnyRow[])
+                .find((r) => r.id === relatedId);
+          if (targetRow) {
+            delete targetRow[relation.foreignKey];
+            linkReverse(relation.name, targetRow, this.id as string, false);
+          }
           const current = Array.isArray(this[relation.name]) ? (this[relation.name] as unknown[]) : [];
           this[relation.name] = current.filter((id) => id !== relatedId);
           if (row) row[relation.name] = this[relation.name];
@@ -574,11 +646,17 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           for (const id of current) {
             if (next.includes(id)) continue;
             const targetRow = rowsOf(id);
-            if (targetRow) delete targetRow[relation.foreignKey];
+            if (targetRow) {
+              delete targetRow[relation.foreignKey];
+              linkReverse(relation.name, targetRow, this.id as string, false);
+            }
           }
           for (const id of next) {
             const targetRow = rowsOf(id);
-            if (targetRow) targetRow[relation.foreignKey] = this.id;
+            if (targetRow) {
+              targetRow[relation.foreignKey] = this.id;
+              linkReverse(relation.name, targetRow, this.id as string, true);
+            }
           }
           this[relation.name] = next;
           const row = tableOf(dataset, name).find((r) => r.id === this.id);

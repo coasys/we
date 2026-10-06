@@ -2,125 +2,48 @@
  * Cesium Globe Widget
  *
  * A 3D globe with modular layer system.
- * Uses CDN for all Cesium assets (no local bundling required).
+ * Cesium's runtime files are served by the host app — see `CESIUM_BASE_URL` below.
  */
 
-import { Cartesian3, Ion, Viewer } from 'cesium';
-import { createEffect, createSignal, onCleanup, onMount } from 'solid-js';
+import { Cartesian3, type ImageryLayer, VERSION, Viewer } from 'cesium';
+import { createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
 
 export type * from './CesiumGlobe.types';
-import type { CesiumLayer, LayerConfig, LayerEventBus, LayerFactory, LayerStore } from '@we/globe-protocol';
+import { EventBus, LayerSet } from '@we/globe-core';
+import type { CesiumRendererContext, LayerKind } from '@we/globe-protocol';
 
-import type { CesiumGlobeProps } from './CesiumGlobe.types';
+import type {} from './cesium-env';
+import type { CesiumGlobeProps, ImageryChoice } from './CesiumGlobe.types';
+import { baseImagery, detailImagery } from './imagery';
 
-// Configure Cesium CDN
-(window as Window & { CESIUM_BASE_URL?: string }).CESIUM_BASE_URL =
-  'https://cdn.jsdelivr.net/npm/cesium@1.136.0/Build/Cesium/';
+/**
+ * Where Cesium's workers, wasm, widget CSS and textures are served from.
+ *
+ * From the app's own origin wherever the host builds with `cesiumAssets()` from
+ * `@we/globe-widget/vite`, which every WE app does: that is what lets the globe draw offline, and
+ * what keeps a CDN out of the content security policy. A host without the plugin falls back to
+ * jsDelivr, at the installed engine's own version — a hand-typed one once drifted eight releases
+ * behind the package.
+ */
+const CESIUM_BASE_URL =
+  import.meta.env.WE_CESIUM_BASE_URL ?? `https://cdn.jsdelivr.net/npm/cesium@${VERSION}/Build/Cesium/`;
+
+(window as Window & { CESIUM_BASE_URL?: string }).CESIUM_BASE_URL = CESIUM_BASE_URL;
 
 // Load Cesium CSS
 if (typeof document !== 'undefined' && !document.querySelector('link[href*="cesium"]')) {
   const cesiumCss = document.createElement('link');
   cesiumCss.rel = 'stylesheet';
-  cesiumCss.href = 'https://cdn.jsdelivr.net/npm/cesium@1.136.0/Build/Cesium/Widgets/widgets.css';
+  cesiumCss.href = `${CESIUM_BASE_URL}Widgets/widgets.css`;
   document.head.appendChild(cesiumCss);
-}
-
-/**
- * Simple event bus implementation
- */
-class SimpleEventBus implements LayerEventBus {
-  private emitter = new Map<string, Set<(...args: unknown[]) => void>>();
-
-  emit(event: string, ...args: unknown[]): void {
-    const handlers = this.emitter.get(event);
-    if (handlers) {
-      handlers.forEach((handler) => handler(...args));
-    }
-  }
-
-  on(event: string, handler: (...args: unknown[]) => void): void {
-    if (!this.emitter.has(event)) {
-      this.emitter.set(event, new Set());
-    }
-    this.emitter.get(event)!.add(handler);
-  }
-
-  off(event: string, handler: (...args: unknown[]) => void): void {
-    const handlers = this.emitter.get(event);
-    if (handlers) {
-      handlers.delete(handler);
-    }
-  }
-
-  once(event: string, handler: (...args: unknown[]) => void): void {
-    const onceHandler = (...args: unknown[]) => {
-      handler(...args);
-      this.off(event, onceHandler);
-    };
-    this.on(event, onceHandler);
-  }
-}
-
-/**
- * Simple store implementation
- */
-class SimpleStore implements LayerStore {
-  private store = new Map<string, unknown>();
-
-  get<T = unknown>(key: string): T | undefined {
-    return this.store.get(key) as T | undefined;
-  }
-
-  set<T = unknown>(key: string, value: T): void {
-    this.store.set(key, value);
-  }
-
-  has(key: string): boolean {
-    return this.store.has(key);
-  }
-
-  delete(key: string): boolean {
-    return this.store.delete(key);
-  }
-
-  clear(): void {
-    this.store.clear();
-  }
-}
-
-/**
- * Resolve layer factory - handles both function and string references
- */
-function resolveLayerFactory(
-  factory: LayerFactory | string,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  registry: Record<string, LayerFactory<any>>,
-): LayerFactory {
-  if (typeof factory === 'string') {
-    const resolved = registry[factory];
-    if (!resolved) {
-      throw new Error(
-        `Layer factory "${factory}" not found in registry. Available: ${Object.keys(registry).join(', ')}`,
-      );
-    }
-    return resolved;
-  }
-  return factory;
-}
-
-// Extend Viewer type to store our layer tracking
-interface ViewerWithLayers extends Viewer {
-  _weMountedLayers?: Map<string, { config: LayerConfig; instance: CesiumLayer }>;
-  _weMountedBackgroundLayers?: Map<string, { config: LayerConfig; instance: CesiumLayer }>;
-  _weLayerEffectRunning?: boolean;
 }
 
 export function CesiumGlobe(props: CesiumGlobeProps) {
   let containerRef: HTMLDivElement | undefined;
-  let viewer: ViewerWithLayers | undefined;
-  let events: SimpleEventBus | undefined;
-  let store: SimpleStore | undefined;
-  let cleanupFunctions: Map<string, Array<() => void>> | undefined;
+  let viewer: Viewer | undefined;
+  /** The planet layers and the background layers: two lists, each kept in step by a layer set. */
+  let planet: LayerSet<CesiumRendererContext> | undefined;
+  let background: LayerSet<CesiumRendererContext> | undefined;
   let updateResolution: (() => void) | undefined;
   let resizeObserver: ResizeObserver | undefined;
   /** The deferred construction frame, so unmounting before it fires can cancel it. */
@@ -129,11 +52,6 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
   let disposed = false;
 
   const [viewerReady, setViewerReady] = createSignal(false);
-
-  // Set Ion token if provided
-  if (props.ionAccessToken) {
-    Ion.defaultAccessToken = props.ionAccessToken;
-  }
 
   onMount(() => {
     if (!containerRef) return;
@@ -151,6 +69,9 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
 
       // Create Cesium viewer with minimal UI
       viewer = new Viewer(containerRef, {
+        // Never Cesium's default, which is ion imagery behind a demo token that expires. The detail
+        // imagery effect below adds the layer above this one. See `imagery.ts`.
+        baseLayer: baseImagery(),
         timeline: false,
         animation: false,
         baseLayerPicker: false,
@@ -217,200 +138,102 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
         destination: Cartesian3.fromDegrees(0, 20, 20000000),
       });
 
-      // Initialize layer system
-      events = new SimpleEventBus();
-      store = new SimpleStore();
-      cleanupFunctions = new Map<string, Array<() => void>>();
-      viewer._weMountedLayers = new Map<string, { config: LayerConfig; instance: CesiumLayer }>();
-      viewer._weMountedBackgroundLayers = new Map<string, { config: LayerConfig; instance: CesiumLayer }>();
+      // The layer system: one bus for both lists, and a layer set per list. See `LayerSet`.
+      const events = new EventBus();
+      const ready = viewer;
+      const layers = () =>
+        new LayerSet<CesiumRendererContext>({
+          engine: 'cesium',
+          kinds: () => props.layerKinds,
+          context: (shared) => ({ ...shared, viewer: ready }),
+          events,
+          available: (kind) => !needsMissingIon(kind),
+        });
+      planet = layers();
+      background = layers();
 
       // Signal that viewer is ready (triggers layer effect)
       setViewerReady(true);
     });
   });
 
-  // Reactive background layer mounting/unmounting
-  createEffect(() => {
-    // Track viewer readiness signal
-    if (!viewerReady()) {
-      return;
-    }
-
-    if (!viewer || !events || !store || !cleanupFunctions || !viewer._weMountedBackgroundLayers) {
-      return;
-    }
-
-    const currentLayers = props.backgroundLayers || [];
-    const mountedLayers = viewer._weMountedBackgroundLayers;
-
-    const enabledLayers = currentLayers.filter((config) => config.enabled !== false);
-
-    // Resolve instances upfront to get their names for stable keying
-    type ResolvedBgLayer = { config: LayerConfig; instance: CesiumLayer; layerKey: string };
-    const enabledResolved: ResolvedBgLayer[] = [];
-    for (const config of enabledLayers) {
-      try {
-        const factory = resolveLayerFactory(config.factory, props.layerFactoryRegistry);
-        const instance = factory(config.options);
-        enabledResolved.push({ config, instance, layerKey: config.id ?? instance.name });
-      } catch (err) {
-        console.error(`Error resolving background layer factory:`, err);
-      }
-    }
-
-    const enabledKeys = new Set(enabledResolved.map((r) => r.layerKey));
-
-    // Unmount layers no longer enabled
-    for (const layerKey of Array.from(mountedLayers.keys())) {
-      if (!enabledKeys.has(layerKey)) {
-        const cleanups = cleanupFunctions!.get(`bg-${layerKey}`);
-        if (cleanups) {
-          cleanups.forEach((fn) => {
-            try {
-              fn();
-            } catch (err) {
-              console.error(`Error cleaning up background layer:`, err);
-            }
-          });
-          cleanupFunctions.delete(`bg-${layerKey}`);
-        }
-        mountedLayers.delete(layerKey);
-      }
-    }
-
-    // Mount new layers
-    for (const { config, instance, layerKey } of enabledResolved) {
-      if (mountedLayers.has(layerKey)) {
-        continue;
-      }
-
-      const cleanups: Array<() => void> = [];
-
-      mountedLayers.set(layerKey, { config, instance });
-      cleanupFunctions!.set(`bg-${layerKey}`, cleanups);
-
-      try {
-        const result = instance.onMount?.({
-          viewer: viewer!,
-          events: events!,
-          store: store!,
-          options: config.options,
-          id: layerKey,
-          zIndex: config.zIndex,
-          onCleanup: (fn) => cleanups.push(fn),
-        });
-
-        if (result instanceof Promise) {
-          result.catch((err) => console.error(`Error mounting background layer:`, err));
-        }
-      } catch (err) {
-        console.error(`Error mounting background layer:`, err);
-        mountedLayers.delete(layerKey);
-        cleanupFunctions.delete(`bg-${layerKey}`);
-      }
-    }
+  /**
+   * The imagery choice as a value, not as whatever the host reads to produce it. The host resolves it
+   * through the module settings, which re-emit whenever the space or the agent's settings do; read
+   * directly, every re-emission rebuilt the imagery and the surface flashed blue while the new tiles
+   * loaded. Compared by content, since the host builds a new object each time.
+   */
+  const suppliedImagery = createMemo<ImageryChoice | undefined>(() => props.imagery, undefined, {
+    equals: (a, b) => a?.provider === b?.provider && a?.key === b?.key,
   });
 
-  // Reactive layer mounting/unmounting
+  /**
+   * A key its provider has refused: expired (a release's demo token lives about two months), revoked,
+   * over quota, or unreachable offline. Held so the globe can carry on without it, and cleared when the
+   * network comes back, since an offline refusal says nothing about the key.
+   */
+  const [refusedKey, setRefusedKey] = createSignal<string>();
+
+  /** The imagery in use: the one supplied, unless its provider has refused the key. */
+  const imageryChoice = createMemo<ImageryChoice | undefined>(
+    () => {
+      const choice = suppliedImagery();
+      return choice && choice.key !== refusedKey() ? choice : undefined;
+    },
+    undefined,
+    { equals: (a, b) => a?.provider === b?.provider && a?.key === b?.key },
+  );
+
+  /** For layers that need an ion account, whatever imagery is drawn. */
+  const ionToken = createMemo(() => props.ionAccessToken || undefined);
+
+  /**
+   * Bumped when the browser reports the network is back. Cesium never asks again for a tile that
+   * failed, so a globe opened offline would otherwise keep Natural Earth II for good.
+   */
+  const [onlineEpoch, setOnlineEpoch] = createSignal(0);
+  const onOnline = () => {
+    setRefusedKey(undefined);
+    setOnlineEpoch((n) => n + 1);
+  };
+  window.addEventListener('online', onOnline);
+  onCleanup(() => window.removeEventListener('online', onOnline));
+
+  /** The layers above Natural Earth II that this globe added, so it replaces exactly those. */
+  let detail: ImageryLayer[] = [];
+
+  // Detail imagery: replaced when the choice of imagery or its key changes, and when the network
+  // comes back. Natural Earth II stays underneath throughout, so a replacement never shows bare blue.
   createEffect(() => {
-    // Track viewer readiness signal
-    if (!viewerReady()) {
-      return;
-    }
+    onlineEpoch();
+    const choice = imageryChoice();
+    if (!viewerReady() || !viewer) return;
+    const imagery = viewer.imageryLayers;
+    // Refused, the key is set aside and this runs again without it: NASA's imagery, not nothing.
+    const next = detailImagery(choice, () => setRefusedKey(choice?.key));
+    // Directly above the base, in order, beneath any imagery a WE layer has added.
+    next.forEach((layer, index) => imagery.add(layer, 1 + index));
+    for (const layer of detail) imagery.remove(layer, true);
+    detail = next;
+  });
 
-    if (!viewer || !events || !store || !cleanupFunctions || !viewer._weMountedLayers) {
-      return;
-    }
+  /**
+   * A layer that needs an ion account is left out when there is no token, rather than mounted to
+   * fail. Absent, as a kind with no renderer is: nothing errors and nothing is drawn.
+   */
+  const needsMissingIon = (kind: LayerKind) => !!kind.requires?.ionAccount && !ionToken();
 
-    const currentLayers = props.planetLayers || [];
-    const mountedLayers = viewer._weMountedLayers;
-
-    // Resolve instances upfront so we can key by config.id ?? instance.name.
-    // This lets the same factory be used multiple times with distinct ids.
-    type ResolvedLayer = { config: LayerConfig; instance: CesiumLayer; layerKey: string };
-    const enabledResolved: ResolvedLayer[] = [];
-    for (const config of currentLayers.filter((c) => c.enabled !== false)) {
-      try {
-        const factory = resolveLayerFactory(config.factory, props.layerFactoryRegistry);
-        const instance = factory(config.options);
-        enabledResolved.push({ config, instance, layerKey: config.id ?? instance.name });
-      } catch (err) {
-        console.error(`Error resolving layer factory:`, err);
-      }
-    }
-
-    const enabledLayerKeys = new Set(enabledResolved.map((r) => r.layerKey));
-
-    // Unmount layers no longer enabled
-    for (const layerKey of Array.from(mountedLayers.keys())) {
-      if (!enabledLayerKeys.has(layerKey)) {
-        const cleanups = cleanupFunctions!.get(layerKey);
-        if (cleanups) {
-          cleanups.forEach((fn) => {
-            try {
-              fn();
-            } catch (err) {
-              console.error(`Error cleaning up layer:`, err);
-            }
-          });
-          cleanupFunctions.delete(layerKey);
-        }
-        mountedLayers.delete(layerKey);
-      }
-    }
-
-    // Mount new layers or update already-mounted ones
-    for (const { config, instance, layerKey } of enabledResolved) {
-      if (mountedLayers.has(layerKey)) {
-        // Layer is already mounted — call onUpdate with the new options if supported
-        const mounted = mountedLayers.get(layerKey)!;
-        if (mounted.instance.onUpdate) {
-          mounted.config = config;
-          try {
-            const result = mounted.instance.onUpdate({
-              viewer: viewer!,
-              events: events!,
-              store: store!,
-              options: config.options,
-              id: layerKey,
-              zIndex: config.zIndex,
-              onCleanup: (fn) => cleanupFunctions!.get(layerKey)?.push(fn),
-            });
-            if (result instanceof Promise) {
-              result.catch((err) => console.error(`Error updating layer "${layerKey}":`, err));
-            }
-          } catch (err) {
-            console.error(`Error updating layer "${layerKey}":`, err);
-          }
-        }
-        continue;
-      }
-
-      const cleanups: Array<() => void> = [];
-
-      mountedLayers.set(layerKey, { config, instance });
-      cleanupFunctions!.set(layerKey, cleanups);
-
-      try {
-        const result = instance.onMount?.({
-          viewer: viewer!,
-          events: events!,
-          store: store!,
-          options: config.options,
-          id: layerKey,
-          zIndex: config.zIndex,
-          onCleanup: (fn) => cleanups.push(fn),
-        });
-
-        if (result instanceof Promise) {
-          result.catch((err) => console.error(`Error mounting layer:`, err));
-        }
-      } catch (err) {
-        console.error(`Error mounting layer:`, err);
-        mountedLayers.delete(layerKey);
-        cleanupFunctions.delete(layerKey);
-      }
-    }
+  // Each list is kept in step with the template's, and only a layer whose own options changed hears
+  // about it. Reading the token here makes a layer that needs ion appear or go with it.
+  createEffect(() => {
+    if (!viewerReady()) return;
+    ionToken();
+    background?.sync(props.backgroundLayers);
+  });
+  createEffect(() => {
+    if (!viewerReady()) return;
+    ionToken();
+    planet?.sync(props.planetLayers);
   });
 
   // Cleanup on component unmount - MUST happen after layer cleanup
@@ -421,19 +244,9 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
     if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
     pendingFrame = undefined;
 
-    // First cleanup all layers
-    if (cleanupFunctions) {
-      for (const cleanups of cleanupFunctions.values()) {
-        cleanups.forEach((fn) => {
-          try {
-            fn();
-          } catch (err) {
-            console.error('Error cleaning up layer:', err);
-          }
-        });
-      }
-      cleanupFunctions.clear();
-    }
+    // First every layer, while the viewer they drew into still exists.
+    planet?.dispose();
+    background?.dispose();
 
     // Disconnect container resize observer
     if (resizeObserver) {

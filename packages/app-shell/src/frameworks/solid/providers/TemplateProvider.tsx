@@ -1,5 +1,6 @@
 import { boardOptimism } from '@shared/boardOptimism';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
+import { collectionFacts } from '@shared/destructiveFacts';
 import { involvementOptimism } from '@shared/involvementOptimism';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
@@ -7,6 +8,7 @@ import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry'
 import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegistry';
 import { provideChromeBag, provideTemplateBag } from '@shared/registries/templateBag';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
+import { installRenderSettleOnExit, installSafeModeShortcut } from '@shared/safeMode';
 import { hostSourceBag } from '@shared/sources';
 import { flowStateOf } from '@shared/taskFlow';
 import { taskFlowLive } from '@shared/taskFlowLive';
@@ -48,8 +50,9 @@ import type { DatasetProxy } from '@we/entities';
 import { CollectionBlock, getEntity } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import type { DocumentAccess } from '@we/module-shared';
+import { holdTopLayer, installTopLayerGuard } from '@we/primitives/top-layer';
 import type { TemplateSchema } from '@we/schema-shared';
-import { expandViewRoutes, hasViewsMarker, SPACE_ROUTE_PATH } from '@we/schema-shared';
+import { expandViewRoutes, hasViewsMarker, installGestureTracking, SPACE_ROUTE_PATH } from '@we/schema-shared';
 import type { VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
 import { CHROME_RAIL_WIDTH } from '@we/template-shell';
@@ -736,7 +739,26 @@ export default function TemplateProvider() {
     who wrote this schema — and the renderer has no way to know that. It stays neutral and walks
     whatever bag it is given, which is the same division that keeps `ModuleStoreDeps` honest.
   */
-  const chromeBag = buildTemplateBag(stores, { grants: CHROME_TIER });
+  /*
+    Whether somebody asked, for the gesture gate on both bags below: an action other than an
+    `ambient` one runs only when a press, a key or typing reached the part of the template calling
+    it, so an image that finishes loading cannot write into a space. See `gesture.ts` in
+    `@we/schema-shared`.
+
+    Chrome only reports — runs the action and says so in the console. It is authored here and
+    reviewed, so refusing there buys little and could break something nobody has exercised since;
+    the report is how anything that slips through gets found before it is turned on.
+  */
+  onCleanup(installGestureTracking(window));
+  /*
+    Two of safe mode's doors, opened before anything a template renders can listen: the key, heard
+    in the capture phase on the window, and the record of a render in progress, cleared when the
+    page leaves with JavaScript still running — so only a page that hung or crashed leaves it
+    behind for the next boot. See `safeMode.ts`.
+  */
+  onCleanup(installSafeModeShortcut(window));
+  onCleanup(installRenderSettleOnExit(window));
+  const chromeBag = buildTemplateBag(stores, { grants: CHROME_TIER, gesture: 'report' });
   /*
     The space bag, with the host's own confirmation in front of every destructive action.
 
@@ -752,7 +774,17 @@ export default function TemplateProvider() {
   */
   const templateBag = buildTemplateBag(stores, {
     grants: SPACE_TIER,
-    onDestructive: (path, args) => shellStore.requestDestructive(path, args),
+    // What a delete takes with it is counted by the host, from the data, while it asks.
+    onDestructive: (path, args) =>
+      shellStore.requestDestructive(
+        path,
+        args,
+        path === 'spaceStore.deleteCollection'
+          ? collectionFacts(datasetStore.currentDataset()?.handle, String(args[0] ?? ''))
+          : undefined,
+      ),
+    // Enforced: this is the bag a stranger's template renders against.
+    gesture: 'enforce',
   });
 
   onCleanup(provideTemplateBag(templateBag));
@@ -831,6 +863,56 @@ export default function TemplateProvider() {
       });
     },
   };
+
+  /*
+    The host's safety prompts — consent, install, delete, screen choice, account removal — in a
+    layer of their own, after everything else.
+
+    While one is open, two things hold, and both are the host's doing rather than anything the
+    rest of the app has to cooperate with:
+
+    - **Nothing else enters the top layer.** A template can mount an overlay with nobody touching
+      anything (`$setLocal` is ungated, `onAnimationEnd` fires by itself), and the top layer stacks
+      by arrival, so a sheet opened after the prompt is drawn over it. `holdTopLayer` defers every
+      `showPopover`/`showModal` outside this layer until the question is answered, and raises the
+      prompt above anything that arrived in the same breath. See `top-layer.ts` in `@we/primitives`.
+    - **Everything else is inert**, so what is under the prompt cannot be focused, typed into or
+      clicked through while it is up.
+
+    Whether a prompt is open is read from this layer's own DOM rather than from a list of the stores
+    behind each one, so a safety prompt added to `PROTECTED_SLOTS` is covered by being added.
+  */
+  const promptSchema: TemplateSchema = {
+    meta: { name: 'Safety prompts', description: "The host's own questions", icon: '' },
+    type: 'Column',
+    props: { styles: { display: 'contents' } },
+    get children() {
+      slotVersion();
+      return slotRegistry.promptNodes();
+    },
+  };
+  let appLayer: HTMLDivElement | undefined;
+  let promptLayer: HTMLDivElement | undefined;
+  const [asking, setAsking] = createSignal(false);
+  onCleanup(installTopLayerGuard(window));
+  onMount(() => {
+    const layer = promptLayer;
+    if (!layer) return;
+    const update = () => setAsking(layer.querySelector('[data-we-overlay]') !== null);
+    const observer = new MutationObserver(update);
+    observer.observe(layer, { childList: true, subtree: true });
+    update();
+    onCleanup(() => observer.disconnect());
+  });
+  createEffect(() => {
+    if (!asking() || !promptLayer) return;
+    const release = holdTopLayer(promptLayer);
+    appLayer?.setAttribute('inert', '');
+    onCleanup(() => {
+      appLayer?.removeAttribute('inert');
+      release();
+    });
+  });
 
   const notFoundNode = {
     type: 'Column',
@@ -1262,33 +1344,43 @@ export default function TemplateProvider() {
     >
       <BlockDisplayOverrides overrides={moduleBlockDisplays()}>
         <VisualEditorProvider value={visualEditorCtx}>
-          {/* Shell chrome — stable, never remounts. Chrome tier: this is host-authored. */}
-          <RenderSchema node={shellSchema} stores={chromeBag} registry={registry} />
+          {/* Everything but the safety prompts, made inert while one is open. A box-less wrapper, so
+           nothing below lays out any differently for being inside it. */}
+          <div ref={appLayer} style={{ display: 'contents' }}>
+            {/* Shell chrome — stable, never remounts. Chrome tier: this is host-authored. */}
+            <RenderSchema node={shellSchema} stores={chromeBag} registry={registry} />
 
-          {/* Router — keyed on the template ID *and* the resolved section list, since both decide what
+            {/* Router — keyed on the template ID *and* the resolved section list, since both decide what
            `buildRoutes` produces. Adding, removing or reordering a section remounts the space's
            content, which is the same trade template switching already makes: both are rare,
            deliberate acts, and a router whose route table changed underneath it is worse. */}
-          <Show when={routeKey()} keyed>
-            {(_key) => (
-              <Router root={Layout}>
-                {buildRoutes(templateBag, routesWithViews())}
-                <Route
-                  path="*"
-                  component={() =>
-                    routesWithViews().length
-                      ? RenderSchema({ node: notFoundNode, stores: templateBag, registry })
-                      : null
-                  }
-                />
-              </Router>
-            )}
-          </Show>
+            <Show when={routeKey()} keyed>
+              {(_key) => (
+                <Router root={Layout}>
+                  {buildRoutes(templateBag, routesWithViews())}
+                  <Route
+                    path="*"
+                    component={() =>
+                      routesWithViews().length
+                        ? RenderSchema({ node: notFoundNode, stores: templateBag, registry })
+                        : null
+                    }
+                  />
+                </Router>
+              )}
+            </Show>
 
-          {/* Persistent app iframes (e.g. Flux) — stable, never remounts. Rendered after the
+            {/* Persistent app iframes (e.g. Flux) — stable, never remounts. Rendered after the
            keyed Router (both are DOM order stacking, so this preserves the original
            on-top-of-template paint order) so switching templates doesn't reload embedded apps. */}
-          <PersistentAppFrames stores={stores} />
+            <PersistentAppFrames stores={stores} />
+          </div>
+
+          {/* The host's safety prompts — see `promptSchema`. Last, so a prompt mounting in the same
+           frame as anything above it still enters the top layer after it. */}
+          <div ref={promptLayer} data-we-host-prompts style={{ display: 'contents' }}>
+            <RenderSchema node={promptSchema} stores={chromeBag} registry={registry} />
+          </div>
         </VisualEditorProvider>
       </BlockDisplayOverrides>
     </BlockHostProvider>

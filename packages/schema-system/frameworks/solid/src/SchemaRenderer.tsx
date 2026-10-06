@@ -10,13 +10,19 @@ import type {
 import {
   applyThemeVars,
   deepUnwrap,
+  expandDefinitions,
   hasToken,
+  isTemplateElement,
   markReactive,
+  newGestureOwner,
   noMemo,
   pruneUnresolvedWhere,
   REACTIVE_ACCESSOR,
+  refusedProp,
+  registerGestureOwner,
   resolveProp,
   resolveQueryProp,
+  runAsOwner,
   scopeIsAnchored,
   validateField,
 } from '@we/schema-shared';
@@ -30,6 +36,30 @@ import { acquireSubscription } from './subscriptionPool';
 import { SurfaceRenderer } from './SurfaceRenderer';
 import type { RendererOutput, RenderProps, SchemaNode } from './types';
 import { useVisualEditor } from './VisualEditorContext';
+
+/** A lowercase type: a native element rather than a component or a custom element. */
+function isNativeType(type: string): boolean {
+  return /^[a-z][a-z0-9]*$/.test(type);
+}
+
+/** What has already been reported as refused, so a list of a hundred rows says so once. */
+const refusedReported = new Set<string>();
+function warnRefusedOnce(what: string, why: string): void {
+  if (refusedReported.has(what)) return;
+  refusedReported.add(what);
+  console.warn(`[template] ${what} was not rendered: ${why}. See templateElements.ts in @we/schema-shared.`);
+}
+
+/**
+ * A prop's value, or `undefined` when it may not reach the element — a `javascript:` URL, an inline
+ * document, an inline handler. Checked after resolution, so an expression building one is caught too.
+ */
+function permitted(key: string, value: unknown, native: boolean): unknown {
+  const why = refusedProp(key, value, native);
+  if (!why) return value;
+  warnRefusedOnce(`"${key}"`, why);
+  return undefined;
+}
 
 /** Check if a prop key is an event handler name (e.g. onClick, onInput, onKeyDown) */
 function isEventProp(key: string): boolean {
@@ -556,7 +586,24 @@ function isStaticValue(value: unknown): boolean {
   return !Object.keys(value).some((k) => k.startsWith('$')) && Object.values(value).every(isStaticValue);
 }
 
-export function RenderSchema({ node, stores, registry, context = {}, children }: RenderProps): RendererOutput {
+/**
+ * A template that says a repeated shape once is put back together here, and nowhere else.
+ *
+ * `$defs` lives on the root and only on the root, so this fires exactly once per mounted tree:
+ * the expansion carries no definitions of its own, and recursion goes through this same component,
+ * so no descendant pays the check more than a property read.
+ *
+ * Expanded at the boundary rather than resolved as a node type, deliberately. A `$ref` the
+ * renderer understood would be a node every OTHER consumer also has to understand — the indexer,
+ * the scope walker, the inspector, the validator, every audit that walks a composed tree — and
+ * each one that forgot would fail by quietly skipping a subtree. One place knows, and everything
+ * downstream sees the tree it has always seen.
+ */
+export function RenderSchema(props: RenderProps): RendererOutput {
+  return RenderNode(props.node?.$defs ? { ...props, node: expandDefinitions(props.node) } : props);
+}
+
+function RenderNode({ node, stores, registry, context = {}, children }: RenderProps): RendererOutput {
   if (!node) return null;
 
   const visualEditor = useVisualEditor();
@@ -1124,10 +1171,21 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     // During reactive updates (node.type changed via store mutation), guard here
     // so Dynamic never receives an invalid tag name like "$routes".
     if (t.startsWith('$')) return undefined;
-    const isHtml = /^[a-z][a-z0-9]*$/.test(t);
-    const isWc = t.includes('-');
-    return registry[t] ?? (isHtml || isWc ? t : undefined);
+    if (registry[t]) return registry[t];
+    // A native element only from the allowlist — see `templateElements.ts` in `@we/schema-shared`.
+    if (isNativeType(t)) return isTemplateElement(t) ? t : undefined;
+    return t.includes('-') ? t : undefined;
   });
+  /*
+    A native element outside the allowlist is absent, not reported on the page: it is either a
+    template trying to run something (`script`, an `iframe` with `srcdoc`) or one that would load a
+    document of its own, and the dashed "unknown component" box below would be the wrong answer to
+    both — that box is for a module that is not installed.
+  */
+  if (isNativeType(node.type ?? '') && !registry[node.type ?? ''] && !isTemplateElement(node.type ?? '')) {
+    warnRefusedOnce(`<${node.type}>`, 'an element a template may not mount');
+    return null;
+  }
   // An unrecognised type used to throw, which took down **the whole render** rather than one node —
   // so a template referencing a component from a module that isn't enabled produced a blank page.
   // Fail the way the rest of the system does: loud, but scoped.
@@ -1287,6 +1345,29 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   });
 
   /*
+    Gesture credit: every handler this node hands a component runs as this node.
+
+    A template's write runs only when somebody asked, and "asked" usually means a press still being
+    dispatched. Some components answer a press later — after encoding a crop, after a lookup — and by
+    then it has finished. A press that passed through this node's wrapper credits it, and a handler
+    called afterwards may spend that credit once (see `gesture.ts` in `@we/schema-shared`).
+
+    Done here, around every handler, because this is the one place every handler is built. The
+    alternative is each component carrying the press across its own awaits — a convention no foreign
+    element bundled from a library could follow.
+  */
+  const gestureOwner = newGestureOwner();
+  if (Object.keys(node.props ?? {}).some(isEventProp)) {
+    createEffect(() => {
+      if (wrapperRef) registerGestureOwner(wrapperRef, gestureOwner);
+    });
+  }
+  const asThisNode = (handler: unknown): unknown =>
+    typeof handler === 'function'
+      ? (...args: unknown[]) => runAsOwner(gestureOwner, () => (handler as (...a: unknown[]) => unknown)(...args))
+      : handler;
+
+  /*
     A themed node is *applied*, not declared — the same distinction the document root, the scoped
     template wrapper, the theme editor's preview and its role swatches all needed.
 
@@ -1345,7 +1426,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     for (const [key, memo] of Object.entries(propMemos)) {
       if (isEventProp(key)) continue;
       createEffect(() => {
-        if (hostRef) hostRef[key] = memo();
+        if (hostRef) hostRef[key] = permitted(key, memo(), false);
       });
     }
 
@@ -1360,7 +1441,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         for (const key of Object.keys(currentProps)) {
           if (!(key in propMemos) && !isEventProp(key)) {
             const resolved = resolveProp(currentProps[key], stores, effectiveContext, createMemo);
-            hostRef[key] = deepUnwrap(resolved);
+            hostRef[key] = permitted(key, deepUnwrap(resolved), false);
             currentDynamicKeys.add(key);
           }
         }
@@ -1377,7 +1458,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       for (const [key, memo] of Object.entries(propMemos)) {
         if (isEventProp(key)) {
           const val = memo();
-          attrs[key] = Array.isArray(val) ? composeHandlers(val) : val;
+          attrs[key] = asThisNode(Array.isArray(val) ? composeHandlers(val) : val);
         }
       }
       return attrs;
@@ -1403,19 +1484,21 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   }
 
   // Solid components / HTML elements: all props via reactive spread (standard Solid pattern)
+  const native = isNativeType(node.type ?? '');
   const reactiveAttrs = createMemo(() => {
     const attrs: Record<string, unknown> = {};
     for (const [key, memo] of Object.entries(propMemos)) {
       const val = memo();
-      attrs[key] = isEventProp(key) && Array.isArray(val) ? composeHandlers(val) : val;
+      if (isEventProp(key)) attrs[key] = asThisNode(Array.isArray(val) ? composeHandlers(val) : val);
+      else attrs[key] = permitted(key, val, native);
     }
     // Pick up props added dynamically via updateSchema that had no memo at mount time
     const currentProps = node.props as Record<string, unknown> | undefined;
     if (currentProps) {
       for (const key of Object.keys(currentProps)) {
         if (!(key in propMemos)) {
-          const resolved = resolveProp(currentProps[key], stores, effectiveContext, createMemo);
-          attrs[key] = deepUnwrap(resolved);
+          const resolved = deepUnwrap(resolveProp(currentProps[key], stores, effectiveContext, createMemo));
+          attrs[key] = isEventProp(key) ? asThisNode(resolved) : permitted(key, resolved, native);
         }
       }
     }

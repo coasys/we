@@ -85,6 +85,20 @@ A module cannot _ship_ a relay — infrastructure somebody has to run is not a m
 require — so a deployment that runs one says so here. One URL per line, or a JSON array of
 `RTCIceServer` objects if that is the shape your relay provider hands you.
 
+**`globe.imagery`** chooses what the globe's surface is drawn with: `nasa` (the default, no
+account, sharp to about 30 m), or `ion`, `esri` or `mapbox` (street level, each with a key from
+your own account). Each provider has its own key setting, `globe.ionAccessToken`,
+`globe.esriApiKey` and `globe.mapboxAccessToken`, so a choice never picks up another provider's
+key. A provider with no key, or a key it refuses, draws NASA's.
+
+```json
+"settings": { "globe": { "imagery": "esri", "esriApiKey": "AAPK…" } }
+```
+
+A deployment with its own agreement with a provider sets these here; a person can also set them for
+themselves. A space cannot, since a key is somebody's account. Whoever supplies a key accepts that
+provider's terms; WE ships none.
+
 ### `elements`
 
 Custom elements from libraries the deployment bundles — a chart, a rating, a map — which
@@ -133,6 +147,52 @@ the seed in.
 
 Optional shell white-labeling: `host.theme` (color/font overrides) and
 `host.ui.bootScreen` (a schema node replacing the default boot screen).
+
+A replacement boot screen draws everything except the password field. It places
+the host's own field, `CredentialField`, which keeps what is typed out of
+template state, so a screen cannot keep or forward a password:
+
+```json
+{ "type": "CredentialField", "props": { "purpose": "unlock", "onSubmit": { "$action": "sessionStore.unlock" } } }
+```
+
+Gate the Sign in button on `sessionStore.credentialEntered` and call
+`sessionStore.unlock`, which takes no argument. For a new account use
+`"purpose": "new"`, which draws the password and its confirmation, and call
+`profileStore.completeAccountSetup` with the name alone. There is no action a
+template can hand a password to, so a field of the screen's own drawing signs
+nobody in.
+
+The safety prompts (`consentPrompt`, `consentSecret`, `installPrompt`,
+`destructivePrompt`, `screenSource`, `removeAccount`) cannot be replaced: they
+are the host asking somebody a question, and a question drawn by anything else
+is worth nothing. See `PROTECTED_SLOTS` in the slot registry.
+
+### `contentSecurity`
+
+Sites this deployment lets content load from, beyond its own origin. The app's
+Content-Security-Policy names its sources for images (`images`), video and audio
+(`media`) and embedded pages (`frames`) instead of allowing every https site,
+because a template that could load from anywhere could send whatever it reads
+there, in the URL. So a hot-linked image or an embedded page from a site not on
+the list does not load.
+
+```json
+"contentSecurity": {
+  "images": ["https://upload.wikimedia.org"],
+  "media": [],
+  "frames": ["https://www.openstreetmap.org"]
+}
+```
+
+These add to the defaults: map tiles, YouTube and Vimeo, the hosting directory
+and the globe's assets (see `DEFAULT_SOURCES` in `packages/csp/src/index.js`).
+Each entry is `https://host` or `https://*.host` with no path. A scheme alone
+(`https:`) or a bare `*` fails the build. List only hosts where nobody but the
+owner can read the request logs: a cloud storage bucket, GitHub Pages or any
+domain somebody can register would let them read whatever a template put in a
+URL. Embedded apps' `paths.webUrl` are added to `frames` automatically. A change
+needs a rebuild, or a restart of the dev server.
 
 ### `ad4m`
 

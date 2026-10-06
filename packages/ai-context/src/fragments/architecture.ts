@@ -95,6 +95,7 @@ Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in 
 | \`@we/backend-shared\` | backend-system/shared | The backend contract: \`DataSource\`, query IR + engine, ephemeral, presence & transcription ports, model manifest | **Agnostic** |
 | \`@we/backend-ad4m\` | backend-system/ad4m | The AD4M adapter: query adapter, ports, agent identity, SDNA install — and the AD4M model classes, generated from @we/entities' manifest (src/models) | Agnostic |
 | \`@we/backend-inmemory\` | backend-system/inmemory | In-memory adapter — the reference implementation, and how stores test without an executor | Agnostic |
+| \`@we/backend-conformance\` | backend-system/conformance | One suite of the contract's behaviour every backend runs, with each backend's known gaps listed and run inverted | Agnostic |
 | \`@we/module-shared\` | module-system/shared | The feature-module contract — manifest, contributions, kernels, store markers, \`lintModule\` — what a module author installs | Agnostic |
 | \`@we/module-testing\` | module-system/testing | Fakes for testing a module store without a host: \`fakeDeps\`, \`fakeRecords\`, \`fakePresence\`, \`buildStore\` | Agnostic |
 | \`@we/module-globe\` · \`-call\` · \`-notes\` · \`-pocket\` · \`-polls\` · \`-transcribe\` · \`-graph\` | module-system/* | Bundled feature modules — each exports \`createModule(host)\` and the seed's \`modules\` list generates the registry; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
@@ -170,6 +171,9 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
   its data binding lives at \`packages/app-shell/src/frameworks/solid/components/GraphHost.tsx\`.
 - App chrome and module panels (the sidebar, the module rail, floating vs displacing, who moves for
   whom) → \`packages/app-shell/src/shared/dockGeometry.ts\` (see docs/architecture/chrome-and-panels.md).
+- What no template may replace — the password field, the safety prompts, safe mode — and the one
+  place each is enforced → docs/architecture/protected-pieces.md. Read it before touching the boot
+  screen, a confirmation the host raises, or how a template becomes the live one.
 
 **Where a new thing goes** — module or host store, panel or fragment, who decides placement, and how
 two capabilities cooperate without depending on each other — is

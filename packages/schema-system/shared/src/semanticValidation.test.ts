@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { buildValidationContext, validateSemantic } from './semanticValidation';
+import { asHostChrome, buildValidationContext, validateSemantic, withEntities } from './semanticValidation';
 import type { SchemaNode } from './types';
 
 // The same generated context the CLI reads, loaded the same way — this package deliberately does
@@ -496,5 +496,228 @@ describe('space values', () => {
   it('rejects a family on an axis that has none', () => {
     // A family says how much room a box puts inside itself, which answers nothing about a margin.
     expect(messages({ type: 'Column', props: { m: 'surface' } }, 'error')).toHaveLength(1);
+  });
+});
+
+describe('a write wired to an event nobody causes', () => {
+  const unasked = (node: SchemaNode) => messages(node, 'warning').filter((m) => m.includes('fires without anybody'));
+  const create = { $action: 'record.create', args: ['TaskBlock', { title: 'x' }] };
+
+  it('warns when an image loading would write', () => {
+    expect(unasked({ type: 'img', props: { src: 'a.png', onLoad: create } })).toHaveLength(1);
+  });
+
+  it('finds the write inside a handler list and inside a lifecycle callback', () => {
+    const nested = { $action: 'routeStore.navigate', args: ['/'], onSuccess: [create] };
+    expect(unasked({ type: 'details', props: { onToggle: [{ $setLocal: 'x', value: 1 }, nested] } })).toHaveLength(1);
+  });
+
+  it('says nothing about the same write on a press', () => {
+    expect(unasked({ type: 'we-button', props: { onClick: create } })).toEqual([]);
+  });
+
+  it('says nothing about an action that may run unasked', () => {
+    expect(
+      unasked({ type: 'img', props: { src: 'a.png', onLoad: { $action: 'routeStore.navigate', args: ['/'] } } }),
+    ).toEqual([]);
+    expect(unasked({ type: 'Grid', props: { onArrange: { $action: 'modules.call.setArrangement' } } })).toEqual([]);
+  });
+
+  it('says nothing about a blur, which counts as asking once somebody typed', () => {
+    expect(unasked({ type: 'we-input', props: { onBlur: create } })).toEqual([]);
+  });
+});
+
+describe('a dialog asking about what the host asks about anyway', () => {
+  const twice = (node: SchemaNode, ctx = context) =>
+    validateSemantic(node, ctx)
+      .errors.filter((e) => e.severity === 'warning')
+      .map((e) => e.message)
+      .filter((m) => m.includes('two questions about one click'));
+  const sheet = (children: unknown[]) =>
+    ({ type: '$if', props: { condition: { $: 'true' }, then: { type: 'we-modal', children } } }) as SchemaNode;
+  const deleteButton = {
+    type: 'we-button',
+    props: { onClick: { $action: 'spaceStore.deleteCollection', args: ['c1'] } },
+  };
+
+  it('warns about a confirmation in front of a delete', () => {
+    expect(twice(sheet([{ type: 'we-text', children: ['Delete this?'] }, deleteButton]))).toHaveLength(1);
+  });
+
+  it('says nothing about a delete pressed directly, which is the shape it asks for', () => {
+    expect(twice(deleteButton as SchemaNode)).toEqual([]);
+  });
+
+  it('says nothing about a form whose Delete sits beside fields', () => {
+    expect(twice(sheet([{ type: 'we-input', props: { value: 'x' } }, deleteButton]))).toEqual([]);
+  });
+
+  it('says nothing in host chrome, where no confirmation is raised for it', () => {
+    expect(twice(sheet([deleteButton]), asHostChrome(context))).toEqual([]);
+  });
+});
+
+describe('native elements outside the allowlist', () => {
+  const errors = (node: SchemaNode) =>
+    messages(node, 'error').filter((m) => m.includes('not an element a template may mount'));
+
+  it('reports a script or an iframe, which render nothing', () => {
+    expect(errors({ type: 'script', children: ['x'] })).toHaveLength(1);
+    expect(errors({ type: 'Column', children: [{ type: 'iframe', props: { srcdoc: 'x' } }] })).toHaveLength(1);
+  });
+
+  it('says nothing about an element on the list', () => {
+    expect(errors({ type: 'div', children: [{ type: 'img', props: { src: 'a.png', alt: '' } }] })).toEqual([]);
+  });
+});
+
+describe('comparing an included relation as if it were an id', () => {
+  const included = (m: string) => m.includes('is the included') || m.includes('compares the included');
+  const listOf = (expression: string, include = true): SchemaNode => ({
+    type: 'Column',
+    $queries: {
+      events: { entity: 'EventBlock', ...(include ? { include: { location: true } } : {}), limit: 20 },
+    },
+    children: [{ type: 'we-text', children: [{ $: expression }] }],
+  });
+
+  it('warns about a comprehension comparing the relation itself', () => {
+    expect(
+      messages(listOf("count(local.events.filter(e, e.location == 'p1'))"), 'warning').filter(included),
+    ).toHaveLength(1);
+  });
+
+  it('warns about a where-object keyed by the relation', () => {
+    expect(messages(listOf("find(local.events, { location: 'p1' }).title"), 'warning').filter(included)).toHaveLength(
+      1,
+    );
+  });
+
+  it('says nothing when the comparison reads the id', () => {
+    expect(
+      messages(listOf("count(local.events.filter(e, e.location.id == 'p1'))"), 'warning').filter(included),
+    ).toEqual([]);
+  });
+
+  it('says nothing when the query does not include the relation, where it is an id', () => {
+    expect(
+      messages(listOf("count(local.events.filter(e, e.location == 'p1'))", false), 'warning').filter(included),
+    ).toEqual([]);
+  });
+});
+
+describe('withEntities', () => {
+  it('teaches a context kinds of record it did not know, without touching the original', () => {
+    const query: SchemaNode = { type: 'Column', $queries: { rows: { entity: 'Sighting', limit: 5 } } };
+    const unknown = (ctx: typeof context) =>
+      validateSemantic(query, ctx).errors.filter((e) => e.message.includes('Sighting')).length;
+    expect(unknown(context)).toBeGreaterThan(0);
+    expect(unknown(withEntities(context, ['Sighting']))).toBe(0);
+    expect(context.entityNames.has('Sighting')).toBe(false);
+  });
+});
+
+/*
+  Tokens inside the plain data a prop holds — a globe's layer entries, a menu's items — went
+  unchecked: the prop walk opened lists and never an object's own fields, so a misspelt local or
+  module member one level into an entry passed and showed up only as a control that did nothing.
+*/
+describe('tokens inside the data a prop holds', () => {
+  const template = (children: SchemaNode[]) =>
+    ({
+      meta: { name: 'T', description: 'd', icon: 'globe' },
+      type: 'Column',
+      $localState: { showA: { type: 'boolean', initial: true } },
+      children,
+    }) as SchemaNode;
+
+  it('checks a layer entry’s expressions and handlers', () => {
+    const errors = messages(
+      template([
+        {
+          type: 'CesiumGlobe',
+          props: {
+            planetLayers: [
+              {
+                factory: 'pointsLayer',
+                enabled: { $: 'local.showB' },
+                options: { onSelect: { $setLocal: 'picked', value: { $: 'event' } } },
+              },
+            ],
+          },
+        },
+      ]),
+      'error',
+    ).join('\n');
+    expect(errors).toContain('local.showB');
+    expect(errors).toContain('"picked"');
+  });
+
+  it('checks a menu entry’s, inside a group too', () => {
+    const errors = messages(
+      template([
+        {
+          type: 'DropdownMenu',
+          props: {
+            items: [
+              {
+                type: 'group',
+                id: 'g',
+                label: 'G',
+                hidden: { $: '!modules.globe.drawsSpacez' },
+                items: [
+                  {
+                    type: 'toggle',
+                    id: 'x',
+                    label: 'X',
+                    checked: { $: 'local.showC' },
+                    onToggle: { $toggleLocal: 'showD' },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ]),
+      'error',
+    ).join('\n');
+    expect(errors).toContain('drawsSpacez');
+    expect(errors).toContain('local.showC');
+    expect(errors).toContain('"showD"');
+  });
+
+  it('passes the same entries when every name is right', () => {
+    expect(
+      messages(
+        template([
+          { type: 'CesiumGlobe', props: { planetLayers: [{ factory: 'pointsLayer', enabled: { $: 'local.showA' } }] } },
+          {
+            type: 'DropdownMenu',
+            props: {
+              items: [
+                {
+                  type: 'toggle',
+                  id: 'a',
+                  label: 'A',
+                  checked: { $: 'local.showA' },
+                  hidden: { $: '!modules.globe.drawsSpace' },
+                },
+              ],
+            },
+          },
+        ]),
+        'error',
+      ),
+    ).toEqual([]);
+  });
+
+  it('does not judge a subtree a prop holds against the scope outside it', () => {
+    // A node held in a prop is rendered by its component, which may bind names the scope outside
+    // it has never heard of. Data is opened; a subtree is left to whatever renders it.
+    const node = template([
+      { type: 'GraphView', props: { emptyAction: { type: 'Row', children: [{ $: 'row.title' }] } } },
+    ]);
+    expect(messages(node, 'error')).toEqual([]);
   });
 });

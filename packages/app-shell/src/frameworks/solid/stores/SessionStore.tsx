@@ -22,6 +22,7 @@ import { devToolsEnabled, setDevToolsMuted } from '@we/module-shared';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
 import type { BackendAccountInfo, BackendHostInfo } from '../../../shared/backend/types';
+import { credential } from '../credential';
 import { useBackend, usePlatform } from '../providers/PlatformProvider';
 import { startAppBridge } from '../services/appBridge';
 
@@ -118,7 +119,25 @@ export interface SessionStore {
    */
   ephemeralPort: EphemeralPort;
 
+  /**
+   * Something has been typed into the host's password field. The password itself is never state —
+   * see `credential.ts` — so this is what a Sign in button is gated on.
+   */
+  credentialEntered: Accessor<boolean>;
+  /** A new password has been typed twice and the same both times. What Create account is gated on. */
+  credentialConfirmed: Accessor<boolean>;
+
   // Actions
+  /**
+   * Sign in with what was typed into the host's password field. The template-facing way in: it takes
+   * no password, so it cannot be handed one a template collected. Rejects as {@link login} does.
+   */
+  unlock: () => Promise<void>;
+  /**
+   * Ask a new-password field to say what is wrong with it — the `$touch: '$all'` for the fields a
+   * template cannot reach. Changes nothing else.
+   */
+  touchCredential: () => void;
   /**
    * Unlock the agent and load the session.
    *
@@ -368,6 +387,17 @@ export function SessionStoreProvider(props: ParentProps) {
   }
 
   /**
+   * `login`, with the host field's password. Forgotten once it has let somebody in, rather than when
+   * the field unmounts: the post-unlock load can take seconds, and the screen is still up for them.
+   */
+  async function unlock(): Promise<void> {
+    const password = credential.read();
+    if (!password) return;
+    await login(password);
+    credential.clear();
+  }
+
+  /**
    * Create the agent, then run the same post-unlock load login does.
    *
    * The password is kept as the session password on success for the same reason login keeps it:
@@ -516,6 +546,11 @@ export function SessionStoreProvider(props: ParentProps) {
     setDevTools,
     ephemeralPort,
 
+    credentialEntered: credential.entered,
+    credentialConfirmed: credential.confirmed,
+
+    unlock,
+    touchCredential: credential.touch,
     login,
     createAgent,
     clearPasswordError,

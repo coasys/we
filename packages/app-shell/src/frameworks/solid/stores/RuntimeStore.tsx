@@ -32,6 +32,7 @@ import {
   draftFrom,
   EMPTY_FORM,
   formComplete,
+  maxContextProblem,
   toDraft,
 } from '@solid/stores/aiModelDraft';
 import { useSessionStore } from '@solid/stores/SessionStore';
@@ -105,6 +106,8 @@ export interface RuntimeStore {
   aiPresetOptions: Accessor<{ label: string; value: string }[]>;
   /** True when the open form has every field its chosen source needs. */
   aiFormComplete: Accessor<boolean>;
+  /** Why the open form's context limit cannot be saved, or empty — the words for a disabled Save. */
+  aiMaxContextError: Accessor<string>;
   /**
    * The remote services a model can be reached through, plus "Custom endpoint", for a we-select on
    * `aiForm.apiService`. A named service sets the protocol and base URL itself.
@@ -307,6 +310,11 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const aiFormComplete = createMemo(() => {
     const form = aiForm();
     return !!form && formComplete(form);
+  });
+
+  const aiMaxContextError = createMemo(() => {
+    const form = aiForm();
+    return form ? maxContextProblem(form) : '';
   });
 
   const aiServiceOptions = () => [
@@ -836,6 +844,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     aiForm,
     aiPresetOptions,
     aiFormComplete,
+    aiMaxContextError,
     aiFormDirty,
     aiServiceOptions,
     canDiscoverAiModels,

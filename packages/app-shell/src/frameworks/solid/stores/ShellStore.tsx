@@ -119,7 +119,10 @@ export interface TemplateSaver {
   save: (schema: TemplateSchema) => Promise<boolean>;
 }
 
-import { describeDestructive } from '../../../shared/destructiveWording';
+import { describeDestructive, type DestructiveFacts } from '../../../shared/destructiveWording';
+
+/** How long the host waits for what a delete takes with it before asking without it. */
+const FACTS_WAIT_MS = 500;
 
 export interface PendingDestructive {
   /** The store path — `spaceStore.deleteCollection`. Shown as the small print, so it is always true. */
@@ -251,7 +254,7 @@ export interface ShellStore {
    * Ask, and resolve with the answer. Wiring — `TemplateProvider` passes this as the space bag's
    * `onDestructive`, and nothing else should call it.
    */
-  requestDestructive: (path: string, args: unknown[]) => Promise<boolean>;
+  requestDestructive: (path: string, args: unknown[], facts?: Promise<DestructiveFacts>) => Promise<boolean>;
   /**
    * Whether the space-settings panel is open.
    *
@@ -989,15 +992,40 @@ export function ShellStoreProvider(props: ParentProps) {
   /** Resolves the promise `requestDestructive` handed back. Null when no question is outstanding. */
   let answerDestructive: ((ok: boolean) => void) | null = null;
 
-  function requestDestructive(path: string, args: unknown[]): Promise<boolean> {
+  /** Which question is current, so facts arriving for an earlier one are dropped. */
+  let destructiveAsk = 0;
+
+  function requestDestructive(path: string, args: unknown[], facts?: Promise<DestructiveFacts>): Promise<boolean> {
     // A second question while one is open answers "no" to the first rather than losing it. Two
     // dialogs cannot both be on screen, and an unanswered promise would hang the first action's
     // `onFinally` forever.
     answerDestructive?.(false);
-    setPendingDestructive({ path, ...describeDestructive(path, args) });
-    return new Promise<boolean>((resolve) => {
+    const ask = ++destructiveAsk;
+    const show = (found?: DestructiveFacts) => {
+      if (ask === destructiveAsk && answerDestructive)
+        setPendingDestructive({ path, ...describeDestructive(path, args, found) });
+    };
+    const answer = new Promise<boolean>((resolve) => {
       answerDestructive = resolve;
     });
+    /*
+      Waits briefly for what the host is finding out, so the question is asked once in its final
+      words rather than changing under somebody reading it. Past the wait it is asked without them,
+      and reworded if they arrive — a count late is better than a question held back.
+    */
+    if (!facts) show();
+    else {
+      let shown = false;
+      const timer = setTimeout(() => {
+        shown = true;
+        show();
+      }, FACTS_WAIT_MS);
+      void facts.then((found) => {
+        clearTimeout(timer);
+        if (!shown || found.responses || found.reply) show(found);
+      });
+    }
+    return answer;
   }
 
   function settleDestructive(ok: boolean): void {

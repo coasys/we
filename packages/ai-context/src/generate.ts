@@ -23,6 +23,8 @@ import { format, resolveConfig } from 'prettier';
 import { aggregateFragments } from './aggregate.js';
 import { assembleReference } from './assembler.js';
 import {
+  extractAmbientMembers,
+  extractDestructiveMembers,
   type ExtractedStore,
   extractHostSources,
   extractRegisteredComponents,
@@ -259,6 +261,20 @@ async function main() {
     storeEntries,
     extractWiringMembers(resolve(repoRoot, 'packages/app-shell/src/shared/registries/templateSurface.ts')),
   );
+  // Which actions may run with nobody asking — the rest need a press. See `MemberSpec.ambient`.
+  const ambient = extractAmbientMembers(
+    resolve(repoRoot, 'packages/app-shell/src/shared/registries/templateSurface.ts'),
+  );
+  // And which the host confirms itself before a space template's call runs. See `MemberSpec.destructive`.
+  const destructive = extractDestructiveMembers(
+    resolve(repoRoot, 'packages/app-shell/src/shared/registries/templateSurface.ts'),
+  );
+  for (const store of contextData.storeEntries) {
+    const names = ambient.get(store.name);
+    if (names) store.ambient = store.actions.filter((action) => names.has(action));
+    const asked = destructive.get(store.name);
+    if (asked) store.destructive = store.actions.filter((action) => asked.has(action));
+  }
 
   /*
     Components the host registers that the design-system packages don't document — shell chrome,
@@ -419,6 +435,20 @@ async function main() {
     sources: context.sources,
     modules: context.modules,
     foreignElements: context.foreignElements,
+    /*
+      What the validator checks plugin names against, and nothing more: every name with its category,
+      and where each catalogue says names are written. The descriptions, options and examples reach
+      the reference text above and would only weigh down the app bundle here.
+
+      Missing until it was found that the globe's layer names, which a catalogue's `placements`
+      were added to check, were checked in a unit test with a catalogue passed in by hand and nowhere
+      else: neither this file nor `contextData.ts` carried a catalogue, so every template "validated".
+    */
+    pluginCatalogs: (context.pluginCatalogs ?? []).map(({ component, placements, plugins }) => ({
+      component,
+      ...(placements ? { placements } : {}),
+      plugins: plugins.map(({ id, category }) => ({ id, category })),
+    })),
   };
   await writeFormatted(contextJsonPath, JSON.stringify(contextJson, null, 2));
   console.log(`  Written: ${contextJsonPath}`);

@@ -26,7 +26,14 @@ import { CALL_PROTOCOL_VERSION, parseCallMessage, recordCallId } from './protoco
 
 // ── A fake RTCPeerConnection ────────────────────────────────────────────────
 
+let nextConnection = 0;
+
 class FakePeerConnection {
+  /** Which connection this is, written into every description it makes — see `setRemoteDescription`. */
+  readonly id = `pc${(nextConnection += 1)}`;
+  /** The connection the remote descriptions applied so far came from. */
+  private remoteOrigin: string | null = null;
+
   signalingState: RTCSignalingState = 'stable';
   connectionState: RTCPeerConnectionState = 'new';
   localDescription: RTCSessionDescriptionInit | null = null;
@@ -62,6 +69,9 @@ class FakePeerConnection {
       // Cleared by `setLocalDescription` — a peer that has just answered an offer describing the
       // very sections it was waiting to negotiate does not then turn round and offer them again.
       if (!this.negotiationNeeded) return;
+      // And never mid-handshake: the spec aborts the event unless the connection is stable, so a
+      // connection that is already applying an offer answers it rather than offering over it.
+      if (this.signalingState !== 'stable') return;
       this.onnegotiationneeded?.();
     });
   }
@@ -101,11 +111,27 @@ class FakePeerConnection {
     this.negotiationNeeded = false;
     // Mirrors the browser: with no argument it picks offer or answer from the signaling state.
     const type = description?.type ?? (this.signalingState === 'have-remote-offer' ? 'answer' : 'offer');
-    this.localDescription = { type: type as RTCSdpType, sdp: `${type}-sdp` };
+    this.localDescription = { type: type as RTCSdpType, sdp: `${type}-sdp@${this.id}` };
     this.signalingState = type === 'offer' ? 'have-local-offer' : 'stable';
   }
 
+  /**
+   * Refuses a description from a different connection than the one it has been talking to.
+   *
+   * The browser's version of this is "The order of m-lines in subsequent offer doesn't match order
+   * from previous offer/answer": a fresh connection numbers its sections from scratch, so its offer
+   * cannot be applied to a connection that negotiated with its predecessor. Modelled by origin
+   * rather than by m-lines, because which connection a description came from is the whole fact;
+   * a hand-written description with no origin is accepted, as before.
+   */
   async setRemoteDescription(description: RTCSessionDescriptionInit) {
+    const origin = description.sdp?.split('@')[1] ?? null;
+    if (origin && this.remoteOrigin && origin !== this.remoteOrigin) {
+      throw new Error(
+        "InvalidAccessError: Failed to set remote offer sdp: The order of m-lines in subsequent offer doesn't match order from previous offer/answer.",
+      );
+    }
+    if (origin) this.remoteOrigin = origin;
     this.remoteDescription = description;
     this.signalingState = description.type === 'offer' ? 'have-remote-offer' : 'stable';
   }
@@ -1128,6 +1154,19 @@ describe('protocol parsing', () => {
     expect(parseCallMessage(payload)).toBeNull();
   });
 
+  it('carries which connections a message is between, and only as strings', () => {
+    expect(parseCallMessage({ ...good, gen: 'g1', peerGen: 'g2' })).toEqual({ ...good, gen: 'g1', peerGen: 'g2' });
+    // A malformed generation is dropped rather than failing the message: without one, the message
+    // is read the way a peer predating generations is read.
+    expect(parseCallMessage({ ...good, gen: 7, peerGen: { x: 1 } })).toEqual(good);
+    expect(parseCallMessage({ v: CALL_PROTOCOL_VERSION, call: 'space:x', kind: 'reset', gen: 'g1' })).toEqual({
+      v: CALL_PROTOCOL_VERSION,
+      call: 'space:x',
+      kind: 'reset',
+      gen: 'g1',
+    });
+  });
+
   it('derives the same space call id on every peer', () => {
     // The whole point: no round trip is needed to agree on it, which would be circular.
     expect(recordCallId('rec-abc')).toBe(recordCallId('rec-abc'));
@@ -1222,5 +1261,160 @@ describe('signalling that arrives before the roster', () => {
 
     // It replayed something rather than nothing, and did not replay everything.
     expect(alice.connections[0].remoteDescription).not.toBeNull();
+  });
+});
+
+describe('a description from a different connection', () => {
+  /**
+   * Signalling names a call and a sender, and used to name nothing else — so a message from one of
+   * the peer's connections was applied to whichever connection this side happened to hold. The
+   * browser refuses a description from a connection it did not negotiate with, and the pair stayed
+   * broken until the recovery ladder worked its way up to a rebuild:
+   *
+   *   Failed to set remote offer sdp: The order of m-lines in subsequent offer doesn't match order
+   *   from previous offer/answer.
+   *
+   * Each case below is a way the two sides come to hold different generations of the pair.
+   */
+  let bus: InMemoryBus;
+  const dataset = { id: 'space-1' };
+  const callId = recordCallId('rec-abc');
+
+  beforeEach(() => {
+    bus = new InMemoryBus();
+  });
+
+  const settleAll = async () => {
+    for (let n = 0; n < 6; n += 1) await settle();
+  };
+
+  async function connected() {
+    const alice = makeMesh(bus, dataset, 'did:alice', callId);
+    const bob = makeMesh(bus, dataset, 'did:bob', callId);
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    bob.mesh.setRoster(['did:alice', 'did:bob']);
+    await settleAll();
+    expect(alice.live().signalingState).toBe('stable');
+    expect(bob.live().signalingState).toBe('stable');
+    return { alice, bob };
+  }
+
+  it('follows a peer that reloaded while it was still on the roster', async () => {
+    /*
+      The commonest way in. A reload, a crash or a reconnecting app starts a brand-new connection
+      and offers from it, and sends no reset — it has no memory of the old one. Presence is slow to
+      notice the peer ever left, so this side's connection survives and the fresh offer lands on it.
+    */
+    const { alice, bob } = await connected();
+    bob.mesh.close();
+
+    const bobAgain = makeMesh(bus, dataset, 'did:bob', callId);
+    bobAgain.mesh.setRoster(['did:alice', 'did:bob']);
+    await settleAll();
+
+    expect(alice.errors).toEqual([]);
+    expect(bobAgain.errors).toEqual([]);
+    // Alice started over to match, rather than applying the offer to a connection it was not for.
+    expect(alice.connections).toHaveLength(2);
+    expect(alice.connections[0].closed).toBe(true);
+    expect(alice.live().signalingState).toBe('stable');
+    expect(bobAgain.live().signalingState).toBe('stable');
+    expect(bobAgain.live().remoteDescription?.type).toBe('answer');
+  });
+
+  it('is not undone by the reset that the new offer overtook', async () => {
+    /*
+      A rebuild sends `reset` and then offers from the new connection. On a transport that does not
+      keep order the offer can arrive first — and the reset, arriving late, used to tear down the
+      connection that offer had just made.
+    */
+    let holding = false;
+    const held: unknown[] = [];
+    const alice = makeMesh(bus, dataset, 'did:alice', callId, {
+      drop: (payload) => {
+        if (!holding || (payload as { kind?: string }).kind !== 'reset') return false;
+        held.push(payload);
+        return true;
+      },
+    });
+    const bob = makeMesh(bus, dataset, 'did:bob', callId);
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    bob.mesh.setRoster(['did:alice', 'did:bob']);
+    await settleAll();
+
+    holding = true;
+    alice.mesh.reconnect('did:bob');
+    await settleAll();
+
+    expect(held).toHaveLength(1);
+    expect(bob.errors).toEqual([]);
+    expect(bob.connections).toHaveLength(2);
+
+    // Now the reset turns up.
+    bus.deliver(bus.keyFor(dataset), 'rtc', 'did:alice', held[0]);
+    await settleAll();
+
+    expect(bob.connections).toHaveLength(2);
+    expect(bob.live().closed).toBe(false);
+    expect(bob.live().signalingState).toBe('stable');
+    expect(alice.live().signalingState).toBe('stable');
+    expect(bob.errors).toEqual([]);
+    expect(alice.errors).toEqual([]);
+  });
+
+  it('ignores an offer from a connection the peer has since replaced', async () => {
+    const { alice, bob } = await connected();
+    const staleOffer = bob.sent.find((payload) => (payload as { kind?: string }).kind === 'description');
+    bob.mesh.close();
+
+    const bobAgain = makeMesh(bus, dataset, 'did:bob', callId);
+    bobAgain.mesh.setRoster(['did:alice', 'did:bob']);
+    await settleAll();
+    const before = alice.connections.length;
+
+    // The first Bob's offer, delayed until after Alice has moved on to the second.
+    bus.deliver(bus.keyFor(dataset), 'rtc', 'did:bob', staleOffer);
+    await settleAll();
+
+    expect(alice.connections).toHaveLength(before);
+    expect(alice.live().signalingState).toBe('stable');
+    expect(alice.errors).toEqual([]);
+  });
+
+  it('ignores signalling addressed to a connection of its own that it has replaced', async () => {
+    const { alice, bob } = await connected();
+    const toOldAlice = bob.sent.filter((payload) => (payload as { kind?: string }).kind === 'description');
+
+    // Alice rebuilds; Bob follows. Anything Bob said to the first Alice is now about nothing.
+    alice.mesh.reconnect('did:bob');
+    await settleAll();
+    const before = { alice: alice.connections.length, bob: bob.connections.length };
+
+    for (const payload of toOldAlice) bus.deliver(bus.keyFor(dataset), 'rtc', 'did:bob', payload);
+    await settleAll();
+
+    expect(alice.connections).toHaveLength(before.alice);
+    expect(bob.connections).toHaveLength(before.bob);
+    expect(alice.errors).toEqual([]);
+  });
+
+  it('still answers a peer that does not say which connection it is', async () => {
+    // A peer predating generations sends none. Such a message is read exactly as it always was,
+    // so mixed versions in one call still connect.
+    const alice = makeMesh(bus, dataset, 'did:alice', callId);
+    alice.mesh.setRoster(['did:alice', 'did:aaron']);
+    await settle();
+
+    bus.deliver(bus.keyFor(dataset), 'rtc', 'did:aaron', {
+      v: CALL_PROTOCOL_VERSION,
+      call: callId,
+      to: 'did:alice',
+      kind: 'description',
+      description: { type: 'offer', sdp: 'offer-sdp@legacy' },
+    });
+    await settleAll();
+
+    expect(alice.live().remoteDescription?.sdp).toBe('offer-sdp@legacy');
+    expect(alice.errors).toEqual([]);
   });
 });

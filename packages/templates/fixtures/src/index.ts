@@ -6,7 +6,16 @@
 export { applyFixture, datasetIdFor, pathFor } from './apply.ts';
 export type { AppliedFixture, ApplyDeps } from './apply.ts';
 export { editorState, editorStateBlocks, textBlockId, textContent } from './editorState.ts';
-export type { Fixture, FixtureAgent, FixtureNode, FixturePresence, FixtureSignalType } from './types.ts';
+export type {
+  Fixture,
+  FixtureAgent,
+  FixtureNode,
+  FixturePresence,
+  FixtureRecord,
+  FixtureShape,
+  FixtureSignalType,
+  FixtureTheme,
+} from './types.ts';
 
 import { discordFixture } from './discord.ts';
 import { eventsFixture, instagramFixture, kanbanFixture, twitterFixture, youtubeFixture } from './rest.ts';

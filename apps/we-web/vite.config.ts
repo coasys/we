@@ -1,10 +1,24 @@
+import { contentSecurityPolicy, rewriteKnockoutGlobalEval } from '@we/csp/vite';
+import { globeLayerAssets } from '@we/globe-layers/vite';
+import { cesiumAssets } from '@we/globe-widget/vite';
 import path from 'path';
 import { defineConfig } from 'vite';
 import solidPlugin from 'vite-plugin-solid';
 
 export default defineConfig({
   assetsInclude: ['**/*.glb'],
-  plugins: [solidPlugin()],
+  /*
+    The Content-Security-Policy, as a meta tag — and for Netlify a `_headers` file as well, for
+    `frame-ancestors`, which a meta tag cannot carry. Built by `@we/csp`, the same builder Electron's
+    header comes from. The rewrite lets the globe load under a policy without 'unsafe-eval'.
+  */
+  plugins: [
+    solidPlugin(),
+    contentSecurityPolicy({ host: 'web', seedFile: path.resolve(import.meta.dirname, '../../we-seed.json') }),
+    rewriteKnockoutGlobalEval(),
+    cesiumAssets(),
+    globeLayerAssets(),
+  ],
   server: {
     port: 3000,
     fs: {

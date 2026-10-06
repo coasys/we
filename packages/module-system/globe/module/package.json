@@ -1,7 +1,7 @@
 {
   "name": "@we/module-globe",
   "version": "0.1.0",
-  "description": "Globe feature module — the Cesium layer registry, route and schema fragments",
+  "description": "Globe feature module — the layer registries for each engine, the settings and the catalogue",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -21,6 +21,10 @@
     "./layers": {
       "types": "./dist/layers.d.ts",
       "import": "./dist/layers.js"
+    },
+    "./layers-maplibre": {
+      "types": "./dist/layers-maplibre.d.ts",
+      "import": "./dist/layers-maplibre.js"
     }
   },
   "files": [
@@ -41,5 +45,9 @@
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "@we/module-shared": "workspace:*"
+  },
+  "context": {
+    "type": "plugins",
+    "src": "src/catalog.ts"
   }
 }

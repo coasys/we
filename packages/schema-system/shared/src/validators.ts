@@ -5,40 +5,79 @@ import { zSchemaNode, zTemplateSchema } from './zodSchemas';
 export type ValidationError = { path: string; message: string; severity: 'error' | 'warning' };
 export type ValidationResult = { valid: boolean; errors: ValidationError[] };
 
+type Issue = z.core.$ZodIssue;
+type Path = readonly PropertyKey[];
+
+/**
+ * How far into the value an issue is, counting into the branches of a union it reports: a union two
+ * keys down whose best branch got one key further reaches three.
+ */
+function reach(issue: Issue): number {
+  if (issue.code !== 'invalid_union' || !issue.errors.length) return issue.path.length;
+  return issue.path.length + Math.max(...issue.errors.map(progress));
+}
+
+/**
+ * How far a union branch got before it failed: the reach of its shallowest issue. A branch that is
+ * not what the value was meant to be fails at once (the wrong type, keys it does not know, a fallback
+ * refusing the whole value), so it scores 0; the branch the value was meant to be fails somewhere
+ * inside it.
+ */
+function progress(branch: readonly Issue[]): number {
+  return branch.length ? Math.min(...branch.map(reach)) : 0;
+}
+
+/**
+ * Of branches that got equally far, the ones that fit best: those whose only complaint is keys they
+ * do not know, fewest first. Such a branch found everything it requires and objects to something
+ * extra, which is the shape of a token with a stray key — `{ $if: …, onSuccess: [] }` is a `$if` with
+ * one key too many, not a string, a number, or a `$setLocal` missing its name. When no branch is like
+ * that, they are all kept.
+ */
+function closestFits(branches: (readonly Issue[])[]): (readonly Issue[])[] {
+  const extraKeys = (branch: readonly Issue[]) =>
+    branch.every((issue) => issue.code === 'unrecognized_keys')
+      ? branch.reduce((count, issue) => count + (issue.code === 'unrecognized_keys' ? issue.keys.length : 0), 0)
+      : Infinity;
+  const fewest = Math.min(...branches.map(extraKeys));
+  return fewest === Infinity ? branches : branches.filter((branch) => extraKeys(branch) === fewest);
+}
+
+/**
+ * The issues worth reporting, with each failed union narrowed to the branches that got furthest.
+ *
+ * A child is a node, a string or a token, and a prop is any of those or a plain object. When a node
+ * fails, zod reports every branch it tried, in the order they were declared, which puts "expected
+ * string", "expected number" and a line of "unrecognized keys" per token kind ahead of the node's own
+ * fault. A caller printing the first five lines printed only those, so the reason a template was
+ * refused never appeared.
+ *
+ * The branches kept are those that got furthest into the value before failing, which is the node
+ * wherever the node was meant: it fails inside itself, and everything else fails at its door. Where
+ * the furthest is shared (a value no branch got into at all) every one of those is reported, since
+ * nothing says which was meant.
+ */
+function flattenIssues(issues: readonly Issue[], prefix: Path = []): { path: Path; message: string }[] {
+  return issues.flatMap((issue) => {
+    // A branch's issues are relative to the union. Joined once here, so a nested union compounds.
+    const path = [...prefix, ...issue.path];
+    if (issue.code !== 'invalid_union' || !issue.errors.length) return [{ path, message: issue.message }];
+    const best = Math.max(...issue.errors.map(progress));
+    const furthest = issue.errors.filter((branch) => progress(branch) === best);
+    return closestFits(furthest).flatMap((branch) => flattenIssues(branch, path));
+  });
+}
+
 function zodErrorToValidationErrors(zodErrors: z.ZodError): ValidationError[] {
-  const tree = z.treeifyError(zodErrors);
+  const seen = new Set<string>();
   const out: ValidationError[] = [];
-
-  function walk(node: Record<string, unknown>, path: (string | number)[] = []) {
-    if (!node) return;
-
-    // emit node-level errors
-    if (Array.isArray(node.errors) && node.errors.length > 0) {
-      for (const msg of node.errors) {
-        out.push({ path: path.map(String).join('.'), message: msg, severity: 'error' });
-      }
-    }
-
-    // recur into object properties
-    if (node.properties && typeof node.properties === 'object') {
-      for (const [key, child] of Object.entries(node.properties)) {
-        walk(child, [...path, key]);
-      }
-    }
-
-    // recur into array items
-    if (Array.isArray(node.items)) {
-      node.items.forEach((item: Record<string, unknown>, idx: number) => walk(item, [...path, idx]));
-    }
+  for (const { path, message } of flattenIssues(zodErrors.issues)) {
+    const joined = path.map(String).join('.');
+    const key = `${joined}\u0000${message}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ path: joined, message, severity: 'error' });
   }
-
-  walk(tree);
-
-  if (out.length === 0) {
-    // fallback: include full tree for debugging
-    out.push({ path: '', message: JSON.stringify(tree, null, 2), severity: 'error' });
-  }
-
   return out;
 }
 

@@ -25,8 +25,10 @@ export const storeEntries: StoreEntry[] = [
       },
       hostAccount: { type: 'object', properties: ['email', 'remainingCredits', 'walletAddress', 'freeAccess'] },
       isGuest: { type: 'boolean' },
+      credentialEntered: { type: 'boolean' },
+      credentialConfirmed: { type: 'boolean' },
     },
-    actions: ['login', 'createAgent', 'clearPasswordError', 'finishSetup', 'retryBoot', 'logout'],
+    actions: ['unlock', 'touchCredential', 'clearPasswordError', 'finishSetup', 'retryBoot', 'logout'],
   },
   {
     name: 'accountStore',
@@ -108,6 +110,7 @@ export const storeEntries: StoreEntry[] = [
           'apiBaseUrl',
           'apiKey',
           'apiModel',
+          'apiMaxContext',
           'hfRepo',
           'hfRevision',
           'hfFileName',
@@ -120,6 +123,7 @@ export const storeEntries: StoreEntry[] = [
       },
       aiPresetOptions: { type: 'array', properties: ['label', 'value'] },
       aiFormComplete: { type: 'boolean' },
+      aiMaxContextError: { type: 'string' },
       aiFormDirty: { type: 'boolean' },
       aiServiceOptions: { type: 'array', properties: ['label', 'value'] },
       canDiscoverAiModels: { type: 'boolean' },
@@ -288,7 +292,9 @@ export const storeEntries: StoreEntry[] = [
         type: 'array',
         properties: ['id', 'name', 'icon', 'description', 'isBuiltIn', 'isInstalled', 'isDefault'],
       },
+      refusedTemplates: { type: 'array', properties: ['id', 'name', 'icon', 'reason'] },
       switcherGroups: { type: 'array', properties: ['label', 'items'] },
+      safeMode: { type: 'object', properties: ['on', 'reason', 'template'] },
     },
     actions: [
       'switchTemplate',
@@ -298,6 +304,7 @@ export const storeEntries: StoreEntry[] = [
       'installToSpace',
       'setDefaultTemplate',
       'deleteTemplate',
+      'deleteRefusedTemplate',
     ],
   },
   {
@@ -638,15 +645,20 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'boolean — whether this is a development build. A fact about the build. Do NOT gate developer-only UI on it; gate on devTools, which is the same answer plus a switch',
         devTools:
           'boolean — whether developer affordances should be VISIBLE. True in a development build unless a developer has thrown the Settings → Developer switch to see what a shipped app looks like. Reactive, so a control gated on it appears and disappears on the press. Gate any developer-only control on this — a schema-test page, a fixture toggle — and wrap it in $if rather than hiding it, since a hidden row is still in the accessibility tree and still found by find-in-page. Never true in a production build, whatever the switch says',
+        credentialEntered:
+          "boolean — something has been typed into the host's password field. The password itself is never readable from a template — see CredentialField — so gate a Sign in button on this",
+        credentialConfirmed:
+          "boolean — a CredentialField with purpose 'new' holds a password typed twice and the same both times. Gate the call to profileStore.completeAccountSetup on it",
         setDevTools:
           'shows or hides developer affordances for this device. Takes the value a switch emits, so pass `event.detail` bare — wrapping it in another token would resolve at render time and send a constant. Cannot turn them ON in a production build; the build is the ceiling. Gate the control that calls this on isDevelopment, NOT on devTools — gating the way to the switch on the switch makes turning it off a one-way door',
       },
       actions: {
-        login: '(password: string): unlocks the agent and loads user data',
-        createAgent:
-          "(password: string): creates the agent, loads user data, and lands on the 'finishing' boot state (not 'ready')",
+        unlock:
+          "(): signs in with what was typed into the host's password field (a CredentialField with purpose 'unlock'), and loads user data. Takes no password, on purpose: nothing a template collected can be handed to it. Rejects when the unlock fails",
+        touchCredential:
+          "(): asks a CredentialField with purpose 'new' to show what is wrong with it — the $touch: '$all' for fields a template cannot reach. Put it beside $touch in a Create account button's handler",
         clearPasswordError:
-          '(): clears the failed-unlock flag. Chain it after the password field\'s $setLocal — the verdict was on the submitted password, so editing that password retracts it and a stale "Incorrect password" should not sit over the correction',
+          '(): clears the failed-unlock flag. Wire it to the CredentialField\'s onEdit — the verdict was on the submitted password, so editing that password retracts it and a stale "Incorrect password" should not sit over the correction',
         retryBoot:
           '(): starts the whole boot again from the failure screen, by reloading. A failed boot can have got anywhere before it threw, so retrying in place would race the remains of the first attempt',
         finishSetup: "(): leaves 'finishing' for the running app — sets bootState to 'ready'",
@@ -717,6 +729,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>',
         aiPresetOptions: '{ label, value }[] — model names the backend can fetch itself, for the open form kind',
         aiFormComplete: 'boolean — the open form has every field its chosen source needs',
+        aiMaxContextError:
+          "string — why the open form's context limit (aiForm.apiMaxContext) cannot be saved, or empty. Bind it to that field's error: a limit that does not parse holds Save disabled, and nothing else says which field is doing it",
         aiFormDirty:
           "boolean — the open form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing",
         aiServiceOptions:
@@ -854,7 +868,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         dismissNamePrompt:
           "(): stops asking for a name until the next launch. Not persisted: a nameless agent degrades every other member's experience, so the only permanent exit is setting a name",
         completeAccountSetup:
-          '(name: string, password: string): the whole of first-run setup — creates the agent, then publishes the name and picture, then lets the app appear',
+          "(name: string): the whole of first-run setup — creates the agent with the password typed into the host's CredentialField (purpose 'new'), then publishes the name and picture, then lets the app appear. Does nothing but ask the field to show its errors when that password is missing or its confirmation differs",
         fetchProfile: "(did: string): fetches and caches an agent's profile from their public dataset",
         updateOwnProfile:
           '(fields: { firstName?, lastName?, handle?, bio? }): updates own profile text fields and publishes to the public dataset',
@@ -983,6 +997,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         currentTemplate: 'TemplateSchema (the active template)',
         templateManagementList:
           'TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault)',
+        refusedTemplates:
+          "RefusedTemplate[] — templates in this agent's library that no longer validate, so they cannot be loaded (id, name, icon, reason). `reason` is the validator's first complaint with where it is. Listed so they can be seen and deleted; they are in no other list. `id` is the record's own, for deleteRefusedTemplate",
         switcherGroups:
           'TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon, editable }[] }. Groups: "Space templates", "My templates", "Built-in". Use filter(group.items, { name: { contains: local.search } }) for search since items have a flat name field. `editable` says whether editing THAT row would open a session that can be saved — gate a per-row edit control on it rather than on editorStore.isReadOnly, which answers for whichever template is currently rendered and so gives every row the same verdict.',
         currentSwitcherId:
@@ -990,11 +1006,16 @@ export function generateStoresText(entries: StoreEntry[]): string {
         loading: 'boolean — the template lists are still being read. Gate empty states on it',
         defaultTemplateId:
           "string — id of the agent's preferred default template, used where no space or override decides. Persisted to AgentSettings.defaultTemplateId",
+        safeMode:
+          "{ on, reason, template } — whether this tab is in safe mode, where WE's own templates and themes are drawn in place of the chosen ones. reason is 'asked' (the ?safe address, the key or the menu) or 'unfinished-render' (a template did not finish loading last time — template is its id). Decided before anything rendered; fixed for the page",
         operationLoading:
           "string | null — the id of the template operation in flight, namespaced by kind ('marketplace-install:<id>', 'space-install:<id>'), or null. A key rather than a boolean so one row's spinner does not appear on every row",
       },
       actions: {
+        leaveSafeMode: '(): leaves safe mode and reloads with the templates and themes that were chosen',
         deleteTemplate: '(templateId: string): permanently deletes a custom template from the library',
+        deleteRefusedTemplate:
+          '(id: string): permanently deletes a library template that could not be loaded, by its refusedTemplates id',
         installTemplate: '(templateId: string): marks an installed custom template visible in the pickers',
         uninstallTemplate:
           '(templateId: string): hides a custom template from the pickers without deleting it. The counterpart of installTemplate',

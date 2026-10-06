@@ -8,7 +8,8 @@
     "build:steps": "tsup",
     "build": "we-build",
     "dev": "tsup --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -17,10 +18,21 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./maplibre": {
+      "types": "./dist/maplibre.d.ts",
+      "import": "./dist/maplibre.js"
+    },
+    "./vite": {
+      "types": "./vite-plugin.d.mts",
+      "import": "./vite-plugin.mjs"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "assets",
+    "vite-plugin.mjs",
+    "vite-plugin.d.mts"
   ],
   "keywords": [
     "cesium",
@@ -32,16 +44,21 @@
     "maps"
   ],
   "dependencies": {
-    "h3-js": "^4.1.0"
+    "@we/globe-core": "workspace:*",
+    "h3-js": "^4.1.0",
+    "maplibre-gl": "^6.12.0"
   },
   "peerDependencies": {
-    "cesium": "^1.144.0",
-    "@we/globe-protocol": "workspace:*"
+    "@we/globe-protocol": "workspace:*",
+    "cesium": "^1.144.0"
   },
   "devDependencies": {
+    "@types/geojson": "^7946.0.16",
     "@we/cli": "workspace:*",
+    "@we/globe-protocol": "workspace:*",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "@we/globe-protocol": "workspace:*"
+    "vite": "^8.2.2",
+    "vitest": "^5.0.2"
   }
 }

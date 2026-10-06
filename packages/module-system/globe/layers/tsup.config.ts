@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: { index: 'src/index.ts', maplibre: 'src/maplibre/index.ts' },
   format: ['esm'],
   dts: true,
   sourcemap: true,
@@ -9,5 +9,6 @@ export default defineConfig({
   target: 'es2022',
   splitting: false,
   treeshake: true,
-  external: ['cesium'], // Don't bundle Cesium (it's huge and loaded via CDN)
+  // Neither engine is bundled: each is the app's own copy, and the MapLibre entry must not reach Cesium.
+  external: ['cesium', 'maplibre-gl'],
 });

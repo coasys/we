@@ -4,21 +4,41 @@
  * Modular layer system for CesiumJS globe
  */
 
-// Export layer types
+// Export the layer contract
 export type {
-  CesiumLayer,
-  LayerFactory,
+  CesiumRendererContext,
+  GlobeEngine,
   LayerConfig,
-  LayerContext,
   LayerEventBus,
-  LayerStore,
-  LayerMetadata,
-  CameraState,
+  LayerKind,
+  LayerKinds,
+  LayerRenderer,
+  LayerRenderers,
+  MapLibreRendererContext,
+  RendererContext,
+  RendererFactory,
 } from './types';
 
 // Export planet layers (surface layers)
-export { pointLocationsLayer, countryOutlinesLayer, h3HexagonsLayer } from './planet';
-export type { UserLocation, PointLocationsOptions, CountryOutlinesOptions, H3HexagonsOptions } from './planet';
+export {
+  areasLayer,
+  countryOutlinesLayer,
+  h3HexagonsLayer,
+  hexbinLayer,
+  pathsLayer,
+  pointLocationsLayer,
+  pointsLayer,
+} from './planet';
+export type {
+  AreasOptions,
+  CountryOutlinesOptions,
+  H3HexagonsOptions,
+  HexbinOptions,
+  PathsOptions,
+  PointLocationsOptions,
+  PointsOptions,
+  UserLocation,
+} from './planet';
 
 // Export background layers (space layers)
 export { skyboxLayer, proceduralStarsLayer, solarSystemLayer } from './background';

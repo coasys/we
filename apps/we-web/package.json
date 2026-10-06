@@ -22,9 +22,12 @@
   "devDependencies": {
     "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
+    "@we/csp": "workspace:*",
+    "@we/globe-layers": "workspace:*",
+    "@we/globe-widget": "workspace:*",
     "typescript": "^6.0.3",
     "vite": "^8.2.2",
     "vite-plugin-solid": "^2.11.14",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.2"
   }
 }

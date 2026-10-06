@@ -18,16 +18,32 @@ import {
   type ValidationError,
 } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
-import { datasetIdFor } from '@we/template-fixtures';
+import { datasetIdFor, type Fixture } from '@we/template-fixtures';
 import { render } from 'solid-js/web';
 
 import rootSeed from '../../../we-seed.json';
 import { bareNode, type ExternalTemplate } from './bare';
-import { inMemoryConnector, requestedFixture, startRoute } from './platform/inMemoryConnector';
+import { inMemoryConnector, requestedFixture, startRoute, useExternalFixture } from './platform/inMemoryConnector';
 import { previewPlatform } from './platform/previewPlatform';
 import { PreviewBootstrap } from './PreviewBootstrap';
 
 const params = new URLSearchParams(window.location.search);
+
+/*
+  A fixture from a URL, beside the bundled ones — how a cartridge brings its own content, shapes and
+  templates without being compiled into this host. Same-origin for templateUrl's reason: a link must
+  not be able to load whatever JSON its author pointed it at.
+*/
+const fixtureUrl = params.get('fixtureUrl');
+if (fixtureUrl) {
+  const loaded = await loadSameOrigin<Fixture>(fixtureUrl, 'fixtureUrl');
+  if (!loaded)
+    throw new Error(
+      `[preview] ${((window as unknown as Record<string, unknown>).__wePreview as { error: string }).error}`,
+    );
+  useExternalFixture(loaded);
+}
+
 const templateUrl = params.get('templateUrl');
 const externalTemplate = templateUrl ? await loadExternalTemplate(templateUrl) : undefined;
 if (templateUrl && !externalTemplate) {
@@ -52,6 +68,11 @@ if (externalTemplate) {
  * anywhere else would let a link render whatever JSON its author pointed it at.
  */
 async function loadExternalTemplate(url: string): Promise<ExternalTemplate | undefined> {
+  return loadSameOrigin<ExternalTemplate>(url, 'templateUrl');
+}
+
+/** A JSON object from this origin, or undefined with the reason on `__wePreview`. */
+async function loadSameOrigin<T>(url: string, param: string): Promise<T | undefined> {
   const fail = (error: string) => {
     (window as unknown as Record<string, unknown>).__wePreview = { error };
     return undefined;
@@ -60,17 +81,17 @@ async function loadExternalTemplate(url: string): Promise<ExternalTemplate | und
   try {
     target = new URL(url, window.location.href);
   } catch {
-    return fail(`templateUrl is not a URL: ${url}`);
+    return fail(`${param} is not a URL: ${url}`);
   }
-  if (target.origin !== window.location.origin) return fail(`templateUrl must be on ${window.location.origin}`);
+  if (target.origin !== window.location.origin) return fail(`${param} must be on ${window.location.origin}`);
   try {
     const res = await fetch(target);
     if (!res.ok) return fail(`${target.pathname} answered ${res.status}`);
-    const template = (await res.json()) as unknown;
-    if (!template || typeof template !== 'object' || Array.isArray(template)) {
-      return fail('the template is not a JSON object');
+    const value = (await res.json()) as unknown;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return fail(`${param} is not a JSON object`);
     }
-    return template as ExternalTemplate;
+    return value as T;
   } catch (error) {
     return fail((error as Error).message);
   }
@@ -112,14 +133,15 @@ function reportSchemaFindings(template: unknown): void {
  *
  * - **`modules: []`** — the globe mounts Cesium and the call module wants media devices. Neither
  *   survives a headless screenshot usefully, and a spinning globe would make every render of the
- *   same template differ from the last. Set it back to the root list to photograph module chrome.
+ *   same template differ from the last. A fixture that needs one names it in `modules`.
  * - **`apps: []`** — embedded apps are iframes onto other dev servers that are not running here.
  * - **no `ad4m` block** — there is no executor to point at, which is the entire premise.
  */
 const previewSeed: WeSeedFile = {
   ...(rootSeed as unknown as WeSeedFile),
   project: { ...(rootSeed as unknown as WeSeedFile).project, name: 'WE Preview' },
-  modules: [],
+  // None, unless the fixture's template needs one — a cartridge that draws a globe says so.
+  modules: requestedFixture().modules ?? [],
   apps: [],
   ad4m: undefined,
 };

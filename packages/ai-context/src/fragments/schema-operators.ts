@@ -72,6 +72,49 @@ The ROOT node carries one more, and it is required:
   template was designed with, panels for the surfaces the interface has (see Panels), and
   chromeReserve for a band the shell pins over the content. A root node without meta is refused.
 
+## Shapes the template says once: $defs and $ref
+
+A template often uses the same shape in several places — a card drawn in two display modes, a
+column arrangement that appears per person and per status. The root may carry those shapes in
+**$defs**, with a **$ref** node standing at each place one is used:
+
+{
+  "type": "Column",
+  "meta": { "...": "..." },
+  "$defs": { "d1": { "type": "Card", "children": ["…the whole card…"] } },
+  "children": [
+    { "type": "$ref", "props": { "def": "d1" } },
+    { "type": "$ref", "props": { "def": "d1" } }
+  ]
+}
+
+Those two render exactly what two copies of the card would. The definitions live INSIDE the
+template, so everything that will render is still in the document — nothing is fetched, and a
+template can be read as the thing it will be.
+
+**You will meet these; you rarely need to write them.** Write ordinary nodes. Shapes are hoisted
+automatically, so a thing you write out twice becomes one definition without you doing anything.
+
+**Editing one is two different acts, and the difference is which node you patch:**
+
+- Patch a node **inside a definition** and the change shows at EVERY use of that shape. This is
+  usually what is wanted — "make the cards wider" is one shape and every card.
+- To make a single use differ, send a patch of { "targetId": "<the $ref's id>", "split": true }. That use
+  gets a copy of the shape to itself and everything else carries on sharing. The tool result lists
+  the copy's nodes by id, so the patch that changes one of them follows in the same turn. **Never
+  re-send the shape to do this** — it is thousands of tokens, and a shape retyped from memory loses
+  something every time, for a copy the editor is already holding and has just named for you.
+
+The tool result says which happened: a patch that reached a shared shape comes back naming how
+many places it changed. If that is not what the request meant, fix it in the same turn.
+
+**Where the words do not decide between the two, ask rather than guess.** "Make the card blue",
+said about a card on screen, is as likely to mean that one as all of them, and the two are not
+equally easy to undo: changing one of six is a split and a patch, where changing six when one was
+meant has already repainted five things somebody did not look at. Say which places are involved —
+the count is in the tool result — and let them choose. Guess only where the request names the
+scope itself ("all the cards", "this one").
+
 Example node:
 {
   "type": "we-button",
@@ -112,6 +155,15 @@ Example — close modal after async submission:
 { "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] }
 Example — navigate to newly created item:
 { "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$action": "routeStore.navigate", "args": [{ "$": "\`/space/\${result.uuid}\`" }] }] }
+
+An action runs only when somebody asked for it. A press, a key, typing, a drop or a paste that reaches
+the element whose handler calls it counts as asking — and so does whatever the element does in answer,
+even a moment later, once. An event that happens to the element by itself does not: onLoad, onError,
+onToggle, onFocus, onMouseEnter, onAnimationEnd, a component reporting its size. Wired there, an action
+that stores something, publishes something or reaches a device is refused and does nothing; put it on
+the press instead. Navigating, opening and closing surfaces and editing an unsaved draft are exempt, so
+they work anywhere. onSuccess, onError and onFinally count as part of the press that started them, and
+so does onBlur on a field somebody typed into. The validator warns about a write on an event nobody causes.
 
 Record mutations via $action (use these for creating/updating/deleting records):
 A RECORD is one stored thing; an ENTITY is its type. Every one of these takes the entity name first
@@ -218,12 +270,12 @@ link, so an unwritten one is simply not there. Three cases, and the middle one d
 is evaluated:
 
   { field: 'x' }             — does NOT match an absent value. Both agree.
-  { field: { not: 'x' } }    — MATCHES an absent value inside filter() and in the in-memory
-                               test backend (undefined !== 'x'), and does NOT match in a $query
-                               against the production backend, where != over an unbound value
-                               excludes the row, exactly as SQL's three-valued logic excludes
-                               NULL. A $query where written with "not" can therefore pass every
-                               test and come back empty in production.
+  { field: { not: 'x' } }    — does NOT match an absent value in a $query, on any backend: !=
+                               over an unbound value excludes the row, exactly as SQL's
+                               three-valued logic excludes NULL. Inside filter() it DOES match
+                               (undefined !== 'x'), because filter() is plain client-side
+                               comparison — so the same where-object can answer differently in
+                               the two places.
   { field: { exists: false } } — means absent, unambiguously — but see the warning below about
                                where it can be used.
 
@@ -231,6 +283,12 @@ A declared "default" does not rescue this. The manifest's default is applied whe
 CONSTRUCTED, so anything created normally does carry it — but a field added to an entity after
 some records already existed reads as absent on every one of them, and the query layer never
 consults the default when filtering.
+
+CLEARING is the other way to end up with no value. Writing '' to a property that has one removes
+it: the record then reads back as the field's default — usually '' — but no $query matches it, not
+{ field: '' } and not { field: { not: 'x' } }. A '' written at CREATION, a declared default of ''
+included, is different: it is stored, and both of those match it. So a task nobody was ever
+assigned is found by { assignee: { not: 'Ann' } }, and one whose assignee was removed is not.
 
 "exists" IS NOT AVAILABLE IN A $query — only inside filter(), where it is evaluated client-side.
 The backend has no such operator, so a $query using one is refused rather than run.
@@ -364,6 +422,12 @@ Relation names come from the HasMany relations listed for each model in external
 Simple include — hydrate all related instances:
 { "$query": { "entity": "Channel", "include": { "conversations": true } } }
 Each item in the result will have a conversations array of hydrated Conversation objects.
+
+An included relation is the RECORD, not its id — and without the include the same field is the id.
+So a comparison written for one breaks silently against the other: with include: { item: true },
+row.item == x never matches and a where-object { item: x } finds nothing. Compare row.item.id, or
+in a where-object over included rows, use a comprehension: local.loans.find(l, l.item.id == x).
+The validator warns about both.
 
 Sub-query include — filter, sort, or limit the related records:
 { "$query": { "entity": "Channel", "include": { "conversations": { "order": { "createdAt": "desc" }, "limit": 10 } } } }

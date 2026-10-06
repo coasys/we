@@ -82,7 +82,7 @@ export type {
   SlotAnchor,
   SlotContribution,
 } from './module';
-export { markAction, markState, memberDoc, memberKind, storeSurface } from './store';
+export { markAction, markState, memberAmbient, memberDoc, memberKind, storeSurface } from './store';
 export type { ModuleMemberKind, ModuleMemberSurface, ModuleStore, ModuleStoreSurface } from './store';
 
 /**

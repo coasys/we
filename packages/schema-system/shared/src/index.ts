@@ -48,13 +48,20 @@ export type {
   StateMemberMeta,
   TokenCategory,
   PluginCatalog,
+  PluginPlacement,
   PluginEntry,
   ModuleCatalogEntry,
   ForeignElementEntry,
   SourceEntry,
 } from './contextTypes';
 
-export { validateSchema, validateSemantic, buildValidationContext } from './semanticValidation';
+export {
+  asHostChrome,
+  buildValidationContext,
+  validateSchema,
+  validateSemantic,
+  withEntities,
+} from './semanticValidation';
 export type { ValidationContext } from './semanticValidation';
 export { validateStructure } from './validators';
 export type { ValidationError, ValidationResult } from './validators';
@@ -77,7 +84,33 @@ export type { LocalFieldMeta, LocalMetaMap } from './propResolvers';
 export { DEFERRED_ARG, isDeferredArg, setExpressionWarningSink } from './propResolvers/expression';
 export * from './expressions';
 export { hasToken } from './predicates';
+export { isTemplateElement, refusedProp, TEMPLATE_HTML_ELEMENTS } from './templateElements';
+export {
+  captureGesture,
+  claimGesture,
+  CREDIT_MS,
+  gestureTrackingInstalled,
+  hasGesture,
+  installGestureTracking,
+  newGestureOwner,
+  registerGestureOwner,
+  runAsOwner,
+  runWithGesture,
+} from './gesture';
+export type { GestureOwner, GestureToken } from './gesture';
 export { isPropsSchemaNode, isSchemaChild, replaceNodeInTree } from './treeUtils';
+export {
+  type CompactOptions,
+  compactDefinitions,
+  type CompactResult,
+  definitionsOf,
+  expandDefinitions,
+  type OutlineEntry,
+  outlineOf,
+  REF_TYPE,
+  type RefProps,
+  useCountOf,
+} from './definitions';
 export {
   applyThemeVars,
   clearThemeVars,
@@ -113,6 +146,7 @@ export {
   hasViewsMarker,
   SPACE_ROUTE_DEPTH,
   SPACE_ROUTE_PATH,
+  EDIT_SURFACE_ATTR,
   VIEW_BOUNDARY_ATTR,
   VIEW_BOUNDARY_NAME_ATTR,
   VIEWS_MARKER,

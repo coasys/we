@@ -28,7 +28,12 @@ breakage points at one cause.
 
 ## Description
 
-Four parts, in this order.
+Four parts, in this order, and the first thing in the body is **What** — no heading above it.
+GitHub prints the title immediately over the description, so a title repeated as an `# H1` is the
+same sentence twice in the two places a reader looks. It also breaks pairing: the alert block
+below has to be the first thing in the body, and a heading above it means the PR reads as
+unpaired. `.github/pull_request_template.md` is the shape, and a description drafted elsewhere —
+in a file passed to `gh pr create --body-file`, say — matches it.
 
 **What.** What the PR changes, in a few bullets. Someone who reads only this should know what merging
 it does.
@@ -44,8 +49,26 @@ helps when the change is wide. Explain the reason for a change the diff does not
 ones with the reason. "Not run on Netlify" is useful to a reviewer; a list of things that could be
 tested is not.
 
-**Docs kept in sync**, when it applies. The template's checklist names the documents that go stale
-silently. Tick what you updated, or say none applied.
+**A checkbox is a thing that must be true before this merges, and nothing else is a checkbox.**
+Anything that will never be ticked is a bullet.
+
+- `- [x]` — done, and what it showed.
+- `- [ ]` — **not done, and the PR is not finished.** Merging over one is merging over a gap
+  somebody meant to close.
+- `- **Deferred — …**` — a bullet, not a box: decided against, with the reason and where it goes
+  instead. A judgement on the record, which a reviewer can disagree with. _"Needs qwen3:4b pulled,
+  and `full` cannot run on it at all — belongs with the work that uses the answer."_
+
+This is why the rule is worth keeping: GitHub counts every checkbox in a description and shows
+"6 of 7 tasks" on the PR. If some boxes are never meant to be ticked, that number is wrong on every
+PR, and a number that is always wrong trains everybody to ignore it — including the real gap. Keep
+boxes for what must be true and the count means something, our own check is a one-line rule, and
+the two can never disagree.
+
+**Docs kept in sync**, when it applies. One checkbox — the docs this change touches are updated,
+or none applied — over a bulleted list of the places that go stale silently. One box because one
+thing has to be true before merge: that somebody looked. The list is a prompt, and a prompt is not
+a task, so it does not get boxes that nobody will ever tick.
 
 Write for the reviewer who has not followed the work. Plain sentences, no shorthand from the
 conversation the PR came out of.
@@ -68,7 +91,9 @@ installing the pin. Both live in the `coasys/ad4m` repository, so one pairing co
 required checks still build against the pin, so they stay red until it moves; the
 `AD4M compatibility / Against the paired ad4m` check builds the same commit against the pairing and
 says whether that red is only the pin. It keeps a comment and a `paired with ad4m` label on the PR
-saying so, so a reviewer does not have to open the checks to find out.
+saying so, so a reviewer does not have to open the checks to find out. Once the ad4m PR has merged
+and a version containing it is published, a second label, `ready to bump ad4m`, and a comment naming
+that version say it is time to run `pnpm bump:ad4m` and remove the block.
 
 One exact form, so every paired PR looks the same. Anything close — no colon, another heading level
 or alert, the old `ad4m: coasys/ad4m#N` line, the block lower down — fails the preview and the

@@ -93,8 +93,14 @@ export type AiModelKind = 'llm' | 'embedding' | 'transcription';
  * up guessing.
  */
 export type AiModelSource =
-  /** A remote endpoint, spoken to in the wire format `protocol` names. */
-  | { kind: 'api'; protocol: AiApiProtocol; baseUrl: string; apiKey: string; model: string }
+  /**
+   * A remote endpoint, spoken to in the wire format `protocol` names.
+   *
+   * `maxContext` is a ceiling on the context window the backend asks the provider for, in tokens —
+   * an upper bound, never a request. It matters where the provider sizes memory from the window at
+   * load: a local model advertising a long window otherwise reserves all of it for a short prompt.
+   */
+  | { kind: 'api'; protocol: AiApiProtocol; baseUrl: string; apiKey: string; model: string; maxContext?: number }
   /** A build the backend knows by name and fetches itself — see `aiModelPresets`. */
   | { kind: 'preset'; name: string }
   | { kind: 'huggingface'; repo: string; revision: string; fileName: string; tokenizer?: TokenizerSource }
@@ -106,9 +112,11 @@ export type AiModelSource =
  *
  * Not the vendor: OpenRouter, Groq, Gemini's compatibility surface and a local vLLM all speak
  * `openai`. `anthropic` exists because Claude's own format carries things the OpenAI one cannot —
- * prompt-cache breakpoints and native tool calls among them.
+ * prompt-cache breakpoints and native tool calls among them. `ollama` is Ollama's own API rather
+ * than its OpenAI-compatible surface, which is the one through which the window it loads a model
+ * with can be chosen at all — see `maxContext`.
  */
-export type AiApiProtocol = 'openai' | 'anthropic';
+export type AiApiProtocol = 'openai' | 'anthropic' | 'ollama';
 
 /** The endpoint details a model list is asked for, before any model exists to hold them. */
 export interface AiModelDiscoveryQuery {

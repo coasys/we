@@ -53,6 +53,17 @@ describe('round-tripping a model through the form', () => {
         model: 'claude-sonnet-5',
       },
     }),
+    // Read as OpenAI and without its ceiling until the protocol and the ceiling were on the form.
+    model({
+      source: {
+        kind: 'api',
+        protocol: 'ollama',
+        baseUrl: 'http://localhost:11434',
+        apiKey: '',
+        model: 'qwen3:4b',
+        maxContext: 40960,
+      },
+    }),
     model({
       kind: 'transcription',
       source: { kind: 'huggingface', repo: 'openai/whisper', revision: 'v2', fileName: 'model.bin' },
@@ -70,7 +81,7 @@ describe('round-tripping a model through the form', () => {
   ];
 
   for (const original of cases) {
-    it(`survives ${original.source.kind}${original.source.kind === 'huggingface' && original.source.tokenizer ? ' with a tokenizer' : ''}`, () => {
+    it(`survives ${original.source.kind}${original.source.kind === 'api' ? ` (${original.source.protocol})` : ''}${original.source.kind === 'huggingface' && original.source.tokenizer ? ' with a tokenizer' : ''}`, () => {
       const round = toDraft(draftFrom(original));
 
       expect(round.name).toBe(original.name);
@@ -111,6 +122,17 @@ describe('formComplete', () => {
 
   it('will not save a nameless model, whitespace included', () => {
     expect(formComplete({ ...EMPTY_FORM, name: '   ', presetName: 'llama_8b' })).toBe(false);
+  });
+
+  it('takes an empty context ceiling as none, and refuses one that is not a whole number', () => {
+    const api = { ...EMPTY_FORM, name: 'Qwen', sourceKind: 'api' as const, apiModel: 'qwen3:4b' };
+    expect(formComplete({ ...api, apiMaxContext: '' })).toBe(true);
+    expect(formComplete({ ...api, apiMaxContext: ' 40960 ' })).toBe(true);
+    // Saving these would drop the ceiling silently, since an update writes the whole record.
+    for (const typed of ['0', '-1', '4096.5', '40k'])
+      expect(formComplete({ ...api, apiMaxContext: typed })).toBe(false);
+    expect(toDraft({ ...api, apiMaxContext: ' 40960 ' }).source).toMatchObject({ maxContext: 40960 });
+    expect(toDraft({ ...api, apiMaxContext: '' }).source).not.toHaveProperty('maxContext');
   });
 
   it('does not require an API key — a local endpoint is a normal thing to point at', () => {
@@ -180,6 +202,14 @@ describe('remote API presets', () => {
 
   it('has an id per preset, since the select keys on it', () => {
     expect(new Set(AI_API_PRESETS.map((p) => p.id)).size).toBe(AI_API_PRESETS.length);
+  });
+
+  it('speaks to Ollama in its own protocol, the only one where the window can be capped', () => {
+    expect(AI_API_PRESETS.find((p) => p.id === 'ollama')).toMatchObject({ protocol: 'ollama' });
+    expect(matchingApiPreset({ apiProtocol: 'ollama', apiBaseUrl: 'http://localhost:11434/' })).toBe('ollama');
+    // A model saved through the compatible surface is still that, and opens as custom rather than
+    // being quietly moved onto another provider.
+    expect(matchingApiPreset({ apiProtocol: 'openai', apiBaseUrl: 'http://localhost:11434/v1' })).toBe('');
   });
 
   it('labels an Anthropic model as such in the list', () => {

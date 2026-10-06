@@ -1,7 +1,7 @@
 {
   "name": "@we/globe-widget",
   "version": "0.1.0",
-  "description": "The Cesium globe renderer — implements @we/globe-protocol; consumed as source like every Solid surface package",
+  "description": "The globe widgets — Cesium's, and MapLibre's for lighter builds — implementing @we/globe-protocol; consumed as source like every Solid surface package",
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit"
@@ -10,10 +10,20 @@
     ".": {
       "import": "./src/index.ts",
       "types": "./src/index.ts"
+    },
+    "./maplibre": {
+      "import": "./src/maplibre/index.ts",
+      "types": "./src/maplibre/index.ts"
+    },
+    "./vite": {
+      "types": "./vite-plugin.d.mts",
+      "import": "./vite-plugin.mjs"
     }
   },
   "dependencies": {
-    "@we/globe-protocol": "workspace:*"
+    "@we/globe-core": "workspace:*",
+    "@we/globe-protocol": "workspace:*",
+    "maplibre-gl": "^6.12.0"
   },
   "peerDependencies": {
     "cesium": "^1.144.0",
@@ -22,6 +32,7 @@
   "devDependencies": {
     "@types/node": "^26.4.0",
     "cesium": "^1.144.0",
-    "solid-js": "^1.9.15"
+    "solid-js": "^1.9.15",
+    "vite": "^8.2.2"
   }
 }

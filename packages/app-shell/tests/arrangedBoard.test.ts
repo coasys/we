@@ -403,6 +403,41 @@ describe('while a drag is in flight', () => {
     expect(view.columns.map((c) => c.id)).toEqual(['c2', 'c1']);
   });
 
+  /*
+    A bound column shows work by STATE as well as by arrangement, and a card on screen is not
+    work to bring in. `available` asked what the board had been given — only arrangements — so on
+    a gathering board it offered whatever was sitting in the next column along, and picking one
+    moved a card from where it was to where it was.
+  */
+  it('leaves out a card a bound column is already showing by state', () => {
+    const view = arrangedBoard({
+      // Nothing arranged anywhere: both cards reach their columns by status alone.
+      ...gathering([
+        { id: 'c1', slug: 'todo', arranges: [] },
+        { id: 'c2', slug: 'doing', arranges: [] },
+      ]),
+      records: [todo, doing, orphan],
+      states,
+    });
+
+    expect(view.contents.c1.unarranged.map((r) => r.id)).toEqual(['t1']);
+    expect(view.contents.c2.unarranged.map((r) => r.id)).toEqual(['t2']);
+    // Neither is work to bring in; the one no column claims is on the board too, under Unplaced.
+    expect(view.available).toEqual([]);
+    expect(view.unplaced.map((r) => r.id)).toEqual(['t4']);
+  });
+
+  it('still offers work a curated board does not draw at all', () => {
+    // The counterpart: a made board's pool is what it holds, so a state match draws nothing and
+    // the card really is elsewhere.
+    const view = arrangedBoard({
+      ...curated([{ id: 'c1', slug: 'todo', arranges: ['t1'] }]),
+      records: [todo, doing],
+      states,
+    });
+    expect(view.available.map((r) => r.id)).toEqual(['t2']);
+  });
+
   it('keeps a dragged-in card out of the "bring in existing work" picker', () => {
     // `available` is what the board holds nowhere. A card the board is about to hold is not that,
     // and offering it would let somebody add the card they are in the middle of moving.

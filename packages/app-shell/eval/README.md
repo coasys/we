@@ -6,7 +6,10 @@ might for small local models) or hurts (it might for large cached ones). Answer 
 rather than from reasoning about it.
 
 It runs the editor's own request loop (`src/shared/ai/editSession.ts`) against a live node, so a
-result describes what the editor actually does.
+result describes what the editor actually does. That means the payload too: the template is
+compacted and numbered once before it is sent, exactly as `EditorStore.sendMessage` does, and
+scored expanded, as `accept` stores it. A harness measuring the authored form would be describing
+a product that has not shipped since #248.
 
 ## What it compares
 
@@ -45,12 +48,44 @@ pnpm --filter @we/app-shell eval:context
 | `WE_EVAL_TOKEN`      | none                     | A token with `AI_PROMPT`. For the desktop app's executor, the `--admin-credential` in `pgrep -fa ad4m-executor`. |
 | `WE_EVAL_MODELS`     | `default`                | Model names or ids as Settings → AI shows them, comma-separated. `default` is the node's default LLM.            |
 | `WE_EVAL_STRATEGIES` | all three                | Any of `full,sections,lookup`.                                                                                   |
-| `WE_EVAL_CASES`      | all                      | Case ids from `cases.ts`.                                                                                        |
+| `WE_EVAL_CASES`      | all at the chosen scale  | Case ids from `cases.ts`. Overrides `WE_EVAL_SCALE`.                                                             |
+| `WE_EVAL_SCALE`      | `small`                  | `small`, `large`, or both. See **Two scales** below — a large run costs several times more.                      |
 | `WE_EVAL_REPEAT`     | `1`                      | Runs per combination. Models are not deterministic; use 3 before drawing a conclusion.                           |
 | `WE_EVAL_TIMEOUT`    | `180`                    | Seconds one turn may take. Raise it for a local model — see below.                                               |
 
 Start small: `WE_EVAL_CASES=rename-heading,todo-tasks WE_EVAL_STRATEGIES=full` confirms the setup
 before a full run.
+
+## Two scales, and why a run has to say which
+
+The cases come in two groups, and mixing them in one run produces a number that cannot be compared
+with anything.
+
+**`small`** — seventeen cases on `blank` (394 chars) and `feed` (1,146). Every baseline so far is
+of these. The template is about 1% of an ~86K payload, so what they measure is the **reference**
+half of the context budget: which parts of the generated schema reference a strategy puts in front
+of the model. They are nearly blind to the template half — a strategy that sent no template at all
+would still pass most of them.
+
+**`large`** — four cases on `kanban`, a real template (57,440 chars, 37,516 compacted). Here the
+proportions invert and the template is the bigger half. These exist to measure what bounding the
+template does, which the small cases cannot see.
+
+One of the four turns on something no small case can reach. Kanban shares shapes: its card is one
+shape used four times, its column header one used twice. So `kanban-card-radius` ("the cards") is
+right only when the shape itself changes — a model that patches one use leaves three cards behind.
+
+A second case asked for the opposite, a `split`, and was removed after the calibration run
+recorded in `BASELINE.md`: the model correctly answered that restyling one column's cards wants a
+condition inside the shared shape, not a copy of it. **A split case needs two uses that differ by
+their context rather than by their data**; nobody has written one yet.
+
+`WE_EVAL_SCALE` defaults to `small` so an unqualified run stays comparable with `BASELINE.md` and
+stays cheap. Record the two in separate tables; a combined pass rate is not a figure about
+anything.
+
+**Put the summary in `BASELINE.md` after a run.** `eval/results/` is gitignored, so a run that
+chooses a default and is not written down leaves nothing behind — which has happened once already.
 
 Results go to `eval/results/<timestamp>/`, which is gitignored: `report.md` (a summary table,
 a case × combination grid, and every failure with its reason) and `results.json`.
@@ -117,14 +152,19 @@ OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1 ollama serve
 `q8_0` roughly halves the cache and is near-lossless; `q4_0` quarters it and is a quality confound
 worth avoiding while measuring quality. qwen3:4b then loads at 6.4GB, `100% GPU`, 40,960 tokens.
 
-Then register a model entry pointing at that port, and **set `maxNumCtx`**. Without it the node asks
-for the model's own maximum: qwen3:4b advertises a 256K window, so the node clamps to its 131,072
-default and allocates ~14GB, which spills to CPU and is _worse_ than leaving it alone.
+Then register a model entry pointing at that port, and **set a context limit**. Without one the
+node asks for the model's own maximum: qwen3:4b advertises a 256K window, so the node clamps to its
+131,072 default and allocates ~14GB, which spills to CPU and is _worse_ than leaving it alone.
+Settings → AI does both: a custom endpoint with the Ollama protocol and `http://127.0.0.1:11435`
+offers a "Context limit" field. It has to be the Ollama protocol. Through the OpenAI-compatible
+`/v1` the limit is ignored.
 
 Two things about changing a model entry, both learned the hard way:
 
-- **`removeModel` + `addModel` picks up new config; `updateModel` does not.** A provider captures its
-  base URL and context ceiling when its worker thread spawns, and an update does not rebuild them.
+- **An update does pick up a new context limit**, despite an earlier note here saying only
+  `removeModel` + `addModel` did. Measured on a 29 September 2026 executor build with qwen3:8b,
+  `ollama ps` showed CONTEXT 8192 after adding the model with that limit, and 16384 after an
+  update. After an update that cleared the limit it showed 40960, the model's own maximum.
 - **Never change model config while a run is in flight.** `updateModel` tears down the LLM channel,
   and the run fails with `Model '<id>' not found in LLM channel` partway through.
 

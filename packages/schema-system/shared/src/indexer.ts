@@ -19,8 +19,24 @@
  * - "panel"      — large child subtrees within a route (keyed by qualifier)
  */
 
-import { isPropsSchemaNode, isSchemaChild } from './treeUtils';
+import { isPropsSchemaNode, isSchemaChild, panelsOf } from './treeUtils';
 import type { RouteSchema, SchemaNode, TemplateSchema } from './types';
+
+/**
+ * Call fn for each shape the root keeps in `$defs`.
+ *
+ * Those are ordinary nodes in every respect that matters here — they are what will render, and
+ * they are what a patch targets to change every use of a shape at once — so anything that walks a
+ * tree to assign, collect or strip ids has to reach them. A walk that did not would hand the
+ * model a definition whose nodes have no ids, which is a shape it can see and cannot edit.
+ *
+ * `$defs` is root-only, so this is a property read on every other node.
+ */
+function forEachDefinition(node: SchemaNode, fn: (def: SchemaNode) => void): void {
+  const defs = node.$defs;
+  if (!defs) return;
+  for (const def of Object.values(defs)) fn(def);
+}
 
 /**
  * Call fn for each SchemaNode-shaped value directly embedded in node.props.
@@ -37,6 +53,23 @@ function forEachPropsNode(node: SchemaNode, fn: (child: SchemaNode) => void): vo
     } else if (isPropsSchemaNode(val)) {
       fn(val as SchemaNode);
     }
+  }
+}
+
+/**
+ * The node each `meta.panels` entry carries, if any.
+ *
+ * Walked for the same reason compaction walks it: a shell keeps whole interfaces in `meta.panels`
+ * and they are most of a big template. Missing them here meant every node inside a panel was
+ * rendered and had no id — so the model could see it and could not patch it, which is not an
+ * error anywhere, just an edit that never lands. 1,127 of `workshopTemplate`'s 1,807 nodes.
+ *
+ * `strip` walks it too. An id left behind in a panel would be stored in the template, which is
+ * the thing `stripNodeIds` exists to prevent.
+ */
+function forEachPanelNode(node: SchemaNode, fn: (child: SchemaNode) => void): void {
+  for (const panel of panelsOf(node) ?? []) {
+    if (isSchemaChild(panel.node)) fn(panel.node as SchemaNode);
   }
 }
 
@@ -325,6 +358,8 @@ export function ensureNodeIds(schema: SchemaNode): SchemaNode {
       for (const slotNode of Object.values(node.slots)) collectIds(slotNode);
     }
     forEachPropsNode(node, collectIds);
+    forEachDefinition(node, collectIds);
+    forEachPanelNode(node, collectIds);
   }
   collectIds(schema);
 
@@ -352,6 +387,8 @@ export function ensureNodeIds(schema: SchemaNode): SchemaNode {
       for (const slotNode of Object.values(node.slots)) assignIds(slotNode);
     }
     forEachPropsNode(node, assignIds);
+    forEachDefinition(node, assignIds);
+    forEachPanelNode(node, assignIds);
   }
   assignIds(schema);
 
@@ -378,6 +415,8 @@ export function stripNodeIds(schema: SchemaNode): SchemaNode {
       for (const slotNode of Object.values(node.slots)) strip(slotNode);
     }
     forEachPropsNode(node, strip);
+    forEachDefinition(node, strip);
+    forEachPanelNode(node, strip);
   }
   strip(schema);
   return schema;
@@ -429,6 +468,41 @@ export function findNodeById(schema: SchemaNode, targetId: string): FindNodeResu
           const result = search(val as SchemaNode, node, `props.${propName}`, 0);
           if (result) return result;
         }
+      }
+    }
+    /*
+      Last, and it has to be here at all: a shape the template says once lives in `$defs`, and
+      every node in it is a node the editor hands the model with an id on it. Without this branch
+      a patch aimed at a shared shape comes back "no node with that id" — the model is shown
+      something it is then told does not exist, which is the worst of both.
+
+      Searched after everything else so an ordinary node always wins a collision, and reported
+      with a `$defs.<name>` key so the caller can tell that a patch lands on every use of the
+      shape rather than on one position.
+    */
+    if (node.$defs) {
+      for (const [name, def] of Object.entries(node.$defs)) {
+        const result = search(def, node, `$defs.${name}`, 0);
+        if (result) return result;
+      }
+    }
+    /*
+      And the interfaces a shell keeps in `meta.panels`, for the same reason as `$defs` above:
+      the model is handed these nodes with ids on them, so being unable to find one again means
+      answering "no node with that id" about something the model was just shown.
+      `forEachPanelNode` is what gives them ids; this is what lets a patch land on them.
+
+      Reported with a `meta.panels.<i>` key, as `$defs` reports its own, so a caller can tell the
+      position apart from an ordinary child. Nothing moves a panel's own root node, and anything
+      INSIDE one has a real node as its parent and is handled by the branches above.
+    */
+    const panels = panelsOf(node);
+    if (panels) {
+      for (let i = 0; i < panels.length; i++) {
+        const panelNode = panels[i].node;
+        if (!isSchemaChild(panelNode)) continue;
+        const result = search(panelNode as SchemaNode, node, `meta.panels.${i}`, 0);
+        if (result) return result;
       }
     }
     return null;

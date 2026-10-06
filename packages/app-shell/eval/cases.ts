@@ -13,8 +13,20 @@
  * accident, would read as a result.
  */
 import type { SchemaNode } from '@we/schema-shared';
+import { kanbanTemplate, workshopTemplate } from '@we/template-showcase';
 
-export type EvalTemplate = 'blank' | 'feed';
+export type EvalTemplate = 'blank' | 'feed' | 'kanban' | 'workshop';
+
+/**
+ * How big the template a case is made against is.
+ *
+ * `small` is `blank` and `feed` — a template is ~1K of an ~86K payload there, so those cases
+ * measure the REFERENCE half of the budget and are blind to the template half. `large` is a real
+ * template somebody wrote, where the proportions invert. Keep them separable: the small suite is
+ * the cheap regression that chose the editor's strategy, and a run that mixes the two cannot be
+ * compared against either baseline.
+ */
+export type EvalScale = 'small' | 'large';
 
 export interface EvalCase {
   id: string;
@@ -25,6 +37,9 @@ export interface EvalCase {
   /** A reference answer: the template with the change made by hand. */
   solve: (schema: SchemaNode) => SchemaNode;
 }
+
+export const scaleOf = (template: EvalTemplate): EvalScale =>
+  template === 'kanban' || template === 'workshop' ? 'large' : 'small';
 
 // ─── The starting templates ───────────────────────────────────────────────────
 
@@ -74,11 +89,39 @@ const TEMPLATES: Record<EvalTemplate, SchemaNode> = {
       },
     ],
   } as unknown as SchemaNode,
+
+  /*
+    A real template, imported rather than copied, because a frozen snapshot would stop being a
+    real template the first time somebody edited the live one — and because the per-case test
+    beside this file then fails the moment an edit invalidates a case, which is the signal wanted.
+
+    Kanban is the middle rung on purpose. Templates in this repo run from 1,888 chars (`pollsView`)
+    to 571,024 (`workshopTemplate`); kanban is 57,440, which compacts to 37,516 with five `$defs`.
+    Big enough that what the editor sends is mostly template rather than mostly reference, small
+    enough to run 51 times, and — the part neither `blank` nor `feed` can offer — it SHARES shapes:
+    the card is used four times and the column header twice, so "change every card" and "change
+    this one card" are different edits with different correct answers.
+  */
+  kanban: kanbanTemplate as unknown as SchemaNode,
+
+  /*
+    The template the bounding work exists for, and the only one here that does not fit.
+
+    571,024 characters authored, 400,460 compacted — about 100K tokens, so a whole-template turn
+    is ~146K against a 200K window and an outline turn is ~73K. Both run, which is what makes the
+    comparison possible at all; a year of template growth and only one of them would.
+
+    Two cases, deliberately few: each whole-template call costs about as much as a whole run of
+    the kanban suite.
+  */
+  workshop: workshopTemplate as unknown as SchemaNode,
 };
 
 export function startingTemplate(template: EvalTemplate): SchemaNode {
   return structuredClone(TEMPLATES[template]);
 }
+
+export const EVAL_TEMPLATES = Object.keys(TEMPLATES) as EvalTemplate[];
 
 // ─── Looking at a result ──────────────────────────────────────────────────────
 
@@ -144,6 +187,41 @@ const edited = (schema: SchemaNode, edit: (root: Node) => void): SchemaNode => {
 /** The feed's list of posts, the `$each` the cases change. */
 const postList = (r: Node) => (r.children![1] as Node).children as Node[];
 const postCard = (r: Node) => (postList(r)[0].children as Node[])[0];
+
+// ─── Looking at a large template ──────────────────────────────────────────────
+
+/*
+  The small cases reach their target by position — `r.children![1]` — which is fine in a template
+  of six nodes and unusable in one of 280. These find a node by what it IS, so a case keeps
+  working when somebody adds a row above it, and says what it meant when somebody removes it.
+*/
+
+/** Every node matching, anywhere in the tree. */
+const matching = (schema: SchemaNode, is: (n: Node) => boolean) => nodes(schema).filter(is);
+
+/** The one node matching — throws when a solve's assumption about the template has expired. */
+const only = (schema: SchemaNode, what: string, is: (n: Node) => boolean): Node => {
+  const found = matching(schema, is);
+  if (found.length !== 1) throw new Error(`expected exactly one ${what} in the template, found ${found.length}`);
+  return found[0];
+};
+
+/** How many times a string occurs in the tree — for an edit whose rightness is a COUNT. */
+const occurrences = (schema: SchemaNode, needle: string) => source(schema).split(needle).length - 1;
+
+/**
+ * The card: a `Column` carrying the card's own surface. Exactly four, identical, all `r: '300'` —
+ * which is to say one shared shape used four times.
+ *
+ * Worth knowing when writing a case against them: the authored template ALIASES, so those four
+ * positions are two objects used twice each (the whole template is 280 positions over 211
+ * objects, because a fragment called twice with the same arguments returns the same value).
+ * Mutating one of them in a `solve` therefore changes two cards, not one.
+ */
+const isCardBody = (n: Node) =>
+  n.type === 'Column' && n.props?.bg === 'surface' && 'border' in (n.props ?? {}) && 'r' in (n.props ?? {});
+
+const cardBodies = (schema: SchemaNode) => matching(schema, isCardBody);
 
 // ─── The cases ───────────────────────────────────────────────────────────────
 
@@ -549,6 +627,203 @@ export const EVAL_CASES: EvalCase[] = [
               },
             },
           },
+        );
+      }),
+  },
+
+  // ─── Against a real template ───────────────────────────────────────────────
+  /*
+    These exist because the cases above cannot fail for the reason the planned work on bounding
+    what the editor sends — a skeleton of the template, plus full detail for the part a request
+    implicates — is about. On `blank` the template is ~400 chars of an ~86K payload, so a strategy
+    that sent no template at all would still pass most of them. Here the template is the larger
+    half, there are 280 nodes to find the right one among, and — the part that nothing else in
+    this file reaches — four of those nodes are the SAME node, shared through `$defs`.
+
+    `kanban-card-radius` is the shared-shape case: the four cards are one shape, so the edit is
+    right only when all four change together. A model that patches a single use leaves three
+    cards square.
+
+    There was a second one — "change just these cards, leave the others" — meant to force a
+    `split`. It was removed after a calibration run, because the model was right and it was
+    wrong: asked to restyle the cards in one column, it pointed out that nothing in this template
+    draws the unplaced cards as their own group, and that the way to do it is a CONDITION inside
+    the shared shape rather than a copy of the shape. That is the better engineering answer, so
+    the case was scoring the wrong thing. A real split case needs two uses that differ by their
+    CONTEXT rather than by their data; see the follow-ups in the PR description.
+  */
+  {
+    id: 'kanban-card-radius',
+    template: 'kanban',
+    request: 'Make the cards on a board more rounded.',
+    /*
+      Every card, because the request says "the cards". They are one shape used four times, so the
+      edit belongs in the definition — a model that patches a single `$ref`'s target leaves three
+      cards square and scores nothing. The check does not care WHICH radius, only that none is
+      left at the old one.
+    */
+    check: (s) => {
+      const bodies = cardBodies(s);
+      const unchanged = bodies.filter((n) => n.props?.r === '300').length;
+      return all(
+        expect(bodies.length === 4, `expected the four cards, found ${bodies.length}`),
+        expect(unchanged === 0, `${unchanged} of ${bodies.length} cards still have the old radius`),
+      );
+    },
+    solve: (s) => edited(s, (r) => cardBodies(r as unknown as SchemaNode).forEach((n) => (n.props!.r = '500'))),
+  },
+  // ─── Against the template that does not fit ───────────────────────────────
+  /*
+    Two cases on `workshopTemplate`, which is the one the bounding work exists for: 3,068 nodes
+    and 400,460 characters compacted, so a whole-template turn is ~146K tokens and an outline
+    turn ~73K. Both still run, which is the only reason the two can be compared — the point of
+    measuring now rather than after another year of template growth.
+
+    Each asks for a change to one node among three thousand, which is the thing bounding makes
+    harder: with the whole tree present the node is simply there, and from an outline it has to
+    be found by what it says and then fetched or patched blind. Both targets appear exactly once
+    in the template, so neither request can be read two ways — the lesson of the case #253
+    removed.
+  */
+  {
+    id: 'workshop-empty-replies',
+    template: 'workshop',
+    request:
+      "The discussion panel says 'No replies yet.' when a thread is empty — change it to 'Nothing here yet — start the conversation.'",
+    check: (s) =>
+      all(
+        expect(occurrences(s, 'Nothing here yet') > 0, 'the new empty-state text is not there'),
+        expect(occurrences(s, 'No replies yet.') === 0, 'the old text is still there'),
+      ),
+    solve: (s) =>
+      edited(s, (r) => {
+        const text = only(r as unknown as SchemaNode, "'No replies yet.' node", (n) =>
+          (n.children ?? []).includes('No replies yet.'),
+        );
+        text.children = ['Nothing here yet — start the conversation.'];
+      }),
+  },
+  {
+    id: 'workshop-unfold-variant',
+    template: 'workshop',
+    request: "Make the 'Unfold all' button a secondary button instead of a ghost one.",
+    /*
+      A PROP change on a node found by its text, which is the case bounding is most exposed on:
+      an outline carries no props at all, so the model either fetches the node or patches it
+      blind. Blind is safe here — `mergeNode` preserves what a patch does not mention — and the
+      second clause is what proves it: the button's `onClick` must survive. A model that replaced
+      the node wholesale instead of merging would lose it, and the button would go dead while
+      looking right.
+    */
+    check: (s) => {
+      const button = matching(s, (n) => (n.children ?? []).includes('Unfold all'));
+      return all(
+        expect(button.length === 1, `expected one 'Unfold all' button, found ${button.length}`),
+        expect(button[0]?.props?.variant === 'secondary', `variant is ${String(button[0]?.props?.variant)}`),
+        expect(Boolean(button[0]?.props?.onClick), 'the button lost its onClick'),
+      );
+    },
+    solve: (s) =>
+      edited(s, (r) => {
+        const button = only(r as unknown as SchemaNode, "'Unfold all' button", (n) =>
+          (n.children ?? []).includes('Unfold all'),
+        );
+        button.props!.variant = 'secondary';
+      }),
+  },
+  {
+    id: 'kanban-empty-icon',
+    template: 'kanban',
+    request: 'The empty message on the boards list has a kanban icon — use a folder icon instead.',
+    /*
+      One node among 280, and among seventeen `we-icon`s. Nothing structural identifies it; the
+      only handle is the word "kanban" in the request matching the icon's name, which is exactly
+      the preselection a relevance budget has to get right.
+    */
+    check: (s) =>
+      all(
+        expect(
+          matching(s, (n) => n.type === 'we-icon' && String(n.props?.name ?? '').includes('folder')).length > 0,
+          'no folder icon',
+        ),
+        expect(
+          matching(s, (n) => n.type === 'we-icon' && n.props?.name === 'kanban').length === 0,
+          'the kanban icon is still there',
+        ),
+      ),
+    solve: (s) =>
+      edited(s, (r) => {
+        only(
+          r as unknown as SchemaNode,
+          'kanban icon',
+          (n) => n.type === 'we-icon' && n.props?.name === 'kanban',
+        ).props!.name = 'folder-open';
+      }),
+  },
+  {
+    id: 'kanban-remove-load-more',
+    template: 'kanban',
+    request: 'Take the Load more button off the boards list.',
+    /*
+      Deletion in a large tree. Worth its own case because the patch format's `children` semantics
+      make removal the awkward direction: an array replaces wholesale, so a model working from a
+      skeleton that elided its siblings can delete the button and its neighbours together. The
+      second clause is what catches that.
+    */
+    check: (s) =>
+      all(
+        expect(occurrences(s, 'Load more') === 0, 'the Load more button is still there'),
+        expect(occurrences(s, 'New board') > 0, 'the New board button was removed too'),
+      ),
+    solve: (s) =>
+      edited(s, (r) => {
+        const button = only(
+          r as unknown as SchemaNode,
+          'Load more button',
+          (n) => n.type === 'we-button' && textOf(n).includes('Load more'),
+        );
+        const parent = only(
+          r as unknown as SchemaNode,
+          'row holding the Load more button',
+          (n) => Array.isArray(n.children) && n.children.includes(button),
+        );
+        parent.children = (parent.children as unknown[]).filter((c) => c !== button);
+      }),
+  },
+  {
+    id: 'kanban-back-tooltip',
+    template: 'kanban',
+    request: "Put a tooltip saying 'All boards' on the button that goes back from a board to the list.",
+    /*
+      The target is named by what it DOES, not by anything written on it — it is an icon button
+      with no text at all. So the model has to work out that the arrow-left button in the board
+      header is the back button, which no keyword match on the request will do for it.
+    */
+    check: (s) => {
+      const tips = matching(s, (n) => n.type === 'we-tooltip' && String(n.props?.content ?? '') === 'All boards');
+      return all(
+        expect(tips.length > 0, "no tooltip says 'All boards'"),
+        expect(
+          tips.some((t) => matching(t as unknown as SchemaNode, (n) => n.props?.name === 'arrow-left').length > 0),
+          "the 'All boards' tooltip is not on the back button",
+        ),
+      );
+    },
+    solve: (s) =>
+      edited(s, (r) => {
+        const icon = only(r as unknown as SchemaNode, 'arrow-left icon', (n) => n.props?.name === 'arrow-left');
+        const button = only(
+          r as unknown as SchemaNode,
+          'back button',
+          (n) => Array.isArray(n.children) && n.children.includes(icon),
+        );
+        const parent = only(
+          r as unknown as SchemaNode,
+          'row holding the back button',
+          (n) => Array.isArray(n.children) && n.children.includes(button),
+        );
+        parent.children = (parent.children as unknown[]).map((c) =>
+          c === button ? { type: 'we-tooltip', props: { content: 'All boards' }, children: [button] } : c,
         );
       }),
   },

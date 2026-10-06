@@ -9,7 +9,8 @@
  * signals, and never learns which model or provider answered.
  */
 import { chatContext, formatExternalManifestForPrompt, requestMessage, updateSchemaTool } from '@shared/ai/aiInfra';
-import { runEditSession } from '@shared/ai/editSession';
+import { countedPatches, runEditSession } from '@shared/ai/editSession';
+import { boundTemplate } from '@shared/ai/templateContext';
 import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
 import { deepClone } from '@shared/utils';
@@ -27,7 +28,14 @@ import { ChatMessage as ChatMessageRecord, ChatSession as ChatSessionRecord } fr
 import type { DockEdge, DockSize } from '@we/module-shared';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { contextData, setLocalWarningSink } from '@we/schema-shared';
-import { buildValidationContext, ensureNodeIds, stripNodeIds } from '@we/schema-shared';
+import {
+  buildValidationContext,
+  compactDefinitions,
+  ensureNodeIds,
+  expandDefinitions,
+  stripNodeIds,
+  withEntities,
+} from '@we/schema-shared';
 import {
   Accessor,
   createContext,
@@ -255,8 +263,7 @@ export function EditorStoreProvider(props: ParentProps) {
   const getValidationCtx = createMemo(() => {
     const foreign = datasetStore.currentDatasetEntities().map((m) => m.name);
     const shapes = shapeStore.spaceShapes().map((s) => s.name);
-    if (foreign.length === 0 && shapes.length === 0) return baseValidationCtx;
-    return { ...baseValidationCtx, entityNames: new Set([...baseValidationCtx.entityNames, ...foreign, ...shapes]) };
+    return withEntities(baseValidationCtx, [...foreign, ...shapes]);
   });
 
   // --- Chat state ---
@@ -1003,15 +1010,36 @@ export function EditorStoreProvider(props: ParentProps) {
 
     // What the model is told about WE, chosen for this request: a core plus the components and
     // stores it implicates, with the rest behind a tool. See `chatContext`.
-    const schemaForRequest = deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode;
+    /*
+      ONE tree, numbered once, for everything this turn: what the model is shown, what its ids
+      are resolved against, and what the context strategy preselects from.
+
+      Built here rather than inside `buildTurns` because the ids only mean anything if the SAME
+      tree is on both sides. Compacting in one place and patching the uncompacted template in
+      another gave two independent numberings that drift apart at the first hoisted shape — and
+      the failure was quiet: a patch the model wrote against a shared definition resolved, on this
+      side, to one inline copy of it. It validated, it saved, it changed something plausible, and
+      the model's explanation of what it had done was confidently wrong.
+    */
+    const schemaForRequest = ensureNodeIds(
+      compactDefinitions(deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode).schema,
+    );
     const prepared = await chatContext({ request: text, schema: schemaForRequest });
+    /*
+      How much of the TEMPLATE goes with it. `chatContext` bounds the reference; this bounds the
+      other half, which on a real template is the larger one. A template inside the budget is
+      sent exactly as before — kanban is, workshop is not.
+    */
+    const bounded = boundTemplate(schemaForRequest, text);
+    devLog('[editSession] template', bounded.whole ? 'whole' : 'bounded', bounded.stats);
 
     const result = await runEditSession({
       converse,
       system: prepared.system,
-      turns: buildTurns(text),
-      tools: [updateSchemaTool, ...prepared.tools],
-      resolveTool: prepared.resolveTool,
+      turns: buildTurns(text, bounded.sent),
+      tools: [updateSchemaTool, ...prepared.tools, ...bounded.tools],
+      // Whichever tool owns the name answers; a tool nobody claims is reported by the session.
+      resolveTool: (call) => prepared.resolveTool?.(call) ?? bounded.resolveTool?.(call),
       // Buffered changes if there are any, so a conversation resumed against a read-only template
       // continues from them rather than reverting them.
       schema: schemaForRequest,
@@ -1020,23 +1048,40 @@ export function EditorStoreProvider(props: ParentProps) {
       debug: devLog,
       accept: async (merged) => {
         pushSnapshot();
+        /*
+          Expanded before it is stored: compaction is a fact about the wire, not about the
+          template. A stored `$defs` would be a second shape for everything downstream to
+          understand — the code panel, a published template, the next turn's compaction — in
+          exchange for nothing, since the saving is in what is sent.
+        */
+        const authored = stripNodeIds(expandDefinitions(merged)) as TemplateSchema;
         if (isReadOnly()) {
-          setPendingTemplate(stripNodeIds(merged) as TemplateSchema);
+          setPendingTemplate(authored);
           return 'Schema changes validated and buffered. Template is read-only — user must fork to apply.';
         }
         templateStore.updateTemplate({
-          ...stripNodeIds(merged),
+          ...authored,
           id: templateStore.currentTemplate.id,
         } as TemplateSchema);
         await templateStore.persistCurrentTemplate();
         setPendingTemplate(null);
         return 'Template updated successfully.';
       },
-      acceptedLine: () =>
+      acceptedLine: (patches) =>
         isReadOnly() && pendingTemplate() !== null
-          ? '<span class="warning">⚠ Changes are ready — fork this template to apply them.</span>'
-          : '<span class="success">✓ Template updated</span>',
+          ? `<span class="warning">⚠ ${countedPatches(patches)} ready — fork this template to apply them.</span>`
+          : `<span class="success">✓ Template updated (${countedPatches(patches)})</span>`,
     });
+
+    /*
+      What the session actually did, once, at the end.
+
+      A tick in the panel is drawn per accepted turn, so a count of them is a claim about how many
+      turns were accepted — and when those two disagreed there was no way to tell a display fault
+      from an extra write without reading every patch line and counting. `accepted` is the number
+      of times the template was written; this makes that answerable at a glance.
+    */
+    devLog('[editSession] session', result.outcome, result.stats);
 
     setStreamingContent('');
     if (result.outcome === 'truncated') {
@@ -1059,7 +1104,7 @@ export function EditorStoreProvider(props: ParentProps) {
    * The currentSchema is included in the latest user message so the AI
    * always sees the current template state.
    */
-  function buildTurns(latestText: string): ConversationTurn[] {
+  function buildTurns(latestText: string, template: unknown): ConversationTurn[] {
     const history: ConversationTurn[] = [];
 
     // Include prior conversation (skip system messages)
@@ -1079,14 +1124,22 @@ export function EditorStoreProvider(props: ParentProps) {
     }
 
     /*
-      The schema the assistant is shown: buffered changes if there are any, else the store's.
+      `template` is what `boundTemplate` decided to send — the tree itself when it fits the
+      budget, an outline plus the parts the request implicates when it does not. Either way it
+      comes from the one tree compacted and numbered in `sendMessage`, which is the same object
+      the session resolves the model's ids against. It carries buffered changes where there are
+      any, which matters on a read-only template: patched into `pendingTemplate` while the store
+      is deliberately untouched, so showing `currentTemplate` would show the model a tree without
+      its own last answer in it.
 
-      `currentTemplate` alone is wrong on a read-only template, where a validated patch goes to
-      `pendingTemplate` and the store is deliberately untouched — so the model was shown the
-      original, patched it again, and its second answer conflicted with a first it could not see.
-      Same reason `workingSchema` in `sendMessage` carries across turns rather than re-reading.
+      Compaction is why it is worth the care. A template repeats itself because a fragment stamps
+      its whole tree at every call site, and the editor is where that is most expensive — the
+      schema crosses the wire every turn and comes back. It takes CardsView down 50% and the
+      workshop template 32%, the difference between a request that fits a context window and one
+      that does not. It also gives the model two scopes rather than one: a patch inside a
+      definition changes every use of that shape, a patch on a `$ref` changes that one use, and
+      the tool result says which happened.
     */
-    const schemaWithIds = ensureNodeIds(deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode);
     const manifest = datasetStore.currentDatasetEntities();
     const extras: Record<string, unknown> = {};
     if (manifest.length > 0) {
@@ -1101,7 +1154,7 @@ export function EditorStoreProvider(props: ParentProps) {
     }
     history.push({
       role: 'user',
-      text: requestMessage(latestText, schemaWithIds, extras),
+      text: requestMessage(latestText, template, extras),
     });
 
     return history;

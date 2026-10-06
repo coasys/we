@@ -1,3 +1,6 @@
+import { contentSecurityPolicy, rewriteKnockoutGlobalEval } from '@we/csp/vite';
+import { globeLayerAssets } from '@we/globe-layers/vite';
+import { cesiumAssets } from '@we/globe-widget/vite';
 import { resolve } from 'path';
 import { defineConfig } from 'vite';
 import solid from 'vite-plugin-solid';
@@ -6,7 +9,15 @@ const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  plugins: [solid()],
+  // The Content-Security-Policy as a meta tag, from `@we/csp` — the builder Electron's header comes
+  // from too. The rewrite lets the globe load under a policy without 'unsafe-eval'.
+  plugins: [
+    solid(),
+    contentSecurityPolicy({ host: 'tauri', seedFile: resolve(import.meta.dirname, '../../we-seed.json') }),
+    rewriteKnockoutGlobalEval(),
+    cesiumAssets(),
+    globeLayerAssets(),
+  ],
 
   // Use relative base path for Tauri builds
   base: './',

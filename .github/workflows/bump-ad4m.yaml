@@ -14,6 +14,10 @@ name: Bump ad4m
 #
 # Opening a PR needs the repository setting "Allow GitHub Actions to create and approve pull
 # requests" (Settings → Actions → General).
+#
+# The same schedule also tells paired pull requests when the ad4m change they wait for can be
+# pinned (the `ready` job): nothing in this repository runs when an ad4m PR merges or a version is
+# published, so asking hourly is how it finds out.
 on:
   schedule:
     - cron: '17 * * * *'
@@ -23,6 +27,7 @@ permissions:
   contents: write # push the bump branch
   pull-requests: write # open and update the PR
   actions: write # start CI on the bump branch
+  issues: write # label and comment on paired PRs (the `ready` job)
 
 concurrency:
   group: bump-ad4m
@@ -43,7 +48,7 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
       - name: Bump
         id: bump
@@ -116,4 +121,27 @@ jobs:
         if: steps.current.outputs.stale == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run build.yaml --ref "$BRANCH"
+        # And the live tests, which are the point of a bump: they run against an executor built from
+        # the version the PR moves to.
+        run: |
+          gh workflow run build.yaml --ref "$BRANCH"
+          gh workflow run ad4m-live.yaml --ref "$BRANCH"
+
+  # A paired PR whose ad4m change has merged and been published gets the `ready to bump ad4m`
+  # label and a comment naming the version and what to run. Independent of the bump above: a
+  # paired PR moves the pin itself, in its own branch. scripts/ad4m-ready-to-bump.mjs has the rules.
+  ready:
+    name: Mark paired PRs ready to bump
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: dev
+          sparse-checkout: scripts
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Check paired PRs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/ad4m-ready-to-bump.mjs

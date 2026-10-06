@@ -16,7 +16,9 @@ const primitiveEntries = Object.fromEntries(
 );
 
 export default defineConfig({
-  entry: { index: 'src/index.ts', ...primitiveEntries },
+  // `top-layer` on its own so the host can hold the top layer without importing every primitive —
+  // its state lives on the window, so this copy and the one inside `index` agree. See top-layer.ts.
+  entry: { index: 'src/index.ts', 'top-layer': 'src/shared/top-layer.ts', ...primitiveEntries },
   format: ['esm'],
   dts: false,
   sourcemap: true,

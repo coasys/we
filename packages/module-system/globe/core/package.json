@@ -1,0 +1,39 @@
+{
+  "name": "@we/globe-core",
+  "version": "0.1.0",
+  "description": "The globe's engine-neutral logic: layer mounting, accessors, style resolution, aggregation and diffing, shared by every engine's renderers",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@we/design-utils": "workspace:*",
+    "@we/globe-protocol": "workspace:*",
+    "@we/graph-core": "workspace:*",
+    "@we/graph-protocol": "workspace:*",
+    "h3-js": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "@we/cli": "workspace:*",
+    "cesium": "^1.144.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.2"
+  },
+  "sideEffects": false
+}

@@ -8,7 +8,13 @@
  */
 import type { ConversationReply, ConversationRequest, ConversationTurn } from '@we/backend-shared';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
-import { buildValidationContext, contextData } from '@we/schema-shared';
+import {
+  buildValidationContext,
+  compactDefinitions,
+  contextData,
+  definitionsOf,
+  ensureNodeIds,
+} from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 import { updateSchemaTool } from '../src/shared/ai/aiInfra';
@@ -108,6 +114,48 @@ describe('an edit session', () => {
     });
   });
 
+  /*
+    The log is the harness's only account of WHY a case failed. Pinned here rather than in the
+    eval, because the subtlety is in this file: a result's content is rewritten after it is first
+    pushed — `refuse` replaces it with the validation error, and acceptance replaces it with the
+    accept message plus any note. Log at the wrong moment and every entry says "Patches applied."
+  */
+  it('logs each call with the arguments sent and the answer finally given', async () => {
+    const bad = { targetId: '', insert: { children: { node: { type: 'we-nonexistent' } } } };
+    const { run } = session([
+      { text: '', calls: [patch('c1', [bad])], finish: 'tool_calls' },
+      { text: '', calls: [patch('c2', [addText('Fixed')])], finish: 'tool_calls' },
+      { text: 'Done.', calls: [], finish: 'done' },
+    ]);
+    const { log } = await run;
+
+    expect(log).toHaveLength(2);
+    expect(log[0]).toMatchObject({
+      turn: 1,
+      tool: 'update_schema',
+      isError: true,
+      result: expect.stringMatching(/^Semantic validation failed/),
+    });
+    // The arguments verbatim — what distinguishes "patched the wrong node" from "sent nonsense".
+    expect(log[0].input).toEqual({ patches: [bad] });
+    expect(log[1]).toMatchObject({ turn: 2, isError: false, result: 'Template updated successfully.' });
+  });
+
+  it('logs a context call too, so a session reads as the sequence it was', async () => {
+    const { run } = session(
+      [
+        { text: '', calls: [{ id: 'c1', name: 'lookup_context', arguments: { topic: 'Row' } }], finish: 'tool_calls' },
+        { text: 'Done.', calls: [], finish: 'done' },
+      ],
+      { resolveTool: () => 'Row takes gap and ay.' },
+    );
+    const { log } = await run;
+
+    expect(log).toEqual([
+      { turn: 1, tool: 'lookup_context', input: { topic: 'Row' }, result: 'Row takes gap and ay.', isError: false },
+    ]);
+  });
+
   it('answers every call in a turn by name, and keeps a failed turn off the template entirely', async () => {
     const { run, accepted, model } = session([
       {
@@ -173,6 +221,124 @@ describe('an edit session', () => {
     const result = await run;
     expect(result.outcome).toBe('exhausted');
     expect(result.stats.modelCalls).toBe(3);
+  });
+
+  /*
+    What a patch DID survives being told what became of the template.
+
+    The two are written to the same field, the second overwriting the first, and acceptance is the
+    only path where the first is worth anything — so a note composed and then discarded looked
+    exactly like no note at all. Caught by driving the real editor and reading the tool result.
+  */
+  it('keeps the reach of a shared-shape patch in the result it accepts', async () => {
+    const shape = (): SchemaNode =>
+      ({
+        type: 'Column',
+        props: { gap: '300', p: '400', bg: 'surface' },
+        children: [{ type: 'we-text', children: ['Card'] }],
+      }) as SchemaNode;
+    const shared = compactDefinitions(
+      {
+        type: 'Column',
+        meta: { name: 'Test', description: '', icon: 'cube' },
+        children: [shape(), shape(), shape()],
+      } as unknown as SchemaNode,
+      { minChars: 0 }, // the fixture is small; what is under test is the reporting, not the threshold
+    );
+    expect(shared.hoisted).toBe(1);
+
+    const inside = Object.values(definitionsOf(ensureNodeIds(shared.schema)))[0].children![0] as SchemaNode;
+    const { run, turns } = session(
+      [
+        {
+          text: '',
+          calls: [patch('c1', [{ targetId: inside.id!, node: { props: { color: 'accent-text' } } }])],
+          finish: 'tool_calls',
+        },
+        { text: 'Done.', calls: [], finish: 'done' },
+      ],
+      { schema: shared.schema },
+    );
+    await run;
+
+    const result = (turns.find((t) => t.role === 'tool') as { result: string }).result;
+    expect(result).toContain('Template updated successfully.'); // what became of the template
+    expect(result).toContain('shows in 3 places'); // and what the patch did
+  });
+
+  /*
+    A compacted template is accepted on the same terms as any other.
+
+    `$defs` was once the STRICTER path — a definition's body checked as a node, where the same
+    subtree in a prop went through a union that fell back to accepting any object — so hoisting
+    alone could flip a template from valid to invalid and every patch was refused for a fault the
+    model had not caused. The prop union now checks what looks like a node, so the two agree;
+    this holds the behaviour that depended on it, and `validators.test.ts` holds the agreement.
+  */
+  it('accepts an ordinary patch to a template carrying definitions', async () => {
+    const held = (): SchemaNode =>
+      ({
+        type: 'Column',
+        props: { gap: '300' },
+        children: [{ type: 'we-text', children: ['Shared'] }],
+      }) as unknown as SchemaNode;
+    const wrapper = (which: string): SchemaNode =>
+      ({ type: '$if', props: { condition: { $: `local.${which}` }, then: held() } }) as unknown as SchemaNode;
+    const { schema, hoisted } = compactDefinitions(
+      {
+        type: 'Column',
+        meta: { name: 'T', description: '', icon: 'cube' },
+        children: [wrapper('a'), wrapper('b')],
+      } as SchemaNode,
+      { minChars: 0 },
+    );
+    expect(hoisted).toBeGreaterThan(0);
+
+    const { run, accepted } = session(
+      [
+        { text: '', calls: [patch('c1', [addText('Added')])], finish: 'tool_calls' },
+        { text: 'Done.', calls: [], finish: 'done' },
+      ],
+      { schema },
+    );
+    const result = await run;
+
+    expect(result.outcome).toBe('done');
+    expect(accepted).toHaveLength(1); // not refused for a fault the patch did not introduce
+    expect(result.stats.structuralFailures).toBe(0);
+  });
+
+  /*
+    A run of accepted turns is one thing that happened, and says how much it did.
+
+    Three identical ticks in a column are unreadable: they look like a repeat rather than three
+    changes, which is exactly how they were read the first time. Separated by what the model said,
+    they belong to that reasoning and stay; adjacent, they are one line that counts up.
+  */
+  it('counts a run of accepted turns as one line, and keeps the ones prose separates', async () => {
+    const { run } = session([
+      { text: 'First.', calls: [patch('c1', [addText('One')])], finish: 'tool_calls' },
+      { text: '', calls: [patch('c2', [addText('Two'), addText('Three')])], finish: 'tool_calls' },
+      { text: 'Done.', calls: [], finish: 'done' },
+    ]);
+    const { transcript } = await run;
+
+    // Turn two said nothing, so it folds into turn one's line and takes the total with it.
+    expect(transcript.match(/✓ Template updated/g)).toHaveLength(1);
+    expect(transcript).toContain('✓ Template updated (3 patches)');
+    expect(transcript).not.toContain('(1 patch)');
+    expect(transcript.indexOf('First.')).toBeLessThan(transcript.indexOf('✓'));
+  });
+
+  it('keeps a tick per turn when the model speaks between them', async () => {
+    const { run } = session([
+      { text: 'Doing the first.', calls: [patch('c1', [addText('One')])], finish: 'tool_calls' },
+      { text: 'Now the second.', calls: [patch('c2', [addText('Two')])], finish: 'tool_calls' },
+      { text: 'Done.', calls: [], finish: 'done' },
+    ]);
+    const { transcript } = await run;
+
+    expect(transcript.match(/✓ Template updated \(1 patch\)/g)).toHaveLength(2);
   });
 
   it('passes a chosen model through, and measures what each call sends', async () => {

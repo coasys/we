@@ -100,13 +100,23 @@ const zDefined = z.custom<unknown>((v) => v !== undefined, 'Required');
  * can see by `semanticValidation`, which is where a column-precise error can be reported.
  */
 const zExpressionToken = z.object({ $: z.string().min(1) }).strict();
+
+/*
+  A handler, or a list run in order — the shape every lifecycle key and `$if` branch holds.
+
+  Annotated, and not merely inferred: a handler may carry handlers, so `zActionToken` reaches
+  `zPropToken` which reaches `zActionToken`, and TypeScript cannot infer its way around a cycle.
+  Saying `unknown` here costs nothing — the parse is what checks these, not the static type.
+*/
+const lazyToken = z.lazy((): z.ZodType<unknown> => zPropToken);
+const lazyHandler = z.lazy((): z.ZodType<unknown> => z.union([zPropToken, z.array(zPropToken)]));
 const zActionToken = z
   .object({
     $action: z.string().min(1),
     args: z.array(z.unknown()).optional(),
-    onSuccess: z.array(z.unknown()).optional(),
-    onError: z.array(z.unknown()).optional(),
-    onFinally: z.array(z.unknown()).optional(),
+    onSuccess: z.array(lazyToken).optional(),
+    onError: z.array(lazyToken).optional(),
+    onFinally: z.array(lazyToken).optional(),
   })
   .strict();
 // Neutral authoring DSL — `entity` (the entity to query) + `dataset` (the perspective/store handle).
@@ -166,8 +176,8 @@ const zIfToken = z
   .object({
     $if: z.object({
       condition: zDefined,
-      then: z.unknown().optional(),
-      else: z.unknown().optional(),
+      then: lazyHandler.optional(),
+      else: lazyHandler.optional(),
     }),
   })
   .strict();
@@ -252,6 +262,10 @@ function schemaNodeShape() {
     styles: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
     $localState: zLocalStateDeclaration.optional(),
     $queries: zQueriesDeclaration.optional(),
+    // Root only in practice, but declared here because the shape is checked node by node.
+    $defs: z.record(z.string(), lazySchemaNode).optional(),
+    // Set when a shared shape was given a copy of its own — see `definitions.ts`.
+    forkedFrom: z.string().optional(),
   };
 }
 
@@ -279,6 +293,18 @@ export const zSchemaNode: z.ZodType<SchemaNode> = z
     // The actual routes array lives on the parent template or route node, not on the $routes node itself.
   });
 
+/**
+ * A `type` plus anything only a node carries.
+ *
+ * `type` alone is not enough: a transition effect is `{ type: 'fade', duration: 400 }`, a graph
+ * layout is `{ type: 'force', options: … }`, and a behaviour the same — specs that name a kind
+ * and are no part of the tree. What separates a node is that it also holds tree things.
+ */
+function looksLikeNode(val: object): boolean {
+  if (typeof (val as { type?: unknown }).type !== 'string') return false;
+  return ['props', 'children', 'slots', 'slot', 'routes', '$localState', '$queries'].some((key) => key in val);
+}
+
 export const zSchemaProp: z.ZodType<SchemaProp> = z.union([
   z.string(),
   z.number(),
@@ -297,7 +323,8 @@ export const zSchemaProp: z.ZodType<SchemaProp> = z.union([
       typeof val === 'object' &&
       val !== null &&
       !Array.isArray(val) &&
-      !Object.keys(val).some((k) => k.startsWith('$')),
+      !Object.keys(val).some((k) => k.startsWith('$')) &&
+      !looksLikeNode(val),
   ),
   z.array(lazySchemaProp),
   z.undefined(),
@@ -329,8 +356,10 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
     /**
      * The panels this interface has, and where each starts. See `TemplatePanel`.
      *
-     * `node` is typed but not structurally checked here: this schema is what *checks* a node, so
-     * recursing into it would be a cycle. The node inside a panel is walked like any other by the
+     * `node` is checked as a node, through the lazy reference every other nested position uses —
+     * the cycle this once worried about is what `z.lazy` is for. Unchecked, a shell's panels were
+     * the largest unvalidated region in the repo: 248k of the workshop template's 570k characters.
+     * The node inside a panel is walked like any other by the
      * validator's own traversal, which is where its props and component names are verified.
      */
     panels: z
@@ -340,7 +369,7 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
           module: z.string().optional(),
           /** Which of a module's panels this places, where it contributes several. */
           dock: z.string().optional(),
-          node: z.custom<SchemaNode>().optional(),
+          node: lazySchemaNode.optional(),
           title: z.string().optional(),
           snap: z
             .enum(['top-left', 'top', 'top-right', 'right', 'bottom-right', 'bottom', 'bottom-left', 'left'])

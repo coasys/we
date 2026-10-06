@@ -144,6 +144,31 @@ export function extractHostSources(registryFile: string): SourceEntry[] {
  * kept as a second list, so a member reclassified there disappears from here on the next run.
  */
 export function extractWiringMembers(surfaceFile: string): Map<string, Set<string>> {
+  return extractClassified(surfaceFile, (init) => init === 'WIRING');
+}
+
+/**
+ * Actions `templateSurface.ts` classifies as `ambient` — safe to run with nobody asking — per store.
+ *
+ * Every other action needs somebody to have done something to the part of the template calling it.
+ * The validator reads the difference to warn about a write wired to an event that happens by itself,
+ * and reads it from the classification so the two cannot disagree.
+ */
+export function extractAmbientMembers(surfaceFile: string): Map<string, Set<string>> {
+  return extractClassified(surfaceFile, (init) => init.startsWith('ambient('));
+}
+
+/**
+ * Actions marked `destructive`, per store — the ones the host asks about itself before a space
+ * template's call runs. Lets the validator tell a template that its own "are you sure?" in front of
+ * one is a second question about the same click.
+ */
+export function extractDestructiveMembers(surfaceFile: string): Map<string, Set<string>> {
+  return extractClassified(surfaceFile, (init) => init.startsWith('destructive('));
+}
+
+/** Members of `TEMPLATE_SURFACE` whose classification's source text passes `test`, per store. */
+function extractClassified(surfaceFile: string, test: (initializer: string) => boolean): Map<string, Set<string>> {
   const project = new Project({ skipAddingFilesFromTsConfig: true });
   const file = project.addSourceFileAtPath(surfaceFile);
 
@@ -151,7 +176,7 @@ export function extractWiringMembers(surfaceFile: string): Map<string, Set<strin
   const surface = decl?.getInitializerIfKind(SyntaxKind.ObjectLiteralExpression);
   if (!surface) throw new Error(`could not read TEMPLATE_SURFACE from ${surfaceFile}`);
 
-  const wiring = new Map<string, Set<string>>();
+  const found = new Map<string, Set<string>>();
   for (const storeProp of surface.getProperties()) {
     if (!storeProp.isKind(SyntaxKind.PropertyAssignment)) continue;
     const members = storeProp.getInitializerIfKind(SyntaxKind.ObjectLiteralExpression);
@@ -159,11 +184,12 @@ export function extractWiringMembers(surfaceFile: string): Map<string, Set<strin
     const names = new Set<string>();
     for (const member of members.getProperties()) {
       if (!member.isKind(SyntaxKind.PropertyAssignment)) continue;
-      if (member.getInitializer()?.getText() === 'WIRING') names.add(member.getName());
+      const init = member.getInitializer()?.getText();
+      if (init && test(init)) names.add(member.getName());
     }
-    if (names.size) wiring.set(storeProp.getName(), names);
+    if (names.size) found.set(storeProp.getName(), names);
   }
-  return wiring;
+  return found;
 }
 
 /**

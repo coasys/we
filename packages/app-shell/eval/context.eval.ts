@@ -13,14 +13,15 @@ import { join } from 'node:path';
 
 import { requestMessage, updateSchemaTool } from '@shared/ai/aiInfra';
 import { CONTEXT_STRATEGIES, type ContextStrategyId, prepareContext } from '@shared/ai/contextStrategies';
-import { runEditSession } from '@shared/ai/editSession';
+import { type EditSessionResult, runEditSession } from '@shared/ai/editSession';
+import { boundTemplate, DEFAULT_TEMPLATE_BUDGET } from '@shared/ai/templateContext';
 import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
 import { schemaContext } from '@we/ai-context';
 import { createAd4mLanguageModelPort } from '@we/backend-ad4m';
-import { buildValidationContext, contextData, ensureNodeIds } from '@we/schema-shared';
+import { buildValidationContext, compactDefinitions, contextData, ensureNodeIds } from '@we/schema-shared';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 
-import { EVAL_CASES, startingTemplate } from './cases';
+import { EVAL_CASES, scaleOf, startingTemplate } from './cases';
 import { type EvalRecord, reportMarkdown } from './report';
 import { scoreCase } from './score';
 
@@ -38,7 +39,22 @@ const strategies = (list(env.WE_EVAL_STRATEGIES).length ? list(env.WE_EVAL_STRAT
   (s): s is ContextStrategyId => (CONTEXT_STRATEGIES as string[]).includes(s),
 );
 const caseIds = list(env.WE_EVAL_CASES);
-const cases = caseIds.length ? EVAL_CASES.filter((c) => caseIds.includes(c.id)) : EVAL_CASES;
+/*
+  Which scales to run. Defaults to `small` — the seventeen cases on `blank` and `feed` that every
+  recorded baseline is of, so an unqualified run stays comparable with `BASELINE.md` and stays
+  cheap. The large cases send a real template and cost several times as much per call, so asking
+  for them is deliberate: `WE_EVAL_SCALE=large`, or `small,large` for both.
+*/
+const scales = list(env.WE_EVAL_SCALE).length ? list(env.WE_EVAL_SCALE) : ['small'];
+/*
+  The template budget, in characters. Defaults high enough that every template in the suite is
+  sent whole, so an unqualified run measures exactly what it measured before and stays comparable
+  with the baselines in `BASELINE.md`. Lower it to measure what bounding costs or buys.
+*/
+const templateBudget = Number(env.WE_EVAL_TEMPLATE_BUDGET) || DEFAULT_TEMPLATE_BUDGET;
+const cases = caseIds.length
+  ? EVAL_CASES.filter((c) => caseIds.includes(c.id))
+  : EVAL_CASES.filter((c) => scales.includes(scaleOf(c.template)));
 const repeat = Math.max(1, Number(env.WE_EVAL_REPEAT) || 1);
 /**
  * How long one turn may take, in seconds.
@@ -99,10 +115,46 @@ beforeAll(async () => {
   }
 });
 
+const runDir = join(__dirname, 'results', startedAt.toISOString().replace(/[:.]/g, '-'));
+
+/**
+ * What one failing case did, as a file a person can read.
+ *
+ * Written per failure rather than per case because these are large — the action log holds every
+ * patch verbatim — and a passing case has nothing to explain.
+ */
+function writeSession(caseId: string, record: EvalRecord, result: EditSessionResult): void {
+  mkdirSync(join(runDir, 'sessions'), { recursive: true });
+  const body = [
+    `# ${caseId} · ${record.model} · ${record.strategy} · run ${record.run}`,
+    '',
+    `**Outcome:** ${record.outcome} — ${record.reason || 'no reason recorded'}`,
+    `**Model calls:** ${record.modelCalls} · **context calls:** ${record.contextCalls} · ` +
+      `**validation retries:** ${record.validationRetries}`,
+    '',
+    '## What the model did',
+    '',
+    ...result.log.flatMap((action) => [
+      `### turn ${action.turn} · \`${action.tool}\`${action.isError ? ' · **error**' : ''}`,
+      '',
+      '```json',
+      JSON.stringify(action.input, null, 2),
+      '```',
+      '',
+      `**Answered:** ${action.result}`,
+      '',
+    ]),
+    '## What the panel showed',
+    '',
+    result.transcript || '(nothing)',
+    '',
+  ].join('\n');
+  writeFileSync(join(runDir, 'sessions', `${caseId}-${record.strategy}-run${record.run}.md`), body);
+}
+
 afterAll(() => {
   if (!records.length) return;
-  const stamp = startedAt.toISOString().replace(/[:.]/g, '-');
-  const dir = join(__dirname, 'results', stamp);
+  const dir = runDir;
   mkdirSync(dir, { recursive: true });
   const meta = { startedAt: startedAt.toISOString(), url, models, strategies, cases: cases.map((c) => c.id), repeat };
   writeFileSync(join(dir, 'results.json'), JSON.stringify({ meta, records }, null, 2));
@@ -119,10 +171,31 @@ for (const model of models) {
         for (let run = 1; run <= repeat; run++) {
           it(`${evalCase.id}${repeat > 1 ? ` #${run}` : ''}`, async () => {
             const start = startingTemplate(evalCase.template);
+            /*
+              One tree, compacted and numbered once, exactly as `EditorStore.sendMessage` does.
+
+              This harness exists so a result describes what the editor actually does, and the
+              editor stopped sending the authored template when `$defs` landed — it sends a
+              compacted one, which is a different payload and a different set of ids. Measured
+              against the authored form, every number here would be about a product that is no
+              longer shipped.
+
+              One tree and not two for the reason the editor had to learn: numbering walks in
+              order and compaction changes the order, so a second derivation drifts and the ids
+              the model is given stop meaning what the patcher resolves them to.
+            */
+            const sent = ensureNodeIds(compactDefinitions(structuredClone(start)).schema);
             const prepared = prepareContext(strategy, chatSystemPreamble, schemaContext, {
               request: evalCase.request,
-              schema: start,
+              schema: sent,
             });
+            /*
+              The template half of the budget, on the same tree. Its default budget sends every
+              template in the suite whole, so an unqualified run is unchanged and stays
+              comparable with BASELINE.md; `WE_EVAL_TEMPLATE_BUDGET=4000` is how a run measures
+              what bounding does.
+            */
+            const bounded = boundTemplate(sent, evalCase.request, templateBudget);
             const began = Date.now();
             const record: EvalRecord = {
               model,
@@ -140,18 +213,19 @@ for (const model of models) {
               modelCalls: 0,
               contextCalls: 0,
               validationRetries: 0,
+              // A run that errors before the model answers attempted no edit, which is true but
+              // not the thing `asked` is about; the reason string carries the error.
+              asked: false,
             };
 
             try {
               const result = await runEditSession({
                 converse: port.converse!,
                 system: prepared.system,
-                turns: [
-                  { role: 'user', text: requestMessage(evalCase.request, ensureNodeIds(structuredClone(start))) },
-                ],
-                tools: [updateSchemaTool, ...prepared.tools],
-                resolveTool: prepared.resolveTool,
-                schema: start,
+                turns: [{ role: 'user', text: requestMessage(evalCase.request, bounded.sent) }],
+                tools: [updateSchemaTool, ...prepared.tools, ...bounded.tools],
+                resolveTool: (call) => prepared.resolveTool?.(call) ?? bounded.resolveTool?.(call),
+                schema: sent,
                 validationContext,
                 model: model === 'default' ? undefined : model,
                 accept: () => 'Template updated successfully.',
@@ -164,6 +238,15 @@ for (const model of models) {
                 validationRetries:
                   result.stats.patchFailures + result.stats.structuralFailures + result.stats.semanticFailures,
               });
+              /*
+                What the model did, kept only for the cases that failed.
+
+                A score says a case did not pass; it never says why, and the three causes worth
+                telling apart — reached for the wrong tool, sent a malformed patch, patched the
+                wrong node — look identical from the outside. Keeping it for the failures only is
+                what makes that affordable: a passing case's log is noise, and these are large.
+              */
+              if (!record.passed) writeSession(evalCase.id, record, result);
             } catch (err) {
               record.reason = err instanceof Error ? err.message : String(err);
             }

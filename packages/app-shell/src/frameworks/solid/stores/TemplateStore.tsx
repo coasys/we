@@ -24,7 +24,13 @@ import { Accessor, createContext, createEffect, createSignal, ParentProps, useCo
 import { createStore, reconcile } from 'solid-js/store';
 
 import { CHROME_TIER, SPACE_TIER } from '../../../shared/registries/templateSurface';
-import { acceptTemplate, describeAcceptance, describeCapabilities } from '../../../shared/templateAcceptance';
+import { beginRender, leaveSafeMode, safeMode, type SafeModeState } from '../../../shared/safeMode';
+import {
+  acceptTemplate,
+  describeAcceptance,
+  describeCapabilities,
+  describeRefusal,
+} from '../../../shared/templateAcceptance';
 import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
@@ -40,6 +46,23 @@ export type TemplateManagementItem = {
   isBuiltIn: boolean;
   isInstalled: boolean;
   isDefault: boolean;
+};
+
+/**
+ * A template in your library that could not be loaded, because it no longer validates.
+ *
+ * Listed so it can be seen and deleted. It used to be skipped before it reached any list, which made
+ * it invisible and also undeletable, since every library action finds a template by the id it was
+ * listed under. A copy of a built-in made before a validator was tightened lived on that way, with
+ * nothing but a console warning to say it existed.
+ */
+export type RefusedTemplate = {
+  /** The record's own id: a refused template has no schema id anyone may trust. */
+  id: string;
+  name: string;
+  icon: string;
+  /** Why it was refused, as the validator put it, with where in the template it is. */
+  reason: string;
 };
 
 export type TemplateSwitcherItem = {
@@ -101,6 +124,7 @@ export interface TemplateStore {
   myTemplates: Accessor<TemplateSchema[]>;
   allTemplates: Accessor<TemplateSchema[]>;
   templateManagementList: Accessor<TemplateManagementItem[]>;
+  refusedTemplates: Accessor<RefusedTemplate[]>;
   switcherGroups: Accessor<TemplateSwitcherGroup[]>;
   currentSwitcherId: Accessor<string>;
   currentTemplate: TemplateSchema;
@@ -113,6 +137,7 @@ export interface TemplateStore {
   switchTemplate: (newTemplateId: string) => void;
   removeTemplate: () => Promise<void>;
   deleteTemplate: (templateId: string) => Promise<void>;
+  deleteRefusedTemplate: (recordId: string) => Promise<void>;
   installTemplate: (templateId: string) => Promise<void>;
   uninstallTemplate: (templateId: string) => Promise<void>;
   installFromMarketplace: (marketplaceTemplateId: string) => Promise<void>;
@@ -149,6 +174,14 @@ export interface TemplateStore {
    * decided a Workshop URL was a section the space did not have, and rewrote the address.
    */
   spaceTemplatePending: Accessor<boolean>;
+
+  /**
+   * Whether this tab is in safe mode — WE's own templates and themes in place of what was chosen —
+   * and why. Decided before the first template rendered and fixed for the page; see `safeMode.ts`.
+   */
+  safeMode: Accessor<SafeModeState>;
+  /** Leave safe mode, reloading with the templates and themes that were chosen. */
+  leaveSafeMode: () => void;
 
   // Loading state
   operationLoading: Accessor<string | null>;
@@ -198,6 +231,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     fills agree, rather than leaving a `screenshots` nobody may trust on half the entries.
   */
   const savedTemplateMap = new Map<string, NewRecord<Template>>();
+  /** Library records that failed validation, by record id. See {@link RefusedTemplate}. */
+  const refusedRecords = new Map<string, NewRecord<Template>>();
+  const [refusedTemplates, setRefusedTemplates] = createSignal<RefusedTemplate[]>([]);
   const spaceTemplateMap = new Map<string, NewRecord<Template>>();
 
   // Per-session cache of space templates keyed by perspective UUID.
@@ -248,6 +284,12 @@ export function TemplateStoreProvider(props: ParentProps) {
     Every other route into `currentTemplate` ensures. This one is a raw clone, so the boot template
     was the one tree in the app that could not be edited visually.
   */
+  /*
+    Decided now, before anything is committed: the address, the tab's memory and the record of a
+    render that never finished are all read before the first template could run. See `safeMode.ts`.
+  */
+  const safe = safeMode();
+
   const initialTemplate = deepClone(
     builtInTemplates.find((t) => t.id === 'launcher') || builtInTemplates[0] || emptyTemplate,
   );
@@ -322,7 +364,9 @@ export function TemplateStoreProvider(props: ParentProps) {
       const allDbTemplates = await Template.findAll(perspective);
 
       savedTemplateMap.clear();
+      refusedRecords.clear();
       const savedTemplates: TemplateSchema[] = [];
+      const refused: RefusedTemplate[] = [];
 
       for (const template of allDbTemplates) {
         const decoded = decodeFileAsJson(template.schema);
@@ -339,9 +383,17 @@ export function TemplateStoreProvider(props: ParentProps) {
         const accepted = acceptTemplate(raw, { origin: 'your library', grants: CHROME_TIER });
         if (!accepted.schema) {
           console.warn(describeAcceptance(accepted, 'your library').join('\n'));
+          refusedRecords.set(template.id, template);
+          refused.push({
+            id: template.id,
+            name: template.name || (raw as Partial<TemplateSchema>).meta?.name || 'Untitled template',
+            icon: template.icon || (raw as Partial<TemplateSchema>).meta?.icon || 'warning',
+            reason: describeRefusal(accepted),
+          });
           continue;
         }
-        if (accepted.blocked.length) console.warn(describeAcceptance(accepted, 'your library').join('\n'));
+        if (accepted.blocked.length || accepted.refusedElements.length)
+          console.warn(describeAcceptance(accepted, 'your library').join('\n'));
         const schema = accepted.schema;
         // Prefer the ID embedded in the schema (set during save) over deriving from name
         const requested = schema.id || template.name?.toLowerCase().replace(/\s+/g, '-') || template.id;
@@ -352,6 +404,8 @@ export function TemplateStoreProvider(props: ParentProps) {
         savedTemplates.push(entry);
         savedTemplateMap.set(templateId, template);
       }
+
+      setRefusedTemplates(refused);
 
       // If a saved template shares an ID with a core template, use the saved version
       const savedIds = new Set(savedTemplates.map((t) => t.id));
@@ -426,7 +480,8 @@ export function TemplateStoreProvider(props: ParentProps) {
           console.warn(describeAcceptance(accepted, origin).join('\n'));
           continue;
         }
-        if (accepted.blocked.length) console.warn(describeAcceptance(accepted, origin).join('\n'));
+        if (accepted.blocked.length || accepted.refusedElements.length)
+          console.warn(describeAcceptance(accepted, origin).join('\n'));
         const schema = accepted.schema;
         const templateId = schema.id || template.name?.toLowerCase().replace(/\s+/g, '-') || template.id;
 
@@ -655,6 +710,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     initialRestoreDone = true;
   });
 
+  /** Settles the template on screen's render record. Replaced on every commit. */
+  let settleRendering: () => void = () => {};
+
   /**
    * The only way a schema becomes the live template.
    *
@@ -671,11 +729,43 @@ export function TemplateStoreProvider(props: ParentProps) {
    * So there is one committer and `setCurrentTemplate` is not called anywhere else. Ensuring at the
    * point of commit rather than at each call site is what makes "did this path remember?" a question
    * with one answer instead of six.
+   *
+   * The same argument puts safe mode here: being the one door, this is the only place that has to
+   * know a chosen template is not to be drawn. In safe mode a template that is not WE's own is
+   * committed as the bundled one in its place, however it arrived — a boot restore, a space's
+   * default, a link's `?template=`, a switch.
    */
   function commitTemplate(schema: TemplateSchema | SchemaNode) {
-    const clone = deepClone(schema) as SchemaNode;
+    const chosen = safe.on ? bundledInPlaceOf(schema as TemplateSchema) : (schema as TemplateSchema);
+    // Recorded before it renders, so a render that hangs the page leaves the record behind; the one
+    // it replaces is settled, since replacing it took a live page. See `beginRender`.
+    settleRendering();
+    settleRendering = isBundled(chosen) ? () => {} : beginRender(chosen.id || '');
+    const clone = deepClone(chosen) as SchemaNode;
     ensureNodeIds(clone);
     setCurrentTemplate(reconcile(clone as TemplateSchema));
+  }
+
+  /**
+   * One of WE's own templates — bundled with the app, so not something safe mode protects anybody
+   * from. By identity with the bundled copy's id and not from a space: a space can carry a template
+   * under a built-in's id, and that copy is the space's.
+   */
+  function isBundled(schema: TemplateSchema): boolean {
+    if (schema._fromSpace) return false;
+    return builtInTemplates.some((t) => t.id === schema.id) || shellTemplates.some((t) => t.id === schema.id);
+  }
+
+  /**
+   * What safe mode draws in place of a template: the bundled copy under the same id when there is
+   * one — so the switcher and the settings pages keep working — and otherwise WE's default.
+   */
+  function bundledInPlaceOf(schema: TemplateSchema): TemplateSchema {
+    if (!schema._fromSpace) {
+      const same = builtInTemplates.find((t) => t.id === schema.id) ?? shellTemplates.find((t) => t.id === schema.id);
+      if (same) return same;
+    }
+    return builtInTemplates.find((t) => t.id === 'default') ?? builtInTemplates[0] ?? emptyTemplate;
   }
 
   // Actions
@@ -803,6 +893,28 @@ export function TemplateStoreProvider(props: ParentProps) {
       commitTemplate(fallback);
     }
     setOperationLoading(null);
+  }
+
+  /**
+   * Delete a library template that could not be loaded. By record id, since a refused template was
+   * never given a library id; see {@link RefusedTemplate}.
+   */
+  async function deleteRefusedTemplate(recordId: string): Promise<void> {
+    const template = refusedRecords.get(recordId);
+    if (!template) return;
+    setOperationLoading(`delete:${recordId}`);
+    try {
+      const prefs = datasetStore.agentSettings();
+      if (prefs) await prefs.removeInstalledTemplates(template).catch(() => {});
+      await template.delete();
+      refusedRecords.delete(recordId);
+      setRefusedTemplates((rows) => rows.filter((row) => row.id !== recordId));
+    } catch (err) {
+      console.error('TemplateStore: deleteRefusedTemplate AD4M error', err);
+      toastService.error('Failed to delete template');
+    } finally {
+      setOperationLoading(null);
+    }
   }
 
   /** Add a template to the installed set (appears in sidebar) */
@@ -1041,7 +1153,11 @@ export function TemplateStoreProvider(props: ParentProps) {
         capabilities: describeCapabilities(accepted.groups),
         // Named rather than counted: "one reference is not allowed here" says nothing about which
         // part of the template will be inert, and the path is the only thing that does.
-        blocked: [...new Set(accepted.blocked.map((reference) => reference.path))],
+        blocked: [
+          ...new Set(accepted.blocked.map((reference) => reference.path)),
+          // And any element it may not mount — a `script`, an `iframe` — which will render nothing.
+          ...accepted.refusedElements.map((tag) => `<${tag}>`),
+        ],
       });
     } catch (error) {
       toastService.error(explain(error, 'Could not read that template'));
@@ -1586,6 +1702,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     myTemplates,
     allTemplates,
     templateManagementList,
+    refusedTemplates,
     switcherGroups,
     currentSwitcherId,
     currentTemplate,
@@ -1598,6 +1715,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     switchTemplate,
     removeTemplate,
     deleteTemplate,
+    deleteRefusedTemplate,
     installTemplate,
     uninstallTemplate,
     installFromMarketplace,
@@ -1618,6 +1736,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     loadSpaceTemplates,
     clearSpaceTemplates,
     spaceTemplatePending,
+    safeMode: () => safe,
+    leaveSafeMode,
 
     // Loading state
     operationLoading,

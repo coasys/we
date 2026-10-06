@@ -2,7 +2,11 @@ import { BASE_CLASS_LAYERS, CSS_PROP_TO_VAR_SUFFIX, getKeysForLayers, layerKeyMa
 import { role, semanticValues, space } from '@we/tokens';
 
 import type { ContextData, StateMemberMeta } from './contextTypes';
+import { expandDefinitions } from './definitions';
 import { checkExpression, ExpressionSyntaxError, isCallTime, isExpressionToken, parseExpression } from './expressions';
+import type { Expr } from './expressions/ast';
+import { isTemplateElement } from './templateElements';
+import type { SchemaNode } from './types';
 import type { ValidationError, ValidationResult } from './validators';
 import { validateStructure } from './validators';
 
@@ -34,106 +38,30 @@ export type ValidationContext = {
     /** Panel names by module id. */
     panels: Map<string, Set<string>>;
   };
+  /**
+   * Action paths known to need somebody to have asked — every classified action not marked `ambient`.
+   * Only what the context knows: an action it has no classification for is never warned about.
+   */
+  gatedActions?: Set<string>;
+  /**
+   * Action paths the host confirms itself before a space template's call runs — see
+   * {@link checkSelfConfirmed}. Absent when judging host chrome, which renders against a bag with no
+   * such confirmation and so asks its own questions: {@link asHostChrome}.
+   */
+  hostConfirmed?: Set<string>;
+  /**
+   * Where a component's catalogued plugin names are written, by component and prop — see
+   * `PluginPlacement`. `names` maps every name the catalogue knows to its categories (a graph has a
+   * seed and an expander both called `schema`), so a name in the wrong slot can be told from a name
+   * that does not exist.
+   */
+  pluginPlacements?: Map<
+    string,
+    Map<string, { key: string; categories: string[]; names: Map<string, string[]>; bare?: boolean }>
+  >;
 };
 
 // ── Constants ──────────────────────────────────────────────────────
-
-const HTML_ELEMENTS = new Set([
-  'div',
-  'span',
-  'p',
-  'a',
-  'img',
-  'br',
-  'hr',
-  'h1',
-  'h2',
-  'h3',
-  'h4',
-  'h5',
-  'h6',
-  'ul',
-  'ol',
-  'li',
-  'dl',
-  'dt',
-  'dd',
-  'table',
-  'thead',
-  'tbody',
-  'tfoot',
-  'tr',
-  'td',
-  'th',
-  'caption',
-  'colgroup',
-  'col',
-  'form',
-  'input',
-  'button',
-  'select',
-  'option',
-  'optgroup',
-  'textarea',
-  'label',
-  'fieldset',
-  'legend',
-  'section',
-  'article',
-  'nav',
-  'header',
-  'footer',
-  'main',
-  'aside',
-  'figure',
-  'figcaption',
-  'blockquote',
-  'pre',
-  'code',
-  'em',
-  'strong',
-  'small',
-  'sub',
-  'sup',
-  'video',
-  'audio',
-  'source',
-  'canvas',
-  'svg',
-  'iframe',
-  'details',
-  'summary',
-  'dialog',
-  'menu',
-  'slot',
-  'template',
-  'abbr',
-  'address',
-  'b',
-  'bdi',
-  'bdo',
-  'cite',
-  'data',
-  'del',
-  'dfn',
-  'i',
-  'ins',
-  'kbd',
-  'mark',
-  'meter',
-  'output',
-  'progress',
-  'q',
-  'rp',
-  'rt',
-  'ruby',
-  's',
-  'samp',
-  'time',
-  'u',
-  'var',
-  'wbr',
-]);
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -265,6 +193,19 @@ function isTokenObject(value: unknown): boolean {
 }
 
 // ── Build context ──────────────────────────────────────────────────
+
+/**
+ * The same context, knowing some more kinds of record — a space's own shapes, a foreign app's models,
+ * the shapes a cartridge carries.
+ *
+ * The generated context knows WE's models and nothing a space defines, so a template judged without
+ * this reports every query on a community's own `Sighting` as an unknown entity. The editor adds the
+ * space it is editing in; anything judging a template away from its space adds what it will meet.
+ */
+export function withEntities(context: ValidationContext, names: Iterable<string>): ValidationContext {
+  const extra = [...names].filter((name) => !context.entityNames.has(name));
+  return extra.length ? { ...context, entityNames: new Set([...context.entityNames, ...extra]) } : context;
+}
 
 export function buildValidationContext(data: ContextData): ValidationContext {
   const componentNames = new Set<string>();
@@ -436,7 +377,41 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     }
   }
 
+  /*
+    What needs somebody to have asked: every action the context classifies, less the ambient ones.
+    `record.*` is a pseudo-store with no `ambient` list, so all three are gated — which they are.
+  */
+  const gatedActions = new Set<string>();
+  for (const store of data.storeEntries) {
+    const ambient = new Set(store.ambient ?? []);
+    for (const action of store.actions) if (!ambient.has(action)) gatedActions.add(`${store.name}.${action}`);
+  }
+  for (const entry of data.modules ?? []) {
+    for (const member of entry.members) {
+      if (member.kind === 'action' && !member.ambient) gatedActions.add(`modules.${entry.id}.${member.name}`);
+    }
+  }
+
+  // What the host asks about itself, in front of a space template's call.
+  const hostConfirmed = new Set<string>();
+  for (const store of data.storeEntries)
+    for (const action of store.destructive ?? []) hostConfirmed.add(`${store.name}.${action}`);
+
+  const pluginPlacements: NonNullable<ValidationContext['pluginPlacements']> = new Map();
+  for (const catalog of data.pluginCatalogs ?? []) {
+    if (!catalog.placements?.length) continue;
+    const names = new Map<string, string[]>();
+    for (const plugin of catalog.plugins) names.set(plugin.id, [...(names.get(plugin.id) ?? []), plugin.category]);
+    const byProp = pluginPlacements.get(catalog.component) ?? new Map();
+    for (const { prop, key, categories, bare } of catalog.placements)
+      byProp.set(prop, { key, categories, names, bare });
+    pluginPlacements.set(catalog.component, byProp);
+  }
+
   return {
+    gatedActions,
+    hostConfirmed,
+    pluginPlacements,
     componentNames,
     componentProps,
     componentPropTypes,
@@ -464,6 +439,14 @@ interface WalkState {
    * to the console and no-ops, so the control renders, takes the click and does nothing.
    */
   queryScope: Set<string>;
+  /**
+   * The relations each hoisted query in scope `include`s, by query name.
+   *
+   * An included relation arrives as the related record, where an un-included one is its id — so the
+   * same comparison works against one query and silently matches nothing against the other. See
+   * {@link includedRelationComparisons}.
+   */
+  queryIncludes: Map<string, Set<string>>;
   /**
    * The declared `type` of each `$localState` field in scope, for the checks that care.
    *
@@ -654,8 +637,28 @@ function walkNode(
     return;
   }
 
-  // Skip HTML elements
-  if (HTML_ELEMENTS.has(type)) {
+  /*
+    A native element outside the allowlist is refused by the renderer — it renders nothing — so say
+    so here, where an author can act on it, rather than leave it to look like a typo.
+  */
+  if (/^[a-z][a-z0-9]*$/.test(type) && !isTemplateElement(type)) {
+    errors.push({
+      path: `${path}.type`,
+      message:
+        `<${type}> is not an element a template may mount: it runs code, loads something into the page, ` +
+        `or creates a document of its own, so it renders nothing. For an embedded page use we-iframe; for ` +
+        `formatted markup use we-html or we-markdown.`,
+      severity: 'error',
+    });
+    return;
+  }
+
+  // Skip HTML elements — except a write on an event nobody causes, which native elements are the
+  // commonest way to reach: an `img` that loads, a `details` that starts open, an `input` that autofocuses.
+  if (isTemplateElement(type)) {
+    for (const [propName, propValue] of Object.entries((n.props as Record<string, unknown>) ?? {})) {
+      checkUnaskedWrite(propName, propValue, `${path}.props.${propName}`, ctx, errors);
+    }
     walkChildren(n, path, ctx, state, errors);
     return;
   }
@@ -805,6 +808,91 @@ function checkExpressionToken(
       severity: issue.severity,
     });
   }
+  for (const message of includedRelationComparisons(ast, state.queryIncludes)) {
+    errors.push({ path: `${path}.$`, message, severity: 'warning' });
+  }
+}
+
+/** `local.<name>`, as the expression tree spells it — or undefined. */
+function localQueryName(expr: Expr | undefined): string | undefined {
+  if (expr?.kind !== 'member' || expr.object.kind !== 'ident' || expr.object.name !== 'local') return undefined;
+  return expr.property;
+}
+
+/** Every sub-expression of a node, whatever its kind. */
+function subExpressions(expr: Expr): Expr[] {
+  const out: Expr[] = [];
+  const take = (value: unknown) => {
+    if (!value || typeof value !== 'object') return;
+    if ('kind' in value && 'span' in value) out.push(value as Expr);
+    else if ('key' in value && 'value' in value) take((value as { value: unknown }).value);
+  };
+  for (const value of Object.values(expr)) {
+    if (Array.isArray(value)) value.forEach(take);
+    else take(value);
+  }
+  return out;
+}
+
+/**
+ * Comparisons that treat an included relation as an id — which it is not, so they never match.
+ *
+ * With `include: { item: true }`, `loan.item` is the item record; without it, the item's id. So
+ * `local.loans.find(l, l.item == it.id)` and `find(local.loans, { item: it.id })` work against one
+ * query and match nothing against the other, with no error anywhere: a tool library read every tool
+ * as available because of it. Two shapes are reported:
+ *
+ * - a comprehension over an including query comparing `row.<relation>` itself (not `.id`), and
+ * - a `find`/`filter` over one with a where-object keyed by the included relation.
+ *
+ * A warning rather than an error: comparing two records is legal, just almost never meant.
+ */
+function includedRelationComparisons(ast: Expr, includes: Map<string, Set<string>>): string[] {
+  if (!includes.size) return [];
+  const found: string[] = [];
+  const visit = (expr: Expr, rows: Map<string, { query: string; relations: Set<string> }>) => {
+    if (expr.kind === 'macro') {
+      const query = localQueryName(expr.receiver);
+      const relations = query ? includes.get(query) : undefined;
+      visit(expr.receiver, rows);
+      const inner = new Map(rows);
+      if (query && relations) inner.set(expr.variable, { query, relations });
+      else inner.delete(expr.variable);
+      visit(expr.body, inner);
+      return;
+    }
+    if (expr.kind === 'binary' && (expr.op === '==' || expr.op === '!=' || expr.op === 'in')) {
+      for (const side of [expr.left, expr.right]) {
+        if (side.kind !== 'member' || side.object.kind !== 'ident') continue;
+        const row = rows.get(side.object.name);
+        if (!row?.relations.has(side.property)) continue;
+        found.push(
+          `"${side.object.name}.${side.property}" is the included ${side.property} record, not its id, because ` +
+            `the query "${row.query}" includes ${side.property} — so this comparison never matches. ` +
+            `Compare "${side.object.name}.${side.property}.id".`,
+        );
+      }
+    }
+    if (expr.kind === 'call' && (expr.callee === 'find' || expr.callee === 'filter')) {
+      const operands = expr.receiver ? [expr.receiver, ...expr.args] : expr.args;
+      const query = localQueryName(operands[0]);
+      const relations = query ? includes.get(query) : undefined;
+      const where = operands[1];
+      if (query && relations && where?.kind === 'object') {
+        for (const entry of where.entries) {
+          if (!relations.has(entry.key)) continue;
+          found.push(
+            `The where-object key "${entry.key}" compares the included ${entry.key} record, because the query ` +
+              `"${query}" includes ${entry.key} — so it never equals an id. Use a comprehension: ` +
+              `local.${query}.${expr.callee}(row, row.${entry.key}.id == …).`,
+          );
+        }
+      }
+    }
+    for (const child of subExpressions(expr)) visit(child, rows);
+  };
+  visit(ast, new Map());
+  return found;
 }
 
 /**
@@ -892,7 +980,23 @@ function updateLocalScope(n: Record<string, unknown>, state: WalkState): WalkSta
   // check below must not treat it as read-only any more.
   if (hasState) for (const key of Object.keys(localState)) newQueries.delete(key);
   for (const key of newQueries) newFields.add(key);
-  return { ...state, localScope: newFields, queryScope: newQueries, localTypes: newTypes };
+  const newIncludes = new Map(state.queryIncludes);
+  if (hasQueries)
+    for (const [key, query] of Object.entries(queries as Record<string, unknown>)) {
+      const include = (query as { include?: unknown } | null)?.include;
+      const relations =
+        include && typeof include === 'object' ? Object.keys(include).filter((name) => !name.startsWith('$')) : [];
+      if (relations.length) newIncludes.set(key, new Set(relations));
+      else newIncludes.delete(key);
+    }
+  if (hasState) for (const key of Object.keys(localState)) newIncludes.delete(key);
+  return {
+    ...state,
+    localScope: newFields,
+    queryScope: newQueries,
+    queryIncludes: newIncludes,
+    localTypes: newTypes,
+  };
 }
 
 /**
@@ -1072,6 +1176,224 @@ function checkLegacyReference(value: unknown, path: string, errors: ValidationEr
   });
 }
 
+/**
+ * Events that happen to an element rather than being done to it by a person.
+ *
+ * A template's write runs only when somebody asked, so an action wired to one of these is refused
+ * when it fires on its own — an image loading, a section starting open, a component reporting its
+ * size. Listed rather than inferred, and short on purpose: a prop missing from it is not warned about,
+ * because a warning on a prop that IS a press would teach authors to ignore this one. `onBlur` is
+ * absent because leaving a field somebody typed into counts as asking.
+ */
+const UNASKED_EVENTS = new Set([
+  'onLoad',
+  'onError',
+  'onToggle',
+  'onFocus',
+  'onFocusIn',
+  'onScroll',
+  'onScrollEnd',
+  'onResize',
+  'onAnimationStart',
+  'onAnimationEnd',
+  'onAnimationIteration',
+  'onTransitionRun',
+  'onTransitionStart',
+  'onTransitionEnd',
+  'onMouseEnter',
+  'onMouseLeave',
+  'onMouseOver',
+  'onMouseOut',
+  'onMouseMove',
+  'onPointerEnter',
+  'onPointerLeave',
+  'onPointerOver',
+  'onPointerOut',
+  'onPointerMove',
+  'onLoadedData',
+  'onLoadedMetadata',
+  'onCanPlay',
+  'onEnded',
+  'onTimeUpdate',
+  'onMeasure',
+  'onArrange',
+  'onReady',
+  'onViewport',
+  'onSeedSummary',
+  'onPointerAt',
+]);
+
+/** Every `$action` path anywhere inside a handler value, lifecycle callbacks included. */
+function actionPathsIn(value: unknown, into: string[] = []): string[] {
+  if (Array.isArray(value)) {
+    for (const item of value) actionPathsIn(item, into);
+  } else if (value && typeof value === 'object') {
+    const token = value as Record<string, unknown>;
+    if (typeof token.$action === 'string') into.push(token.$action);
+    for (const nested of Object.values(token)) actionPathsIn(nested, into);
+  }
+  return into;
+}
+
+/** Anything a person fills in. A sheet holding one is a form, not a question. */
+const FORM_CONTROLS = new Set([
+  'we-input',
+  'we-textarea',
+  'we-select',
+  'we-checkbox',
+  'we-switch',
+  'we-radio',
+  'we-slider',
+  'we-number-input',
+  'we-date-picker',
+  'we-color-picker',
+  'we-icon-picker',
+  'we-location-picker',
+  'we-file-upload',
+  'input',
+  'textarea',
+  'select',
+  'Select',
+  'Combobox',
+  'Search',
+  'EditableImage',
+  'BlockComposer',
+  'CredentialField',
+]);
+
+/** Every node under `value`, wherever a node can sit — children, slots, `then`/`else`, any prop. */
+function* nodesIn(value: unknown): Generator<{ type: string; props?: Record<string, unknown> }> {
+  if (Array.isArray(value)) {
+    for (const item of value) yield* nodesIn(item);
+    return;
+  }
+  if (!value || typeof value !== 'object') return;
+  const node = value as { type?: unknown; props?: Record<string, unknown> };
+  if (typeof node.type === 'string') yield node as { type: string; props?: Record<string, unknown> };
+  for (const nested of Object.values(value)) yield* nodesIn(nested);
+}
+
+/**
+ * A template asking "are you sure?" in front of an action the host asks about anyway.
+ *
+ * The host raises its own confirmation in front of every destructive action a space template runs
+ * — in its words, where the template cannot reword or omit it (see `DestructivePrompt.schema.ts`).
+ * A template's own dialog in front of the same action is a second question about one click, which
+ * is the kind of prompt people learn to click through. Call the action from the control itself.
+ *
+ * Recognised as a `we-modal` that holds such an action and nothing to fill in: a sheet with fields
+ * in it is a form whose Delete button sits beside other work, and is left alone. A warning, since
+ * the result is a worse experience rather than a broken one.
+ */
+function checkSelfConfirmed(schema: unknown, ctx: ValidationContext, errors: ValidationError[]): void {
+  if (!ctx.hostConfirmed?.size) return;
+  const seen = new Set<unknown>();
+  for (const node of nodesIn(schema)) {
+    if (node.type !== 'we-modal' || seen.has(node)) continue;
+    seen.add(node);
+    const inside = [...nodesIn((node as { children?: unknown }).children ?? [])];
+    if (inside.some((child) => FORM_CONTROLS.has(child.type))) continue;
+    const asked = new Set(
+      actionPathsIn((node as { children?: unknown }).children).filter((a) => ctx.hostConfirmed!.has(a)),
+    );
+    for (const action of asked) {
+      errors.push({
+        path: 'we-modal',
+        message:
+          `"${action}" is confirmed in this dialog, and the host asks about it again before it runs — ` +
+          `two questions about one click. Call it from the control itself and leave the question to the host.`,
+        severity: 'warning',
+      });
+    }
+  }
+}
+
+/**
+ * A write wired to an event nobody causes — which the host refuses at runtime.
+ *
+ * A warning rather than an error: the runtime gate is the enforcement and holds whatever this says.
+ * This is the same answer given earlier, to the person writing the template and to whoever is asked
+ * to install it, instead of as a write that silently never happens.
+ */
+function checkUnaskedWrite(
+  propName: string,
+  value: unknown,
+  path: string,
+  ctx: ValidationContext,
+  errors: ValidationError[],
+): void {
+  if (!ctx.gatedActions || !UNASKED_EVENTS.has(propName)) return;
+  for (const action of actionPathsIn(value)) {
+    if (!ctx.gatedActions.has(action)) continue;
+    errors.push({
+      path,
+      message:
+        `"${action}" is wired to ${propName}, which fires without anybody doing anything — and an action ` +
+        `like this one runs only when somebody asked, so it will not run. Put it on a press or a key ` +
+        `(onClick, onKeyDown), or on what the person does to finish (onChange, onSave).`,
+      severity: 'warning',
+    });
+  }
+}
+
+/**
+ * A plugin name a component resolves at runtime, checked against its catalogue.
+ *
+ * Without this a misspelt name renders nothing: the component looks the name up, finds no plugin and
+ * logs to the console of whoever opens the page. The globe was the case that made it worth checking,
+ * since a layer list is exactly what an LLM writes from the documentation, and a layer in the wrong
+ * list (a skybox among the planet layers) is as quiet as one that does not exist.
+ */
+function checkPluginNames(
+  props: Record<string, unknown>,
+  path: string,
+  componentType: string,
+  ctx: ValidationContext,
+  errors: ValidationError[],
+): void {
+  const placements = ctx.pluginPlacements?.get(componentType);
+  if (!placements) return;
+  for (const [prop, { key, categories, names, bare }] of placements) {
+    const value = props[prop];
+    if (value === undefined || value === null || isTokenObject(value)) continue;
+    const listed = Array.isArray(value);
+    const entries: unknown[] = listed ? value : [value];
+
+    const check = (name: string, where: string) => {
+      const found = names.get(name);
+      if (found === undefined) {
+        const accepted = [...names].filter(([, cs]) => cs.some((c) => categories.includes(c))).map(([id]) => id);
+        const suggestion = suggest(name, accepted);
+        errors.push({
+          path: where,
+          message:
+            `Unknown ${categories.join(' or ')} plugin "${name}" in "${prop}" of "${componentType}".` +
+            (suggestion ? ` Did you mean "${suggestion}"?` : ` Known: ${accepted.join(', ')}.`),
+          severity: 'error',
+        });
+      } else if (!found.some((c) => categories.includes(c))) {
+        errors.push({
+          path: where,
+          message: `"${name}" is a ${found.join(' or ')} plugin and does nothing in "${prop}" of "${componentType}", which takes ${categories.join(' or ')} plugins.`,
+          severity: 'error',
+        });
+      }
+    };
+
+    entries.forEach((entry, index) => {
+      const at = `${path}.props.${prop}${listed ? `.${index}` : ''}`;
+      if (bare && typeof entry === 'string') return check(entry, at);
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry) || isTokenObject(entry)) return;
+      const named = (entry as Record<string, unknown>)[key];
+      // An expression is checked when it runs, not here: the validator cannot know what it will be.
+      if (typeof named === 'string') return check(named, `${at}.${key}`);
+      if (Array.isArray(named)) {
+        named.forEach((name, i) => typeof name === 'string' && check(name, `${at}.${key}.${i}`));
+      }
+    });
+  }
+}
+
 function checkProps(
   props: Record<string, unknown>,
   path: string,
@@ -1084,6 +1406,7 @@ function checkProps(
   const propTypes = ctx.componentPropTypes.get(componentType);
 
   checkComposerHandshake(props, path, componentType, errors);
+  checkPluginNames(props, path, componentType, ctx, errors);
 
   for (const [propName, propValue] of Object.entries(props)) {
     // Skip internal schema props
@@ -1091,8 +1414,16 @@ function checkProps(
 
     const propPath = `${path}.props.${propName}`;
 
-    // Check for token values in props (regardless of whether prop is known)
-    checkTokenValue(propValue, propPath, ctx, state, errors);
+    /*
+      Every token in the prop, however deep it sits in plain data.
+
+      This was `checkTokenValue`, which walks into a list but stops at a plain object — so a token
+      one level into an entry was never looked at: a globe layer's `enabled` (`{ factory, enabled:
+      { $: … } }`), a menu item's `checked` or `hidden`. A misspelt local or module member there
+      passed and showed up only as a control that did nothing. Subtrees are left to the walk that
+      owns them; see `checkNestedTokens`.
+    */
+    checkNestedTokens(propValue, propPath, ctx, state, errors);
     checkValuePositionIf(propName, propValue, propPath, propTypes, errors);
 
     if (COLOUR_PROPS.has(propName) || BORDER_PROPS.has(propName)) {
@@ -1113,6 +1444,10 @@ function checkProps(
         }
       }
     }
+
+    // A handler is valid on anything — but one that writes on an event nobody causes is worth a word.
+    // Asked before the universal props, which list the common events and would skip it.
+    checkUnaskedWrite(propName, propValue, propPath, ctx, errors);
 
     // Universal props are always valid
     if (ctx.universalProps.has(propName)) continue;
@@ -1436,7 +1771,22 @@ function checkQueryInternals(
   }
 }
 
-/** Descend plain structure; hand any token to {@link checkTokenValue} and let it own its internals. */
+/**
+ * Whether a value is a schema node rather than data: a `type` beside the things only a node carries.
+ * A menu entry (`{ type: 'toggle', checked }`) has a `type` too, and is data.
+ */
+function isSchemaNodeShape(value: Record<string, unknown>): boolean {
+  if (typeof value.type !== 'string') return false;
+  return ['props', 'children', 'slots', 'routes', '$localState', '$queries'].some((key) => key in value);
+}
+
+/**
+ * Descend plain structure; hand any token to {@link checkTokenValue} and let it own its internals.
+ *
+ * Stops at a schema node held as data — a branch, a panel's content, a component's empty state. Those
+ * are rendered by whatever holds them, which may bind names the scope outside has never heard of (a
+ * row, a card); judged from here, every such name would read as unknown.
+ */
 function checkNestedTokens(
   value: unknown,
   path: string,
@@ -1451,6 +1801,7 @@ function checkNestedTokens(
     return;
   }
   if (typeof value !== 'object' || value === null) return;
+  if (isSchemaNodeShape(value as Record<string, unknown>)) return;
 
   if (isTokenObject(value)) {
     checkTokenValue(value, path, ctx, state, errors);
@@ -1801,6 +2152,7 @@ function checkRoutes(
     localScope: new Set<string>(),
     localTypes: new Map<string, string>(),
     queryScope: new Set<string>(),
+    queryIncludes: new Map(),
     contextScope: new Set<string>(),
   };
   for (let i = 0; i < routes.length; i++) {
@@ -1916,6 +2268,17 @@ export function withOwnModule(context: ValidationContext, moduleId: string): Val
   return { ...context, modules: { ...context.modules, members } };
 }
 
+/**
+ * The context for judging host chrome — the boot screen, settings, a module's own panels.
+ *
+ * Chrome renders against a bag the host puts no confirmation in front of: it is authored with the
+ * app and asks its own questions where it needs to. So a chrome dialog confirming a delete is the
+ * only question, and is not warned about. See {@link checkSelfConfirmed}.
+ */
+export function asHostChrome(context: ValidationContext): ValidationContext {
+  return { ...context, hostConfirmed: undefined };
+}
+
 export function validateSemantic(schema: unknown, context: ValidationContext): ValidationResult {
   // If the schema declares custom stores/components in meta, extend the known sets for this validation
   // meta.stores supports two formats:
@@ -1972,6 +2335,7 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
     localScope: null,
     localTypes: new Map<string, string>(),
     queryScope: new Set(),
+    queryIncludes: new Map(),
     contextScope: new Set(),
     hasRoutesAncestor: false,
     isRouteEligible: true,
@@ -1979,6 +2343,7 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
   };
 
   walkNode(schema, '', context, state, errors);
+  checkSelfConfirmed(schema, context, errors);
 
   /*
     A template's sections are trees of their own, declared beside the tree rather than in it.
@@ -2080,10 +2445,26 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
 }
 
 export function validateSchema(schema: unknown, context: ValidationContext): ValidationResult {
-  const structural = validateStructure(schema);
+  /*
+    A template that says a repeated shape once is checked as the tree it will BE.
+
+    Expanding first rather than teaching every rule about `$ref` — the same decision the renderer
+    makes, for the same reason: a reference is a node, and a rule that did not know about one would
+    pass by quietly skipping whatever it stands for. A check that silently stops checking is worse
+    than one that refuses.
+
+    It also puts each error at a position that exists on screen. A shape used five times is
+    reported five times, which is noisier than reporting its definition once and is the right way
+    round: the author is told where the problem shows, and five identical messages are themselves
+    the clue that the shape is shared.
+  */
+  const expanded =
+    schema && typeof schema === 'object' && !Array.isArray(schema) ? expandDefinitions(schema as SchemaNode) : schema;
+
+  const structural = validateStructure(expanded);
   if (!structural.valid) return structural;
 
-  const semantic = validateSemantic(schema, context);
+  const semantic = validateSemantic(expanded, context);
   return {
     valid: semantic.errors.filter((e) => e.severity === 'error').length === 0,
     errors: [...structural.errors, ...semantic.errors],

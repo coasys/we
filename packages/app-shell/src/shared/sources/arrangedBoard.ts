@@ -413,6 +413,24 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
   const unplacedAll = pool.filter((r) => !placed.has(r.id) && !boundSlugs.has(statusOf(r) ?? ''));
 
   /*
+    Everything this board DRAWS, which is not the same as everything it has been given.
+
+    A bound column shows work by state as well as by arrangement — that is what binding a column
+    means — so a card can be on screen without anybody having placed it. `available` asked `held`,
+    which counts only arrangements, and so offered cards the board was already showing: on a
+    gathering board the "bring in work that already exists" picker listed what was sitting in the
+    next column along, and picking one moved a card from where it was to where it was.
+
+    Taken here, before the people filter runs: that narrows what is DRAWN for one reader, and
+    whether a card is already on the board is not a question about who is looking at it.
+  */
+  const shown = new Set<string>(unplacedAll.map((r) => r.id));
+  for (const column of columns) {
+    for (const record of contents[column.id].arranged) shown.add(record.id);
+    for (const record of contents[column.id].unarranged) shown.add(record.id);
+  }
+
+  /*
     People. Worked out after the columns rather than threaded through them, so everything above says
     what the board holds and everything below says what of it to draw — and a board nobody filters
     runs exactly the code it ran before this existed.
@@ -542,7 +560,7 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
     contents,
     unplaced,
     unplacedStates,
-    available: records.filter((r) => !held.has(r.id)),
+    available: records.filter((r) => !shown.has(r.id)),
     choices: columns.map((c) => ({ id: c.id, label: contents[c.id].label })),
     unboundStates: states
       .filter((s) => s && s.slug && !s.retired && !boundSlugs.has(s.slug))

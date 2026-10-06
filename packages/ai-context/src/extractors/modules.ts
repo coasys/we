@@ -81,7 +81,7 @@ export function catalogueModule(
   definition: DefinitionLike,
   helpers: {
     moduleCapabilities: (definition: unknown) => string[];
-    storeSurface: (store: unknown) => Record<string, { kind: 'state' | 'action'; doc: string }>;
+    storeSurface: (store: unknown) => Record<string, { kind: 'state' | 'action'; doc: string; ambient?: true }>;
     markState: unknown;
     markAction: unknown;
   },
@@ -110,7 +110,12 @@ export function catalogueModule(
       kernels: {},
     });
     members = Object.entries(helpers.storeSurface(store))
-      .map(([name, member]) => ({ name, kind: member.kind, doc: member.doc }))
+      .map(([name, member]) => ({
+        name,
+        kind: member.kind,
+        doc: member.doc,
+        ...(member.ambient ? { ambient: true as const } : {}),
+      }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 

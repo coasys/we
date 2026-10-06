@@ -462,36 +462,28 @@ const unlockForm: SchemaNode = {
         // Field and submit on one row — the shape an OS sign-in uses when there is exactly one
         // thing to type and one thing to do with it. Deliberately NOT the `field` fragment: the
         // fragment renders a lone control, and collapsing this row to one lost the Login button,
-        // the Enter handler and the error wiring — nothing could call sessionStore.login at all.
+        // the Enter handler and the error wiring — nothing could call sessionStore.unlock at all.
         {
           type: 'Row',
           props: { gap: '300', ay: 'center' },
           children: [
+            /*
+              The host's field, not a `we-input`: what is typed here never becomes template state,
+              so a screen that redraws this one cannot keep or forward it. See `CredentialField`.
+            */
             {
-              type: 'we-input',
+              type: 'CredentialField',
               props: {
+                purpose: 'unlock',
                 width: '220px',
-                type: 'password',
-                // The reveal toggle is the input's own, not a button assembled beside it.
-                revealable: true,
                 placeholder: 'Password...',
-                value: { $: 'local.password' },
                 // Editing the password retracts the verdict on it. "Incorrect password" is about
                 // the string that was submitted, so it has nothing to say about the one being
                 // typed to replace it — left up, it reads as a running judgement of the new one.
-                onInput: [
-                  { $setLocal: 'password', value: { $: 'event.detail' } },
-                  { $action: 'sessionStore.clearPasswordError' },
-                ],
-                // Enter carries the same precondition as the button, or an empty field would
-                // reach the executor, fail to unlock, and come back as "Incorrect password" —
-                // the wrong diagnosis for a password that was never typed.
-                onKeyDown: {
-                  $if: {
-                    condition: { $: "arg.detail.key == 'Enter' && local.password" },
-                    then: { $action: 'sessionStore.login', args: [{ $: 'local.password' }] },
-                  },
-                },
+                onEdit: { $action: 'sessionStore.clearPasswordError' },
+                // Enter only fires with something typed, so an empty field cannot reach the
+                // executor and come back as "Incorrect password" for a password never entered.
+                onSubmit: { $action: 'sessionStore.unlock' },
               },
             },
             {
@@ -501,9 +493,9 @@ const unlockForm: SchemaNode = {
                 // Gated on the value, not on a validation rule. There is nothing to submit until
                 // something is typed, which is a precondition rather than a judgement — and the
                 // OS sign-in screens this follows all hold the button until there is.
-                disabled: { $: '!local.password' },
+                disabled: { $: '!sessionStore.credentialEntered' },
                 loading: { $: 'sessionStore.loginLoading' },
-                onClick: { $action: 'sessionStore.login', args: [{ $: 'local.password' }] },
+                onClick: { $action: 'sessionStore.unlock' },
               },
               children: ['Login'],
             },
@@ -682,11 +674,8 @@ export const bootScreen: SchemaNode = {
                 then: {
                   type: 'Column',
                   props: { gap: '400', ax: 'center' },
-                  // No validation rules: signing in is a lock to try, not a form to check. The
-                  // setup screen below has them, because a name and a confirmation can be judged.
-                  $localState: {
-                    password: { type: 'string', initial: '' },
-                  },
+                  // No local state at all: the password is the host field's, and signing in is a
+                  // lock to try rather than a form to check.
                   children: [
                     {
                       type: '$if',
@@ -736,22 +725,9 @@ export const bootScreen: SchemaNode = {
                       initial: '',
                       validate: [{ rule: 'required', message: 'A name is required' }],
                     },
-                    password: {
-                      type: 'string',
-                      initial: '',
-                      // Deliberately only "required": no length or composition rules. Adding them
-                      // later is easy; having them now blocks testing with throwaway passwords.
-                      validate: [{ rule: 'required', message: 'Password is required' }],
-                    },
-                    confirm: {
-                      type: 'string',
-                      initial: '',
-                      validate: [
-                        { rule: 'required', message: 'Please confirm your password' },
-                        { rule: 'match', field: 'password', message: 'Passwords do not match' },
-                      ],
-                    },
-                    // One per field rather than one shared: each eye reveals only the input it sits in.
+                    // No password here: it is typed into the host's own field below, which checks
+                    // the confirmation itself — "required" and "the same twice", deliberately no
+                    // length or composition rules, which would block testing with throwaway ones.
                   },
                   children: [
                     {
@@ -809,28 +785,10 @@ export const bootScreen: SchemaNode = {
                             // The profile's name, not a separate local label. One DID, one
                             // identity, one thing to type.
                             field({ name: 'name', label: 'Name', placeholder: 'Name...', validated: true }),
-                            // Password + confirm.
-                            //
-                            // `type: 'password'` is not decoration here: `field` passes no type, so
-                            // `we-input` defaulted to `text` and both of these rendered the password
-                            // in the clear while it was typed — on the one screen where it is typed
-                            // twice. `revealable` is the input's own toggle, matching the unlock
-                            // form; on a field you cannot see, being able to check what you typed is
-                            // worth more than on one you are only re-entering.
-                            field({
-                              name: 'password',
-                              label: 'Password',
-                              placeholder: 'Password...',
-                              validated: true,
-                              props: { type: 'password', revealable: true },
-                            }),
-                            field({
-                              name: 'confirm',
-                              label: 'Confirm password',
-                              placeholder: 'Confirm password...',
-                              validated: true,
-                              props: { type: 'password', revealable: true },
-                            }),
+                            // Password + confirm, in the host's field. It sets `type: 'password'`
+                            // and the reveal toggle on both, and keeps what is typed out of
+                            // template state — see `CredentialField`.
+                            { type: 'CredentialField', props: { purpose: 'new' } },
                           ],
                         },
                         {
@@ -847,12 +805,14 @@ export const bootScreen: SchemaNode = {
                             // failure handling differs per step. See completeAccountSetup.
                             onClick: [
                               { $touch: '$all' },
+                              // The password field's errors, which `$touch` cannot reach.
+                              { $action: 'sessionStore.touchCredential' },
                               {
                                 $if: {
-                                  condition: { $: 'formValid()' },
+                                  condition: { $: 'formValid() && sessionStore.credentialConfirmed' },
                                   then: {
                                     $action: 'profileStore.completeAccountSetup',
-                                    args: [{ $: 'local.name' }, { $: 'local.password' }],
+                                    args: [{ $: 'local.name' }],
                                   },
                                 },
                               },

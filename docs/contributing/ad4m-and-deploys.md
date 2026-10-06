@@ -68,7 +68,7 @@ point at it. The pairing is this block, first in the WE PR description:
 | ---- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | 1    | Start the WE PR description with the pairing block, below | The preview builds both ad4m packages from that ad4m PR (its merge, once merged), and a check tests WE there |
 | 2    | Review and test on the preview                            | You see the two halves working together                                                                      |
-| 3    | Merge the ad4m PR first                                   | It is published under the `dev` tag (see below)                                                              |
+| 3    | Merge the ad4m PR first                                   | It is published under the `dev` tag (see below), and the WE PR is marked ready to bump                       |
 | 4    | Run `pnpm bump:ad4m` in the WE PR, and remove the block   | CI now tests the real combination                                                                            |
 | 5    | Merge the WE PR                                           | `dev` stays on a published, tested pin                                                                       |
 
@@ -92,6 +92,16 @@ on the first push after the block is removed. (GitHub has no
 badge beside a PR's title or above its description, so those two are the nearest it offers. A PR
 from a fork gets neither, since its workflow cannot write here; a failing required check still names
 the paired check there.)
+
+**When the ad4m change can be pinned, the PR says so.** Hourly, the bump workflow looks at every PR
+labelled `paired with ad4m` whose pairing names an ad4m PR. Once that PR has merged and a version of
+both `@coasys/ad4m` and `@coasys/ad4m-connect` is published from a commit containing the merge, the
+WE PR gets a second label, **`ready to bump ad4m`**, beside the first, and a comment naming the
+version and the steps: `pnpm bump:ad4m <version>`, remove the block, push. "Containing the merge"
+rather than "newer than it": a version published from just before the merge would look ready and
+not be. A pairing with a branch has no moment at which it is done, so it never gets this label.
+Both labels and both comments go together when the block is removed. The rules are in
+`scripts/ad4m-ready-to-bump.mjs`.
 
 The paired check tests the ad4m PR as it is now. If it changes before it is published, step 4 is
 where that shows: the required checks then test the real combination.
@@ -174,11 +184,15 @@ It refuses:
 
 ### What `pnpm verify:ad4m` checks
 
-WE declares what the ad4m executor can do natively (`ad4mCapabilities` in `@we/backend-ad4m`), so
-it can refuse a query ad4m would answer wrongly instead of showing wrong rows. Nothing else checks
-that declaration against ad4m. For each claim (each operator, sort, traversal, and so on), the
-script runs one query against the executor and the same query against WE's in-memory engine over
-the same records, then compares:
+It runs WE's live tests (`pnpm --filter @we/backend-ad4m test:live`) against a real executor. There
+are two files in `packages/backend-system/ad4m/tests/live/`, and either one failing means do not
+merge the bump.
+
+**`capabilities.live.ts`.** WE declares what the ad4m executor can do natively (`ad4mCapabilities`
+in `@we/backend-ad4m`), so it can refuse a query ad4m would answer wrongly instead of showing wrong
+rows. Nothing else checks that declaration against ad4m. For each claim (each operator, sort,
+traversal, and so on), it runs one query against the executor and the same query against WE's
+in-memory engine over the same records, then compares, printing a table at the end:
 
 | Result                 | Meaning                                     | Action                                 |
 | ---------------------- | ------------------------------------------- | -------------------------------------- |
@@ -186,14 +200,29 @@ the same records, then compares:
 | **claimed but fails**  | The declaration is wrong, or ad4m regressed | Do not merge the bump                  |
 | **not claimed, works** | ad4m can do something WE does not use       | Consider claiming it, in a separate PR |
 
-It starts its own executor in a temporary directory and removes it afterwards. By default it uses
-`../ad4m/target/release/ad4m-executor`; `--executor <path>` names another, and `--port` with
-`--token` uses one that is already running. Build that executor from the commit the new pin was
-published from (`npm view @coasys/ad4m@<version> gitHead`), with
-`cargo build --release --bin ad4m-executor`.
+Only "claimed but fails" fails a test; "not claimed, works" is reported, not failed.
 
-It runs locally rather than in CI because it needs an executor, which takes the better part of an
-hour to compile. Live queries are not checked.
+**`conformance.live.ts`.** The suite every backend runs (`@we/backend-conformance`): records,
+relations and live queries through the backend's ports. The cases ad4m is known to fail are listed
+in that file with what is wrong, and run inverted — they pass while the gap is open, and fail when
+an ad4m change closes it, which is the cue to delete the entry.
+
+Both start one executor in a temporary directory, on free ports and with no network, and remove it
+afterwards. By default it is `../ad4m/target/release/ad4m-executor`; `AD4M_EXECUTOR=<path>` names
+another, and `AD4M_LIVE_URL` with `AD4M_LIVE_TOKEN` uses one already running, its agent unlocked.
+Build that executor from the commit the new pin was published from
+(`npm view @coasys/ad4m@<version> gitHead`), with `cargo build --release --bin ad4m-executor`.
+
+It also runs in CI, as the `AD4M live` workflow (`.github/workflows/ad4m-live.yaml`): on a PR that
+touches the backend packages, the entities or the pin, on `dev` after such a merge, and on the bump
+bot's branch. The executor takes the better part of an hour to compile, so it is built once per
+pinned commit and cached, by the `.github/actions/ad4m-executor` action the desktop package uses too
+— so the tests run the binary the app ships. A cache saved on `dev` serves every PR, and one saved on
+a PR serves only that PR, which is why a merged bump builds on `dev`: after that, every run takes
+minutes. A push never cancels a build in progress, only the tests.
+It is not a required check: read it before merging a bump, the way you would the run here. It skips
+a paired PR until that PR moves the pin, since before then the pin cannot answer for its changes —
+the paired check above does.
 
 ### Testing an ad4m branch against WE's tests
 

@@ -20,6 +20,11 @@ export interface Scenario {
   relations?: Record<string, Record<string, { type: 'hasOne' | 'hasMany'; target: string; foreignKey: string }>>;
   /** Host store members the schema reads. Merged over the harness's own defaults. */
   stores?: Record<string, unknown>;
+  /**
+   * `space` renders against the bag a space template is given — the tier's grants, and the gesture
+   * gate enforcing — rather than the raw stores. For a scenario about the trust boundary.
+   */
+  bag?: 'space';
 }
 
 /**
@@ -958,7 +963,96 @@ const collapsingCard = (): Scenario => ({
   tables: {},
 });
 
+/**
+ * Elements whose events fire on their own, each wired to a write, rendered as a space template is.
+ *
+ * Event props bind by shape — any `on[A-Z]…` key holding an action list — so a template reaches every
+ * event an element can fire, including the ones nobody causes. Each of these once ran its action on
+ * render. `record.create` is the real write a template names, behind the real space-tier bag with the
+ * gesture gate on; only the store underneath is a stub, marking the page so the case can see a call.
+ *
+ * The button is the other half: pressed by the case, its write must go through, or the gate is simply
+ * refusing everything. The two `x-late-emitter`s are the same question asked after the press has
+ * finished dispatching — one answering a press, one answering nobody.
+ */
+const selfFiringEvents = (): Scenario => {
+  const write = (name: string) => [{ $action: 'record.create', args: ['Probe', { probe: name }] }];
+  return {
+    node: {
+      type: 'Column',
+      props: { width: '100%', gap: '200' },
+      children: [
+        { type: 'button', props: { id: 'pressed', onClick: write('control-click') }, children: ['press me'] },
+        { type: 'img', props: { src: '/does-not-exist.png', alt: '', onError: write('img-error') } },
+        {
+          type: 'img',
+          props: {
+            src: 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==',
+            alt: '',
+            onLoad: write('img-load'),
+          },
+        },
+        { type: 'details', props: { open: true, onToggle: write('details-toggle') }, children: ['open on mount'] },
+        { type: 'input', props: { autofocus: true, onFocus: write('autofocus') } },
+        // Answers its own press late — after the press has finished — as a crop or a lookup does.
+        { type: 'x-late-emitter', props: { id: 'late', onDone: write('late-pressed') }, children: ['press me later'] },
+        // Answers nobody, late: emits once after mounting.
+        { type: 'x-late-emitter', props: { auto: true, onDone: write('late-unasked') } },
+      ],
+    },
+    tables: {},
+    bag: 'space',
+    stores: {
+      record: {
+        create: (_entity: string, fields: { probe: string }) =>
+          document.body.setAttribute(`data-fired-${fields.probe}`, ''),
+      },
+    },
+  };
+};
+
+/**
+ * Ways a template might run code of its own, rendered as a space template is.
+ *
+ * Each tries to mark the page, and before the element allowlist three of them did: a `script` ran, an
+ * `iframe` with `srcdoc` ran with access to the page, and a `javascript:` link ran on a click. A
+ * string `onerror` did not run but threw while mounting, taking the whole render down — so the
+ * marker at the end is a check that the rest of the template still drew.
+ */
+const codeInTemplate = (): Scenario => {
+  const mark = (name: string) => `document.body.setAttribute('data-ran-${name}', '')`;
+  return {
+    node: {
+      type: 'Column',
+      props: { width: '100%', gap: '200' },
+      children: [
+        { type: 'script', children: [mark('script')] },
+        { type: 'iframe', props: { srcdoc: `<script>parent.${mark('srcdoc')}</script>` } },
+        { type: 'img', props: { src: '/does-not-exist.png', alt: '', onerror: mark('onerror') } },
+        { type: 'a', props: { id: 'js-link', href: `javascript:${mark('jshref')}` }, children: ['link'] },
+        // The same URL, built by an expression rather than written down.
+        {
+          type: 'a',
+          props: { id: 'js-expr', href: { $: `'javascript:' + "${mark('jsexpr').replace(/"/g, '\\"')}"` } },
+          children: ['built'],
+        },
+        // And handed to a design-system link, which draws its own anchor inside a shadow root.
+        { type: 'we-link', props: { id: 'js-we-link', href: `javascript:${mark('welink')}` }, children: ['we-link'] },
+        {
+          type: 'embed',
+          props: { src: `data:text/html,<script>parent.${mark('embed')}</script>`, type: 'text/html' },
+        },
+        { type: 'span', props: { id: 'still-here' }, children: ['the rest of the template drew'] },
+      ],
+    },
+    tables: {},
+    bag: 'space',
+  };
+};
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
+  'security:self-firing-events': selfFiringEvents,
+  'security:code-in-template': codeInTemplate,
   'canvas:tree-strip': treeStripOverCanvas,
   'canvas:voices': voicesPopover,
   'perf:transcript': (scale) => transcriptAt(scale ?? 100),

@@ -78,7 +78,13 @@ runs:
             gh api -X POST "repos/$REPO/issues/$PR/labels" -f "labels[]=$LABEL" >/dev/null
             ;;
           false)
+            # Unpaired, so not waiting on anything either: the `ready to bump ad4m` label and its
+            # comment (scripts/ad4m-ready-to-bump.mjs) go with the pairing.
             gh api -X DELETE "repos/$REPO/issues/$PR/labels/${LABEL// /%20}" >/dev/null 2>&1
+            gh api -X DELETE "repos/$REPO/issues/$PR/labels/ready%20to%20bump%20ad4m" >/dev/null 2>&1
+            READY="$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
+              --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- ad4m-ready-to-bump -->"))) | .id' | head -1)"
+            [ -n "$READY" ] && gh api -X DELETE "repos/$REPO/issues/comments/$READY" >/dev/null
             ;;
         esac
         exit 0

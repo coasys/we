@@ -590,8 +590,11 @@ export interface ModuleStoreDeps {
   onDispose?: (fn: () => void) => void;
   /** Publish a store member as readable state. See `store.ts`. */
   state: <T>(accessor: T, doc: string) => T extends (...args: never[]) => unknown ? T : () => T;
-  /** Publish a store member as a callable action. See `store.ts`. */
-  action: <T extends (...args: never[]) => unknown>(fn: T, doc: string) => T;
+  /**
+   * Publish a store member as a callable action. See `store.ts` — and `ambient`, which is the one
+   * option, and a claim: that the action is safe to run without a person asking.
+   */
+  action: <T extends (...args: never[]) => unknown>(fn: T, doc: string, options?: { ambient?: boolean }) => T;
 
   /** The dataset the module is currently scoped to, read reactively. `null` outside a space. */
   dataset?: () => DatasetHandle | null;
