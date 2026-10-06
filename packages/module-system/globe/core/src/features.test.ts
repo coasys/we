@@ -5,7 +5,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { indexAreas } from './areas';
-import { clusterCellDegrees, clusterPoints } from './cluster';
+import { clusterCellDegrees, ClusterLevels, clusterPoints } from './cluster';
 import { FeatureDiffer } from './diff';
 import { areaFeatures, hexFeatures, pathFeatures, pointFeatures } from './features';
 import { arcPositions, distance } from './geo';
@@ -253,11 +253,54 @@ describe('clustering', () => {
     { id: 'r', position: [-74, 40.71] as const },
   ];
 
-  it('joins points within a cell, and leaves them apart close in', () => {
+  it('joins points within the radius, and leaves them apart close in', () => {
     const far = clusterPoints(points, clusterCellDegrees(60, 5000));
     expect(far.map((c) => c.members.length).sort()).toEqual([1, 2]);
     expect(far.find((c) => c.members.length === 2)?.id).toBe('cluster:p');
     expect(clusterPoints(points, 0)).toHaveLength(3);
+    // Below the finest level, about 55 m of radius, nothing clusters however close.
+    expect(clusterPoints(points, 0.0002)).toHaveLength(3);
+  });
+
+  // A city's worth of points scattered at every scale, so steps fall between many of them.
+  let seed = 11;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const city = Array.from({ length: 400 }, (_, i) => ({
+    id: `m${String(i).padStart(3, '0')}`,
+    position: [2.3 + rand() ** 3 * 0.4, 48.8 + rand() ** 3 * 0.3] as const,
+  }));
+  const groupsOf = (clusters: { members: { id: string }[] }[]) =>
+    clusters.map((c) =>
+      c.members
+        .map((m) => m.id)
+        .sort()
+        .join(),
+    );
+
+  it('only ever splits a cluster as the camera comes closer, and only ever merges as it goes out', () => {
+    const levels = new ClusterLevels(city);
+    let previous = groupsOf(levels.at(40));
+    for (let radius = 40; radius > 0.0001; radius *= 0.97) {
+      const next = groupsOf(levels.at(radius));
+      // Every cluster now lies wholly inside one cluster from before.
+      for (const group of next) {
+        const ids = group.split(',');
+        expect(previous.some((before) => ids.every((id) => before.split(',').includes(id)))).toBe(true);
+      }
+      previous = next;
+    }
+    expect(previous).toHaveLength(city.length);
+  });
+
+  it('holds its level while the camera wavers across a step', () => {
+    const levels = new ClusterLevels(city);
+    // 0.125° is a step: one side is one level, the other the next.
+    const coarse = levels.at(0.14);
+    const counts = new Set<number>();
+    for (const radius of [0.126, 0.124, 0.126, 0.123, 0.127, 0.122]) counts.add(levels.at(radius).length);
+    expect(counts).toEqual(new Set([coarse.length]));
+    // Clearly past it, it moves.
+    expect(levels.at(0.09).length).toBeGreaterThan(coarse.length);
   });
 });
 

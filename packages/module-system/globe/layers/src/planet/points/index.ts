@@ -9,7 +9,7 @@
 import {
   type Cluster,
   clusterCellDegrees,
-  clusterPoints,
+  ClusterLevels,
   FeatureDiffer,
   type LonLat,
   type PointFeature,
@@ -166,7 +166,10 @@ export async function renderPoints(
   const differ = new FeatureDiffer<Mark>();
   const drawn = new Map<string, Drawn>();
   let altitude = markerAltitude(viewer, context.zIndex);
-  let cellDegrees = 0;
+  /** Every zoom's clusters for the features on screen, built once per update. Null without `cluster`. */
+  let levels: ClusterLevels<PointFeature> | null = null;
+  /** The level drawn now, compared by identity: the same level is the same array. */
+  let grouped: Cluster<PointFeature>[] | null = null;
   let hovered: string | null = null;
 
   const cartesian = (position: LonLat) => Cartesian3.fromDegrees(position[0], position[1], altitude);
@@ -177,23 +180,16 @@ export async function renderPoints(
     return typeof cluster === 'object' ? (cluster.radius ?? DEFAULT_CLUSTER_RADIUS) : DEFAULT_CLUSTER_RADIUS;
   };
 
-  /** The cluster cell for this camera, in steps of a fifth so a small zoom does not regroup everything. */
-  const currentCell = () => {
-    const radius = clusterRadius();
-    if (!radius) return 0;
-    const exact = clusterCellDegrees(radius, metresPerPixel(viewer));
-    // Close in, a cluster would hold only what sits on top of one another: draw everything.
-    if (exact < 0.0005) return 0;
-    return 2 ** (Math.round(Math.log2(exact) * 5) / 5);
-  };
+  /** The clusters for this camera, or null when clustering is off. */
+  const currentClusters = () =>
+    levels ? levels.at(clusterCellDegrees(clusterRadius(), metresPerPixel(viewer))) : null;
 
   const marks = (): Mark[] => {
-    if (!cellDegrees) {
+    if (!grouped) {
       clusters = new Map();
       return features.map(markOf);
     }
     const clusterColor = typeof options.cluster === 'object' ? (options.cluster.color ?? 'accent') : 'accent';
-    const grouped = clusterPoints(features, cellDegrees);
     clusters = new Map(grouped.filter((c) => c.members.length > 1).map((c) => [c.id, c.members]));
     return grouped.map((c) => (c.members.length > 1 ? clusterMark(c, clusterColor) : markOf(c.members[0])));
   };
@@ -294,7 +290,8 @@ export async function renderPoints(
     options = next;
     features = pointFeatures(next);
     byId = new Map(features.map((f) => [f.id, f]));
-    cellDegrees = currentCell();
+    levels = clusterRadius() ? new ClusterLevels(features) : null;
+    grouped = currentClusters();
     return draw();
   };
 
@@ -310,10 +307,10 @@ export async function renderPoints(
         if (entry.label) entry.label.position = position;
       }
     }
-    if (clusterRadius()) {
-      const cell = currentCell();
-      if (cell !== cellDegrees) {
-        cellDegrees = cell;
+    if (levels) {
+      const next = currentClusters();
+      if (next !== grouped) {
+        grouped = next;
         void draw();
       }
     }

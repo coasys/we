@@ -16,7 +16,7 @@ export {
   type NamedArea,
   type Polygon,
 } from './areas';
-export { clusterCellDegrees, clusterPoints, type Cluster } from './cluster';
+export { clusterCellDegrees, ClusterLevels, clusterPoints, type Cluster } from './cluster';
 export { createColorResolver, withOpacity, type ColorResolver, type Rgba } from './color';
 export { drawingKey, FeatureDiffer, type FeatureDiff } from './diff';
 export { EventBus } from './events';
