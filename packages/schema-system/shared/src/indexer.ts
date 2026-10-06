@@ -339,29 +339,30 @@ export function collectComponentTypes(schema: SchemaNode): Set<string> {
  * disagrees with the others about what counts as a node — which is how 62% of the workshop
  * template's nodes once went without ids.
  */
-export function forEachNode(schema: SchemaNode, fn: (node: SchemaNode) => void): void {
-  const visit = (node: SchemaNode): void => {
-    fn(node);
+export function forEachNode(schema: SchemaNode, fn: (node: SchemaNode, parent: SchemaNode | undefined) => void): void {
+  const visit = (node: SchemaNode, parent: SchemaNode | undefined): void => {
+    fn(node, parent);
+    const into = (child: SchemaNode) => visit(child, node);
     if (node.children) {
       for (const child of node.children) {
-        if (isSchemaChild(child)) visit(child);
+        if (isSchemaChild(child)) into(child);
       }
     }
     if (node.routes) {
-      for (const route of node.routes) visit(route as SchemaNode);
+      for (const route of node.routes) into(route as SchemaNode);
     }
     if (node.slots) {
-      for (const slotNode of Object.values(node.slots)) visit(slotNode);
+      for (const slotNode of Object.values(node.slots)) into(slotNode);
     }
-    forEachPropsNode(node, visit);
-    forEachDefinition(node, visit);
-    forEachPanelNode(node, visit);
+    forEachPropsNode(node, into);
+    forEachDefinition(node, into);
+    forEachPanelNode(node, into);
   };
-  visit(schema);
+  visit(schema, undefined);
 }
 
 /**
- * Give every node that has no id one, and every node sharing an id with an earlier one a new one.
+ * Give every node that has no id one, and every node sharing an id with another a new one.
  *
  * Ids are permanent (see `nodeIdentity.ts`), so this only ever fills gaps: a node somebody just
  * made, a node a language model wrote without one. `mint` says what a new id is — a permanent one
@@ -369,28 +370,57 @@ export function forEachNode(schema: SchemaNode, fn: (node: SchemaNode) => void):
  * place of ids and must be handed one for a node it can then target.
  *
  * A duplicate is a node copied without being given an identity of its own, and both copies claiming
- * one identity would make every edit to it ambiguous. The second, in walk order, is renewed — and
- * that is reported, because a copy that kept its source's ids is a bug in whatever copied it.
+ * one identity would make every edit to it ambiguous, so all but one are renewed — and that is
+ * reported, because a copy that kept its source's ids is a bug in whatever copied it.
+ *
+ * WHICH one keeps it matters: the original must, or a paste takes the identity of the thing it
+ * copied and anything that named the original now names the paste. Walk order cannot say which is
+ * the original — a node pasted near the top of a tree is reached before one deep in its routes — so
+ * pass `previous`, the tree before the edit, and the id stays with the node whose parent is the
+ * same as it was. Parents rather than positions, because a parent's id survives an edit and a
+ * position shifts whenever a sibling is inserted. Without `previous`, or when no candidate matches,
+ * the first in walk order keeps it.
  *
  * Mutates the schema in place and returns it.
  */
-export function ensureNodeIds(schema: SchemaNode, mint: () => string = newNodeId): SchemaNode {
-  const seen = new Set<string>();
-  const renewed: string[] = [];
+export function ensureNodeIds(schema: SchemaNode, mint: () => string = newNodeId, previous?: SchemaNode): SchemaNode {
+  const parentBefore = new Map<string, string | undefined>();
+  if (previous) forEachNode(previous, (node, parent) => node.id && parentBefore.set(node.id, parent?.id));
 
-  forEachNode(schema, (node) => {
-    if (!node.id) {
-      node.id = mint();
-    } else if (seen.has(node.id)) {
-      renewed.push(node.id);
-      node.id = mint();
+  // Who claims each id, so a duplicate can be settled before anybody is renewed.
+  const claims = new Map<string, { node: SchemaNode; parent?: string }[]>();
+  forEachNode(schema, (node, parent) => {
+    if (!node.id) return;
+    const list = claims.get(node.id) ?? [];
+    list.push({ node, parent: parent?.id });
+    claims.set(node.id, list);
+  });
+
+  // A new id must not be one already in the tree — a model can write an alias the minter has yet to reach.
+  const fresh = (): string => {
+    let id = mint();
+    while (claims.has(id)) id = mint();
+    claims.set(id, []);
+    return id;
+  };
+
+  const renewed: string[] = [];
+  for (const [id, list] of claims) {
+    if (list.length < 2) continue;
+    const keeper = (parentBefore.has(id) && list.find((claim) => claim.parent === parentBefore.get(id))) || list[0];
+    for (const claim of list) {
+      if (claim === keeper) continue;
+      renewed.push(id);
+      claim.node.id = fresh();
     }
-    seen.add(node.id);
+  }
+  forEachNode(schema, (node) => {
+    if (!node.id) node.id = fresh();
   });
 
   if (renewed.length) {
     console.warn(
-      `[ensureNodeIds] ${renewed.length} node(s) shared an id with an earlier node and were given new ones ` +
+      `[ensureNodeIds] ${renewed.length} node(s) shared an id with another node and were given new ones ` +
         `(${renewed.slice(0, 5).join(', ')}${renewed.length > 5 ? ', …' : ''}). ` +
         'Whatever copied them should give the copy ids of its own — see copyWithNewIds.',
     );

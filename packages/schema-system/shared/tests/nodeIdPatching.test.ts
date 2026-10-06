@@ -519,3 +519,43 @@ describe('removeChild', () => {
     expect(schema.children).toHaveLength(2);
   });
 });
+
+/*
+  A paste that kept its source's id. Walk order puts the paste first when it lands near the top of
+  the tree and the original sits deep in its routes — found in the app, where the paste kept the id
+  and the heading it copied lost it.
+*/
+describe('ensureNodeIds and a copy that kept its source’s id', () => {
+  const tree = (withPaste: boolean): SchemaNode => ({
+    id: 'root',
+    type: 'Column',
+    children: withPaste ? [{ type: 'we-text', id: 'aaaaaaaaaa', children: ['Heading'] }] : [],
+    routes: [
+      {
+        path: '/',
+        id: 'routeaaaaa',
+        type: 'Column',
+        children: [{ type: 'we-text', id: 'aaaaaaaaaa', children: ['Heading'] }],
+      },
+    ],
+  });
+
+  it('leaves the id with the node whose parent held it before, wherever the walk meets it first', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const after = ensureNodeIds(tree(true), undefined, tree(false));
+    const original = after.routes![0].children![0] as SchemaNode;
+    const paste = after.children![0] as SchemaNode;
+    expect(original.id).toBe('aaaaaaaaaa');
+    expect(paste.id).not.toBe('aaaaaaaaaa');
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
+  it('never mints an id already in the tree', () => {
+    let n = 0;
+    const schema: SchemaNode = { type: 'Column', children: [{ type: 'we-text', id: 'n2' }, { type: 'we-text' }] };
+    ensureNodeIds(schema, () => `n${++n}`);
+    const ids = [schema.id, ...(schema.children as SchemaNode[]).map((c) => c.id)];
+    expect(new Set(ids).size).toBe(3);
+  });
+});

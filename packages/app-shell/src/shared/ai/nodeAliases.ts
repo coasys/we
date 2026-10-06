@@ -81,7 +81,9 @@ export function prepareForModel(template: SchemaNode): ModelTree {
       if (real) node.id = real;
       else delete node.id;
     });
-    return ensureNodeIds(expanded);
+    // Against the template as it came in, so a node the model wrote with an existing node's alias
+    // is the one renewed rather than the node it named.
+    return ensureNodeIds(expanded, undefined, whole);
   };
 
   return { schema, uses, mint, restore };

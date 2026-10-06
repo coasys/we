@@ -772,7 +772,8 @@ export function TemplateStoreProvider(props: ParentProps) {
   // Actions
   function updateTemplate(newTemplate: TemplateSchema) {
     const clone = deepClone(newTemplate) as SchemaNode;
-    ensureNodeIds(clone);
+    // Against the template it replaces, so a node pasted with an id already in use is the one renewed.
+    ensureNodeIds(clone, undefined, currentTemplate as SchemaNode);
     const result = updateSchema(currentTemplate, clone as TemplateSchema, setCurrentTemplate);
     if (!result.applied && result.errors?.length) {
       toastService.error(`Schema validation failed: ${result.errors[0].message}`);

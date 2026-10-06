@@ -311,7 +311,7 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
         patchesApplied = false;
         continue;
       }
-      accumulated = ensureNodeIds(applied.schema, mint);
+      accumulated = ensureNodeIds(applied.schema, mint, workingSchema);
 
       /*
         A split's copy is numbered by now — with that use's ids, or fresh — and this is the only
