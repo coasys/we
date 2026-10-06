@@ -169,6 +169,9 @@ that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/pack
   its data binding lives at `packages/app-shell/src/frameworks/solid/components/GraphHost.tsx`.
 - App chrome and module panels (the sidebar, the module rail, floating vs displacing, who moves for
   whom) → `packages/app-shell/src/shared/dockGeometry.ts` (see docs/architecture/chrome-and-panels.md).
+- What no template may replace — the password field, the safety prompts, safe mode — and the one
+  place each is enforced → docs/architecture/protected-pieces.md. Read it before touching the boot
+  screen, a confirmation the host raises, or how a template becomes the live one.
 
 **Where a new thing goes** — module or host store, panel or fragment, who decides placement, and how
 two capabilities cooperate without depending on each other — is
@@ -282,7 +285,7 @@ the seed's list is correct code that never appears.
 | Entity | `entities/src/manifest/` | `entities/CONVENTIONS.md` + `docs/architecture/relations.md` | `--filter @we/entities generate:types` **and** `--filter @we/backend-ad4m generate:classes` | `--filter @we/backend-ad4m test` |
 | Feature module | `module-system/<id>/` (or any package exporting `createModule`) | `docs/guides/writing-a-module.md`, then `module-system/shared/src/module.ts` | seed `modules` — the registry is generated from it by `--filter @we/app-shell generate-modules` | `--filter @we/module-shared test`, `validate:schemas`, then `generate-context` |
 | Graph plugin | `graph-system/expanders/src/`, `layouts/src/` | `graph-system/CONVENTIONS.md` | package index **and** `GRAPH_PLUGIN_CATALOG` in `module-system/graph/src/catalog.ts` | `--filter @we/graph-core test`, then `generate-context` |
-| Globe layer | `module-system/globe/layers/src/` | its `README.md` / `EXAMPLES.md` | export from `index.ts`, `layerFactoryRegistry` in `module-system/globe/module/src/layers.ts` **and** `GLOBE_LAYER_CATALOG` in `module-system/globe/module/src/catalog.ts` | `--filter @we/app-shell test` (`globeModule`), then `generate-context` |
+| Globe layer | `module-system/globe/layers/src/` | its `README.md` / `EXAMPLES.md` | export from `index.ts`, `layerKinds` in `module-system/globe/module/src/layers.ts`, `maplibreLayerKinds` in `module-system/globe/layers/src/maplibre/index.ts` **and** `GLOBE_LAYER_CATALOG` in `module-system/globe/module/src/catalog.ts` | `--filter @we/app-shell test` (`globeModule`), then `generate-context` |
 | Seed | `we-seed.json` | `docs/getting-started/seed-system.md` | — | `pnpm validate:seed` |
 | Backend adapter | `backend-system/<name>/` | `backend-system/shared/README.md` | entity proxy registry | `describeBackendConformance` from `@we/backend-conformance` |
 | Platform host | `apps/<name>/` | — | — | `--filter <app> build` |
@@ -1640,10 +1643,51 @@ a name not listed here does not exist, and the component will warn rather than r
 
 ### CesiumGlobe
 
-Layers are listed in two props: planetLayers (drawn on the earth) and backgroundLayers (the space around it). Each entry is { factory, id?, enabled?, zIndex?, options? }: factory names the kind below; id is required when one kind appears twice, or the two collide and one is not drawn; enabled takes an expression, so a layer can follow a toggle; zIndex is a planet layer's stacking order, which each kind interprets. Options take expressions and handlers like any prop, so a layer can draw what a $queries entry fetched: read it with { "$": "local.rows.map(…)" }. The imagery is the globe's own and is not a layer.
+Layers are listed in two props: planetLayers (drawn on the earth) and backgroundLayers (the space around it). Each entry is { factory, id?, enabled?, zIndex?, options? }: factory names the kind below; id is required when one kind appears twice, or the two collide and one is not drawn; enabled takes an expression, so a layer can follow a toggle; zIndex is a planet layer's stacking order, which each kind interprets. Options take expressions and handlers like any prop, so a layer can draw what a $queries entry fetched: read it with { "$": "local.rows.map(…)" }. The imagery is the globe's own and is not a layer. A globe is drawn by one of two engines, which the deployment or the person chooses and a template never names: Cesium, the full 3D globe, or MapLibre, a lighter one for phones. Both draw every planet kind; only Cesium draws the background kinds, and on MapLibre lines lie flat. Read modules.globe.drawsSpace to leave the background kinds out of a menu where they would do nothing. A kind an engine does not draw is simply absent there, so place them as you would anyway. The data kinds (pointsLayer, pathsLayer, areasLayer, hexbinLayer) each take rows as `data`, field paths saying where in a row its geometry is (dotted for nested fields: "location.latitude"), and `style`: rules in the GraphView's dialect, [{ when?, style }], applied in order with later matches winning per property. A rule's `when` reads a row's fields as "data.<field>"; a style value is a literal, { "from": "data.<field>" } to read it off the row, or { "metric": "field", "options": { "from": "<field>" }, "range": [min, max] } (a number) or "scale": { "from": colour, "to": colour } (a colour) to scale it across all the rows. Colours are roles or tokens ("accent", "warning-500") or CSS. For a heat, use { "from": "success-500", "to": "danger-500" }, green to red, which reads the same way round in a light and a dark theme; the graph's named scales ("heat") follow the page's theme and turn around in a dark one, which is wrong over satellite imagery. Start a height range above 0 so the least still shows. Pressing a feature calls onSelect.
 
 **planet**
 
+- `pointsLayer` — A marker per row: a dot, or a picture, with a label. For members, spaces, events, sightings — anything with a place. Thousands are fine; close together they can cluster into one marker with a count.
+  - data: object[] — The rows. Rows without a place are left out.
+  - latitude: string — Field path to the latitude. Default "latitude".
+  - longitude: string — Field path to the longitude. Default "longitude".
+  - id: string — Field naming each row, so an update restyles rather than redraws. Default "id".
+  - label: string — Field shown beside each marker. Default "name"; "" for none.
+  - labelMaxAltitude: number — Labels show only while the camera is below this many metres — e.g. 2000000 to hide them from orbit.
+  - style: rules — Properties: size (pixels, default 12), color, opacity, borderColor (default white), borderWidth (default 2), image (a picture instead of a dot, usually { "from": "data.avatar" }), labelColor.
+  - cluster: boolean | { radius?, color? } — Draw markers within radius pixels (default 60) of each other as one, with a count; pressing one zooms in.
+  - onSelect: handler — Runs when a marker is pressed, with its row as event.
+  - Example: `{ "factory": "pointsLayer", "id": "members", "options": { "data": { "$": "spaceStore.members.filter(m, m.location)" }, "latitude": "location.latitude", "longitude": "location.longitude", "label": "name", "style": [{ "style": { "color": "accent", "image": { "from": "data.avatar" } } }, { "when": { "data.role": "admin" }, "style": { "borderColor": "warning-500" } }], "cluster": true, "onSelect": { "$setLocal": "selected", "value": { "$": "event" } } } }`
+- `pathsLayer` — A line per row: between two places, or along a list of them. Follows the earth's curve, and can arc — a share of its own length, so longer routes arc higher. For travel, routes between events, who replied to whom across the world.
+  - data: object[] — The rows. Rows without both ends are left out.
+  - from: { latitude, longitude } — Field paths to where each line starts. Default "from.latitude" / "from.longitude".
+  - to: { latitude, longitude } — Field paths to where it ends. Default "to.latitude" / "to.longitude".
+  - coordinates: string — Instead of from/to: a field holding the whole line as [longitude, latitude] pairs.
+  - id: string — Field naming each row. Default "id".
+  - style: rules — Properties: width (pixels, default 2), color, opacity, dashed (true/false), arcHeight (0 flat … 0.5 tall, a share of the line's length; default 0; drawn flat on the MapLibre engine). A rule can read a line's length in kilometres as "data.length".
+  - onSelect: handler — Runs when a line is pressed, with its row as event.
+  - Example: `{ "factory": "pathsLayer", "id": "trips", "options": { "data": { "$": "local.trips" }, "from": { "latitude": "origin.latitude", "longitude": "origin.longitude" }, "to": { "latitude": "destination.latitude", "longitude": "destination.longitude" }, "style": [{ "style": { "color": "accent", "width": 2, "arcHeight": 0.2 } }, { "when": { "data.length": { "gt": 5000 } }, "style": { "color": "warning-500" } }] } }`
+- `areasLayer` — Filled shapes. Either each row carries its own (GeoJSON), or the rows name countries and are grouped into them: rows naming the same country become one shaded country, with how many rows (or the sum, mean, least or greatest of a field) as data.value — shaded green to red by it when no style is given. For choropleths: members per country, posts per country, a region somebody drew.
+  - data: object[] — The rows.
+  - area: "countries" — Group the rows into the countries they name, rather than drawing their own shapes.
+  - key: string — With area: the field naming a row's country. Default "country".
+  - match: "iso_a2" | "iso_a3" | "name" — With area: what key holds — "FR", "FRA" or "France". Default "iso_a2". Case does not matter.
+  - aggregate: "count" | "sum" | "mean" | "min" | "max" — With area: how a country's rows become data.value. Default "count".
+  - value: string — With area: the field summed, averaged or compared.
+  - geometry: string — Without area: the field holding each row's shape as a GeoJSON Polygon or MultiPolygon. Default "geometry".
+  - style: rules — Properties: color (the fill), opacity (default 0.6), borderColor, borderWidth (default 1 with a border colour), height (metres to raise it as a solid; default 0, flat). With area, a rule reads "data.value", "data.count" and "data.name".
+  - onSelect: handler — Runs when a shape is pressed: with the row, or with area, { key, name, rows, count, value }.
+  - Example: `{ "factory": "areasLayer", "id": "members-by-country", "options": { "data": { "$": "spaceStore.members.filter(m, m.location)" }, "area": "countries", "key": "location.countryCode", "style": [{ "style": { "color": { "metric": "field", "options": { "from": "value" }, "scale": { "from": "success-500", "to": "danger-500" } }, "opacity": 0.7, "height": { "metric": "field", "options": { "from": "value" }, "range": [30000, 400000] } } }] } }`
+- `hexbinLayer` — Rows gathered into hexagonal H3 cells, one shaded cell per place with rows in it, so density reads without placing every row. A cell's data.value is how many rows (or the sum, mean, least or greatest of a field); shaded green to red by it when no style is given, and raised into a column by a height rule. Different from h3HexagonsLayer, which draws the empty grid.
+  - data: object[] — The rows. Rows without a place are left out.
+  - latitude: string — Field path to the latitude. Default "latitude".
+  - longitude: string — Field path to the longitude. Default "longitude".
+  - resolution: number — Cell size: 2 is countries, 4 (default) about 22 km across, 7 a town, 10 a few streets.
+  - aggregate: "count" | "sum" | "mean" | "min" | "max" — How a cell's rows become data.value. Default "count".
+  - value: string — The field summed, averaged or compared.
+  - style: rules — Properties: color, opacity (default 0.7), height (metres to raise the cell; default 0). A rule reads "data.value" and "data.count".
+  - onSelect: handler — Runs when a cell is pressed, with { cell, rows, count, value }.
+  - Example: `{ "factory": "hexbinLayer", "id": "post-heat", "enabled": { "$": "local.showHeat" }, "options": { "data": { "$": "local.posts" }, "latitude": "location.latitude", "longitude": "location.longitude", "resolution": 3, "style": [{ "style": { "color": { "metric": "field", "options": { "from": "value" }, "scale": { "from": "success-500", "to": "danger-500" } }, "height": { "metric": "field", "options": { "from": "value" }, "range": [30000, 300000] } } }], "onSelect": { "$setLocal": "cell", "value": { "$": "event" } } } }`
 - `pointLocationsLayer` — Markers at places on the earth, each with a label, drawn as the avatar when one is given and as a coloured dot otherwise. Pressing one calls onLocationClick with that location, every field included, so a location can carry what a modal needs (a kind, an id).
   - locations: { id, name, latitude, longitude, avatar?, color? }[] — What to mark. Usually an expression over a query or a store — any extra fields ride along to onLocationClick.
   - markerSize: number — Diameter in pixels. Default 15.
@@ -1668,11 +1712,11 @@ Layers are listed in two props: planetLayers (drawn on the earth) and background
 
 **background**
 
-- `skyboxLayer` — A star map around the globe, from NASA's Tycho-2 catalogue. Cesium's own copy shows at once and offline; the set asked for replaces it once it has loaded.
+- `skyboxLayer` — A star map around the globe, from NASA's Tycho-2 catalogue. Cesium's own copy shows at once and offline; the set asked for replaces it once it has loaded. Drawn by the Cesium engine only.
   - textureSet: "tycho2-1k" | "tycho2-2k" | "tycho2-4k" | "custom" — Resolution of each face: 1k is 2.4 MB, 2k 5.8 MB, 4k 20 MB. Default "tycho2-1k".
   - customPaths: { px, nx, py, ny, pz, nz } — One image URL per cube face, with textureSet "custom".
   - Example: `{ "factory": "skyboxLayer", "enabled": { "$": "local.showSkybox" }, "options": { "textureSet": "tycho2-4k" } }`
-- `proceduralStarsLayer` — Points of light at random depths around the earth, which move against each other as the camera turns.
+- `proceduralStarsLayer` — Points of light at random depths around the earth, which move against each other as the camera turns. Drawn by the Cesium engine only.
   - count: number — How many stars. Default 5000.
   - minDistance: number — Nearest star, in metres from the surface.
   - maxDistance: number — Farthest star, in metres from the surface.
@@ -1682,7 +1726,7 @@ Layers are listed in two props: planetLayers (drawn on the earth) and background
   - maxSize: number — Largest star in pixels. Default 3.
   - color: string — CSS colour. Default "#ffffff".
   - Example: `{ "factory": "proceduralStarsLayer", "enabled": { "$": "local.showStars" }, "options": { "count": 2000, "minDistance": 10000, "maxDistance": 100000000 } }`
-- `solarSystemLayer` — The sun, the planets at their positions for today, and their orbits, scaled down to be seen from the earth.
+- `solarSystemLayer` — The sun, the planets at their positions for today, and their orbits, scaled down to be seen from the earth. Drawn by the Cesium engine only.
   - planets: string[] — Which to draw: mercury, venus, earth, mars, jupiter, saturn, uranus, neptune.
   - showSun: boolean — Default true.
   - showOrbits: boolean — Default true.
@@ -2885,7 +2929,7 @@ ProfileStore:
   - setPendingAvatar(file: File): holds a picture chosen before an agent exists; uploaded by completeAccountSetup
   - saveNameFromPrompt(name: string): sets the name and stops asking. Dismisses before publishing, so a failed write cannot re-raise the prompt on top of the toast explaining it — which is why this exists rather than calling updateOwnProfile from the schema
   - dismissNamePrompt(): stops asking for a name until the next launch. Not persisted: a nameless agent degrades every other member's experience, so the only permanent exit is setting a name
-  - completeAccountSetup(name: string, password: string): the whole of first-run setup — creates the agent, then publishes the name and picture, then lets the app appear
+  - completeAccountSetup(name: string): the whole of first-run setup — creates the agent with the password typed into the host's CredentialField (purpose 'new'), then publishes the name and picture, then lets the app appear. Does nothing but ask the field to show its errors when that password is missing or its confirmation differs
   - fetchProfile(did: string): fetches and caches an agent's profile from their public dataset
   - updateOwnProfile(fields: { firstName?, lastName?, handle?, bio? }): updates own profile text fields and publishes to the public dataset
   - updateProfileImage(field: "avatar" | "coverImage", imageFile: File): uploads the image and publishes its expression URL to the public dataset
@@ -3051,11 +3095,13 @@ SessionStore:
   - isGuest: boolean — this identity was minted for somebody who arrived on a guest invite link rather than chosen by them. NOT the same question as `host`: an ordinary member of a hosted deployment has a host and is not a guest. Read it where the app explains itself to the person using it — why it is asking for a name, what "log out" would mean for an identity with no other way back
   - isDevelopment: boolean — whether this is a development build. A fact about the build. Do NOT gate developer-only UI on it; gate on devTools, which is the same answer plus a switch
   - devTools: boolean — whether developer affordances should be VISIBLE. True in a development build unless a developer has thrown the Settings → Developer switch to see what a shipped app looks like. Reactive, so a control gated on it appears and disappears on the press. Gate any developer-only control on this — a schema-test page, a fixture toggle — and wrap it in $if rather than hiding it, since a hidden row is still in the accessibility tree and still found by find-in-page. Never true in a production build, whatever the switch says
+  - credentialEntered: boolean — something has been typed into the host's password field. The password itself is never readable from a template — see CredentialField — so gate a Sign in button on this
+  - credentialConfirmed: boolean — a CredentialField with purpose 'new' holds a password typed twice and the same both times. Gate the call to profileStore.completeAccountSetup on it
 - Actions:
   - setDevTools(on: boolean): shows or hides developer affordances for this session. Takes the value the control shows, so a we-switch can pass `event.detail` bare. Cannot turn developer UI on in a production build
-  - login(password: string): unlocks the agent and loads user data
-  - createAgent(password: string): creates the agent, loads user data, and lands on the 'finishing' boot state (not 'ready')
-  - clearPasswordError(): clears the failed-unlock flag. Chain it after the password field's $setLocal — the verdict was on the submitted password, so editing that password retracts it and a stale "Incorrect password" should not sit over the correction
+  - unlock(): signs in with what was typed into the host's password field (a CredentialField with purpose 'unlock'), and loads user data. Takes no password, on purpose: nothing a template collected can be handed to it. Rejects when the unlock fails
+  - touchCredential(): asks a CredentialField with purpose 'new' to show what is wrong with it — the $touch: '$all' for fields a template cannot reach. Put it beside $touch in a Create account button's handler
+  - clearPasswordError(): clears the failed-unlock flag. Wire it to the CredentialField's onEdit — the verdict was on the submitted password, so editing that password retracts it and a stale "Incorrect password" should not sit over the correction
   - finishSetup(): leaves 'finishing' for the running app — sets bootState to 'ready'
   - logout(): locks the agent and returns to the login screen
   - retryBoot(): starts the whole boot again from the failure screen, by reloading. A failed boot can have got anywhere before it threw, so retrying in place would race the remains of the first attempt
@@ -3328,6 +3374,7 @@ TemplateStore:
   - loading: boolean — the template lists are still being read. Gate empty states on it
   - defaultTemplateId: string — id of the agent's preferred default template, used where no space or override decides. Persisted to AgentSettings.defaultTemplateId
   - pendingInstall: the template an install dialog is showing ({ marketplaceId, destination, name, icon, version, capabilities, blocked }), or null when none is open. `capabilities` is already in the words a person reads. Host chrome renders it: a dialog vouching for a template must not be drawn by a template
+  - safeMode: { on, reason, template } — whether this tab is in safe mode, where WE's own templates and themes are drawn in place of the chosen ones. reason is 'asked' (the ?safe address, the key or the menu) or 'unfinished-render' (a template did not finish loading last time — template is its id). Decided before anything rendered; fixed for the page
   - operationLoading: string | null — the id of the template operation in flight, namespaced by kind ('marketplace-install:<id>', 'space-install:<id>'), or null. A key rather than a boolean so one row's spinner does not appear on every row
 - Actions:
   - switchTemplate(newTemplateId: string): switches to another template
@@ -3348,6 +3395,7 @@ TemplateStore:
   - deleteMarketplaceTemplate(templateId: string): removes a template this agent published from the marketplace. Only its author may
   - publishToMarketplace(options: { name, description, icon?, themeId?, slug?, screenshots: File[] }): publishes the current template to the marketplace under those details. Resolves true on success
   - refreshSpaceTemplates(): re-reads the current space's templates. The list follows the space on its own; call this after a publish the subscription might have missed
+  - leaveSafeMode(): leaves safe mode and reloads with the templates and themes that were chosen
 
 ThemeStore:
 - State:
@@ -4148,14 +4196,19 @@ they share an icon, a heading, a width and a button row:
 
 ```ts
 confirmModal({
-  open: { $: 'local.confirmDeleteOpen' },
-  close: { $setLocal: 'confirmDeleteOpen', value: false },
-  title: 'Delete post?',
-  body: 'This will permanently delete the post and everything inside it. This cannot be undone.',
-  confirmLabel: 'Delete',
-  confirm: { $action: 'spaceStore.deleteCollection', args: [{ $: 'post.id' }] },
+  open: { $: 'local.confirmRemoveOpen' },
+  close: { $setLocal: 'confirmRemoveOpen', value: false },
+  title: 'Remove this column?',
+  body: 'The cards in it stay on the board, in the state they are in.',
+  confirmLabel: 'Remove',
+  confirm: { $action: 'spaceStore.removeBoardColumn', args: [{ $: 'board.id' }, { $: 'column.id' }] },
 })
 ```
+
+**Never in front of a delete.** The host asks before every destructive action a space template runs
+— `spaceStore.deleteCollection`, `record.delete`, `recordStore.deleteRecords` and the rest —
+in its own words, saying what goes with it. Call one straight from the button. A dialog of your own
+in front of it is a second question about one click, and the validator warns about it.
 
 It returns the `$if` as well as the modal, and clears `open` from all three exits — the backdrop,
 Cancel, and the action's `onSuccess`.
@@ -4167,7 +4220,7 @@ Cancel, and the action's `onSuccess`.
 - `tone: 'primary'` for a question with no casualty; the default `danger` picks a warning icon and
   a danger confirm button.
 - `detail` for a quieter second line, `children` for a `we-alert` naming a surprising consequence.
-- `busyLocal` if the action is not instant — a recursive delete walks its whole collection, and
+- `busyLocal` if the action is not instant — a write that walks a board or a thread takes a while, and
   without a spinner the button absorbs the click and invites a second one. `busy` instead when a
   store already owns the flag.
 

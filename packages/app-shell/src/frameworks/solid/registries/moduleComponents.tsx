@@ -12,40 +12,67 @@
  * carries a dependency far larger than the app around it. This is code-splitting inside one build —
  * Rollup still gives every chunk the same `solid-js`, so the single-instance guarantee holds.
  */
-import { lazy } from 'solid-js';
+import { deviceHints, engineChoiceFrom, imageryChoiceFrom, ionTokenFrom, resolveEngine } from '@we/module-globe';
+import { createMemo, lazy, Show } from 'solid-js';
 
 import { moduleRegistry } from '../../../shared/registries/moduleRegistry';
 
 /**
- * Cesium, three, and the layer stack — several times the size of the rest of the app.
+ * The globe, drawn by whichever engine the globe module's `engine` setting resolves to on this device:
+ * Cesium, the full 3D globe, or MapLibre, the light one. Templates name `CesiumGlobe` and never an
+ * engine; the name predates the second engine and is kept so no template, stored or shipped, changes.
  *
- * The imagery choice and its key are filled in here from the globe module's settings, and after the
+ * Each engine is its own chunk, with its own layer registry, so a device on MapLibre never downloads
+ * Cesium. The imagery choice and its key are filled in here from the module's settings, after the
  * template's own props so a template cannot supply them: see `CesiumGlobeProps.imagery`.
  */
-export const CesiumGlobeOnDemand = lazy(async () => {
-  const [{ CesiumGlobe }, { layerFactoryRegistry }, { imageryChoiceFrom, ionTokenFrom }] = await Promise.all([
+const globeSettings = () => moduleRegistry.settingsOf('globe');
+
+const CesiumEngine = lazy(async () => {
+  const [{ CesiumGlobe }, { layerKinds }] = await Promise.all([
     import('@we/globe-widget'),
     import('@we/module-globe/layers'),
-    import('@we/module-globe'),
   ]);
-  const settings = () => moduleRegistry.settingsOf('globe');
   return {
     default: (props: Record<string, unknown>) => (
       <CesiumGlobe
         {...props}
-        layerFactoryRegistry={layerFactoryRegistry}
-        imagery={imageryChoiceFrom(settings())}
-        ionAccessToken={ionTokenFrom(settings())}
+        layerKinds={layerKinds}
+        imagery={imageryChoiceFrom(globeSettings())}
+        ionAccessToken={ionTokenFrom(globeSettings())}
       />
     ),
   };
 });
+
+const MapLibreEngine = lazy(async () => {
+  const [{ MapLibreGlobe }, { maplibreLayerKinds }] = await Promise.all([
+    import('@we/globe-widget/maplibre'),
+    import('@we/module-globe/layers-maplibre'),
+  ]);
+  return {
+    default: (props: Record<string, unknown>) => (
+      <MapLibreGlobe {...props} layerKinds={maplibreLayerKinds} imagery={imageryChoiceFrom(globeSettings())} />
+    ),
+  };
+});
+
+export function GlobeOnDemand(props: Record<string, unknown>) {
+  // The device does not change under a mounted globe; the setting can, and switches the engine.
+  const device = deviceHints();
+  const engine = createMemo(() => resolveEngine(engineChoiceFrom(globeSettings()), device));
+  return (
+    <Show when={engine() === 'maplibre'} fallback={<CesiumEngine {...props} />}>
+      <MapLibreEngine {...props} />
+    </Show>
+  );
+}
 
 /** The graph engine, its expanders, layouts and d3-force — loaded when a template first draws one. */
 export const GraphViewOnDemand = lazy(() => import('../components/GraphHost'));
 
 /** What `initializeIntegrations` hands each module factory. */
 export const moduleHostComponents: Record<string, unknown> = {
-  CesiumGlobe: CesiumGlobeOnDemand,
+  CesiumGlobe: GlobeOnDemand,
   GraphView: GraphViewOnDemand,
 };

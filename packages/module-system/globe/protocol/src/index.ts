@@ -1,171 +1,102 @@
 /**
- * The Cesium **layer protocol** — the contract a layer implements, independent of any widget.
+ * The globe's **layer protocol**: what a layer kind is, and what its renderers receive.
  *
- * Kept apart from `CesiumGlobe.types.ts` because these serve a different audience. `CesiumGlobeProps`
- * is for someone *placing the globe*; everything here is for someone *writing a layer*, which is a
- * separate act and increasingly a third-party one. Mixing them left a layer author reading a file and
- * working out which half applied to them.
+ * A layer kind is split in two. What it **means** (its id, its slot, its options) is the same on any
+ * engine, and is all a template ever names. How it is **drawn** is a renderer per engine, which is the
+ * only place an engine's API appears. A layer instance in a template never names an engine; the globe
+ * that draws it does, and a kind with no renderer for that engine is absent rather than broken.
  *
- * Layer authors should import these from `@we/cesium-layers`, which re-exports them as its public
- * contract surface — that keeps an external layer from naming `@we/widgets` at all. The types live
- * here rather than in a package of their own deliberately: they are ~130 lines of pure interfaces
- * with no logic and no tests, which is Pattern B in `docs/architecture/package-conventions.md`
- * (colocate; a separate package is for shared code with real substance). They also erase entirely at
- * build time — `@we/widgets` is a `peerDependency` of `@we/cesium-layers` and every import of it is
- * `import type` — so no consumer carries runtime weight for them.
+ * Kept apart from the widget because writing a layer and placing a globe are separate jobs, done by
+ * different people. Pure types: nothing here runs, and every import of Cesium is `import type`.
  */
 import type { Viewer } from 'cesium';
+import type { Map as MapLibreMap } from 'maplibre-gl';
 
 /**
- * Camera state information passed to layers on camera changes
+ * The engines a globe can draw with. Cesium is the full 3D globe: imagery, extruded data, arcs, and the
+ * space around the earth. MapLibre is the light one, for phones and lighter builds: the earth and the
+ * data on it, with lines drawn flat and no background.
  */
-export interface CameraState {
-  /** Camera position in world coordinates */
-  position: {
-    longitude: number;
-    latitude: number;
-    height: number;
-  };
-  /** Camera heading (rotation around up axis) in radians */
-  heading: number;
-  /** Camera pitch (rotation around right axis) in radians */
-  pitch: number;
-  /** Camera roll (rotation around direction) in radians */
-  roll: number;
-}
+export type GlobeEngine = 'cesium' | 'maplibre';
 
-/**
- * Event bus for inter-layer communication
- */
+/** Event bus shared by the layers on one globe, for layer-to-layer coordination. */
 export interface LayerEventBus {
-  /** Emit an event to all listeners */
   emit(event: string, ...args: unknown[]): void;
-  /** Listen to an event */
   on(event: string, handler: (...args: unknown[]) => void): void;
-  /** Remove event listener */
   off(event: string, handler: (...args: unknown[]) => void): void;
-  /** Listen to an event once */
   once(event: string, handler: (...args: unknown[]) => void): void;
 }
 
-/**
- * Shared key-value store for layer state.
- *
- * Note this is a plain scratchpad for layer-to-layer state, **not** a WE store — the globe widget
- * touches no app state, which is what keeps it a design-system widget rather than a feature module.
- */
-export interface LayerStore {
-  get<T = unknown>(key: string): T | undefined;
-  set<T = unknown>(key: string, value: T): void;
-  has(key: string): boolean;
-  delete(key: string): boolean;
-  clear(): void;
-}
-
-/**
- * Context provided to each layer during its lifecycle
- */
-export interface LayerContext<TOptions = unknown> {
-  /** The Cesium viewer instance */
-  viewer: Viewer;
-  /** Event bus for communication between layers and app */
-  events: LayerEventBus;
-  /** Shared store for layer state */
-  store: LayerStore;
-  /** Layer-specific options/configuration */
-  options?: TOptions;
-  /**
-   * Stable identity for this layer instance — sourced from `LayerConfig.id`.
-   * Use for namespacing entity IDs, log messages, etc.
-   * Falls back to the layer's own `name` if no `id` was provided in the config.
-   */
+/** What every renderer receives, whatever its engine. */
+export interface RendererContext {
+  /** This layer instance's key: its config `id`, or the kind's id when the template gave none. */
   id: string;
-  /**
-   * Stacking / rendering order for this layer (from `LayerConfig.zIndex`).
-   * Higher values should appear visually above lower values.
-   * Layers that need 3-D elevation (e.g. point markers) use this to compute an
-   * altitude offset so that picking and depth-sorting work correctly.
-   */
+  /** Stacking order among planet layers; each kind interprets it for its own drawing. */
   zIndex?: number;
-  /** Register cleanup function to be called when layer unmounts */
-  onCleanup: (cleanup: () => void) => void;
+  events: LayerEventBus;
+  /** Register something to undo when the layer unmounts. Everything a renderer adds goes here. */
+  onCleanup(cleanup: () => void): void;
 }
 
-/**
- * Metadata about layer requirements and capabilities
- */
-export interface LayerMetadata {
+/** A Cesium renderer's context: the shared one, and the viewer. */
+export interface CesiumRendererContext extends RendererContext {
+  viewer: Viewer;
+}
+
+/** A MapLibre renderer's context: the shared one, and the map, already on its globe projection. */
+export interface MapLibreRendererContext extends RendererContext {
+  map: MapLibreMap;
+}
+
+/** What a renderer hands back once mounted. */
+export interface LayerRenderer<TOptions> {
   /**
-   * Which list of the globe this kind belongs in: `planet` for what is drawn on the earth
-   * (`planetLayers`), `background` for the space around it (`backgroundLayers`). The catalogue
-   * documents each kind under its slot, and the validator refuses one placed in the other list.
+   * Called when this layer's own options change, and only then. A renderer without `update` is
+   * unmounted and mounted again with the new options instead, which is correct and slower.
    */
-  slot?: 'planet' | 'background';
-  /** Whether this layer requires a Cesium Ion account */
-  requiresIonAccount?: boolean;
-  /** Specific Ion asset IDs required by this layer */
-  requiresIonAssets?: number[];
-  /** Human-readable description of the layer */
-  description?: string;
+  update?(options: TOptions): void | Promise<void>;
 }
 
-/**
- * Core layer protocol interface
- */
-export interface CesiumLayer<TOptions = unknown> {
-  /** Unique layer name */
-  name: string;
+/** Mounts one layer instance on one engine. May finish asynchronously (a fetch, a texture). */
+export type RendererFactory<TOptions, TContext extends RendererContext> = (
+  context: TContext,
+  options: TOptions,
+) => LayerRenderer<TOptions> | void | Promise<LayerRenderer<TOptions> | void>;
 
-  /** Metadata about layer requirements and capabilities */
-  metadata?: LayerMetadata;
-
-  /** Optional dependencies (layer names that must be loaded first) */
-  dependencies?: string[];
-
-  /** Called when layer is added to the viewer */
-  onMount?: (context: LayerContext<TOptions>) => void | Promise<void>;
-
-  /** Called when layer is removed from the viewer */
-  onUnmount?: (context: LayerContext<TOptions>) => void | Promise<void>;
-
-  /** Called when layer options are updated */
-  onUpdate?: (context: LayerContext<TOptions>) => void | Promise<void>;
-
-  /** Called when camera position/orientation changes */
-  onCameraChange?: (context: LayerContext<TOptions>, camera: CameraState) => void;
-
-  /** Optional API exposed to other layers */
-  api?: unknown;
+/** The renderers a kind has, by engine. */
+export interface LayerRenderers<TOptions> {
+  cesium?: RendererFactory<TOptions, CesiumRendererContext>;
+  maplibre?: RendererFactory<TOptions, MapLibreRendererContext>;
 }
 
-/**
- * Factory function type for creating layer instances
- */
-export type LayerFactory<TOptions = unknown> = (options?: TOptions) => CesiumLayer<TOptions>;
+/** A layer kind: what a template's `factory` names. */
+export interface LayerKind<TOptions = unknown> {
+  /** The name templates write in `factory`. */
+  id: string;
+  /** Which list it belongs in: `planetLayers` (on the earth) or `backgroundLayers` (the space around it). */
+  slot: 'planet' | 'background';
+  /** One line for authors; the catalogue carries the fuller account. */
+  description: string;
+  /** What the deployment or person must supply for it to draw. Without it the kind is absent. */
+  requires?: { ionAccount?: boolean };
+  renderers: LayerRenderers<TOptions>;
+}
 
-/**
- * Layer configuration that can be passed to CesiumGlobe
- */
+/** One layer instance as a template writes it. */
 export interface LayerConfig<TOptions = unknown> {
-  /** Layer factory function or string name (resolved via registry) */
-  factory: LayerFactory<TOptions> | string;
+  /** The kind, by id. */
+  factory: string;
   /**
-   * Stable identity for this layer instance.
-   * Required when the same factory is used more than once (e.g. two pointLocationsLayer
-   * entries). Used as the mount-map key and passed into LayerContext so factories can
-   * namespace their Cesium entity IDs without needing a separate option.
-   * Defaults to the layer instance's own `name` when omitted.
+   * This instance's identity. Required when one kind appears twice in a list; without it the two
+   * share the kind's id as their key and only one is drawn.
    */
   id?: string;
-  /** Layer options */
   options?: TOptions;
-  /** Whether layer is initially enabled */
+  /** Whether it is drawn. Usually an expression bound to a toggle. */
   enabled?: boolean;
-  /**
-   * Stacking / rendering order. Higher values render on top of lower values.
-   * Passed through to `LayerContext.zIndex` so each layer can translate the
-   * priority into whatever Cesium mechanism it needs (elevation offset,
-   * primitive ordering, depth-test bypasses, etc.).
-   */
+  /** Stacking order among planet layers, passed to the renderer as `context.zIndex`. */
   zIndex?: number;
 }
+
+/** A globe's kinds, by id: what `factory` resolves against. */
+export type LayerKinds = Record<string, LayerKind<any>>; // eslint-disable-line @typescript-eslint/no-explicit-any

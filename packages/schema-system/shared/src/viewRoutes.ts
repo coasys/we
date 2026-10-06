@@ -107,6 +107,17 @@ export const VIEW_BOUNDARY_ATTR = 'data-we-view';
 export const VIEW_BOUNDARY_NAME_ATTR = 'data-we-view-name';
 
 /**
+ * Marks an element whose contents are the template being edited — what the visual editor may select.
+ *
+ * The host puts it wherever it renders the template: the content viewport, and the body of every
+ * panel the template supplies. Those two are not one rectangle — a panel floats above the content,
+ * docks beside it, or sits on another edge entirely — so the editor asks where a press landed rather
+ * than covering a box and hoping the template is under it. Everything outside a marked element is the
+ * app's own: the sidebar, a panel's titlebar, the editor's own panels.
+ */
+export const EDIT_SURFACE_ATTR = 'data-we-edit-surface';
+
+/**
  * Put the boundary where the DOM will actually show it.
  *
  * On the view's own root wherever that root is a Solid component, which costs nothing: the renderer

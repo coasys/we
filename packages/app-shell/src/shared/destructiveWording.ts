@@ -21,7 +21,26 @@
  * a sentence for still gets a dialog naming the action, which is the direction to fail in: adding a
  * destructive member and forgetting this file costs a vague prompt, not a missing one.
  */
-export function describeDestructive(path: string, args: unknown[]): { title: string; body: string } {
+/**
+ * What the host found out about the thing a delete takes with it, beyond what the arguments say.
+ *
+ * Looked up by the host from the data rather than taken from the template: a template's own count is
+ * a claim, and the template is the thing being guarded against. See `collectionFacts`.
+ */
+export interface DestructiveFacts {
+  /** The collection is a reply to something, rather than a post, a call or a board. */
+  reply?: boolean;
+  /** How many responses sit under it, however deep — each goes with it. */
+  responses?: number;
+}
+
+const responsesOf = (count: number) => `${count} ${count === 1 ? 'response' : 'responses'}`;
+
+export function describeDestructive(
+  path: string,
+  args: unknown[],
+  facts: DestructiveFacts = {},
+): { title: string; body: string } {
   const entity = typeof args[0] === 'string' ? args[0] : '';
   switch (path) {
     case 'record.delete':
@@ -60,7 +79,28 @@ export function describeDestructive(path: string, args: unknown[]): { title: str
             : 'They will be removed for everyone in this space. This cannot be undone.',
       };
     }
-    case 'spaceStore.deleteCollection':
+    case 'spaceStore.deleteCollection': {
+      /*
+        What goes with it, where the host could find out. A reply carries the replies to it, and the
+        delete follows them all the way down, so "this cannot be undone" about a reply three people
+        answered is true and hides the part that matters. The number is the point.
+      */
+      const responses = facts.responses ?? 0;
+      if (facts.reply)
+        return responses
+          ? {
+              title: `Delete this reply and the ${responsesOf(responses)} under it?`,
+              body: 'They will be removed for everyone in this space. This cannot be undone.',
+            }
+          : {
+              title: 'Delete this reply?',
+              body: 'It will be removed for everyone in this space. This cannot be undone.',
+            };
+      if (responses)
+        return {
+          title: 'Delete this and everything in it?',
+          body: `Everything inside it, and the ${responsesOf(responses)} to it, will be removed for everyone in this space. This cannot be undone.`,
+        };
       // Deliberately not "the post". A collection is kind-agnostic — a post, a recorded call and a
       // notes collection are the same shape and the same recursive delete — so naming one of them
       // asks the wrong question about the other two, and the transcript a call is about to lose
@@ -69,6 +109,7 @@ export function describeDestructive(path: string, args: unknown[]): { title: str
         title: 'Delete this and everything in it?',
         body: 'Everything inside it will be removed for everyone in this space. This cannot be undone.',
       };
+    }
     case 'shapeStore.deleteShape':
       return {
         title: 'Delete this model?',

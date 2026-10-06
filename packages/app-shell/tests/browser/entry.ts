@@ -19,8 +19,11 @@ import { hostSourceBag } from '@shared/sources';
 import { injectDSInteropStyles } from '@solid/dsInterop';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import { createInMemoryBackend } from '@we/backend-inmemory';
-import { installGestureTracking } from '@we/schema-shared';
+import { EditorHostProvider, EditorOverlay } from '@we/editor';
+import { EDIT_SURFACE_ATTR, installGestureTracking } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
+import { VisualEditorProvider } from '@we/schema-solid';
+import { createComponent, createSignal } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { render } from 'solid-js/web';
 
@@ -368,8 +371,137 @@ async function idleFrames(frames = 1): Promise<void> {
   for (let i = 0; i < frames; i += 1) await new Promise((r) => requestAnimationFrame(() => r(null)));
 }
 
+/**
+ * The visual editor's overlay over a surface it used to be unable to reach.
+ *
+ * Mounts the real `EditorOverlay` in visual mode over three things: the template's content (marked as
+ * an edit surface), a panel the template supplied (a fixed box at a panel's z-index, its body marked
+ * too), and that panel's titlebar, which is the app's. Each holds a button that records being pressed,
+ * and the editor's selection is recorded as well, so a case can ask which of the two heard a press.
+ */
+function editorProbe(): void {
+  const record = (key: string, value: unknown) => {
+    const bag = globalThis as unknown as Record<string, unknown[]>;
+    (bag[key] ??= []).push(value);
+  };
+  const node = (id: string, label: string) => {
+    const wrapper = document.createElement('div');
+    wrapper.setAttribute('data-we-node-id', id);
+    const button = document.createElement('button');
+    button.id = `probe-${id}`;
+    button.textContent = label;
+    button.style.cssText = 'width: 160px; height: 60px';
+    button.style.cursor = 'pointer';
+    button.addEventListener('click', () => record('__probePressed', id));
+    // What a tooltip listens for. Nothing of the template's should hear the pointer while it is edited.
+    button.addEventListener('pointerenter', () => record('__probeEntered', id));
+    wrapper.append(button);
+    return wrapper;
+  };
+
+  const content = document.createElement('div');
+  content.setAttribute(EDIT_SURFACE_ATTR, '');
+  content.style.cssText = 'position: fixed; left: 0; top: 0; width: 400px; height: 400px; z-index: 1;';
+  content.append(node('n-content', 'content'));
+
+  // A panel, painted where the dock registry paints them: above the content's whole context.
+  const panel = document.createElement('div');
+  panel.style.cssText =
+    'position: fixed; left: 200px; top: 200px; width: 300px; height: 240px; z-index: 220; background: #eee;';
+  const titlebar = document.createElement('button');
+  titlebar.id = 'probe-titlebar';
+  titlebar.textContent = 'titlebar';
+  titlebar.addEventListener('click', () => record('__probePressed', 'titlebar'));
+  const body = document.createElement('div');
+  body.setAttribute(EDIT_SURFACE_ATTR, '');
+  body.style.display = 'contents';
+  body.append(node('n-panel', 'panel'));
+  panel.append(titlebar, body);
+
+  document.body.append(content, panel);
+  // The scenario mounted beside this one autofocuses a field, and a key typed there is typing — which
+  // the editor rightly ignores. Nothing here should have focus to begin with.
+  (document.activeElement as HTMLElement | null)?.blur();
+
+  const template = {
+    id: 'probe',
+    type: 'Column',
+    meta: { name: 'Probe', description: '', icon: '' },
+    children: [
+      { id: 'n-content', type: 'we-button' },
+      { id: 'n-panel', type: 'we-button' },
+    ],
+  };
+  const [selected, setSelected] = createSignal<string | null>(null);
+  const [hovered, setHovered] = createSignal<string | null>(null);
+  const visual = {
+    enabled: true,
+    hoveredId: hovered,
+    selectedId: selected,
+    onHover: setHovered,
+    onSelect: (id: string | null) => {
+      setSelected(id);
+      record('__probeSelected', id);
+    },
+    registerNode: () => () => {},
+    getNodeElement: (id: string) => document.querySelector(`[data-we-node-id="${id}"]`) as HTMLElement | null,
+  };
+  const host = {
+    session: { contentMode: () => 'visual', isStreaming: () => false, pushSnapshot() {}, commitEdit: async () => {} },
+    template: { currentTemplate: template, updateTemplate: () => record('__probeUpdated', true) },
+  };
+
+  const root = document.createElement('div');
+  document.body.append(root);
+  // Taken down by `editorProbeDispose`, so the next case on this page meets none of it.
+  probeDisposers.push(() => {
+    content.remove();
+    panel.remove();
+    root.remove();
+  });
+  const dispose = render(
+    () =>
+      createComponent(EditorHostProvider, {
+        value: host as never,
+        get children() {
+          return createComponent(VisualEditorProvider, {
+            value: visual as never,
+            get children() {
+              return createComponent(EditorOverlay, {});
+            },
+          });
+        },
+      }),
+    root,
+  );
+  probeDisposers.unshift(dispose);
+}
+
+/**
+ * A page over the template, standing in for settings opened mid-edit: a fixed sheet above the content,
+ * as the shell's own view is.
+ */
+function editorProbeCover(on: boolean): void {
+  const existing = document.getElementById('probe-cover');
+  if (!on) return existing?.remove();
+  if (existing) return;
+  const cover = document.createElement('div');
+  cover.id = 'probe-cover';
+  cover.style.cssText = 'position: fixed; left: 0; top: 0; width: 400px; height: 400px; z-index: 50; background: #fff;';
+  document.body.append(cover);
+  probeDisposers.push(() => cover.remove());
+}
+
+const probeDisposers: (() => void)[] = [];
+function editorProbeDispose(): void {
+  for (const dispose of probeDisposers.splice(0)) dispose();
+}
+
 injectDSInteropStyles();
 (window as unknown as Record<string, unknown>).__harness = {
+  editorProbe,
+  editorProbeCover,
+  editorProbeDispose,
   mount,
   profile,
   resizeMount,

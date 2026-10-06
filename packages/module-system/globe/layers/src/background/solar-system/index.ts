@@ -10,7 +10,8 @@ import {
   PointPrimitiveCollection,
 } from 'cesium';
 
-import type { LayerContext, LayerFactory } from '../../types';
+import { SOLAR_SYSTEM } from '../../meta';
+import type { CesiumRendererContext, LayerKind } from '../../types';
 
 export interface SolarSystemLayerOptions {
   /**
@@ -190,161 +191,152 @@ function calculateOrbitalPosition(elements: OrbitalElements, meanAnomaly: number
  * Displays planets and their orbital paths around the Sun.
  * Uses simplified Keplerian orbital mechanics for visualization.
  */
-export const solarSystemLayer: LayerFactory<SolarSystemLayerOptions> = (options?: SolarSystemLayerOptions) => ({
-  name: 'solar-system',
+export const solarSystemLayer: LayerKind<SolarSystemLayerOptions> = {
+  ...SOLAR_SYSTEM,
+  renderers: {
+    cesium: (context: CesiumRendererContext, options: SolarSystemLayerOptions) => {
+      const { viewer, onCleanup } = context;
+      const {
+        planets = ['mercury', 'venus', 'mars', 'jupiter', 'saturn'],
+        showOrbits = true,
+        showPlanets = true,
+        showLabels = true,
+        showSun = true,
+        planetScale = 1.0,
+        orbitScale = 0.0001, // Scale down to fit Earth view (1 AU = ~15,000 km at this scale)
+        orbitWidth = 2,
+        orbitResolution = 360,
+      } = options;
 
-  metadata: {
-    slot: 'background',
-    requiresIonAccount: false,
-    description: 'Display planets and their orbital paths in the solar system.',
-  },
+      const scene = viewer.scene;
+      const orbitEntities: Entity[] = []; // Track orbit entities for cleanup
+      const points = showPlanets ? new PointPrimitiveCollection() : null;
+      const labels = showLabels ? new LabelCollection() : null;
 
-  onMount: (context: LayerContext) => {
-    const { viewer, onCleanup } = context;
-    const {
-      planets = ['mercury', 'venus', 'mars', 'jupiter', 'saturn'],
-      showOrbits = true,
-      showPlanets = true,
-      showLabels = true,
-      showSun = true,
-      planetScale = 1.0,
-      orbitScale = 0.0001, // Scale down to fit Earth view (1 AU = ~15,000 km at this scale)
-      orbitWidth = 2,
-      orbitResolution = 360,
-    } = options || {};
+      // Add collections to scene
+      if (points) scene.primitives.add(points);
+      if (labels) scene.primitives.add(labels);
 
-    const scene = viewer.scene;
-    const orbitEntities: Entity[] = []; // Track orbit entities for cleanup
-    const points = showPlanets ? new PointPrimitiveCollection() : null;
-    const labels = showLabels ? new LabelCollection() : null;
+      // Current time for planet positions
+      const now = JulianDate.now();
+      const daysSinceJ2000 = JulianDate.daysDifference(now, new JulianDate(2451545, 0)); // J2000 epoch
 
-    // Add collections to scene
-    if (points) scene.primitives.add(points);
-    if (labels) scene.primitives.add(labels);
+      // Calculate Earth's current position to use as offset
+      // This positions the Sun relative to Earth so Earth stays at center (0,0,0)
+      const earthOrbit = PLANET_ORBITS.earth;
+      const earthPeriod = Math.pow(earthOrbit.elements.a, 1.5) * 365.25;
+      const earthMeanAnomaly = ((daysSinceJ2000 / earthPeriod) * 360 + earthOrbit.elements.L) % 360;
+      const earthPosition = calculateOrbitalPosition(earthOrbit.elements, earthMeanAnomaly, orbitScale);
 
-    // Current time for planet positions
-    const now = JulianDate.now();
-    const daysSinceJ2000 = JulianDate.daysDifference(now, new JulianDate(2451545, 0)); // J2000 epoch
+      // Offset is negative of Earth's position (moves Sun so Earth is at origin)
+      const solarSystemOffset = new Cartesian3(-earthPosition.x, -earthPosition.y, -earthPosition.z);
 
-    // Calculate Earth's current position to use as offset
-    // This positions the Sun relative to Earth so Earth stays at center (0,0,0)
-    const earthOrbit = PLANET_ORBITS.earth;
-    const earthPeriod = Math.pow(earthOrbit.elements.a, 1.5) * 365.25;
-    const earthMeanAnomaly = ((daysSinceJ2000 / earthPeriod) * 360 + earthOrbit.elements.L) % 360;
-    const earthPosition = calculateOrbitalPosition(earthOrbit.elements, earthMeanAnomaly, orbitScale);
-
-    // Offset is negative of Earth's position (moves Sun so Earth is at origin)
-    const solarSystemOffset = new Cartesian3(-earthPosition.x, -earthPosition.y, -earthPosition.z);
-
-    // Add the Sun at the offset position (so Earth ends up at center)
-    if (showSun) {
-      if (points) {
-        points.add({
-          position: solarSystemOffset,
-          pixelSize: 30 * planetScale, // Larger Sun
-          color: Color.YELLOW,
-        });
+      // Add the Sun at the offset position (so Earth ends up at center)
+      if (showSun) {
+        if (points) {
+          points.add({
+            position: solarSystemOffset,
+            pixelSize: 30 * planetScale, // Larger Sun
+            color: Color.YELLOW,
+          });
+        }
+        if (labels) {
+          labels.add({
+            position: solarSystemOffset,
+            text: 'Sun',
+            font: '16px sans-serif',
+            fillColor: Color.YELLOW,
+            outlineColor: Color.BLACK,
+            outlineWidth: 2,
+            style: 0, // FILL_AND_OUTLINE
+            pixelOffset: new Cartesian3(0, -30, 0),
+            horizontalOrigin: 1, // CENTER
+            verticalOrigin: 1, // CENTER
+          });
+        }
       }
-      if (labels) {
-        labels.add({
-          position: solarSystemOffset,
-          text: 'Sun',
-          font: '16px sans-serif',
-          fillColor: Color.YELLOW,
-          outlineColor: Color.BLACK,
-          outlineWidth: 2,
-          style: 0, // FILL_AND_OUTLINE
-          pixelOffset: new Cartesian3(0, -30, 0),
-          horizontalOrigin: 1, // CENTER
-          verticalOrigin: 1, // CENTER
-        });
-      }
-    }
 
-    // Generate orbits and current positions for each planet
-    planets.forEach((planetKey) => {
-      const planet = PLANET_ORBITS[planetKey];
-      if (!planet) return;
+      // Generate orbits and current positions for each planet
+      planets.forEach((planetKey) => {
+        const planet = PLANET_ORBITS[planetKey];
+        if (!planet) return;
 
-      // Calculate full orbit path
-      if (showOrbits) {
-        const orbitPositions: Cartesian3[] = [];
+        // Calculate full orbit path
+        if (showOrbits) {
+          const orbitPositions: Cartesian3[] = [];
 
-        for (let i = 0; i <= orbitResolution; i++) {
-          const meanAnomaly = (i / orbitResolution) * 360; // 0-360 degrees
-          const position = calculateOrbitalPosition(planet.elements, meanAnomaly, orbitScale);
-          // Apply solar system offset so Earth is at center
-          orbitPositions.push(Cartesian3.add(position, solarSystemOffset, new Cartesian3()));
+          for (let i = 0; i <= orbitResolution; i++) {
+            const meanAnomaly = (i / orbitResolution) * 360; // 0-360 degrees
+            const position = calculateOrbitalPosition(planet.elements, meanAnomaly, orbitScale);
+            // Apply solar system offset so Earth is at center
+            orbitPositions.push(Cartesian3.add(position, solarSystemOffset, new Cartesian3()));
+          }
+
+          // Create entity with polyline - use CallbackProperty for dynamic width scaling
+          const orbitEntity = viewer.entities.add({
+            show: true,
+            polyline: {
+              show: new ConstantProperty(true),
+              positions: new ConstantProperty(orbitPositions),
+              width: new CallbackProperty(() => {
+                // Scale width based on camera height to maintain visibility
+                const cameraHeight = viewer.camera.positionCartographic.height;
+                const scaleFactor = Math.max(1, Math.log10(cameraHeight / 10000000) * 0.5);
+                return orbitWidth * scaleFactor;
+              }, false),
+              material: new ColorMaterialProperty(planet.color.withAlpha(0.6)),
+              clampToGround: false,
+              arcType: 0, // NONE - straight lines between points
+            },
+          });
+          orbitEntities.push(orbitEntity);
         }
 
-        // Create entity with polyline - use CallbackProperty for dynamic width scaling
-        const orbitEntity = viewer.entities.add({
-          show: true,
-          polyline: {
-            show: new ConstantProperty(true),
-            positions: new ConstantProperty(orbitPositions),
-            width: new CallbackProperty(() => {
-              // Scale width based on camera height to maintain visibility
-              const cameraHeight = viewer.camera.positionCartographic.height;
-              const scaleFactor = Math.max(1, Math.log10(cameraHeight / 10000000) * 0.5);
-              return orbitWidth * scaleFactor;
-            }, false),
-            material: new ColorMaterialProperty(planet.color.withAlpha(0.6)),
-            clampToGround: false,
-            arcType: 0, // NONE - straight lines between points
-          },
-        });
-        orbitEntities.push(orbitEntity);
-      }
+        // Calculate current planet position (simplified: assume constant angular velocity)
+        const period = Math.pow(planet.elements.a, 1.5) * 365.25; // Kepler's 3rd law (days)
+        const currentMeanAnomaly = ((daysSinceJ2000 / period) * 360 + planet.elements.L) % 360;
+        const currentPosition = calculateOrbitalPosition(planet.elements, currentMeanAnomaly, orbitScale);
+        // Apply solar system offset so Earth is at center
+        const offsetPosition = Cartesian3.add(currentPosition, solarSystemOffset, new Cartesian3());
 
-      // Calculate current planet position (simplified: assume constant angular velocity)
-      const period = Math.pow(planet.elements.a, 1.5) * 365.25; // Kepler's 3rd law (days)
-      const currentMeanAnomaly = ((daysSinceJ2000 / period) * 360 + planet.elements.L) % 360;
-      const currentPosition = calculateOrbitalPosition(planet.elements, currentMeanAnomaly, orbitScale);
-      // Apply solar system offset so Earth is at center
-      const offsetPosition = Cartesian3.add(currentPosition, solarSystemOffset, new Cartesian3());
+        // Add planet point
+        if (showPlanets && points) {
+          points.add({
+            position: offsetPosition,
+            color: planet.color,
+            pixelSize: planet.pixelSize * planetScale,
+            outlineColor: Color.WHITE,
+            outlineWidth: 1,
+          });
+        }
 
-      // Add planet point
-      if (showPlanets && points) {
-        points.add({
-          position: offsetPosition,
-          color: planet.color,
-          pixelSize: planet.pixelSize * planetScale,
-          outlineColor: Color.WHITE,
-          outlineWidth: 1,
-        });
-      }
-
-      // Add planet label
-      if (showLabels && labels) {
-        labels.add({
-          position: offsetPosition,
-          text: planet.name,
-          font: '14px sans-serif',
-          fillColor: Color.WHITE,
-          outlineColor: Color.BLACK,
-          outlineWidth: 2,
-          style: 0, // FILL_AND_OUTLINE
-          pixelOffset: new Cartesian3(0, -15, 0),
-          horizontalOrigin: 1, // CENTER
-          verticalOrigin: 1, // CENTER
-        });
-      }
-    });
-
-    // Cleanup function
-    onCleanup(() => {
-      // Remove orbit entities
-      orbitEntities.forEach((entity) => {
-        viewer.entities.remove(entity);
+        // Add planet label
+        if (showLabels && labels) {
+          labels.add({
+            position: offsetPosition,
+            text: planet.name,
+            font: '14px sans-serif',
+            fillColor: Color.WHITE,
+            outlineColor: Color.BLACK,
+            outlineWidth: 2,
+            style: 0, // FILL_AND_OUTLINE
+            pixelOffset: new Cartesian3(0, -15, 0),
+            horizontalOrigin: 1, // CENTER
+            verticalOrigin: 1, // CENTER
+          });
+        }
       });
-      // Remove point and label collections
-      if (points) scene.primitives.remove(points);
-      if (labels) scene.primitives.remove(labels);
-    });
-  },
 
-  onUnmount: () => {
-    // Cleanup is handled by onCleanup callbacks
+      // Cleanup function
+      onCleanup(() => {
+        // Remove orbit entities
+        orbitEntities.forEach((entity) => {
+          viewer.entities.remove(entity);
+        });
+        // Remove point and label collections
+        if (points) scene.primitives.remove(points);
+        if (labels) scene.primitives.remove(labels);
+      });
+    },
   },
-});
+};

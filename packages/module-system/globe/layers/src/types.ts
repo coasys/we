@@ -2,7 +2,7 @@
  * The layer protocol, re-exported as this package's public contract surface.
  *
  * **This is the import a layer author should use** — including third-party layers, which need not
- * live in this monorepo at all (the globe resolves layers through a `Record<string, LayerFactory>`
+ * live in this monorepo at all (the globe resolves layers through a `LayerKinds` record of `LayerKind`s
  * the app injects, so an external layer is just a package exporting a factory).
  *
  * The types are defined in `@we/globe-protocol` — the contract half of `globe-system/`, which this
@@ -12,12 +12,15 @@
  */
 
 export type {
-  CesiumLayer,
-  LayerFactory,
+  CesiumRendererContext,
+  GlobeEngine,
   LayerConfig,
-  LayerContext,
   LayerEventBus,
-  LayerStore,
-  LayerMetadata,
-  CameraState,
+  LayerKind,
+  LayerKinds,
+  LayerRenderer,
+  LayerRenderers,
+  MapLibreRendererContext,
+  RendererContext,
+  RendererFactory,
 } from '@we/globe-protocol';

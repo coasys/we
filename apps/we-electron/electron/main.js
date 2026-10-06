@@ -1,5 +1,5 @@
 import { execSync, spawn, spawnSync } from 'child_process';
-import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, shell } from 'electron';
 import contextMenu from 'electron-context-menu';
 import express from 'express';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
@@ -959,6 +959,7 @@ app.whenReady().then(async () => {
   }
 
   // Then create the window
+  installApplicationMenu();
   createWindow();
 
   app.on('activate', () => {
@@ -967,6 +968,42 @@ app.whenReady().then(async () => {
     }
   });
 });
+
+/**
+ * The menu bar — Electron's own menus, plus a way into safe mode.
+ *
+ * The menu bar is drawn by the operating system, so nothing a template renders can cover it or
+ * take it away. That makes it the desktop's door into safe mode for an interface that loads fine
+ * and offers no way out: it loads the same `?safe` address the web uses, which the app reads before
+ * any template renders. See `safeMode.ts` in `@we/app-shell`.
+ *
+ * Built from roles rather than taken from Electron's default menu, which cannot have an item added
+ * to it. Every menu here is the default one under its role; Help is the only one that differs.
+ */
+function installApplicationMenu() {
+  const isMac = process.platform === 'darwin';
+  const template = [
+    ...(isMac ? [{ role: 'appMenu' }] : []),
+    { role: 'fileMenu' },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' },
+    {
+      role: 'help',
+      submenu: [
+        {
+          label: 'Restart in Safe Mode',
+          click: () => {
+            const url = new URL(appUrl());
+            url.searchParams.set('safe', '');
+            mainWindow?.loadURL(url.toString());
+          },
+        },
+      ],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
 
 // Kill the executor AND its entire process group (holochain, lair-keystore, etc.)
 function killExecutor() {

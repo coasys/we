@@ -34,7 +34,7 @@ const storeDeps = createModuleStoreDeps({
 });
 
 beforeEach(() => {
-  for (const entry of slotRegistry.ordered()) slotRegistry.remove(entry.id);
+  slotRegistry.clear();
   for (const { definition } of moduleRegistry.all()) moduleRegistry.unregister(definition.manifest.id);
   registerCoreSlots();
 });

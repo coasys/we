@@ -1,6 +1,7 @@
 import { SkyBox } from 'cesium';
 
-import type { LayerContext, LayerFactory } from '../../types';
+import { SKYBOX } from '../../meta';
+import type { CesiumRendererContext, LayerKind } from '../../types';
 
 export interface SkyboxLayerOptions {
   /**
@@ -80,16 +81,10 @@ function loadFace(url: string): Promise<HTMLImageElement> {
   return image.decode().then(() => image);
 }
 
-export const skyboxLayer: LayerFactory<SkyboxLayerOptions> = (options?: SkyboxLayerOptions) => ({
-  name: 'skybox',
-
-  metadata: {
-    slot: 'background',
-    requiresIonAccount: false,
-    description: 'Display a skybox with star textures in the background.',
-  },
-
-  /*
+export const skyboxLayer: LayerKind<SkyboxLayerOptions> = {
+  ...SKYBOX,
+  renderers: {
+    /*
     Cesium's own skybox first, the requested one once it has arrived.
 
     Cesium keeps a cube map that failed to load and throws it on the next frame, and an error thrown
@@ -99,79 +94,76 @@ export const skyboxLayer: LayerFactory<SkyboxLayerOptions> = (options?: SkyboxLa
     arrive, the sky is Cesium's built-in one: the same Tycho-2 catalogue at a lower resolution, served
     by the app with Cesium's other files, so it is there offline.
   */
-  onMount: (context: LayerContext) => {
-    const { viewer, onCleanup } = context;
-    const { textureSet = 'tycho2-1k', customPaths, cdnBaseUrl = SKYBOX_CDN_BASE } = options || {};
-    let cancelled = false;
-    let current: SkyBox = SkyBox.createEarthSkyBox();
-    viewer.scene.skyBox = current;
-    onCleanup(() => {
-      cancelled = true;
-      if (viewer.scene.skyBox === current) {
-        viewer.scene.skyBox = undefined as unknown as SkyBox;
-      }
-    });
-    // TODO: brightness is not yet implemented, needs custom shader
-    // const brightness = options?.brightness ?? 1.0;
-
-    // Determine texture paths based on textureSet
-    let sources;
-    if (textureSet === 'custom' && customPaths) {
-      sources = {
-        positiveX: customPaths.px,
-        negativeX: customPaths.nx,
-        positiveY: customPaths.py,
-        negativeY: customPaths.ny,
-        positiveZ: customPaths.pz,
-        negativeZ: customPaths.nz,
-      };
-    } else if (textureSet === 'tycho2-1k' || textureSet === 'tycho2-2k' || textureSet === 'tycho2-4k') {
-      // Tycho-2 skybox textures from CDN at various resolutions
-      sources = {
-        positiveX: `${cdnBaseUrl}/${textureSet}/px.jpg`,
-        negativeX: `${cdnBaseUrl}/${textureSet}/nx.jpg`,
-        positiveY: `${cdnBaseUrl}/${textureSet}/py.jpg`,
-        negativeY: `${cdnBaseUrl}/${textureSet}/ny.jpg`,
-        positiveZ: `${cdnBaseUrl}/${textureSet}/pz.jpg`,
-        negativeZ: `${cdnBaseUrl}/${textureSet}/nz.jpg`,
-      };
-    } else if (textureSet === 'eso') {
-      // ESO Milky Way textures (if available)
-      sources = {
-        positiveX: `${cdnBaseUrl}/eso/px.jpg`,
-        negativeX: `${cdnBaseUrl}/eso/nx.jpg`,
-        positiveY: `${cdnBaseUrl}/eso/py.jpg`,
-        negativeY: `${cdnBaseUrl}/eso/ny.jpg`,
-        positiveZ: `${cdnBaseUrl}/eso/pz.jpg`,
-        negativeZ: `${cdnBaseUrl}/eso/nz.jpg`,
-      };
-    } else {
-      console.warn(`[skybox] Unknown textureSet: ${textureSet}, using tycho2-1k as fallback`);
-      sources = {
-        positiveX: `${cdnBaseUrl}/tycho2-1k/px.jpg`,
-        negativeX: `${cdnBaseUrl}/tycho2-1k/nx.jpg`,
-        positiveY: `${cdnBaseUrl}/tycho2-1k/py.jpg`,
-        negativeY: `${cdnBaseUrl}/tycho2-1k/ny.jpg`,
-        positiveZ: `${cdnBaseUrl}/tycho2-1k/pz.jpg`,
-        negativeZ: `${cdnBaseUrl}/tycho2-1k/nz.jpg`,
-      };
-    }
-
-    const faces = Object.entries(sources) as [string, string][];
-    Promise.all(faces.map(([face, url]) => loadFace(url).then((image) => [face, image] as const)))
-      .then((loaded) => {
-        if (cancelled || viewer.isDestroyed() || viewer.scene.skyBox !== current) return;
-        current = new SkyBox({ sources: Object.fromEntries(loaded) });
-        viewer.scene.skyBox = current;
-      })
-      .catch(() => {
-        // Keeps Cesium's sky. Expected offline; worth a line otherwise, since the sky looks fine.
-        if (!cancelled && navigator.onLine)
-          console.warn(`[skybox] Could not load "${textureSet}"; using Cesium's sky.`);
+    cesium: (context: CesiumRendererContext, options: SkyboxLayerOptions) => {
+      const { viewer, onCleanup } = context;
+      const { textureSet = 'tycho2-1k', customPaths, cdnBaseUrl = SKYBOX_CDN_BASE } = options;
+      let cancelled = false;
+      let current: SkyBox = SkyBox.createEarthSkyBox();
+      viewer.scene.skyBox = current;
+      onCleanup(() => {
+        cancelled = true;
+        if (viewer.scene.skyBox === current) {
+          viewer.scene.skyBox = undefined as unknown as SkyBox;
+        }
       });
-  },
+      // TODO: brightness is not yet implemented, needs custom shader
+      // const brightness = options?.brightness ?? 1.0;
 
-  onUnmount: () => {
-    // Cleanup is handled by onCleanup callbacks
+      // Determine texture paths based on textureSet
+      let sources;
+      if (textureSet === 'custom' && customPaths) {
+        sources = {
+          positiveX: customPaths.px,
+          negativeX: customPaths.nx,
+          positiveY: customPaths.py,
+          negativeY: customPaths.ny,
+          positiveZ: customPaths.pz,
+          negativeZ: customPaths.nz,
+        };
+      } else if (textureSet === 'tycho2-1k' || textureSet === 'tycho2-2k' || textureSet === 'tycho2-4k') {
+        // Tycho-2 skybox textures from CDN at various resolutions
+        sources = {
+          positiveX: `${cdnBaseUrl}/${textureSet}/px.jpg`,
+          negativeX: `${cdnBaseUrl}/${textureSet}/nx.jpg`,
+          positiveY: `${cdnBaseUrl}/${textureSet}/py.jpg`,
+          negativeY: `${cdnBaseUrl}/${textureSet}/ny.jpg`,
+          positiveZ: `${cdnBaseUrl}/${textureSet}/pz.jpg`,
+          negativeZ: `${cdnBaseUrl}/${textureSet}/nz.jpg`,
+        };
+      } else if (textureSet === 'eso') {
+        // ESO Milky Way textures (if available)
+        sources = {
+          positiveX: `${cdnBaseUrl}/eso/px.jpg`,
+          negativeX: `${cdnBaseUrl}/eso/nx.jpg`,
+          positiveY: `${cdnBaseUrl}/eso/py.jpg`,
+          negativeY: `${cdnBaseUrl}/eso/ny.jpg`,
+          positiveZ: `${cdnBaseUrl}/eso/pz.jpg`,
+          negativeZ: `${cdnBaseUrl}/eso/nz.jpg`,
+        };
+      } else {
+        console.warn(`[skybox] Unknown textureSet: ${textureSet}, using tycho2-1k as fallback`);
+        sources = {
+          positiveX: `${cdnBaseUrl}/tycho2-1k/px.jpg`,
+          negativeX: `${cdnBaseUrl}/tycho2-1k/nx.jpg`,
+          positiveY: `${cdnBaseUrl}/tycho2-1k/py.jpg`,
+          negativeY: `${cdnBaseUrl}/tycho2-1k/ny.jpg`,
+          positiveZ: `${cdnBaseUrl}/tycho2-1k/pz.jpg`,
+          negativeZ: `${cdnBaseUrl}/tycho2-1k/nz.jpg`,
+        };
+      }
+
+      const faces = Object.entries(sources) as [string, string][];
+      Promise.all(faces.map(([face, url]) => loadFace(url).then((image) => [face, image] as const)))
+        .then((loaded) => {
+          if (cancelled || viewer.isDestroyed() || viewer.scene.skyBox !== current) return;
+          current = new SkyBox({ sources: Object.fromEntries(loaded) });
+          viewer.scene.skyBox = current;
+        })
+        .catch(() => {
+          // Keeps Cesium's sky. Expected offline; worth a line otherwise, since the sky looks fine.
+          if (!cancelled && navigator.onLine)
+            console.warn(`[skybox] Could not load "${textureSet}"; using Cesium's sky.`);
+        });
+    },
   },
-});
+};
