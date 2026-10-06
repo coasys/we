@@ -60,6 +60,8 @@ export const globeView: TemplateSchema = {
     showSnow: { type: 'boolean', initial: false },
     showRain: { type: 'boolean', initial: false },
     showNightLights: { type: 'boolean', initial: false },
+    // The timeline bar, which plays the globe through time
+    showTimeline: { type: 'boolean', initial: false },
     // Currently selected pin (from clicking a location on the globe)
     selectedPin: { type: 'object', initial: null },
     // Modal open states
@@ -242,6 +244,31 @@ export const globeView: TemplateSchema = {
                       },
                     ],
                   },
+                },
+                // The timeline: not a layer, since it draws nothing on the earth, so a control of
+                // its own. Closing it returns the globe to showing everything.
+                {
+                  type: 'we-button',
+                  props: {
+                    variant: { $: "local.showTimeline ? 'primary' : 'secondary'" },
+                    height: '40px',
+                    onClick: [
+                      {
+                        $if: {
+                          condition: { $: 'local.showTimeline' },
+                          then: { $action: 'clockStore.pause', args: ['globe'] },
+                        },
+                      },
+                      {
+                        $if: {
+                          condition: { $: 'local.showTimeline' },
+                          then: { $action: 'clockStore.seek', args: ['globe', null] },
+                        },
+                      },
+                      { $toggleLocal: 'showTimeline' },
+                    ],
+                  },
+                  children: [{ type: 'we-icon', props: { name: 'clock-counter-clockwise' } }, 'Timeline'],
                 },
                 // Search filter
                 {
@@ -445,11 +472,12 @@ export const globeView: TemplateSchema = {
       },
     },
 
-    // The timeline: plays the globe's clock, once its layers have given it a range to cross.
+    // The timeline: plays the globe's clock. Opened from its button beside Layers; while it is closed
+    // the clock has no moment, so everything is drawn.
     {
       type: '$if',
       props: {
-        condition: { $: 'clockStore.clocks.globe.canPlay' },
+        condition: { $: 'local.showTimeline' },
         then: {
           type: 'Column',
           props: {
@@ -463,89 +491,148 @@ export const globeView: TemplateSchema = {
           },
           children: [
             {
-              type: 'Row',
+              type: '$if',
               props: {
-                width: '100%',
-                maxWidth: 'var(--we-layout-md)',
-                ay: 'center',
-                gap: '300',
-                px: '300',
-                py: '200',
-                bg: 'surface-raised',
-                r: 'pill',
-                shadow: 'md',
-                pointerEvents: 'auto',
-              },
-              children: [
-                {
-                  type: 'we-button',
+                // Until a layer with dates has given the clock a range, there is nothing to play.
+                condition: { $: 'clockStore.clocks.globe.canPlay' },
+                then: {
+                  type: 'Row',
                   props: {
-                    variant: 'ghost',
-                    size: 'sm',
-                    square: true,
-                    label: { $: "clockStore.clocks.globe.playing ? 'Pause' : 'Play'" },
-                    onClick: { $action: 'clockStore.toggle', args: ['globe'] },
+                    width: '100%',
+                    maxWidth: 'var(--we-layout-md)',
+                    ay: 'center',
+                    gap: '300',
+                    px: '300',
+                    py: '200',
+                    bg: 'surface-raised',
+                    r: 'surface',
+                    shadow: 'md',
+                    pointerEvents: 'auto',
                   },
                   children: [
                     {
-                      type: 'we-icon',
-                      props: { name: { $: "clockStore.clocks.globe.playing ? 'pause' : 'play'" }, weight: 'fill' },
-                    },
-                  ],
-                },
-                {
-                  type: 'we-slider',
-                  props: {
-                    flex: '1',
-                    min: 0,
-                    max: 1,
-                    step: 0.001,
-                    value: { $: 'clockStore.clocks.globe.progress' },
-                    onInput: { $action: 'clockStore.seekProgress', args: ['globe', { $: 'event.detail' }] },
-                  },
-                },
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: 'clockStore.clocks.globe.atIso' },
-                    then: {
-                      type: 'we-timestamp',
-                      props: {
-                        value: { $: 'clockStore.clocks.globe.atIso' },
-                        dateStyle: 'medium',
-                        color: 'text-muted',
-                        whiteSpace: 'nowrap',
-                      },
-                    },
-                    else: {
-                      type: 'we-text',
-                      props: { color: 'text-muted', whiteSpace: 'nowrap' },
-                      children: ['Everything'],
-                    },
-                  },
-                },
-                // Back to showing everything, as before anybody pressed play.
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: 'clockStore.clocks.globe.atIso' },
-                    then: {
                       type: 'we-button',
                       props: {
                         variant: 'ghost',
                         size: 'sm',
                         square: true,
-                        label: 'Show everything',
-                        onClick: [
-                          { $action: 'clockStore.pause', args: ['globe'] },
-                          { $action: 'clockStore.seek', args: ['globe', null] },
-                        ],
+                        label: { $: "clockStore.clocks.globe.playing ? 'Pause' : 'Play'" },
+                        onClick: { $action: 'clockStore.toggle', args: ['globe'] },
                       },
-                      children: [{ type: 'we-icon', props: { name: 'x' } }],
+                      children: [
+                        {
+                          type: 'we-icon',
+                          props: {
+                            name: { $: "clockStore.clocks.globe.playing ? 'pause' : 'play'" },
+                            weight: 'fill',
+                          },
+                        },
+                      ],
                     },
-                  },
+                    // The scrubber, with marks at round moments beneath it: hours across a day, days
+                    // across a month, months across a year, years across decades.
+                    {
+                      type: 'Column',
+                      props: { flex: '1', minWidth: '0', gap: '100', pt: '200' },
+                      children: [
+                        {
+                          type: 'we-slider',
+                          props: {
+                            min: 0,
+                            max: 1,
+                            step: 0.001,
+                            value: { $: 'clockStore.clocks.globe.progress' },
+                            onInput: { $action: 'clockStore.seekProgress', args: ['globe', { $: 'event.detail' }] },
+                          },
+                        },
+                        // Inset by half the thumb, so a mark sits where the thumb's centre would.
+                        {
+                          type: 'Row',
+                          props: { position: 'relative', height: '24px', px: '9px' },
+                          children: [
+                            {
+                              type: 'Row',
+                              props: { position: 'relative', flex: '1', height: '100%' },
+                              children: [
+                                {
+                                  type: '$each',
+                                  props: { items: { $: 'clockStore.clocks.globe.ticks' }, as: 'tick' },
+                                  children: [
+                                    {
+                                      type: 'Column',
+                                      props: {
+                                        position: 'absolute',
+                                        top: '0',
+                                        left: { $: '`${tick.fraction * 100}%`' },
+                                        x: '-50%',
+                                        ax: 'center',
+                                        gap: '2px',
+                                        pointerEvents: 'none',
+                                      },
+                                      children: [
+                                        { type: 'Column', props: { width: '1px', height: '5px', bg: 'border-strong' } },
+                                        {
+                                          type: 'we-text',
+                                          props: { variant: 'footnote', color: 'text-muted', whiteSpace: 'nowrap' },
+                                          children: [{ $: 'tick.label' }],
+                                        },
+                                      ],
+                                    },
+                                  ],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { color: 'text-muted', whiteSpace: 'nowrap' },
+                      children: [{ $: "clockStore.clocks.globe.atLabel || 'Everything'" }],
+                    },
+                    // Back to showing everything, as before anybody pressed play.
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: 'clockStore.clocks.globe.atIso' },
+                        then: {
+                          type: 'we-button',
+                          props: {
+                            variant: 'ghost',
+                            size: 'sm',
+                            square: true,
+                            label: 'Show everything',
+                            onClick: [
+                              { $action: 'clockStore.pause', args: ['globe'] },
+                              { $action: 'clockStore.seek', args: ['globe', null] },
+                            ],
+                          },
+                          children: [{ type: 'we-icon', props: { name: 'x' } }],
+                        },
+                      },
+                    },
+                  ],
                 },
-              ],
+                else: {
+                  type: 'Row',
+                  props: {
+                    px: '400',
+                    py: '200',
+                    bg: 'surface-raised',
+                    r: 'surface',
+                    shadow: 'md',
+                    pointerEvents: 'auto',
+                  },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: { color: 'text-muted' },
+                      children: ['Nothing on the globe has a date to play through yet.'],
+                    },
+                  ],
+                },
+              },
             },
           ],
         },

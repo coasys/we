@@ -17,11 +17,21 @@
  *
  * ## Presentation lives here
  *
- * `atIso`, `fromIso` and `toIso` exist because a schema has no dates: a `we-timestamp` takes an ISO
- * string. `progress` is the moment as a fraction of the range, which is what a slider moves along.
+ * `atIso`, `fromIso`, `toIso`, `atLabel` and `ticks` exist because a schema has no dates: a
+ * `we-timestamp` takes an ISO string, and nothing in a schema could choose between hours and years. `progress` is the moment as a fraction of the range, which is what a slider moves along.
  */
 import { clockRegistry } from '@shared/clocks';
-import { type Clock, type ClockSettings, type ClockState, throttle, toIso, toTime } from '@we/clock';
+import {
+  type Clock,
+  type ClockSettings,
+  type ClockState,
+  type ClockTick,
+  clockTicks,
+  momentLabel,
+  throttle,
+  toIso,
+  toTime,
+} from '@we/clock';
 import { type Accessor, createContext, createSignal, onCleanup, type ParentProps, useContext } from 'solid-js';
 
 /** One clock, ready to render. */
@@ -30,6 +40,16 @@ export interface ClockView {
   at: number | null;
   /** The same moment for a `we-timestamp`; empty when none is set. */
   atIso: string;
+  /**
+   * The moment written as precisely as the range calls for — with the time of day across a day or
+   * two, the month alone across decades. Empty when none is set.
+   */
+  atLabel: string;
+  /**
+   * Marks along the range, `{ at, fraction, label }`, on round moments at the scale it calls for:
+   * hours, days, months or years. Place each at `fraction` of a scrubber's width.
+   */
+  ticks: ClockTick[];
   from: number | null;
   fromIso: string;
   to: number | null;
@@ -62,10 +82,24 @@ export interface ClockStore {
 /** How often a playing clock is published to templates. */
 const PUBLISH_INTERVAL = 200;
 
+/** The marks for a range, kept until the range changes: they are worked out with the locale's dates. */
+const tickCache = new WeakMap<Clock, { key: string; ticks: ClockTick[] }>();
+
+function ticksOf(clock: Clock, state: ClockState): ClockTick[] {
+  const key = `${state.from}:${state.to}`;
+  const cached = tickCache.get(clock);
+  if (cached?.key === key) return cached.ticks;
+  const ticks = state.from !== null && state.to !== null ? clockTicks(state.from, state.to) : [];
+  tickCache.set(clock, { key, ticks });
+  return ticks;
+}
+
 function view(clock: Clock, state: ClockState): ClockView {
   return {
     at: state.at,
     atIso: toIso(state.at),
+    atLabel: momentLabel(state.at, state.from, state.to),
+    ticks: ticksOf(clock, state),
     from: state.from,
     fromIso: toIso(state.from),
     to: state.to,

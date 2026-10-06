@@ -17,4 +17,5 @@ export {
   throttle,
 } from './clock';
 export { ClockRegistry } from './registry';
+export { type ClockTick, clockTicks, momentLabel } from './ticks';
 export { DAY, parseDuration, toIso, toTime, utcDay } from './time';

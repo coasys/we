@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { Clock, type ClockScheduler, type ClockState, throttle } from './clock';
 import { ClockRegistry } from './registry';
+import { clockTicks, momentLabel } from './ticks';
 import { parseDuration, toTime } from './time';
 
 /** A scheduler a test steps by hand: `advance(ms)` moves real time on and runs one frame. */
@@ -204,5 +205,36 @@ describe('time', () => {
     expect(parseDuration(250)).toBe(250);
     expect(parseDuration('-1d')).toBeUndefined();
     expect(parseDuration('a week')).toBeUndefined();
+  });
+});
+
+describe('ticks', () => {
+  const at = (y: number, m: number, d: number, h = 0) => new Date(y, m, d, h).getTime();
+
+  it('marks a day in hours', () => {
+    const ticks = clockTicks(at(2026, 9, 6, 1), at(2026, 9, 6, 23), 6, 'en-GB');
+    expect(ticks.length).toBeLessThanOrEqual(6);
+    expect(ticks[0].label).toMatch(/^\d\d:00$/);
+  });
+
+  it('marks a month in days or weeks, a year in months, decades in years', () => {
+    expect(clockTicks(at(2026, 9, 1), at(2026, 9, 31), 6, 'en-GB')[0].label).toMatch(/Oct/);
+    const year = clockTicks(at(2026, 0, 15), at(2026, 11, 15), 6, 'en-GB');
+    expect(year.every((tick) => !/^\d+$/.test(tick.label))).toBe(true);
+    expect(clockTicks(at(2001, 0, 1), at(2026, 0, 1), 6, 'en-GB').map((tick) => tick.label)).toContain('2010');
+  });
+
+  it('places each mark by how far along the range it is', () => {
+    const ticks = clockTicks(at(2026, 0, 1), at(2027, 0, 1), 6);
+    for (const tick of ticks) expect(tick.fraction).toBeGreaterThanOrEqual(0);
+    for (const tick of ticks) expect(tick.fraction).toBeLessThanOrEqual(1);
+    expect(clockTicks(5, 5)).toEqual([]);
+  });
+
+  it('writes the moment as precisely as the range calls for', () => {
+    const day = momentLabel(at(2026, 9, 6, 14), at(2026, 9, 6), at(2026, 9, 7), 'en-GB');
+    expect(day).toMatch(/14:00/);
+    expect(momentLabel(at(2026, 9, 6), at(2000, 0, 1), at(2026, 0, 1), 'en-GB')).toBe('Oct 2026');
+    expect(momentLabel(null, 0, 1)).toBe('');
   });
 });
