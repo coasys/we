@@ -30,6 +30,8 @@ import type {
   RendererFactory,
 } from '@we/globe-protocol';
 
+import { type ClockLink, NO_CLOCK } from './clockLink';
+
 export interface LayerSetOptions<TContext extends RendererContext> {
   engine: GlobeEngine;
   /** The kinds templates may name. A function, so a host can lend them late. */
@@ -39,6 +41,8 @@ export interface LayerSetOptions<TContext extends RendererContext> {
   events: LayerEventBus;
   /** Whether a kind can draw here (an ion account it needs, say). Absent kinds are skipped quietly. */
   available?: (kind: LayerKind) => boolean;
+  /** The clock the globe follows, which each layer reads through `context.clock`. Absent: none. */
+  clock?: ClockLink;
 }
 
 interface Mounted {
@@ -143,10 +147,14 @@ export class LayerSet<TContext extends RendererContext> {
     };
     this.mounted.set(key, entry);
 
+    const clock = this.config.clock?.forLayer(key) ?? NO_CLOCK;
+    // A layer that goes takes its span out of the clock's range with it.
+    entry.cleanups.push(() => clock.extent(null));
     const context = this.config.context({
       id: key,
       zIndex: config.zIndex,
       events: this.config.events,
+      clock,
       // A renderer that finishes mounting after it was unmounted still cleans up after itself.
       onCleanup: (cleanup) => (entry.disposed ? safely(cleanup) : entry.cleanups.push(cleanup)),
     });

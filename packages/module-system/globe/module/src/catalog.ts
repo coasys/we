@@ -11,7 +11,31 @@
  * `./layers`. Keep each entry in step with its layer's options interface in `@we/globe-layers`; the
  * test in `@we/app-shell` (`globeModule.test.ts`) checks the names and slots against the registry.
  */
-import type { PluginCatalog } from '@we/schema-shared';
+import type { PluginCatalog, PluginEntry } from '@we/schema-shared';
+
+/**
+ * What every data kind takes to follow a clock. Written once and spread into each, so the four kinds
+ * and the heatmap cannot come to describe the same option differently.
+ */
+const TIME_OPTIONS: NonNullable<PluginEntry['options']> = [
+  {
+    name: 'time',
+    type: 'string',
+    description:
+      'Field path to each row\'s moment — a date, a date-time or milliseconds ("createdAt", "startDate"). On a globe with a clock, only rows up to the clock\'s moment are drawn, so playing it shows them arriving; a row with no readable moment is drawn throughout. A rule reads a row\'s age in days as "data.age".',
+  },
+  {
+    name: 'window',
+    type: 'string | number',
+    description:
+      'With time: only rows this recent are drawn — "7d", "12h", "30m", or milliseconds — so the layer shows what is happening at the moment rather than everything up to it.',
+  },
+  {
+    name: 'fade',
+    type: 'boolean',
+    description: 'With window: rows fade out over the last quarter of the window rather than vanishing. Default true.',
+  },
+];
 
 export const GLOBE_LAYER_CATALOG: PluginCatalog = {
   component: 'CesiumGlobe',
@@ -23,7 +47,7 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
     'what a $queries entry fetched: read it with { "$": "local.rows.map(…)" }. The imagery is the globe\'s own ' +
     'and is not a layer. A globe is drawn by one of two engines, which the deployment or the person chooses and ' +
     'a template never names: Cesium, the full 3D globe, or MapLibre, a lighter one for phones. Both draw every ' +
-    'planet kind; only Cesium draws the background kinds, and on MapLibre lines lie flat. Read ' +
+    'planet kind; only Cesium draws the background kinds. Read ' +
     'modules.globe.drawsSpace to leave the background kinds out of a menu where they would do nothing. ' +
     'A kind an engine does not draw is simply absent there, so place them as you would anyway. ' +
     'The data kinds (pointsLayer, pathsLayer, areasLayer, hexbinLayer) each take rows as `data`, field paths saying ' +
@@ -35,7 +59,14 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
     'the rows. Colours are roles or tokens ("accent", "warning-500") or CSS. For a heat, use ' +
     '{ "from": "success-500", "to": "danger-500" }, green to red, which reads the same way round in a light and a ' +
     'dark theme; the graph\'s named scales ("heat") follow the page\'s theme and turn around in a dark one, which ' +
-    'is wrong over satellite imagery. Start a height range above 0 so the least still shows. Pressing a feature calls onSelect.',
+    'is wrong over satellite imagery. Start a height range above 0 so the least still shows. Pressing a feature calls onSelect. ' +
+    'A globe can follow a clock, to play its data through time: give it clock: "<name>" (or { id, duration, loop, autoplay }), ' +
+    'and give a data kind time: "<field>" naming each row\'s moment. Rows from after the clock\'s moment are not drawn, and ' +
+    "the clock's range is worked out from the rows. The controls are ordinary nodes beside the globe reading " +
+    'clockStore.clocks.<name> — playing, progress (0–1), atIso for a we-timestamp, canPlay — and calling ' +
+    'clockStore.toggle and clockStore.seekProgress. Until somebody plays or scrubs, the clock has no moment and every row is drawn. ' +
+    'Statistics a style scales across the rows (a heat, a height) are relative to the rows drawn at that moment; give the ' +
+    'metric min and max to hold its scale still while it plays.',
   placements: [
     { prop: 'planetLayers', key: 'factory', categories: ['planet'] },
     { prop: 'backgroundLayers', key: 'factory', categories: ['background'] },
@@ -75,6 +106,7 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
           description:
             'Draw markers within radius pixels (default 60) of each other as one, with a count; pressing one zooms in.',
         },
+        ...TIME_OPTIONS,
         { name: 'onSelect', type: 'handler', description: 'Runs when a marker is pressed, with its row as event.' },
       ],
       example: `{ "factory": "pointsLayer", "id": "members", "options": { "data": { "$": "spaceStore.members.filter(m, m.location)" }, "latitude": "location.latitude", "longitude": "location.longitude", "label": "name", "style": [{ "style": { "color": "accent", "image": { "from": "data.avatar" } } }, { "when": { "data.role": "admin" }, "style": { "borderColor": "warning-500" } }], "cluster": true, "onSelect": { "$setLocal": "selected", "value": { "$": "event" } } } }`,
@@ -106,8 +138,9 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
           name: 'style',
           type: 'rules',
           description:
-            'Properties: width (pixels, default 2), color, opacity, dashed (true/false), arcHeight (0 flat … 0.5 tall, a share of the line\'s length; default 0; drawn flat on the MapLibre engine). A rule can read a line\'s length in kilometres as "data.length".',
+            'Properties: width (pixels, default 2), color, opacity, dashed (true/false; an arc is drawn solid), arcHeight (0 flat … 0.5 tall, a share of the line\'s length; default 0; only a line between two places arcs). A rule can read a line\'s length in kilometres as "data.length".',
         },
+        ...TIME_OPTIONS,
         { name: 'onSelect', type: 'handler', description: 'Runs when a line is pressed, with its row as event.' },
       ],
       example: `{ "factory": "pathsLayer", "id": "trips", "options": { "data": { "$": "local.trips" }, "from": { "latitude": "origin.latitude", "longitude": "origin.longitude" }, "to": { "latitude": "destination.latitude", "longitude": "destination.longitude" }, "style": [{ "style": { "color": "accent", "width": 2, "arcHeight": 0.2 } }, { "when": { "data.length": { "gt": 5000 } }, "style": { "color": "warning-500" } }] } }`,
@@ -152,6 +185,7 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
           description:
             'Properties: color (the fill), opacity (default 0.6), borderColor, borderWidth (default 1 with a border colour), height (metres to raise it as a solid; default 0, flat). With area, a rule reads "data.value", "data.count" and "data.name".',
         },
+        ...TIME_OPTIONS,
         {
           name: 'onSelect',
           type: 'handler',
@@ -186,6 +220,7 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
           description:
             'Properties: color, opacity (default 0.7), height (metres to raise the cell; default 0). A rule reads "data.value" and "data.count".',
         },
+        ...TIME_OPTIONS,
         {
           name: 'onSelect',
           type: 'handler',
@@ -193,6 +228,67 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
         },
       ],
       example: `{ "factory": "hexbinLayer", "id": "post-heat", "enabled": { "$": "local.showHeat" }, "options": { "data": { "$": "local.posts" }, "latitude": "location.latitude", "longitude": "location.longitude", "resolution": 3, "style": [{ "style": { "color": { "metric": "field", "options": { "from": "value" }, "scale": { "from": "success-500", "to": "danger-500" } }, "height": { "metric": "field", "options": { "from": "value" }, "range": [30000, 300000] } } }], "onSelect": { "$setLocal": "cell", "value": { "$": "event" } } } }`,
+    },
+    {
+      id: 'heatmapLayer',
+      category: 'planet',
+      description:
+        'Rows as a continuous glow, bright where they gather and fading out around them, green through amber to red. Where a hexbin gives cells to count and press, a heatmap shows at a glance where things concentrate, with no cell edges to read as boundaries — and nothing to press. For dense points: posts, sightings, check-ins.',
+      options: [
+        { name: 'data', type: 'object[]', description: 'The rows. Rows without a place are left out.' },
+        { name: 'latitude', type: 'string', description: 'Field path to the latitude. Default "latitude".' },
+        { name: 'longitude', type: 'string', description: 'Field path to the longitude. Default "longitude".' },
+        {
+          name: 'weight',
+          type: 'string',
+          description: 'A field whose number is how much each row adds. Default: each row adds the same.',
+        },
+        {
+          name: 'radius',
+          type: 'number',
+          description: "How far one row's glow spreads, in pixels on screen. Default 30.",
+        },
+        {
+          name: 'intensity',
+          type: 'number',
+          description: "Multiplies every row's heat: raise it for sparse data, lower it for dense. Default 1.",
+        },
+        { name: 'opacity', type: 'number', description: '0 to 1. Default 0.8.' },
+        {
+          name: 'colors',
+          type: 'string[]',
+          description:
+            'The ramp, coolest to hottest, as roles, tokens or CSS. Default ["success-500", "warning-500", "danger-500"].',
+        },
+        ...TIME_OPTIONS,
+      ],
+      example: `{ "factory": "heatmapLayer", "id": "post-glow", "enabled": { "$": "local.showGlow" }, "options": { "data": { "$": "local.posts" }, "latitude": "location.latitude", "longitude": "location.longitude", "radius": 40, "time": "createdAt", "window": "14d" } }`,
+    },
+    {
+      id: 'satelliteOverlayLayer',
+      category: 'planet',
+      description:
+        "NASA's satellite imagery of one day, laid over the earth beneath the data: the day's photograph from orbit with its clouds, active fires, snow, rain, smoke and dust, sea ice, or the lights at night. No account needed. On a globe with a clock it shows the clock's day, so scrubbing moves the weather; otherwise the most recent day there is.",
+      options: [
+        {
+          name: 'product',
+          type: '"true-color" | "fires" | "snow" | "precipitation" | "aerosols" | "sea-ice" | "night-lights"',
+          description:
+            'What to show. Default "true-color", the day\'s photograph. "aerosols" is smoke and dust; "night-lights" is one picture rather than a day each.',
+        },
+        {
+          name: 'date',
+          type: 'string',
+          description:
+            'A day as YYYY-MM-DD, which overrides the clock. Kept between the first day the product has and the most recent.',
+        },
+        {
+          name: 'opacity',
+          type: 'number',
+          description: '0 to 1. Default 1 for the photograph, fires and night lights, a little less for the others.',
+        },
+      ],
+      example: `{ "factory": "satelliteOverlayLayer", "id": "fires", "enabled": { "$": "local.showFires" }, "options": { "product": "fires" } }`,
     },
     {
       id: 'pointLocationsLayer',

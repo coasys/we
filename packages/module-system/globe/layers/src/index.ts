@@ -24,19 +24,23 @@ export {
   areasLayer,
   countryOutlinesLayer,
   h3HexagonsLayer,
+  heatmapLayer,
   hexbinLayer,
   pathsLayer,
   pointLocationsLayer,
   pointsLayer,
+  satelliteOverlayLayer,
 } from './planet';
 export type {
   AreasOptions,
   CountryOutlinesOptions,
   H3HexagonsOptions,
+  HeatmapOptions,
   HexbinOptions,
   PathsOptions,
   PointLocationsOptions,
   PointsOptions,
+  SatelliteOverlayOptions,
   UserLocation,
 } from './planet';
 

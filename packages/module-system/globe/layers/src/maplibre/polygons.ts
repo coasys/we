@@ -10,6 +10,7 @@ import {
   areaFeatures,
   type AreaIndex,
   type AreasOptions,
+  followTime,
   type HexbinOptions,
   type HexFeature,
   hexFeatures,
@@ -103,6 +104,7 @@ export async function renderAreas(
   let disposed = false;
   context.onCleanup(() => (disposed = true));
   const shapes = shapeLayers(context, () => void update(options));
+  const time = followTime(context, () => void update(options), { minInterval: 150 });
 
   const update = async (next: AreasOptions) => {
     options = next;
@@ -114,7 +116,7 @@ export async function renderAreas(
       }
       if (disposed) return;
     }
-    const features = areaFeatures(options, countries);
+    const features = areaFeatures(options, countries, time.slice(options.data, options));
     byId = new Map(features.map((f) => [f.id, f]));
     shapes.draw(features);
   };
@@ -138,10 +140,11 @@ export function renderHexbin(context: MapLibreRendererContext, initial: HexbinOp
   let options = initial;
   let byId = new Map<string, HexFeature>();
   const shapes = shapeLayers(context, () => update(options));
+  const time = followTime(context, () => update(options), { minInterval: 150 });
 
   const update = (next: HexbinOptions) => {
     options = next;
-    const features = hexFeatures(next);
+    const features = hexFeatures(next, time.slice(next.data, next));
     byId = new Map(features.map((f) => [f.id, f]));
     shapes.draw(features.map((cell) => ({ ...cell, polygons: [[cell.boundary]], borderWidth: 0 })));
   };

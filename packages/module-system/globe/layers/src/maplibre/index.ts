@@ -6,17 +6,26 @@
  * draw is simply not here: the space around the earth (skybox, stars, the solar system), which a template on this engine finds absent rather than broken — listed with no renderer, so
  * the globe says so once.
  */
-import type { AreasOptions, HexbinOptions, PathsOptions, PointsOptions } from '@we/globe-core';
+import type {
+  AreasOptions,
+  HeatmapOptions,
+  HexbinOptions,
+  PathsOptions,
+  PointsOptions,
+  SatelliteOverlayOptions,
+} from '@we/globe-core';
 
 import {
   AREAS,
   COUNTRY_OUTLINES,
   H3_GRID,
+  HEATMAP,
   HEXBIN,
   PATHS,
   POINT_LOCATIONS,
   POINTS,
   PROCEDURAL_STARS,
+  SATELLITE_OVERLAY,
   SKYBOX,
   SOLAR_SYSTEM,
 } from '../meta';
@@ -25,7 +34,9 @@ import type { H3HexagonsOptions } from '../planet/h3-hexagons';
 import { asPointsOptions, type PointLocationsOptions } from '../planet/point-locations/options';
 import type { LayerKind, LayerKinds, LayerRenderer } from '../types';
 import { renderGrid } from './grid';
+import { renderHeatmap } from './heatmap';
 import { renderOutlines } from './outlines';
+import { renderSatelliteOverlay } from './overlay';
 import { renderPaths } from './paths';
 import { renderPoints } from './points';
 import { renderAreas, renderHexbin } from './polygons';
@@ -34,6 +45,11 @@ export const pointsLayer: LayerKind<PointsOptions> = { ...POINTS, renderers: { m
 export const pathsLayer: LayerKind<PathsOptions> = { ...PATHS, renderers: { maplibre: renderPaths } };
 export const areasLayer: LayerKind<AreasOptions> = { ...AREAS, renderers: { maplibre: renderAreas } };
 export const hexbinLayer: LayerKind<HexbinOptions> = { ...HEXBIN, renderers: { maplibre: renderHexbin } };
+export const heatmapLayer: LayerKind<HeatmapOptions> = { ...HEATMAP, renderers: { maplibre: renderHeatmap } };
+export const satelliteOverlayLayer: LayerKind<SatelliteOverlayOptions> = {
+  ...SATELLITE_OVERLAY,
+  renderers: { maplibre: renderSatelliteOverlay },
+};
 
 export const pointLocationsLayer: LayerKind<PointLocationsOptions> = {
   ...POINT_LOCATIONS,
@@ -65,6 +81,8 @@ export const maplibreLayerKinds: LayerKinds = Object.fromEntries(
     pathsLayer,
     areasLayer,
     hexbinLayer,
+    heatmapLayer,
+    satelliteOverlayLayer,
     pointLocationsLayer,
     countryOutlinesLayer,
     h3HexagonsLayer,

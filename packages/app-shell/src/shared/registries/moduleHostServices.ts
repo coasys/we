@@ -48,6 +48,7 @@ import type {
   ViewKernel,
 } from '@we/module-shared';
 
+import { clockRegistry } from '../clocks';
 import { addLiveMarks, addLivePointerListener } from '../liveView';
 
 /** What a store publishes here once it is live. All optional: a host need not provide any of it. */
@@ -351,6 +352,7 @@ export const HOST_KERNELS: readonly KernelName[] = [
   'languageModel',
   'interpretation',
   'secrets',
+  'clocks',
 ];
 
 /**
@@ -619,6 +621,12 @@ export function createModuleStoreDeps(framework: {
       },
     },
     // `secrets` is built per module by the registry, which knows the module's group.
+
+    // The app's own registry, the one `clockStore` and the globe read, so a name is one clock to all
+    // of them. Nothing to bind late: a clock needs no store and no backend.
+    clocks: {
+      clock: (id) => clockRegistry.get(id),
+    },
   };
 
   /*

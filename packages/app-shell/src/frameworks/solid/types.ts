@@ -1,6 +1,7 @@
 import type {
   AccountStore,
   AppStore,
+  ClockStore,
   DatasetStore,
   EditorStore,
   InterpretationStore,
@@ -70,6 +71,7 @@ export interface Stores extends RendererStores {
   shellStore: ShellStore;
   presenceStore: PresenceStore;
   interpretationStore: InterpretationStore;
+  clockStore: ClockStore;
   record?: RecordActions;
   /** Neutral identity — the current agent (templates read `$me.did`). Backed by `sessionStore.me`;
    *  typed `unknown` so the seam stays backend-agnostic. Host-specific: not part of the data contract. */

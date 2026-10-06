@@ -12,6 +12,7 @@ import {
   ClusterLevels,
   clusterRadiusOf,
   FeatureDiffer,
+  followTime,
   type LonLat,
   type Mark,
   marksOf,
@@ -192,9 +193,12 @@ export async function renderPoints(
     void draw();
   };
 
+  // Markers appear and fade as the clock passes their moment; only those that changed are redrawn.
+  const time = followTime(context, () => void rebuild(options));
+
   const rebuild = (next: PointsOptions) => {
     options = next;
-    features = pointFeatures(next);
+    features = pointFeatures(next, time.slice(next.data, next));
     byId = new Map(features.map((f) => [f.id, f]));
     levels = clusterRadius() ? new ClusterLevels(features) : null;
     grouped = currentClusters();

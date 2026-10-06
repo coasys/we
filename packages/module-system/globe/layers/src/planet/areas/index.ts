@@ -11,6 +11,7 @@ import {
   type AreaIndex,
   type AreasOptions,
   FeatureDiffer,
+  followTime,
   loadAreas,
 } from '@we/globe-core';
 
@@ -49,8 +50,12 @@ export async function renderAreas(
     drawer.dispose();
   });
 
+  // Regrouping rebuilds the whole batch of shapes, so it follows the clock a few times a second
+  // rather than every frame.
+  const time = followTime(context, () => draw(), { minInterval: 250 });
+
   const draw = () => {
-    const features = areaFeatures(options, countries);
+    const features = areaFeatures(options, countries, time.slice(options.data, options));
     byId = new Map(features.map((f) => [f.id, f]));
     const diff = differ.diff(features);
     if (!diff.added.length && !diff.changed.length && !diff.removed.length) return;

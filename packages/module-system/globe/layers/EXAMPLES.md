@@ -164,6 +164,86 @@ countries are shaded green to red; a rule can raise them too.
 }
 ```
 
+`heatmapLayer` takes the same rows as a glow instead: no cells to count or press, and no edges to read
+as boundaries the data does not have.
+
+```json
+{
+  "factory": "heatmapLayer",
+  "id": "glow",
+  "options": { "data": { "$": "local.posts" }, "latitude": "location.latitude", "longitude": "location.longitude" }
+}
+```
+
+## Playing data through time
+
+Give the globe a clock and a data layer a field holding each row's moment. Rows from after the clock's
+moment are not drawn, so playing it shows them arriving; `window` keeps only the recent ones. The
+controls are ordinary nodes reading and driving the same clock by name, and appear once the layers
+have given it a range to play through.
+
+```json
+{
+  "type": "Column",
+  "children": [
+    {
+      "type": "CesiumGlobe",
+      "props": {
+        "clock": "events",
+        "planetLayers": [
+          {
+            "factory": "pointsLayer",
+            "options": {
+              "data": { "$": "local.events" },
+              "latitude": "location.latitude",
+              "longitude": "location.longitude",
+              "time": "startDate",
+              "window": "7d"
+            }
+          },
+          { "factory": "satelliteOverlayLayer", "options": { "product": "true-color" } }
+        ]
+      }
+    },
+    {
+      "type": "$if",
+      "props": {
+        "condition": { "$": "clockStore.clocks.events.canPlay" },
+        "then": {
+          "type": "Row",
+          "props": { "gap": "300", "ay": "center" },
+          "children": [
+            {
+              "type": "we-button",
+              "props": { "onClick": { "$action": "clockStore.toggle", "args": ["events"] } },
+              "children": [{ "$": "clockStore.clocks.events.playing ? 'Pause' : 'Play'" }]
+            },
+            {
+              "type": "we-slider",
+              "props": {
+                "flex": "1",
+                "max": 1,
+                "step": 0.001,
+                "value": { "$": "clockStore.clocks.events.progress" },
+                "onInput": { "$action": "clockStore.seekProgress", "args": ["events", { "$": "event.detail" }] }
+              }
+            },
+            {
+              "type": "we-timestamp",
+              "props": { "value": { "$": "clockStore.clocks.events.atIso" }, "dateStyle": "medium" }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+The satellite overlay shows the clock's day, so the weather moves with the events. A heat or a height
+scaled across the rows is relative to the rows drawn at that moment; give the metric `min` and `max`
+to hold the scale still while it plays.
+
 ## Routes
 
 `pathsLayer` draws a line per row. `arcHeight` is a share of the line's own length, so a set of routes

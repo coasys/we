@@ -9,6 +9,7 @@
 import type { StyleRules, StyleValue } from '@we/graph-protocol';
 
 import type { Row } from './rows';
+import type { TimeOptions } from './time';
 
 /** A latitude and a longitude, as field paths into a row. */
 export interface PositionPaths {
@@ -16,8 +17,11 @@ export interface PositionPaths {
   longitude?: string;
 }
 
-/** Options every data kind takes. */
-export interface DataLayerOptions<TStyle> {
+/**
+ * Options every data kind takes. The time ones (`time`, `window`, `fade`) apply when the globe
+ * follows a clock: see `./time`.
+ */
+export interface DataLayerOptions<TStyle> extends TimeOptions {
   /** The rows to draw. */
   data?: Row[];
   /** The field naming each row, so an update moves and restyles rather than redraws. Default "id". */
