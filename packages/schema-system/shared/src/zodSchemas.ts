@@ -266,6 +266,8 @@ function schemaNodeShape() {
     $defs: z.record(z.string(), lazySchemaNode).optional(),
     // Set when a shared shape was given a copy of its own — see `definitions.ts`.
     forkedFrom: z.string().optional(),
+    // Names a node among its siblings, so a built-in's derived id survives a reorder — see `nodeIdentity.ts`.
+    key: z.string().optional(),
   };
 }
 

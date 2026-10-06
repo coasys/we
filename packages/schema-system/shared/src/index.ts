@@ -132,6 +132,7 @@ export {
   validatePatches,
   ensureSections,
   collectComponentTypes,
+  copyWithNewIds,
   ensureNodeIds,
   stripNodeIds,
   findNodeById,
@@ -140,6 +141,7 @@ export {
   removeChild,
 } from './indexer';
 export type { SectionEntry, StoredTemplate, FindNodeResult, PatchError } from './indexer';
+export { deriveNodeIds, derivedNodeId, isNodeId, newNodeId, NODE_ID_LENGTH } from './nodeIdentity';
 export { createStoredTemplate, listSections, getSection, updateSection } from './sections';
 export {
   expandViewRoutes,
