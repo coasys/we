@@ -55,7 +55,13 @@ export type {
   SourceEntry,
 } from './contextTypes';
 
-export { buildValidationContext, validateSchema, validateSemantic, withEntities } from './semanticValidation';
+export {
+  asHostChrome,
+  buildValidationContext,
+  validateSchema,
+  validateSemantic,
+  withEntities,
+} from './semanticValidation';
 export type { ValidationContext } from './semanticValidation';
 export { validateStructure } from './validators';
 export type { ValidationError, ValidationResult } from './validators';

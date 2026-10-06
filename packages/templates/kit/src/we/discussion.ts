@@ -47,7 +47,7 @@
  *   declare nothing. Two discussions in one tree would share them — put the second one behind a
  *   route or a modal, which is where a second conversation belongs anyway.
  */
-import { composerModal, confirmModal, emptyNote } from '@we/schema-kit';
+import { composerModal, emptyNote } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import {
@@ -82,8 +82,6 @@ const COMPOSER_SAVE = 'discussionComposerSave';
 const COMPOSER_BUSY = 'discussionComposerBusy';
 /** The reply the thread is currently rooted at, or empty for the record itself. */
 const ROOT = 'discussionRoot';
-/** The reply whose delete is being confirmed, or empty. The same trick `REPLY_TO` uses. */
-const DELETING = 'discussionDeleting';
 /** The reply being rewritten, or empty. The same trick again — one composer serves every level. */
 const EDITING = 'discussionEditing';
 /**
@@ -428,9 +426,15 @@ function replyBody(
                             */
                             hoverProps: { color: 'danger-text', bg: 'danger-surface' },
                             label: 'Delete this reply',
+                            /*
+                              Straight to the action, with no dialog of ours in front of it. The host
+                              asks before every delete a space template runs, and says what goes
+                              with a reply — the responses under it — in its own words. A question
+                              here as well was two questions about one click.
+                            */
                             onClick: [
                               { $setLocal: 'pressedControl', value: true },
-                              { $setLocal: DELETING, value: { $: `${as}.id` } },
+                              { $action: 'spaceStore.deleteCollection', args: [{ $: `${as}.id` }] },
                             ],
                           },
                           children: [{ type: 'we-icon', props: { name: 'trash' } }],
@@ -657,26 +661,6 @@ function replyBody(
         },
       ],
     },
-    /*
-      The question, per reply, gated on this reply's id — so one local serves every level of the
-      thread, exactly as the composer's does.
-
-      It says what goes with it. A reply carries its own replies, and `deleteBlocks` follows
-      `we://comment` now, so deleting one three people answered takes those three answers too: a
-      dialog that said only "this cannot be undone" would be telling the truth and hiding the part
-      that matters. The sentence names the number, and says nothing about responses where there are
-      none rather than reading "and its 0 responses".
-    */
-    confirmModal({
-      open: { $: `local.${DELETING} == ${as}.id` },
-      close: { $setLocal: DELETING, value: '' },
-      title: 'Delete this reply?',
-      body: {
-        $: `count(${as}.comments) ? \`This reply, and the \${count(${as}.comments)} \${plural(count(${as}.comments), 'response', 'responses')} under it, will be permanently deleted.\` : 'This reply will be permanently deleted.'`,
-      },
-      confirmLabel: 'Delete',
-      confirm: { $action: 'spaceStore.deleteCollection', args: [{ $: `${as}.id` }] },
-    }),
   ];
 }
 
@@ -690,7 +674,6 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
     $localState: {
       [REPLY_TO]: { type: 'string', initial: '' },
       [ROOT]: { type: 'string', initial: '' },
-      [DELETING]: { type: 'string', initial: '' },
       [EDITING]: { type: 'string', initial: '' },
       [OPEN]: { type: 'array', initial: [] },
       [COMPOSER_KEY]: { type: 'number', initial: 0 },

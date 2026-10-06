@@ -22,6 +22,7 @@ import {
 } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
+import { credential } from '../credential';
 import { useAccountStore } from './AccountStore';
 import { useSessionStore } from './SessionStore';
 
@@ -95,8 +96,12 @@ export interface ProfileStore {
    * failure handling is not uniform — a failed agent creation must keep the user on the setup
    * screen to retry, while a failed profile publish must not, since by then the account is real
    * and blocking someone out of a working account over a label would be worse than a toast.
+   *
+   * Takes the name and not the password: that is read from the host's own field (`CredentialField`,
+   * purpose `new`), and when it is missing or the two entries differ, the field is asked to say so
+   * and nothing is created.
    */
-  completeAccountSetup: (name: string, password: string) => Promise<void>;
+  completeAccountSetup: (name: string) => Promise<void>;
   fetchProfile: (did: string) => Promise<void>;
   /** Partial by design — the body writes only the keys present, and callers pass one at a time. */
   updateOwnProfile: (
@@ -453,8 +458,17 @@ export function ProfileStoreProvider(props: ParentProps) {
     setPendingAvatarSignal(`data:${fileData.file_type};base64,${fileData.data_base64}`);
   }
 
-  async function completeAccountSetup(name: string, password: string): Promise<void> {
-    await session.createAgent(password);
+  async function completeAccountSetup(name: string): Promise<void> {
+    /*
+      The password comes from the host's field, never from the caller — see `credential.ts`. A
+      template asking for setup can name the account; it cannot choose, or have collected, the
+      password the account is locked with.
+    */
+    if (!credential.confirmed()) {
+      credential.touch();
+      return;
+    }
+    await session.createAgent(credential.read());
     // createAgent leaves the boot state on 'createAgent' when it fails, having set its own error
     // for the screen to show. Going further would publish a profile for an agent that is not there.
     if (session.bootState() !== 'finishing') return;

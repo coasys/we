@@ -279,13 +279,26 @@ describe('clustering', () => {
 
   it('only ever splits a cluster as the camera comes closer, and only ever merges as it goes out', () => {
     const levels = new ClusterLevels(city);
+    /*
+      Which cluster each point was in at the step before, so "lies wholly inside one cluster from
+      before" is a lookup per point. Comparing every cluster with every earlier one by its joined ids
+      was the same check at a few million string splits, which ran past the time limit on CI.
+    */
+    const clusterOf = (groups: string[]) => {
+      const byId = new Map<string, number>();
+      groups.forEach((group, index) => {
+        for (const id of group.split(',')) byId.set(id, index);
+      });
+      return byId;
+    };
     let previous = groupsOf(levels.at(40));
     for (let radius = 40; radius > 0.0001; radius *= 0.97) {
       const next = groupsOf(levels.at(radius));
+      const before = clusterOf(previous);
       // Every cluster now lies wholly inside one cluster from before.
       for (const group of next) {
-        const ids = group.split(',');
-        expect(previous.some((before) => ids.every((id) => before.split(',').includes(id)))).toBe(true);
+        const from = new Set(group.split(',').map((id) => before.get(id)));
+        expect(from.size).toBe(1);
       }
       previous = next;
     }

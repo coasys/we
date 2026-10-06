@@ -33,6 +33,7 @@ import {
   useContext,
 } from 'solid-js';
 
+import { safeMode } from '../../../shared/safeMode';
 import { useDatasetStore } from './DatasetStore';
 import { useSessionStore } from './SessionStore';
 
@@ -638,6 +639,14 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   const allThemes: Accessor<ThemeData[]> = () => {
+    /*
+      Safe mode: WE's own themes and nothing else. A theme is CSS, and CSS can hide every way out of
+      the app as thoroughly as a template can, so safe mode that kept the chosen theme would be safe
+      from half the problem. Here because every id this store resolves — the one on screen, the
+      agent's default, a template's named themes — is looked up in this list, so leaving the others
+      out of it is leaving them out of everything. The settings page still lists them to delete.
+    */
+    if (safeMode().on) return builtInThemes();
     const ids = visibleThemeIds();
     const visible = ids.size > 0 ? installedThemes().filter((t) => ids.has(t.id)) : installedThemes();
     return [...builtInThemes(), ...visible, ...spaceThemes()];

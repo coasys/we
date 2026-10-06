@@ -44,6 +44,12 @@ export type ValidationContext = {
    */
   gatedActions?: Set<string>;
   /**
+   * Action paths the host confirms itself before a space template's call runs — see
+   * {@link checkSelfConfirmed}. Absent when judging host chrome, which renders against a bag with no
+   * such confirmation and so asks its own questions: {@link asHostChrome}.
+   */
+  hostConfirmed?: Set<string>;
+  /**
    * Where a component's catalogued plugin names are written, by component and prop — see
    * `PluginPlacement`. `names` maps every name the catalogue knows to its categories (a graph has a
    * seed and an expander both called `schema`), so a name in the wrong slot can be told from a name
@@ -386,6 +392,11 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     }
   }
 
+  // What the host asks about itself, in front of a space template's call.
+  const hostConfirmed = new Set<string>();
+  for (const store of data.storeEntries)
+    for (const action of store.destructive ?? []) hostConfirmed.add(`${store.name}.${action}`);
+
   const pluginPlacements: NonNullable<ValidationContext['pluginPlacements']> = new Map();
   for (const catalog of data.pluginCatalogs ?? []) {
     if (!catalog.placements?.length) continue;
@@ -399,6 +410,7 @@ export function buildValidationContext(data: ContextData): ValidationContext {
 
   return {
     gatedActions,
+    hostConfirmed,
     pluginPlacements,
     componentNames,
     componentProps,
@@ -1221,6 +1233,79 @@ function actionPathsIn(value: unknown, into: string[] = []): string[] {
     for (const nested of Object.values(token)) actionPathsIn(nested, into);
   }
   return into;
+}
+
+/** Anything a person fills in. A sheet holding one is a form, not a question. */
+const FORM_CONTROLS = new Set([
+  'we-input',
+  'we-textarea',
+  'we-select',
+  'we-checkbox',
+  'we-switch',
+  'we-radio',
+  'we-slider',
+  'we-number-input',
+  'we-date-picker',
+  'we-color-picker',
+  'we-icon-picker',
+  'we-location-picker',
+  'we-file-upload',
+  'input',
+  'textarea',
+  'select',
+  'Select',
+  'Combobox',
+  'Search',
+  'EditableImage',
+  'BlockComposer',
+  'CredentialField',
+]);
+
+/** Every node under `value`, wherever a node can sit — children, slots, `then`/`else`, any prop. */
+function* nodesIn(value: unknown): Generator<{ type: string; props?: Record<string, unknown> }> {
+  if (Array.isArray(value)) {
+    for (const item of value) yield* nodesIn(item);
+    return;
+  }
+  if (!value || typeof value !== 'object') return;
+  const node = value as { type?: unknown; props?: Record<string, unknown> };
+  if (typeof node.type === 'string') yield node as { type: string; props?: Record<string, unknown> };
+  for (const nested of Object.values(value)) yield* nodesIn(nested);
+}
+
+/**
+ * A template asking "are you sure?" in front of an action the host asks about anyway.
+ *
+ * The host raises its own confirmation in front of every destructive action a space template runs
+ * — in its words, where the template cannot reword or omit it (see `DestructivePrompt.schema.ts`).
+ * A template's own dialog in front of the same action is a second question about one click, which
+ * is the kind of prompt people learn to click through. Call the action from the control itself.
+ *
+ * Recognised as a `we-modal` that holds such an action and nothing to fill in: a sheet with fields
+ * in it is a form whose Delete button sits beside other work, and is left alone. A warning, since
+ * the result is a worse experience rather than a broken one.
+ */
+function checkSelfConfirmed(schema: unknown, ctx: ValidationContext, errors: ValidationError[]): void {
+  if (!ctx.hostConfirmed?.size) return;
+  const seen = new Set<unknown>();
+  for (const node of nodesIn(schema)) {
+    if (node.type !== 'we-modal' || seen.has(node)) continue;
+    seen.add(node);
+    const inside = [...nodesIn((node as { children?: unknown }).children ?? [])];
+    if (inside.some((child) => FORM_CONTROLS.has(child.type))) continue;
+    const asked = new Set(
+      actionPathsIn((node as { children?: unknown }).children).filter((a) => ctx.hostConfirmed!.has(a)),
+    );
+    for (const action of asked) {
+      errors.push({
+        path: 'we-modal',
+        message:
+          `"${action}" is confirmed in this dialog, and the host asks about it again before it runs — ` +
+          `two questions about one click. Call it from the control itself and leave the question to the host.`,
+        severity: 'warning',
+      });
+    }
+  }
 }
 
 /**
@@ -2159,6 +2244,17 @@ export function withOwnModule(context: ValidationContext, moduleId: string): Val
   return { ...context, modules: { ...context.modules, members } };
 }
 
+/**
+ * The context for judging host chrome — the boot screen, settings, a module's own panels.
+ *
+ * Chrome renders against a bag the host puts no confirmation in front of: it is authored with the
+ * app and asks its own questions where it needs to. So a chrome dialog confirming a delete is the
+ * only question, and is not warned about. See {@link checkSelfConfirmed}.
+ */
+export function asHostChrome(context: ValidationContext): ValidationContext {
+  return { ...context, hostConfirmed: undefined };
+}
+
 export function validateSemantic(schema: unknown, context: ValidationContext): ValidationResult {
   // If the schema declares custom stores/components in meta, extend the known sets for this validation
   // meta.stores supports two formats:
@@ -2223,6 +2319,7 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
   };
 
   walkNode(schema, '', context, state, errors);
+  checkSelfConfirmed(schema, context, errors);
 
   /*
     A template's sections are trees of their own, declared beside the tree rather than in it.
