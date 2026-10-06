@@ -11,8 +11,10 @@
     "coverage": "vitest run --coverage",
     "validate": "tsx src/cli/we-validate-schemas.ts ../../app-shell/src/shared/schemas/ ../../templates/shell/src/ ../../templates/default/src/ ../../templates/views/src/ ../../templates/showcase/src/ ../../module-system/",
     "surface-audit": "tsx src/cli/surface-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system",
-    "role-audit": "tsx src/cli/role-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system",
-    "tooltip-audit": "tsx src/cli/tooltip-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system"
+    "role-audit": "tsx src/cli/role-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system --code ../../editor/src ../../graph-system ../../app-shell/src ../../design-system ../../module-system",
+    "tooltip-audit": "tsx src/cli/tooltip-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system",
+    "query-audit": "tsx src/cli/query-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system",
+    "size-audit": "tsx src/cli/size-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system"
   },
   "bin": {
     "we-validate-schemas": "./dist/cli/we-validate-schemas.js"
@@ -33,12 +35,12 @@
   },
   "devDependencies": {
     "@types/node": "^26.4.0",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^5.0.2",
     "@we/cli": "workspace:*",
     "jsdom": "^30.0.1",
     "tsup": "^8.5.1",
     "tsx": "^4.23.13",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.2"
   },
   "sideEffects": false
 }

@@ -8,8 +8,9 @@
  * and patch application in `shared/ai/schemaPatches` — this store orchestrates them against its own
  * signals, and never learns which model or provider answered.
  */
-import { chatSystemPrompt, formatExternalManifestForPrompt, updateSchemaTool } from '@shared/ai/aiInfra';
-import { applySchemaPatches, type SchemaPatch } from '@shared/ai/schemaPatches';
+import { chatContext, formatExternalManifestForPrompt, requestMessage, updateSchemaTool } from '@shared/ai/aiInfra';
+import { countedPatches, runEditSession } from '@shared/ai/editSession';
+import { boundTemplate } from '@shared/ai/templateContext';
 import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
 import { deepClone } from '@shared/utils';
@@ -21,7 +22,7 @@ import {
   useTemplateStore,
   useThemeStore,
 } from '@solid/stores';
-import type { ConversationTurn, LanguageModelStatus } from '@we/backend-shared';
+import type { ConversationTurn, LanguageModelStatus, NewRecord } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { ChatMessage as ChatMessageRecord, ChatSession as ChatSessionRecord } from '@we/entities';
 import type { DockEdge, DockSize } from '@we/module-shared';
@@ -29,10 +30,11 @@ import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { contextData, setLocalWarningSink } from '@we/schema-shared';
 import {
   buildValidationContext,
+  compactDefinitions,
   ensureNodeIds,
+  expandDefinitions,
   stripNodeIds,
-  validateSemantic,
-  validateStructure,
+  withEntities,
 } from '@we/schema-shared';
 import {
   Accessor,
@@ -93,7 +95,8 @@ export interface EditorStore {
   pickerShowDestination: Accessor<boolean>;
 
   // --- Session management ---
-  sessions: Accessor<ChatSessionRecord[]>;
+  /** The saved sessions, to name and address — never to read messages off. See the signal's note. */
+  sessions: Accessor<NewRecord<ChatSessionRecord>[]>;
   activeSessionId: Accessor<string | null>;
   newChat: () => void;
   switchSession: (sessionId: string) => void;
@@ -260,8 +263,7 @@ export function EditorStoreProvider(props: ParentProps) {
   const getValidationCtx = createMemo(() => {
     const foreign = datasetStore.currentDatasetEntities().map((m) => m.name);
     const shapes = shapeStore.spaceShapes().map((s) => s.name);
-    if (foreign.length === 0 && shapes.length === 0) return baseValidationCtx;
-    return { ...baseValidationCtx, entityNames: new Set([...baseValidationCtx.entityNames, ...foreign, ...shapes]) };
+    return withEntities(baseValidationCtx, [...foreign, ...shapes]);
   });
 
   // --- Chat state ---
@@ -307,11 +309,23 @@ export function EditorStoreProvider(props: ParentProps) {
     if (isOpen() || !assistantStatus()) void refreshAssistant();
   });
 
-  // --- Session management ---
-  const [sessions, setSessions] = createSignal<ChatSessionRecord[]>([]);
+  /*
+    --- Session management ---
+
+    `NewRecord`, and that is the whole of the fix below: these rows are here to be named, addressed
+    and deleted, never to be read for their messages. A session's `messages` is a relation, so it
+    holds whatever it held at the moment the record was read — nothing for one this run created, and
+    the state at load for one it loaded — and `persistMessage` appends without touching it.
+
+    Reading it back off a held row was why leaving a conversation and returning to it showed an empty
+    one, and why deleting a chat walked an empty list and left every message behind with nothing
+    pointing at it. Both cleared on reload, which is what kept them. Messages now come from
+    `messagesFor`, which asks.
+  */
+  const [sessions, setSessions] = createSignal<NewRecord<ChatSessionRecord>[]>([]);
   const [activeSessionId, setActiveSessionId] = createSignal<string | null>(null);
   // Track the AD4M ChatSession model instance for the active session
-  let activeSessionRecord: ChatSessionRecord | null = null;
+  let activeSessionRecord: NewRecord<ChatSessionRecord> | null = null;
 
   // --- Content mode (preview / visual / code) ---
   const [contentMode, setContentModeSignal] = createSignal<'preview' | 'visual'>('preview');
@@ -454,6 +468,33 @@ export function EditorStoreProvider(props: ParentProps) {
   // Session management — load, create, switch, delete
   // ----------------------------------------------------------------
 
+  /**
+   * One session's messages, asked for rather than read off a held record.
+   *
+   * The session row is re-read with its `messages` included — the same query `loadSessionsForTemplate`
+   * makes for all of them — because a relation on a held instance is a snapshot of when that instance
+   * was read, and every message written since is missing from it. See the note on `sessions`.
+   *
+   * Answers `[]` for a session that has gone, which is what a caller wants: an empty conversation,
+   * not a thrown one.
+   */
+  async function messagesFor(sessionId: string): Promise<ChatMessage[]> {
+    const perspective = datasetStore.rootDataset()?.handle;
+    if (!perspective) return [];
+    try {
+      const fresh = await ChatSessionRecord.findOne(perspective, {
+        where: { id: sessionId },
+        include: { messages: { order: { createdAt: 'ASC' } } },
+      });
+      // One fallback, not two: the inner `?? []` already makes this non-nullish, so the outer one was
+      // unreachable. TypeScript 6 reports that (TS2869) where 5 accepted it in silence.
+      return (fresh?.messages ?? []) as ChatMessage[];
+    } catch (err) {
+      console.error('Failed to read messages for session', sessionId, err);
+      return [];
+    }
+  }
+
   /** Load sessions for a given template and activate the most recent one */
   async function loadSessionsForTemplate(templateId: string) {
     // Core (read-only) templates use ephemeral in-memory sessions
@@ -551,7 +592,7 @@ export function EditorStoreProvider(props: ParentProps) {
 
     activeSessionRecord = target;
     setActiveSessionId(sessionId);
-    setMessages((target.messages as ChatMessage[]) || []);
+    setMessages(await messagesFor(sessionId));
   }
 
   /** Delete a session and its messages */
@@ -567,8 +608,10 @@ export function EditorStoreProvider(props: ParentProps) {
       const target = sessions().find((s) => s.id === sessionId);
       if (!target) return;
 
-      // Delete all hydrated messages in the session
-      for (const msg of target.messages || []) {
+      // Asked for, not read off `target`: its `messages` is a snapshot from whenever that row was
+      // read, so a chat created or added to this run walked an empty list here and left every
+      // message behind in the root dataset with nothing left pointing at it.
+      for (const msg of await messagesFor(sessionId)) {
         await (msg as ChatMessageRecord).delete();
       }
 
@@ -583,7 +626,7 @@ export function EditorStoreProvider(props: ParentProps) {
           const next = remaining[0];
           activeSessionRecord = next;
           setActiveSessionId(next.id);
-          setMessages((next.messages as ChatMessage[]) || []);
+          setMessages(await messagesFor(next.id));
         } else {
           setActiveSessionId(null);
           activeSessionRecord = null;
@@ -609,7 +652,11 @@ export function EditorStoreProvider(props: ParentProps) {
       await ChatMessageRecord.create(
         perspective,
         { role, content },
-        { parent: { model: ChatSessionRecord, id: activeSessionRecord.id } },
+        // The predicate by name, not `model`. These classes come from `@we/entities`, which are
+        // neutral proxies; the `@HasMany` metadata the backend resolves a parent predicate from
+        // lives on the generated backend classes, so a proxy handed over as `model` resolves to
+        // nothing and every message fails to save.
+        { parent: { id: activeSessionRecord.id, predicate: 'we://chat_message' } },
       );
     } catch (err) {
       console.error('Failed to persist message', err);
@@ -955,264 +1002,101 @@ export function EditorStoreProvider(props: ParentProps) {
     if (!port?.converse || !nodeHasModel()) {
       throw new Error('This node has no language model to talk to. Add one in Settings → AI.');
     }
-    const turns: ConversationTurn[] = buildTurns(text);
-    const system = await chatSystemPrompt();
+    const converse = port.converse.bind(port);
 
     // Create a placeholder assistant message — shows streaming content as tokens arrive
     const streamMsg = createMessage('assistant', '', 'streaming');
     setMessages((prev) => [...prev, streamMsg]);
 
-    let allTextContent = '';
-    const maxContinuations = 5; // Safety limit to prevent infinite loops
+    // What the model is told about WE, chosen for this request: a core plus the components and
+    // stores it implicates, with the rest behind a tool. See `chatContext`.
+    /*
+      ONE tree, numbered once, for everything this turn: what the model is shown, what its ids
+      are resolved against, and what the context strategy preselects from.
 
-    /**
-     * The template each turn patches — carried across turns, not re-read from the store.
-     *
-     * ## What re-reading lost
-     *
-     * `accumulatedSchema` was cloned from `templateStore.currentTemplate` at the top of every
-     * continuation turn, on the assumption that the previous turn's patches are in the store by
-     * then. For a *read-only* template they are not: the apply branch puts them in
-     * `pendingTemplate` and deliberately leaves the store alone. So each turn patched the original
-     * again and the buffer was overwritten — of five tool calls across five turns, only the last
-     * one's work survived to the fork, and the assistant reported all five as applied.
-     *
-     * Held here instead, and updated wherever a turn's patches are accepted. `pendingTemplate` is
-     * the seed rather than `currentTemplate`, so a conversation resumed against a template with
-     * buffered changes continues from them rather than reverting them.
-     */
-    let workingSchema: SchemaNode = ensureNodeIds(
-      deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode,
+      Built here rather than inside `buildTurns` because the ids only mean anything if the SAME
+      tree is on both sides. Compacting in one place and patching the uncompacted template in
+      another gave two independent numberings that drift apart at the first hoisted shape — and
+      the failure was quiet: a patch the model wrote against a shared definition resolved, on this
+      side, to one inline copy of it. It validated, it saved, it changed something plausible, and
+      the model's explanation of what it had done was confidently wrong.
+    */
+    const schemaForRequest = ensureNodeIds(
+      compactDefinitions(deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode).schema,
     );
+    const prepared = await chatContext({ request: text, schema: schemaForRequest });
+    /*
+      How much of the TEMPLATE goes with it. `chatContext` bounds the reference; this bounds the
+      other half, which on a real template is the larger one. A template inside the budget is
+      sent exactly as before — kanban is, workshop is not.
+    */
+    const bounded = boundTemplate(schemaForRequest, text);
+    devLog('[editSession] template', bounded.whole ? 'whole' : 'bounded', bounded.stats);
 
-    const showInlineStatus = (status: string) => {
-      const sep = allTextContent ? '\n\n' : '';
-      setStreamingContent(allTextContent + sep + `<span class="shimmer">*${status}*</span>`);
-    };
-
-    for (let turn = 0; turn <= maxContinuations; turn++) {
-      let reply;
-      try {
-        reply = await port.converse({
-          system,
-          turns,
-          tools: [updateSchemaTool],
-          onText: (accumulated) => {
-            const sep = allTextContent && accumulated ? '\n\n' : '';
-            setStreamingContent(allTextContent + sep + accumulated);
-          },
-        });
-      } catch (err) {
-        console.error(`[EditorStore] Turn ${turn}: the conversation failed`, err);
-        throw err;
-      }
-      const { text: textContent, calls: toolCalls, finish } = reply;
-
-      if (textContent) {
-        allTextContent += (allTextContent ? '\n\n' : '') + textContent;
-      }
-
-      /*
-        Truncated, not finished.
-
-        `max_tokens` was falling into the branch below and being reported as a completed turn, so a
-        reply cut off mid-tool-call silently dropped the edit and told the user it had worked. The
-        half-written text is still worth showing — it is usually most of an answer — but it has to
-        be labelled, because the difference between "here is your change" and "here is most of a
-        change I did not make" is the whole message.
-      */
-      if (finish === 'truncated') {
-        setStreamingContent('');
-        updateAssistantMessage(
-          streamMsg.id,
-          `${allTextContent}\n\n---\n\n**This reply was cut off before it finished, so no changes were applied.** Ask again, or in smaller steps.`.trim(),
-        );
-        return;
-      }
-
-      // No tool calls — text-only response, we're done
-      if (toolCalls.length === 0) {
-        setStreamingContent('');
-        updateAssistantMessage(streamMsg.id, allTextContent || 'No response from AI');
-        return;
-      }
-
-      showInlineStatus('Updating template...');
-
-      // The assistant's turn, calls included, goes into history before their results
-      turns.push({ role: 'assistant', text: textContent, calls: toolCalls });
-
-      // One result per call, in the order they were made
-      const toolResults: Array<{ callId: string; content: string; isError?: boolean }> = [];
-
-      // --- Atomic patching: accumulate all patches before applying ---
-      // We clone the template once and apply all tool calls' patches to it.
-      // Only after ALL patches succeed and validate do we apply to the store.
-      // From the running total, so a turn builds on the last one's patches rather than on the
-      // template as it was when the conversation started. See `workingSchema`.
-      let accumulatedSchema: SchemaNode = ensureNodeIds(deepClone(workingSchema) as SchemaNode);
-
-      // Capture baseline validation issues so we only reject patches that introduce NEW problems
-      const baselineSemantic = validateSemantic(accumulatedSchema as TemplateSchema, getValidationCtx());
-      const baselineIssueKeys = new Set(baselineSemantic.errors.map((e) => `${e.severity}|${e.path}|${e.message}`));
-      let allPatchesValid = true;
-
-      for (const tc of toolCalls) {
-        if (tc.name === 'update_schema') {
-          const patches = (tc.arguments as { patches?: SchemaPatch[] }).patches;
-
-          if (!patches || !Array.isArray(patches)) {
-            toolResults.push({
-              callId: tc.id,
-              content: 'Invalid input: patches must be an array',
-              isError: true,
-            });
-            allPatchesValid = false;
-            continue;
-          }
-
-          devLog(`[EditorStore] Tool call ${tc.id} — ${patches.length} patch(es):`);
-          for (const p of patches) {
-            const op = p.node ? 'update' : p.insert ? 'insert' : 'remove';
-            devLog(`  targetId: "${p.targetId}", op: ${op}`);
-          }
-          devLog('[EditorStore] Patch detail:', JSON.stringify(patches, null, 2));
-
-          // Apply ID-based patches to the accumulated schema (not to the store yet) — the
-          // mechanics live in shared/ai/schemaPatches.
-          const result = applySchemaPatches(accumulatedSchema, patches);
-          if (result.error) {
-            console.warn(`[EditorStore] Patch apply failed: ${result.error}`);
-            allTextContent += '\n\n<span class="warning">⚠ Template failed validation. Retrying...</span>';
-            setStreamingContent(allTextContent);
-            toolResults.push({
-              callId: tc.id,
-              content: `Patching failed: ${result.error}`,
-              isError: true,
-            });
-            allPatchesValid = false;
-            continue;
-          }
-          accumulatedSchema = result.schema;
-
-          // Assign IDs to any newly inserted nodes
-          ensureNodeIds(accumulatedSchema);
-
-          // Mark success for this tool call (actual store apply deferred)
-          toolResults.push({ callId: tc.id, content: 'Patches applied.' });
-        } else {
-          toolResults.push({ callId: tc.id, content: `Unknown tool: ${tc.name}`, isError: true });
+    const result = await runEditSession({
+      converse,
+      system: prepared.system,
+      turns: buildTurns(text, bounded.sent),
+      tools: [updateSchemaTool, ...prepared.tools, ...bounded.tools],
+      // Whichever tool owns the name answers; a tool nobody claims is reported by the session.
+      resolveTool: (call) => prepared.resolveTool?.(call) ?? bounded.resolveTool?.(call),
+      // Buffered changes if there are any, so a conversation resumed against a read-only template
+      // continues from them rather than reverting them.
+      schema: schemaForRequest,
+      validationContext: getValidationCtx(),
+      onDisplay: setStreamingContent,
+      debug: devLog,
+      accept: async (merged) => {
+        pushSnapshot();
+        /*
+          Expanded before it is stored: compaction is a fact about the wire, not about the
+          template. A stored `$defs` would be a second shape for everything downstream to
+          understand — the code panel, a published template, the next turn's compaction — in
+          exchange for nothing, since the saving is in what is sent.
+        */
+        const authored = stripNodeIds(expandDefinitions(merged)) as TemplateSchema;
+        if (isReadOnly()) {
+          setPendingTemplate(authored);
+          return 'Schema changes validated and buffered. Template is read-only — user must fork to apply.';
         }
-      }
+        templateStore.updateTemplate({
+          ...authored,
+          id: templateStore.currentTemplate.id,
+        } as TemplateSchema);
+        await templateStore.persistCurrentTemplate();
+        setPendingTemplate(null);
+        return 'Template updated successfully.';
+      },
+      acceptedLine: (patches) =>
+        isReadOnly() && pendingTemplate() !== null
+          ? `<span class="warning">⚠ ${countedPatches(patches)} ready — fork this template to apply them.</span>`
+          : `<span class="success">✓ Template updated (${countedPatches(patches)})</span>`,
+    });
 
-      // --- Atomic apply: validate + apply only if ALL tool calls succeeded ---
-      if (allPatchesValid) {
-        const mergedTemplate = accumulatedSchema as TemplateSchema;
-        devLog('[EditorStore] merged template:', JSON.stringify(mergedTemplate, null, 2));
+    /*
+      What the session actually did, once, at the end.
 
-        // Step 1: Structural validation (Zod schema check)
-        const structural = validateStructure(mergedTemplate);
-        if (!structural.valid) {
-          console.warn(`[EditorStore] Structural validation failed (${structural.errors.length} issues):`);
-          for (const issue of structural.errors) {
-            console.warn(`  [${issue.severity}] ${issue.path}: ${issue.message}`);
-          }
-          const top5 = structural.errors
-            .slice(0, 5)
-            .map((e) => `[${e.severity}] ${e.message}`)
-            .join('; ');
-          allTextContent += '\n\n<span class="warning">⚠ Template failed structural validation. Retrying...</span>';
-          setStreamingContent(allTextContent);
-          for (const tr of toolResults) {
-            tr.content = `Structural validation failed (${structural.errors.length} issues). Top issues: ${top5}. Fix the schema structure and retry.`;
-            tr.isError = true;
-          }
-        } else {
-          devLog('[EditorStore] Structural validation passed');
+      A tick in the panel is drawn per accepted turn, so a count of them is a claim about how many
+      turns were accepted — and when those two disagreed there was no way to tell a display fault
+      from an extra write without reading every patch line and counting. `accepted` is the number
+      of times the template was written; this makes that answerable at a glance.
+    */
+    devLog('[editSession] session', result.outcome, result.stats);
 
-          // Step 2: Semantic validation (component/prop/store checks)
-          // Only fail on NEW issues introduced by the patch, not pre-existing ones
-          const semantic = validateSemantic(mergedTemplate, getValidationCtx());
-          const newIssues = semantic.errors.filter(
-            (e) => !baselineIssueKeys.has(`${e.severity}|${e.path}|${e.message}`),
-          );
-          const isClean = newIssues.length === 0;
-
-          if (semantic.errors.length > 0 && newIssues.length === 0) {
-            if (import.meta.env.DEV)
-              devLog(`[EditorStore] Semantic validation: ${semantic.errors.length} pre-existing issue(s) ignored`);
-          }
-
-          if (!isClean) {
-            console.warn(`[EditorStore] Semantic validation failed (${newIssues.length} new issues):`);
-            for (const issue of newIssues) {
-              console.warn(`  [${issue.severity}] ${issue.path}: ${issue.message}`);
-            }
-            const top5 = newIssues
-              .slice(0, 5)
-              .map((e) => `[${e.severity}] ${e.message}`)
-              .join('; ');
-            allTextContent += '\n\n<span class="warning">⚠ Template failed semantic validation. Retrying...</span>';
-            setStreamingContent(allTextContent);
-            for (const tr of toolResults) {
-              tr.content = `Semantic validation failed (${newIssues.length} issues). Top issues: ${top5}. Fix the invalid tokens/props and retry.`;
-              tr.isError = true;
-            }
-          } else if (isReadOnly()) {
-            if (import.meta.env.DEV)
-              devLog('[EditorStore] Semantic validation passed — buffering (read-only template)');
-            pushSnapshot();
-            workingSchema = mergedTemplate as SchemaNode;
-            setPendingTemplate(stripNodeIds(mergedTemplate) as TemplateSchema);
-            for (const tr of toolResults) {
-              tr.content = 'Schema changes validated and buffered. Template is read-only — user must fork to apply.';
-            }
-          } else {
-            devLog('[EditorStore] Semantic validation passed — applying to store');
-            pushSnapshot();
-            workingSchema = mergedTemplate as SchemaNode;
-            templateStore.updateTemplate({
-              ...stripNodeIds(mergedTemplate),
-              id: templateStore.currentTemplate.id,
-            } as TemplateSchema);
-            await templateStore.persistCurrentTemplate();
-            setPendingTemplate(null);
-            for (const tr of toolResults) {
-              tr.content = 'Template updated successfully.';
-            }
-          }
-        }
-      }
-
-      // Add tool results to conversation history — one turn each, so every call is answered by name
-      for (const tr of toolResults) {
-        turns.push({ role: 'tool', callId: tr.callId, result: tr.isError ? `Error: ${tr.content}` : tr.content });
-      }
-
-      // Inject inline status if this round succeeded
-      const hasErrors = toolResults.some((r) => r.isError);
-      if (!hasErrors) {
-        const pended = isReadOnly() && pendingTemplate() !== null;
-        const statusLine = pended
-          ? '<span class="warning">⚠ Changes are ready — fork this template to apply them.</span>'
-          : '<span class="success">✓ Template updated</span>';
-        allTextContent += '\n\n' + statusLine;
-        setStreamingContent(allTextContent);
-      }
-
-      // Continue the loop — the model will either:
-      // - send closing text (end_turn) → caught at top of next iteration
-      // - call the tool again → processed in next iteration
-      // - retry after errors → processed in next iteration
-      showInlineStatus(hasErrors ? 'Retrying...' : 'Thinking...');
-    }
-
-    // Exhausted continuations
     setStreamingContent('');
-    updateAssistantMessage(
-      streamMsg.id,
-      allTextContent + '\n\n<span class="danger">✗ Could not apply changes after multiple attempts.</span>',
-    );
+    if (result.outcome === 'truncated') {
+      updateAssistantMessage(
+        streamMsg.id,
+        `${result.transcript}\n\n---\n\n**This reply was cut off before it finished, so no changes were applied.** Ask again, or in smaller steps.`.trim(),
+      );
+    } else if (result.outcome === 'exhausted') {
+      updateAssistantMessage(
+        streamMsg.id,
+        result.transcript + '\n\n<span class="danger">✗ Could not apply changes after multiple attempts.</span>',
+      );
+    } else {
+      updateAssistantMessage(streamMsg.id, result.transcript || 'No response from AI');
+    }
   }
 
   /**
@@ -1220,7 +1104,7 @@ export function EditorStoreProvider(props: ParentProps) {
    * The currentSchema is included in the latest user message so the AI
    * always sees the current template state.
    */
-  function buildTurns(latestText: string): ConversationTurn[] {
+  function buildTurns(latestText: string, template: unknown): ConversationTurn[] {
     const history: ConversationTurn[] = [];
 
     // Include prior conversation (skip system messages)
@@ -1232,7 +1116,7 @@ export function EditorStoreProvider(props: ParentProps) {
       if (msg.role === 'user') {
         history.push({
           role: 'user',
-          text: JSON.stringify({ request: msg.content, currentSchema: {} }),
+          text: requestMessage(msg.content, {}),
         });
       } else {
         history.push({ role: 'assistant', text: msg.content });
@@ -1240,32 +1124,37 @@ export function EditorStoreProvider(props: ParentProps) {
     }
 
     /*
-      The schema the assistant is shown: buffered changes if there are any, else the store's.
+      `template` is what `boundTemplate` decided to send — the tree itself when it fits the
+      budget, an outline plus the parts the request implicates when it does not. Either way it
+      comes from the one tree compacted and numbered in `sendMessage`, which is the same object
+      the session resolves the model's ids against. It carries buffered changes where there are
+      any, which matters on a read-only template: patched into `pendingTemplate` while the store
+      is deliberately untouched, so showing `currentTemplate` would show the model a tree without
+      its own last answer in it.
 
-      `currentTemplate` alone is wrong on a read-only template, where a validated patch goes to
-      `pendingTemplate` and the store is deliberately untouched — so the model was shown the
-      original, patched it again, and its second answer conflicted with a first it could not see.
-      Same reason `workingSchema` in `sendMessage` carries across turns rather than re-reading.
+      Compaction is why it is worth the care. A template repeats itself because a fragment stamps
+      its whole tree at every call site, and the editor is where that is most expensive — the
+      schema crosses the wire every turn and comes back. It takes CardsView down 50% and the
+      workshop template 32%, the difference between a request that fits a context window and one
+      that does not. It also gives the model two scopes rather than one: a patch inside a
+      definition changes every use of that shape, a patch on a `$ref` changes that one use, and
+      the tool result says which happened.
     */
-    const schemaWithIds = ensureNodeIds(deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode);
     const manifest = datasetStore.currentDatasetEntities();
-    const payload: Record<string, unknown> = {
-      request: latestText,
-      currentSchema: schemaWithIds,
-    };
+    const extras: Record<string, unknown> = {};
     if (manifest.length > 0) {
       const weEntityNames = new Set(baseValidationCtx.entityNames);
       const weInPerspective = manifest.filter((m) => weEntityNames.has(m.name)).map((m) => m.name);
       const externalInPerspective = manifest.filter((m) => !weEntityNames.has(m.name));
       // WE models: send only names — AI already has their full structure in schemaContext
-      if (weInPerspective.length > 0) payload.availableWeEntities = weInPerspective;
+      if (weInPerspective.length > 0) extras.availableWeEntities = weInPerspective;
       // External models: send full property descriptions — AI has no other knowledge of them
       if (externalInPerspective.length > 0)
-        payload.externalEntities = formatExternalManifestForPrompt(externalInPerspective);
+        extras.externalEntities = formatExternalManifestForPrompt(externalInPerspective);
     }
     history.push({
       role: 'user',
-      text: JSON.stringify(payload),
+      text: requestMessage(latestText, template, extras),
     });
 
     return history;
@@ -1308,14 +1197,17 @@ export function EditorStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   async function clearHistory() {
     // If persisted session, delete messages from AD4M
-    if (activeSessionRecord) {
+    const record = activeSessionRecord;
+    if (record) {
       try {
-        // Messages are already hydrated on the session model
-        for (const msg of activeSessionRecord.messages || []) {
-          await activeSessionRecord.removeMessages(msg as ChatMessageRecord);
+        // Asked for, not read off the held record — its `messages` is a snapshot of whenever that
+        // row was read, and every message written since is missing from it. The comment here used to
+        // say they were "already hydrated on the session model", which is what made Clear History a
+        // no-op on any conversation this run had started.
+        for (const msg of await messagesFor(record.id)) {
+          await record.removeMessages(msg as ChatMessageRecord);
           await (msg as ChatMessageRecord).delete();
         }
-        activeSessionRecord.messages = [];
       } catch (err) {
         console.error('Failed to clear persisted messages', err);
       }

@@ -4,9 +4,9 @@
  * ## The gap this fills
  *
  * A pass runs on exactly one peer, and every backend event stream that reports it is local to that
- * peer's node. AD4M is explicit about this — its own PR notes that cross-executor visibility is not
- * covered and that a consumer wanting it should watch the graph for claim links — so out of five
- * people in a call, four see nothing at all while the fifth watches a full step-by-step readout.
+ * peer's node. The production backend is explicit that cross-node visibility is not covered and
+ * that a consumer wanting it should watch the graph for claim links — so out of five people in a
+ * call, four see nothing at all while the fifth watches a full step-by-step readout.
  *
  * Which of the five is arbitrary: the runner is chosen by an election. So the rich view lands on
  * whoever won a coin flip, and the person asking "why did that extract nothing?" is usually not
@@ -96,8 +96,8 @@ export interface InterpretationRelay {
  *
  * Backend-neutral by construction: it takes a channel and gives back rows, and knows nothing about
  * how either side produces a pass. That is what lets the in-memory transport exercise it in tests
- * against the same code path AD4M runs in production — the reason the ephemeral port has a
- * reference implementation at all.
+ * against the same code path production runs — the reason the ephemeral port has a reference
+ * implementation at all.
  */
 export function createInterpretationRelay(channel: EphemeralChannel, options: RelayOptions = {}): InterpretationRelay {
   const now = options.now ?? (() => Date.now());
@@ -163,8 +163,8 @@ export function createInterpretationRelay(channel: EphemeralChannel, options: Re
       watchId: payload.watchId,
       // The transport's `from`, never the payload's word for it — see the module docs on trust.
       runner: from,
-      // Anything arriving over the channel is by definition somebody else's: the in-memory bus and
-      // AD4M both decline to loop a broadcast back to its sender.
+      // Anything arriving over the channel is by definition somebody else's: neither the in-memory
+      // bus nor the production transport loops a broadcast back to its sender.
       mine: false,
       phase: payload.phase,
       at: now(),
@@ -181,9 +181,9 @@ export function createInterpretationRelay(channel: EphemeralChannel, options: Re
       /*
         Only this peer's own passes go on the wire.
 
-        A host feeds this everything its backend reports, and on a hosted executor that includes
+        A host feeds this everything its backend reports, and on a hosted node that includes
         passes run for *other* users of the same node, delivered with `mine: false` over the
-        perspective-scoped stream. Broadcasting those would put this agent's name on somebody
+        dataset-scoped stream. Broadcasting those would put this agent's name on somebody
         else's work on every other member's bar — the transport stamps the sender as the runner,
         and that is the whole trust model. Merging them locally is still right: this peer did
         observe them.

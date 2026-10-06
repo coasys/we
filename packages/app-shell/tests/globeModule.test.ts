@@ -5,11 +5,11 @@
  * contribution points can carry it *unchanged*, they are sufficient. A throwaway "hello" module could
  * only show that wiring exists.
  *
- * Rendering the globe needs WebGL and a Cesium Ion token, so visual verification is manual. What can
+ * Rendering the globe needs WebGL, so visual verification is manual. What can
  * be asserted here is the part that actually moved — that the layer set resolves identically from its
  * new owner, and that the module declares itself honestly.
  */
-import { createGlobeModule } from '@we/module-globe';
+import { createGlobeModule, GLOBE_LAYER_CATALOG, imageryChoiceFrom, ionTokenFrom } from '@we/module-globe';
 import { layerFactoryRegistry } from '@we/module-globe/layers';
 import { checkModuleCompatibility } from '@we/module-shared';
 import { describe, expect, it } from 'vitest';
@@ -74,9 +74,87 @@ describe('globe module — what it declares', () => {
     moduleRegistry.unregister('globe');
   });
 
+  it('lets a deployment or a person choose imagery and give its key, and never a space', () => {
+    // A key is an account and a quota. A space level would spend one member's for everybody.
+    for (const key of ['imagery', 'ionAccessToken', 'esriApiKey', 'mapboxAccessToken']) {
+      const setting = definition.contributes?.settings?.find((s) => s.key === key);
+      expect(setting?.levels, key).toEqual(['deployment', 'agent']);
+    }
+    const imagery = definition.contributes?.settings?.find((s) => s.key === 'imagery');
+    expect(imagery?.default).toBe('nasa');
+    expect(imagery?.options?.map((o) => o.value)).toEqual(['nasa', 'ion', 'esri', 'mapbox']);
+  });
+
   it('owns no store, which is a legitimate module shape', () => {
     // Layer visibility is $local state in the route schema. Inventing a store would be new behaviour
     // and would break the "identical afterwards" property this conversion exists to prove.
     expect(definition.createStore).toBeUndefined();
+  });
+});
+
+/*
+  The catalogue is the only thing that tells a template author, or an LLM, which `factory` strings a
+  globe accepts, and the validator checks against it. A name catalogued and not registered is a
+  template written from the documentation that draws nothing; a layer registered and not catalogued
+  is one nobody can find. Both fail silently, so both directions are asserted here, against the
+  registry `CesiumGlobe` is actually given.
+*/
+describe('globe module — the layer catalogue', () => {
+  const byId = new Map(GLOBE_LAYER_CATALOG.plugins.map((plugin) => [plugin.id, plugin]));
+
+  it('names exactly the layers the registry holds', () => {
+    expect([...byId.keys()].sort()).toEqual(Object.keys(layerFactoryRegistry).sort());
+  });
+
+  it('files each layer under the slot the layer itself declares', () => {
+    for (const [id, factory] of Object.entries(layerFactoryRegistry)) {
+      expect(byId.get(id)?.category, id).toBe(factory().metadata?.slot);
+    }
+  });
+
+  it('says what each one is for, and shows one being used under its own name', () => {
+    for (const plugin of GLOBE_LAYER_CATALOG.plugins) {
+      expect(plugin.description?.trim(), `${plugin.id} has no description`).toBeTruthy();
+      for (const option of plugin.options ?? []) {
+        expect(option.description?.trim(), `${plugin.id}.${option.name} has no description`).toBeTruthy();
+      }
+      // Valid JSON, and naming itself: an example copied into a template must work as it stands.
+      expect(JSON.parse(plugin.example ?? '{}').factory, `${plugin.id}'s example`).toBe(plugin.id);
+    }
+  });
+
+  it('places planet layers and background layers in their own lists', () => {
+    expect(GLOBE_LAYER_CATALOG.placements).toEqual([
+      { prop: 'planetLayers', key: 'factory', categories: ['planet'] },
+      { prop: 'backgroundLayers', key: 'factory', categories: ['background'] },
+    ]);
+  });
+});
+
+/*
+  What the host hands the globe from its settings. One key per provider is the point: settings resolve
+  level by level, so a deployment's ion token must never travel with a person's choice of Esri.
+*/
+describe('globe module — imagery from settings', () => {
+  const keys = { ionAccessToken: 'ion-key', esriApiKey: 'esri-key', mapboxAccessToken: 'mapbox-key' };
+
+  it.each([
+    ['ion', { provider: 'ion', key: 'ion-key' }],
+    ['esri', { provider: 'esri', key: 'esri-key' }],
+    ['mapbox', { provider: 'mapbox', key: 'mapbox-key' }],
+  ])('gives %s its own key', (imagery, expected) => {
+    expect(imageryChoiceFrom({ ...keys, imagery })).toEqual(expected);
+  });
+
+  it("is NASA's when NASA is chosen, nothing is, or the choice is unknown", () => {
+    for (const imagery of ['nasa', undefined, 'bing']) expect(imageryChoiceFrom({ ...keys, imagery })).toBeUndefined();
+  });
+
+  it("is NASA's when the chosen provider has no key, rather than borrowing another's", () => {
+    expect(imageryChoiceFrom({ imagery: 'esri', ionAccessToken: 'ion-key', esriApiKey: '  ' })).toBeUndefined();
+  });
+
+  it('still offers the ion token to layers that need one, whatever the imagery', () => {
+    expect(ionTokenFrom({ imagery: 'nasa', ionAccessToken: ' ion-key ' })).toBe('ion-key');
   });
 });

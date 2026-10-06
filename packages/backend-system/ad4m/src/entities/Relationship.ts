@@ -49,7 +49,7 @@ import { WeNode } from './WeNode';
 @Model({
   name: 'Relationship',
   interpretationHint:
-    'A relationship a person asserted between two specific records — "contradicts", "caused by", "same as". Only extract one when the speakers connect two things that both already exist as records.',
+    'A connection the speakers made between two specific things — one depends on another, includes it, leads to it, blocks it, contradicts it. Extract one whenever somebody says how two things relate, whether each end is already listed here or is something you are creating in this response. One connection joins exactly one pair: a goal with three prerequisites is three connections.',
 })
 export class Relationship extends WeNode {
   @Flag({ through: 'we://flag', value: 'we://relationship' })
@@ -63,22 +63,34 @@ export class Relationship extends WeNode {
    * alone collapses every "contradicts" in a space into one record; either end alone is wrong by
    * construction, since the whole point is that a record has many connections.
    *
-   * Written by the model rather than derived, because machine-authored instances go through
+   * Written by the model for what it extracts, because machine-authored instances go through
    * `create_subject` server-side and never pass WE's own write path — the hint spells the format.
-   * Denormalised and never recomputed: relabel the connection and the next pass sees a different
-   * one and writes a new record. That is the accepted cost of a single-property key, and it fails
-   * in the safe direction — a duplicate somebody deletes, rather than two distinct claims merged.
+   * Written by WE for what people draw, in the same format (`connectionKey` in `RecordStore`),
+   * and that is not optional: the executor shows a model only the instances whose identity is
+   * set, so a connection drawn by hand without one was invisible to the pass meant to extend the
+   * structure it was part of.
    *
-   * Not `required`, deliberately, and for the reason `occurrence` records: required would mean
-   * every connection drawn by hand on a board carries `uninitialized`, and two of them would then
-   * dedup into each other. Left unset, an instance is invisible to dedup — the right answer for a
-   * record no machine is managing.
+   * Titles rather than ids, so the existing connections in a prompt read as the tree they are —
+   * "Launch the beta → Write the onboarding guide: depends on" — and so a key a person's
+   * connection carries and the one a model writes for the same claim are the same string. Ids
+   * were tried first: a small model then had to resolve every key against the record list to
+   * read the tree, misread one, and wrote titles in its own keys regardless.
+   *
+   * Denormalised, and kept in step by WE's own writes: rewritten when an end moves, when the
+   * connection is relabelled, and when a record it joins is renamed through the inspector. A
+   * rename made anywhere else leaves the key behind until the next of those, and the next pass may
+   * then write a second record. That fails in the safe direction — a duplicate somebody deletes,
+   * rather than two distinct claims merged.
+   *
+   * Not `required`, deliberately, and for the reason `occurrence` records: required would mean a
+   * connection written without one carries `uninitialized`, and two of them would then dedup into
+   * each other.
    */
   @Property({
     through: 'we://connection',
     identity: true,
     interpretationHint:
-      'A dedup key, not a display value: the source id, the target id and the label joined, e.g. "we://a → we://b: contradicts". Always set it when you create a connection. Reuse an existing connection’s exact value only when this is the same claim about the same pair.',
+      'A dedup key, not a display value: the two ends’ titles and the label joined as "<source title> → <target title>: <label>". Write each end exactly as it is titled in this prompt, or as you title it when you are creating it in this response — never an id, and never a "new:" reference. Always set it when you create a connection. Reuse an existing connection’s exact value only when this is the same claim about the same pair; a connection is never re-pointed at a different pair.',
   })
   connection: string = '';
 
@@ -114,7 +126,7 @@ export class Relationship extends WeNode {
   @Property({
     through: 'we://title',
     interpretationHint:
-      'What the connection is, in the speakers’ own words — a short lowercase verb phrase read source-to-target: "contradicts", "came out of", "blocks", "is the same as". Not a sentence, and not a summary of either end.',
+      'What the connection is, in the speakers’ own words — a short lowercase verb phrase read source-to-target, so from the broader end: "depends on", "includes", "leads to", "blocks", "contradicts". "Includes" rather than "is part of", which reads from the wrong end. Not a sentence, and not a summary of either end.',
   })
   label: string = '';
 
@@ -141,9 +153,19 @@ export class Relationship extends WeNode {
   })
   targetType: string = '';
 
-  @HasOne({ through: 'we://relationship_source', polymorphic: true })
+  @HasOne({
+    through: 'we://relationship_source',
+    polymorphic: true,
+    interpretationHint:
+      'The broader or governing end: the goal, the whole, or the thing that needs the other. Read from source to target, connections form a tree from its roots down. For one step that leads to another, the earlier step, labelled "leads to". Between peers, as with "contradicts", either way round. An existing entry’s id, or a new:<Class>:<n> reference to something you create in this response.',
+  })
   source?: string;
 
-  @HasOne({ through: 'we://relationship_target', polymorphic: true })
+  @HasOne({
+    through: 'we://relationship_target',
+    polymorphic: true,
+    interpretationHint:
+      'The narrower or following end: what the source needs, a part of it, or the step it leads to. An existing entry’s id, or a new:<Class>:<n> reference to something you create in this response.',
+  })
   target?: string;
 }

@@ -193,6 +193,11 @@
           "default": "''"
         },
         {
+          "name": "expanded",
+          "type": "boolean | undefined",
+          "optional": true
+        },
+        {
           "name": "href",
           "type": "string | undefined",
           "optional": true
@@ -323,6 +328,12 @@
         },
         {
           "name": "clearable",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "confirm",
           "type": "boolean",
           "optional": false,
           "default": "false"
@@ -922,6 +933,37 @@
       ]
     },
     {
+      "tagName": "we-live-cursor",
+      "className": "LiveCursor",
+      "superclass": "DesignSystemElement",
+      "ownProps": [
+        {
+          "name": "name",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "hash",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "image",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "color",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        }
+      ]
+    },
+    {
       "tagName": "we-location-picker",
       "className": "LocationPicker",
       "superclass": "DesignSystemElement",
@@ -1397,6 +1439,18 @@
           "type": "'' | 'start' | 'end' | 'both'",
           "optional": false,
           "default": "''"
+        },
+        {
+          "name": "nearStart",
+          "type": "number",
+          "optional": false,
+          "default": "0"
+        },
+        {
+          "name": "nearEnd",
+          "type": "number",
+          "optional": false,
+          "default": "0"
         }
       ]
     },
@@ -1545,6 +1599,12 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
+        },
+        {
+          "name": "ticks",
+          "type": "'auto' | 'on' | 'off'",
+          "optional": false,
+          "default": "'auto'"
         }
       ]
     },
@@ -2130,7 +2190,7 @@
           "optional": true
         },
         {
-          "name": "perspective",
+          "name": "dataset",
           "type": "unknown",
           "optional": true
         },
@@ -2158,6 +2218,16 @@
           "name": "collaborate",
           "type": "string",
           "optional": true
+        },
+        {
+          "name": "autoFocus",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "handles",
+          "type": "boolean",
+          "optional": true
         }
       ],
       "source": "components"
@@ -2172,7 +2242,7 @@
           "optional": true
         },
         {
-          "name": "perspective",
+          "name": "dataset",
           "type": "unknown",
           "optional": true
         },
@@ -2639,6 +2709,16 @@
           "optional": true
         },
         {
+          "name": "onReady",
+          "type": "((api: { find: () => void; }) => void)",
+          "optional": true
+        },
+        {
+          "name": "onSearchMatches",
+          "type": "((result: { query: string; matches: number; capped: boolean; }) => void)",
+          "optional": true
+        },
+        {
           "name": "styles",
           "type": "Record<string, string | number>",
           "optional": true
@@ -2730,6 +2810,72 @@
         {
           "name": "onChange",
           "type": "((value: string) => void)",
+          "optional": true
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "CountMark",
+      "props": [
+        {
+          "name": "icon",
+          "type": "string",
+          "optional": false
+        },
+        {
+          "name": "count",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "mine",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "size",
+          "type": "\"xs\" | \"sm\" | \"md\"",
+          "optional": true
+        },
+        {
+          "name": "countTone",
+          "type": "\"text\" | \"glyph\"",
+          "optional": true
+        },
+        {
+          "name": "countFirst",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "emphasis",
+          "type": "\"quiet\" | \"present\"",
+          "optional": true
+        },
+        {
+          "name": "onPress",
+          "type": "(() => void)",
+          "optional": true
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "class",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "styles",
+          "type": "Record<string, string | number>",
           "optional": true
         }
       ],
@@ -3077,6 +3223,11 @@
           "optional": false
         },
         {
+          "name": "size",
+          "type": "\"xs\" | \"sm\" | \"md\"",
+          "optional": true
+        },
+        {
           "name": "signals",
           "type": "SignalData[]",
           "optional": true
@@ -3088,7 +3239,7 @@
         },
         {
           "name": "onSignal",
-          "type": "((value: number) => void)",
+          "type": "((value: number | null) => void)",
           "optional": true
         },
         {
@@ -3285,6 +3436,21 @@
           "optional": true
         },
         {
+          "name": "onSeedSummary",
+          "type": "((payload: { source: string; } & Record<string, unknown>) => void)",
+          "optional": true
+        },
+        {
+          "name": "onNodeArrange",
+          "type": "((payload: { id: string; into: \"child\" | \"sibling\" | \"loose\"; recordId: string; recordType: string; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void)",
+          "optional": true
+        },
+        {
+          "name": "resizable",
+          "type": "boolean",
+          "optional": true
+        },
+        {
           "name": "onNodeResize",
           "type": "((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void)",
           "optional": true
@@ -3321,7 +3487,52 @@
         },
         {
           "name": "onDeleteSelection",
-          "type": "((payload: { recordId?: string; recordType?: string; kind?: \"node\" | \"edge\"; count: number; }) => void)",
+          "type": "((payload: { recordId?: string; recordType?: string; kind?: \"node\" | \"edge\"; count: number; records?: { recordId: string; recordType: string; }[]; }) => void)",
+          "optional": true
+        },
+        {
+          "name": "carry",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "selectionActions",
+          "type": "NodeAction[]",
+          "optional": true
+        },
+        {
+          "name": "onSelectionAction",
+          "type": "((payload: { action: string; records: { recordId: string; recordType: string; }[]; count: number; value?: unknown; preview?: boolean; }) => void)",
+          "optional": true
+        },
+        {
+          "name": "onUndo",
+          "type": "(() => void)",
+          "optional": true
+        },
+        {
+          "name": "onRedo",
+          "type": "(() => void)",
+          "optional": true
+        },
+        {
+          "name": "onPointerAt",
+          "type": "((at: { x: number; y: number; } | null) => void)",
+          "optional": true
+        },
+        {
+          "name": "onViewport",
+          "type": "((region: GraphRegion) => void)",
+          "optional": true
+        },
+        {
+          "name": "region",
+          "type": "GraphRegion | null",
+          "optional": true
+        },
+        {
+          "name": "reframeOn",
+          "type": "string | number | boolean | null",
           "optional": true
         },
         {
@@ -4292,6 +4503,12 @@
           "type": "string",
           "predicate": "we://card_shape",
           "required": false
+        },
+        {
+          "name": "rank",
+          "type": "number",
+          "predicate": "we://rank",
+          "required": false
         }
       ],
       "relations": [
@@ -4706,6 +4923,13 @@
           "default": "true"
         },
         {
+          "name": "threadMode",
+          "type": "string",
+          "predicate": "we://thread_mode",
+          "required": false,
+          "default": "'fractal'"
+        },
+        {
           "name": "moduleSettings",
           "type": "string",
           "predicate": "we://module_settings",
@@ -4929,6 +5153,19 @@
           "predicate": "we://retired",
           "required": false,
           "default": "false"
+        },
+        {
+          "name": "approvals",
+          "type": "number",
+          "predicate": "we://approvals",
+          "required": false,
+          "default": "1"
+        },
+        {
+          "name": "approverKind",
+          "type": "string",
+          "predicate": "we://approver_kind",
+          "required": false
         },
         {
           "name": "schemaVersion",
@@ -5345,6 +5582,11 @@
           "predicate": "we://comment"
         },
         {
+          "name": "inReplyTo",
+          "kind": "HasOne",
+          "predicate": "we://comment"
+        },
+        {
           "name": "signals",
           "kind": "HasMany",
           "predicate": "we://signal",
@@ -5705,7 +5947,8 @@
         "cancelRemoval",
         "confirmRemoval",
         "clearError"
-      ]
+      ],
+      "ambient": ["refresh", "requestRemoval", "cancelRemoval", "clearError"]
     },
     {
       "name": "appStore",
@@ -5722,7 +5965,8 @@
           "type": "string"
         }
       },
-      "actions": ["activateApp", "deactivateApp"]
+      "actions": ["activateApp", "deactivateApp"],
+      "ambient": ["activateApp", "deactivateApp"]
     },
     {
       "name": "datasetStore",
@@ -5792,7 +6036,8 @@
           "type": "boolean"
         }
       },
-      "actions": ["switchDataset", "reorderDatasets", "removeDataset", "cleanupSpaceSdna"]
+      "actions": ["switchDataset", "reorderDatasets", "removeDataset", "cleanupSpaceSdna"],
+      "ambient": ["switchDataset"]
     },
     {
       "name": "editorStore",
@@ -5927,6 +6172,23 @@
         "toggleThemeEditing",
         "sendMessage",
         "clearHistory"
+      ],
+      "ambient": [
+        "refreshAssistant",
+        "setContentMode",
+        "startFork",
+        "startFresh",
+        "cancelPicker",
+        "toggle",
+        "open",
+        "close",
+        "toggleCodePanel",
+        "openCodePanel",
+        "closeCodePanel",
+        "toggleThemePanel",
+        "openThemePanel",
+        "closeThemePanel",
+        "toggleVisualPanel"
       ]
     },
     {
@@ -5954,7 +6216,8 @@
           "type": "boolean"
         }
       },
-      "actions": ["dismissSettled"]
+      "actions": ["dismissSettled"],
+      "ambient": ["dismissSettled"]
     },
     {
       "name": "presenceStore",
@@ -6011,7 +6274,8 @@
         "updateProfileImage",
         "clearProfileImage",
         "updateOwnLocation"
-      ]
+      ],
+      "ambient": ["fetchProfile"]
     },
     {
       "name": "recordStore",
@@ -6048,6 +6312,9 @@
         },
         "relationshipKind": {
           "type": "string"
+        },
+        "canvasHistory": {
+          "type": "object"
         }
       },
       "actions": [
@@ -6074,17 +6341,42 @@
         "dropOnCanvas",
         "bringIn",
         "updateRecordField",
+        "rekeyConnection",
         "removeFromCanvas",
+        "deleteRecords",
+        "undoCanvas",
+        "redoCanvas",
         "resizeOnCanvas",
         "anchorOnCanvas",
         "rerouteOnCanvas",
         "retargetOnCanvas",
+        "arrangeOnTree",
         "setCardStyle",
         "previewCardStyle",
         "setTypeColor",
         "setSpaceTypeColor",
         "createOnCanvas",
         "createCardOnCanvas"
+      ],
+      "ambient": [
+        "openRecordForm",
+        "connectNodes",
+        "setRecordEntity",
+        "setRecordField",
+        "setRecordPlace",
+        "openRelationForm",
+        "setRelationField",
+        "saveRelationForm",
+        "cancelRelationForm",
+        "pickRelation",
+        "removeRelationEntry",
+        "setRelationLocation",
+        "setRelationEntryField",
+        "addRelationImage",
+        "setRelationshipKind",
+        "cancelRecordForm",
+        "previewCardStyle",
+        "createOnCanvas"
       ]
     },
     {
@@ -6103,7 +6395,8 @@
           "type": "object"
         }
       },
-      "actions": ["navigate", "setParam", "back"]
+      "actions": ["navigate", "setParam", "back"],
+      "ambient": ["navigate", "setParam", "back"]
     },
     {
       "name": "runtimeStore",
@@ -6171,6 +6464,7 @@
             "apiBaseUrl",
             "apiKey",
             "apiModel",
+            "apiMaxContext",
             "hfRepo",
             "hfRevision",
             "hfFileName",
@@ -6187,6 +6481,9 @@
         },
         "aiFormComplete": {
           "type": "boolean"
+        },
+        "aiMaxContextError": {
+          "type": "string"
         },
         "aiServiceOptions": {
           "type": "array",
@@ -6296,6 +6593,21 @@
         "approveConsent",
         "denyConsent",
         "dismissConsentSecret"
+      ],
+      "ambient": [
+        "loadAiModels",
+        "loadAiTasks",
+        "newAiModel",
+        "editAiModel",
+        "setAiFormField",
+        "setAiService",
+        "closeAiForm",
+        "loadLanguages",
+        "loadTrustedAgents",
+        "loadAuthorizedApps",
+        "loadNetworkMetrics",
+        "loadPeerInfos",
+        "dismissConsentSecret"
       ]
     },
     {
@@ -6354,7 +6666,8 @@
           "type": "boolean"
         }
       },
-      "actions": ["setDevTools", "login", "createAgent", "clearPasswordError", "finishSetup", "logout", "retryBoot"]
+      "actions": ["setDevTools", "login", "createAgent", "clearPasswordError", "finishSetup", "logout", "retryBoot"],
+      "ambient": ["clearPasswordError"]
     },
     {
       "name": "shapeStore",
@@ -6472,6 +6785,28 @@
         "setHintDraft",
         "saveHintEditor",
         "resetHintEditor"
+      ],
+      "ambient": [
+        "openShapeWizard",
+        "cancelShapeWizard",
+        "setShapeField",
+        "setIdentityMember",
+        "setNameMember",
+        "setExtractable",
+        "addProperty",
+        "addRelationship",
+        "removeMember",
+        "setMemberField",
+        "reorderMembers",
+        "toggleMemberExpanded",
+        "commitDraft",
+        "replaceDraft",
+        "cancelReplaceFields",
+        "requestCloseWizard",
+        "cancelDiscard",
+        "openHintEditor",
+        "closeHintEditor",
+        "setHintDraft"
       ]
     },
     {
@@ -6482,6 +6817,12 @@
         },
         "createSpaceOpen": {
           "type": "boolean"
+        },
+        "joinSpaceOpen": {
+          "type": "boolean"
+        },
+        "pendingScreenSources": {
+          "type": "array"
         },
         "pendingDestructive": {
           "type": "object"
@@ -6554,6 +6895,8 @@
         "openShellView",
         "closeShellView",
         "setCreateSpaceOpen",
+        "setJoinSpaceOpen",
+        "chooseScreenSource",
         "confirmDestructive",
         "cancelDestructive",
         "toggleSpaceSettings",
@@ -6595,6 +6938,22 @@
         "stackDock",
         "insertHome",
         "saveArrangementAsTemplate"
+      ],
+      "ambient": [
+        "openShellView",
+        "closeShellView",
+        "setCreateSpaceOpen",
+        "setJoinSpaceOpen",
+        "toggleSpaceSettings",
+        "openSpaceSettings",
+        "closeSpaceSettings",
+        "scrollToId",
+        "raiseDock",
+        "revealDock",
+        "openModulePanel",
+        "closeModulePanel",
+        "toggleModulePanel",
+        "togglePanelsHidden"
       ]
     },
     {
@@ -6681,11 +7040,11 @@
         },
         "taskStates": {
           "type": "array",
-          "properties": ["id", "name", "slug", "semantic", "color", "retired", "defined"]
+          "properties": ["id", "name", "slug", "semantic", "color", "retired", "defined", "approvals", "approverKind"]
         },
         "offeredTaskStates": {
           "type": "array",
-          "properties": ["id", "name", "slug", "semantic", "color", "retired", "defined"]
+          "properties": ["id", "name", "slug", "semantic", "color", "retired", "defined", "approvals", "approverKind"]
         },
         "taskStatesLoaded": {
           "type": "boolean"
@@ -6803,6 +7162,9 @@
         "extractionTargets": {
           "type": "array"
         },
+        "taskFlowEnabled": {
+          "type": "boolean"
+        },
         "canAdministerCurrentSpace": {
           "type": "boolean"
         }
@@ -6840,6 +7202,7 @@
         "autoInterpretForCall",
         "setAutoInterpretForCall",
         "setAutoInterpret",
+        "setThreadMode",
         "setExtractionTarget",
         "setModuleInstalled",
         "setModuleVisible",
@@ -6856,6 +7219,8 @@
         "setSignalTypeRetired",
         "createTaskState",
         "updateTaskState",
+        "approveTaskMove",
+        "withdrawTaskMove",
         "setTaskStateRetired",
         "reorderTaskStates",
         "setInvolvement",
@@ -6864,6 +7229,7 @@
         "updateInvolvementType",
         "setInvolvementTypeRetired",
         "upsertSignal",
+        "withdrawSignal",
         "navigateToSpace",
         "openRecordRef",
         "canAdministerSpace",
@@ -6873,6 +7239,13 @@
         "exportCallTranscript",
         "exportExtractionLog",
         "removeSpaceFromGlobal"
+      ],
+      "ambient": [
+        "autoInterpretForCall",
+        "navigateToSpace",
+        "openRecordRef",
+        "canAdministerSpace",
+        "getSubgroupMessages"
       ]
     },
     {
@@ -6902,6 +7275,10 @@
           "type": "array",
           "properties": ["id", "name", "icon", "description", "isBuiltIn", "isInstalled", "isDefault"]
         },
+        "refusedTemplates": {
+          "type": "array",
+          "properties": ["id", "name", "icon", "reason"]
+        },
         "switcherGroups": {
           "type": "array",
           "properties": ["label", "items"]
@@ -6930,6 +7307,7 @@
         "switchTemplate",
         "removeTemplate",
         "deleteTemplate",
+        "deleteRefusedTemplate",
         "installTemplate",
         "uninstallTemplate",
         "installFromMarketplace",
@@ -6944,7 +7322,8 @@
         "deleteMarketplaceTemplate",
         "publishToMarketplace",
         "refreshSpaceTemplates"
-      ]
+      ],
+      "ambient": ["cancelInstall", "refreshSpaceTemplates"]
     },
     {
       "name": "themeStore",
@@ -7046,12 +7425,18 @@
         "publishToMarketplace",
         "publishToSpace",
         "refreshSpaceThemes"
-      ]
+      ],
+      "ambient": ["focusRole", "previewThemeScope", "refreshSpaceThemes"]
     },
     {
       "name": "record",
       "state": {},
       "actions": ["create", "update", "delete"]
+    },
+    {
+      "name": "clipboard",
+      "state": {},
+      "actions": ["copy"]
     }
   ],
   "shellComponents": [
@@ -7093,7 +7478,7 @@
     {
       "name": "arrangedBoard",
       "params": ["options"],
-      "doc": "A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total, involved, filtering, show, dimmed, cardCount, matchedCount, unplacedTotal, rows, cells, rowCounts }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count, shown, matched, order }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: \"column\" children), records (everything in scope), states (spaceStore.taskStates). To read it by who is on the work, also pass involvements (an Involvement query), kinds (spaceStore.involvementTypes), people (the chosen DIDs), me (me.did — involved is everyone on a card here, the viewer first) and show: \"dim\" lists the others in dimmed and moves nothing; \"hide\" drops them from arranged, unarranged and unplaced while count stays true and shown says how many are drawn; \"rows\" adds a row per person plus \"nobody\" — rows are keys, cells[row][columnId] is { arranged, unarranged, count }. A drag in a column showing only part of itself passes contents[columnId].order to arrangeColumn, so the hidden cards keep their places.",
+      "doc": "A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total, involved, filtering, show, dimmed, cardCount, matchedCount, unplacedTotal, rows, cells, rowCounts, flow, awaiting, awaitingOnly }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count, shown, matched, order }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: \"column\" children), records (everything in scope), states (spaceStore.taskStates). To read it by who is on the work, also pass involvements (an Involvement query), kinds (spaceStore.involvementTypes), people (the chosen DIDs), me (me.did — involved is everyone on a card here, the viewer first) and show: \"dim\" lists the others in dimmed and moves nothing; \"hide\" drops them from arranged, unarranged and unplaced while count stays true and shown says how many are drawn; \"rows\" adds a row per person plus \"nobody\" — rows are keys, cells[row][columnId] is { arranged, unarranged, count }. A drag in a column showing only part of itself passes contents[columnId].order to arrangeColumn, so the hidden cards keep their places. Where the space’s states ask for agreement (spaceStore.taskFlowEnabled) a card is drawn where its run is, and three more fields answer: flow[cardId] is { to, voters, counted, needs, mine, canApprove, approverKind } for a card waiting on a move — counted is how many of voters count toward needs; awaiting is the cards whose waiting move the viewer’s approval would help; pass awaitingMe: true to draw only those (awaitingOnly says it is on).",
       "example": "arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates }).columns"
     },
     {
@@ -7107,6 +7492,42 @@
       "params": ["options"],
       "doc": "The entries of a \"who is on this\" DropdownMenu for one record: the member a conversation named, when `said` matches exactly one and nobody is doing it yet; \"Assign to me\" while the viewer is not already on it, then a group per kind the entity is offered that anybody may give (the first open, the rest closed unless somebody holds them), each listing members with their faces — current holders ticked and first, then the viewer, then everyone by name. Every entry carries `kind`, and a toggle `checked`, so one handler serves all: setInvolvement(record, arg.id, arg.kind, !arg.checked). Options: node, entity, rows (an Involvement query), types (spaceStore.offeredInvolvementTypes), members (spaceStore.members), profiles (profileStore.profiles), me (me.did), said (a name somebody said — TaskBlock.assignee).",
       "example": "involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did })"
+    },
+    {
+      "name": "signalTally",
+      "params": ["options"],
+      "doc": "What a record's reactions say, as one number. With `type`, the number THAT type is read as — a toggle counts, a vote nets out, a rating averages, and a community's own `aggregate` wins unless the mode cannot express it. Without a type, how many people reacted at all: records, never values, since a total summing likes and stars and downvotes is not a number. Retired types still count — somebody reacted, and a total that fell when a vocabulary was tidied would be reporting the tidying. Options: signals (the record's `signals`, hydrated), type (a SignalType row).",
+      "example": "signalTally({ signals: row.signals, type: sig })"
+    },
+    {
+      "name": "reactions",
+      "params": ["options"],
+      "doc": "A record's reactions with this agent's own newest answer in place, whether or not it has been read back yet. Every reaction surface draws through it: a press writes a record and the subscription answers about a second later, so without it the glyph stays unfilled and the count stays put and the press reads as having failed. The LIST rather than the count, because the tally, the mark and the control all read it — overlay the count alone and the heart sits unfilled beside a number that moved. Options: signals (the record's `signals`, hydrated), record (its id), type (the SignalType's id), me (me.did).",
+      "example": "reactions({ signals: filter(row.signals, { signalTypeId: sig.id }), record: row.id, type: sig.id, me: me.did })"
+    },
+    {
+      "name": "reactors",
+      "params": ["options"],
+      "doc": "Who reacted with one type and what each gave — { people, total, unresolved }. `people` are { did, name, avatar, value, mine }, the reader first and then by name; `total` counts everybody before any search, which is what \"12 people\" says. The record already carries this — `include: { signals: true }` hydrates each Signal's author and value — so nothing is fetched; what a schema cannot do is join a DID to a face and a name. `search` narrows by name, and `unresolved` says how many could not be judged because their profile has not arrived. Options: signals (one type's signals, hydrated), profiles (profileStore.profiles), me (me.did), search.",
+      "example": "reactors({ signals: filter(row.signals, { signalTypeId: sig.id }), profiles: profileStore.profiles, me: me.did })"
+    },
+    {
+      "name": "signalTypesByUse",
+      "params": ["options"],
+      "doc": "Reaction types ordered by how many PEOPLE reacted with each, most first — never by what they said, since a total of values cannot compare a rating with a vote and a downvoted type would sort below one nobody has used. Ties keep the order they arrived in, so a panel does not reshuffle as reactions come in. Muted authors are left out of the count. It orders and nothing else: which types a surface draws is a filter, and stays in the schema — which is what keeps an overflow count evaluable, since reordering a list cannot change how long it is. Sorting is here because the expression language has no sort, the grammar is closed, and these types come from a subscription rather than a query that could carry an `order`. Pass `of` — the record's id — and the order SETTLES: it is worked out the first time that record's reactions are drawn and then held, so a reaction somebody withdraws does not slide down the column under their cursor. It has to be held outside the template, because a reaction surface sits inside an `$each` over a query and a subscription hands the renderer fresh objects, which remounts the row and takes any `$localState` with it. Types the settled order has never seen are appended by use, so nothing new is hidden; the order is dropped when the space changes. Options: of (the record whose order this is), types (the rows to order), signals (the record's `signals`, hydrated), muted (spaceStore.mutedDids), limit (keep the first N of that order).",
+      "example": "signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: spaceStore.mutedDids, limit: 4 })"
+    },
+    {
+      "name": "voices",
+      "params": ["options"],
+      "doc": "Whose reactions a weighted score was made from, as a list a reader turns voices up and down in — { did, name, avatar, cards, mean, weight, share, mine, pretend }, the busiest first. `weight` is how much the voice counts (0–100) and `share` its part of everybody's say. Options: summary (what a GraphView's onSeedSummary reported — the canvas seed's `{ type, voices }`), param (the weights as the address holds them, `did=50,did=0`), profiles (profileStore.profiles), me (me.did).",
+      "example": "voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did })"
+    },
+    {
+      "name": "voicesParam",
+      "params": ["options"],
+      "doc": "The weights address form with one voice changed — options param, did and weight (0–100) — or, with only (a DID) and voices (the listed rows), every voice at nothing but that one. A voice back at full is left out, so putting everything back leaves a clean address.",
+      "example": "voicesParam({ param: local.voices, did: voice.did, weight: event.detail })"
     },
     {
       "name": "formatJson",
@@ -7136,7 +7557,8 @@
         "kernel:media",
         "kernel:peerConnection",
         "dock",
-        "slot:dock-bottom"
+        "slot:dock-bottom",
+        "slot:overlay"
       ],
       "members": [
         {
@@ -7155,6 +7577,31 @@
           "doc": "Make the running call about the record whose id is given, without rejoining it."
         },
         {
+          "name": "audioDevice",
+          "kind": "state",
+          "doc": "The microphone this agent has chosen, or empty for whatever the system offers."
+        },
+        {
+          "name": "availableSfuNodes",
+          "kind": "state",
+          "doc": "SFU-capable executor nodes found in this neighbourhood — { did, bindAddress } each."
+        },
+        {
+          "name": "callConfig",
+          "kind": "state",
+          "doc": "This space's call topology defaults — { mode, designatedPeer, fallback, maxMeshParticipants, sfuPeers } — as stored on its Social DNA."
+        },
+        {
+          "name": "callConfigSaving",
+          "kind": "state",
+          "doc": "Whether a call config write is in flight."
+        },
+        {
+          "name": "callConfigSupported",
+          "kind": "state",
+          "doc": "Whether the backend can read and write call configuration. False on executors without SFU support."
+        },
+        {
           "name": "callId",
           "kind": "state",
           "doc": "The id of the call this agent is in, or null between calls."
@@ -7162,7 +7609,7 @@
         {
           "name": "callRecordId",
           "kind": "state",
-          "doc": "The id of the call record this agent's call writes into."
+          "doc": "The id of the call record this agent's call writes into — what a transcript, a board or a call's page follows — or empty between calls."
         },
         {
           "name": "callSpace",
@@ -7170,9 +7617,25 @@
           "doc": "The space the call is in as { uri, name, avatar } — name and avatar empty until the host knows them — or null between calls."
         },
         {
+          "name": "cameraOptions",
+          "kind": "state",
+          "doc": "The cameras as picker options, on the same terms as microphoneOptions."
+        },
+        {
+          "name": "cameras",
+          "kind": "state",
+          "doc": "The cameras this machine has, on the same terms as microphones."
+        },
+        {
           "name": "canCall",
           "kind": "state",
           "doc": "Whether a call could be started here — false in a personal space, which has nobody to call."
+        },
+        {
+          "name": "closeDeviceSettings",
+          "kind": "action",
+          "doc": "Close the camera and microphone chooser.",
+          "ambient": true
         },
         {
           "name": "continueCall",
@@ -7185,9 +7648,25 @@
           "doc": "Cycle through quality presets: high, medium, low."
         },
         {
+          "name": "deviceSettingsOpen",
+          "kind": "state",
+          "doc": "Whether the camera and microphone chooser is open."
+        },
+        {
+          "name": "devicesNamed",
+          "kind": "state",
+          "doc": "Whether this machine will say what its devices are called. False until capture has been allowed once."
+        },
+        {
+          "name": "devicesProbed",
+          "kind": "state",
+          "doc": "Whether this machine has been asked for a device yet. Until it has, an empty device list means \"not allowed to look\", not \"none here\"."
+        },
+        {
           "name": "dismissProblem",
           "kind": "action",
-          "doc": "Dismiss the problem message."
+          "doc": "Dismiss the problem message.",
+          "ambient": true
         },
         {
           "name": "elsewhere",
@@ -7197,12 +7676,13 @@
         {
           "name": "focusedId",
           "kind": "state",
-          "doc": "Whose tile the stage gives most room to, or null for an even grid."
+          "doc": "Whose tile the stage is giving most of its room to, or null for an even grid."
         },
         {
           "name": "focusTile",
           "kind": "action",
-          "doc": "Give the participant with this id the spotlight, or take it back if they already have it."
+          "doc": "Give the participant with this id the spotlight, or take it back if they already have it.",
+          "ambient": true
         },
         {
           "name": "goToCall",
@@ -7232,12 +7712,27 @@
         {
           "name": "liveCalls",
           "kind": "state",
-          "doc": "Every call running in the space on screen."
+          "doc": "Every call running in the space on screen, whichever this agent is in — { id, recordId, anchorNodeId, peers, faces, count, mine, label } per call."
         },
         {
           "name": "media",
           "kind": "state",
-          "doc": "This agent's own { audioEnabled, videoEnabled, screenShareEnabled }."
+          "doc": "This agent's own { audioEnabled, videoEnabled, screenShareEnabled } — what the mute, camera and share toggles reflect."
+        },
+        {
+          "name": "microphoneOptions",
+          "kind": "state",
+          "doc": "The microphones as picker options, \"System default\" first — ready for a we-select."
+        },
+        {
+          "name": "microphones",
+          "kind": "state",
+          "doc": "The microphones this machine has — { deviceId, label, groupId } each. A label is empty until capture has been allowed once."
+        },
+        {
+          "name": "nameDevices",
+          "kind": "action",
+          "doc": "Ask for a device once so this machine will say what its hardware is called."
         },
         {
           "name": "ongoing",
@@ -7245,9 +7740,15 @@
           "doc": "Everyone in any call in the space on screen, as avatar faces { image, hash, initials, did }, whether or not this agent has joined."
         },
         {
+          "name": "openDeviceSettings",
+          "kind": "action",
+          "doc": "Open the camera and microphone chooser.",
+          "ambient": true
+        },
+        {
           "name": "problem",
           "kind": "state",
-          "doc": "Why the call could not start or a device could not be reached, or null."
+          "doc": "Why the call could not start or a device could not be reached, as a sentence to show, or null."
         },
         {
           "name": "qualityPreference",
@@ -7260,6 +7761,12 @@
           "doc": "Build one peer's connection again from scratch, without leaving the call."
         },
         {
+          "name": "refreshDevices",
+          "kind": "action",
+          "doc": "Re-read which microphones and cameras this machine has.",
+          "ambient": true
+        },
+        {
           "name": "refreshSfuNodes",
           "kind": "action",
           "doc": "Re-scan the neighbourhood for SFU-capable executor nodes."
@@ -7267,7 +7774,8 @@
         {
           "name": "returnToCall",
           "kind": "action",
-          "doc": "Go back to the space the call is in; does nothing outside a call."
+          "doc": "Go back to the space the call is in; does nothing outside a call.",
+          "ambient": true
         },
         {
           "name": "saveCallConfig",
@@ -7277,12 +7785,18 @@
         {
           "name": "setArrangement",
           "kind": "action",
-          "doc": "Report the { columns, rows } a stage grid settled on, so fit-to-content can solve for it."
+          "doc": "Report the { columns, rows } a stage grid settled on, so fit-to-content can solve for it.",
+          "ambient": true
         },
         {
           "name": "setCallConfigField",
           "kind": "action",
           "doc": "Write one field of the call config."
+        },
+        {
+          "name": "setDevice",
+          "kind": "action",
+          "doc": "Use a different microphone or camera; an empty id means whatever the system offers."
         },
         {
           "name": "setQualityPreference",
@@ -7302,12 +7816,12 @@
         {
           "name": "tiles",
           "kind": "state",
-          "doc": "One entry per participant in the call."
+          "doc": "One entry per participant in the call — { id, did, stream, isSelf } — changing only when somebody joins, leaves or their stream changes."
         },
         {
           "name": "tileStates",
           "kind": "state",
-          "doc": "Each participant's volatile flags by id."
+          "doc": "Each participant's volatile flags by id — muted, camera, screen, connection, focused, hasPicture, plus retrying, attempts and transport for how the connection is faring — looked up with find() so a tile never remounts."
         },
         {
           "name": "toggleAudio",
@@ -7322,7 +7836,8 @@
         {
           "name": "toggleSolo",
           "kind": "action",
-          "doc": "Hide everyone but the spotlight, or bring them back; does nothing while nobody is focused."
+          "doc": "Hide everyone but the spotlight, or bring them back; does nothing while nobody is focused.",
+          "ambient": true
         },
         {
           "name": "toggleVideo",
@@ -7333,6 +7848,11 @@
           "name": "topology",
           "kind": "state",
           "doc": "Whether this call runs through the SFU relay ('sfu') or the peer-to-peer mesh ('mesh')."
+        },
+        {
+          "name": "videoDevice",
+          "kind": "state",
+          "doc": "The camera this agent has chosen, or empty for whatever the system offers."
         }
       ],
       "parts": [
@@ -7341,6 +7861,9 @@
         },
         {
           "name": "continueCallButton"
+        },
+        {
+          "name": "deviceSettings"
         },
         {
           "name": "startCallButton"
@@ -7404,7 +7927,8 @@
         "kernel:transcription",
         "kernel:interpretation",
         "dock",
-        "slot:call-controls"
+        "slot:call-controls",
+        "slot:overlay"
       ],
       "members": [
         {
@@ -7455,7 +7979,14 @@
         {
           "name": "cancelProposalEdit",
           "kind": "action",
-          "doc": "Closes the open draft, discarding what was typed."
+          "doc": "Closes the open draft, discarding what was typed.",
+          "ambient": true
+        },
+        {
+          "name": "cancelTiedDecision",
+          "kind": "action",
+          "doc": "Puts the decision waiting in tiedDecision down without making it.",
+          "ambient": true
         },
         {
           "name": "canEditProposals",
@@ -7475,17 +8006,24 @@
         {
           "name": "closeExtractionPanel",
           "kind": "action",
-          "doc": "Closes the extraction panel."
+          "doc": "Closes the extraction panel.",
+          "ambient": true
         },
         {
           "name": "closePanel",
           "kind": "action",
-          "doc": "Closes the transcript panel."
+          "doc": "Closes the transcript panel.",
+          "ambient": true
         },
         {
           "name": "collectionId",
           "kind": "state",
           "doc": "The record this call’s transcript lives in, or null until something has been said."
+        },
+        {
+          "name": "confirmTiedDecision",
+          "kind": "action",
+          "doc": "Carries out the decision waiting in tiedDecision, with everything tied to it."
         },
         {
           "name": "dismissChange",
@@ -7500,7 +8038,8 @@
         {
           "name": "editProposal",
           "kind": "action",
-          "doc": "Opens one suggestion for editing, seeded with what the model proposed."
+          "doc": "Opens one suggestion for editing, seeded with what the model proposed.",
+          "ambient": true
         },
         {
           "name": "editUtterance",
@@ -7660,12 +8199,14 @@
         {
           "name": "openExtractionPanel",
           "kind": "action",
-          "doc": "Opens the extraction panel."
+          "doc": "Opens the extraction panel.",
+          "ambient": true
         },
         {
           "name": "openPanel",
           "kind": "action",
-          "doc": "Opens the transcript panel."
+          "doc": "Opens the transcript panel.",
+          "ambient": true
         },
         {
           "name": "partialCoverage",
@@ -7708,6 +8249,18 @@
           "doc": "Suggestions staged on one conversation, by record id — read as proposalsFor[id]."
         },
         {
+          "name": "readTranscriptFromStart",
+          "kind": "action",
+          "doc": "Shows the beginning of the transcript, to be read forwards.",
+          "ambient": true
+        },
+        {
+          "name": "readTranscriptLive",
+          "kind": "action",
+          "doc": "Goes back to following the end of the transcript.",
+          "ambient": true
+        },
+        {
           "name": "reconnecting",
           "kind": "state",
           "doc": "The link to the speech model dropped and is being re-established; what is said meanwhile is held."
@@ -7715,7 +8268,8 @@
         {
           "name": "refreshProposals",
           "kind": "action",
-          "doc": "Re-reads what is staged on a call, or on the live one."
+          "doc": "Re-reads what is staged on a call, or on the live one.",
+          "ambient": true
         },
         {
           "name": "rejectProposal",
@@ -7725,7 +8279,14 @@
         {
           "name": "setProposalField",
           "kind": "action",
-          "doc": "Sets one field of the open draft, by property name."
+          "doc": "Sets one field of the open draft, by property name.",
+          "ambient": true
+        },
+        {
+          "name": "showMoreTranscript",
+          "kind": "action",
+          "doc": "Loads one more page of the transcript, in whichever direction it is being read.",
+          "ambient": true
         },
         {
           "name": "speaking",
@@ -7741,6 +8302,16 @@
           "name": "thresholdPercent",
           "kind": "state",
           "doc": "The speech-onset threshold as a CSS width, to mark on the same meter."
+        },
+        {
+          "name": "tiedBusy",
+          "kind": "state",
+          "doc": "Whether a confirmed tied decision is still being written."
+        },
+        {
+          "name": "tiedDecision",
+          "kind": "state",
+          "doc": "A decision waiting on confirmation because it decides others too — { kind, title, body, detail, confirmLabel } — or null."
         },
         {
           "name": "toggle",
@@ -7766,6 +8337,16 @@
           "name": "transcribing",
           "kind": "state",
           "doc": "Speech has gone to the model and its text has not come back yet."
+        },
+        {
+          "name": "transcriptFromStart",
+          "kind": "state",
+          "doc": "Whether the transcript is being read from its beginning rather than following the live end."
+        },
+        {
+          "name": "transcriptShown",
+          "kind": "state",
+          "doc": "How many transcript lines are loaded right now."
         },
         {
           "name": "unconfirmedIds",
@@ -7830,7 +8411,186 @@
           "levels": ["deployment", "agent", "space", "agent-in-space"]
         }
       ],
-      "activities": {},
+      "activities": {
+        "transcribe": {
+          "id": "string",
+          "recording": "boolean",
+          "anchor": "object",
+          "collection": "string"
+        }
+      },
+      "components": [],
+      "functions": [],
+      "views": [],
+      "blocks": [],
+      "entities": []
+    },
+    {
+      "id": "live",
+      "name": "Live presence",
+      "description": "See each other’s cursors, and follow one person’s screen.",
+      "icon": "cursor-click",
+      "scope": "space",
+      "requires": {
+        "kernels": ["presence", "ephemeral", "view"]
+      },
+      "capabilities": ["kernel:presence", "kernel:ephemeral", "kernel:view", "slot:call-controls", "slot:call-status"],
+      "members": [
+        {
+          "name": "canDrive",
+          "kind": "state",
+          "doc": "Whether taking the wheel is possible here."
+        },
+        {
+          "name": "canFollow",
+          "kind": "state",
+          "doc": "Whether somebody else is driving, so this agent could follow them."
+        },
+        {
+          "name": "canShareCursors",
+          "kind": "state",
+          "doc": "Whether live cursors are possible here — false in a space with no transport, or where they are switched off."
+        },
+        {
+          "name": "canTakeWheel",
+          "kind": "state",
+          "doc": "Whether the wheel is free to take, or already this agent’s."
+        },
+        {
+          "name": "cursorsOn",
+          "kind": "state",
+          "doc": "Whether this agent’s pointer is shared, and other people’s shown."
+        },
+        {
+          "name": "dismissProblem",
+          "kind": "action",
+          "doc": "Dismiss the problem message.",
+          "ambient": true
+        },
+        {
+          "name": "driverName",
+          "kind": "state",
+          "doc": "The name of whoever is driving, or empty when nobody is."
+        },
+        {
+          "name": "driving",
+          "kind": "state",
+          "doc": "Whether this agent has the wheel."
+        },
+        {
+          "name": "faces",
+          "kind": "state",
+          "doc": "One entry per cursor on screen — { did, name, image }."
+        },
+        {
+          "name": "follow",
+          "kind": "action",
+          "doc": "Follow whoever has the wheel."
+        },
+        {
+          "name": "following",
+          "kind": "state",
+          "doc": "Whether this agent is following somebody’s screen."
+        },
+        {
+          "name": "followingName",
+          "kind": "state",
+          "doc": "The name of whoever this agent is following."
+        },
+        {
+          "name": "problem",
+          "kind": "state",
+          "doc": "Why something could not be done, as a sentence to show, or empty."
+        },
+        {
+          "name": "releaseWheel",
+          "kind": "action",
+          "doc": "Give up the wheel."
+        },
+        {
+          "name": "takeWheel",
+          "kind": "action",
+          "doc": "Take the wheel, so anybody who opts in follows this screen."
+        },
+        {
+          "name": "toggleCursors",
+          "kind": "action",
+          "doc": "Share this agent’s pointer and show other people’s, or stop."
+        },
+        {
+          "name": "toggleFollow",
+          "kind": "action",
+          "doc": "Follow whoever has the wheel, or stop — whichever this press means."
+        },
+        {
+          "name": "toggleWheel",
+          "kind": "action",
+          "doc": "Take the wheel, or give it up — whichever this press means."
+        },
+        {
+          "name": "unfollow",
+          "kind": "action",
+          "doc": "Stop following."
+        },
+        {
+          "name": "watching",
+          "kind": "state",
+          "doc": "How many other people here have live cursors on."
+        }
+      ],
+      "parts": [
+        {
+          "name": "cursorToggle"
+        },
+        {
+          "name": "wheelButton"
+        },
+        {
+          "name": "driverStrip"
+        }
+      ],
+      "panels": [],
+      "launchers": [
+        {
+          "key": "live:cursors",
+          "label": "Share your pointer"
+        },
+        {
+          "key": "live:wheel",
+          "label": "Take the wheel"
+        },
+        {
+          "key": "live:follow",
+          "label": "Follow the driver"
+        }
+      ],
+      "settings": [
+        {
+          "key": "cursors",
+          "label": "Live cursors",
+          "description": "Let people here see each other’s pointers.",
+          "type": "boolean",
+          "levels": ["deployment", "space", "agent-in-space"]
+        },
+        {
+          "key": "driving",
+          "label": "Driving",
+          "description": "Let one person take the wheel, so others can follow their screen.",
+          "type": "boolean",
+          "levels": ["deployment", "space"]
+        }
+      ],
+      "activities": {
+        "live": {
+          "cursors": "boolean"
+        },
+        "driving": {
+          "since": "number"
+        },
+        "following": {
+          "id": "string"
+        }
+      },
       "components": [],
       "functions": [],
       "views": [],
@@ -7851,7 +8611,8 @@
         {
           "name": "close",
           "kind": "action",
-          "doc": "Closes the Pocket panel."
+          "doc": "Closes the Pocket panel.",
+          "ambient": true
         },
         {
           "name": "open",
@@ -7861,12 +8622,14 @@
         {
           "name": "show",
           "kind": "action",
-          "doc": "Opens the Pocket panel and resolves the folder it was last looking at."
+          "doc": "Opens the Pocket panel and resolves the folder it was last looking at.",
+          "ambient": true
         },
         {
           "name": "toggle",
           "kind": "action",
-          "doc": "Opens the Pocket panel, or closes it if it is open."
+          "doc": "Opens the Pocket panel, or closes it if it is open.",
+          "ambient": true
         }
       ],
       "parts": [
@@ -8100,14 +8863,54 @@
       "scope": "space",
       "requires": {
         "frameworks": ["solid"],
-        "permissions": ["network:cesium-ion"]
+        "permissions": [
+          "network:gibs.earthdata.nasa.gov",
+          "network:cesium-ion",
+          "network:arcgis.com",
+          "network:mapbox.com"
+        ]
       },
-      "capabilities": ["network:cesium-ion", "components"],
+      "capabilities": [
+        "network:gibs.earthdata.nasa.gov",
+        "network:cesium-ion",
+        "network:arcgis.com",
+        "network:mapbox.com",
+        "components"
+      ],
       "members": [],
       "parts": [],
       "panels": [],
       "launchers": [],
-      "settings": [],
+      "settings": [
+        {
+          "key": "imagery",
+          "label": "Globe imagery",
+          "description": "What the globe's surface is drawn with. NASA's needs no account and is sharp to about 30 m. The others are sharp to street level and need a key from your own account, set below; using one means accepting that provider's terms. A provider with no key, or a key it refuses, draws NASA's.",
+          "type": "enum",
+          "levels": ["deployment", "agent"]
+        },
+        {
+          "key": "ionAccessToken",
+          "label": "Cesium ion access token",
+          "description": "From ion.cesium.com → Access Tokens. Used when the imagery is Cesium ion.",
+          "type": "string",
+          "levels": ["deployment", "agent"]
+        },
+        {
+          "key": "esriApiKey",
+          "label": "Esri API key",
+          "description": "From developers.arcgis.com → API keys, with the basemap styles privilege. Used when the imagery is Esri World Imagery. Esri serves the imagery even for a key it does not recognise, so check this one carefully: a mistyped key draws the imagery without your account being used.",
+          "type": "string",
+          "levels": ["deployment", "agent"]
+        },
+        {
+          "key": "mapboxAccessToken",
+          "label": "Mapbox access token",
+          "description": "From account.mapbox.com → Tokens; a public token. Used when the imagery is Mapbox Satellite.",
+          "type": "string",
+          "levels": ["deployment", "agent"]
+        }
+      ],
       "activities": {},
       "components": ["CesiumGlobe"],
       "functions": [],
@@ -8167,6 +8970,11 @@
           "doc": "Why the last vote could not be recorded, or empty."
         },
         {
+          "name": "pendingVote",
+          "kind": "state",
+          "doc": "This agent’s vote on a poll, written and not yet read back — { author, option }, or nothing. Keyed by poll id."
+        },
+        {
           "name": "revealBeforeVoting",
           "kind": "state",
           "doc": "Whether a poll shows its counts before this agent has voted — the community’s setting here."
@@ -8207,8 +9015,8 @@
         {
           "name": "tally",
           "params": ["options"],
-          "doc": "Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices).",
-          "example": "tally({ votes: local.votes, options: block.options })"
+          "doc": "Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices), pending (modules.polls.pendingVote[<poll id>] — this agent’s vote written and not yet read back, counted in place of their stored one so the bars move on the press).",
+          "example": "tally({ votes: local.votes, options: block.options, pending: modules.polls.pendingVote[block.id] })"
         }
       ],
       "views": [
@@ -8280,5 +9088,254 @@
       ]
     }
   ],
-  "foreignElements": []
+  "foreignElements": [],
+  "pluginCatalogs": [
+    {
+      "component": "CesiumGlobe",
+      "placements": [
+        {
+          "prop": "planetLayers",
+          "key": "factory",
+          "categories": ["planet"]
+        },
+        {
+          "prop": "backgroundLayers",
+          "key": "factory",
+          "categories": ["background"]
+        }
+      ],
+      "plugins": [
+        {
+          "id": "pointLocationsLayer",
+          "category": "planet"
+        },
+        {
+          "id": "countryOutlinesLayer",
+          "category": "planet"
+        },
+        {
+          "id": "h3HexagonsLayer",
+          "category": "planet"
+        },
+        {
+          "id": "skyboxLayer",
+          "category": "background"
+        },
+        {
+          "id": "proceduralStarsLayer",
+          "category": "background"
+        },
+        {
+          "id": "solarSystemLayer",
+          "category": "background"
+        }
+      ]
+    },
+    {
+      "component": "GraphView",
+      "placements": [
+        {
+          "prop": "seeds",
+          "key": "source",
+          "categories": ["seed"]
+        },
+        {
+          "prop": "layout",
+          "key": "type",
+          "categories": ["layout"]
+        },
+        {
+          "prop": "expansion",
+          "key": "expanders",
+          "categories": ["expander"]
+        },
+        {
+          "prop": "behaviours",
+          "key": "type",
+          "categories": ["behaviour"],
+          "bare": true
+        },
+        {
+          "prop": "controls",
+          "key": "type",
+          "categories": ["control"],
+          "bare": true
+        }
+      ],
+      "plugins": [
+        {
+          "id": "query",
+          "category": "seed"
+        },
+        {
+          "id": "schema",
+          "category": "seed"
+        },
+        {
+          "id": "canvas",
+          "category": "seed"
+        },
+        {
+          "id": "dataset",
+          "category": "seed"
+        },
+        {
+          "id": "entity",
+          "category": "expander"
+        },
+        {
+          "id": "collection",
+          "category": "expander"
+        },
+        {
+          "id": "schema",
+          "category": "expander"
+        },
+        {
+          "id": "property",
+          "category": "expander"
+        },
+        {
+          "id": "force",
+          "category": "layout"
+        },
+        {
+          "id": "tree",
+          "category": "layout"
+        },
+        {
+          "id": "forest",
+          "category": "layout"
+        },
+        {
+          "id": "radial",
+          "category": "layout"
+        },
+        {
+          "id": "grid",
+          "category": "layout"
+        },
+        {
+          "id": "manual",
+          "category": "layout"
+        },
+        {
+          "id": "curve",
+          "category": "style"
+        },
+        {
+          "id": "sourceAnchor / targetAnchor",
+          "category": "style"
+        },
+        {
+          "id": "ignoreRoute",
+          "category": "style"
+        },
+        {
+          "id": "arrow",
+          "category": "style"
+        },
+        {
+          "id": "scaleWithZoom",
+          "category": "style"
+        },
+        {
+          "id": "content",
+          "category": "style"
+        },
+        {
+          "id": "contentMinZoom",
+          "category": "style"
+        },
+        {
+          "id": "badge",
+          "category": "style"
+        },
+        {
+          "id": "scaleLabelWithZoom",
+          "category": "style"
+        },
+        {
+          "id": "labelMinZoom",
+          "category": "style"
+        },
+        {
+          "id": "degree",
+          "category": "metric"
+        },
+        {
+          "id": "community",
+          "category": "metric"
+        },
+        {
+          "id": "field",
+          "category": "metric"
+        },
+        {
+          "id": "zoom-in",
+          "category": "control"
+        },
+        {
+          "id": "zoom-out",
+          "category": "control"
+        },
+        {
+          "id": "fit",
+          "category": "control"
+        },
+        {
+          "id": "pin",
+          "category": "control"
+        },
+        {
+          "id": "lock",
+          "category": "control"
+        },
+        {
+          "id": "relayout",
+          "category": "control"
+        },
+        {
+          "id": "pan-zoom",
+          "category": "behaviour"
+        },
+        {
+          "id": "select",
+          "category": "behaviour"
+        },
+        {
+          "id": "marquee-select",
+          "category": "behaviour"
+        },
+        {
+          "id": "drag-node",
+          "category": "behaviour"
+        },
+        {
+          "id": "arrange-nodes",
+          "category": "behaviour"
+        },
+        {
+          "id": "connect-nodes",
+          "category": "behaviour"
+        },
+        {
+          "id": "node-double-click",
+          "category": "behaviour"
+        },
+        {
+          "id": "canvas-double-click",
+          "category": "behaviour"
+        },
+        {
+          "id": "expand-on-double-click",
+          "category": "behaviour"
+        },
+        {
+          "id": "expand-on-click",
+          "category": "behaviour"
+        }
+      ]
+    }
+  ]
 }

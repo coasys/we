@@ -67,10 +67,21 @@ function trim(value: unknown): string | undefined {
   return text.length > 300 ? `${text.slice(0, 297)}…` : text;
 }
 
+/**
+ * Fields every record carries, whatever its model declares.
+ *
+ * The allowlist below exists to keep a *model's* noise out of the data bag — a relation's ids, a blob,
+ * anything a card has no business styling by. It is not there to hide the facts a record has by virtue
+ * of being one, and `createdAt` is the one that was being lost: it lives on `RecordInstance` rather
+ * than in any shape's properties, so it never reached a node, so "order these oldest first" had nothing
+ * to order by and every layout asked for it fell silently back to sorting by address.
+ */
+const RECORD_FIELDS = new Set(['createdAt']);
+
 /** Only scalars travel into `data` — anything else belongs behind a node template. */
 function scalars(row: Record<string, unknown>, shape?: EntityShape): Record<string, GraphValue> {
   const result: Record<string, GraphValue> = {};
-  const allowed = shape ? new Set(shape.properties.map((p) => p.name)) : undefined;
+  const allowed = shape ? new Set([...shape.properties.map((p) => p.name), ...RECORD_FIELDS]) : undefined;
   for (const [key, value] of Object.entries(row)) {
     if (allowed && !allowed.has(key)) continue;
     if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) {

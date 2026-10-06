@@ -109,6 +109,31 @@ export class TaskState extends WeNode {
   @Property({ through: 'we://retired' })
   retired: boolean = false;
 
+  /**
+   * How many distinct people must agree before a task may enter this state.
+   *
+   * One — the default, and what every state predating this reads as — means a drop moves the
+   * card, exactly as it always has. More than one, or an `approverKind`, is the community asking
+   * for agreement: the space's task states then run as a flow, and a card dragged here waits for
+   * the approvals rather than moving (see `app-shell/src/shared/taskFlow.ts`).
+   *
+   * On the state rather than on a move between two states, because what a community means is
+   * "nothing is Done until two of us say so" — whichever column it came from.
+   */
+  @Property({ through: 'we://approvals' })
+  approvals: number = 1;
+
+  /**
+   * Whose agreement counts toward `approvals`: the slug of an {@link InvolvementType}, so only the
+   * people holding that part *in the task being moved* count — its reviewers, say. Empty means
+   * any member counts.
+   *
+   * A kind rather than a named list of people, because who reviews what is already recorded, per
+   * task, by whoever assigned it; a second list here would be a second answer to that question.
+   */
+  @Property({ through: 'we://approver_kind' })
+  approverKind: string = '';
+
   @Property({ through: 'we://schema_version' })
   schemaVersion: number = 1;
 }

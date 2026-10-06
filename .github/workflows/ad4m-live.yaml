@@ -1,0 +1,173 @@
+# `pnpm verify:ad4m` in CI: WE's live tests against an executor built from the AD4M commit the pin
+# was published from. Two files run (`packages/backend-system/ad4m/tests/live/`): the capability
+# check, which says whether every query feature `ad4mCapabilities` claims really holds, and the
+# shared backend conformance suite, which says whether AD4M behaves the way the contract says
+# through the same ports the app uses. docs/contributing/ad4m-and-deploys.md has what each result
+# means.
+#
+# Not a required check, and not meant to become one: the suite lists cases AD4M is known to fail,
+# one of them intermittent, and a check that can go red for a reason in another repository should
+# inform a merge rather than decide it — the same reasoning that took the AD4M source build out of
+# `build.yaml`.
+#
+# ## The executor
+#
+# `.github/actions/ad4m-executor` provides it — the same action, cache key and path the desktop
+# package uses, so the tests run the binary the app ships and either workflow's build serves the
+# other. It is cached by AD4M commit: building it is most of an hour, every later run on that commit
+# is a restore. Only the binary is cached; the Rust target directory is far past what a
+# repository's Actions cache holds. A build that fails caches nothing.
+#
+# A cache is read only from the run's own branch and its base branch, so where it is saved decides
+# who can use it. One saved on a PR serves re-runs of that PR alone; one saved on `dev` serves every
+# PR. That is why this also runs on a push to `dev`: when a bump merges, `dev` builds the new
+# executor once, and every PR after it restores it.
+#
+# Ubuntu 24.04 because the executor needs glibc 2.38 or later, to link and to run: the prebuilt V8
+# calls `__isoc23_*` (coasys/ad4m#1305).
+name: AD4M live
+
+on:
+  pull_request:
+    # What the tests exercise: the adapter, the contract, the entities its classes are generated
+    # from, and the pin itself — plus what builds the executor. A template change moves none of it.
+    paths:
+      - 'packages/backend-system/**'
+      - 'packages/entities/**'
+      - 'package.json'
+      - '.github/workflows/ad4m-live.yaml'
+      - '.github/actions/ad4m-executor/**'
+  # The same paths on `dev`, so a merged bump caches its executor where every PR can read it.
+  push:
+    branches: [dev]
+    paths:
+      - 'packages/backend-system/**'
+      - 'packages/entities/**'
+      - 'package.json'
+      - '.github/workflows/ad4m-live.yaml'
+      - '.github/actions/ad4m-executor/**'
+  # The ad4m bump workflow starts this on its branch, as it does CI — a PR it opens with
+  # GITHUB_TOKEN starts nothing. And by hand, from the Actions tab.
+  workflow_dispatch:
+
+# Deliberately no workflow-level `concurrency`. Cancelling a run cancels every job in it, and a push
+# landing forty minutes into a cold build would throw away the one thing every later run needs. Only
+# the test job is cancelled by a newer push; a build always finishes and fills the cache.
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  resolve:
+    name: Resolve the pinned executor
+    runs-on: ubuntu-24.04
+    outputs:
+      commit: ${{ steps.executor.outputs.sha }}
+      cached: ${{ steps.executor.outputs.cache-hit }}
+      skip: ${{ steps.pairing.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            package.json
+            scripts/ad4m-pairing.mjs
+            .github/actions/ad4m-executor
+          sparse-checkout-cone-mode: false
+
+      # A paired PR's own changes need an ad4m change nobody has published, so against the pin they
+      # fail for the reason the required checks do and say nothing new — `AD4M compatibility /
+      # Against the paired ad4m` is the check that answers there. Skipped only while the PR has not
+      # moved the pin: one that has is testing the version it will merge with, which is the run that
+      # matters most, whether or not its description still carries the block.
+      - name: Is this a paired PR that has not moved the pin
+        id: pairing
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          VERSION="$(node -p "require('./package.json').pnpm.overrides['@coasys/ad4m']")"
+          # The description as it is now, not as the event recorded it: a re-run replays the event.
+          BODY="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq '.body // ""')"
+          # A malformed block is the pairing parser's to report, on the checks that read it; here it
+          # counts as unpaired, so the live tests run rather than vanish.
+          PAIRING="$(printf '%s' "$BODY" | node scripts/ad4m-pairing.mjs 2>/dev/null | sed -n 's/^pairing=//p')" || PAIRING=''
+          BASE_PIN="$(gh api "repos/$GITHUB_REPOSITORY/contents/package.json?ref=$BASE_SHA" --jq '.content' \
+            | base64 -d | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).pnpm.overrides['@coasys/ad4m']")"
+          if [ -n "$PAIRING" ] && [ "$BASE_PIN" = "$VERSION" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "Skipped: this PR is paired with $PAIRING and still pins $VERSION, as the base does."
+              echo "Its changes need that ad4m change, so the pin cannot answer for them —"
+              echo "see **AD4M compatibility / Against the paired ad4m**. These run once the pin moves."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Is the pinned executor cached
+        id: executor
+        if: steps.pairing.outputs.skip != 'true'
+        uses: ./.github/actions/ad4m-executor
+        with:
+          mode: lookup
+
+      - name: Summary
+        if: steps.pairing.outputs.skip != 'true'
+        env:
+          SHA: ${{ steps.executor.outputs.sha }}
+          HIT: ${{ steps.executor.outputs.cache-hit }}
+        run: echo "### coasys/ad4m@${SHA:0:9} — $([ "$HIT" = true ] && echo 'cached' || echo 'not cached yet, building')" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: Build the executor
+    needs: resolve
+    if: needs.resolve.outputs.skip != 'true' && needs.resolve.outputs.cached != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    # Two runs on the same commit wait for each other rather than both spending an hour on it; the
+    # second restores what the first saved. Never cancelled — see the top of the file.
+    concurrency:
+      group: ad4m-executor-${{ needs.resolve.outputs.commit }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/actions/ad4m-executor
+      - uses: ./.github/actions/ad4m-executor
+        with:
+          ref: ${{ needs.resolve.outputs.commit }}
+
+  live:
+    name: Live tests
+    needs: [resolve, build]
+    # Runs after a build, and also when the build was skipped because the binary was cached.
+    if: ${{ !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.skip != 'true' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # A newer push to the same PR replaces this run's tests — and only its tests.
+    concurrency:
+      group: ad4m-live-tests-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      - name: Restore the executor
+        id: executor
+        uses: ./.github/actions/ad4m-executor
+        with:
+          ref: ${{ needs.resolve.outputs.commit }}
+          mode: restore
+
+      # The live tests import these by package name, which resolves to their built output. Only
+      # the adapter's own dependencies and the suite — not the monorepo.
+      - name: Build what the tests import
+        run: pnpm --filter "@we/backend-ad4m^..." --filter "@we/backend-conformance..." build
+
+      - name: Live tests
+        env:
+          AD4M_EXECUTOR: ${{ steps.executor.outputs.path }}
+        run: |
+          chmod +x "$AD4M_EXECUTOR"
+          pnpm verify:ad4m

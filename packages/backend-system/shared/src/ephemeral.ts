@@ -16,7 +16,7 @@
  * Durable messaging (chat, DMs) therefore belongs to `DataSource`, never here — see
  * notes/we/August-2026/presence-port.md.
  *
- * **Shape.** A scope is bound to one dataset (a space, a DM neighbourhood); within a scope, each
+ * **Shape.** A scope is bound to one dataset (a space, a DM); within a scope, each
  * protocol takes a named `channel(tag)`. Both are load-bearing: a call happens *in* a space, and a
  * third-party feature module needs a namespace it cannot collide with. The payload is deliberately
  * opaque — presence, RTC, and cursors all ride the same pipe, so the transport must not know about any
@@ -58,14 +58,14 @@ export interface EphemeralCapabilities {
 
   /**
    * - `best-effort` — fire and forget, no confirmation of anything.
-   * - `send-acked` — the send is confirmed, delivery is not (AD4M: `Promise<boolean>`).
+   * - `send-acked` — the send is confirmed, delivery is not.
    * - `at-least-once` — delivery is confirmed, possibly more than once.
    */
   reliability: 'best-effort' | 'send-acked' | 'at-least-once';
 
   /**
    * True when peers must gossip their own liveness on a timer because the transport cannot report
-   * disconnects. P1/P2 backends (AD4M) set this; a P3 backend that knows who is connected sets false
+   * disconnects. P1/P2 backends set this; a P3 backend that knows who is connected sets false
    * and implements a presence source directly instead of using `createHeartbeatPresence`.
    */
   heartbeatRequired: boolean;
@@ -74,8 +74,9 @@ export interface EphemeralCapabilities {
    * Whether the `from` in {@link EphemeralChannel.onMessage} is asserted by the **transport** or by
    * the payload.
    *
-   * AD4M supplies `link.author`, so identity is authenticated: a peer cannot impersonate another in
-   * the presence map, and a work claim can be trusted enough to act on. A naive relay or unsigned
+   * A transport that signs each message supplies the sender itself, so identity is authenticated: a
+   * peer cannot impersonate another in the presence map, and a work claim can be trusted enough to
+   * act on. A naive relay or unsigned
    * pubsub carries the sender id in the payload, where it is forgeable — a host could implement this
    * port entirely correctly and still ship spoofable presence and hijackable leases. Anything
    * security-relevant (leases, moderation, call admission) must check this rather than assume it.
@@ -148,8 +149,8 @@ export interface ChannelOptions {
    * superseded message is genuinely worthless because the newer one it is waiting behind carries
    * everything it did. It is wrong for a handshake: an RTC offer is not superseded by the next one.
    *
-   * Earns its place from a real failure. On a struggling AD4M executor `sendBroadcast` hangs until a
-   * 30s RPC timeout while presence heartbeats every 5s, so six stuck calls accumulate at steady
+   * Earns its place from a real failure. On a struggling backend a broadcast hangs until a 30s RPC
+   * timeout while presence heartbeats every 5s, so six stuck calls accumulate at steady
    * state, each adding load to the backend that is already the problem. Coalescing turns that into
    * one in-flight send and at most one waiting.
    *
@@ -175,7 +176,7 @@ export interface EphemeralScope {
 
 /**
  * The port a host injects. Returns `null` for a dataset with no transport — a personal (unshared)
- * space has no neighbourhood, so there is nobody to signal. Consumers must degrade rather than throw.
+ * space is synced with nobody, so there is nobody to signal. Consumers must degrade rather than throw.
  */
 export type EphemeralPort = (dataset: DatasetHandle) => EphemeralScope | null;
 
@@ -248,8 +249,8 @@ export function planEphemeral(req: EphemeralRequirements, cap: EphemeralCapabili
 export const inMemoryEphemeralCapabilities: EphemeralCapabilities = {
   fanout: true,
   // A shared in-process bus can address a single peer exactly, and knows who is connected, so it is
-  // deliberately the *opposite* profile to AD4M's on every axis that matters. That is the point: it
-  // exercises the branches a single backend would leave dead.
+  // deliberately the *opposite* profile to the production adapter's on every axis that matters.
+  // That is the point: it exercises the branches a single backend would leave dead.
   unicast: 'native',
   reliability: 'at-least-once',
   heartbeatRequired: false,
@@ -286,7 +287,7 @@ export function createInMemoryEphemeralPort(bus: InMemoryBus, agentId: string): 
           publish(payload, to) {
             bus.deliver(key, tag, agentId, payload, to?.agentId);
             // Reported even though it cannot fail, and that is the point of a reference
-            // implementation: a consumer that only ever sees the AD4M adapter's mix of outcomes
+            // implementation: a consumer that only ever sees the production adapter's mix of outcomes
             // could quietly come to depend on failures arriving, and the branch where everything
             // succeeds would be the untested one.
             watchers.forEach((cb) => cb({ ok: true, ms: 0 }));

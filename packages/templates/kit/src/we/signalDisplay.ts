@@ -956,44 +956,51 @@ function fullList(opts: Resolved, as: string, { roster = false }: { roster?: boo
                 thing hiding it. The collapse earns its place the moment there is a list to keep out
                 of the way, and not before.
               */
+              /*
+                Two conditions over one list, rather than two branches each carrying a copy of it.
+
+                The list is the same node either way — `reactorList(…)` with the same arguments —
+                so writing it into both sides of a `total == 1` branch put it in the schema twice,
+                and it is ~7,000 characters every time this fragment is placed. Asking the two
+                questions separately says the same thing: the summary is what a crowd gets, and the
+                names are shown outright for one person or once anybody asks.
+              */
               {
                 type: '$if',
                 props: {
-                  condition: { $: `${reactorsOf(opts.record, as)}.total == 1` },
-                  then: reactorList(opts, as, { searchable: roster }),
-                  else: {
-                    type: 'Column',
-                    props: { width: '100%' },
-                    children: [
-                      reactorSummary(opts, as),
-                      {
-                        type: '$if',
-                        props: {
-                          /*
-                            A search opens every type it matched, whether or not the reader had
-                            opened it.
+                  condition: { $: `${reactorsOf(opts.record, as)}.total != 1` },
+                  then: reactorSummary(opts, as),
+                },
+              },
+              {
+                type: '$if',
+                props: {
+                  /*
+                    One person is shown outright; everybody else is behind the press.
 
-                            Typing a name into the sheet IS the request to see the names, and rows
-                            that stayed shut would hide the very answer being searched for — while
-                            the types nobody matching used drop out of their own accord, so an open
-                            row means a hit.
-                          */
-                          condition: {
-                            $: roster
-                              ? `${as}.id in local.${EXPANDED} || trim(local.${SEARCH}) != ''`
-                              : `${as}.id in local.${EXPANDED}`,
-                          },
-                          // Opening in place, so the rows ease the panel taller rather than
-                          // appearing in it.
-                          enterTransition: [
-                            { type: 'reveal', duration: 200 },
-                            { type: 'fade', duration: 150 },
-                          ],
-                          then: reactorList(opts, as, { searchable: roster }),
-                        },
-                      },
-                    ],
+                    A summary says "1 person" beside one face, behind a press that reveals one row —
+                    three pieces of indirection standing in front of a fact shorter than the thing
+                    hiding it. The collapse earns its place the moment there is a list to keep out
+                    of the way, and not before.
+
+                    A search opens every type it matched, whether or not the reader had opened it.
+                    Typing a name into the sheet IS the request to see the names, and rows that
+                    stayed shut would hide the very answer being searched for — while the types
+                    nobody matching used drop out of their own accord, so an open row means a hit.
+                  */
+                  condition: {
+                    $: `${reactorsOf(opts.record, as)}.total == 1 || ${
+                      roster
+                        ? `${as}.id in local.${EXPANDED} || trim(local.${SEARCH}) != ''`
+                        : `${as}.id in local.${EXPANDED}`
+                    }`,
                   },
+                  // Opening in place, so the rows ease the panel taller rather than appearing in it.
+                  enterTransition: [
+                    { type: 'reveal', duration: 200 },
+                    { type: 'fade', duration: 150 },
+                  ],
+                  then: reactorList(opts, as, { searchable: roster }),
                 },
               },
             ],

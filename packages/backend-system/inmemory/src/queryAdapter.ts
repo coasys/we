@@ -14,8 +14,8 @@ import {
 // The in-memory backend consumes the flat `$query` dialect (run() re-compiles it via executeQueryIR),
 // so its adapter lowers with the neutral `irToFlatQuery`. Capabilities mirror what that flat lowering
 // expresses — relation filters and non-count aggregates stay gaps (irToFlatQuery throws on them),
-// which the renderer then falls back on. This is a real, AD4M-free QueryAdapter — it exercises the
-// same renderer path the AD4M adapter does.
+// which the renderer then falls back on. This is a real QueryAdapter — it exercises the same
+// renderer path the production adapter does.
 //
 // `scope` is the exception, and is handled rather than declined: the shared engine has always been
 // able to execute a drill-down (`scopeRows`), and only the *lowering* could not express one, because

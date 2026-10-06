@@ -212,7 +212,7 @@ export function BlockRenderer(props: Props) {
   const { width = '100%', rootClass } = props;
 
   const [blocks] = createResource(
-    () => ({ state: props.editorState, dataset: props.perspective ?? host.dataset() }),
+    () => ({ state: props.editorState, dataset: props.dataset ?? host.dataset() }),
     async ({ state, dataset }): Promise<ContentBlock[] | null> => {
       if (state === undefined || state === null) return [] as ContentBlock[];
       // Null, not `[]`. Empty and unreadable are different things and only one of them is true.

@@ -170,7 +170,7 @@ describe('irToFlatQuery', () => {
     });
   });
 
-  it('throws on shapes needing adapter resolution or that AD4M cannot express (scope, op, rel-filter, non-count agg)', () => {
+  it('throws on shapes needing adapter resolution or that the flat dialect cannot express (scope, op, rel-filter, non-count agg)', () => {
     // scope needs binding resolution — the adapter's job, not this translator
     expect(() => irToFlatQuery({ irVersion: 1, entity: 'Post', scope: { via: 'posts', anchorId: 'a1' } })).toThrow(
       /scope \(drill-down\)/,
@@ -195,7 +195,7 @@ describe('irToFlatQuery', () => {
     ).toThrow(/aggregate fn "sum"/);
   });
 
-  // The load-bearing guarantee the AD4M adapter rests on: crossing legacy → IR → legacy loses nothing,
+  // The load-bearing guarantee an adapter rests on: crossing legacy → IR → legacy loses nothing,
   // proven by re-deriving the IR from the reconstructed legacy and getting the identical IR back.
   const samples: FlatQuery[] = [
     {
@@ -280,5 +280,29 @@ describe('range bounds', () => {
       status: 'todo',
       price: { lt: 50, gte: 10 },
     });
+  });
+});
+
+describe('selecting the fields a row carries', () => {
+  /**
+   * `select` sat in the IR, the validator and the reference engine, and the compiler dropped it on the
+   * way in — so a template could not ask for less than every field, and a list of containers carried
+   * every child id of every row.
+   */
+  it('carries a root `select` into the IR and back out to the flat query', () => {
+    const { ir, unsupported } = compileQuery({
+      entity: 'CollectionBlock',
+      select: ['title', 'participants'],
+      limit: 20,
+    });
+    expect(unsupported).toEqual([]);
+    expect(ir.select).toEqual(['title', 'participants']);
+    expect(irToFlatQuery(ir)).toMatchObject({ select: ['title', 'participants'], limit: 20 });
+  });
+
+  it('leaves a query without `select` asking for every field', () => {
+    const { ir } = compileQuery({ entity: 'CollectionBlock' });
+    expect(ir).not.toHaveProperty('select');
+    expect(irToFlatQuery(ir)).not.toHaveProperty('select');
   });
 });

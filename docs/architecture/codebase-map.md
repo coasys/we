@@ -61,7 +61,9 @@ WE's data layer is [AD4M](https://ad4m.dev): agent-centric, local-first, peer-to
 The Solid app (`@we/app-shell`) reaches AD4M through the **backend contract** rather than
 directly: `@we/backend-shared` declares the ports (`DataSource` + `QueryAdapter`, ephemeral,
 presence, transcription, model manifest), `@we/backend-ad4m` implements them against the executor,
-and `@we/backend-inmemory` is the reference implementation the boot/conformance tests run against.
+and `@we/backend-inmemory` is the reference implementation the boot tests run against.
+`@we/backend-conformance` holds one suite of the contract's behaviour that every backend runs: the
+in-memory one in its ordinary tests, the AD4M one against a real executor (`test:live`).
 Stores (`sessionStore`, `datasetStore`, `spaceStore`, …) sit above the ports and expose reactive
 state to schemas. The renderer, the design system and the module contract never import
 `@coasys/*`.

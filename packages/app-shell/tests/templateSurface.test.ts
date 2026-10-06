@@ -15,7 +15,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { markAction, markState } from '@we/module-shared';
-import { REACTIVE_ACCESSOR } from '@we/schema-shared';
+import { REACTIVE_ACCESSOR, runWithGesture } from '@we/schema-shared';
+import { vi } from 'vitest';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { CapabilityGroup } from '../src/shared/registries/templateSurface';
@@ -110,6 +111,13 @@ describe('what the space tier can reach', () => {
     const [store, member] = path.split('.');
     return member in ((bag[store] ?? {}) as Record<string, unknown>);
   };
+
+  it('lends the clipboard to chrome and not to a community template', () => {
+    // Chrome's copy buttons call it — unclassified, the bag dropped it and they did nothing at all.
+    // A space template could show one thing and copy another, so it waits for a decision.
+    expect(reaches(chromeBag, 'clipboard.copy')).toBe(true);
+    expect(reaches(spaceBag, 'clipboard.copy')).toBe(false);
+  });
 
   it('cannot reach the things that made this necessary', () => {
     // Every one of these was reachable from a marketplace template before this existed.
@@ -359,5 +367,71 @@ describe('modules — private by default, public by marking', () => {
     const space = bagFor(SPACE_TIER);
     expect(Object.keys(space.notes)).toEqual([]);
     expect(Object.keys(bagFor(CHROME_TIER).notes).sort()).toEqual(['close', 'open']);
+  });
+});
+
+describe('the gesture gate', () => {
+  /*
+    A gesture stood in for by a held token rather than a dispatched event: what is under test here is
+    the bag's use of the answer, not how the answer is reached — `gesture.test.ts` and the browser case
+    `security:self-firing-events` cover that.
+  */
+  const asked = <T>(fn: () => T): T => runWithGesture({ at: {} as Event }, fn);
+
+  function bagWith(gesture?: 'enforce' | 'report') {
+    const calls: string[] = [];
+    const stores = {
+      record: { create: () => calls.push('record.create') },
+      routeStore: { navigate: () => calls.push('routeStore.navigate') },
+      modules: {
+        notes: {
+          save: markAction(() => calls.push('notes.save'), 'save'),
+          open: markAction(() => calls.push('notes.open'), 'open', { ambient: true }),
+          // Called by one test only: a path is reported once per run, so a shared one would be silent.
+          share: markAction(() => calls.push('notes.share'), 'share'),
+        },
+      },
+    };
+    const bag = buildTemplateBag(stores, { grants: SPACE_TIER, gesture }) as unknown as {
+      record: { create: () => unknown };
+      routeStore: { navigate: () => unknown };
+      modules: { notes: { save: () => unknown; open: () => unknown; share: () => unknown } };
+    };
+    return { bag, calls };
+  }
+
+  it('refuses a write nobody asked for, and runs it when somebody did', () => {
+    const { bag, calls } = bagWith('enforce');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    bag.record.create();
+    bag.modules.notes.save();
+    expect(calls).toEqual([]);
+
+    asked(() => {
+      bag.record.create();
+      bag.modules.notes.save();
+    });
+    expect(calls).toEqual(['record.create', 'notes.save']);
+  });
+
+  it('lets an ambient action run unasked — a host one or a module one', () => {
+    const { bag, calls } = bagWith('enforce');
+    bag.routeStore.navigate();
+    bag.modules.notes.open();
+    expect(calls).toEqual(['routeStore.navigate', 'notes.open']);
+  });
+
+  it('only says so when reporting', () => {
+    const { bag, calls } = bagWith('report');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    bag.modules.notes.share();
+    expect(calls).toEqual(['notes.share']);
+    expect(warn.mock.calls.flat().join(' ')).toContain('modules.notes.share');
+  });
+
+  it('is off unless asked for, so a bag built without it behaves as it always did', () => {
+    const { bag, calls } = bagWith();
+    bag.record.create();
+    expect(calls).toEqual(['record.create']);
   });
 });

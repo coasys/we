@@ -25,7 +25,7 @@ import { isSystemDataset, SYSTEM_DATASET_NAMES, SYSTEM_DATASETS } from '@shared/
 import { createCallConfigAccessors, createCallSessionFactory } from '@we/backend-ad4m';
 import { datasetKey, type DatasetRef, type EntityManifestEntry, trace } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
-import { AgentSettings, type DatasetProxy, ExtractionPass, getEntitiesForPerspective } from '@we/entities';
+import { AgentSettings, type DatasetProxy, ExtractionPass, getEntityForDataset } from '@we/entities';
 import { Accessor, batch, createContext, createMemo, createSignal, onCleanup, ParentProps, useContext } from 'solid-js';
 
 import { useSessionStore } from './SessionStore';
@@ -117,7 +117,12 @@ export interface DatasetStore {
   marketplaceJoined: Accessor<boolean>;
 
   // Actions
-  switchDataset: (uuid: string) => Promise<void>;
+  /**
+   * Switch to a dataset. `stillWanted` is asked once more, after the round trips and just before the
+   * switch is published; answering false abandons it. For a switch made on behalf of something that
+   * can move on without asking again — the address bar — see the URL effect in SpaceStore.
+   */
+  switchDataset: (uuid: string, options?: { stillWanted?: () => boolean }) => Promise<void>;
   reorderDatasets: (newOrder: string[]) => Promise<void>;
   /** Remove the dataset from the backend and local state. Space-level concerns (e.g. global
    * discovery cleanup) belong to SpaceStore.removeSpace, which calls this. */
@@ -149,8 +154,23 @@ export interface DatasetStore {
    * into a disposed scope. See `hostListeners`.
    */
   onDatasetRemoved: (cb: (uuid: string) => void) => () => void;
-  initSystemDatasets: () => Promise<void>;
-  loadDatasets: () => Promise<void>;
+  /** The backend's dataset list, or null when it cannot be read. Publishes nothing. */
+  readDatasets: () => Promise<AppDataset[] | null>;
+  /**
+   * Bring up the system datasets. Given the list `readDatasets` just read, works from that rather
+   * than reading it again. Resolves with every dataset it saw or made, for `loadDatasets`.
+   */
+  initSystemDatasets: (known?: AppDataset[] | null) => Promise<AppDataset[] | null>;
+  /**
+   * Start the reads a switch into this dataset makes, ahead of the switch — see
+   * `SchemaPort.prepare`. For a boot, while the system datasets come up.
+   */
+  prepareDataset: (dataset: AppDataset) => void;
+  /**
+   * Publish the dataset list. Given the list `initSystemDatasets` just read, publishes that rather
+   * than asking the backend again — every ask builds a handle per dataset, and a boot asked twice.
+   */
+  loadDatasets: (known?: AppDataset[] | null) => Promise<void>;
   subscribeToChanges: () => void;
   getDatasetOrder: () => string[];
   /**
@@ -411,6 +431,15 @@ export function DatasetStoreProvider(props: ParentProps) {
           (await session.backendPorts()?.interpretation?.accept(dataset, id, property)) ?? false,
         reject: async (dataset, id, property) =>
           (await session.backendPorts()?.interpretation?.reject(dataset, id, property)) ?? false,
+        /*
+          Forwarded, like every member above — this wrapper lists them by hand, so a port method it
+          does not name never reaches a module. Leaving this one out made every Accept and Discard
+          decide alone, with no question asked, which is the failure the read exists to prevent.
+          Nothing tied, where the backend cannot say: the decision then stands alone, as it did
+          before the read existed.
+        */
+        connections: async (dataset, id) =>
+          (await session.backendPorts()?.interpretation?.connections?.(dataset, id)) ?? { ends: [], connections: [] },
       },
 
       /*
@@ -449,7 +478,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         const dataset = currentDataset();
         if (!dataset) throw new Error('interpretation: no dataset to interpret into');
 
-        const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
+        const modelFor = (entity: string) => getEntityForDataset(entity, dataset.handle);
         const predicate = containmentPredicate(modelFor, currentDatasetEntities());
         if (!predicate)
           throw new Error('interpretation: this space has no collection schema to read a transcript from');
@@ -525,7 +554,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       proposalsForCollection: async (dataset, collectionId) => {
         const port = session.backendPorts()?.interpretation;
         if (!port) return [];
-        const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset);
+        const modelFor = (entity: string) => getEntityForDataset(entity, dataset);
         const predicate = containmentPredicate(modelFor, currentDatasetEntities());
         // Unscoped rather than empty when containment cannot be named here: too many suggestions is
         // a nuisance, none is a review surface that looks broken.
@@ -567,7 +596,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         const dataset = currentDataset();
         if (!dataset) throw new Error('interpretation: no dataset to interpret into');
 
-        const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
+        const modelFor = (entity: string) => getEntityForDataset(entity, dataset.handle);
         const predicate = containmentPredicate(modelFor, currentDatasetEntities());
         if (!predicate)
           throw new Error('interpretation: this space has no collection schema to read a transcript from');
@@ -597,7 +626,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         const dataset = currentDataset();
         if (!port?.reconcile || !dataset) return 0;
 
-        const modelFor = (entity: string) => getEntitiesForPerspective(entity, dataset.handle);
+        const modelFor = (entity: string) => getEntityForDataset(entity, dataset.handle);
         const predicate = containmentPredicate(modelFor, currentDatasetEntities());
         if (!predicate) return 0;
 
@@ -757,11 +786,11 @@ export function DatasetStoreProvider(props: ParentProps) {
   }
 
   /** Load the dataset snapshot and bootstrap the sidebar ordering on first run. */
-  async function loadDatasets(): Promise<void> {
+  async function loadDatasets(known?: AppDataset[] | null): Promise<void> {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return;
     try {
-      const refs = (await lifecycle.list()).map(toApp);
+      const refs = known ?? (await lifecycle.list()).map(toApp);
       setDatasets(refs);
 
       // Bootstrap dataset order on first load (when no order has been saved yet)
@@ -797,33 +826,41 @@ export function DatasetStoreProvider(props: ParentProps) {
    * leave the other unset — no settings because the notes schema failed to refresh is the wrong
    * way round.
    */
-  async function initSystemDatasets(): Promise<void> {
+  async function readDatasets(): Promise<AppDataset[] | null> {
     const lifecycle = session.lifecycle();
-    if (!lifecycle) return;
-    let refs: AppDataset[];
+    if (!lifecycle) return null;
     try {
-      refs = (await lifecycle.list()).map(toApp);
+      return (await lifecycle.list()).map(toApp);
     } catch (error) {
-      console.error('DatasetStore: initSystemDatasets error', error);
-      return;
+      console.error('DatasetStore: could not read the dataset list', error);
+      return null;
     }
+  }
 
-    try {
-      await initRootDataset(refs);
-    } catch (error) {
-      console.error('DatasetStore: root dataset error', error);
-    }
-    try {
-      await initPersonalDataset(refs);
-    } catch (error) {
-      console.error('DatasetStore: personal dataset error', error);
-    }
-    try {
-      const existingTest = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.test);
-      setTestDataset(existingTest ?? toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.test)));
-    } catch (error) {
-      console.error('DatasetStore: test dataset error', error);
-    }
+  function prepareDataset(dataset: AppDataset): void {
+    session.backendPorts()?.schemas.prepare?.(dataset.handle);
+  }
+
+  async function initSystemDatasets(known?: AppDataset[] | null): Promise<AppDataset[] | null> {
+    const lifecycle = session.lifecycle();
+    if (!lifecycle) return null;
+    const refs = known ?? (await readDatasets());
+    if (!refs) return null;
+
+    // Side by side: the three share nothing but the list, and each is several round trips to the
+    // backend — one after another they were most of the wait before a space could open.
+    const made: AppDataset[] = [];
+    await Promise.all([
+      initRootDataset(refs, made).catch((error) => console.error('DatasetStore: root dataset error', error)),
+      initPersonalDataset(refs, made).catch((error) => console.error('DatasetStore: personal dataset error', error)),
+      (async () => {
+        const existingTest = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.test);
+        const test = existingTest ?? toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.test));
+        if (!existingTest) made.push(test);
+        setTestDataset(test);
+      })().catch((error) => console.error('DatasetStore: test dataset error', error)),
+    ]);
+    return [...refs, ...made];
   }
 
   /**
@@ -833,29 +870,47 @@ export function DatasetStoreProvider(props: ParentProps) {
    * to query. Module entities no longer install here — an agent-scoped module's records are the
    * agent's own things, and they live in the personal space. See `systemDatasets.ts`.
    */
-  async function initRootDataset(refs: AppDataset[]): Promise<void> {
+  async function initRootDataset(refs: AppDataset[], made: AppDataset[]): Promise<void> {
     const lifecycle = session.lifecycle()!;
     const schemas = session.backendPorts()!.schemas;
     const existing = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.root);
 
     if (existing) {
+      // An existing root already holds `AgentSettings`, so reading it need not wait for the
+      // reinstall, which only brings shapes up to date. Settled rather than awaited alongside it:
+      // a failed read must not leave the root unset, which loses every saved template and theme.
+      const early = AgentSettings.findOne(existing.handle).then(
+        (settings) => ({ settings }),
+        (error: unknown) => ({ error }),
+      );
       await schemas.installRoot(existing.handle);
       setRootDataset(existing);
-      const settings = await AgentSettings.findOne(existing.handle);
+      const read = await early;
+      // The likeliest failure is the first boot after the settings model changed, when the read
+      // lands mid-reinstall. The reinstall has finished now, so ask once more.
+      const settings = 'settings' in read ? read.settings : await AgentSettings.findOne(existing.handle);
       if (settings) setAgentSettings(settings);
       return;
     }
 
     trace('dataset', 'root:create');
     const created = toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.root));
+    made.push(created);
     await schemas.installRoot(created.handle);
-    const settings = await AgentSettings.create(created.handle, {
+    await AgentSettings.create(created.handle, {
       currentTemplateId: 'default',
       currentThemeId: 'dark',
       defaultThemeId: 'dark',
     });
     setRootDataset(created);
-    setAgentSettings(settings);
+    // Read back rather than holding what the create answered with, which is the same thing the
+    // `existing` branch above does one screen up. This signal lives for the life of the app and its
+    // relations *are* read — `installedTemplates` and `installedThemes` decide which custom
+    // templates and themes the pickers show — and a create's answer carries none (see `NewRecord`).
+    // Held, the very first session after an account is made would install a template and go on
+    // reading an empty list, so the thing it had just installed never showed as installed.
+    const settings = await AgentSettings.findOne(created.handle);
+    if (settings) setAgentSettings(settings);
     trace('dataset', 'root:created', { id: created.id });
   }
 
@@ -874,21 +929,24 @@ export function DatasetStoreProvider(props: ParentProps) {
    * No `Space` record. Nothing yet navigates into this dataset, and a record would put it in every
    * list that reads `Space` — which is exactly the listing a system dataset stays out of.
    */
-  async function initPersonalDataset(refs: AppDataset[]): Promise<void> {
+  async function initPersonalDataset(refs: AppDataset[], made: AppDataset[]): Promise<void> {
     const lifecycle = session.lifecycle()!;
     const schemas = session.backendPorts()!.schemas;
     const existing = refs.find((d) => d.name === SYSTEM_DATASET_NAMES.personal);
     const personal = existing ?? toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.personal));
+    if (!existing) made.push(personal);
     const moduleSchemas = [...moduleRegistry.moduleSchemas(schemas), ...moduleRegistry.agentSchemas(schemas)];
 
     if (!existing || !(await schemas.hasCoreSchema(personal.handle))) {
       await schemas.installSpace(personal.handle, moduleSchemas);
     } else {
-      // The same two catches a space gets on every switch — see `switchDataset`.
-      await schemas.installModules(personal.handle, moduleSchemas);
-      await schemas.refreshSpace(personal.handle).catch((err) => {
-        console.error('DatasetStore: personal space schema refresh failed', err);
-      });
+      // The same two catches a space gets on every switch, run together — see `switchDataset`.
+      await Promise.all([
+        schemas.installModules(personal.handle, moduleSchemas),
+        schemas.refreshSpace(personal.handle).catch((err) => {
+          console.error('DatasetStore: personal space schema refresh failed', err);
+        }),
+      ]);
     }
     setPersonalDataset(personal);
   }
@@ -983,7 +1041,7 @@ export function DatasetStoreProvider(props: ParentProps) {
    */
   let requestedDataset: string | null = null;
 
-  async function switchDataset(uuid: string): Promise<void> {
+  async function switchDataset(uuid: string, options?: { stillWanted?: () => boolean }): Promise<void> {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return;
     requestedDataset = uuid;
@@ -1023,21 +1081,36 @@ export function DatasetStoreProvider(props: ParentProps) {
         // stored for class X" in a dataset that otherwise looks healthy. Module shapes therefore
         // install on every switch; the port diffs before writing, so this is a read in the
         // common case.
-        await schemas.installModules(handle, moduleRegistry.moduleSchemas(schemas));
+        //
         // The same skip has a second cost, in two forms: a *property* added to one of WE's own
         // models, and a *model* added outright, both reach newly created spaces only — the first
         // silently dropping writes, the second failing every query against the new entity with "No
         // SHACL shape stored for class X". Refresh covers both; it diffs before writing.
-        const written = await schemas.refreshSpace(handle).catch((err) => {
-          console.error('DatasetStore: space schema refresh failed', err);
-          return [] as string[];
-        });
+        //
+        // Together rather than in turn: they register disjoint classes (a module's, WE's own) from
+        // the same reads, which the port shares — so both cost the one round trip.
+        const [, written] = await Promise.all([
+          schemas.installModules(handle, moduleRegistry.moduleSchemas(schemas)),
+          schemas.refreshSpace(handle).catch((err) => {
+            console.error('DatasetStore: space schema refresh failed', err);
+            return [] as string[];
+          }),
+        ]);
         if (written.length) console.info(`DatasetStore: brought space schemas up to date — ${written.join(', ')}`);
       }
 
       // Everything above is a round trip, and the reader may have asked for somewhere else while
       // they ran. Publishing now would overwrite a newer switch with an older answer.
       if (requestedDataset !== uuid) return;
+      /*
+        The other way a switch goes stale: not superseded by a later switch, but by a later
+        *navigation*. `requestedDataset` only knows about switches, so a switch the address bar asked
+        for could not tell that the address had since moved on — and it published anyway, landing the
+        previous space's data under the current space's URL. The caller that can answer "is this
+        still what the address says" is the one that read the address, so it is asked here rather
+        than guessed at.
+      */
+      if (options?.stillWanted && !options.stillWanted()) return;
 
       // SDNA is installed — switch immediately so WE templates render. WE model classes
       // are pre-registered at module load; foreign (non-WE) model resolution isn't needed
@@ -1135,7 +1208,9 @@ export function DatasetStoreProvider(props: ParentProps) {
 
     trackDataset,
     onDatasetRemoved: removedListeners.add,
+    readDatasets,
     initSystemDatasets,
+    prepareDataset,
     loadDatasets,
     subscribeToChanges,
     getDatasetOrder,

@@ -7,6 +7,12 @@ import {
   resolveCallExtractionTargets,
   resolveSpaceExtractionTargets,
 } from '@shared/callExtraction';
+import {
+  CONTAINER_ACTIVITY_QUERY,
+  type ContainerActivity,
+  mentionsOf,
+  unreadContainerIds,
+} from '@shared/containerActivity';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { buildGuestLink } from '@shared/guestLink';
 import {
@@ -56,6 +62,17 @@ import {
   syncSpaceToParent,
 } from '@shared/spaceSync';
 import { isSystemDataset } from '@shared/systemDatasets';
+import {
+  approvalsOf,
+  compileTaskFlow,
+  createTaskFlowActions,
+  flowStateOf,
+  needsAgreement,
+  openMoveOf,
+  TASK_FLOW,
+  type TaskStateRule,
+} from '@shared/taskFlow';
+import { taskFlowLive } from '@shared/taskFlowLive';
 import { resolveSpaceTheme, type ThemeResolutionInput } from '@shared/themeResolution';
 import { copyText, deriveSlug } from '@shared/utils';
 import type { ViewSetting } from '@shared/viewResolution';
@@ -67,7 +84,7 @@ import {
   routableSections,
   viewSettings,
 } from '@shared/viewResolution';
-import type { AgentProfileSummary, DatasetRef } from '@we/backend-shared';
+import type { AgentProfileSummary, DatasetRef, FlowSnapshot, NewRecord } from '@we/backend-shared';
 import { displayName, trace } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
@@ -90,7 +107,7 @@ import {
   DEFAULT_TASK_STATES,
   type FileData,
   FOLLOW_SPACE,
-  getEntitiesForPerspective,
+  getEntityForDataset,
   type InvolvementSemantic,
   InvolvementType,
   LocationBlock,
@@ -337,6 +354,10 @@ export interface TaskStateView {
   icon: string;
   retired: boolean;
   defined: boolean;
+  /** How many distinct people must agree before a task enters this state. 1 is a plain drop. */
+  approvals: number;
+  /** The involvement kind whose holders' agreement counts, or empty for any member's. */
+  approverKind: string;
 }
 
 export interface SpaceMetaUpdate {
@@ -875,8 +896,25 @@ export interface SpaceStore {
    */
   updateTaskState: (
     slug: string,
-    updates: { name?: string; icon?: string; color?: string; semantic?: TaskStateView['semantic'] },
+    updates: {
+      name?: string;
+      icon?: string;
+      color?: string;
+      semantic?: TaskStateView['semantic'];
+      approvals?: number;
+      approverKind?: string;
+    },
   ) => Promise<void>;
+  /**
+   * Whether this space's task states ask for agreement — some state needs more than one approval, or
+   * names whose approval counts. Where they do, a card dragged into such a state waits rather than
+   * moving, and the board shows what it is waiting on.
+   */
+  taskFlowEnabled: Accessor<boolean>;
+  /** Agree with the move a task is waiting on — the same as dragging it there yourself. */
+  approveTaskMove: (taskId: string) => Promise<void>;
+  /** Take back this agent's own vote on the move a task is waiting on. Never touches anybody else's. */
+  withdrawTaskMove: (taskId: string) => Promise<void>;
   /**
    * Withdraw a state from use, or bring it back. Never touches the work sitting in it. By slug: a
    * default has no record until this, or a reorder, adopts it.
@@ -949,7 +987,14 @@ export interface SpaceStore {
   updateSpaceInCache: (dataset: AppDataset, updates: Partial<Space>) => void;
 
   // Boot wiring (used by the boot controller, not by schemas)
-  loadSpaces: () => Promise<void>;
+  /** Given the dataset list, reads spaces from it rather than from the published one — see there. */
+  loadSpaces: (candidates?: readonly AppDataset[] | null) => Promise<void>;
+  /**
+   * Start what opening the space at this address needs — its templates and its schema reads — for a
+   * boot that is about to open it. Answers nothing, and does nothing for an address that is not a
+   * space among these datasets.
+   */
+  prepareSpaceAt: (path: string, datasets: readonly AppDataset[]) => void;
 
   // Testing
 }
@@ -1507,12 +1552,18 @@ export function SpaceStoreProvider(props: ParentProps) {
     return mktId ? items.filter((item) => item.spaceId !== mktId) : items;
   });
 
-  /** Load the Space model from every candidate dataset. Runs after DatasetStore.loadDatasets. */
-  async function loadSpaces(): Promise<void> {
+  /**
+   * Load the Space model from every candidate dataset.
+   *
+   * From the published dataset list, or from one handed in: a boot passes the list it just read, so
+   * this runs while the system datasets come up rather than after — it only ever reads datasets that
+   * already exist, and a system dataset made by the boot is never a candidate.
+   */
+  async function loadSpaces(from?: readonly AppDataset[] | null): Promise<void> {
     try {
       // System datasets hold no Space record — the root and the sandbox have no Space SDNA at all,
       // so `Space.findOne` on them is an RPC 500 "No SHACL shape" error — and none is a space.
-      const candidates = datasetStore.datasets().filter((d) => !isSystemDataset(d.name));
+      const candidates = (from ?? datasetStore.datasets()).filter((d) => !isSystemDataset(d.name));
       // Any other joined dataset without Space SDNA installed (e.g. a Flux
       // neighbourhood) would throw the same "No SHACL shape" error. Since these run in a
       // Promise.all, one rejection would otherwise abort the whole batch and hide every
@@ -1534,6 +1585,15 @@ export function SpaceStoreProvider(props: ParentProps) {
     } catch (error) {
       console.error('SpaceStore: loadSpaces error', error);
     }
+  }
+
+  function prepareSpaceAt(path: string, datasets: readonly AppDataset[]): void {
+    const [first, segment] = path.split(/[?#]/)[0].split('/').filter(Boolean);
+    if (first !== 'space' || !segment) return;
+    const ds = datasets.find((d) => datasetAddressedBy(d, segment));
+    if (!ds) return;
+    datasetStore.prepareDataset(ds);
+    void templateStore.preloadSpaceTemplates(ds).catch(() => {});
   }
 
   const [linkLanguageTemplateOptions, setLinkLanguageTemplateOptions] = createSignal<LinkLanguageOption[]>([]);
@@ -1563,7 +1623,23 @@ export function SpaceStoreProvider(props: ParentProps) {
       const locationRecord = await LocationBlock.create(dataset, location);
       await spaceRecord.setLocation(locationRecord);
     }
-    return spaceRecord;
+    /*
+      Read back, with the one relation this record's readers read.
+
+      A create answers with the row it wrote and none of its relations (see `NewRecord`) — and the
+      location is linked *after* the create, so what the create returned could not carry one even in
+      principle. Both callers put the result straight into `mySpaces`, and `spaceList` reads
+      `space.location` off those rows: a space made with a place on it showed none until the next
+      launch, because nothing re-reads `mySpaces` after boot.
+
+      `loadSpaces` asks for exactly this include, which is the other half of the same answer — the
+      two paths into `mySpaces` now agree about what a row carries.
+    */
+    const readBack = await Space.findOne(dataset, { where: { id: spaceRecord.id }, include: { location: true } });
+    // Nothing to do if the read-back fails after a create that did not: the space exists, and what
+    // the create answered with is what this function used to return. Degrades to the old behaviour —
+    // a location that appears on the next launch — rather than failing a space that was written.
+    return readBack ?? (spaceRecord as Space);
   }
 
   async function createSpace(
@@ -1841,7 +1917,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       await new Promise((resolve) => setTimeout(resolve, wait));
       wait = Math.min(Math.round(wait * 1.5), JOIN_RECOVERY_MAX_POLL_MS);
 
-      const refs = await lifecycle.list().catch(() => null);
+      // Fresh: the adapter may otherwise answer from the very events this is not relying on.
+      const refs = await lifecycle.list({ fresh: true }).catch(() => null);
       const match = refs?.find((ref) => datasetAnswersTo(ref, id));
       if (match) return match;
     }
@@ -1863,7 +1940,9 @@ export function SpaceStoreProvider(props: ParentProps) {
       // since — and the case that matters here is the one where neither covers it: a join this
       // client abandoned, finished by the backend while the page was reloading. Joining again there
       // is how one space becomes two.
-      const alreadyJoined = (await lifecycle.list().catch(() => null))?.find((ref) => datasetAnswersTo(ref, id));
+      const alreadyJoined = (await lifecycle.list({ fresh: true }).catch(() => null))?.find((ref) =>
+        datasetAnswersTo(ref, id),
+      );
       if (alreadyJoined) {
         trace('space', 'join:already', { id: alreadyJoined.id });
         await finishJoin(alreadyJoined, focus);
@@ -2071,6 +2150,14 @@ export function SpaceStoreProvider(props: ParentProps) {
     ...boardOptimism.ports,
     offeredStates: () => offeredTaskStates(),
     notify: (message) => toastService.error(message),
+    // Wrapped for `offeredStates`' reason: the flow is worked out from the states, further down.
+    flow: {
+      enabled: () => taskFlow.enabled(),
+      needsAgreement: (slug) => needsAgreement(taskFlowRules().find((state) => state.slug === slug)),
+      stateOf: (taskId) => flowStateOf(taskFlowLive.view(), taskId),
+      move: (taskId, from, to) => taskFlow.move(taskId, from, to),
+      entryFor: (to) => taskFlow.entryFor(to),
+    },
     /*
       A staged suggestion for one property, dropped — see `BoardDeps.resolveSuggestion`. Checked
       against the proposal list first rather than rejected blind, since a reject on a record with no
@@ -2589,7 +2676,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       The cost is the flicker the edit-in-place was introduced to remove: a rating moved from 3 to 4
       passes through "nobody has rated this" for a round trip, so the mean dips and comes back. A
       figure that is briefly wrong is worth more than one that is permanently wrong, and the real fix
-      is an executor that triggers on the shapes a query includes — filed in the ad4m follow-ups.
+      is an executor that triggers on the shapes a query includes.
 
       A withdrawal — `null` — removes the record rather than storing anything, which is what keeps a
       withdrawn reaction absent everywhere instead of being a row every count has to remember to
@@ -2645,7 +2732,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * decision, and an export that answered it differently would disagree with what the model was shown.
    */
   async function callTranscript(p: DatasetProxy, callId: string) {
-    const modelFor = (entity: string) => getEntitiesForPerspective(entity, p);
+    const modelFor = (entity: string) => getEntityForDataset(entity, p);
     const predicate = containmentPredicate(modelFor, datasetStore.currentDatasetEntities());
     const turns = predicate
       ? await gatherTranscriptTurns(
@@ -2857,7 +2944,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     return [...bySlug.values()];
   }
 
-  async function loadTaskStates(): Promise<void> {
+  /**
+   * Read the space's own states. `quiet` for a re-read after somebody changed one: the list is
+   * already on screen, and dropping back to "not loaded" would flash every surface gated on it.
+   */
+  async function loadTaskStates(quiet = false): Promise<void> {
     const dataset = datasetStore.currentDataset()?.handle;
     const uuid = datasetStore.currentDataset()?.id;
     const ports = session.backendPorts()?.schemas;
@@ -2866,7 +2957,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       setTaskStatesLoaded(true);
       return;
     }
-    setTaskStatesLoaded(false);
+    if (!quiet) setTaskStatesLoaded(false);
     try {
       // Every space predates this entity, so none of them have its shape installed. `ensure` is the
       // diff-first idempotent path — a read in the common case — and the same step `loadShapes`
@@ -2884,6 +2975,9 @@ export function SpaceStoreProvider(props: ParentProps) {
           icon: r.icon || '',
           retired: Boolean(r.retired),
           defined: true,
+          // A record written before these existed has neither: one approval, from anybody.
+          approvals: approvalsOf({ slug: '', approvals: r.approvals }),
+          approverKind: r.approverKind || '',
         })),
       );
     } catch (error) {
@@ -2894,9 +2988,36 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
+  /*
+    Read on entering the space, then follow it.
+
+    The states used to be read on entering and after this agent's own edits, and never otherwise —
+    so another member's rename, colour or new state reached nobody until they next switched space.
+    That was a cosmetic gap until a state could ask for agreement: a member still holding the old
+    rule was offered Approve on a move their vote no longer counted toward.
+
+    The watch starts after the first read, which is what installs the entity's shape on a space that
+    predates it — a query against a shape the dataset does not hold has nothing to watch.
+  */
   createEffect(() => {
-    void datasetStore.currentDataset()?.id;
-    void loadTaskStates();
+    const dataset = datasetStore.currentDataset()?.handle;
+    const weSpace = datasetStore.isWeSpace();
+    let stopped = false;
+    let watch: { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+    onCleanup(() => {
+      stopped = true;
+      watch?.dispose();
+    });
+    void loadTaskStates().then(() => {
+      if (stopped || !dataset || !weSpace) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      watch = (TaskState as any).query(dataset, {}) as typeof watch;
+      watch
+        ?.subscribe(() => void (!stopped && loadTaskStates(true)))
+        .catch((error: unknown) => {
+          console.warn('SpaceStore: could not watch task states', error);
+        });
+    });
   });
 
   /**
@@ -2949,7 +3070,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     a.color === b.color &&
     a.icon === b.icon &&
     a.retired === b.retired &&
-    a.defined === b.defined;
+    a.defined === b.defined &&
+    a.approvals === b.approvals &&
+    a.approverKind === b.approverKind;
 
   /**
    * The states this space uses — its own records, and beneath them every default nobody has
@@ -2975,6 +3098,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       semantic: d.semantic as TaskStateView['semantic'],
       retired: false,
       defined: false,
+      approvals: 1,
+      approverKind: '',
     }));
     const states = [...own, ...virtual];
     /*
@@ -3011,6 +3136,149 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   /** The states a person should be offered — the same list, without the withdrawn ones. */
   const offeredTaskStates = createMemo<TaskStateView[]>(() => taskStates().filter((s) => !s.retired));
+
+  /*
+    The space's task states as a flow — see `shared/taskFlow.ts` for when a space has one and what it
+    compiles to.
+
+    Every state, withdrawn ones included: work still sits in a withdrawn state, and a flow that did
+    not know it could not move that work out of it.
+  */
+  const taskFlowRules = createMemo<TaskStateRule[]>(
+    () => taskStates().map((s) => ({ slug: s.slug, approvals: s.approvals, approverKind: s.approverKind })),
+    [],
+    { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+  );
+  const taskFlowDefinition = createMemo(() => compileTaskFlow(taskFlowRules()));
+  const taskFlowEnabled = (): boolean =>
+    Boolean(taskFlowDefinition() && session.backendPorts()?.flows && datasetStore.isWeSpace());
+  const [taskFlowSnapshot, setTaskFlowSnapshot] = createSignal<FlowSnapshot | null>(null);
+
+  const taskFlow = createTaskFlowActions({
+    dataset: () => datasetStore.currentDataset()?.handle,
+    port: () => (taskFlowEnabled() ? session.backendPorts()?.flows : undefined),
+    states: () => taskFlowRules(),
+    snapshot: () => taskFlowSnapshot(),
+    me: () => session.me()?.did,
+  });
+
+  /*
+    Keep the definition installed, and watch the runs.
+
+    Keyed on the space and the definition's text, so a recompute of the states that changes nothing
+    about agreement — a rename, a colour — neither reinstalls nor re-subscribes.
+
+    **Installed only by whoever administers the space.** The definition is shared: every member's
+    board derives from the one copy the space holds, so one person owns writing it — the same person
+    the space's other shared settings answer to. A member's device only watches. The port diffs
+    before writing, so an administrator opening a space whose definition is already current writes
+    nothing.
+  */
+  const taskFlowKey = createMemo(() => {
+    const definition = taskFlowDefinition();
+    const id = datasetStore.currentDataset()?.id;
+    return definition && id && taskFlowEnabled() ? `${id}\u0000${JSON.stringify(definition)}` : '';
+  });
+  createEffect(() => {
+    const key = taskFlowKey();
+    setTaskFlowSnapshot(null);
+    if (!key) return;
+    const port = session.backendPorts()?.flows;
+    const dataset = datasetStore.currentDataset()?.handle;
+    const definition = untrack(taskFlowDefinition);
+    if (!port || !dataset || !definition) return;
+    let stop: (() => void) | undefined;
+    let cancelled = false;
+    onCleanup(() => {
+      cancelled = true;
+      stop?.();
+    });
+    void (async () => {
+      if (untrack(canAdministerCurrentSpace)) {
+        try {
+          await port.install(dataset, definition);
+        } catch (error) {
+          console.error('SpaceStore: could not install the task flow', error);
+          toastService.error('Could not save which moves need agreement');
+        }
+      }
+      if (cancelled) return;
+      try {
+        const unsubscribe = await port.watch(dataset, TASK_FLOW, (snapshot) => {
+          if (!cancelled) setTaskFlowSnapshot(snapshot);
+        });
+        if (cancelled) unsubscribe();
+        else stop = unsubscribe;
+      } catch (error) {
+        console.warn('SpaceStore: could not watch the task flow', error);
+      }
+    })();
+  });
+
+  // What the board draws from — the snapshot and the rules, together, or nothing.
+  createEffect(() => {
+    const snapshot = taskFlowSnapshot();
+    const rules = Object.fromEntries(
+      taskFlowRules().map((rule) => [
+        rule.slug,
+        { approvals: approvalsOf(rule), approverKind: rule.approverKind ?? '' },
+      ]),
+    );
+    taskFlowLive.set(taskFlowKey() && snapshot ? { snapshot, rules } : null);
+  });
+  onCleanup(() => taskFlowLive.set(null));
+
+  /**
+   * Write `status` to follow a move that happened, for every surface that reads it rather than the run.
+   * Whoever's action made the move writes it, so it is written once and by somebody who saw it happen.
+   */
+  async function mirrorTaskStatus(taskId: string, slug: string): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    const Task = p ? getEntityForDataset('TaskBlock', p) : undefined;
+    if (!p || !Task) return;
+    const task = (await Task.findOne(p, { where: { id: taskId } })) as
+      { status?: string; save(): Promise<unknown> } | null | undefined;
+    if (!task || task.status === slug) return;
+    task.status = slug;
+    const started = performance.now();
+    await task.save();
+    trace('flows', 'mirror', { taskId, slug, ms: Math.round(performance.now() - started) });
+  }
+
+  /**
+   * Agree with the move a task is waiting on — which is asking for the same move, so it is exactly
+   * what dragging the card there would do.
+   */
+  async function approveTaskMove(taskId: string): Promise<void> {
+    const view = taskFlowLive.view();
+    const move = openMoveOf(view, taskId);
+    const from = flowStateOf(view, taskId);
+    if (!move || !from) return;
+    try {
+      const outcome = await taskFlow.move(taskId, from, move.to);
+      if (outcome === 'moved' || outcome === 'already-there') await mirrorTaskStatus(taskId, move.to);
+      else if (outcome === 'stalled') {
+        toastService.error('That card is stuck between two moves — one of them has to be withdrawn');
+      } else if (outcome === 'slow') {
+        // Not a failure: the vote is usually counted after the call gives up waiting, and the board
+        // moves the card when it is.
+        toastService.info('The node is still counting your approval — the card will move when it has');
+      }
+    } catch (error) {
+      console.error('SpaceStore: could not agree with that move', error);
+      toastService.error('Could not agree with that move');
+    }
+  }
+
+  /** Take back this agent's vote on the move a task is waiting on. */
+  async function withdrawTaskMove(taskId: string): Promise<void> {
+    try {
+      await taskFlow.withdraw(taskId);
+    } catch (error) {
+      console.error('SpaceStore: could not withdraw that vote', error);
+      toastService.error('Could not withdraw that');
+    }
+  }
 
   /*
     Hand the record layer the vocabularies this community owns.
@@ -3101,7 +3369,10 @@ export function SpaceStoreProvider(props: ParentProps) {
    * state, and never a side effect of naming a different one. Answers null for a slug that is
    * neither a record nor a default.
    */
-  async function adoptTaskState(p: DatasetProxy, slug: string): Promise<TaskState | null> {
+  // `NewRecord`, because a caller wants a record to *act on* — rename it, withdraw it, put it in an
+  // order — and one of the two ways this answers is a create, which carries no relations. Nothing
+  // here reads one; `save` and `delete` survive, being the record's own and not a relation's.
+  async function adoptTaskState(p: DatasetProxy, slug: string): Promise<NewRecord<TaskState> | null> {
     const existing = await TaskState.findAll(p, { where: { slug } }).catch(() => [] as TaskState[]);
     if (existing.length) return dedupeBySlug(existing)[0] ?? null;
     const fallback = DEFAULT_TASK_STATES.find((d) => d.slug === slug);
@@ -3184,7 +3455,14 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   async function updateTaskState(
     slug: string,
-    updates: { name?: string; icon?: string; color?: string; semantic?: TaskStateView['semantic'] },
+    updates: {
+      name?: string;
+      icon?: string;
+      color?: string;
+      semantic?: TaskStateView['semantic'];
+      approvals?: number;
+      approverKind?: string;
+    },
   ): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
     if (!p || !slug || !updates) return;
@@ -3198,6 +3476,13 @@ export function SpaceStoreProvider(props: ParentProps) {
       if (updates.semantic !== undefined && TASK_STATE_SEMANTICS.includes(updates.semantic)) {
         record.semantic = updates.semantic;
       }
+      /*
+        What agreement a state asks for. Changing either is what turns the space's states into a flow
+        or back — nothing else has to be switched — and the flow's definition follows from the states
+        on the next read, installed by whoever administers the space.
+      */
+      if (updates.approvals !== undefined) record.approvals = approvalsOf({ slug, approvals: updates.approvals });
+      if (updates.approverKind !== undefined) record.approverKind = updates.approverKind;
       await record.save();
       await loadTaskStates();
       await syncTaskStateHint();
@@ -3936,78 +4221,41 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Containers holding something newer than this agent's marker for them.
+   * The space's containers, read once for both unread dots and mentions — see `containerActivity.ts`.
    *
-   * One subscription for the whole space rather than a projection per row: the rail asked the same
-   * question for every channel, so a space with thirty channels opened thirty of them.
-   *
-   * A container with *no* marker counts as unread — it has never been opened, so everything in it is
-   * new. That case has to be written down rather than falling out of the comparison, because `>`
-   * against `undefined` is false and would have read as "nothing new here".
+   * Once per space: marking a container read changes the markers, not the containers, so the unread
+   * set is recomputed from these rows rather than by reading the space again.
    */
-  const [unreadNodeIds, setUnreadNodeIds] = createSignal<string[]>([]);
+  const [activityRows, setActivityRows] = createSignal<ContainerActivity[]>([]);
 
   createEffect(() => {
     const ds = datasetStore.currentDataset();
-    const markers = readMarkers();
-    if (!ds) {
-      setUnreadNodeIds([]);
-      return;
-    }
+    setActivityRows([]);
+    if (!ds) return;
 
     void (async () => {
       try {
-        const containers = await CollectionBlock.findAll(ds.handle, {
-          include: { $latestChild: { from: 'children', order: { createdAt: 'DESC' }, limit: 1 } },
-        });
-        const lastReadOf = new Map(markers.map((m) => [m.nodeId, m.lastReadAt]));
-        setUnreadNodeIds(
-          containers
-            .filter((container) => {
-              const latest = (container as unknown as { $latestChild?: { createdAt?: string } }).$latestChild;
-              if (!latest?.createdAt) return false;
-              const marker = lastReadOf.get(container.id);
-              // ISO-8601 UTC compares lexicographically in chronological order — see ReadMarker.
-              return marker === undefined || latest.createdAt > marker;
-            })
-            .map((container) => container.id),
-        );
+        const rows = await CollectionBlock.findAll(ds.handle, CONTAINER_ACTIVITY_QUERY);
+        // A read that lands after a space switch belongs to the space that was left.
+        if (datasetStore.currentDataset() === ds) setActivityRows(rows);
       } catch (error) {
-        console.error('SpaceStore: could not compute unread state', error);
-        setUnreadNodeIds([]);
+        console.error('SpaceStore: could not read container activity', error);
       }
     })();
   });
 
+  /**
+   * Containers holding something newer than this agent's marker for them.
+   *
+   * One read for the whole space rather than a projection per row: the rail asked the same question
+   * for every channel, so a space with thirty channels opened thirty of them.
+   */
+  const unreadNodeIds = createMemo(() => unreadContainerIds(activityRows(), readMarkers()));
+
   /** Nodes in this space naming this agent. See the interface for why the filter is not pushed down. */
-  // Typed number because that is what hydration actually returns — the old `string` here was
-  // only ever satisfied by `any` flowing through untyped model fields.
-  const [myMentions, setMyMentions] = createSignal<{ id: string; author: string; createdAt: number }[]>([]);
-
-  createEffect(() => {
-    const ds = datasetStore.currentDataset();
+  const myMentions = createMemo(() => {
     const did = session.me()?.did;
-    if (!ds || !did) {
-      setMyMentions([]);
-      return;
-    }
-
-    void (async () => {
-      try {
-        const nodes = await CollectionBlock.findAll(ds.handle, { include: { mentions: true } });
-        setMyMentions(
-          nodes
-            .filter((node) => (Array.isArray(node.mentions) ? node.mentions : []).includes(did))
-            // The contract keeps timestamps' representation the backend's business; comparison is
-            // the consumer's, made explicit here.
-            .map((node) => ({ id: node.id, author: node.author, createdAt: Number(node.createdAt) }))
-            .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
-        );
-      } catch (error) {
-        console.error('SpaceStore: could not read mentions', error);
-        setMyMentions([]);
-      }
-    })();
+    return did ? mentionsOf(activityRows(), did) : [];
   });
 
   /**
@@ -4981,9 +5229,29 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
     const current = untrack(datasetStore.currentDataset);
     if (current?.id === ds.id) return;
+    /*
+      A switch the address asked for publishes only if the address still asks for it.
+
+      `navigateToSpace` switches the dataset first and navigates second, so for a moment the stores
+      describe the new space while the URL still names the old one. A template that redirects its own
+      unknown addresses — Workshop's catch-all sends `/space/<old>/about` to `./canvas` — rewrites the
+      *old* space's address in that moment, and this effect read the rewrite as the reader asking for
+      the old space back. The switch it started was several round trips long; by the time it landed
+      the navigate had put the URL on the new space, and it published anyway: the previous space's
+      data and template under the current space's URL, with nothing left to match the route and
+      nothing to move it — the section guard rightly refuses to correct an address about a space it
+      is not reading from.
+
+      So the switch is told how to check, at the last moment, that the URL it was started from is
+      still the URL. Untracked, because the check runs inside the switch and not in this effect.
+    */
+    const stillAddressed = () => {
+      const now = untrack(routeStore.segments);
+      return now[0] === 'space' && datasetAddressedBy(ds, now[1] ?? '');
+    };
     void (async () => {
       await templateStore.preloadSpaceTemplates(ds);
-      await datasetStore.switchDataset(ds.id);
+      await datasetStore.switchDataset(ds.id, { stillWanted: stillAddressed });
     })();
   });
 
@@ -5009,7 +5277,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const CommunityClass = getEntitiesForPerspective('Community', ds.handle) as any;
+    const CommunityClass = getEntityForDataset('Community', ds.handle) as any;
     if (!CommunityClass) {
       setForeignSpacePrefill(null);
       return;
@@ -5122,6 +5390,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     createTaskState,
     updateTaskState,
     setTaskStateRetired,
+    taskFlowEnabled,
+    approveTaskMove,
+    withdrawTaskMove,
     reorderTaskStates,
     setInvolvement: involvements.setInvolvement,
     respondTo: involvements.respond,
@@ -5143,6 +5414,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateSpaceInCache,
 
     loadSpaces,
+    prepareSpaceAt,
   };
 
   return <SpaceContext.Provider value={store}>{props.children}</SpaceContext.Provider>;

@@ -72,6 +72,49 @@ The ROOT node carries one more, and it is required:
   template was designed with, panels for the surfaces the interface has (see Panels), and
   chromeReserve for a band the shell pins over the content. A root node without meta is refused.
 
+## Shapes the template says once: $defs and $ref
+
+A template often uses the same shape in several places — a card drawn in two display modes, a
+column arrangement that appears per person and per status. The root may carry those shapes in
+**$defs**, with a **$ref** node standing at each place one is used:
+
+{
+  "type": "Column",
+  "meta": { "...": "..." },
+  "$defs": { "d1": { "type": "Card", "children": ["…the whole card…"] } },
+  "children": [
+    { "type": "$ref", "props": { "def": "d1" } },
+    { "type": "$ref", "props": { "def": "d1" } }
+  ]
+}
+
+Those two render exactly what two copies of the card would. The definitions live INSIDE the
+template, so everything that will render is still in the document — nothing is fetched, and a
+template can be read as the thing it will be.
+
+**You will meet these; you rarely need to write them.** Write ordinary nodes. Shapes are hoisted
+automatically, so a thing you write out twice becomes one definition without you doing anything.
+
+**Editing one is two different acts, and the difference is which node you patch:**
+
+- Patch a node **inside a definition** and the change shows at EVERY use of that shape. This is
+  usually what is wanted — "make the cards wider" is one shape and every card.
+- To make a single use differ, send a patch of { "targetId": "<the $ref's id>", "split": true }. That use
+  gets a copy of the shape to itself and everything else carries on sharing. The tool result lists
+  the copy's nodes by id, so the patch that changes one of them follows in the same turn. **Never
+  re-send the shape to do this** — it is thousands of tokens, and a shape retyped from memory loses
+  something every time, for a copy the editor is already holding and has just named for you.
+
+The tool result says which happened: a patch that reached a shared shape comes back naming how
+many places it changed. If that is not what the request meant, fix it in the same turn.
+
+**Where the words do not decide between the two, ask rather than guess.** "Make the card blue",
+said about a card on screen, is as likely to mean that one as all of them, and the two are not
+equally easy to undo: changing one of six is a split and a patch, where changing six when one was
+meant has already repainted five things somebody did not look at. Say which places are involved —
+the count is in the tool result — and let them choose. Guess only where the request names the
+scope itself ("all the cards", "this one").
+
 Example node:
 {
   "type": "we-button",
@@ -113,24 +156,34 @@ Example — close modal after async submission:
 Example — navigate to newly created item:
 { "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$action": "routeStore.navigate", "args": [{ "$": "\`/space/\${result.uuid}\`" }] }] }
 
+An action runs only when somebody asked for it. A press, a key, typing, a drop or a paste that reaches
+the element whose handler calls it counts as asking — and so does whatever the element does in answer,
+even a moment later, once. An event that happens to the element by itself does not: onLoad, onError,
+onToggle, onFocus, onMouseEnter, onAnimationEnd, a component reporting its size. Wired there, an action
+that stores something, publishes something or reaches a device is refused and does nothing; put it on
+the press instead. Navigating, opening and closing surfaces and editing an unsaved draft are exempt, so
+they work anywhere. onSuccess, onError and onFinally count as part of the press that started them, and
+so does onBlur on a field somebody typed into. The validator warns about a write on an event nobody causes.
+
 Record mutations via $action (use these for creating/updating/deleting records):
 A RECORD is one stored thing; an ENTITY is its type. Every one of these takes the entity name first
 and acts on a record of it.
 
-record.create — creates a record in the current perspective (default) or a specified one:
-{ "$action": "record.create", "args": ["EntityName", { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
-The third argument is an options object. Omit it to use the current space perspective.
+record.create — creates a record in the current dataset (default) or a specified one:
+{ "$action": "record.create", "args": ["EntityName", { "field": "value" }, { "dataset": "datasetStore.rootDataset" }] }
+The third argument is an options object. Omit it to write into the space on screen.
 
 record.update — updates one record:
 { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "newValue" }] }
-To target a non-current perspective: { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
+To target another dataset: { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "value" }, { "dataset": "datasetStore.rootDataset" }] }
 
 record.delete — deletes one record:
 { "$action": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
 
-Use perspective: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.), and
+Use dataset: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.), and
 'datasetStore.personalDataset' for the agent's own content (a note, a Pocket folder). Both are chrome-tier.
-Use the default (no perspective) for space-scoped entities (Space, Signal, etc.).
+Use the default (no dataset) for space-scoped entities (Space, Signal, etc.). The same key $query
+takes, and it names the same accessors.
 
 record.* writes directly; recordStore is the form surface over the same job — it derives a form from
 the entity's own declaration, so a community's newest entity is creatable with no schema written for
@@ -200,27 +253,29 @@ values may be expressions (in an expression) or tokens (in a $query):
 so: "posts with no comments", "nodes carrying a relationship of this kind". Without them the caller
 fetched everything with its children and counted client-side. An empty clause means "any", so
 { comments: { some: {} } } is "has at least one". They nest — the clause inside one may itself
-contain a quantifier — and they are native on AD4M, where they compile to a SPARQL EXISTS group.
+contain a quantifier — and they run natively in a $query, so nothing is fetched to count.
 
 A key is read as a quantifier because it carries "some" or "none", not because the model says it is
 a relation. So a scalar property can never be compared with those two words, and everything else on
 a relation-named key stays an ordinary field compare.
 
 A bare list is the positive counterpart of "not" with a list, and the way to fetch a known set:
-{ id: ['id1', 'id2', 'id3'] }. Native on the AD4M backend, where it pushes down to a SPARQL VALUES
-clause. An empty list matches nothing, which is what "none of these" should mean.
+{ id: ['id1', 'id2', 'id3'] }. Native in a $query. An empty list matches nothing, which is what
+"none of these" should mean.
 
-An ABSENT property is the trap worth knowing, and "not" is where the two backends disagree.
+An ABSENT property is the trap worth knowing, and "not" is where a $query and filter() disagree.
 
-A record that never had a property written carries no value for it — on AD4M a property is a link,
-so it is simply not there. Three cases, and the middle one differs by backend:
+A record that never had a property written carries no value for it — a property is stored as a
+link, so an unwritten one is simply not there. Three cases, and the middle one differs by where it
+is evaluated:
 
   { field: 'x' }             — does NOT match an absent value. Both agree.
-  { field: { not: 'x' } }    — MATCHES an absent value inside filter() and on the in-memory
-                               backend (undefined !== 'x'), and does NOT match on AD4M, where
-                               != over an unbound variable excludes the row, exactly as SQL's
-                               three-valued logic excludes NULL. A $query where written with "not"
-                               can therefore pass every test and come back empty in production.
+  { field: { not: 'x' } }    — does NOT match an absent value in a $query, on any backend: !=
+                               over an unbound value excludes the row, exactly as SQL's
+                               three-valued logic excludes NULL. Inside filter() it DOES match
+                               (undefined !== 'x'), because filter() is plain client-side
+                               comparison — so the same where-object can answer differently in
+                               the two places.
   { field: { exists: false } } — means absent, unambiguously — but see the warning below about
                                where it can be used.
 
@@ -229,13 +284,16 @@ CONSTRUCTED, so anything created normally does carry it — but a field added to
 some records already existed reads as absent on every one of them, and the query layer never
 consults the default when filtering.
 
-"exists" IS NOT AVAILABLE IN A $query — only inside filter(), where it is evaluated client-side.
-The AD4M backend has no such operator, so a $query using one is refused rather than run. This is a
-change: it used to be claimed as supported and was not, and the consequence was worse than a refusal
-— the clause reached a filter that rejected every row, so the query answered nothing at all, always,
-with no error anywhere. A refusal at least says so.
+CLEARING is the other way to end up with no value. Writing '' to a property that has one removes
+it: the record then reads back as the field's default — usually '' — but no $query matches it, not
+{ field: '' } and not { field: { not: 'x' } }. A '' written at CREATION, a declared default of ''
+included, is different: it is stored, and both of those match it. So a task nobody was ever
+assigned is found by { assignee: { not: 'Ann' } }, and one whose assignee was removed is not.
 
-That invalidates the idiom this section used to recommend for "absent counts as the default":
+"exists" IS NOT AVAILABLE IN A $query — only inside filter(), where it is evaluated client-side.
+The backend has no such operator, so a $query using one is refused rather than run.
+
+That rules out the obvious idiom for "absent counts as the default":
 
   { OR: [ { retired: false }, { retired: { exists: false } } ] }   ← NOT usable in a $query
 
@@ -244,8 +302,8 @@ comparison; fetch the candidates and filter() client-side, where "exists" works;
 is a relation rather than a scalar, ask { relation: { none: {} } }, which IS native.
 
 startsWith/endsWith are case-sensitive where contains is not: they match structured strings against
-a known prefix (an ISO date, an id out of a URI). They are NOT native to the AD4M backend either, so
-a $query using one is refused — use contains there; inside filter() they are evaluated client-side.
+a known prefix (an ISO date, an id out of a URI). They are NOT native to the backend either, so a
+$query using one is refused — use contains there; inside filter() they are evaluated client-side.
 
 lt/lte/gt/gte compare a number with a number, and a string with a string as text. Text order is
 what makes dates work: WE writes a day as YYYY-MM-DD and a moment as YYYY-MM-DDTHH:mm, and those sort
@@ -253,15 +311,13 @@ in time order, so { dueDate: { gte: '2026-09-15', lt: '2026-10-01' } } is "due i
 September" — including a task due '2026-09-30T18:00'. A mixed pair never matches: a number bound
 against a field holding the string '12' answers false, rather than guessing which you meant.
 
-On AD4M a NUMBER bound is native and a STRING bound is refused — the executor compares numbers only.
-So a date range in a $query does not run there yet; fetch the candidates and filter() client-side,
+In a $query a NUMBER bound is native and a STRING bound is refused — the backend compares numbers
+only. So a date range in a $query does not run yet; fetch the candidates and filter() client-side,
 where it works, or bound the query by something numeric. A numeric range (a price, a count, a
-rating) runs natively on both backends.
+rating) runs natively either way.
 
-OR/AND/NOT no longer cost a query its sort pushdown. They used to: the executor decided pushability
-with a second function that disagreed with what it actually emitted, and an explicit combinator fell
-outside it. One compiler now answers for its own emission, so a filter with an OR and a sort behaves
-like any other.
+OR/AND/NOT cost a query nothing in sort pushdown: a filter with an OR and a sort behaves like any
+other.
 
 Examples:
 { "$": "filter(spaceStore.members, { role: 'admin' })" }
@@ -288,7 +344,19 @@ Query (data retrieval):
 { "$query": { "entity": "EntityName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the current dataset for entity instances. Always returns an array.
 Options: entity (required), where, order, limit, offset, include, scope, dataset, subscribe.
+select names the fields each row carries — properties, and relations as their target ids — and
+\`id\` always comes: { "select": ["title", "createdAt", "participants"] }. Without it a row carries
+every field, relation id lists included, and a container's children is the id of everything in it.
+A list of containers (CollectionBlock) names what its rows draw; a single-record read need not.
+A field left out reads as absent, so select what every expression on the row reads.
 subscribe defaults to true — reactive live updates. Set subscribe: false to do a one-time fetch.
+subscribe may also be an EXPRESSION, which is how a surface follows its subject only while the
+subject is still changing: { "subscribe": { "$": "modules.transcribe.callOnScreenLive" } } reads a
+finished call's transcript with no subscription at all, and follows a live one. Reach for it on
+anything whose record settles — a past call, an archived thread — where a live query would have the
+backend re-running it for an answer that cannot change. Turning falsy releases the subscription
+rather than merely ignoring it; an expression that has not resolved yet counts as not live, so the
+worst case is one fetch and a re-ask rather than a subscription nobody wanted.
 By default $query targets the current dataset. Use dataset to query a different dataset — required
 when reading entities from an external app (e.g. Flux) that is open as a WE space:
 { "$query": { "entity": "Channel", "dataset": { "$": "currentDataset" } } }
@@ -341,10 +409,10 @@ To read the distinct kinds out of it, or merge them with kinds from another list
 { "$": "distinct(local.produced.map(r, r.__subjectClass), local.placements.map(p, p.nodeType))" }
 
 Backend-neutral identity & dataset refs — prefer these over backend-store paths inside $query and conditions:
-- currentDataset — the currently active dataset (an AD4M perspective, in the AD4M backend). Use as a dataset value.
+- currentDataset — the currently active dataset. Use as a dataset value.
   A host store's dataset accessor (e.g. \`dataset: 'datasetStore.marketplaceDataset'\`) works as a dataset value too.
   When passing a dataset to a *component prop* rather than a query, append \`.handle\` — component props take the
-  backend's own dataset handle: { "perspective": { "$": "datasetStore.currentDataset.handle" } }.
+  backend's own dataset handle: { "dataset": { "$": "datasetStore.currentDataset.handle" } }.
 - me — the current agent's identity object. Use me.did for their DID (ownership checks, author filters, e.g. { "$": "post.author == me.did" }); me.handle / me.avatar for profile fields once loaded.
 
 Eager-loading relations with include (most common relational pattern):
@@ -355,12 +423,24 @@ Simple include — hydrate all related instances:
 { "$query": { "entity": "Channel", "include": { "conversations": true } } }
 Each item in the result will have a conversations array of hydrated Conversation objects.
 
+An included relation is the RECORD, not its id — and without the include the same field is the id.
+So a comparison written for one breaks silently against the other: with include: { item: true },
+row.item == x never matches and a where-object { item: x } finds nothing. Compare row.item.id, or
+in a where-object over included rows, use a comprehension: local.loans.find(l, l.item.id == x).
+The validator warns about both.
+
 Sub-query include — filter, sort, or limit the related records:
 { "$query": { "entity": "Channel", "include": { "conversations": { "order": { "createdAt": "desc" }, "limit": 10 } } } }
 
 Nested include — hydrate relations of relations:
 { "$query": { "entity": "Channel", "include": { "conversations": { "include": { "messages": true } } } } }
-Nesting can go as deep as needed. Each level adds one batched fetch (not N+1).
+Nesting can go as deep as needed. Each level adds one batched fetch (not N+1). Two limits, both silent
+rather than refused, so keep clear of them:
+- A $-prefixed projection (below) works only at the TOP level of include. Written inside a nested
+  include it is dropped: the query succeeds and the field is simply absent.
+- Below an UNTYPED relation (see "include works with an UNTYPED relation" below), only a TYPED
+  relation can be nested. Nesting another untyped one fails the whole query the moment any member has
+  something in it — so it works on an empty board and breaks on the first card.
 
 Count projection — add a derived numeric field:
 { "$query": { "entity": "Post", "include": { "$likeCount": { "from": "likes", "count": true } } } }
@@ -404,10 +484,9 @@ Single-item projection — add a derived field that resolves to one instance or 
 With limit: 1 the field unwraps to T | null instead of an array.
 
 include works with an UNTYPED relation too — one whose target model class is not declared, like a
-collection's children. It used to crash, because there was no shape to hydrate the members into; now
-each member is read as the class it actually is, so one query returns a post's text blocks, images
-and tasks together, each with its own fields. Every member carries its type, so a card can pick a
-display per row rather than assuming one.
+collection's children. Each member is read as the class it actually is, so one query returns a
+post's text blocks, images and tasks together, each with its own fields. Every member carries its
+type, so a card can pick a display per row rather than assuming one.
 
 That makes include the right tool for a FEED, where the alternative is one drill-down per parent:
 { "$query": { "entity": "CollectionBlock", "where": { "type": "root" }, "include": { "children": true } } }
@@ -544,6 +623,11 @@ the condition, a scope is dropped and the query is space-wide. Right for an opti
 for a query whose scope is about to exist, which would draw everything for a frame and then narrow.
 Give such a query "when": { "$": "local.boardLoaded" } and it is not asked until the condition is
 truthy — the result stays empty and local.<name>Loaded stays false, so a loading state can hold.
+A BOUND is the exception, and the only one: an unresolved "limit" or "offset" does NOT widen — the
+query is not asked at all, exactly as a falsy "when" leaves it unasked, and it runs once the bound
+arrives. Widening a filter answers a broader question, which is visible; widening a bound asks the
+backend for everything there is, which is not. So an expression-valued limit costs at worst one
+empty frame, never an unbounded fetch.
 A $query cannot be read inside an expression — a question for the backend is hoisted here and read
 back through local. Use count() for conditional visibility:
 { "condition": { "$": "count(local.signalTypes)" } }

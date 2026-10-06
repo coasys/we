@@ -4,8 +4,8 @@
  * `RuntimeAdminPort` already knows about LLMs: it lists them, adds them, downloads them and picks a
  * default. What it cannot do is *use* one against a dataset's own schema. That is the same gap
  * {@link TranscriptionPort} was created to close for speech, and it has the same consequence — the
- * transcribe module cannot reach interpretation without importing `@coasys/ad4m` directly and
- * declaring `backends: ['ad4m']`, which is the coupling the module contract exists to prevent.
+ * transcribe module cannot reach interpretation without importing a backend's client directly and
+ * declaring itself backend-specific, which is the coupling the module contract exists to prevent.
  *
  * ## Why the caller supplies the turns
  *
@@ -287,8 +287,26 @@ export interface InterpretationPort {
   reject(dataset: DatasetHandle, id: string, property?: string): Promise<boolean>;
 
   /**
+   * The connections a record takes part in — so that a decision about one can be made whole.
+   *
+   * A pass that connects a new task to an old one stages two records that only make sense together,
+   * and the executor decides each on its own. Rejecting the task deletes every link pointing at it,
+   * so a connection already accepted is cut down to one end and left behind, and accepting the
+   * connection alone leaves a claim about a task nobody has agreed exists. A reviewer has to be able
+   * to see both halves of that before deciding either.
+   *
+   * `ends` is what `id` joins, when it is itself a connection; `connections` is every connection
+   * joining it, each with the entity it is stored as so a caller can remove one that is no longer a
+   * suggestion. Optional: a backend with no reified connections has nothing to answer.
+   */
+  connections?(
+    dataset: DatasetHandle,
+    id: string,
+  ): Promise<{ ends: string[]; connections: { id: string; entity: string }[] }>;
+
+  /**
    * Hear that the set of staged suggestions may have changed — somebody's pass staged one, or
-   * somebody, anywhere in the neighbourhood, accepted or rejected one.
+   * somebody, anywhere in the shared dataset, accepted or rejected one.
    *
    * ## Why a signal and not the list
    *
@@ -319,8 +337,8 @@ export interface InterpretationPort {
    *
    * ## Scope
    *
-   * Only what this node can see. On a backend whose event streams are local to the executor — AD4M
-   * is one — that means this peer's own passes, even for a watch shared across a neighbourhood.
+   * Only what this node can see. On a backend whose event streams are local to the process that
+   * runs them, that means this peer's own passes, even for a watch shared across a dataset.
    * Making peers visible to each other is a *host* concern, layered on top: see
    * `createInterpretationRelay`, which broadcasts what this returns and merges what peers send
    * back. Pushing it down here would ask every backend to reimplement a fan-out it may have no

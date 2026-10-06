@@ -336,6 +336,23 @@ export type SchemaNode = {
   styles?: Record<string, string | number>; // Raw CSS escape hatch — applied as inline styles on the node wrapper element
   $localState?: Record<string, LocalStateField>; // Scoped local state — creates signals on mount, discarded on unmount
   $queries?: Record<string, QueryStateField>; // Hoisted reactive query subscriptions — results injected into $local, shared across entire subtree
+  /**
+   * Shapes this template uses more than once, each stored once and referenced by a `$ref` node.
+   *
+   * Root only — a definition is a property of the document, not of a position in it. The entries
+   * are ordinary nodes, so what will render is still entirely inside the template and nothing has
+   * to be fetched to read it; see `definitions.ts` for why that property is the point.
+   */
+  $defs?: Record<string, SchemaNode>;
+  /**
+   * The definition this shape was copied out of, when one use of a shared shape was given its own.
+   *
+   * Recorded so the split stays answerable: without it, a shape that diverged is indistinguishable
+   * from one that was always separate, and "put these back the way they were" has nothing to work
+   * from. Nothing is kept in step automatically — a fork that diverges while its source also
+   * changes is two-way drift, which has no honest automatic answer.
+   */
+  forkedFrom?: string;
 };
 
 // Types that need to be passed a framework specific NodeType (e.g. JSX.Element for Solid, React.ReactNode for React)
@@ -414,6 +431,14 @@ export type QueryToken = {
     offset?: number | Record<string, unknown>;
     include?: Record<string, unknown>;
     /**
+     * The fields a row carries — properties, and relations as their target ids. `id` always comes.
+     *
+     * Omitted, a row carries everything, relation id lists included: a container's `children` is the
+     * id of everything in it, so a list of thirty calls showing a title each carried every utterance
+     * id of every call. Name what the rows render. A field left out reads as absent.
+     */
+    select?: string[];
+    /**
      * Neutral drill-down: fetch this entity's instances anchored to `anchorId` via the anchor entity's
      * `via` relation. The adapter resolves `via` to a backend handle (AD4M: → the relation's predicate).
      */
@@ -444,7 +469,20 @@ export type QueryToken = {
        */
       levels?: Array<number | Record<string, unknown>>;
     };
-    subscribe?: boolean;
+    /**
+     * Follow the answer as it changes. Defaults to true; `false` fetches once.
+     *
+     * An **expression** is allowed here, and it is what lets a surface be live only while its
+     * subject is. A call's transcript is the case: while somebody is in the call it has to follow
+     * every utterance, and once the call is over the record is settled — so
+     * `{ $: 'modules.transcribe.callOnScreenLive' }` reads a past transcript with no subscription
+     * registered at all, where before it held one open over the whole thing for as long as it was
+     * on screen. Reading is the commonest thing anybody does to a long transcript, so this is
+     * where most of the cost of one was.
+     *
+     * Changing it re-asks the query, which is what tears the subscription down when a call ends.
+     */
+    subscribe?: boolean | SchemaProp;
     /** Store path to the dataset handle (e.g. '$currentDataset', 'testStore.perspective'). */
     dataset?: string;
     /**
@@ -548,7 +586,12 @@ export type QueryDescriptor = {
    */
   entity: unknown;
   params: Record<string, unknown>;
-  subscribe: boolean;
+  /**
+   * As authored: `true`/`false`, or an expression the framework layer resolves — see
+   * `QueryToken.subscribe`. `unknown` for the same reason `entity` is: this resolver is pure, and
+   * only the framework layer holds the stores an expression is evaluated against.
+   */
+  subscribe: unknown;
   dataset?: string;
   include?: Record<string, boolean | Record<string, unknown>>;
   /** The query runs only while this resolves truthy — see `QueryToken.when`. Kept out of `params`. */

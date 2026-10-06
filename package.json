@@ -1,15 +1,19 @@
 {
   "name": "@we/monorepo",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "description": "",
   "license": "MIT",
   "type": "module",
   "scripts": {
     "setup-workspace": "node scripts/setup-workspace.cjs",
     "validate:seed": "node scripts/validate-seed.cjs",
+    "bump:ad4m": "node scripts/bump-ad4m.mjs",
+    "verify:ad4m": "pnpm --filter @we/backend-ad4m test:live",
     "check:source-consumers": "node scripts/check-source-consumers.mjs",
     "check:we-props": "node scripts/check-we-props.mjs",
     "validate:schemas": "pnpm --filter @we/schema-shared validate",
+    "audit:roles": "pnpm --filter @we/schema-shared role-audit",
+    "audit:surfaces": "pnpm --filter @we/schema-shared surface-audit",
     "create-module": "node scripts/create-module.mjs",
     "prepare": "pnpm --filter @we/cli run bootstrap && husky && node scripts/install-merge-driver.mjs",
     "clean": "find . -name 'node_modules' -type d -prune -exec rm -rf '{}' + && find . -name 'dist' -type d -prune -exec rm -rf '{}' + && pnpm store prune",
@@ -24,8 +28,8 @@
     "dev:tauri": "pnpm --filter @we/app-tauri tauri:dev",
     "test": "pnpm -r --no-bail run test",
     "typecheck": "pnpm -r run typecheck",
-    "lint": "eslint . --max-warnings 0",
-    "lint:fix": "eslint . --fix",
+    "lint": "node --max-old-space-size=8192 node_modules/eslint/bin/eslint.js . --max-warnings 0",
+    "lint:fix": "node --max-old-space-size=8192 node_modules/eslint/bin/eslint.js . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "clean:deep": "pnpm clean && rm -rf apps/we-tauri/src-tauri/target apps/we-electron/dist-electron",
@@ -35,8 +39,8 @@
   "packageManager": "pnpm@10.18.3",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@typescript-eslint/eslint-plugin": "^8.68.0",
-    "@typescript-eslint/parser": "^8.68.0",
+    "@typescript-eslint/eslint-plugin": "^8.70.1",
+    "@typescript-eslint/parser": "^8.70.1",
     "eslint": "^10.9.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.2.1",
@@ -49,12 +53,12 @@
     "stylelint": "^17.14.1",
     "stylelint-config-standard": "^40.0.0",
     "stylelint-config-standard-scss": "^17.0.0",
-    "typescript": "^5.7.2"
+    "typescript": "^6.0.3"
   },
   "pnpm": {
     "overrides": {
-      "@coasys/ad4m": "0.13.0-test-inverse-relations",
-      "@coasys/ad4m-connect": "0.13.0-test-interpretation-2",
+      "@coasys/ad4m": "0.13.0-test-flows-1",
+      "@coasys/ad4m-connect": "0.13.0-test-flows-1",
       "prettier": "3.9.6",
       "@xmldom/xmldom": ">=0.9.12",
       "plist": ">=3.1.1",

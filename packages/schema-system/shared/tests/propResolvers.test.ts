@@ -4,6 +4,16 @@ import { noMemo, REACTIVE_ACCESSOR, resolveProp, resolveProps, splitProps } from
 import type { LocalFieldMeta } from '../src/propResolvers/local';
 import { resolveResetLocalProp, resolveSetLocalProp, resolveTouchProp } from '../src/propResolvers/local';
 import { markReactive } from '../src/propResolvers/reactive';
+import type { Memo } from '../src/propResolvers/types';
+
+/**
+ * A memo that hands the thunk back rather than calling it, so the accessor itself can be inspected.
+ *
+ * The declared `Memo` type says a memo answers with the VALUE, which is true of `noMemo` and not of a real
+ * framework's `createMemo` — that answers with an accessor. The cast is that gap, and it is here rather
+ * than inline because the test below asserts on the accessor and would pass vacuously without it.
+ */
+const keepThunk = ((fn: () => unknown) => fn) as unknown as Memo;
 
 const unwrap = (value: unknown): unknown =>
   typeof value === 'function' && REACTIVE_ACCESSOR in value ? (value as unknown as () => unknown)() : value;
@@ -473,7 +483,7 @@ describe('propResolvers (combined)', () => {
 describe('local reads', () => {
   it('returns a reactive accessor for a declared field', () => {
     const context = { $local: { name: markReactive(() => 'hello') } };
-    const result = resolveProp({ $: 'local.name' }, {}, context, (fn) => fn);
+    const result = resolveProp({ $: 'local.name' }, {}, context, keepThunk);
     expect(typeof result).toBe('function');
     expect(unwrap(result)).toBe('hello');
     expect(REACTIVE_ACCESSOR in (result as object)).toBe(true);

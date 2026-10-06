@@ -192,6 +192,37 @@ describe('remote models', () => {
     expect(added[0]).toMatchObject({ api: { apiType: 'ANTHROPIC' } });
   });
 
+  it('keeps an Ollama model’s provider and context ceiling through an edit', async () => {
+    // Both were lost the same way the Anthropic type was: read as OpenAI with no ceiling, and an
+    // update replaces the record, so renaming the model rewrote it onto the wrong provider.
+    const { client, added } = aiClient([
+      {
+        id: 'm1',
+        name: 'Qwen',
+        modelType: 'LLM',
+        api: { baseUrl: 'http://localhost:11434', apiKey: '', model: 'qwen3:4b', apiType: 'OLLAMA', maxNumCtx: 40960 },
+      },
+    ]);
+    const port = createAd4mRuntimeAdmin(client, { capabilities: null });
+
+    const [model] = await port.aiModels!();
+    expect(model.source).toMatchObject({ kind: 'api', protocol: 'ollama', maxContext: 40960 });
+
+    await port.updateAiModel!('m1', { name: 'Qwen, renamed', kind: 'llm', source: model.source });
+    expect(added[0]).toMatchObject({ api: { apiType: 'OLLAMA', maxNumCtx: 40960 } });
+  });
+
+  it('sends no ceiling for a model that has none', async () => {
+    const { client, added } = aiClient();
+    const port = createAd4mRuntimeAdmin(client, { capabilities: null });
+    await port.addAiModel!({
+      name: 'Qwen',
+      kind: 'llm',
+      source: { kind: 'api', protocol: 'ollama', baseUrl: 'http://localhost:11434', apiKey: '', model: 'qwen3:4b' },
+    });
+    expect((added[0] as { api: object }).api).not.toHaveProperty('maxNumCtx');
+  });
+
   it('reads an API type it does not know as OpenAI', async () => {
     const { client } = aiClient([
       { id: 'm1', name: 'Old', modelType: 'LLM', api: { baseUrl: 'u', apiKey: '', model: 'x', apiType: 'OPEN_AI' } },

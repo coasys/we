@@ -1,0 +1,73 @@
+// The workspace's shared TypeScript settings. Every package's tsconfig extends THIS file and carries
+// only what is genuinely local to it.
+//
+// Split out of the root `tsconfig.json` so that the root can declare `files: []` without the empty list
+// being inherited here — `files` and `include` travel through `extends`, and an empty one at the root
+// silently emptied the program of every package that declared no `include` of its own. See the root file.
+//
+// ## What this is for
+//
+// Before, 29 of 51 packages restated this whole block standalone and 22 extended it, so there was
+// no single answer to "what are this repo's compiler settings" — and no way for a requirement to
+// travel from a package to its consumers. That is not a hypothetical: `@we/schema-kit` ships raw
+// `.ts` and imports with explicit `.ts` specifiers, so every consumer needs
+// `allowImportingTsExtensions`, and a playground that had not been told produced 29 errors in a
+// package whose own source was fine.
+//
+// The option VALUES here are deliberately unchanged from what they have always been, so extending
+// them alters no package's effective configuration. This file deduplicates and documents; it does
+// not re-decide.
+//
+// ## What is deliberately NOT here
+//
+// - `outDir` / `rootDir` / `include` — TypeScript resolves a relative path against the file it was
+//   written in, not the file doing the extending, so any of these here would point all 51 packages
+//   at the repo root. They stay local by necessity rather than by choice.
+//
+// - `allowImportingTsExtensions` — it requires `noEmit` or `emitDeclarationOnly`, and half the
+//   workspace emits, so it cannot be a default without breaking the emitting half. A package that
+//   consumes one of the source-shipping packages sets it itself. Because that requirement still
+//   cannot travel, `pnpm check:source-consumers` checks it instead — see that script.
+//
+// - `jsx` / `jsxImportSource` / `types` / `lib` — genuinely per-package. A Lit package, a Solid
+//   package and a node script want different answers, and any default is wrong for two of three.
+//
+// ## Known drift, deliberately not resolved here
+//
+// `target` is `ES2020` in this file and `ESNext` in the 29 packages that set it themselves. That is
+// worth converging, but not silently: above ES2021 TypeScript flips `useDefineForClassFields` to
+// `true`, which defines class fields with `Object.defineProperty` rather than assigning them, and
+// that shadows the accessors `experimentalDecorators` decorators install. Seven packages decorate
+// class fields — Lit's `@property` in `@we/primitives`, AD4M's `@HasMany` / `@HasOne` in
+// `@we/entities` and `@we/backend-ad4m` — and they would keep compiling and stop working. Converging
+// `target` means pinning `useDefineForClassFields: false` in the same change and re-running the
+// suite; it is a change worth making on its own, not as a side effect of this one.
+{
+  "compilerOptions": {
+    // tsup 8.5.1's declaration build injects `baseUrl: compilerOptions.baseUrl || '.'` unconditionally
+    // (see its dist/rollup.js), and TypeScript 6 deprecates the option, so every dts build fails without
+    // this. Ours is gone from every tsconfig; this covers what a tool puts back. It must be removed for
+    // TypeScript 7, where the option stops functioning — by which point tsup has to have changed.
+    "ignoreDeprecations": "6.0",
+
+    // Language & module targeting
+    "target": "ES2020",
+    "module": "ESNext",
+
+    // Module resolution
+    "moduleResolution": "bundler",
+
+    // Type checking & strictness
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // Interop & compatibility
+    "esModuleInterop": true,
+
+    // Output options
+    "declaration": true,
+    "sourceMap": true
+  },
+  "exclude": ["node_modules", "dist", "old"]
+}

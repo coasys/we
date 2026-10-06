@@ -35,15 +35,20 @@
  * `Sighting` nobody had heard of when this file was written.
  *
  * Placements are read first for that reason, and their node references are read as bare URIs rather
- * than hydrated. An untyped relation has no target class for `include` to hydrate into, and the id
- * is what is wanted anyway: the records come back in one query per type — `where: { id: [...] }`,
- * which is native on AD4M and pushes down to a SPARQL `VALUES` clause — and are matched up here.
+ * than hydrated: the records come back in one query per type — `where: { id: [...] }`, which is
+ * native on AD4M and pushes down to a SPARQL `VALUES` clause — and are matched up here.
+ *
+ * Not because the reference cannot be hydrated. An untyped to-one does come back through `include`
+ * as one record of its own class; what cannot come with it yet is the `counts` each card carries,
+ * since a count projection written inside a nested include is dropped. Hydrating the placements
+ * would therefore cost the counts, or a second pass to get them back — the same round this saves.
  */
 import type { GraphEdge, GraphNode, GraphValue, SeedSource } from '@we/graph-protocol';
-import { entityAddress } from '@we/graph-protocol';
+import { entityAddress, parseAddress } from '@we/graph-protocol';
 
 import { rowToNode } from './nodes';
 import { placementsFor, resolvePlacement } from './placements';
+import { type Pretend, pretendVotes, readVotes, voicesOf, type Vote, weighVotes } from './weighing';
 
 export interface CanvasSeedOptions {
   /** Record id of the canvas. Nothing loads until this is set. */
@@ -64,9 +69,9 @@ export interface CanvasSeedOptions {
   /**
    * Entity to draw as connections between the things on this canvas, if any.
    *
-   * Only those with *both* ends placed here are drawn. A canvas is a closed surface — a line to a
-   * record that is not on it would leave the canvas and end nowhere, and pulling the far end in to
-   * fix that would put things on the canvas that nobody placed.
+   * Only those with *both* ends on this canvas are drawn — placed, or waiting in the tray. A canvas
+   * is a closed surface: a line to a record that is not on it would leave the canvas and end nowhere,
+   * and pulling the far end in to fix that would put things on the canvas that nobody put there.
    */
   connections?: string;
   /**
@@ -90,7 +95,8 @@ export interface CanvasSeedOptions {
   /**
    * Record ids whose card stands for something **not yet agreed** — a suggestion awaiting a person.
    *
-   * Read onto the matching node's data as `pending: true`, for a style rule to pick up. Ids rather
+   * Read onto the matching node's data as `pending: true`, for a style rule to pick up — and onto a
+   * connection's line the same way, since a pass stages connections as well as cards. Ids rather
    * than a query, because what makes a record provisional is not a property of the record: an
    * extraction pass can stage a whole instance, so it is in the graph and answers every query the
    * accepted ones answer, and only the capability that staged it knows which those are. A canvas
@@ -111,7 +117,8 @@ export interface CanvasSeedOptions {
    */
   changed?: string[];
   /**
-   * Record ids to leave off the canvas altogether — no card, and no line to or from one.
+   * Record ids to leave off the canvas altogether — no card, and no line to or from one. A
+   * connection's own id here leaves off that one line.
    *
    * For a reader narrowing what is shown ("hide what nobody has agreed to"), where a style rule is
    * not enough: a card at zero opacity still takes a press and keeps its connections drawn.
@@ -124,7 +131,8 @@ export interface CanvasSeedOptions {
   hiddenTypes?: string[];
   /**
    * Relations to **count** on each card, read onto its data as `<name>Count` — `['signals',
-   * 'comments']` for "what have people made of this".
+   * 'comments']` for "what have people made of this". Connections are counted the same way, onto the
+   * edge's data, which is how a gesture can tell a line people have discussed from one nobody has.
    *
    * Counts rather than the rows, because a card is a preview: what it owes a reader is that there is
    * something to open. And counts rather than a query per card, because that is the difference
@@ -139,6 +147,74 @@ export interface CanvasSeedOptions {
    * whether the field is there rather than comparing it.
    */
   counts?: string[];
+  /**
+   * How much each card *weighs*, worked out from one kind of reaction on it — read onto its data as
+   * `weight`, with how many reactions produced it as `weightCount`.
+   *
+   * ## Why the seed rather than the layout or a metric
+   *
+   * Three things want this number and none of them can compute it. A layout is handed nodes and
+   * returns positions, so it cannot query; a metric sees the graph's shape and the nodes' own data, so
+   * it can normalise the number but not fetch what it is made of; and a style rule is data. The one
+   * place with the data layer in reach is here — and computing it once, in the read the seed already
+   * makes, is also what keeps it affordable: the reactions ride in as a projection rather than as one
+   * query per card.
+   *
+   * Writing it onto the node is what makes it usable by all three at once. `forest` orders siblings by
+   * `weight`; `{ metric: 'field', options: { from: 'weight' }, scale: 'heat' }` colours by it, on a
+   * freeform canvas as readily as on a tree; and a card can show the tally beside it.
+   *
+   * ## What it does not decide
+   *
+   * Whose reactions count, and how much each person's is worth. `excludeAuthors` is here because a
+   * reader's muted list is not an opinion about weighting — it is the same filter every other reaction
+   * surface in WE applies, and leaving it out would make this the one place a muted agent still counts.
+   * Per-agent *weighting* is a larger question (a reputation, a cohort, a slider) and belongs in
+   * whatever resolves that, which then passes the answer through here.
+   */
+  weigh?: {
+    /**
+     * Record id of the `SignalType` that counts. Nothing is weighed without one, which is what lets a
+     * picker start empty.
+     */
+    signalTypeId: string;
+    /**
+     * How the values are read as one number.
+     *
+     * Named by the caller rather than derived from the type's `mode`, deliberately. The rule for
+     * reading a reaction type as one number already exists one layer up — a community's own
+     * `aggregate` field, with a fallback per mode — and a second copy of it here is the kind of thing
+     * that drifts silently: the copy that fell behind would go on netting out a type somebody had
+     * switched to averaging. So the template passes the type's own `aggregate` through. Default
+     * `count`, which matches the field's own default.
+     */
+    aggregate?: 'count' | 'sum' | 'mean' | 'median';
+    /**
+     * The type's `mode`, which decides what a stored `aggregate` that cannot express it is read as — see
+     * `effectiveAggregate` in `weighing.ts`. Without it a rating whose type still carries the manifest's default
+     * `count` was weighed by how many people rated it rather than by what they gave.
+     */
+    mode?: string;
+    /** DIDs whose reactions are ignored — a reader's muted list. */
+    excludeAuthors?: string[];
+    /** The reader's DID, so each card also carries what they themselves gave — `weightMine`. */
+    me?: string;
+    /** The type's range, which a pretend person's made-up answers are drawn from — see `simulate`. */
+    rangeMin?: number;
+    rangeMax?: number;
+    step?: number;
+  };
+  /**
+   * How much each person's voice counts in the weight — `did=50,did=0` in whole percent, as an address
+   * holds it, or an object of fractions; anyone not named counts in full. Applied by `derive` to answers
+   * already read, so a reader dragging a slider re-weighs the canvas with no query.
+   */
+  weights?: unknown;
+  /**
+   * People who are not there, answering on every card — a development tool for trying out weighting
+   * without several real agents. See `Pretend` in `weighing.ts`. A production build never passes it.
+   */
+  simulate?: Pretend;
   limit?: number;
 }
 
@@ -219,6 +295,15 @@ export function placementStyle(row: Record<string, unknown>): Record<string, Gra
   number('contentScale', 'canvasContentScale');
   signed('rotation', 'canvasRotation');
   signed('z', 'canvasZ');
+  /*
+    Where the card sits among its siblings when the canvas is read as a tree — see `Placement.rank`.
+
+    Signed, and namespaced like the rest: a community's own model may well have a property called
+    `rank`, and a card silently ordered by something it happens to hold is the same class of bug the
+    prefix exists to prevent. A layout is told which field to order by, so the name it carries here
+    costs nothing.
+  */
+  signed('rank', 'canvasRank');
   text('color', 'canvasColor');
   text('cardShape', 'canvasCardShape');
   return style;
@@ -243,6 +328,15 @@ export function placementPosition(row: Record<string, unknown>): Record<string, 
   return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : {};
 }
 
+/**
+ * What each person answered on one card, for `derive` to weigh — see `weighing.ts`. Stamped as JSON because
+ * a node's data holds only scalars; nothing but the seed's own `derive` reads it.
+ */
+function answersOn(rows: unknown, type: string): Record<string, GraphValue> {
+  const votes = readVotes(rows, type);
+  return votes ? { weightType: type, weightVotes: JSON.stringify(votes) } : {};
+}
+
 /** A connection's own scalars, for style rules to match on — the same thing `reified` carries. */
 function scalarsOf(row: Record<string, unknown>): Record<string, GraphValue> {
   const data: Record<string, GraphValue> = {};
@@ -258,6 +352,51 @@ export function canvasSeed(): SeedSource {
   return {
     id: 'canvas',
     description: "A container's contents, positioned by the placements recorded against it.",
+    /*
+      The options whose change is the same canvas read again — see `refreshOptions` on `SeedSource`.
+
+      `pending` and `changed` stamp a flag on a node that has already been built; `hidden` drops rows,
+      and the lines to them, from a set already fetched. `weigh` reads more about cards that are
+      already there — their reactions — without changing which cards they are. None of them makes this
+      a different graph, which is why a change to one must not throw the graph away.
+
+      `hiddenTypes` is deliberately NOT here, and the difference is the whole point of the list: a
+      hidden type is never asked for, so putting a kind away really does change which records the
+      canvas is made of.
+    */
+    refreshOptions: ['pending', 'changed', 'hidden', 'weigh'],
+    /*
+      Applied to answers already on the cards — see `derive` below. A reader re-weighing voices with a
+      slider changes these many times a second, and none of it needs a read.
+    */
+    deriveOptions: ['weights', 'simulate'],
+    /*
+      Each card's weight from the answers read onto it: every voice weighed as the reader asked, muted
+      ones left out, and any pretend people's answers mixed in first. Also says who answered, and how
+      often, for a list of voices beside the canvas.
+    */
+    derive(fragment, rawOptions) {
+      const options = (rawOptions ?? {}) as CanvasSeedOptions;
+      const weigh = options.weigh;
+      if (!weigh?.signalTypeId) return fragment;
+      const pretend = options.simulate?.people?.length ? options.simulate : undefined;
+      const settings = { ...weigh, weights: options.weights, me: pretend?.actingAs || weigh.me };
+      const everyone: Vote[][] = [];
+      const nodes = fragment.nodes.map((node) => {
+        const read = node.data?.weightVotes;
+        if (typeof read !== 'string') return node;
+        const record = parseAddress(node.id)?.id ?? '';
+        const votes = [...(JSON.parse(read) as Vote[]), ...pretendVotes(record, pretend, weigh)];
+        everyone.push(votes);
+        const { weightVotes: _answers, ...data } = node.data ?? {};
+        return { ...node, data: { ...data, ...weighVotes(votes, settings) } };
+      });
+      return {
+        nodes,
+        edges: fragment.edges,
+        summary: { type: weigh.signalTypeId, voices: voicesOf(everyone, weigh.excludeAuthors ?? [], pretend) },
+      };
+    },
     async seed(rawOptions, context, signal) {
       const options = (rawOptions ?? {}) as CanvasSeedOptions;
       // No canvas chosen yet — a picker whose `$local` is still empty. Loading the types wholesale
@@ -302,6 +441,31 @@ export function canvasSeed(): SeedSource {
         declared(options.typeStyles) ? read(options.typeStyles as string) : [],
         declared(options.routes) ? read(options.routes as string) : [],
       ]);
+
+      /*
+        The one cap worth saying out loud.
+
+        Every read here is bounded at `limit`, and for most of them hitting it means some cards of
+        that kind are missing — visible, and obviously a truncation. The placements read is not like
+        the others: it is what tells round two which records to ask for, so exceeding it does not
+        drop the overflow cards, it makes them *invisible to the rest of the load entirely*. Nothing
+        else ever learns they exist.
+
+        What that looks like from the outside is a canvas that silently stops at some number of cards
+        and a person wondering where the rest of their work went. A warning cannot fetch them, but it
+        can say which of those two things happened — and the status strip already has somewhere to
+        put it.
+
+        Compared with `>=` rather than `>`: a read that came back exactly at its limit is a read that
+        was cut off, or one that happened to fill it exactly, and nothing here can tell those apart.
+        Saying so on the boundary is the honest side to err on.
+      */
+      if (placements.length >= limit) {
+        context.warn(
+          `canvas: stopped at ${limit} placed cards — anything beyond that is not on this canvas. ` +
+            `Raise the seed's \`limit\` to see the rest.`,
+        );
+      }
 
       /*
         Which of the records on this canvas are still only suggestions — see `pending` in the options.
@@ -380,20 +544,28 @@ export function canvasSeed(): SeedSource {
 
       const nodes: GraphNode[] = [];
       const seen = new Set<string>();
-      /** Record ids on this canvas, so a connection can be checked for having both ends here. */
-      // Less what is hidden, so a connection to a card nobody can see is not drawn either.
-      const placed = new Set<string>(
-        [...placedIds]
-          .filter(([entity]) => !hiddenTypes.has(entity))
-          .flatMap(([, ids]) => ids)
-          .filter((id) => !hidden.has(id)),
-      );
+      /**
+       * Record ids drawn on this canvas, so a connection can be checked for having both ends here.
+       *
+       * Filled as the cards are made rather than from the placements, so it holds exactly what is
+       * drawn: the tray as well as the board, and less anything hidden or no longer there. The tray
+       * counts because it is on the canvas — a row of cards somebody can see and drag — and it is
+       * where everything a call extracts lands. Counting only placed cards meant a connection the
+       * extraction drew between two of them was never drawn at all, in either reading of the canvas.
+       */
+      const onCanvas = new Set<string>();
       /** Record id → its entity name, so a connection's endpoints can be addressed. */
       const typeOf = new Map<string, string>();
-      for (const [entity, ids] of placedIds) for (const id of ids) typeOf.set(id, entity);
 
+      /*
+        The type of the card actually drawn wins over the one the connection stored. Both ends are
+        known to be on the canvas by the time this is asked, so the drawn type is always there — and
+        it is a fact, where the stored one is a claim: a connection an extraction pass wrote carries
+        whatever class name the model spelled, and a misspelt one addressed a node that does not
+        exist, so the line was silently dropped.
+      */
       const addressOf = (declared: unknown, id: string): string | undefined => {
-        const entity = typeof declared === 'string' && declared ? declared : typeOf.get(id);
+        const entity = typeOf.get(id) ?? (typeof declared === 'string' && declared ? declared : undefined);
         return entity ? entityAddress(dataset, entity, id) : undefined;
       };
 
@@ -409,7 +581,11 @@ export function canvasSeed(): SeedSource {
       */
       const passes: { entity: string; where?: Record<string, unknown> }[] = [
         ...[...placedIds].map(([entity, ids]) => ({ entity, where: { id: ids } })),
-        ...(options.contains ?? DEFAULT_CONTAINS).map((entity) => ({ entity })),
+        // Never the entity drawn as lines: a connection is not also a card. The workshop passes the
+        // call's extraction targets here, and a call can extract connections as well as things.
+        ...(options.contains ?? DEFAULT_CONTAINS)
+          .filter((entity) => entity !== options.connections)
+          .map((entity) => ({ entity })),
       ];
 
       /*
@@ -421,9 +597,31 @@ export function canvasSeed(): SeedSource {
         appeared.
       */
       // A hidden type is not asked for at all — nothing of it is drawn, so there is nothing to read.
-      const wanted = passes.filter(
+      const askable = passes.filter(
         (pass) => pass.entity !== placementEntity && declared(pass.entity) && !hiddenTypes.has(pass.entity),
       );
+
+      /*
+        The same question twice is one query.
+
+        `contains` comes from a caller — on the workshop's canvas it is the call's extraction targets,
+        which is a stored list — so a repeated entry is a thing that can happen, and every repeat cost
+        a round trip *and* a standing subscription, since the engine keys its watches on the read.
+
+        Only exact repeats. A type that is both placed and in `contains` appears twice here on
+        purpose and must stay twice: those are two different questions — "the ones positioned here",
+        by id, and "the ones this canvas owns", by containment — and the second is what finds a card
+        nobody has placed yet. They cannot be merged into one query either, because one is a `where`
+        and the other a `scope`, and the grammar has no way to ask for their union. That is a real
+        cost and it is an ad4m-side one; this only stops us paying it twice for one question.
+      */
+      const seenPass = new Set<string>();
+      const wanted = askable.filter((pass) => {
+        const key = `${pass.entity}|${JSON.stringify(pass.where ?? null)}`;
+        if (seenPass.has(key)) return false;
+        seenPass.add(key);
+        return true;
+      });
 
       /**
        * The count projections one type can answer — see `counts`.
@@ -431,13 +629,25 @@ export function canvasSeed(): SeedSource {
        * Filtered against the type's own declared relations, so a model with no `comments` is asked
        * for none rather than refusing the read and vanishing off the canvas.
        */
-      const countsFor = (entity: string): Record<string, unknown> | undefined => {
-        const asked = options.counts ?? [];
-        if (!asked.length) return undefined;
+      const countsFor = (entity: string, weighed = true): Record<string, unknown> | undefined => {
         const relations = new Set((shapes.find((s) => s.name === entity)?.relations ?? []).map((r) => r.name));
-        const projections = Object.fromEntries(
+        const asked = options.counts ?? [];
+        const projections: Record<string, unknown> = Object.fromEntries(
           asked.filter((name) => relations.has(name)).map((name) => [`$${name}Count`, { from: name, count: true }]),
         );
+        /*
+          The reactions themselves, where a weight is wanted — see `weigh`.
+
+          Hydrated rather than counted, because the *values* are what an aggregate reads: a count says
+          how many people answered, which is only one of the four things a community can mean by a
+          reaction type. It rides in the read the seed already makes, so a canvas of three hundred cards
+          pays one projection rather than three hundred queries.
+
+          Guarded on the type declaring `signals`, exactly as a count is: a model that cannot answer is
+          asked for nothing, since a refused read would take that whole kind off the canvas rather than
+          merely leaving its cards unweighed.
+        */
+        if (weighed && options.weigh?.signalTypeId && relations.has('signals')) projections.signals = true;
         return Object.keys(projections).length ? projections : undefined;
       };
 
@@ -493,6 +703,10 @@ export function canvasSeed(): SeedSource {
             // Before the canvas's own fields: a count is the record's, and nothing a placement
             // carries is named like one, so the order is only a statement of which layer owns what.
             ...countsOf(row),
+            // Beside the counts, and for the same reason they are before the canvas's own fields: a
+            // weight is a fact about the record rather than about this canvas's arrangement of it.
+            // What each person answered, weighed by `derive` — see `answersOn`.
+            ...(options.weigh?.signalTypeId ? answersOn(row.signals, options.weigh.signalTypeId) : {}),
             ...(typeColor ? { canvasTypeColor: typeColor } : {}),
             // Only when true, so a style rule matching `{ pending: true }` and one matching nothing
             // are the two states — an explicit `false` on every other card would make "not pending"
@@ -502,6 +716,10 @@ export function canvasSeed(): SeedSource {
             ...(at ? { ...at.style, x: at.x, y: at.y } : {}),
           };
           nodes.push({ ...node, data });
+          if (typeof row.id === 'string') {
+            onCanvas.add(row.id);
+            typeOf.set(row.id, entity);
+          }
         }
       }
 
@@ -512,24 +730,37 @@ export function canvasSeed(): SeedSource {
         hub-and-spoke diagram rather than the freeform surface the mode exists to be. What is worth
         drawing is what people asserted: a relationship between two cards that are both here.
 
-        Filtered to pairs that are both placed, and filtered *here* rather than in the query, because
-        "both ends in this set" is not a where-clause. The query narrows by source, which is the half
-        a backend can do, and the target check is a set lookup against what was just loaded.
+        Filtered to pairs that are both drawn here, and filtered *here* rather than in the query,
+        because "both ends in this set" is not a where-clause. The query narrows by source, which is
+        the half a backend can do, and the target check is a set lookup against what was just loaded.
       */
       const edges: GraphEdge[] = [];
       // Round three: the connections, which genuinely could not be asked for until the ends were known.
       const connections = options.connections;
-      if (connections && declared(connections) && placed.size) {
-        const ends = [...placed];
-        for (const row of await read(connections, { source: ends })) {
+      if (connections && declared(connections) && onCanvas.size) {
+        const ends = [...onCanvas];
+        /*
+          Counted like a card, so a line says what people have made of it too — and so a gesture that would
+          remove one can tell, before it is let go, that this one has been discussed. Not weighed: a weight
+          is what orders cards, and nothing orders lines.
+        */
+        for (const row of await read(connections, { source: ends }, countsFor(connections, false))) {
           const source = typeof row.source === 'string' ? row.source : undefined;
           const target = typeof row.target === 'string' ? row.target : undefined;
-          if (!source || !target || !placed.has(source) || !placed.has(target)) continue;
+          if (!source || !target || !onCanvas.has(source) || !onCanvas.has(target)) continue;
+          /*
+            A connection is a record too, so the two flags a card answers to apply to a line as well.
+            An extraction pass stages connections just as it stages cards: hidden when the reader has
+            put suggestions away, and marked when it is still one, so the line can be drawn as the
+            draft it is rather than as a claim somebody agreed to.
+          */
+          const id = typeof row.id === 'string' ? row.id : String(row.id);
+          if (hidden.has(id)) continue;
           const from = addressOf(row.sourceType, source);
           const to = addressOf(row.targetType, target);
           if (!from || !to) continue;
           edges.push({
-            id: `canvas-connection|${String(row.id)}`,
+            id: `canvas-connection|${id}`,
             source: from,
             target: to,
             type: 'relates',
@@ -537,10 +768,16 @@ export function canvasSeed(): SeedSource {
             // The connection's own scalars, then how this canvas draws it. Second, so a canvas's
             // routing wins over a like-named field on the connection — the same order a card's own
             // colour takes over its type's.
-            data: { ...scalarsOf(row), ...(routeFor.get(String(row.id)) ?? {}) },
+            data: {
+              ...scalarsOf(row),
+              ...countsOf(row),
+              ...(pending.has(id) ? { pending: true } : {}),
+              ...(changed.has(id) ? { changed: true } : {}),
+              ...(routeFor.get(id) ?? {}),
+            },
             // Keeps the record reachable, exactly as the reified expander does: clicking the line
             // should be able to open the claim it stands for rather than dead-ending.
-            reifiedAs: entityAddress(dataset, connections, String(row.id)),
+            reifiedAs: entityAddress(dataset, connections, id),
           });
         }
       }

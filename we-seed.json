@@ -5,9 +5,15 @@
     "description": "Pure WE application built with design system and schema renderer",
     "author": "James Weir"
   },
-  "modules": ["call", "transcribe", "pocket", "notes", "globe", "graph", { "id": "polls", "enabled": false }],
+  "modules": ["call", "transcribe", "live", "pocket", "notes", "globe", "graph", { "id": "polls", "enabled": false }],
   "templates": ["default", "workshop", "discord", "twitter", "instagram", "youtube", "kanban", "events", "scrapbook"],
   "views": ["about", "cards", "graph", "globe", "boards", "calendar"],
+  "settings": {
+    "globe": {
+      "imagery": "ion",
+      "ionAccessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6Im01MDBjRTVZclBWTmwycGsiLCJqdGkiOiI3NGFjZmI5MS01MDAwLTQwZTktOTlkMC01OTJkN2E2MmQ5OTgiLCJpZCI6MjU5LCJzdWIiOiJDZXNpdW1KUyIsImlzcyI6Imh0dHBzOi8vYXBpLmNlc2l1bS5jb20iLCJhdWQiOiIxLjE0NiBSZWxlYXNlIC0gRGVsZXRlIG9uIERlY2VtYmVyIDEsIDIwMjYiLCJpYXQiOjE3OTAzMTMyMTJ9.4CskcFdVNW5VgLW2iBnYt2GIW2Yl9Q5u6T8gSRK4rkU"
+    }
+  },
   "ad4m": {
     "dataPath": "~/.ad4m",
     "executorPath": "../ad4m/target/release/ad4m-executor",

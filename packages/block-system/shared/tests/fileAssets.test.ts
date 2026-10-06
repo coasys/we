@@ -114,7 +114,7 @@ beforeEach(() => {
 describe('file-backed fields', () => {
   it('hands the model the file data and the blob the address', async () => {
     const blocks: ContentBlock[] = [{ _type: 'image', src: fileData, altText: 'a' }];
-    const root = (await createBlocks(perspective, blocks, { kind: 'post' })) as FakeCollection;
+    const root = (await createBlocks(perspective, blocks, { kind: 'post' })) as unknown as FakeCollection;
 
     const image = byId.get(root.children[0]) as FakeImage;
     expect(image.src).toEqual(fileData); // the payload — the model layer creates the expression
@@ -123,14 +123,14 @@ describe('file-backed fields', () => {
     const blob = decodeEditorState(
       `data:application/json;base64,${(root.editorState as { data_base64: string }).data_base64}`,
     )!;
-    expect(blob[0].src).toBe('qm://image-block@4'); // the address, for the blob alone
+    expect((blob[0] as { src?: string }).src).toBe('qm://image-block@4'); // the address, for the blob alone
     expect(blob[0]._key).toBe(image.id);
   });
 
   it('turns a loaded data URI back into file data with its original name, and does not rewrite an untouched one', async () => {
     const root = (await createBlocks(perspective, [{ _type: 'image', src: fileData }], {
       kind: 'post',
-    })) as FakeCollection;
+    })) as unknown as FakeCollection;
     const image = byId.get(root.children[0]) as FakeImage;
     // What a reader hydrates: the model resolves the file to a data URI on read.
     image.src = 'data:image/png;base64,QUJD';
@@ -140,7 +140,7 @@ describe('file-backed fields', () => {
     const loaded = await resolveExpressionAddresses(perspective, [
       { _type: 'image', _key: image.id, src: 'qm://image-block@4' },
     ]);
-    expect(loaded[0].src).toBe('data:image/png;base64,QUJD');
+    expect((loaded[0] as { src?: string }).src).toBe('data:image/png;base64,QUJD');
     expect((loaded[0] as { __assetNames?: Record<string, string> }).__assetNames).toEqual({ src: 'image-block' });
 
     await reconcileBlocks(perspective, root as never, { _type: 'document', base: [image.id], blocks: loaded });
@@ -154,7 +154,7 @@ describe('file-backed fields', () => {
   it('a changed image reaches the model as file data on edit', async () => {
     const root = (await createBlocks(perspective, [{ _type: 'image', src: fileData }], {
       kind: 'post',
-    })) as FakeCollection;
+    })) as unknown as FakeCollection;
     const image = byId.get(root.children[0]) as FakeImage;
     const replacement = { data_base64: 'WFla', name: 'image-block', file_type: 'image/png' };
 
@@ -179,7 +179,7 @@ describe('a composition moving between datasets', () => {
         { _type: 'image', src: fileData, altText: 'a' },
       ],
       { kind: 'post' },
-    )) as FakeCollection;
+    )) as unknown as FakeCollection;
     expect(storedIn).toEqual([personal]);
 
     const copy = await copyableContent(
@@ -190,11 +190,11 @@ describe('a composition moving between datasets', () => {
     // No keys: they are record ids in the dataset it was read from, and name nothing elsewhere.
     expect(copy!.every((block) => block._key === undefined)).toBe(true);
     // A payload, not the personal space's address.
-    expect(copy![1].src).toBe('data:image/png;base64,QUJD');
+    expect((copy![1] as { src?: string }).src).toBe('data:image/png;base64,QUJD');
 
     stored.length = 0;
     storedIn.length = 0;
-    const post = (await createBlocks(space, copy!, { kind: 'post' })) as FakeCollection;
+    const post = (await createBlocks(space, copy!, { kind: 'post' })) as unknown as FakeCollection;
 
     expect(post.id).not.toBe(root.id);
     expect(storedIn).toEqual([space]);
@@ -215,7 +215,7 @@ describe('a composition moving between datasets', () => {
         { _type: 'image', src: fileData, altText: 'the picture' },
       ],
       { kind: 'post' },
-    )) as FakeCollection;
+    )) as unknown as FakeCollection;
     const imageKey = root.children[1];
     const blob = `data:application/json;base64,${(root.editorState as { data_base64: string }).data_base64}`;
 

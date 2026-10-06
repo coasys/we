@@ -1,0 +1,147 @@
+name: Bump ad4m
+
+# Keeps one open pull request that moves WE's ad4m pin to the newest version published under npm's
+# `dev` tag (docs/contributing/ad4m-and-deploys.md, "Keeping the pin current").
+#
+# Every run starts from `dev`, runs `pnpm bump:ad4m`, and force-pushes the result to one branch, so
+# there is at most one bump PR at a time and it always names the newest version. Merging it ends
+# that PR; the next ad4m publish opens a new one. When the pin is already current, or the newest
+# version cannot be moved to yet, the run does nothing.
+#
+# A PR opened with GITHUB_TOKEN starts no workflows of its own, so this starts CI on the branch
+# itself, and the results appear as checks on the PR. The Netlify preview needs nothing: Netlify
+# hears about the PR from GitHub whoever opened it.
+#
+# Opening a PR needs the repository setting "Allow GitHub Actions to create and approve pull
+# requests" (Settings → Actions → General).
+#
+# The same schedule also tells paired pull requests when the ad4m change they wait for can be
+# pinned (the `ready` job): nothing in this repository runs when an ad4m PR merges or a version is
+# published, so asking hourly is how it finds out.
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write # push the bump branch
+  pull-requests: write # open and update the PR
+  actions: write # start CI on the bump branch
+  issues: write # label and comment on paired PRs (the `ready` job)
+
+concurrency:
+  group: bump-ad4m
+  cancel-in-progress: false
+
+env:
+  BRANCH: bot/bump-ad4m
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: dev
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - uses: pnpm/action-setup@v6
+
+      - name: Bump
+        id: bump
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/bump-ad4m.mjs --if-newer --lockfile-only --pr-body "$RUNNER_TEMP/body.md"
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "version=$(node -p "require('./package.json').pnpm.overrides['@coasys/ad4m']")" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The branch already holding this version means the PR is up to date: pushing it again would
+      # only start CI for nothing, every hour.
+      - name: Check the open bump
+        id: current
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          PINNED=''
+          if git fetch -q --depth 1 origin "$BRANCH" 2>/dev/null; then
+            PINNED="$(git show FETCH_HEAD:package.json | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).pnpm.overrides['@coasys/ad4m']")"
+          fi
+          if [ "$PINNED" = "$VERSION" ]; then
+            echo "$BRANCH is already on $VERSION"
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push the branch
+        if: steps.current.outputs.stale == 'true'
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -B "$BRANCH"
+          git commit -qam "chore(deps): bump ad4m to $VERSION"
+          git push -f origin "$BRANCH"
+
+      - name: Open or update the PR
+        if: steps.current.outputs.stale == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          {
+            cat "$RUNNER_TEMP/body.md"
+            echo
+            echo "---"
+            echo
+            echo "Opened by the [Bump ad4m]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/bump-ad4m.yaml) workflow, which updates this PR whenever a newer ad4m \`dev\` version is published. CI runs on each update."
+          } > "$RUNNER_TEMP/pr.md"
+          TITLE="chore(deps): bump ad4m to $VERSION"
+
+          NUMBER="$(gh api "repos/$GITHUB_REPOSITORY/pulls?head=${GITHUB_REPOSITORY_OWNER}:$BRANCH&state=open" -q '.[0].number // empty')"
+          if [ -n "$NUMBER" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/pulls/$NUMBER" -f title="$TITLE" -F body=@"$RUNNER_TEMP/pr.md" -q .html_url
+          elif ! gh api -X POST "repos/$GITHUB_REPOSITORY/pulls" -f title="$TITLE" -f head="$BRANCH" -f base=dev \
+              -F body=@"$RUNNER_TEMP/pr.md" -q .html_url; then
+            echo "::error::Could not open the PR. Turn on \"Allow GitHub Actions to create and approve pull requests\" in Settings → Actions → General. The branch $BRANCH is pushed, so the PR can also be opened by hand."
+            exit 1
+          fi
+
+      - name: Start CI on the branch
+        if: steps.current.outputs.stale == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # And the live tests, which are the point of a bump: they run against an executor built from
+        # the version the PR moves to.
+        run: |
+          gh workflow run build.yaml --ref "$BRANCH"
+          gh workflow run ad4m-live.yaml --ref "$BRANCH"
+
+  # A paired PR whose ad4m change has merged and been published gets the `ready to bump ad4m`
+  # label and a comment naming the version and what to run. Independent of the bump above: a
+  # paired PR moves the pin itself, in its own branch. scripts/ad4m-ready-to-bump.mjs has the rules.
+  ready:
+    name: Mark paired PRs ready to bump
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: dev
+          sparse-checkout: scripts
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Check paired PRs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/ad4m-ready-to-bump.mjs

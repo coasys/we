@@ -25,6 +25,7 @@ import { involvementMenu } from './involvementMenu';
 import { reactors } from './reactors';
 import { reactions, signalTally } from './signalTally';
 import { signalTypesByUse } from './signalTypesByUse';
+import { voices, voicesParam } from './voices';
 
 export interface HostSource {
   /** The name a template calls. */
@@ -74,7 +75,7 @@ export const hostSources: readonly HostSource[] = [
   {
     name: 'arrangedBoard',
     params: ['options'],
-    doc: 'A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total, involved, filtering, show, dimmed, cardCount, matchedCount, unplacedTotal, rows, cells, rowCounts }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count, shown, matched, order }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: "column" children), records (everything in scope), states (spaceStore.taskStates). To read it by who is on the work, also pass involvements (an Involvement query), kinds (spaceStore.involvementTypes), people (the chosen DIDs), me (me.did — involved is everyone on a card here, the viewer first) and show: "dim" lists the others in dimmed and moves nothing; "hide" drops them from arranged, unarranged and unplaced while count stays true and shown says how many are drawn; "rows" adds a row per person plus "nobody" — rows are keys, cells[row][columnId] is { arranged, unarranged, count }. A drag in a column showing only part of itself passes contents[columnId].order to arrangeColumn, so the hidden cards keep their places.',
+    doc: 'A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total, involved, filtering, show, dimmed, cardCount, matchedCount, unplacedTotal, rows, cells, rowCounts, flow, awaiting, awaitingOnly }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count, shown, matched, order }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: "column" children), records (everything in scope), states (spaceStore.taskStates). To read it by who is on the work, also pass involvements (an Involvement query), kinds (spaceStore.involvementTypes), people (the chosen DIDs), me (me.did — involved is everyone on a card here, the viewer first) and show: "dim" lists the others in dimmed and moves nothing; "hide" drops them from arranged, unarranged and unplaced while count stays true and shown says how many are drawn; "rows" adds a row per person plus "nobody" — rows are keys, cells[row][columnId] is { arranged, unarranged, count }. A drag in a column showing only part of itself passes contents[columnId].order to arrangeColumn, so the hidden cards keep their places. Where the space\u2019s states ask for agreement (spaceStore.taskFlowEnabled) a card is drawn where its run is, and three more fields answer: flow[cardId] is { to, voters, counted, needs, mine, canApprove, approverKind } for a card waiting on a move — counted is how many of voters count toward needs; awaiting is the cards whose waiting move the viewer\u2019s approval would help; pass awaitingMe: true to draw only those (awaitingOnly says it is on).',
     example:
       'arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates }).columns',
     fn: arrangedBoard,
@@ -125,6 +126,21 @@ export const hostSources: readonly HostSource[] = [
     example:
       'signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: spaceStore.mutedDids, limit: 4 })',
     fn: signalTypesByUse,
+  },
+  {
+    name: 'voices',
+    params: ['options'],
+    doc: "Whose reactions a weighted score was made from, as a list a reader turns voices up and down in — { did, name, avatar, cards, mean, weight, share, mine, pretend }, the busiest first. `weight` is how much the voice counts (0–100) and `share` its part of everybody's say. Options: summary (what a GraphView's onSeedSummary reported — the canvas seed's `{ type, voices }`), param (the weights as the address holds them, `did=50,did=0`), profiles (profileStore.profiles), me (me.did).",
+    example:
+      'voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did })',
+    fn: voices,
+  },
+  {
+    name: 'voicesParam',
+    params: ['options'],
+    doc: 'The weights address form with one voice changed — options param, did and weight (0–100) — or, with only (a DID) and voices (the listed rows), every voice at nothing but that one. A voice back at full is left out, so putting everything back leaves a clean address.',
+    example: 'voicesParam({ param: local.voices, did: voice.did, weight: event.detail })',
+    fn: voicesParam,
   },
   {
     name: 'formatJson',

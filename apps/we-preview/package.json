@@ -1,7 +1,7 @@
 {
   "private": true,
   "name": "@we/app-preview",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "description": "WE over an in-memory backend — the host the screenshot harness drives",
   "license": "MIT",
   "type": "module",
@@ -9,6 +9,7 @@
     "dev": "vite",
     "build:steps": "vite build",
     "build": "we-build",
+    "test": "vitest run",
     "serve": "vite preview",
     "typecheck": "tsc --noEmit",
     "shoot": "node scripts/shoot.mjs"
@@ -19,14 +20,20 @@
     "@we/backend-shared": "workspace:*",
     "@we/components": "workspace:*",
     "@we/entities": "workspace:*",
+    "@we/schema-shared": "workspace:*",
+    "@we/schema-solid": "workspace:*",
     "@we/template-fixtures": "workspace:*",
     "solid-js": "^1.9.15"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
+    "@we/csp": "workspace:*",
+    "@we/globe-layers": "workspace:*",
+    "@we/globe-widget": "workspace:*",
     "playwright-core": "^1.62.1",
-    "typescript": "^5.7.2",
+    "typescript": "^6.0.3",
     "vite": "^8.2.2",
-    "vite-plugin-solid": "^2.11.14"
+    "vite-plugin-solid": "^2.11.14",
+    "vitest": "^5.0.2"
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@we/app-electron",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "description": "WE - Decentralized social launcher (Electron)",
   "homepage": "https://github.com/jhweir/we",
   "author": {
@@ -25,26 +25,29 @@
   },
   "main": "electron/main.js",
   "dependencies": {
-    "electron-context-menu": "^4.1.1",
+    "electron-context-menu": "^5.1.0",
     "express": "^5.2.1",
     "uuid": "^14.0.2"
   },
   "devDependencies": {
-    "@coasys/ad4m": "0.13.0-test-interpretation-2",
+    "@coasys/ad4m": "0.13.0-test-flows-1",
     "@types/node": "^26.4.0",
     "@we/app-shell": "workspace:*",
     "@we/backend-ad4m": "workspace:*",
     "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
+    "@we/csp": "workspace:*",
+    "@we/globe-layers": "workspace:*",
+    "@we/globe-widget": "workspace:*",
     "concurrently": "^10.0.5",
     "electron": "^44.2.0",
     "electron-builder": "^26.15.3",
     "solid-js": "^1.9.15",
-    "typescript": "^5.7.2",
+    "typescript": "^6.0.3",
     "vite": "^8.2.2",
     "vite-plugin-solid": "^2.11.14",
     "vite-plugin-static-copy": "^4.1.1",
-    "vitest": "^4.1.11",
+    "vitest": "^5.0.2",
     "wait-on": "^9.1.0"
   },
   "desktopName": "io.weco.we.electron.desktop"

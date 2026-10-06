@@ -1,7 +1,10 @@
 # @we/backend-shared
 
-The backend contract. Every adapter — `@we/backend-ad4m`, `@we/backend-inmemory` — implements these;
-the shell and feature modules consume them.
+The backend contract: the typed surface the shell and feature modules consume, and every adapter
+under `backend-system/` implements. Nothing here names a backend. What this package holds is where
+the contract is _stated_ — the query grammar and the planner a query is checked against, the
+manifest an entity is declared in, the record contract a consumer relies on, and the ports a peer
+transport or a model is reached through. The reasons the layer exists are in the directory README.
 
 ## What belongs here
 

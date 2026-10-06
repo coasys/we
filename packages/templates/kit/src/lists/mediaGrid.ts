@@ -129,9 +129,16 @@ export function mediaGrid(opts: MediaGridOptions): SchemaNode {
                                         gap: '300',
                                         ay: 'center',
                                         color: 'on-inverse',
-                                        styles: {
-                                          background: 'linear-gradient(transparent, rgba(0,0,0,0.6))',
-                                        },
+                                        /*
+                                          `bgImage` takes a gradient, so this needs no `styles`.
+
+                                          Black rather than a role, and deliberately: the scrim sits
+                                          over somebody's photograph and carries `on-inverse` text,
+                                          which holds a fixed lightness for the same reason
+                                          `surface-inverse` does. A scrim that followed the theme
+                                          would go pale in a light one and take the caption with it.
+                                        */
+                                        bgImage: 'linear-gradient(transparent, rgba(0, 0, 0, 0.6))',
                                       },
                                       children: opts.overlay(as),
                                     },

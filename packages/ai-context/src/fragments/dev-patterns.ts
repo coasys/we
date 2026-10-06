@@ -42,6 +42,16 @@ it gives consistently styled scrollbars across themes.
 **Token values:** Use \`tokenVar\` from \`@we/design-utils\` when you need a token value
 inside a \`style={{}}\` object. Prefer DS props directly where possible.
 
+**Name a colour ROLE, in code as well as in a schema.** \`tokenVar('color', 'text-muted')\`, not
+\`tokenVar('color', 'neutral-600')\` — a step is invisible to the contrast corrections at apply time
+wherever it is written, and \`tokenVar\` accepts a role name directly. \`pnpm audit:roles\` covers the
+TypeScript and SCSS as well as the schemas, and gates CI.
+
+Note what \`tokenVar\` does with a name it does not know: it warns in development and returns
+\`var(--we-color-<name>)\` anyway, so a typo or an invented family compiles to a variable nothing
+declares and the declaration is dropped. The element paints nothing, which reads as a design
+decision rather than a bug.
+
 Raw inline styles and hardcoded CSS variable strings (\`var(--we-color-neutral-400)\`)
 are a signal that a DS prop or primitive is being missed — check before reaching for
 \`style={{}}\`.
@@ -71,23 +81,46 @@ To add or change documented schema fields, tokens, conventions, or rules:
 
 ### Git Workflow — Default Branch & PR Summaries
 
-\`main\` is the production branch — it only receives periodic merges for releases.
+\`main\` is the production branch — it only receives periodic merges for releases, each tagged
+\`v<version>\` (the release steps are in \`docs/contributing/ad4m-and-deploys.md\`).
 \`dev\` is where all active work happens. Always branch from \`dev\`, and always
 diff/compare against \`dev\` (e.g. \`git diff dev...HEAD\`, \`git log dev..HEAD\`) —
 never \`main\`, even though it exists.
 
-**PR summary convention:** when asked to write a PR summary document for a branch,
-create a new \`PR_<DESCRIPTIVE_NAME>.md\` file at the repo root (e.g.
-\`PR_COLLECTION_BLOCK_TEXT_CONTENT.md\`), based on \`git diff dev...<branch>\` and the
-branch's commit log, with these sections:
+**PR summary convention:** a PR description follows \`docs/contributing/pull-requests.md\`. When
+asked to write one for a branch, create \`PR_<DESCRIPTIVE_NAME>.md\` at the repo root, based on
+\`git diff dev...<branch>\` and the branch's commit log, with these sections:
 
-- **Summary** — the problem being solved and the high-level approach, 1–2 paragraphs.
-- **Changes** — one entry per file or logical group, explaining *why* the change was
-  made, not just what changed (the diff already shows what).
-- **Known follow-ups** (optional) — gaps or pre-existing issues discovered during the
-  work that are intentionally out of scope for this branch.
-- **Test plan** — a checklist of what was actually verified (manual testing, builds,
-  etc.), not a hypothetical list of what could be tested.
+- **What** — what merging it changes, in a few bullets.
+- **Why** — the problem, and why this is the right fix for it.
+- **How** — where a reviewer should start and the route through the change; a table of files when
+  it is wide, explaining *why* each changed rather than restating the diff.
+- **Test plan** — what was actually verified, ticked, and what was not, unticked with the reason.
+  **A checkbox is a thing that must be true before this merges, and nothing else is a checkbox.**
+  \`- [x]\` done; \`- [ ]\` not done, and the PR is not finished. Anything that will never be
+  ticked is a BULLET, not a box — a deferral is \`- **Deferred — …**\` with the reason and where it
+  goes instead. GitHub counts every checkbox in a description and prints "6 of 7 tasks" on the PR,
+  so a box nobody intends to tick makes that number wrong on every PR, and a number that is always
+  wrong is one everybody learns to ignore. \`scripts/pr-tasks.mjs\` fails CI on an unticked box.
+
+The file is the description and nothing else — no title heading above the sections, since it is
+passed as \`gh pr create --body-file\` and anything above a pairing block (below) breaks it. Give
+the **title** alongside it, for \`--title\`, in Conventional Commits form: \`type(scope):
+description\`, the type lowercase (\`feat\`, \`fix\`, \`refactor\`, \`perf\`, \`docs\`, \`test\`,
+\`ci\`, \`chore\`), the scope optional, and the description short — under 60 characters, naming the
+change rather than explaining it: \`ci: pair PRs with an ad4m alert block\`.
+
+**If the branch needs an ad4m change that has not been published yet**, the file must START with
+this block, exactly — the preview builds against it and a check tests the PR there, and
+anything close (no colon, another heading or alert, lower down) fails rather than pairing:
+
+\`\`\`markdown
+> [!IMPORTANT]
+> ### Paired with: coasys/ad4m#<N>
+\`\`\`
+
+\`coasys/ad4m@<branch>\` names an ad4m branch instead. The rules are in
+\`docs/contributing/ad4m-and-deploys.md\`.
 
 **Never commit \`PR_*.md\` files.** They're scratch documents for the PR description.
 
@@ -119,11 +152,23 @@ strings target/release/ad4m-executor | grep "your log string"
 
 **After modifying \`@coasys/ad4m\` TypeScript (e.g. \`core/src/model/Ad4mModel.ts\`):**
 
-The normal pattern is that \`we/package.json\`'s pnpm \`overrides\` pins \`@coasys/ad4m\` to a
-**published npm tag**, not a local \`file:\` link. Under that normal pattern, a local
-\`cd ad4m/core && pnpm run build\` does NOT get picked up by WE — runtime/logic changes to
-\`@coasys/ad4m\` only reach WE once a new tag is published from the ad4m repo and the
-override version in \`we/package.json\` is bumped, followed by \`pnpm install\`.
+The root \`package.json\`'s pnpm \`overrides\` pin \`@coasys/ad4m\` and \`@coasys/ad4m-connect\` to a
+**published version**, not a local \`file:\` link, and every WE build uses that pin except a deploy
+preview whose PR description pairs it with an ad4m change. The pairing is this exact block, first in
+the description — anything close (no colon, another heading or alert, lower down, the old
+\`ad4m: coasys/ad4m#<N>\` line) is an error, not a pairing:
+
+\`\`\`markdown
+> [!IMPORTANT]
+> ### Paired with: coasys/ad4m#<N>
+\`\`\`
+
+So a local
+\`cd ad4m/core && pnpm run build\` does NOT get picked up by WE — changes to \`@coasys/ad4m\` reach WE
+once a version is published from the ad4m repo and the pin moves. A bot keeps one PR open that moves
+it to the newest ad4m \`dev\` version (\`.github/workflows/bump-ad4m.yaml\`); a feature that needs a
+new ad4m moves it in its own PR with \`pnpm bump:ad4m\`. Run \`pnpm verify:ad4m\` before merging either. The whole policy is in
+\`docs/contributing/ad4m-and-deploys.md\`.
 
 For active local iteration you can temporarily switch the override to
 \`"@coasys/ad4m": "file:../ad4m/core"\` (then \`pnpm install\`) so \`pnpm run build\` in
@@ -175,8 +220,8 @@ pnpm --filter @we/tokens --filter @we/themes build     # a design-token change
 pnpm --filter @we/primitives build                      # a Lit primitive
 \`\`\`
 
-**Do rebuild, though — a stale \`dist\` is invisible and wastes more time than the build saves.** Two
-symptoms worth recognising, both of which have happened here:
+**Do rebuild, though — a stale \`dist\` is invisible and wastes more time than the build saves.** Three
+symptoms worth recognising, all of which have happened here:
 
 - *"I changed the source and the app is unchanged."* The package ships a \`dist\` and it was not
   rebuilt. Note that packages differ: \`@we/template-shell\` has no \`dist\` and is consumed as source,
@@ -185,6 +230,9 @@ symptoms worth recognising, both of which have happened here:
 - *"The build says it failed but the error names a package I did not touch."* A dependency's types
   moved. Rebuild the chain in dependency order — tokens, then themes, then schema-shared, then
   whatever consumes them.
+- *"The adapter's test still sees the old behaviour."* A test that imports \`@we/backend-ad4m\` by its
+  own name resolves through the package's \`exports\` to \`dist\`, so it runs the last build rather than
+  \`src\`. Rebuild the package before \`pnpm --filter @we/backend-ad4m test\`.
 
 To find what is stale rather than guessing:
 
@@ -213,25 +261,81 @@ This validates every \`.schema.ts\` under \`packages/app-shell/src/shared/schema
 section files that are not named \`.schema.ts\` are still covered, because the template that composes
 them is — the walk descends into whatever a validated schema imports.
 
-Two further audits run over the same trees and are easy to miss. Both **import and walk the composed
+Further audits run over the same trees and are easy to miss. They all **import and walk the composed
 tree** rather than grepping source, which is the only way to attribute a node that a fragment from
 another package contributed:
 
 \`\`\`sh
-pnpm --filter @we/schema-shared role-audit     # colours naming a scale position where a role belongs
-pnpm --filter @we/schema-shared surface-audit  # what each surface-sunken is actually sitting on
+pnpm audit:roles                               # a scale position where a role belongs
+pnpm audit:surfaces                            # a surface-sunken invisible against its ground
+pnpm --filter @we/schema-shared tooltip-audit  # nodes asking the browser for a tooltip via \`title\`
+pnpm --filter @we/schema-shared query-audit    # queries that read a growing list whole
+pnpm --filter @we/schema-shared size-audit     # how big each template is, and what it says twice
 \`\`\`
 
 Run them after any template, view or fragment change. A \`neutral-600\` label is invisible to the
 whole contrast layer — never measured against what is behind it — so \`role-audit\` is the only thing
 that will report it.
 
-Two things it now catches that it used to miss, both worth knowing when adding a schema:
+**The first two gate CI**, so a scale position or an invisible well fails the build rather than
+waiting to be noticed. Both are at zero; keep them there.
 
-- **Every export in a file is checked**, not just the first one found. A fragment file exporting
-  several sections used to be judged on whichever happened to be declared at the top.
-- **A schema that fails to import is an error**, not a skip. It used to print the failure and still
-  exit 0, so an unloadable schema looked identical to a clean one.
+\`role-audit\` has a **code half** as well, which the root script runs by default: paths after
+\`--code\` are scanned textually rather than imported, because a colour in a \`style={{}}\`, an
+\`.scss\` rule or a CodeMirror theme is a string in a file and there is no tree to walk. It reads
+four spellings — \`var(--we-color-<hue>-<step>)\`, \`tokenVar('color', '<hue>-<step>')\`, a DS prop in
+TSX (\`color="neutral-800"\`), and a raw hex or \`rgb()\` next to a property that paints — plus a name
+handed to \`tokenVar\` that is **no colour at all**, which compiles to a variable nothing declares and
+paints nothing. Four of the editor's dividers were \`ui-200\`, a ramp that has never existed.
+
+A genuine palette is exempt, with its reason, in one of two places: \`CODE_PALETTES\` for a whole file
+(syntax highlighting, a WebGL scene, a theme's own definitions) or a \`role-audit: palette\` marker in
+the comment above the line, for a file that is mostly chrome and has one swatch. The reasons print on
+every run. \`EditorOverlay\` is the case worth reading: its annotation colours are fixed on purpose,
+because they are drawn over the template being edited in whatever theme its author is choosing.
+
+\`surface-audit\` judges a well by what is behind it rather than by the roles table's wording, which
+is looser than the ramp. \`surface-sunken\` is derived from \`page\`, so a trough on the page is right;
+on \`chrome\` it is half a lightness point away and **inverts** between light and dark, and on another
+\`surface-sunken\` there is no difference at all. Those two fail.
+
+\`query-audit\` is the one whose findings are invisible in development and expensive in a real space.
+A \`$query\` with no \`limit\` re-reads, re-hydrates and re-fingerprints every row of its entity on
+every change to that entity, so a list that grows costs O(n²) over a session — fine at twenty rows
+and unusable at two thousand, which is a transcript after forty minutes. It reports only what
+nothing else bounds: \`where.id\`, a \`scope\` with \`levels\` or \`limitPerAnchor\`, and a curated
+vocabulary all count as bounded. A list that really is read whole on purpose is declared in
+\`DELIBERATE\` in the script, **with the reason**, and the reasons are printed on every run so they
+get reviewed rather than accumulated.
+
+Two things about its reach, both worth knowing when adding a schema:
+
+- **Every export in a file is checked**, not just the first one found — so a fragment file
+  exporting several sections is judged on all of them.
+- **A schema that fails to import is an error**, not a skip, so an unloadable schema cannot look
+  identical to a clean one.
+
+\`size-audit\` measures what a template COSTS to carry around, which is a different question from
+whether it is correct. A template is data, and everything downstream pays for its size by the
+character: the editor sends the whole schema to a language model on every turn and gets a whole
+schema back, the undo history holds a copy per edit, and a template crossing the wire carries all
+of it. The hard limit is a model's context window, so a shape written twice is not untidy — it
+halves what can be reasoned about.
+
+It reports two things per schema, and they want different answers:
+
+- **\`$if sides share N chars\`** is a branch pair whose two sides say some of the same thing. This
+  is the one to fix, and the fix is usually one node with the condition in its props rather than a
+  \`$if\` holding the content down both sides — the same DOM, half the bytes, no new machinery.
+  \`buildCard\` in \`@we/schema-kit\` was exactly that, at 150,445 characters a copy in \`CardsView\`.
+- **\`repeat ×N\`** is a shape written out N times, which is usually a FRAGMENT called N times and
+  not a defect at all: a tree cannot name a shape and point at it, so a fragment's output is a
+  copy by construction. Reported because it is where the cost is, not because there is an edit.
+
+Neither gates CI. Size is a judgement — a rich template is big — and the honest summary is the
+\`gzip\` ratio beside it: around 4× means a template that says each thing once, and past about 8×
+means most of it is repetition. Pass \`--show\` to print the head of each repeated subtree, without
+which the report names a shape it gives no way to find.
 
 Asset imports (\`import cover from './cover.jpg'\`) resolve to a stub, so a schema that references
 an image validates without a bundler. See \`src/cli/assetHooks.mjs\`.
@@ -415,7 +519,7 @@ include: {
 \`\`\`
 
 Note: \`count: true\` works as a plain literal — the typed projection (\`TypedIncludeProjection\`)
-contextually narrows it to the \`true\` literal, so the \`as const\` workaround is no longer needed.
+contextually narrows it to the \`true\` literal, so it needs no \`as const\`.
 
 ---
 
@@ -452,6 +556,44 @@ await space.save();
 // ✅ Correct
 const space = await Space.create(perspective, { uuid: crypto.randomUUID(), name: 'My Space' });
 \`\`\`
+
+---
+
+### Watching the graph from \`@we/backend-ad4m\`
+
+To hear that something changed in a perspective, subscribe on the executor with \`subscribeQuery\`
+rather than \`addListener('link-added' | 'link-removed')\`. A link listener receives every link of a
+peer-sync burst in JS and filters there. The executor re-runs a subscription only for a diff that
+touches one of its predicates, and pushes only when the result changes.
+
+That filter needs SPARQL that writes each predicate out as a full \`<iri>\`: the executor reads the
+predicates from the query text. A variable predicate (even one a \`FILTER\` pins down), a prefixed
+name, or a Prolog query makes it re-run the subscription on every diff. \`onProposalsChanged\` in
+\`interpretationAdapter.ts\` shows the pattern, and \`interpretationDecisions.test.ts\` pins its query.
+
+What the SDK and executor do around a subscription, so a watch can rely on it:
+
+- A callback registered after \`subscribeQuery\` resolves does not receive the initial result — only
+  the changes after it.
+- After a websocket reconnect, the SDK re-subscribes and hands the current result to every
+  callback, so a watch hears a refresh rather than nothing.
+- The executor shares one server-side subscription between identical queries from the same user.
+  Disposing one ends it for the other too, until the other's 30-second keepalive fails and
+  re-subscribes. So hold one subscription per perspective and query, count its holders, and dispose
+  it a grace period after the last one lets go — \`onProposalsChanged\` shows how. The grace matters:
+  a dispose racing a fresh subscribe with the same text can land after it and end that one too.
+
+### Reading shapes from \`@we/backend-ad4m\`
+
+The \`PerspectiveProxy\` the app holds comes from the SDK copy bundled inside \`@coasys/ad4m-connect\`,
+not from the \`@coasys/ad4m\` this repo pins. An SDK fix reaches the app only when ad4m-connect
+republishes, so measure performance work against that copy, not the workspace one.
+
+In that copy, \`getAllShacl()\` reads every shape one at a time — \`getShaclNames()\`, then \`getShacl()\`
+per shape at 3 + P calls for P properties — and it rejects outright when one shape carries a
+property transform a newer SDK encoded. For a question about many shapes, ask the executor
+once with SPARQL, and read a shape in full only when the answer needs it: \`readShapeProperties\` and
+\`getForeignShacl\` in \`perspectiveHelpers.ts\` show how.
 
 ---
 

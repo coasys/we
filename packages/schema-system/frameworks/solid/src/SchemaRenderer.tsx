@@ -10,13 +10,19 @@ import type {
 import {
   applyThemeVars,
   deepUnwrap,
+  expandDefinitions,
   hasToken,
+  isTemplateElement,
   markReactive,
+  newGestureOwner,
   noMemo,
   pruneUnresolvedWhere,
   REACTIVE_ACCESSOR,
+  refusedProp,
+  registerGestureOwner,
   resolveProp,
   resolveQueryProp,
+  runAsOwner,
   scopeIsAnchored,
   validateField,
 } from '@we/schema-shared';
@@ -30,6 +36,30 @@ import { acquireSubscription } from './subscriptionPool';
 import { SurfaceRenderer } from './SurfaceRenderer';
 import type { RendererOutput, RenderProps, SchemaNode } from './types';
 import { useVisualEditor } from './VisualEditorContext';
+
+/** A lowercase type: a native element rather than a component or a custom element. */
+function isNativeType(type: string): boolean {
+  return /^[a-z][a-z0-9]*$/.test(type);
+}
+
+/** What has already been reported as refused, so a list of a hundred rows says so once. */
+const refusedReported = new Set<string>();
+function warnRefusedOnce(what: string, why: string): void {
+  if (refusedReported.has(what)) return;
+  refusedReported.add(what);
+  console.warn(`[template] ${what} was not rendered: ${why}. See templateElements.ts in @we/schema-shared.`);
+}
+
+/**
+ * A prop's value, or `undefined` when it may not reach the element — a `javascript:` URL, an inline
+ * document, an inline handler. Checked after resolution, so an expression building one is caught too.
+ */
+function permitted(key: string, value: unknown, native: boolean): unknown {
+  const why = refusedProp(key, value, native);
+  if (!why) return value;
+  warnRefusedOnce(`"${key}"`, why);
+  return undefined;
+}
 
 /** Check if a prop key is an event handler name (e.g. onClick, onInput, onKeyDown) */
 function isEventProp(key: string): boolean {
@@ -221,6 +251,62 @@ function reportRoutingRefusal(stores: RendererStores, message: string): void {
  *
  * Returns `false` when nothing was started (already reported), so the caller can clear its rows.
  */
+/**
+ * Whether this query should follow its answer — resolving an expression if that is what was written.
+ *
+ * Must be called **inside** the querying effect, like every other resolved part of a query: that is
+ * what makes a surface stop subscribing the moment its subject settles, rather than at whatever the
+ * condition happened to be when the node mounted.
+ *
+ * An unresolved expression reads as **not live** rather than live. That is the safe direction: the
+ * worst case is a surface that fetches once and re-asks a moment later when the condition resolves,
+ * where the other way round opens a subscription nobody asked for — which is the cost this exists to
+ * avoid, and the more expensive mistake of the two.
+ */
+/**
+ * A bound the author wrote that has not resolved — the one place widening is never right.
+ *
+ * Everywhere else an unresolved operand WIDENS, deliberately: a `where` condition is pruned, an
+ * unanchored `scope` is dropped, and both leave a query that asks a broader question than intended.
+ * That is the right failure for a filter. A view reads its anchor from a URL parameter that is
+ * usually absent, and "the whole space" is what it should show.
+ *
+ * A bound is the opposite, and the difference is in the KIND of failure rather than its size:
+ *
+ * - An unfiltered `where` answers with more rows of the right kind — a superset, still correct
+ *   data, and visibly broader than asked for.
+ * - An absent `limit` answers with **unbounded work**, invisibly. Nothing on screen looks wrong;
+ *   the query simply costs the backend everything there is, and the more there is the worse it is.
+ *
+ * There is also no "optional limit" idiom the way there is an optional filter. Nobody writes a
+ * bound they do not mean, so an unresolved one is always a frame of "not ready yet" rather than an
+ * instruction to fetch the lot.
+ *
+ * So it is treated as a falsy `when`: the query is not asked, the result stays empty, and
+ * `<name>Loaded` stays false until the bound resolves. The cost of being wrong that way is one
+ * empty frame; the cost of the other way is every row in the space, which is what
+ * `perf:transcript` measured when its scenario forgot to seed a window.
+ *
+ * `offset` for the same reason one step along — an unresolved one silently pages from the start,
+ * so a reader on page three is shown page one and nothing says so.
+ */
+function unresolvedBound(authored: Record<string, unknown>, resolved: Record<string, unknown>): string | undefined {
+  for (const key of ['limit', 'offset']) {
+    if (authored[key] !== undefined && resolved[key] === undefined) return key;
+  }
+  return undefined;
+}
+
+function resolveSubscribe(
+  authored: unknown,
+  stores: Record<string, unknown>,
+  context: Record<string, unknown>,
+): boolean {
+  if (authored === undefined) return true;
+  if (typeof authored === 'boolean') return authored;
+  return Boolean(deepResolveTokens(authored, stores, context));
+}
+
 function runQuery(request: {
   names: string[];
   union: boolean;
@@ -233,7 +319,7 @@ function runQuery(request: {
 }): boolean {
   const { names, union, dataset, options, stores } = request;
   const getEntity = stores.$getEntity;
-  const getEntitiesForPerspective = stores.$getEntitiesForPerspective;
+  const getEntityForDataset = stores.$getEntityForDataset;
   if (!getEntity) return false;
 
   if (union && options.offset != null) {
@@ -250,7 +336,7 @@ function runQuery(request: {
     // Dataset-scoped model lookup: prefer a dataset-specific dynamic model, fall back to the global
     // registry. The dataset stays opaque here: the host derives whatever key its per-dataset model
     // registry needs, since only it knows the concrete handle type.
-    const dynamicCls = getEntitiesForPerspective ? getEntitiesForPerspective(entity, dataset) : undefined;
+    const dynamicCls = getEntityForDataset ? getEntityForDataset(entity, dataset) : undefined;
     let Model: EntityClass;
     try {
       Model = dynamicCls ?? getEntity(entity);
@@ -441,6 +527,12 @@ function createQuerySignal(
     // "narrow to the children of nothing". A view that reads its anchor from a URL parameter carries
     // the scope unconditionally and is unanchored when nobody named one.
     if (resolvedParams.scope !== undefined && !scopeIsAnchored(resolvedParams.scope)) delete resolvedParams.scope;
+    // A bound that has not resolved is "not ready", never "fetch everything" — see `unresolvedBound`.
+    if (unresolvedBound(descriptor.params, resolvedParams)) {
+      setItems(reconcile([]));
+      setLoaded(false);
+      return;
+    }
     const resolvedInclude =
       descriptor.include !== undefined
         ? (deepResolveTokens(descriptor.include, stores, context) as Record<string, boolean | Record<string, unknown>>)
@@ -454,7 +546,10 @@ function createQuerySignal(
       ...entities,
       dataset: p,
       options: rawOptions,
-      subscribe: descriptor.subscribe,
+      // Read inside the effect, so a surface can stop following its subject the moment the subject
+      // stops changing — see `QueryToken.subscribe`. A change re-runs this effect, which disposes
+      // the old subscription on cleanup, so going live-to-static actually releases it.
+      subscribe: resolveSubscribe(descriptor.subscribe, stores, context),
       stores,
       onRows: (rows) => {
         setItems(reconcile(rows, { key: 'id', merge: true }));
@@ -491,7 +586,24 @@ function isStaticValue(value: unknown): boolean {
   return !Object.keys(value).some((k) => k.startsWith('$')) && Object.values(value).every(isStaticValue);
 }
 
-export function RenderSchema({ node, stores, registry, context = {}, children }: RenderProps): RendererOutput {
+/**
+ * A template that says a repeated shape once is put back together here, and nowhere else.
+ *
+ * `$defs` lives on the root and only on the root, so this fires exactly once per mounted tree:
+ * the expansion carries no definitions of its own, and recursion goes through this same component,
+ * so no descendant pays the check more than a property read.
+ *
+ * Expanded at the boundary rather than resolved as a node type, deliberately. A `$ref` the
+ * renderer understood would be a node every OTHER consumer also has to understand — the indexer,
+ * the scope walker, the inspector, the validator, every audit that walks a composed tree — and
+ * each one that forgot would fail by quietly skipping a subtree. One place knows, and everything
+ * downstream sees the tree it has always seen.
+ */
+export function RenderSchema(props: RenderProps): RendererOutput {
+  return RenderNode(props.node?.$defs ? { ...props, node: expandDefinitions(props.node) } : props);
+}
+
+function RenderNode({ node, stores, registry, context = {}, children }: RenderProps): RendererOutput {
   if (!node) return null;
 
   const visualEditor = useVisualEditor();
@@ -963,6 +1075,11 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             else resolvedParams.where = prunedWhere;
           }
           if (resolvedParams.scope !== undefined && !scopeIsAnchored(resolvedParams.scope)) delete resolvedParams.scope;
+          // Same rule one node type along — see `unresolvedBound`.
+          if (unresolvedBound(descriptor.params, resolvedParams)) {
+            setHasItem(false);
+            return;
+          }
           const resolvedInclude =
             descriptor.include !== undefined
               ? (deepResolveTokens(descriptor.include, stores, effectiveContext) as Record<
@@ -982,7 +1099,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             ...entities,
             dataset: p,
             options: rawOptions,
-            subscribe: descriptor.subscribe,
+            subscribe: resolveSubscribe(descriptor.subscribe, stores, context),
             stores,
             onRows: (rows) => {
               if (rows.length === 0) {
@@ -1054,10 +1171,21 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     // During reactive updates (node.type changed via store mutation), guard here
     // so Dynamic never receives an invalid tag name like "$routes".
     if (t.startsWith('$')) return undefined;
-    const isHtml = /^[a-z][a-z0-9]*$/.test(t);
-    const isWc = t.includes('-');
-    return registry[t] ?? (isHtml || isWc ? t : undefined);
+    if (registry[t]) return registry[t];
+    // A native element only from the allowlist — see `templateElements.ts` in `@we/schema-shared`.
+    if (isNativeType(t)) return isTemplateElement(t) ? t : undefined;
+    return t.includes('-') ? t : undefined;
   });
+  /*
+    A native element outside the allowlist is absent, not reported on the page: it is either a
+    template trying to run something (`script`, an `iframe` with `srcdoc`) or one that would load a
+    document of its own, and the dashed "unknown component" box below would be the wrong answer to
+    both — that box is for a module that is not installed.
+  */
+  if (isNativeType(node.type ?? '') && !registry[node.type ?? ''] && !isTemplateElement(node.type ?? '')) {
+    warnRefusedOnce(`<${node.type}>`, 'an element a template may not mount');
+    return null;
+  }
   // An unrecognised type used to throw, which took down **the whole render** rather than one node —
   // so a template referencing a component from a module that isn't enabled produced a blank page.
   // Fail the way the rest of the system does: loud, but scoped.
@@ -1217,6 +1345,29 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   });
 
   /*
+    Gesture credit: every handler this node hands a component runs as this node.
+
+    A template's write runs only when somebody asked, and "asked" usually means a press still being
+    dispatched. Some components answer a press later — after encoding a crop, after a lookup — and by
+    then it has finished. A press that passed through this node's wrapper credits it, and a handler
+    called afterwards may spend that credit once (see `gesture.ts` in `@we/schema-shared`).
+
+    Done here, around every handler, because this is the one place every handler is built. The
+    alternative is each component carrying the press across its own awaits — a convention no foreign
+    element bundled from a library could follow.
+  */
+  const gestureOwner = newGestureOwner();
+  if (Object.keys(node.props ?? {}).some(isEventProp)) {
+    createEffect(() => {
+      if (wrapperRef) registerGestureOwner(wrapperRef, gestureOwner);
+    });
+  }
+  const asThisNode = (handler: unknown): unknown =>
+    typeof handler === 'function'
+      ? (...args: unknown[]) => runAsOwner(gestureOwner, () => (handler as (...a: unknown[]) => unknown)(...args))
+      : handler;
+
+  /*
     A themed node is *applied*, not declared — the same distinction the document root, the scoped
     template wrapper, the theme editor's preview and its role swatches all needed.
 
@@ -1275,7 +1426,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     for (const [key, memo] of Object.entries(propMemos)) {
       if (isEventProp(key)) continue;
       createEffect(() => {
-        if (hostRef) hostRef[key] = memo();
+        if (hostRef) hostRef[key] = permitted(key, memo(), false);
       });
     }
 
@@ -1290,7 +1441,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         for (const key of Object.keys(currentProps)) {
           if (!(key in propMemos) && !isEventProp(key)) {
             const resolved = resolveProp(currentProps[key], stores, effectiveContext, createMemo);
-            hostRef[key] = deepUnwrap(resolved);
+            hostRef[key] = permitted(key, deepUnwrap(resolved), false);
             currentDynamicKeys.add(key);
           }
         }
@@ -1307,7 +1458,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       for (const [key, memo] of Object.entries(propMemos)) {
         if (isEventProp(key)) {
           const val = memo();
-          attrs[key] = Array.isArray(val) ? composeHandlers(val) : val;
+          attrs[key] = asThisNode(Array.isArray(val) ? composeHandlers(val) : val);
         }
       }
       return attrs;
@@ -1333,19 +1484,21 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   }
 
   // Solid components / HTML elements: all props via reactive spread (standard Solid pattern)
+  const native = isNativeType(node.type ?? '');
   const reactiveAttrs = createMemo(() => {
     const attrs: Record<string, unknown> = {};
     for (const [key, memo] of Object.entries(propMemos)) {
       const val = memo();
-      attrs[key] = isEventProp(key) && Array.isArray(val) ? composeHandlers(val) : val;
+      if (isEventProp(key)) attrs[key] = asThisNode(Array.isArray(val) ? composeHandlers(val) : val);
+      else attrs[key] = permitted(key, val, native);
     }
     // Pick up props added dynamically via updateSchema that had no memo at mount time
     const currentProps = node.props as Record<string, unknown> | undefined;
     if (currentProps) {
       for (const key of Object.keys(currentProps)) {
         if (!(key in propMemos)) {
-          const resolved = resolveProp(currentProps[key], stores, effectiveContext, createMemo);
-          attrs[key] = deepUnwrap(resolved);
+          const resolved = deepUnwrap(resolveProp(currentProps[key], stores, effectiveContext, createMemo));
+          attrs[key] = isEventProp(key) ? asThisNode(resolved) : permitted(key, resolved, native);
         }
       }
     }

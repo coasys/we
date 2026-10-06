@@ -180,7 +180,8 @@ export function SignalControl(props: SignalControlProps) {
           variant="bare"
           size={size() === 'md' ? 'sm' : 'xs'}
           square
-          color="neutral-300"
+          // A foreground role: `control-surface` is a fill, and on a popover's raised ground it all but vanished.
+          color="text-muted"
           prop:hoverProps={{ color: 'danger-text' }}
           label="Remove your reaction"
           onClick={() => signal(null)}
@@ -436,7 +437,7 @@ export function SignalControl(props: SignalControlProps) {
               name={props.signalType.icon}
               weight={SIGNAL_GLYPH_WEIGHT}
               size={GLYPH_SIZE[size()]}
-              color={value() !== null ? 'primary-500' : 'neutral-300'}
+              color={value() !== null ? 'accent-text' : 'control-surface'}
             />
             {/*
               The reading is a bubble over the thumb while it moves, not a figure parked at the end.

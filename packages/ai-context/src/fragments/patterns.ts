@@ -31,10 +31,10 @@ looks identical to a page still loading, and the reader cannot tell which.
       "type": "Column",
       "props": { "ax": "center", "ay": "center", "gap": "200", "p": "600", "width": "100%" },
       "children": [
-        { "type": "we-icon", "props": { "name": "newspaper", "size": "lg", "color": "textFaint" } },
+        { "type": "we-icon", "props": { "name": "newspaper", "size": "lg", "color": "text-faint" } },
         {
           "type": "we-text",
-          "props": { "color": "textFaint", "textAlign": "center" },
+          "props": { "color": "text-faint", "textAlign": "center" },
           "children": ["This space doesn't have any posts."]
         }
       ]
@@ -111,11 +111,10 @@ Use \`gradient\` on the icon when there is something to do, and a flat \`color\`
 or \`warning-text\`) when there is not — the two read apart at a glance, and a dead end that looks
 like an invitation is worse than one that looks like a dead end.
 
-This line used to recommend \`neutral-300\`, and every gate prompt in the repo copied it. A scale
-position is not frozen — it follows the theme's hue, saturation and polarity — but it cannot follow
-what a theme *decides* a faint foreground is, and the contrast corrections at apply time skip it
-entirely, so nothing ever measures it against what is behind it. Guidance that names a step
-reproduces that in every template written from it.
+A role here rather than a scale position such as \`neutral-300\`, and the reason is sharper than
+house style. A scale position is not frozen — it follows the theme's hue, saturation and polarity —
+but it cannot follow what a theme *decides* a faint foreground is, and the contrast corrections at
+apply time skip it entirely, so nothing ever measures it against what is behind it.
 
 ### How wide is a modal — always \`size\`, never a pixel width
 
@@ -265,7 +264,6 @@ through \`onReady\`. So the sequence is: \`onReady\` stores that function in a *
     {
       "type": "BlockComposer",
       "props": {
-        "perspective": { "$": "datasetStore.currentDataset.handle" },
         "onReady": { "$setLocal": "savePost", "value": { "$": "event.save" } },
         "onSave": [
           { "$setLocal": "submitting", "value": true },
@@ -563,7 +561,7 @@ photos overlapping at an angle, yes; three cards in a row, no.
 \`\`\`json
 {
   "type": "Card",
-  "props": { "bg": "surfaceSunken", "border": "1px solid border" },
+  "props": { "bg": "surface", "border": "1px solid border" },
   "children": [
     {
       "type": "Column",
@@ -589,7 +587,7 @@ photos overlapping at an angle, yes; three cards in a row, no.
       "type": "Row",
       "props": { "ay": "center", "gap": "400", "py": "100" },
       "children": [
-        { "type": "we-icon", "props": { "name": "globe", "color": "accentText" } },
+        { "type": "we-icon", "props": { "name": "globe", "color": "accent-text" } },
         {
           "type": "Column",
           "props": { "gap": "100" },

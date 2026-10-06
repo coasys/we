@@ -27,6 +27,30 @@ export function isSchemaChild(child: string | SchemaNode | OperatorToken | unkno
  * appear in props — TransitionConfig ({ type: 'fade' }), styles objects, data items,
  * and operator tokens — which must not be treated as nodes.
  */
+/** A `meta.panels` entry: configuration that may carry a node, rather than a node itself. */
+interface PanelEntry {
+  node?: unknown;
+  [k: string]: unknown;
+}
+
+/**
+ * The `meta.panels` entries of a root node, if it has any.
+ *
+ * Lives here, with the other tree-shape guards, because two walkers disagreeing about whether
+ * panels are part of the tree is exactly the divergence this file exists to prevent — and they
+ * did: compaction walked them and `ensureNodeIds` did not, so every node inside a panel was
+ * rendered and could not be addressed by a patch. On `workshopTemplate` that was 1,127 nodes,
+ * 62% of the template.
+ *
+ * Each entry is CONFIGURATION — `{ id, snap, node }` — so what is walked is its `node`, not the
+ * entry. An entry carries an `id`, which is enough for `isSchemaChild` to call it a node, and
+ * treating it as one walks straight past the interface hanging off it.
+ */
+export const panelsOf = (node: SchemaNode): PanelEntry[] | undefined => {
+  const panels = (node as { meta?: { panels?: unknown } }).meta?.panels;
+  return Array.isArray(panels) ? (panels as PanelEntry[]) : undefined;
+};
+
 export function isPropsSchemaNode(val: unknown): val is SchemaNode {
   if (typeof val !== 'object' || val === null || Array.isArray(val)) return false;
   const type = (val as Record<string, unknown>).type;
@@ -84,6 +108,35 @@ export function replaceNodeInTree(schema: SchemaNode, target: SchemaNode, replac
       }
     }
     if (changed) clone.props = newProps as SchemaNode['props'];
+  }
+  /*
+    And the interfaces in `meta.panels`, which the visual editor reaches the moment they have ids.
+
+    This branch is here because giving panel nodes ids without it makes things WORSE rather than
+    better. `node.id` is what the renderer stamps as `data-we-node-id`, so before they were
+    numbered a node inside a panel could not be clicked at all — visibly inert. Numbered, it
+    selects, the inspector opens on it, `findNodeById` resolves it, `mergeNode` patches it — and
+    then this function returned a tree with the change dropped. An edit that silently does
+    nothing is a worse failure than a node that cannot be picked up.
+
+    Rebuilt immutably, like `props` above: `meta` is cloned only when a panel actually changed,
+    so a template with no panels, or none containing the target, is returned exactly as before.
+  */
+  const panels = panelsOf(schema);
+  if (panels) {
+    let changed = false;
+    const nextPanels = panels.map((panel) => {
+      const node = panel.node;
+      if (!isSchemaChild(node)) return panel;
+      const replaced = node === target ? replacement : replaceNodeInTree(node as SchemaNode, target, replacement);
+      if (replaced === node) return panel;
+      changed = true;
+      return { ...panel, node: replaced };
+    });
+    if (changed) {
+      const meta = (schema as { meta?: Record<string, unknown> }).meta ?? {};
+      (clone as { meta?: Record<string, unknown> }).meta = { ...meta, panels: nextPanels };
+    }
   }
   return clone;
 }

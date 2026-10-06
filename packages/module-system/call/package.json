@@ -33,8 +33,8 @@
     "@we/cli": "workspace:*",
     "@we/schema-shared": "workspace:*",
     "tsup": "^8.5.1",
-    "typescript": "^5.7.2",
-    "vitest": "^4.1.11",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.2",
     "@we/module-shared": "workspace:*",
     "@we/backend-shared": "workspace:*",
     "@we/schema-kit": "workspace:*"

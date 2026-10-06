@@ -530,3 +530,29 @@ describe("the browser's own drag", () => {
     expect(native.defaultPrevented).toBe(false);
   });
 });
+
+describe('the record marker', () => {
+  it('publishes the record it stands for, so a mark can be anchored to it', async () => {
+    const el = document.createElement('we-draggable') as HTMLElement & {
+      recordId: string;
+      updateComplete: Promise<unknown>;
+    };
+    el.recordId = 'post-1';
+    document.body.appendChild(el);
+    await el.updateComplete;
+    expect(el.getAttribute('data-we-record')).toBe('post-1');
+  });
+
+  it('removes it rather than leaving it empty, so [data-we-record] is a sound selector', async () => {
+    const el = document.createElement('we-draggable') as HTMLElement & {
+      recordId: string;
+      updateComplete: Promise<unknown>;
+    };
+    el.recordId = 'post-1';
+    document.body.appendChild(el);
+    await el.updateComplete;
+    el.recordId = '';
+    await el.updateComplete;
+    expect(el.hasAttribute('data-we-record')).toBe(false);
+  });
+});

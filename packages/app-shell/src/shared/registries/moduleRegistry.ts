@@ -404,6 +404,23 @@ function checkActivity(moduleId: string, activity: Activity): void {
   }
 }
 
+/** The keys of a module's settings declared `secret`. */
+function secretKeysOf(definition: ModuleDefinition): Set<string> {
+  return new Set((definition.contributes?.settings ?? []).filter((s) => s.type === 'secret').map((s) => s.key));
+}
+
+/**
+ * A module's own settings group, never the whole map — and never the secrets, which would reach
+ * templates through the module's own chrome if they were here. What `deps.settings()` and
+ * `settingsOf` both answer with.
+ */
+function publicSettings(definition: ModuleDefinition): Record<string, SettingValue> {
+  const secretKeys = secretKeysOf(definition);
+  return Object.fromEntries(
+    Object.entries(readSettings(definition.manifest.id)).filter(([key]) => !secretKeys.has(key)),
+  );
+}
+
 /**
  * The deps a module's store is built with: the host's bag, plus what only this registration knows.
  *
@@ -418,9 +435,7 @@ function depsFor(
   disposers: Array<() => void>,
 ): ModuleStoreDeps {
   const id = definition.manifest.id;
-  const secretKeys = new Set(
-    (definition.contributes?.settings ?? []).filter((s) => s.type === 'secret').map((s) => s.key),
-  );
+  const secretKeys = secretKeysOf(definition);
   const wanted = new Set(definition.manifest.requires?.kernels ?? []);
   const kernels: ModuleStoreDeps['kernels'] = {};
   for (const name of KERNEL_NAMES) {
@@ -468,13 +483,7 @@ function depsFor(
     onDispose: (fn) => disposers.push(fn),
     state: markState,
     action: markAction,
-    // Its own group, never the whole map — and never the secrets, which reach templates through the
-    // module's own chrome if they are here.
-    settings: () =>
-      Object.fromEntries(Object.entries(readSettings(id)).filter(([key]) => !secretKeys.has(key))) as Record<
-        string,
-        boolean | string | number
-      >,
+    settings: () => publicSettings(definition) as Record<string, boolean | string | number>,
     kernels,
   };
 }
@@ -591,6 +600,17 @@ export const moduleRegistry = {
     return () => {
       if (readSettings === reader) readSettings = () => ({});
     };
+  },
+
+  /**
+   * One module's settings as they resolve where the agent is now, secrets left out — the same answer
+   * its store gets from `deps.settings()`. For the host's side of a component it lends a module: the
+   * globe has no store, and its widget takes its ion token as a prop the host fills from here.
+   * Reactive when read inside a tracking scope, as the resolver it reads through is.
+   */
+  settingsOf(id: string): Record<string, SettingValue> {
+    const definition = modules.get(id)?.definition;
+    return definition ? publicSettings(definition) : {};
   },
 
   /**

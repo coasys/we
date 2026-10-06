@@ -38,8 +38,8 @@ import {
   compressImageToFileData,
   dataURIToFileData,
   EdgeRoute,
-  getEntitiesForPerspective,
   getEntity,
+  getEntityForDataset,
   Placement,
   PREDICATES,
   runEntityTransaction,
@@ -48,7 +48,7 @@ import {
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { PLACEMENT_UNSET, resolvePlacement } from '@we/graph-expanders';
 import { createHistory, type HistoryState } from '@we/history';
-import { createOptimism, keyOf, sameValue } from '@we/optimism';
+import { createOptimism, DEFAULT_TTL_MS, keyOf, sameValue } from '@we/optimism';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { bringIn as decideBringIn, type BringInItem, type BroughtIn } from '../../../shared/bringIn';
@@ -76,6 +76,7 @@ import {
   withRelationEntry,
   writeFieldValue,
 } from '../../../shared/shapes/recordDraft';
+import { isRank, seatInRow } from '../../../shared/treeOrder';
 import { type AppDataset, useDatasetStore } from './DatasetStore';
 import { useSessionStore } from './SessionStore';
 import { BLOCK_ICONS, useShapeStore } from './ShapeStore';
@@ -144,6 +145,45 @@ async function createPlacement(
 }
 
 /**
+ * A connection's dedup key — the format `Relationship.connection`'s hint asks an extraction pass for.
+ *
+ * Written on every connection a person makes, not only on what a pass writes, because the executor
+ * shows a model only the instances whose identity property is set: a connection drawn by hand
+ * without a key was invisible to the pass meant to extend the structure it belonged to.
+ *
+ * Each end by its **title** — the value the prompt lists an existing record under — rather than its
+ * id. Ids were tried first, and the first real pass showed both costs: the model had to resolve
+ * every key against the task list to read the tree at all, and it wrote titles in its own keys
+ * anyway, so a key drawn by hand and the same claim extracted could never dedup into each other. The
+ * label is left off when there is none, rather than leaving a dangling colon.
+ */
+export function connectionKey(source: string, target: string, label?: unknown): string {
+  const pair = `${source.trim()} \u2192 ${target.trim()}`;
+  return typeof label === 'string' && label.trim() ? `${pair}: ${label.trim()}` : pair;
+}
+
+/**
+ * A connection between two records, written as ONE commit — answering with its id.
+ *
+ * Its ends go in as one-element arrays for the reason `createPlacement` gives: a plain value is
+ * skipped, and the generated `setSource`/`setTarget` each commit on their own. The line used to be
+ * made that way — create, then one end, then the other — which was three round trips before it could
+ * be drawn, and a moment in between where a peer could read a connection with one end or none.
+ */
+async function createConnection(
+  dataset: unknown,
+  fields: Record<string, unknown>,
+  sourceId: string,
+  targetId: string,
+): Promise<string> {
+  const created = (await getEntity(RELATIONSHIP).create(
+    dataset as never,
+    { ...fields, source: [sourceId], target: [targetId] } as never,
+  )) as { id?: string } | null;
+  return String(created?.id ?? '');
+}
+
+/**
  * A stored placement, as this file reads one back.
  *
  * Loose beyond the three fields anything here names, because the interesting use is putting a
@@ -183,6 +223,13 @@ async function drawnPlacement(
     if (row !== drawn && (row.tier ?? '') === (drawn.tier ?? '')) await Placement.delete(dataset as never, row.id);
   }
   return drawn;
+}
+
+/** Connections held ahead of the data — see `RecordStore.pendingConnections`. Record ids throughout. */
+export interface PendingConnectionWrites {
+  added: { key: string; source: string; target: string; data?: Record<string, string> }[];
+  moved: { id: string; end: 'source' | 'target'; to: string }[];
+  removed: string[];
 }
 
 /**
@@ -421,6 +468,13 @@ export interface RecordStore {
    */
   updateRecordField: (entity: string, id: string, field: string, value: unknown) => Promise<void>;
   /**
+   * Bring a connection's dedup key back in line with its label and both ends' titles.
+   *
+   * `updateRecordField` does this itself. A surface that saves a connection through the generic
+   * `record.update` calls this after, or the next extraction pass reads the old claim from the key.
+   */
+  rekeyConnection: (id: string) => Promise<void>;
+  /**
    * Take a record — or a whole selection — off a canvas, leaving the records themselves alone.
    *
    * Deleting the placement and nothing else, which is the whole payoff of placement being
@@ -527,6 +581,23 @@ export interface RecordStore {
    */
   retargetOnCanvas: (canvas: string, payload: unknown) => Promise<void>;
   /**
+   * Move a card to another place in a tree, from the graph's `onNodeArrange` payload.
+   *
+   * The counterpart of `dragOnCanvas` for a canvas being read as a hierarchy: there a drag writes a
+   * coordinate, and here it writes the structure the layout reads. `relationshipTypeId` says which kind
+   * of connection the tree follows — the community's own vocabulary, and the reader's current choice of
+   * spine, neither of which the store can know.
+   *
+   * Dropping a card ON another makes it a child of it; dropping it BESIDE one reorders it there, which
+   * writes a rank on the placement; dropping it in the unconnected area takes it out of its tree.
+   *
+   * Three things it refuses, each with a toast saying why: a drop that would put a card inside itself,
+   * a drop beside a tree's own root (which would detach it as a side effect — the unconnected area is
+   * where that is explicit), and taking out a connection people have commented on or reacted to, since
+   * removing a parental claim means deleting the record and there is no reversible spelling of that.
+   */
+  arrangeOnTree: (canvas: string, relationshipTypeId: string, payload: unknown) => Promise<void>;
+  /**
    * Set one presentation property of one card — or of a whole selection — on one canvas: colour,
    * shape, content scale, rotation, stacking.
    *
@@ -562,6 +633,16 @@ export interface RecordStore {
    * edit flashed to its new size, snapped back, and arrived again.
    */
   confirmPending: (recordIds: readonly string[]) => void;
+  /**
+   * Connections written and not yet seen come back — a line just drawn, one just deleted, an end just
+   * moved — in records, for the graph to draw ahead of the data. See `holdConnection`.
+   */
+  pendingConnections: Accessor<PendingConnectionWrites>;
+  /**
+   * What the graph is drawing from its own data, in records, so each pending connection can be judged
+   * against it and dropped once the data has caught up. Called by whoever draws on the store's behalf.
+   */
+  observeConnections: (connections: readonly { id: string; source: string; target: string }[]) => void;
   /**
    * Show a presentation change without writing it — for a control that reports while it is moving.
    *
@@ -724,7 +805,7 @@ export function RecordStoreProvider(props: ParentProps) {
    * global class and falls back to the space's own, so every caller here goes through it.
    */
   function entityClass(entity: string, handle: unknown): ReturnType<typeof getEntity> {
-    return (getEntitiesForPerspective(entity, handle) ?? getEntity(entity)) as ReturnType<typeof getEntity>;
+    return (getEntityForDataset(entity, handle) ?? getEntity(entity)) as ReturnType<typeof getEntity>;
   }
 
   /**
@@ -1200,17 +1281,23 @@ export function RecordStoreProvider(props: ParentProps) {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !link?.sourceId || !link?.targetId) return '';
     try {
-      const created = (await getEntity(RELATIONSHIP).create(dataset.handle, {
-        sourceType: link.sourceType,
-        targetType: link.targetType,
-      })) as {
-        id?: string;
-        setSource?: (value: string) => Promise<unknown>;
-        setTarget?: (value: string) => Promise<unknown>;
-      };
-      await created.setSource?.(link.sourceId);
-      await created.setTarget?.(link.targetId);
-      const id = created?.id ?? '';
+      // Drawn from the moment of the gesture rather than a round trip later — see `holdConnection`.
+      const id = await withConnectionHold({ kind: 'added', source: link.sourceId, target: link.targetId }, async () =>
+        createConnection(
+          dataset.handle,
+          {
+            sourceType: link.sourceType,
+            targetType: link.targetType,
+            connection: await keyFor(
+              dataset.handle,
+              { id: link.sourceId, type: link.sourceType },
+              { id: link.targetId, type: link.targetType },
+            ),
+          },
+          link.sourceId,
+          link.targetId,
+        ),
+      );
       setLastCreatedId(id);
       return id;
     } catch (error) {
@@ -1424,6 +1511,369 @@ export function RecordStoreProvider(props: ParentProps) {
     rememberMoves(canvas, moves);
   }
 
+  /** A connection of the spine kind, as this file reads one back. */
+  interface SpineLink {
+    id: string;
+    source?: string;
+    target?: string;
+    /** The parent's entity name, which a new connection beside this one needs and cannot derive. */
+    sourceType?: string;
+  }
+
+  /**
+   * Every connection of one community-named kind.
+   *
+   * One query rather than three. An arrange has to know the card's own parent, its prospective
+   * parent's children, and where the target sits among them — and asking separately is three round
+   * trips on a gesture that happens when somebody lets go of a mouse.
+   */
+  async function spineLinks(handle: unknown, relationshipTypeId: string): Promise<SpineLink[]> {
+    const rows = (await getEntity(RELATIONSHIP).findAll(
+      handle as never,
+      {
+        where: { relationshipTypeId },
+      } as never,
+    )) as unknown as SpineLink[];
+    return rows.filter((row) => row && typeof row.id === 'string');
+  }
+
+  /**
+   * Whether `candidate` is `card` itself or somewhere under it, walking up the spine.
+   *
+   * The one check the gesture cannot make. `arrange-nodes` reports geometry, and whether one card is
+   * inside another is a question about which relation the hierarchy is — which only this knows. The
+   * `seen` set is not defensive: the connections are shared, last-write-wins data, so a loop is a
+   * state the space can genuinely be in and a walk without one would hang the tab.
+   */
+  function isUnder(candidate: string, card: string, parentOf: Map<string, SpineLink>): boolean {
+    const seen = new Set<string>();
+    let at: string | undefined = candidate;
+    while (at && !seen.has(at)) {
+      if (at === card) return true;
+      seen.add(at);
+      at = parentOf.get(at)?.source;
+    }
+    return false;
+  }
+
+  /**
+   * Take a card out of its tree, unless that would throw away something somebody said.
+   *
+   * Removing the claim means deleting the record, and a deleted record's links go with it: re-creating
+   * one earns a new id that nothing pointing at the old one can follow. So the line is drawn at whether
+   * anything would be lost — and where nothing would, an undo re-creating the connection loses nothing
+   * either, which is why a tree drop that detached a card can still be taken back.
+   *
+   * A connection is a `WeNode`, so it carries comments and reactions — an argument about the very claim
+   * being rearranged — and one that carries either is refused, with a toast naming the reason and the way
+   * to do it deliberately. A connection nobody has said anything about is deleted, which is the
+   * overwhelmingly common case and exactly what the gesture means. The workshop's tree tells its gesture
+   * the same rule, so the preview refuses before the drop rather than this after it.
+   */
+  async function detachSpine(handle: unknown, linkId: string): Promise<boolean> {
+    const Model = getEntity(RELATIONSHIP);
+    const row = (await Model.findOne(
+      handle as never,
+      {
+        where: { id: linkId },
+        include: { $comments: { from: 'comments', count: true }, $signals: { from: 'signals', count: true } },
+      } as never,
+    )) as unknown as { $comments?: number; $signals?: number } | null;
+    if (!row) return false;
+
+    if (Number(row.$comments ?? 0) > 0 || Number(row.$signals ?? 0) > 0) {
+      toastService.info('People have discussed that connection. Select the line itself to remove it.');
+      return false;
+    }
+    await withConnectionHold({ kind: 'removed', id: linkId }, () => Model.delete(handle as never, linkId));
+    return true;
+  }
+
+  /**
+   * A new connection of the spine kind, from `parent` to `card` — answering with its id.
+   *
+   * Written here rather than through `connectNodesNow`, which mints a connection carrying no kind at all —
+   * right for a line somebody draws and then labels, and wrong for this: a connection that is not of the
+   * spine kind is invisible to the tree it was just dragged into, so the card would snap straight back to
+   * the unconnected zone.
+   */
+  async function createSpine(
+    handle: unknown,
+    relationshipTypeId: string,
+    parent: { id: string; type: string },
+    card: { id: string; type: string },
+    /*
+      Whether to draw the new line ahead of the write. Not for a drop: the graph is already drawing that
+      one from the card it is holding, and a second promise between the same two cards would be drawn
+      beside it. An undo or a redo has nobody holding anything, so it holds its own.
+    */
+    hold = true,
+  ): Promise<string> {
+    const write = async () =>
+      createConnection(
+        handle,
+        {
+          relationshipTypeId,
+          sourceType: parent.type,
+          targetType: card.type,
+          connection: await keyFor(handle, parent, card),
+        },
+        parent.id,
+        card.id,
+      );
+    if (!hold) return write();
+    return withConnectionHold(
+      {
+        kind: 'added',
+        source: parent.id,
+        target: card.id,
+        ...(relationshipTypeId ? { data: { relationshipTypeId } } : {}),
+      },
+      write,
+    );
+  }
+
+  /**
+   * What a tree drop did to the spine, for an undo to put back.
+   *
+   * `link` is the connection concerned, and changes on a replay that re-creates it — a re-created
+   * connection is a new record, so the entry keeps up with it rather than holding an id nothing answers to.
+   */
+  type TreeStep =
+    | { kind: 'moved'; link: string; from: { id: string; type: string }; to: { id: string; type: string } }
+    | { kind: 'created'; link: string; parent: { id: string; type: string } }
+    | { kind: 'detached'; link: string; parent: { id: string; type: string } }
+    | { kind: 'none' };
+
+  /**
+   * Record a tree drop as one undoable act: the change to the spine, and the ranks it wrote.
+   *
+   * Each replay reads the spine first and applies its half only if the card's connection is still where
+   * this entry left it. `HistoryEntry.stale` cannot ask — it is synchronous, and the spine is a query — so
+   * the check is made inside, and a card a peer has moved since is left where they put it rather than
+   * pulled back. The ranks go through `stylePlacement` with what they are expected to hold, which makes the
+   * same check for each card.
+   */
+  function rememberTreeDrop(
+    canvas: string,
+    handle: unknown,
+    relationshipTypeId: string,
+    card: { id: string; type: string },
+    step: TreeStep,
+    ranks: StyleChange[],
+  ): void {
+    if (!canvas || (step.kind === 'none' && !ranks.length)) return;
+    const connection = async () =>
+      (await spineLinks(handle, relationshipTypeId)).find((link) => link.target === card.id);
+    const retarget = (link: string, to: { id: string; type: string }) =>
+      retargetOnCanvas(canvas, {
+        recordId: link,
+        recordType: RELATIONSHIP,
+        end: 'source',
+        nodeId: to.id,
+        nodeType: to.type,
+      });
+    history.push({
+      scope: canvas,
+      label: step.kind === 'detached' ? 'take card out of tree' : 'move card in tree',
+      undo: async () => {
+        const now = await connection();
+        if (step.kind === 'moved' && now?.id === step.link && now.source === step.to.id)
+          await retarget(step.link, step.from);
+        if (step.kind === 'created' && now?.id === step.link && now.source === step.parent.id) {
+          await detachSpine(handle, step.link);
+        }
+        if (step.kind === 'detached' && !now)
+          step.link = await createSpine(handle, relationshipTypeId, step.parent, card);
+        for (const change of ranks) await stylePlacement(canvas, change.nodeId, change.before, change.after);
+      },
+      redo: async () => {
+        const now = await connection();
+        if (step.kind === 'moved' && now?.id === step.link && now.source === step.from.id)
+          await retarget(step.link, step.to);
+        if (step.kind === 'created' && !now)
+          step.link = await createSpine(handle, relationshipTypeId, step.parent, card);
+        if (step.kind === 'detached' && now?.id === step.link && now.source === step.parent.id) {
+          await detachSpine(handle, step.link);
+        }
+        for (const change of ranks) await stylePlacement(canvas, change.nodeId, change.after, change.before);
+      },
+    });
+  }
+
+  /**
+   * Drag a card to another place in a tree, and write what that meant.
+   *
+   * The counterpart of `dragOnCanvas` for a canvas being read as a hierarchy. There the position *is*
+   * the data, so a drag writes a coordinate; here the layout derives the position, so a drag writes
+   * the structure the layout reads. `relationshipTypeId` says which kind of connection the tree
+   * follows, which the store cannot know: what makes a parent a parent is the community's own
+   * vocabulary and the reader's current choice of spine.
+   *
+   * ## Reparenting moves the connection rather than replacing it
+   *
+   * A card already under a parent keeps the same `Relationship`, with its source moved — which is
+   * exactly what `retargetOnCanvas` does when somebody drags a connection's end, and it is what keeps
+   * whatever has been said about the connection rather than deleting an argument about the very claim
+   * being rearranged.
+   *
+   * The cost, stated because it is real: the record keeps its original author, so the claim now reads
+   * as that person having connected two things, one of which they did not choose. That is the tradeoff
+   * dragging a connection's end already makes here, and the alternative loses the thread.
+   *
+   * ## Reordering beside a root is not a detach
+   *
+   * Dropping a card beside a tree's own root would make it a root too, which means taking it out of
+   * its tree — and that is the one thing a drop must not do as a side effect. It is refused, with a
+   * toast pointing at the unconnected zone, where the same act is explicit.
+   */
+  async function arrangeOnTree(canvas: string, relationshipTypeId: string, payload: unknown): Promise<void> {
+    const event = (payload ?? {}) as {
+      recordId?: string;
+      recordType?: string;
+      into?: 'child' | 'sibling' | 'loose';
+      targetId?: string;
+      targetType?: string;
+      before?: boolean;
+      order?: string[];
+    };
+    const dataset = datasetStore.currentDataset();
+    /*
+      `relationshipTypeId` may be empty, and that is an answer rather than a missing argument: the tree is
+      following every kind of connection, so this follows every kind too and mints a kindless one where it
+      has to create a parent. A connection with no kind is what the canvas's own connect gesture already
+      writes, and the layout draws it like any other — so refusing here would make the two disagree about
+      what the tree is, which is what the toast about the unconnected area was really reporting.
+    */
+    if (!dataset || !canvas || !event.recordId || !event.recordType) return;
+    if (event.into !== 'loose' && !event.targetId) return;
+    // A card dropped on itself is a gesture that went nowhere, not a claim about anything.
+    if (event.targetId === event.recordId) return;
+
+    const handle = dataset.handle;
+    const cardId = event.recordId;
+
+    try {
+      const links = await spineLinks(handle, relationshipTypeId);
+      const parentOf = new Map<string, SpineLink>();
+      const childrenOf = new Map<string, string[]>();
+      for (const link of links) {
+        if (typeof link.source !== 'string' || typeof link.target !== 'string') continue;
+        parentOf.set(link.target, link);
+        (childrenOf.get(link.source) ?? childrenOf.set(link.source, []).get(link.source)!).push(link.target);
+      }
+
+      const card = { id: cardId, type: event.recordType };
+      if (event.into === 'loose') {
+        const held = parentOf.get(cardId);
+        // A card dragged around the zone it is already in has nothing to write.
+        if (held?.source && (await detachSpine(handle, held.id))) {
+          const parent = { id: held.source, type: held.sourceType ?? '' };
+          rememberTreeDrop(canvas, handle, relationshipTypeId, card, { kind: 'detached', link: held.id, parent }, []);
+        }
+        return;
+      }
+
+      const targetId = event.targetId!;
+      const parentId = event.into === 'child' ? targetId : (parentOf.get(targetId)?.source ?? '');
+      if (!parentId) {
+        toastService.info('Drop a card in the unconnected area to take it out of its tree.');
+        return;
+      }
+      if (parentId === cardId) return;
+      if (isUnder(parentId, cardId, parentOf)) {
+        toastService.info('That would put a card inside itself.');
+        return;
+      }
+
+      /** The parent's entity name — named by the drop for a `child`, and read off the spine otherwise. */
+      const parentType = event.into === 'child' ? (event.targetType ?? '') : (parentOf.get(targetId)?.sourceType ?? '');
+
+      const held = parentOf.get(cardId);
+      const parent = { id: parentId, type: parentType };
+      let step: TreeStep = { kind: 'none' };
+      if (held) {
+        if (held.source !== parentId) {
+          // Where it was, read before the write that moves it.
+          const from = { id: held.source ?? '', type: held.sourceType ?? '' };
+          await retargetOnCanvas(canvas, {
+            recordId: held.id,
+            recordType: RELATIONSHIP,
+            end: 'source',
+            nodeId: parentId,
+            nodeType: parentType,
+          });
+          step = { kind: 'moved', link: held.id, from, to: parent };
+        }
+      } else {
+        step = { kind: 'created', link: await createSpine(handle, relationshipTypeId, parent, card, false), parent };
+      }
+
+      const placements = (await Placement.findAll(handle, {
+        parent: { id: canvas, predicate: PREDICATES.CHILDREN },
+      } as Record<string, unknown>)) as unknown as { node?: string; rank?: number }[];
+      const rankOf = new Map<string, number>();
+      for (const row of placements) {
+        const rank = Number(row.rank);
+        if (typeof row.node === 'string' && isRank(rank)) rankOf.set(row.node, rank);
+      }
+      const siblings = (childrenOf.get(parentId) ?? []).filter((id) => id !== cardId);
+
+      /*
+        The row as the reader saw the card land in it, when the drop says — see `order` on the event.
+
+        Taken from the drop rather than worked out again here, because the two orders are made by different
+        rules wherever the data leaves a choice: the tree puts cards nobody has ranked after the ranked ones
+        and in the order they were made, and nothing in this store knows when that was. Ordered here instead,
+        a row nobody had arranged was written in some other order than the one on screen — which the tree
+        then showed, a moment after showing the drop. Only the parent's real children are kept, and any the
+        drop did not mention follow, so a stale or partial order cannot write a rank onto a stranger.
+      */
+      const byRank = (a: string, b: string) => {
+        const [one, two] = [rankOf.get(a), rankOf.get(b)];
+        if (one !== undefined && two !== undefined) return one - two || a.localeCompare(b);
+        return one !== undefined ? -1 : two !== undefined ? 1 : a.localeCompare(b);
+      };
+      const shown = event.order?.filter((id) => id === cardId || siblings.includes(id));
+      let row: string[];
+      let index: number;
+      if (shown?.includes(cardId)) {
+        const seen = shown.filter((id) => id !== cardId);
+        row = [...seen, ...siblings.filter((id) => !seen.includes(id)).sort(byRank)];
+        index = shown.indexOf(cardId);
+      } else {
+        // No order said: a drop ON a parent goes last, one BESIDE a sibling goes on the side it named.
+        row = [...siblings].sort(byRank);
+        const beside = row.indexOf(targetId);
+        index = event.into === 'child' || beside < 0 ? row.length : beside + (event.before ? 0 : 1);
+      }
+
+      const writes = seatInRow(
+        row.map((id) => ({ id, ...(rankOf.has(id) ? { rank: rankOf.get(id)! } : {}) })),
+        cardId,
+        index,
+      );
+      /*
+        Every rank held before any is written, so the tree reads the whole new order at once. Written one by
+        one, a row being renumbered would pass through each half-written order on its way, and would take a
+        round trip per card to get there.
+      */
+      for (const [id, rank] of writes) hold(id, { rank });
+      for (const [id, rank] of writes) await stylePlacement(canvas, id, { rank });
+      rememberTreeDrop(
+        canvas,
+        handle,
+        relationshipTypeId,
+        card,
+        step,
+        [...writes].map(([nodeId, rank]) => ({ nodeId, before: { rank: rankOf.get(nodeId) ?? 0 }, after: { rank } })),
+      );
+    } catch (error) {
+      console.error('RecordStore: arranging a card in a tree failed', error);
+      toastService.error('Could not move that card.');
+    }
+  }
+
   /** The presentation a placement may carry, and the only keys `setCardStyle` will write. */
   const CARD_STYLE_FIELDS = ['width', 'height', 'contentScale', 'rotation', 'z', 'color', 'cardShape'] as const;
 
@@ -1591,6 +2041,103 @@ export function RecordStoreProvider(props: ParentProps) {
     if (!cardStyle.inFlight()) return;
     const agreed = new Set(recordIds);
     cardStyle.settle((key, entry) => (agreed.has(key.slice(0, key.indexOf('\u0000'))) ? entry.value : undefined));
+  }
+
+  // ─── Connections written and not yet seen ────────────────────────────────────
+
+  /*
+    A connection is a record like any other, and every gesture that makes, moves or deletes one waited a
+    round trip for the line to change — the line somebody drew appeared a second later, the one they
+    deleted lingered, the end they moved snapped back first. Held here and drawn at once, on the same
+    rules as every other hold in the app (`@we/optimism`): kept until the data has moved, released on a
+    failed write, disbelieved after the backstop.
+
+    What each hold draws, and what it waits to see, is kept beside the value — the optimism package holds
+    one comparable value per key, and a line needs its two ends to be drawn at all:
+    - **added** — a line between two records. Waits for the connection's own id to appear, which it
+      learns when the create returns; until then there is nothing to recognise it by, and the write is
+      still in flight anyway, so the hold stands regardless.
+    - **moved** — one end re-attached. Waits for the connection to say the new end.
+    - **removed** — a connection being deleted. Waits for it to be gone.
+  */
+  type ConnectionHold =
+    | { kind: 'added'; source: string; target: string; id?: string; data?: Record<string, string> }
+    | { kind: 'moved'; id: string; end: 'source' | 'target'; to: string }
+    | { kind: 'removed'; id: string };
+  const connections = createOptimism<string | number>(createSignal, { same: sameValue });
+  const connectionHolds = new Map<string, ConnectionHold>();
+  let addedSerial = 0;
+
+  /** Draw this connection change from now on; answers the key its write reports back under. */
+  function holdConnection(change: ConnectionHold): string {
+    const key =
+      change.kind === 'added'
+        ? keyOf('added', String(++addedSerial))
+        : change.kind === 'moved'
+          ? keyOf('moved', change.id, change.end)
+          : keyOf('removed', change.id);
+    connectionHolds.set(key, change);
+    connections.hold(key, change.kind === 'moved' ? change.to : change.kind === 'added' ? 1 : 0);
+    return key;
+  }
+
+  const pendingConnections = createMemo((): PendingConnectionWrites => {
+    const held = connections.holds();
+    const out: PendingConnectionWrites = { added: [], moved: [], removed: [] };
+    const now = Date.now();
+    for (const [key, entry] of Object.entries(held)) {
+      const change = connectionHolds.get(key);
+      if (!change || now - entry.at > DEFAULT_TTL_MS) continue;
+      if (change.kind === 'added') {
+        out.added.push({
+          key,
+          source: change.source,
+          target: change.target,
+          ...(change.data ? { data: change.data } : {}),
+        });
+      } else if (change.kind === 'moved') {
+        out.moved.push({ id: change.id, end: change.end, to: change.to });
+      } else {
+        out.removed.push(change.id);
+      }
+    }
+    return out;
+  });
+
+  function observeConnections(drawn: readonly { id: string; source: string; target: string }[]): void {
+    if (!connections.inFlight()) return;
+    const byId = new Map(drawn.map((line) => [line.id, line]));
+    connections.settle((key) => {
+      const change = connectionHolds.get(key);
+      if (!change) return undefined;
+      if (change.kind === 'added') return change.id ? (byId.has(change.id) ? 1 : 0) : undefined;
+      if (change.kind === 'removed') return byId.has(change.id) ? 1 : 0;
+      return byId.get(change.id)?.[change.end];
+    });
+    // What the holder let go of needs nothing kept about what it drew.
+    const live = connections.holds();
+    for (const key of [...connectionHolds.keys()]) if (!(key in live)) connectionHolds.delete(key);
+  }
+
+  /**
+   * Hold a connection change around the write that makes it: drawn at once, released if the write fails,
+   * and otherwise left for the data to overtake. `write` answers the new connection's id for an added
+   * line, so the hold knows what to wait for.
+   */
+  async function withConnectionHold<T>(change: ConnectionHold, write: () => Promise<T>): Promise<T> {
+    const key = holdConnection(change);
+    try {
+      const result = await write();
+      if (change.kind === 'added' && typeof result === 'string') {
+        if (result) change.id = result;
+        else connections.release(key);
+      }
+      connections.done(key);
+      return result;
+    } catch (error) {
+      connections.release(key);
+      throw error;
+    }
   }
 
   /**
@@ -1768,16 +2315,42 @@ export function RecordStoreProvider(props: ParentProps) {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !event.recordId || !event.end || !event.nodeId || !event.nodeType) return;
 
+    // The end drawn at its new card from now, not when the write comes back — see `holdConnection`.
+    const held = holdConnection({ kind: 'moved', id: event.recordId, end: event.end, to: event.nodeId });
     try {
       const Model = getEntity(event.recordType || RELATIONSHIP);
       const record = (await Model.findOne(dataset.handle, { where: { id: event.recordId } })) as Record<
         string,
         unknown
       > | null;
-      if (!record) return;
+      if (!record) {
+        connections.release(held);
+        return;
+      }
 
+      /*
+        The key moves with the end. It names both ends, so left alone it would tell the next extraction
+        pass the connection still joins the pair it was drawn between — and a pass reusing that key, as
+        its hint asks of the same claim, would write the old end back. Only for a `Relationship`: this
+        gesture moves the ends of any record shaped like one, and only that one carries a key.
+      */
+      const moved = (event.recordType || RELATIONSHIP) === RELATIONSHIP;
+      const otherId = record[event.end === 'source' ? 'target' : 'source'];
+      const other = {
+        id: typeof otherId === 'string' ? otherId : '',
+        type: String(record[event.end === 'source' ? 'targetType' : 'sourceType'] ?? ''),
+      };
+      const to = { id: event.nodeId, type: event.nodeType };
       await Model.update(dataset.handle, event.recordId, {
         [event.end === 'source' ? 'sourceType' : 'targetType']: event.nodeType,
+        ...(moved && other.id
+          ? {
+              connection:
+                event.end === 'source'
+                  ? await keyFor(dataset.handle, to, other, record.label)
+                  : await keyFor(dataset.handle, other, to, record.label),
+            }
+          : {}),
       });
       /*
         Called, not optional-chained.
@@ -1797,7 +2370,9 @@ export function RecordStoreProvider(props: ParentProps) {
       // The anchor for the end that moved, dropped — see the note above. Reusing the same action a
       // person's own clear goes through, so there is one path that knows how to unset one.
       if (canvas) await anchorOnCanvas(canvas, { recordId: event.recordId, end: event.end, side: '' });
+      connections.done(held);
     } catch (error) {
+      connections.release(held);
       console.error('RecordStore: re-attaching a connection failed', error);
       toastService.error('Could not move that connection.');
     }
@@ -2084,6 +2659,96 @@ export function RecordStoreProvider(props: ParentProps) {
     } catch (error) {
       console.error('RecordStore: updating a record field failed', error);
       toastService.error('Could not save that change.');
+      return;
+    }
+    /*
+      The keys that quote what just changed. A connection's key carries its label and both ends'
+      titles, so relabelling one or renaming a record it joins leaves a key describing a claim nobody
+      is making any more — and the next extraction pass reads the tree from those keys.
+    */
+    if (entity === RELATIONSHIP && field === 'label') await rekeyConnection(id);
+    else if (field === titleField(entity)) await rekeyConnectionsOf(dataset.handle, id);
+  }
+
+  /**
+   * The property an extraction prompt names a record by — its dedup key, which the executor lists an
+   * existing entry under as `title` — or its display name where it declares none.
+   */
+  function titleField(entity: string): string {
+    const schema = schemaFor(entity)?.schema;
+    if (!schema) return '';
+    return Object.entries(schema.properties).find(([, spec]) => spec.identity)?.[0] ?? namePropertyOf(schema);
+  }
+
+  /** What an extraction prompt calls one record, read now — falling back to its id. */
+  async function promptTitle(handle: unknown, end: { id: string; type: string }): Promise<string> {
+    const field = titleField(end.type);
+    if (!field) return end.id;
+    try {
+      const row = (await entityClass(end.type, handle).findOne(
+        handle as never,
+        {
+          where: { id: end.id },
+        } as never,
+      )) as Record<string, unknown> | null;
+      const value = row?.[field];
+      return typeof value === 'string' && value.trim() ? value : end.id;
+    } catch {
+      return end.id;
+    }
+  }
+
+  /** The key for a connection between two records, as it stands — see `connectionKey`. */
+  async function keyFor(
+    handle: unknown,
+    source: { id: string; type: string },
+    target: { id: string; type: string },
+    label?: unknown,
+  ): Promise<string> {
+    const [from, to] = await Promise.all([promptTitle(handle, source), promptTitle(handle, target)]);
+    return connectionKey(from, to, label);
+  }
+
+  /**
+   * Bring one connection's key back in line with its ends and its label.
+   *
+   * A store action as well as a helper, for the surfaces that save a connection through the generic
+   * `record.update` rather than through this store — the knowledge map's edge panel — and so cannot
+   * be followed here. Never throws: a stale key costs a duplicate on the next pass, and a failed save
+   * is not the place to say so.
+   */
+  async function rekeyConnection(id: string): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !id) return;
+    try {
+      const Model = getEntity(RELATIONSHIP);
+      const row = (await Model.findOne(dataset.handle as never, { where: { id } } as never)) as Record<
+        string,
+        unknown
+      > | null;
+      if (!row || typeof row.source !== 'string' || typeof row.target !== 'string') return;
+      const key = await keyFor(
+        dataset.handle,
+        { id: row.source, type: String(row.sourceType ?? '') },
+        { id: row.target, type: String(row.targetType ?? '') },
+        row.label,
+      );
+      if (key !== row.connection) await Model.update(dataset.handle as never, id, { connection: key } as never);
+    } catch (error) {
+      console.warn('RecordStore: could not refresh a connection key', error);
+    }
+  }
+
+  /** Every connection touching a record, rekeyed — after the record's title changed. */
+  async function rekeyConnectionsOf(handle: unknown, id: string): Promise<void> {
+    try {
+      const rows = (await getEntity(RELATIONSHIP).findAll(
+        handle as never,
+        { where: { OR: [{ source: id }, { target: id }] } } as never,
+      )) as unknown as { id?: string }[];
+      for (const row of rows) if (typeof row?.id === 'string') await rekeyConnection(row.id);
+    } catch (error) {
+      console.warn('RecordStore: could not refresh the keys of a renamed record', error);
     }
   }
 
@@ -2251,6 +2916,10 @@ export function RecordStoreProvider(props: ParentProps) {
     const rows = (records ?? []).filter((row) => row?.recordId && row.recordType);
     if (!dataset || !rows.length) return;
 
+    // Connections among them stop being drawn now rather than when the delete comes back.
+    const held = rows
+      .filter((row) => row.recordType === RELATIONSHIP)
+      .map((row) => holdConnection({ kind: 'removed', id: row.recordId! }));
     try {
       await runEntityTransaction(dataset.handle, async (tx) => {
         for (const row of rows) {
@@ -2270,7 +2939,9 @@ export function RecordStoreProvider(props: ParentProps) {
         is rare, and a lost undo stack is a smaller surprise than an undo that resurrects a ghost.
       */
       history.clear();
+      for (const key of held) connections.done(key);
     } catch (error) {
+      for (const key of held) connections.release(key);
       console.error('RecordStore: deleting records failed', error);
       toastService.error('Could not delete those.');
     }
@@ -2302,7 +2973,16 @@ export function RecordStoreProvider(props: ParentProps) {
       */
       const fields = recordDraftFields(draft);
       if (link) {
-        Object.assign(fields, { sourceType: link.sourceType, targetType: link.targetType });
+        Object.assign(fields, {
+          sourceType: link.sourceType,
+          targetType: link.targetType,
+          connection: await keyFor(
+            dataset.handle,
+            { id: link.sourceId, type: link.sourceType },
+            { id: link.targetId, type: link.targetType },
+            fields.label,
+          ),
+        });
         // Only when one was chosen: an empty string would write a reference to a kind that does not
         // exist, and the ORM cannot later clear it — see `recordDraftFields` on blank optionals.
         if (relationshipKind()) Object.assign(fields, { relationshipTypeId: relationshipKind() });
@@ -2416,17 +3096,21 @@ export function RecordStoreProvider(props: ParentProps) {
     },
     pendingCardStyle,
     confirmPending,
+    pendingConnections,
+    observeConnections,
     previewCardStyle,
     resizeOnCanvas,
     anchorOnCanvas,
     rerouteOnCanvas,
     retargetOnCanvas,
+    arrangeOnTree,
     setCardStyle,
     setTypeColor,
     setSpaceTypeColor,
     dropOnCanvas,
     bringIn,
     updateRecordField,
+    rekeyConnection,
     setRecordEntity,
     setRecordField,
     setRecordPlace,

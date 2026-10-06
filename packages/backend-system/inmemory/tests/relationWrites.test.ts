@@ -170,7 +170,7 @@ describe('what it refuses', () => {
  * `boards.ts` writes `CollectionBlock.setRelation(…)`, and `CollectionBlock` there is the entity
  * proxy, not a class. The proxy forwards the call but binds `this` to itself, so a backend that
  * consults class-level metadata on the way to a write answers for the wrong class — which is exactly
- * how the AD4M implementation shipped refusing every board write while its own unit tests passed.
+ * how the production implementation shipped refusing every board write while its own unit tests passed.
  *
  * This backend is immune by construction (its relation table is a closure, not class state), so what
  * these assert is the *requirement* rather than a repair: a relation write must work when reached the

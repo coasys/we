@@ -1,6 +1,6 @@
 {
   "name": "@we/app-web",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "description": "",
   "license": "MIT",
   "type": "module",
@@ -14,17 +14,20 @@
   },
   "dependencies": {
     "@we/app-shell": "workspace:*",
-    "@coasys/ad4m": "0.13.0-test-interpretation-2",
-    "@coasys/ad4m-connect": "0.13.0-test-interpretation-2",
+    "@coasys/ad4m": "0.13.0-test-flows-1",
+    "@coasys/ad4m-connect": "0.13.0-test-flows-1",
     "solid-js": "^1.9.15",
     "@we/backend-ad4m": "workspace:*"
   },
   "devDependencies": {
     "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
-    "typescript": "^5.7.2",
+    "@we/csp": "workspace:*",
+    "@we/globe-layers": "workspace:*",
+    "@we/globe-widget": "workspace:*",
+    "typescript": "^6.0.3",
     "vite": "^8.2.2",
     "vite-plugin-solid": "^2.11.14",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.2"
   }
 }

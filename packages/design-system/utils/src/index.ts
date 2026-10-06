@@ -1,10 +1,11 @@
 import type { DesignSystemProps, FlexDirection } from '@we/design-types';
-import { font, radius, role, semanticValues, shadow, space, type Tier, TIERS } from '@we/tokens';
+import { color, font, radius, role, semanticValues, shadow, space, type Tier, TIERS } from '@we/tokens';
 
 import { dataUriToBlob } from './saveFile';
 import { tierQuery } from './surface';
 
 export * from './color';
+export * from './record';
 export * from './safeHref';
 export * from './saveFile';
 export * from './surface';
@@ -414,6 +415,11 @@ export function tokenVar(prefix: string, token?: string, fallback = '0', axis?: 
   // A colour prop may name a semantic role instead of a scale position.
   if (prefix === 'color' && ROLE_NAMES.has(token)) return `var(--we-role-${token})`;
 
+  // `white` and `black` are the colour scale's two named positions. Every other one is
+  // `<hue>-<step>`, whose digit keeps it clear of the typo check below; these two are not, and were
+  // reported as variables nothing declares while `--we-color-black` is declared and paints.
+  if (prefix === 'color' && Object.prototype.hasOwnProperty.call(color.base, token)) return `var(--we-color-${token})`;
+
   // A radius, padding or gap prop may name a theme family instead of a scale position, on the same
   // principle. `prefix` answers it for radius; for spacing the caller names the axis, since margin
   // and the offsets share this prefix and read no family.
@@ -724,6 +730,22 @@ export const HOST_LAYOUT_SPECS: PropSpec[] = [
   ['z-index', 'z-index'],
   ['margin', 'margin'],
   ['flex', 'flex'],
+  /*
+    `flex-shrink` as well as `flex`, because they are not the same prop and the shorthand is not a
+    substitute for it.
+
+    It was missing, so `flexShrink` on any `we-*` element type-checked, validated clean and did
+    nothing at all — 217 places across the composed templates asked an icon, an avatar or a
+    timestamp not to shrink, and every one of them went on shrinking. The prop works on
+    `Column`/`Row`/`Grid`, which take their styles inline, so the failure was invisible from the
+    one side an author was likely to test it from.
+
+    It is a layout prop and belongs on the host: whether a box gives up space is a fact about its
+    place among its siblings, not about what it holds. See `updateCustomVars` in `@we/primitives`
+    for the other half — the runtime that sets the variable this declaration reads, which was
+    missing it too.
+  */
+  ['flex-shrink', 'flex-shrink'],
   ['align-self', 'align-self'],
 ];
 

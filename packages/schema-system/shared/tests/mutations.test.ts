@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { findMutations } from '../src/mutations';
+import type { SchemaNode } from '../src/types';
 
 describe('mutations.findMutations (combined)', () => {
   it('detects primitive change', () => {
@@ -80,7 +81,7 @@ describe('mutations.findMutations (combined)', () => {
   });
 
   it('replaces entire node when type changes (schema node swap)', () => {
-    const oldNode = {
+    const oldNode: SchemaNode = {
       type: 'Column',
       id: 'n1',
       children: [
@@ -88,7 +89,7 @@ describe('mutations.findMutations (combined)', () => {
         { type: 'we-button', id: 'n3', props: { text: 'Click' } },
       ],
     };
-    const newNode = {
+    const newNode: SchemaNode = {
       type: 'Column',
       id: 'n1',
       children: [
@@ -101,7 +102,7 @@ describe('mutations.findMutations (combined)', () => {
     const childMut = muts.find((m) => m.path[0] === 'children' && m.path[1] === 0);
     expect(childMut).toBeDefined();
     expect(childMut!.path).toEqual(['children', 0]);
-    expect(childMut!.value).toEqual(newNode.children[0]);
+    expect(childMut!.value).toEqual(newNode.children![0]);
     // No individual property mutations for children[0]
     const deepChildMuts = muts.filter((m) => m.path[0] === 'children' && m.path[1] === 0 && m.path.length > 2);
     expect(deepChildMuts).toHaveLength(0);

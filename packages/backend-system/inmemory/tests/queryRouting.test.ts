@@ -12,7 +12,7 @@
  * this backend compiles *that* to IR and executes it. So every shape here is a round trip through
  * `irToFlatQuery`, and anything that does not survive it — a filter that loses a branch, a sort that
  * loses its direction, a projection that loses its `where` — shows up as two different answers to
- * one question. Against AD4M the lowering is different, but the round trip is the same shape.
+ * one question. Against the production adapter the lowering is different, but the round trip is the same shape.
  *
  * The shapes are the page's own: filter (eq / contains / OR), sort, pagination, projections, and the
  * drill-down it listed as "check on real screens". What it could not cover here is liveness, which
@@ -75,9 +75,9 @@ beforeEach(async () => {
   const alphaTheirs = await TestChild.create(dataset, { label: 'a2', owner: SOMEONE_ELSE });
   const gammaMine = await TestChild.create(dataset, { label: 'g1', owner: ME });
 
-  await alpha.addChildren(alphaMine);
-  await alpha.addChildren(alphaTheirs);
-  await gamma.addChildren(gammaMine);
+  await (alpha as unknown as WithChildren).addChildren(alphaMine);
+  await (alpha as unknown as WithChildren).addChildren(alphaTheirs);
+  await (gamma as unknown as WithChildren).addChildren(gammaMine);
 });
 
 /**
@@ -111,6 +111,14 @@ async function expectBothToBe(
   expect(viaIR).toEqual(direct);
   expect(viaIR).toEqual(expected);
 }
+
+/**
+ * The relation accessor a model grows at runtime.
+ *
+ * `add<RelationName>` is generated from the declared relation, so it is not on the static type — which is
+ * also why this file reads an id through a cast. Named once here rather than cast at each call.
+ */
+type WithChildren = { addChildren: (child: unknown) => Promise<unknown> };
 
 describe('filter', () => {
   it('matches on equality', async () => {
@@ -199,7 +207,7 @@ describe('drill-down', () => {
     const alpha = await TestItem.findOne(dataset, { where: { name: 'Alpha' } });
     const descriptor = {
       scope: { anchor: 'TestItem', via: 'children', anchorId: (alpha as unknown as { id: string }).id },
-      order: { label: 'asc' },
+      order: { label: 'asc' as const },
     };
 
     const routed = routeQuery({ entity: 'TestChild', ...descriptor }, inMemoryQueryAdapter);

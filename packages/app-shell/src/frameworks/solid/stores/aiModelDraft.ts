@@ -39,6 +39,12 @@ export interface AiModelForm {
   apiBaseUrl: string;
   apiKey: string;
   apiModel: string;
+  /**
+   * The context ceiling as typed, in tokens — empty for none. Text rather than a number so an empty
+   * field is a state the form can hold; `toDraft` reads it, and `formComplete` refuses one that is
+   * not a whole number.
+   */
+  apiMaxContext: string;
   hfRepo: string;
   hfRevision: string;
   hfFileName: string;
@@ -60,6 +66,7 @@ export const EMPTY_FORM: AiModelForm = {
   apiBaseUrl: 'https://api.openai.com/v1',
   apiKey: '',
   apiModel: '',
+  apiMaxContext: '',
   hfRepo: '',
   hfRevision: 'main',
   hfFileName: '',
@@ -82,6 +89,7 @@ export function draftFrom(model: AiModel): AiModelForm {
     form.apiService = matchingApiPreset(form) || CUSTOM_SERVICE;
     form.apiKey = source.apiKey;
     form.apiModel = source.model;
+    form.apiMaxContext = source.maxContext ? String(source.maxContext) : '';
     return form;
   }
   if (source.kind === 'preset') {
@@ -114,6 +122,7 @@ function toSource(form: AiModelForm): AiModelSource {
   const tokenizer = form.useTokenizer
     ? { repo: form.tokenizerRepo, revision: form.tokenizerRevision || 'main', fileName: form.tokenizerFileName }
     : undefined;
+  const maxContext = maxContextOf(form);
 
   switch (form.sourceKind) {
     case 'api':
@@ -123,6 +132,7 @@ function toSource(form: AiModelForm): AiModelSource {
         baseUrl: form.apiBaseUrl,
         apiKey: form.apiKey,
         model: form.apiModel,
+        ...(maxContext ? { maxContext } : {}),
       };
     case 'huggingface':
       return {
@@ -140,6 +150,29 @@ function toSource(form: AiModelForm): AiModelSource {
 }
 
 /**
+ * The ceiling the form holds, or undefined when the field is empty or not a positive whole number.
+ *
+ * Carried whatever the protocol, although only `ollama` shows the field: a ceiling set on a model
+ * some other way must survive an edit here, and an update writes the whole record.
+ */
+function maxContextOf(form: AiModelForm): number | undefined {
+  const text = form.apiMaxContext.trim();
+  return /^[1-9]\d*$/.test(text) ? Number(text) : undefined;
+}
+
+/**
+ * Why the typed ceiling cannot be saved, or empty when it can — including when there is none.
+ *
+ * A ceiling that does not parse is refused rather than dropped, because saving without it would
+ * remove whatever the model had. Said in words because the refusal is a disabled Save button,
+ * which on its own does not say which field is holding it.
+ */
+export function maxContextProblem(form: AiModelForm): string {
+  if (!form.apiMaxContext.trim() || maxContextOf(form) !== undefined) return '';
+  return 'A whole number of tokens, such as 32768 — or leave it empty.';
+}
+
+/**
  * Whether the form has enough to save.
  *
  * Only presence, and only of the fields the chosen source cannot do without. Whether the key works
@@ -150,7 +183,7 @@ export function formComplete(form: AiModelForm): boolean {
   if (!form.name.trim()) return false;
   switch (form.sourceKind) {
     case 'api':
-      return !!form.apiBaseUrl.trim() && !!form.apiModel.trim();
+      return !!form.apiBaseUrl.trim() && !!form.apiModel.trim() && !maxContextProblem(form);
     case 'huggingface':
       return !!form.hfRepo.trim() && !!form.hfFileName.trim();
     case 'file':
@@ -179,9 +212,9 @@ export const AI_API_PRESETS: { id: string; label: string; protocol: AiApiProtoco
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
   },
   { id: 'groq', label: 'Groq', protocol: 'openai', baseUrl: 'https://api.groq.com/openai/v1' },
-  // Through its OpenAI-compatible surface, which caps the context window it will use; a native
-  // Ollama protocol on the node lifts that.
-  { id: 'ollama', label: 'Ollama on the node’s machine', protocol: 'openai', baseUrl: 'http://localhost:11434/v1' },
+  // Its own API rather than the OpenAI-compatible one under `/v1`: only there can the node choose
+  // the window a model is loaded with, which is what the context ceiling sets.
+  { id: 'ollama', label: 'Ollama on the node’s machine', protocol: 'ollama', baseUrl: 'http://localhost:11434' },
 ];
 
 /** The service choice for an endpoint no preset describes, where protocol and URL are asked for. */
@@ -197,6 +230,12 @@ const KIND_LABELS: Record<AiModelKind, string> = {
   llm: 'Language model',
   embedding: 'Embeddings',
   transcription: 'Transcription',
+};
+
+const API_LABELS: Record<AiApiProtocol, string> = {
+  openai: 'Remote API',
+  anthropic: 'Anthropic API',
+  ollama: 'Ollama',
 };
 
 const SOURCE_LABELS: Record<AiSourceKind, string> = {
@@ -232,8 +271,7 @@ export function describeModel(model: AiModel, status?: AiModelStatus): AiModelVi
   return {
     ...model,
     kindLabel: KIND_LABELS[model.kind],
-    sourceLabel:
-      source.kind === 'api' && source.protocol === 'anthropic' ? 'Anthropic API' : SOURCE_LABELS[source.kind],
+    sourceLabel: source.kind === 'api' ? API_LABELS[source.protocol] : SOURCE_LABELS[source.kind],
     detail,
     statusText: source.kind === 'api' ? '' : statusLine(status),
     // A transcription model is ready once downloaded. AD4M only ever marks a language model

@@ -29,7 +29,7 @@
     "@we/cli": "workspace:*",
     "@we/tokens": "workspace:*",
     "rimraf": "^6.1.0",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.2"
   },
   "publishConfig": {
     "access": "public"

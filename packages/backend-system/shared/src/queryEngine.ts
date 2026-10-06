@@ -35,12 +35,19 @@ export interface InMemoryDataset {
 
 // ─── operators ──────────────────────────────────────────────────────────────────
 
+/** No value: never written, or cleared — a cleared property is removed, not stored as `''`. */
+const isAbsent = (value: unknown) => value == null;
+
 function compareOp(actual: unknown, op: Op, value: Scalar | Scalar[], caseSensitive?: boolean): boolean {
   switch (op) {
     case 'eq':
       return actual === value;
+    // A record that never had the field does not match an inequality, any more than an equality —
+    // the production backend's answer, where `!=` over an unbound value excludes the row, as SQL's
+    // three-valued logic excludes NULL. This engine used to answer the other way, so a `not` passed
+    // every test here and came back short in production. `exists: false` is how to ask for absence.
     case 'ne':
-      return actual !== value;
+      return !isAbsent(actual) && actual !== value;
     case 'lt':
     case 'lte':
     case 'gt':
@@ -49,7 +56,7 @@ function compareOp(actual: unknown, op: Op, value: Scalar | Scalar[], caseSensit
     case 'in':
       return Array.isArray(value) && value.includes(actual as Scalar);
     case 'nin':
-      return Array.isArray(value) && !value.includes(actual as Scalar);
+      return !isAbsent(actual) && Array.isArray(value) && !value.includes(actual as Scalar);
     case 'exists':
       return value === false ? actual == null : actual != null;
     case 'contains':
@@ -220,11 +227,17 @@ function scopeRows(rows: Row[], entity: string, scope: Scope, data: InMemoryData
   const anchorSet = new Set(anchors);
 
   // `direction: 'in'` asks the opposite question: not "what does this anchor point at" but "what
-  // points at it". Here that is the anchors read as rows and their key followed outward.
+  // points at it". A to-many relation is a key on the target row, so what points at an anchor is
+  // whatever the anchor's own key names: read the anchors as rows, and follow their key outward.
   const parentOf = (r: Row) => String(r[fk]);
   const idOf = (r: Row) => String(r['id']);
-  const matches =
-    scope.direction === 'in' ? (r: Row) => anchorSet.has(idOf(r)) : (r: Row) => anchorSet.has(parentOf(r));
+  const pointingAtAnchors =
+    scope.direction === 'in'
+      ? new Set((data.tables[rel.target] ?? []).filter((r) => anchorSet.has(idOf(r))).map(parentOf))
+      : undefined;
+  const matches = pointingAtAnchors
+    ? (r: Row) => pointingAtAnchors.has(idOf(r))
+    : (r: Row) => anchorSet.has(parentOf(r));
 
   let kept: Row[];
   if (scope.levels && scope.direction !== 'in') {

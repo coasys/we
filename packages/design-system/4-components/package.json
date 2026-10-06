@@ -31,6 +31,7 @@
     "@codemirror/lang-css": "^6.3.1",
     "@codemirror/lang-json": "^6.0.2",
     "@codemirror/language": "^6.12.4",
+    "@codemirror/search": "^6.7.1",
     "@codemirror/state": "^6.7.0",
     "@codemirror/view": "^6.43.9",
     "@lezer/highlight": "^1.2.3",
@@ -54,7 +55,7 @@
     "solid-js": "^1.9.15",
     "tsup": "^8.5.1",
     "vite-plugin-solid": "^2.11.14",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.2"
   },
   "publishConfig": {
     "access": "public"

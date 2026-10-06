@@ -30,16 +30,16 @@ export interface AdapterCapabilities {
   /**
    * The kinds of bound `lt`/`lte`/`gt`/`gte` compare natively. Absent means both.
    *
-   * An operator list cannot say this, and it matters: AD4M's executor takes a range bound only as a
-   * number, and a string bound — which is how a date is written — is not rejected there but reread
-   * as a nested clause that matches no row. Declaring it turns that silence into a refusal.
+   * An operator list cannot say this, and it matters: a backend that takes a range bound only as a
+   * number may not reject a string bound — which is how a date is written — but reread it as a
+   * nested clause that matches no row. Declaring it turns that silence into a refusal.
    */
   rangeBounds?: ('number' | 'string')[];
   /** and / or / not nesting in filters. */
   booleanCombinators: boolean;
   /** `{ rel, some/none/exists }` relation-scoped filters. */
   relationFilters: boolean;
-  /** Native drill-down from an anchor instance (the IR's `scope`; e.g. AD4M's `parent`). */
+  /** Native drill-down from an anchor instance (the IR's `scope`). */
   scope: boolean;
   /**
    * The parts of `scope` beyond "one anchor, one step out".
@@ -81,7 +81,7 @@ export interface AdapterCapabilities {
  *
  * **`degraded` is deliberately narrow — do not reach for it to make a query "work".** It exists
  * because the other three cannot express "runs, but lies about one thing", which is what a backend
- * *bug* looks like (AD4M dropping its sort pushdown under an explicit OR, for instance). Use it only
+ * *bug* looks like (a sort pushdown silently dropped under an explicit OR, for instance). Use it only
  * when every row returned is correct apart from the named feature. It is **not** a substitute for
  * `compute-up` on a real capability gap, and the standing expectation is that it is removed once the
  * backend is fixed — so keep the `feature` string greppable.

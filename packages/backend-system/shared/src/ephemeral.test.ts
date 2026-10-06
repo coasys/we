@@ -9,8 +9,8 @@ import {
 } from './ephemeral';
 import { createHeartbeatPresence, type Peer } from './presence';
 
-/** AD4M today: real unicast exists upstream but `sendSignalU` is broken, so the adapter emulates it. */
-const ad4m: EphemeralCapabilities = {
+/** A signed-gossip transport: fans out to everyone, so unicast is emulated by filtering on receipt. */
+const gossip: EphemeralCapabilities = {
   fanout: true,
   unicast: 'emulated',
   reliability: 'send-acked',
@@ -39,13 +39,13 @@ const awareness: EphemeralCapabilities = {
 describe('planEphemeral', () => {
   it('lets presence run on every transport — it only needs fan-out', () => {
     const req = { consumer: 'presence' };
-    for (const cap of [ad4m, server, awareness]) {
+    for (const cap of [gossip, server, awareness]) {
       expect(planEphemeral(req, cap).runnable).toBe(true);
     }
   });
 
-  it('runs a call module on AD4M, where emulated addressing is good enough for SDP/ICE', () => {
-    const plan = planEphemeral({ consumer: 'call module', unicast: 'emulated' }, ad4m);
+  it('runs a call module over gossip, where emulated addressing is good enough for SDP/ICE', () => {
+    const plan = planEphemeral({ consumer: 'call module', unicast: 'emulated' }, gossip);
     expect(plan).toEqual({ runnable: true, gaps: [] });
   });
 
@@ -58,11 +58,11 @@ describe('planEphemeral', () => {
 
   it('treats native as satisfying a request for emulated, but not the reverse', () => {
     expect(planEphemeral({ consumer: 'c', unicast: 'emulated' }, server).runnable).toBe(true);
-    expect(planEphemeral({ consumer: 'c', unicast: 'native' }, ad4m).runnable).toBe(false);
+    expect(planEphemeral({ consumer: 'c', unicast: 'native' }, gossip).runnable).toBe(false);
   });
 
   it('rejects confidential payloads over emulated addressing — addressing is not privacy', () => {
-    const plan = planEphemeral({ consumer: 'private notes', unicast: 'emulated', confidential: true }, ad4m);
+    const plan = planEphemeral({ consumer: 'private notes', unicast: 'emulated', confidential: true }, gossip);
     expect(plan.runnable).toBe(false);
     expect(plan.gaps.map((g) => g.feature)).toContain('unicast:confidential');
     expect(plan.gaps.find((g) => g.feature === 'unicast:confidential')?.note).toContain('not privacy');
@@ -74,7 +74,7 @@ describe('planEphemeral', () => {
 
   it('refuses to act on sender identity when the sender is self-asserted', () => {
     const req = { consumer: 'work lease', requiresAuthenticatedSender: true };
-    expect(planEphemeral(req, ad4m).runnable).toBe(true);
+    expect(planEphemeral(req, gossip).runnable).toBe(true);
     const plan = planEphemeral(req, awareness);
     expect(plan.runnable).toBe(false);
     expect(plan.gaps[0].feature).toBe('authenticatedSender');
@@ -113,7 +113,7 @@ describe('createInMemoryEphemeralPort', () => {
     ]);
   });
 
-  it('delivers a unicast to exactly one peer — the branch AD4M can only emulate', () => {
+  it('delivers a unicast to exactly one peer — the branch a gossip transport can only emulate', () => {
     const bus = new InMemoryBus();
     const [a, b, c] = ports(bus, 'a', 'b', 'c');
     const seen: string[] = [];
@@ -178,7 +178,7 @@ describe('createInMemoryEphemeralPort', () => {
 
 describe('presence over a second backend', () => {
   // The point of this block: presence is exercised end-to-end against a backend that shares no code
-  // and no assumptions with AD4M — native unicast instead of emulated, at-least-once instead of
+  // and no assumptions with a gossip transport — native unicast instead of emulated, at-least-once instead of
   // send-acked, no heartbeat requirement. If the seam were in the wrong place, it would show here.
   const DATASET = { id: 'space-1' };
 
@@ -249,10 +249,10 @@ describe('presence over a second backend', () => {
     expect(a.source.peers().find((p) => p.agentId === 'b')?.liveness).toBe('stale');
   });
 
-  it('admits a consumer needing native unicast that AD4M would refuse', () => {
+  it('admits a consumer needing native unicast that gossip would refuse', () => {
     // Same requirement, two backends, opposite answers — the capability model doing its job.
     const req = { consumer: 'call module', unicast: 'native' as const, confidential: true };
     expect(planEphemeral(req, inMemoryEphemeralCapabilities).runnable).toBe(true);
-    expect(planEphemeral(req, ad4m).runnable).toBe(false);
+    expect(planEphemeral(req, gossip).runnable).toBe(false);
   });
 });

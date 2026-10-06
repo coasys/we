@@ -55,11 +55,13 @@ interface HarnessDeps {
   transcription?: Record<string, unknown>;
   interpretation?: Record<string, unknown>;
   media?: { input: () => MediaStream | null };
-  records?: Partial<Record<'create' | 'link' | 'update' | 'find', unknown>>;
+  records?: Partial<Record<'create' | 'link' | 'update' | 'find' | 'remove', unknown>>;
   presence?: Record<string, unknown>;
   dataset?: () => unknown;
   settings?: (() => Record<string, boolean | string | number>) | undefined;
   onDispose?: (fn: () => void) => void;
+  /** Which call the address names — what the transcript's window is scoped to. */
+  callOnScreen?: () => string | null;
 }
 
 function harness(peers: Peer[] = [], extraDeps: HarnessDeps = {}) {
@@ -270,6 +272,23 @@ describe('the call record', () => {
 
     const claim = h.published.find((a) => a.type === TRANSCRIBE_ACTIVITY);
     expect(claim).toMatchObject({ id: CALL, collection: RECORD });
+  });
+
+  it('publishes only what it declares', async () => {
+    // The host checks a published activity against `contributes.activities` in development, and an
+    // undeclared one warns on every machine that records.
+    const { transcribeModule } = await import('./index');
+    const h = harness(inCall);
+    await h.say('first words');
+
+    const shape = transcribeModule.contributes?.activities?.[TRANSCRIBE_ACTIVITY];
+    expect(shape).toBeDefined();
+    for (const claim of h.published.filter((a) => a.type === TRANSCRIBE_ACTIVITY)) {
+      for (const [field, value] of Object.entries(claim)) {
+        if (field === 'type' || value === undefined) continue;
+        expect(shape?.[field], field).toBe(typeof value === 'object' ? 'object' : typeof value);
+      }
+    }
   });
 });
 
@@ -1395,6 +1414,102 @@ describe('staged suggestions', () => {
 
     expect(i.resolved).toEqual([{ action: 'reject', id: 'task-1' }]);
     expect(h.store.proposals()).toEqual([]);
+  });
+
+  /*
+    A pass that connects a new task to an old one stages two records that only make sense together,
+    and the backend decides each alone: rejecting the task deletes every link pointing at it, which
+    cuts an accepted connection down to one end. So they are decided together, asked about first.
+  */
+  describe('a decision tied to a connection', () => {
+    const staged = [
+      { id: 'task-new', kind: 'create', entity: 'TaskBlock', values: { title: 'Take screenshots' } },
+      { id: 'link-1', kind: 'create', entity: 'Relationship', values: { label: 'depends on' } },
+    ];
+    /** `link-1` joins an agreed task to `task-new`; `link-2` is agreed and also joins `task-new`. */
+    const graph = async (id: string) =>
+      id === 'link-1'
+        ? { ends: ['task-old', 'task-new'], connections: [] }
+        : id === 'task-new'
+          ? {
+              ends: [],
+              connections: [
+                { id: 'link-1', entity: 'Relationship' },
+                { id: 'link-2', entity: 'Relationship' },
+              ],
+            }
+          : { ends: [], connections: [] };
+
+    async function setup() {
+      const i = interpreterWith(staged);
+      const removed: string[] = [];
+      const h = harness(inCall, {
+        interpretation: { ...i.port, connections: graph },
+        records: { remove: async (_entity: string, id: string) => void removed.push(id) },
+      });
+      await h.say('hello');
+      await h.store.extract();
+      return { i, h, removed };
+    }
+
+    it('asks before accepting a connection whose end is still a suggestion, then accepts the end first', async () => {
+      const { i, h } = await setup();
+
+      await h.store.acceptProposal('link-1');
+      expect(i.resolved).toEqual([]);
+      expect(h.store.tiedDecision()).toMatchObject({
+        kind: 'accept',
+        staged: ['task-new'],
+        confirmLabel: 'Accept both',
+      });
+      expect(h.store.tiedDecision()?.body).toContain('“Take screenshots”');
+
+      await h.store.confirmTiedDecision();
+      expect(i.resolved).toEqual([
+        { action: 'accept', id: 'task-new' },
+        { action: 'accept', id: 'link-1' },
+      ]);
+      expect(h.store.tiedDecision()).toBeNull();
+    });
+
+    it('asks before discarding a record connections join, then takes them with it', async () => {
+      const { i, h, removed } = await setup();
+
+      await h.store.rejectProposal('task-new');
+      expect(i.resolved).toEqual([]);
+      expect(h.store.tiedDecision()).toMatchObject({ kind: 'reject', staged: ['link-1'] });
+      // The accepted one is named, because it is the part of this nobody would guess.
+      expect(h.store.tiedDecision()?.detail).toContain('1 of them has already been accepted');
+
+      await h.store.confirmTiedDecision();
+      // Connections first, so none is ever left with one end.
+      expect(i.resolved).toEqual([
+        { action: 'reject', id: 'link-1' },
+        { action: 'reject', id: 'task-new' },
+      ]);
+      expect(removed).toEqual(['link-2']);
+    });
+
+    it('decides nothing when the held decision is put down', async () => {
+      const { i, h } = await setup();
+      await h.store.rejectProposal('task-new');
+
+      h.store.cancelTiedDecision();
+
+      expect(h.store.tiedDecision()).toBeNull();
+      expect(i.resolved).toEqual([]);
+    });
+
+    it('asks nothing where a decision stands alone', async () => {
+      // Accepting a record leaves its connections as suggestions; discarding a connection leaves its
+      // ends. Neither needs the other, so neither is a question.
+      const { i, h } = await setup();
+
+      await h.store.rejectProposal('link-1');
+
+      expect(h.store.tiedDecision()).toBeNull();
+      expect(i.resolved).toEqual([{ action: 'reject', id: 'link-1' }]);
+    });
   });
 
   it('keeps a successful extraction successful when the review list cannot be read', async () => {
@@ -2842,5 +2957,104 @@ describe('a stream that went away', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+/**
+ * The transcript's window.
+ *
+ * A transcript is two documents with opposite anchors — a tail while the call runs, a document
+ * afterwards — and the window is what makes both bounded. Before it there was no limit at all, so
+ * every utterance re-read, re-hydrated and re-fingerprinted everything already said: the cost of
+ * speaking grew with the length of the conversation.
+ */
+describe('the transcript window', () => {
+  it('opens on a small page, following the live end', () => {
+    /*
+      Fifty, not the two hundred it grows by. Opening is paid by everybody on every call, and a
+      page that size is also a hundred-odd custom elements laying out in one pass — which is what
+      made the panel open a couple of lines short of the bottom.
+    */
+    const h = harness();
+    expect(h.store.transcriptShown()).toBe(50);
+    expect(h.store.transcriptFromStart()).toBe(false);
+  });
+
+  it('grows by more than it opened with, because the two answer different questions', () => {
+    /*
+      The asymmetry is the point. The window grows by re-running the query at a bigger limit rather
+      than by fetching a page and appending, so reading backwards is quadratic in the number of
+      loads — and the loads are automatic now, on scroll, rather than one press each. A small step
+      would turn a scroll through a long transcript into twenty re-fetches of a growing list.
+    */
+    const h = harness();
+    h.store.showMoreTranscript();
+    expect(h.store.transcriptShown()).toBe(250);
+    h.store.showMoreTranscript();
+    expect(h.store.transcriptShown()).toBe(450);
+  });
+
+  /*
+    Reading from the start is a different QUERY, not a longer scroll — the window is anchored to the
+    live end, so the top of what is loaded is not the beginning of the conversation and no amount of
+    scrolling reaches one from the other. It re-anchors and starts again at one page, which is what
+    makes reaching the beginning of a two-hour call cheap rather than a matter of pressing "earlier"
+    thirty times.
+  */
+  it('re-anchors to the beginning, at one page again', () => {
+    const h = harness();
+    h.store.showMoreTranscript();
+    h.store.showMoreTranscript();
+
+    h.store.readTranscriptFromStart();
+    expect(h.store.transcriptFromStart()).toBe(true);
+    expect(h.store.transcriptShown()).toBe(50);
+  });
+
+  it('goes back to following the end', () => {
+    const h = harness();
+    h.store.readTranscriptFromStart();
+    h.store.showMoreTranscript();
+
+    h.store.readTranscriptLive();
+    expect(h.store.transcriptFromStart()).toBe(false);
+    expect(h.store.transcriptShown()).toBe(50);
+  });
+
+  /*
+    A different conversation is a different document.
+
+    Without this the window is a high-water mark across calls: read six hundred lines of one and the
+    next opens by loading six hundred of its own — the cost the window exists to bound, arriving one
+    call late.
+  */
+  it('starts again when the call on screen changes', async () => {
+    let onScreen: string | null = 'call-one';
+    const h = harness([], { callOnScreen: () => onScreen });
+
+    // Read back into it, and from the other end — both are state the next call must not inherit.
+    h.store.readTranscriptFromStart();
+    h.store.showMoreTranscript();
+    expect(h.store.transcriptShown()).toBe(250);
+    expect(h.store.transcriptFromStart()).toBe(true);
+
+    onScreen = 'call-two';
+    await h.settle();
+
+    expect(h.store.transcriptShown()).toBe(50);
+    expect(h.store.transcriptFromStart()).toBe(false);
+  });
+
+  /*
+    And does NOT start again for a tick that changed nothing — a reader who has just asked for more
+    in the call they are already in must not have it taken away by the next presence heartbeat.
+  */
+  it('leaves the window alone while the call on screen is the same', async () => {
+    const h = harness([], { callOnScreen: () => 'call-one' });
+
+    h.store.showMoreTranscript();
+    await h.settle();
+
+    expect(h.store.transcriptShown()).toBe(250);
   });
 });

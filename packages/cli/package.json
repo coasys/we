@@ -9,19 +9,31 @@
     "bootstrap": "tsup",
     "build:steps": "tsup",
     "build": "if [ -f ./dist/we-build.js ]; then node ./dist/we-build.js; else pnpm run build:steps; fi",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "bin": {
     "we-build": "./dist/we-build.js",
-    "we-banner": "./dist/we-banner.js"
+    "we-banner": "./dist/we-banner.js",
+    "we-render": "./dist/we-render.js"
   },
   "files": [
     "dist"
   ],
   "dependencies": {},
+  "peerDependencies": {
+    "playwright-core": ">=1.40.0"
+  },
+  "peerDependenciesMeta": {
+    "playwright-core": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@types/node": "^26.4.0",
-    "tsup": "^8.5.1"
+    "playwright-core": "^1.62.1",
+    "tsup": "^8.5.1",
+    "vitest": "^5.0.2"
   },
   "publishConfig": {
     "access": "public"

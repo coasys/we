@@ -93,11 +93,15 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/backend-shared` | backend-system/shared | The backend contract: `DataSource`, query IR + engine, ephemeral, presence & transcription ports, model manifest | **Agnostic** |
 | `@we/backend-ad4m` | backend-system/ad4m | The AD4M adapter: query adapter, ports, agent identity, SDNA install — and the AD4M model classes, generated from @we/entities' manifest (src/models) | Agnostic |
 | `@we/backend-inmemory` | backend-system/inmemory | In-memory adapter — the reference implementation, and how stores test without an executor | Agnostic |
+| `@we/backend-conformance` | backend-system/conformance | One suite of the contract's behaviour every backend runs, with each backend's known gaps listed and run inverted | Agnostic |
 | `@we/module-shared` | module-system/shared | The feature-module contract — manifest, contributions, kernels, store markers, `lintModule` — what a module author installs | Agnostic |
 | `@we/module-testing` | module-system/testing | Fakes for testing a module store without a host: `fakeDeps`, `fakeRecords`, `fakePresence`, `buildStore` | Agnostic |
 | `@we/module-globe` · `-call` · `-notes` · `-pocket` · `-polls` · `-transcribe` · `-graph` | module-system/* | Bundled feature modules — each exports `createModule(host)` and the seed's `modules` list generates the registry; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
 | `@we/graph-protocol` · `-core` · `-expanders` · `-layouts` · `-solid` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | `@we/block-shared` | block-system/shared | Block content types + serialization | Agnostic |
+| `@we/optimism` | packages/optimism | A write drawn before it has been seen come back — hold, baseline, settle, and when to stop believing it | Agnostic (signal injected) |
+| `@we/history` | packages/history | Undo as a stack of this agent's own inverse writes, replayed **forwards** — the only shape that is safe on shared, last-write-wins data | Agnostic (signal injected) |
+| `@we/drag` | design-system/drag | The drag session and its payload — references, never DOM — plus the ghost, the zone registry and the press-to-drag threshold | Agnostic |
 | `@we/entities` | packages/entities | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
 | `@we/app-shell` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
 | `@we/ai-context` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
@@ -278,9 +282,9 @@ the seed's list is correct code that never appears.
 | Entity | `entities/src/manifest/` | `entities/CONVENTIONS.md` + `docs/architecture/relations.md` | `--filter @we/entities generate:types` **and** `--filter @we/backend-ad4m generate:classes` | `--filter @we/backend-ad4m test` |
 | Feature module | `module-system/<id>/` (or any package exporting `createModule`) | `docs/guides/writing-a-module.md`, then `module-system/shared/src/module.ts` | seed `modules` — the registry is generated from it by `--filter @we/app-shell generate-modules` | `--filter @we/module-shared test`, `validate:schemas`, then `generate-context` |
 | Graph plugin | `graph-system/expanders/src/`, `layouts/src/` | `graph-system/CONVENTIONS.md` | package index **and** `GRAPH_PLUGIN_CATALOG` in `module-system/graph/src/catalog.ts` | `--filter @we/graph-core test`, then `generate-context` |
-| Globe layer | `module-system/globe/layers/src/` | its `README.md` / `EXAMPLES.md` | export from `index.ts` | `--filter @we/globe-layers typecheck` |
+| Globe layer | `module-system/globe/layers/src/` | its `README.md` / `EXAMPLES.md` | export from `index.ts`, `layerFactoryRegistry` in `module-system/globe/module/src/layers.ts` **and** `GLOBE_LAYER_CATALOG` in `module-system/globe/module/src/catalog.ts` | `--filter @we/app-shell test` (`globeModule`), then `generate-context` |
 | Seed | `we-seed.json` | `docs/getting-started/seed-system.md` | — | `pnpm validate:seed` |
-| Backend adapter | `backend-system/<name>/` | `backend-system/shared/README.md` | entity proxy registry | model the `inmemory` package |
+| Backend adapter | `backend-system/<name>/` | `backend-system/shared/README.md` | entity proxy registry | `describeBackendConformance` from `@we/backend-conformance` |
 | Platform host | `apps/<name>/` | — | — | `--filter <app> build` |
 
 Widgets (`design-system/5-widgets`) are the nineteenth and are **currently empty by design**: the one
@@ -296,8 +300,8 @@ works.
 
 **The graph catalog entry is not bookkeeping.** Props tell an author that `layout.type` is a string;
 nothing in a prop list says which strings exist, so a plugin nobody can name might as well not be
-registered. The globe is the cautionary case — its layer protocol is good, no catalog of layer names
-reaches the generated context, and so an LLM cannot author a globe template.
+registered. The globe was the cautionary case — a good layer protocol, no catalog of layer names in
+the generated context, and so no LLM could author a globe template until it got one.
 
 ### Distribution — what is real
 
@@ -342,6 +346,49 @@ The ROOT node carries one more, and it is required:
   template was designed with, panels for the surfaces the interface has (see Panels), and
   chromeReserve for a band the shell pins over the content. A root node without meta is refused.
 
+## Shapes the template says once: $defs and $ref
+
+A template often uses the same shape in several places — a card drawn in two display modes, a
+column arrangement that appears per person and per status. The root may carry those shapes in
+**$defs**, with a **$ref** node standing at each place one is used:
+
+{
+  "type": "Column",
+  "meta": { "...": "..." },
+  "$defs": { "d1": { "type": "Card", "children": ["…the whole card…"] } },
+  "children": [
+    { "type": "$ref", "props": { "def": "d1" } },
+    { "type": "$ref", "props": { "def": "d1" } }
+  ]
+}
+
+Those two render exactly what two copies of the card would. The definitions live INSIDE the
+template, so everything that will render is still in the document — nothing is fetched, and a
+template can be read as the thing it will be.
+
+**You will meet these; you rarely need to write them.** Write ordinary nodes. Shapes are hoisted
+automatically, so a thing you write out twice becomes one definition without you doing anything.
+
+**Editing one is two different acts, and the difference is which node you patch:**
+
+- Patch a node **inside a definition** and the change shows at EVERY use of that shape. This is
+  usually what is wanted — "make the cards wider" is one shape and every card.
+- To make a single use differ, send a patch of { "targetId": "<the $ref's id>", "split": true }. That use
+  gets a copy of the shape to itself and everything else carries on sharing. The tool result lists
+  the copy's nodes by id, so the patch that changes one of them follows in the same turn. **Never
+  re-send the shape to do this** — it is thousands of tokens, and a shape retyped from memory loses
+  something every time, for a copy the editor is already holding and has just named for you.
+
+The tool result says which happened: a patch that reached a shared shape comes back naming how
+many places it changed. If that is not what the request meant, fix it in the same turn.
+
+**Where the words do not decide between the two, ask rather than guess.** "Make the card blue",
+said about a card on screen, is as likely to mean that one as all of them, and the two are not
+equally easy to undo: changing one of six is a split and a patch, where changing six when one was
+meant has already repainted five things somebody did not look at. Say which places are involved —
+the count is in the tool result — and let them choose. Guess only where the request names the
+scope itself ("all the cards", "this one").
+
 Example node:
 {
   "type": "we-button",
@@ -383,24 +430,34 @@ Example — close modal after async submission:
 Example — navigate to newly created item:
 { "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$action": "routeStore.navigate", "args": [{ "$": "`/space/${result.uuid}`" }] }] }
 
+An action runs only when somebody asked for it. A press, a key, typing, a drop or a paste that reaches
+the element whose handler calls it counts as asking — and so does whatever the element does in answer,
+even a moment later, once. An event that happens to the element by itself does not: onLoad, onError,
+onToggle, onFocus, onMouseEnter, onAnimationEnd, a component reporting its size. Wired there, an action
+that stores something, publishes something or reaches a device is refused and does nothing; put it on
+the press instead. Navigating, opening and closing surfaces and editing an unsaved draft are exempt, so
+they work anywhere. onSuccess, onError and onFinally count as part of the press that started them, and
+so does onBlur on a field somebody typed into. The validator warns about a write on an event nobody causes.
+
 Record mutations via $action (use these for creating/updating/deleting records):
 A RECORD is one stored thing; an ENTITY is its type. Every one of these takes the entity name first
 and acts on a record of it.
 
-record.create — creates a record in the current perspective (default) or a specified one:
-{ "$action": "record.create", "args": ["EntityName", { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
-The third argument is an options object. Omit it to use the current space perspective.
+record.create — creates a record in the current dataset (default) or a specified one:
+{ "$action": "record.create", "args": ["EntityName", { "field": "value" }, { "dataset": "datasetStore.rootDataset" }] }
+The third argument is an options object. Omit it to write into the space on screen.
 
 record.update — updates one record:
 { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "newValue" }] }
-To target a non-current perspective: { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
+To target another dataset: { "$action": "record.update", "args": ["EntityName", { "$": "item.id" }, { "field": "value" }, { "dataset": "datasetStore.rootDataset" }] }
 
 record.delete — deletes one record:
 { "$action": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
 
-Use perspective: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.), and
+Use dataset: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.), and
 'datasetStore.personalDataset' for the agent's own content (a note, a Pocket folder). Both are chrome-tier.
-Use the default (no perspective) for space-scoped entities (Space, Signal, etc.).
+Use the default (no dataset) for space-scoped entities (Space, Signal, etc.). The same key $query
+takes, and it names the same accessors.
 
 record.* writes directly; recordStore is the form surface over the same job — it derives a form from
 the entity's own declaration, so a community's newest entity is creatable with no schema written for
@@ -456,7 +513,9 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     first(items) — The first entry of a list, or undefined when it is empty.  e.g. first(local.posts).title
     join(items, separator?) — The entries of a list as one string, separated by `separator` (default ', ').  e.g. join(item.tags, ' · ')
     last(items) — The last entry of a list, or undefined when it is empty.  e.g. last(item.messages).text
+    reverse(items) — The entries of a list, back to front. A new list — the one given is untouched, so a store array or a query result can be reversed without disturbing anything else reading it.  e.g. reverse(local.utterances)
     split(text, separator?) — The text cut into a list at each `separator` (default ','), each piece trimmed, empty pieces left out — so an empty string is an empty list. The inverse of `join`, for a list held in one string, such as a URL parameter.  e.g. split(routeStore.params.hide).filter(k, k != kind)
+    sum(items) — The numbers in a list added together. Anything that is not a number counts as 0, and anything that is not a list sums to 0.  e.g. sum(local.replies.map(r, count(r.comments)))
   Text:
     contains(text, needle) — Whether the text contains `needle`, ignoring case — the same test the where-object `contains` makes.  e.g. contains(item.name, local.search)
     endsWith(text, suffix) — Whether the text ends with `suffix`, case-sensitively.  e.g. endsWith(item.url, '.png')
@@ -481,9 +540,15 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     calendarMonths(options?) — The twelve months of the year an offset lands in — { label, month, year, offset, isThisMonth, isShown } — each carrying its own offset from today, for a jump-to-month picker.  e.g. calendarMonths({ offset: local.monthOffset })
     monthLabel(options?) — The month a calendar is showing, as "August 2026" in the viewer’s language. Same options as calendarMonth.  e.g. monthLabel({ offset: local.monthOffset })
     yearLabel(options?) — The year a calendar is showing, on its own. Same options as calendarMonth.  e.g. yearLabel({ offset: local.monthOffset })
-    arrangedBoard(options) — A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total, involved, filtering, show, dimmed, cardCount, matchedCount, unplacedTotal, rows, cells, rowCounts }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count, shown, matched, order }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: "column" children), records (everything in scope), states (spaceStore.taskStates). To read it by who is on the work, also pass involvements (an Involvement query), kinds (spaceStore.involvementTypes), people (the chosen DIDs), me (me.did — involved is everyone on a card here, the viewer first) and show: "dim" lists the others in dimmed and moves nothing; "hide" drops them from arranged, unarranged and unplaced while count stays true and shown says how many are drawn; "rows" adds a row per person plus "nobody" — rows are keys, cells[row][columnId] is { arranged, unarranged, count }. A drag in a column showing only part of itself passes contents[columnId].order to arrangeColumn, so the hidden cards keep their places.  e.g. arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates }).columns
+    arrangedBoard(options) — A board worked out from its three subscriptions — { ready, gathers, columns, contents, unplaced, unplacedStates, available, total, involved, filtering, show, dimmed, cardCount, matchedCount, unplacedTotal, rows, cells, rowCounts, flow, awaiting, awaitingOnly }. columns are the caller’s own column records in the board’s order; contents[columnId] is { label, icon, color, lane, arranged, unarranged, count, shown, matched, order }; unplaced is work no column here shows. Options: board (the record with children hydrated), columns (its kind: "column" children), records (everything in scope), states (spaceStore.taskStates). To read it by who is on the work, also pass involvements (an Involvement query), kinds (spaceStore.involvementTypes), people (the chosen DIDs), me (me.did — involved is everyone on a card here, the viewer first) and show: "dim" lists the others in dimmed and moves nothing; "hide" drops them from arranged, unarranged and unplaced while count stays true and shown says how many are drawn; "rows" adds a row per person plus "nobody" — rows are keys, cells[row][columnId] is { arranged, unarranged, count }. A drag in a column showing only part of itself passes contents[columnId].order to arrangeColumn, so the hidden cards keep their places. Where the space’s states ask for agreement (spaceStore.taskFlowEnabled) a card is drawn where its run is, and three more fields answer: flow[cardId] is { to, voters, counted, needs, mine, canApprove, approverKind } for a card waiting on a move — counted is how many of voters count toward needs; awaiting is the cards whose waiting move the viewer’s approval would help; pass awaitingMe: true to draw only those (awaitingOnly says it is on).  e.g. arrangedBoard({ board: first(local.board), columns: local.columns, records: local.pool, states: spaceStore.taskStates }).columns
     involvement(options) — Who is on each record, from the Involvement rows — { byNode, answers, dids }. byNode[recordId] is { people, dids, responsible, reviewing, committed, interested, declined, pairs }: people are { did, kind, name, semantic, reflexive, icon, color, tone }, assignees first then reviewers and so on, and tone is the avatar ring the part wears ("warning" for reviewing, empty otherwise) — pass it as an AvatarStack avatar’s tone; the five lists are DIDs grouped by what each kind means, so a renamed or added kind still lands in the right one; dids is everyone not declined; pairs is every "did|kind" present, for a menu tick with `in`. answers[recordId] is the viewer’s own reflexive answer (going, maybe, …). Options: rows (an Involvement query), types (spaceStore.involvementTypes), me (me.did, who then leads the top-level dids), nodes (record ids the top-level dids is limited to).  e.g. involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[card.id].responsible
     involvementMenu(options) — The entries of a "who is on this" DropdownMenu for one record: the member a conversation named, when `said` matches exactly one and nobody is doing it yet; "Assign to me" while the viewer is not already on it, then a group per kind the entity is offered that anybody may give (the first open, the rest closed unless somebody holds them), each listing members with their faces — current holders ticked and first, then the viewer, then everyone by name. Every entry carries `kind`, and a toggle `checked`, so one handler serves all: setInvolvement(record, arg.id, arg.kind, !arg.checked). Options: node, entity, rows (an Involvement query), types (spaceStore.offeredInvolvementTypes), members (spaceStore.members), profiles (profileStore.profiles), me (me.did), said (a name somebody said — TaskBlock.assignee).  e.g. involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did })
+    signalTally(options) — What a record's reactions say, as one number. With `type`, the number THAT type is read as — a toggle counts, a vote nets out, a rating averages, and a community's own `aggregate` wins unless the mode cannot express it. Without a type, how many people reacted at all: records, never values, since a total summing likes and stars and downvotes is not a number. Retired types still count — somebody reacted, and a total that fell when a vocabulary was tidied would be reporting the tidying. Options: signals (the record's `signals`, hydrated), type (a SignalType row).  e.g. signalTally({ signals: row.signals, type: sig })
+    reactions(options) — A record's reactions with this agent's own newest answer in place, whether or not it has been read back yet. Every reaction surface draws through it: a press writes a record and the subscription answers about a second later, so without it the glyph stays unfilled and the count stays put and the press reads as having failed. The LIST rather than the count, because the tally, the mark and the control all read it — overlay the count alone and the heart sits unfilled beside a number that moved. Options: signals (the record's `signals`, hydrated), record (its id), type (the SignalType's id), me (me.did).  e.g. reactions({ signals: filter(row.signals, { signalTypeId: sig.id }), record: row.id, type: sig.id, me: me.did })
+    reactors(options) — Who reacted with one type and what each gave — { people, total, unresolved }. `people` are { did, name, avatar, value, mine }, the reader first and then by name; `total` counts everybody before any search, which is what "12 people" says. The record already carries this — `include: { signals: true }` hydrates each Signal's author and value — so nothing is fetched; what a schema cannot do is join a DID to a face and a name. `search` narrows by name, and `unresolved` says how many could not be judged because their profile has not arrived. Options: signals (one type's signals, hydrated), profiles (profileStore.profiles), me (me.did), search.  e.g. reactors({ signals: filter(row.signals, { signalTypeId: sig.id }), profiles: profileStore.profiles, me: me.did })
+    signalTypesByUse(options) — Reaction types ordered by how many PEOPLE reacted with each, most first — never by what they said, since a total of values cannot compare a rating with a vote and a downvoted type would sort below one nobody has used. Ties keep the order they arrived in, so a panel does not reshuffle as reactions come in. Muted authors are left out of the count. It orders and nothing else: which types a surface draws is a filter, and stays in the schema — which is what keeps an overflow count evaluable, since reordering a list cannot change how long it is. Sorting is here because the expression language has no sort, the grammar is closed, and these types come from a subscription rather than a query that could carry an `order`. Pass `of` — the record's id — and the order SETTLES: it is worked out the first time that record's reactions are drawn and then held, so a reaction somebody withdraws does not slide down the column under their cursor. It has to be held outside the template, because a reaction surface sits inside an `$each` over a query and a subscription hands the renderer fresh objects, which remounts the row and takes any `$localState` with it. Types the settled order has never seen are appended by use, so nothing new is hidden; the order is dropped when the space changes. Options: of (the record whose order this is), types (the rows to order), signals (the record's `signals`, hydrated), muted (spaceStore.mutedDids), limit (keep the first N of that order).  e.g. signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: spaceStore.mutedDids, limit: 4 })
+    voices(options) — Whose reactions a weighted score was made from, as a list a reader turns voices up and down in — { did, name, avatar, cards, mean, weight, share, mine, pretend }, the busiest first. `weight` is how much the voice counts (0–100) and `share` its part of everybody's say. Options: summary (what a GraphView's onSeedSummary reported — the canvas seed's `{ type, voices }`), param (the weights as the address holds them, `did=50,did=0`), profiles (profileStore.profiles), me (me.did).  e.g. voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did })
+    voicesParam(options) — The weights address form with one voice changed — options param, did and weight (0–100) — or, with only (a DID) and voices (the listed rows), every voice at nothing but that one. A voice back at full is left out, so putting everything back leaves a clean address.  e.g. voicesParam({ param: local.voices, did: voice.did, weight: event.detail })
     formatJson(options) — A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass’s prompt and response); a schema has no JSON.stringify of its own.  e.g. formatJson({ text: pass.prompt })
 
 The where-object — one grammar shared by filter(), find(), and $query's where. Keys are field names;
@@ -506,27 +571,29 @@ values may be expressions (in an expression) or tokens (in a $query):
 so: "posts with no comments", "nodes carrying a relationship of this kind". Without them the caller
 fetched everything with its children and counted client-side. An empty clause means "any", so
 { comments: { some: {} } } is "has at least one". They nest — the clause inside one may itself
-contain a quantifier — and they are native on AD4M, where they compile to a SPARQL EXISTS group.
+contain a quantifier — and they run natively in a $query, so nothing is fetched to count.
 
 A key is read as a quantifier because it carries "some" or "none", not because the model says it is
 a relation. So a scalar property can never be compared with those two words, and everything else on
 a relation-named key stays an ordinary field compare.
 
 A bare list is the positive counterpart of "not" with a list, and the way to fetch a known set:
-{ id: ['id1', 'id2', 'id3'] }. Native on the AD4M backend, where it pushes down to a SPARQL VALUES
-clause. An empty list matches nothing, which is what "none of these" should mean.
+{ id: ['id1', 'id2', 'id3'] }. Native in a $query. An empty list matches nothing, which is what
+"none of these" should mean.
 
-An ABSENT property is the trap worth knowing, and "not" is where the two backends disagree.
+An ABSENT property is the trap worth knowing, and "not" is where a $query and filter() disagree.
 
-A record that never had a property written carries no value for it — on AD4M a property is a link,
-so it is simply not there. Three cases, and the middle one differs by backend:
+A record that never had a property written carries no value for it — a property is stored as a
+link, so an unwritten one is simply not there. Three cases, and the middle one differs by where it
+is evaluated:
 
   { field: 'x' }             — does NOT match an absent value. Both agree.
-  { field: { not: 'x' } }    — MATCHES an absent value inside filter() and on the in-memory
-                               backend (undefined !== 'x'), and does NOT match on AD4M, where
-                               != over an unbound variable excludes the row, exactly as SQL's
-                               three-valued logic excludes NULL. A $query where written with "not"
-                               can therefore pass every test and come back empty in production.
+  { field: { not: 'x' } }    — does NOT match an absent value in a $query, on any backend: !=
+                               over an unbound value excludes the row, exactly as SQL's
+                               three-valued logic excludes NULL. Inside filter() it DOES match
+                               (undefined !== 'x'), because filter() is plain client-side
+                               comparison — so the same where-object can answer differently in
+                               the two places.
   { field: { exists: false } } — means absent, unambiguously — but see the warning below about
                                where it can be used.
 
@@ -535,13 +602,16 @@ CONSTRUCTED, so anything created normally does carry it — but a field added to
 some records already existed reads as absent on every one of them, and the query layer never
 consults the default when filtering.
 
-"exists" IS NOT AVAILABLE IN A $query — only inside filter(), where it is evaluated client-side.
-The AD4M backend has no such operator, so a $query using one is refused rather than run. This is a
-change: it used to be claimed as supported and was not, and the consequence was worse than a refusal
-— the clause reached a filter that rejected every row, so the query answered nothing at all, always,
-with no error anywhere. A refusal at least says so.
+CLEARING is the other way to end up with no value. Writing '' to a property that has one removes
+it: the record then reads back as the field's default — usually '' — but no $query matches it, not
+{ field: '' } and not { field: { not: 'x' } }. A '' written at CREATION, a declared default of ''
+included, is different: it is stored, and both of those match it. So a task nobody was ever
+assigned is found by { assignee: { not: 'Ann' } }, and one whose assignee was removed is not.
 
-That invalidates the idiom this section used to recommend for "absent counts as the default":
+"exists" IS NOT AVAILABLE IN A $query — only inside filter(), where it is evaluated client-side.
+The backend has no such operator, so a $query using one is refused rather than run.
+
+That rules out the obvious idiom for "absent counts as the default":
 
   { OR: [ { retired: false }, { retired: { exists: false } } ] }   ← NOT usable in a $query
 
@@ -550,8 +620,8 @@ comparison; fetch the candidates and filter() client-side, where "exists" works;
 is a relation rather than a scalar, ask { relation: { none: {} } }, which IS native.
 
 startsWith/endsWith are case-sensitive where contains is not: they match structured strings against
-a known prefix (an ISO date, an id out of a URI). They are NOT native to the AD4M backend either, so
-a $query using one is refused — use contains there; inside filter() they are evaluated client-side.
+a known prefix (an ISO date, an id out of a URI). They are NOT native to the backend either, so a
+$query using one is refused — use contains there; inside filter() they are evaluated client-side.
 
 lt/lte/gt/gte compare a number with a number, and a string with a string as text. Text order is
 what makes dates work: WE writes a day as YYYY-MM-DD and a moment as YYYY-MM-DDTHH:mm, and those sort
@@ -559,15 +629,13 @@ in time order, so { dueDate: { gte: '2026-09-15', lt: '2026-10-01' } } is "due i
 September" — including a task due '2026-09-30T18:00'. A mixed pair never matches: a number bound
 against a field holding the string '12' answers false, rather than guessing which you meant.
 
-On AD4M a NUMBER bound is native and a STRING bound is refused — the executor compares numbers only.
-So a date range in a $query does not run there yet; fetch the candidates and filter() client-side,
+In a $query a NUMBER bound is native and a STRING bound is refused — the backend compares numbers
+only. So a date range in a $query does not run yet; fetch the candidates and filter() client-side,
 where it works, or bound the query by something numeric. A numeric range (a price, a count, a
-rating) runs natively on both backends.
+rating) runs natively either way.
 
-OR/AND/NOT no longer cost a query its sort pushdown. They used to: the executor decided pushability
-with a second function that disagreed with what it actually emitted, and an explicit combinator fell
-outside it. One compiler now answers for its own emission, so a filter with an OR and a sort behaves
-like any other.
+OR/AND/NOT cost a query nothing in sort pushdown: a filter with an OR and a sort behaves like any
+other.
 
 Examples:
 { "$": "filter(spaceStore.members, { role: 'admin' })" }
@@ -594,7 +662,19 @@ Query (data retrieval):
 { "$query": { "entity": "EntityName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the current dataset for entity instances. Always returns an array.
 Options: entity (required), where, order, limit, offset, include, scope, dataset, subscribe.
+select names the fields each row carries — properties, and relations as their target ids — and
+`id` always comes: { "select": ["title", "createdAt", "participants"] }. Without it a row carries
+every field, relation id lists included, and a container's children is the id of everything in it.
+A list of containers (CollectionBlock) names what its rows draw; a single-record read need not.
+A field left out reads as absent, so select what every expression on the row reads.
 subscribe defaults to true — reactive live updates. Set subscribe: false to do a one-time fetch.
+subscribe may also be an EXPRESSION, which is how a surface follows its subject only while the
+subject is still changing: { "subscribe": { "$": "modules.transcribe.callOnScreenLive" } } reads a
+finished call's transcript with no subscription at all, and follows a live one. Reach for it on
+anything whose record settles — a past call, an archived thread — where a live query would have the
+backend re-running it for an answer that cannot change. Turning falsy releases the subscription
+rather than merely ignoring it; an expression that has not resolved yet counts as not live, so the
+worst case is one fetch and a re-ask rather than a subscription nobody wanted.
 By default $query targets the current dataset. Use dataset to query a different dataset — required
 when reading entities from an external app (e.g. Flux) that is open as a WE space:
 { "$query": { "entity": "Channel", "dataset": { "$": "currentDataset" } } }
@@ -647,10 +727,10 @@ To read the distinct kinds out of it, or merge them with kinds from another list
 { "$": "distinct(local.produced.map(r, r.__subjectClass), local.placements.map(p, p.nodeType))" }
 
 Backend-neutral identity & dataset refs — prefer these over backend-store paths inside $query and conditions:
-- currentDataset — the currently active dataset (an AD4M perspective, in the AD4M backend). Use as a dataset value.
+- currentDataset — the currently active dataset. Use as a dataset value.
   A host store's dataset accessor (e.g. `dataset: 'datasetStore.marketplaceDataset'`) works as a dataset value too.
   When passing a dataset to a *component prop* rather than a query, append `.handle` — component props take the
-  backend's own dataset handle: { "perspective": { "$": "datasetStore.currentDataset.handle" } }.
+  backend's own dataset handle: { "dataset": { "$": "datasetStore.currentDataset.handle" } }.
 - me — the current agent's identity object. Use me.did for their DID (ownership checks, author filters, e.g. { "$": "post.author == me.did" }); me.handle / me.avatar for profile fields once loaded.
 
 Eager-loading relations with include (most common relational pattern):
@@ -661,12 +741,24 @@ Simple include — hydrate all related instances:
 { "$query": { "entity": "Channel", "include": { "conversations": true } } }
 Each item in the result will have a conversations array of hydrated Conversation objects.
 
+An included relation is the RECORD, not its id — and without the include the same field is the id.
+So a comparison written for one breaks silently against the other: with include: { item: true },
+row.item == x never matches and a where-object { item: x } finds nothing. Compare row.item.id, or
+in a where-object over included rows, use a comprehension: local.loans.find(l, l.item.id == x).
+The validator warns about both.
+
 Sub-query include — filter, sort, or limit the related records:
 { "$query": { "entity": "Channel", "include": { "conversations": { "order": { "createdAt": "desc" }, "limit": 10 } } } }
 
 Nested include — hydrate relations of relations:
 { "$query": { "entity": "Channel", "include": { "conversations": { "include": { "messages": true } } } } }
-Nesting can go as deep as needed. Each level adds one batched fetch (not N+1).
+Nesting can go as deep as needed. Each level adds one batched fetch (not N+1). Two limits, both silent
+rather than refused, so keep clear of them:
+- A $-prefixed projection (below) works only at the TOP level of include. Written inside a nested
+  include it is dropped: the query succeeds and the field is simply absent.
+- Below an UNTYPED relation (see "include works with an UNTYPED relation" below), only a TYPED
+  relation can be nested. Nesting another untyped one fails the whole query the moment any member has
+  something in it — so it works on an empty board and breaks on the first card.
 
 Count projection — add a derived numeric field:
 { "$query": { "entity": "Post", "include": { "$likeCount": { "from": "likes", "count": true } } } }
@@ -710,10 +802,9 @@ Single-item projection — add a derived field that resolves to one instance or 
 With limit: 1 the field unwraps to T | null instead of an array.
 
 include works with an UNTYPED relation too — one whose target model class is not declared, like a
-collection's children. It used to crash, because there was no shape to hydrate the members into; now
-each member is read as the class it actually is, so one query returns a post's text blocks, images
-and tasks together, each with its own fields. Every member carries its type, so a card can pick a
-display per row rather than assuming one.
+collection's children. Each member is read as the class it actually is, so one query returns a
+post's text blocks, images and tasks together, each with its own fields. Every member carries its
+type, so a card can pick a display per row rather than assuming one.
 
 That makes include the right tool for a FEED, where the alternative is one drill-down per parent:
 { "$query": { "entity": "CollectionBlock", "where": { "type": "root" }, "include": { "children": true } } }
@@ -735,6 +826,45 @@ from a $each context variable or a route segment). The adapter resolves the rela
 no protocol details live in the template.
 Use this pattern when navigating to a detail route and loading only that record's children.
 For external-app datasets, always add dataset: { "$": "currentDataset" }.
+
+Reading a TREE rather than one record's children — the same scope, with one more key:
+
+  anchorId may be a LIST, which asks the same question of every anchor at once. One query for a
+  whole level of a tree rather than one per parent, which also means one subscription instead of
+  one per parent.
+  { "scope": { "anchor": "CollectionBlock", "via": "comments", "anchorId": { "$": "local.replies.map(r, r.id)" } } }
+
+  "levels": [10, 5, 3] walks the relation depth by depth — ten children, five under each of those,
+  three under each of THOSE — and the backend answers once. This is how to read a comment thread, a
+  knowledge map's neighbourhood, or any nested containment: bounded at every depth and one request,
+  where asking level by level from the template costs a round trip each and draws the tree a layer
+  at a time.
+  { "scope": { "anchor": "CollectionBlock", "via": "comments", "anchorId": { "$": "card.id" }, "levels": [10, 5, 3] } }
+
+  "transitive": true is the same walk with no bound — every descendant, however deep. Right for a
+  count, and for a small tree you mean to draw whole; wrong as a default, since it fetches a subtree
+  to draw part of one.
+
+  "limitPerAnchor": 5 caps results per anchor for a single level. Note it is NOT a substitute for
+  "levels": a walk from one anchor has one group, so it would cap the total instead of the breadth
+  at each depth.
+
+  "direction": "in" searches among the records that point AT the anchor, rather than the ones it
+  points at.
+
+A walked or transitive result is FLAT and does not describe its own shape — a row says it is under
+the anchor, never where. Include the inverse relation to rebuild the tree: every WeNode carries
+inReplyTo, the reverse of comments, so a row names its own parent.
+  "include": { "inReplyTo": true }
+Then each level is a filter over the one result:
+  { "$": "local.threadRows.filter(r, r.inReplyTo.id == (card.id))" }
+PARENTHESISE the anchor when it is anything but a plain path — `==` binds tighter than `?:`, so a
+ternary spliced in bare turns the predicate into its own result, which is truthy for every row.
+
+A count over a whole subtree is the same idea in a projection:
+  "include": { "$descendants": { "from": "comments", "count": true, "transitive": true } }
+It rides in the read already being made, so "42 replies" on a collapsed branch costs no extra query
+— where count(row.comments) is the direct children only and would say 3.
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
@@ -811,6 +941,11 @@ the condition, a scope is dropped and the query is space-wide. Right for an opti
 for a query whose scope is about to exist, which would draw everything for a frame and then narrow.
 Give such a query "when": { "$": "local.boardLoaded" } and it is not asked until the condition is
 truthy — the result stays empty and local.<name>Loaded stays false, so a loading state can hold.
+A BOUND is the exception, and the only one: an unresolved "limit" or "offset" does NOT widen — the
+query is not asked at all, exactly as a falsy "when" leaves it unasked, and it runs once the bound
+arrives. Widening a filter answers a broader question, which is visible; widening a bound asks the
+backend for everything there is, which is not. So an expression-valued limit costs at worst one
+empty frame, never an unbounded fetch.
 A $query cannot be read inside an expression — a question for the backend is hoisted here and read
 back through local. Use count() for conditional visibility:
 { "condition": { "$": "count(local.signalTypes)" } }
@@ -1123,13 +1258,13 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', appearance: 'soft' | 'solid' = 'soft', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
 - we-button (DesignSystemElement)
-  Props: variant: 'primary' | 'secondary' | 'ghost' | 'success' | 'danger' | 'outline' | 'bare' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
+  Props: variant: 'primary' | 'secondary' | 'ghost' | 'success' | 'danger' | 'outline' | 'bare' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', expanded?: boolean | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
 - we-checkbox (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-code (DesignSystemElement)
   Props: block: boolean = false
 - we-color-picker (DesignSystemElement) — A colour, chosen from the theme's tokens or picked by hand.
-  Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ], tokens: boolean = false, alpha: boolean = false, clearable: boolean = false
+  Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ], tokens: boolean = false, alpha: boolean = false, clearable: boolean = false, confirm: boolean = false
 - we-date-picker (DesignSystemElement)
   Props: value: string = '', showTime: boolean = false, placeholder: string = 'Select date', disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-divider (LayoutElement)
@@ -1250,6 +1385,8 @@ development only.
   Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', label: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', revealable: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-link (DesignSystemElement)
   Props: href: string = '', target: string = '', rel: string = '', download: string = '', disabled: boolean = false
+- we-live-cursor (DesignSystemElement)
+  Props: name: string = '', hash: string = '', image: string = '', color: string = ''
 - we-location-picker (DesignSystemElement)
   Props: latitude?: number | undefined, longitude?: number | undefined, placeholder: string = 'Set location…', disabled: boolean = false, reverseGeocode: boolean = true
 - we-markdown (DesignSystemElement)
@@ -1302,14 +1439,14 @@ div — not focusable, so there is no way to resize a panel from the keyboard. P
 `separator` role fix both once, for every consumer, in the layer where imperative DOM work belongs.
   Props: orientation: 'vertical' | 'horizontal' = 'vertical', align: 'start' | 'center' | 'end' = 'center', line: 'auto' | 'none' = 'auto', step: number = 16, dragging: boolean = false
 - we-scroll-area (DesignSystemElement)
-  Props: maxHeight: string = '', maxWidth: string = '', pin: '' | 'end' = '', jump: '' | 'start' | 'end' | 'both' = ''
+  Props: maxHeight: string = '', maxWidth: string = '', pin: '' | 'end' = '', jump: '' | 'start' | 'end' | 'both' = '', nearStart: number = 0, nearEnd: number = 0
 - we-select (DesignSystemElement) — Pick a single value from a list of options. Custom-rendered dropdown.
 Use for form fields, settings, filters. Set searchable=true for type-to-filter.
   Props: options: SelectOption[] = [], value: string = '', placeholder: string = '', disabled: boolean = false, searchable: boolean = false, fit: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-skeleton (DesignSystemElement)
   Props: width: string = '100%', height: string = '20px', animation: 'pulse' | 'wave' = 'pulse'
 - we-slider (DesignSystemElement)
-  Props: value: number = 0, min: number = 0, max: number = 100, step: number = 1, disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', showValue: boolean = false
+  Props: value: number = 0, min: number = 0, max: number = 100, step: number = 1, disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', showValue: boolean = false, ticks: 'auto' | 'on' | 'off' = 'auto'
 - we-sortable (DesignSystemElement) — A drop zone whose items can be picked up, reordered, and moved to other zones.
 
 #### One element, not two
@@ -1417,9 +1554,9 @@ when `relative` is enabled.
 - AudioDisplay
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | undefined, duration: number | undefined, albumArt: string | undefined
 - BlockComposer (DesignSystemElement)
-  Props: editorState?: EditorStateInput, perspective?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string
+  Props: editorState?: EditorStateInput, dataset?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string, autoFocus?: boolean, handles?: boolean
 - BlockRenderer (DesignSystemElement)
-  Props: editorState?: EditorStateInput, perspective?: unknown, blockDrag?: BlockDragSource, rootClass?: string
+  Props: editorState?: EditorStateInput, dataset?: unknown, blockDrag?: BlockDragSource, rootClass?: string
 - CalloutDisplay
   Props: text: string | undefined, variant: string | undefined, icon: string | undefined
 - CodeDisplay
@@ -1450,12 +1587,14 @@ when `relative` is enabled.
   Props: artboard: { width: number; height: number; }, fit?: "contain" | "none" | "stretch" | "scale", onMeasure?: ((box: { width: number; height: number; scale: number; }) => void)
 - Card (DesignSystemElement)
 - CodeEditor
-  Props: code: string, language?: CodeEditorLanguage, readOnly?: boolean, onChange?: ((code: string) => void), onSave?: ((code: string) => void), maxHeight?: string, styles?: Record<string, string | number>
+  Props: code: string, language?: CodeEditorLanguage, readOnly?: boolean, onChange?: ((code: string) => void), onSave?: ((code: string) => void), maxHeight?: string, onReady?: ((api: { find: () => void; }) => void), onSearchMatches?: ((result: { query: string; matches: number; capped: boolean; }) => void), styles?: Record<string, string | number>
 - CollapsedContent
   Props: collapsed: boolean, onExpandClick?: (() => void), showToggle?: boolean, icon?: string, maxHeight?: string, fadeColor?: string, children?: JSX.Element, class?: string, styles?: Record<string, string | number>
 - Column (DesignSystemElement)
 - Combobox (DesignSystemElement)
   Props: options: string[] | ComboboxOption[], value?: string, placeholder?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", onChange?: ((value: string) => void)
+- CountMark
+  Props: icon: string, count?: number, mine?: boolean, size?: "xs" | "sm" | "md", countTone?: "text" | "glyph", countFirst?: boolean, emphasis?: "quiet" | "present", onPress?: (() => void), label?: string, disabled?: boolean, class?: string, styles?: Record<string, string | number>
 - DropdownMenu — Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.
   Props: styles?: Record<string, string | number>, class?: string, onSelect?: ((item: DropdownMenuAction | DropdownMenuToggle) => void), searchable?: boolean, searchPlaceholder?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, triggerVariant?: "primary" | "danger" | "secondary" | "ghost" | "outline" | "bare", triggerTitle?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", itemSize?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[], children?: JSX.Element
 - EditableImage (DesignSystemElement)
@@ -1472,7 +1611,7 @@ when `relative` is enabled.
 - Select (DesignSystemElement)
   Props: options: SelectOption[], value?: string, placeholder?: string, searchable?: boolean, label?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", onChange?: ((value: string) => void)
 - SignalControl
-  Props: signalType: SignalTypeData, signals?: SignalData[], myDid?: string, onSignal?: ((value: number) => void), disabled?: boolean, preview?: boolean, class?: string, styles?: Record<string, string | number>
+  Props: signalType: SignalTypeData, size?: "xs" | "sm" | "md", signals?: SignalData[], myDid?: string, onSignal?: ((value: number | null) => void), disabled?: boolean, preview?: boolean, class?: string, styles?: Record<string, string | number>
 - ToastContainer
   Props: position?: "top-right" | "top-left" | "bottom-right" | "bottom-left" | "top-center" | "bottom-center", styles?: Record<string, string | number>
 
@@ -1490,7 +1629,7 @@ Common recipes:
 the relations between them. Picks up model types added later with no template change.
 - **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.
 - **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.
-  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, empty?: string, emptyIcon?: string, emptyGradient?: string, emptyAction?: JSX.Element, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeRetarget?: ((payload: { id: string; end: "source" | "target"; nodeId: string; nodeType: string; recordId?: string; recordType?: string; }) => void), onEdgeReroute?: ((payload: { id: string; points: EdgeWaypoint[]; recordId?: string; recordType?: string; }) => void), onEdgeAnchor?: ((payload: { id: string; end: "source" | "target"; side: "" | "n" | "e" | "s" | "w"; recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void), onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), onDrop?: ((payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number; within?: { entity: string; id: string; }; preview?: { thumbnail?: string; author?: string; source?: string; }; }) => void), nodeActions?: NodeAction[], onNodeAction?: ((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; x: number; y: number; }) => void), focus?: string, folded?: string[], onNodeFold?: ((payload: { id: string; recordId?: string; recordType?: string; folded: boolean; count: number; }) => void), onDeleteSelection?: ((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; }) => void), host?: GraphHostBindings
+  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, empty?: string, emptyIcon?: string, emptyGradient?: string, emptyAction?: JSX.Element, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeRetarget?: ((payload: { id: string; end: "source" | "target"; nodeId: string; nodeType: string; recordId?: string; recordType?: string; }) => void), onEdgeReroute?: ((payload: { id: string; points: EdgeWaypoint[]; recordId?: string; recordType?: string; }) => void), onEdgeAnchor?: ((payload: { id: string; end: "source" | "target"; side: "" | "n" | "e" | "s" | "w"; recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void), onSeedSummary?: ((payload: { source: string; } & Record<string, unknown>) => void), onNodeArrange?: ((payload: { id: string; into: "child" | "sibling" | "loose"; recordId: string; recordType: string; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void), resizable?: boolean, onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), onDrop?: ((payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number; within?: { entity: string; id: string; }; preview?: { thumbnail?: string; author?: string; source?: string; }; }) => void), nodeActions?: NodeAction[], onNodeAction?: ((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; x: number; y: number; }) => void), focus?: string, folded?: string[], onNodeFold?: ((payload: { id: string; recordId?: string; recordType?: string; folded: boolean; count: number; }) => void), onDeleteSelection?: ((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; records?: { recordId: string; recordType: string; }[]; }) => void), carry?: boolean, selectionActions?: NodeAction[], onSelectionAction?: ((payload: { action: string; records: { recordId: string; recordType: string; }[]; count: number; value?: unknown; preview?: boolean; }) => void), onUndo?: (() => void), onRedo?: (() => void), onPointerAt?: ((at: { x: number; y: number; } | null) => void), onViewport?: ((region: GraphRegion) => void), region?: GraphRegion | null, reframeOn?: string | number | boolean | null, host?: GraphHostBindings
 
 ---
 
@@ -1498,6 +1637,62 @@ the relations between them. Picks up model types added later with no template ch
 
 Some components resolve named plugins from their props. These are the names each accepts —
 a name not listed here does not exist, and the component will warn rather than render.
+
+### CesiumGlobe
+
+Layers are listed in two props: planetLayers (drawn on the earth) and backgroundLayers (the space around it). Each entry is { factory, id?, enabled?, zIndex?, options? }: factory names the kind below; id is required when one kind appears twice, or the two collide and one is not drawn; enabled takes an expression, so a layer can follow a toggle; zIndex is a planet layer's stacking order, which each kind interprets. Options take expressions and handlers like any prop, so a layer can draw what a $queries entry fetched: read it with { "$": "local.rows.map(…)" }. The imagery is the globe's own and is not a layer.
+
+**planet**
+
+- `pointLocationsLayer` — Markers at places on the earth, each with a label, drawn as the avatar when one is given and as a coloured dot otherwise. Pressing one calls onLocationClick with that location, every field included, so a location can carry what a modal needs (a kind, an id).
+  - locations: { id, name, latitude, longitude, avatar?, color? }[] — What to mark. Usually an expression over a query or a store — any extra fields ride along to onLocationClick.
+  - markerSize: number — Diameter in pixels. Default 15.
+  - defaultColor: string — CSS colour of a dot with no avatar or color. Default "#00ffff".
+  - onLocationClick: handler — Runs when a marker is pressed, with the location as event.
+  - Example: `{ "factory": "pointLocationsLayer", "id": "space-locations", "enabled": { "$": "local.showSpaces" }, "options": { "locations": { "$": "local.spaceRows.map(s, { id: s.id, kind: 'space', name: s.name, latitude: s.location.latitude, longitude: s.location.longitude, avatar: s.avatar })" }, "markerSize": 20, "defaultColor": "#a855f7", "onLocationClick": { "$setLocal": "selectedPin", "value": { "$": "event" } } } }`
+- `countryOutlinesLayer` — Country borders, from Natural Earth 1:50m. The app serves the data itself, so the borders draw offline. Draped on the surface, so markers and hexagons always sit above them.
+  - color: string — CSS colour of the lines. Default "#ffffff".
+  - opacity: number — 0 to 1. Default 0.5.
+  - width: number — Line width in pixels. Default 2.
+  - dataUrl: string — Another GeoJSON of boundaries to draw instead. Only a URL on the app's own origin is fetched; any other is ignored, with a warning, and the default drawn.
+  - Example: `{ "factory": "countryOutlinesLayer", "options": { "color": "#ffffff", "opacity": 0.5, "width": 2 } }`
+- `h3HexagonsLayer` — The H3 hexagon grid, finer as the camera comes closer: each zoom draws the resolution whose cells suit it. A hovered cell is highlighted.
+  - maxResolution: number — Finest H3 resolution drawn, 0–15. Default 8.
+  - color: string — CSS colour of the cell edges. Default "#3388ff".
+  - opacity: number — Edge opacity, 0 to 1. Default 0.6.
+  - width: number — Edge width in pixels. Default 2.
+  - hoverColor: string — CSS colour of a hovered cell. Default "#3388ff".
+  - hoverOpacity: number — Opacity of a hovered cell. Default 0.3.
+  - onHexagonClick: handler — Runs when a cell is pressed, with the cell's H3 index as event.
+  - Example: `{ "factory": "h3HexagonsLayer", "enabled": { "$": "local.showHexagons" }, "options": { "maxResolution": 8, "color": "#3388ff", "opacity": 0.6 } }`
+
+**background**
+
+- `skyboxLayer` — A star map around the globe, from NASA's Tycho-2 catalogue. Cesium's own copy shows at once and offline; the set asked for replaces it once it has loaded.
+  - textureSet: "tycho2-1k" | "tycho2-2k" | "tycho2-4k" | "custom" — Resolution of each face: 1k is 2.4 MB, 2k 5.8 MB, 4k 20 MB. Default "tycho2-1k".
+  - customPaths: { px, nx, py, ny, pz, nz } — One image URL per cube face, with textureSet "custom".
+  - Example: `{ "factory": "skyboxLayer", "enabled": { "$": "local.showSkybox" }, "options": { "textureSet": "tycho2-4k" } }`
+- `proceduralStarsLayer` — Points of light at random depths around the earth, which move against each other as the camera turns.
+  - count: number — How many stars. Default 5000.
+  - minDistance: number — Nearest star, in metres from the surface.
+  - maxDistance: number — Farthest star, in metres from the surface.
+  - minBrightness: number — Dimmest star, 0 to 1. Default 0.3.
+  - maxBrightness: number — Brightest star, 0 to 1. Default 1.
+  - minSize: number — Smallest star in pixels. Default 1.
+  - maxSize: number — Largest star in pixels. Default 3.
+  - color: string — CSS colour. Default "#ffffff".
+  - Example: `{ "factory": "proceduralStarsLayer", "enabled": { "$": "local.showStars" }, "options": { "count": 2000, "minDistance": 10000, "maxDistance": 100000000 } }`
+- `solarSystemLayer` — The sun, the planets at their positions for today, and their orbits, scaled down to be seen from the earth.
+  - planets: string[] — Which to draw: mercury, venus, earth, mars, jupiter, saturn, uranus, neptune.
+  - showSun: boolean — Default true.
+  - showOrbits: boolean — Default true.
+  - showPlanets: boolean — Default true.
+  - showLabels: boolean — Default true.
+  - planetScale: number — Multiplies the size of each planet’s point. Default 1.
+  - orbitScale: number — Shrinks the orbits to fit the view; the real system is far too large. Default 0.0001.
+  - orbitWidth: number — Orbit line width in pixels. Default 2.
+  - orbitResolution: number — Points per orbit; more is smoother. Default 360.
+  - Example: `{ "factory": "solarSystemLayer", "enabled": { "$": "local.showSolarSystem" }, "options": { "planets": ["mercury", "venus", "earth", "mars"], "orbitScale": 0.01 } }`
 
 ### GraphView
 
@@ -1525,6 +1720,9 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - pending: string[] — Record ids whose card stands for a suggestion nobody has agreed to yet — an extraction pass can stage a whole record, so it is on the canvas and answers every query the accepted ones do. Read onto the matching node as `data.pending`, for a style rule or a node action to pick up with `{ when: { "data.pending": true } }` — the `data.` prefix is required, since a bare key reads a node field rather than seeded data, and matches nothing here. Ids rather than a query because only the capability that staged them knows which they are.
   - changed: string[] — Record ids that are agreed but carry a suggested change — a staged edit to something a person already owns. Read onto the matching node as `data.changed`. Separate from `pending` because it wants the opposite drawing: the record is settled, so mark it rather than fade it.
   - hidden: string[] — Record ids to leave off the canvas entirely — no card, and no connection to or from one. For narrowing what is shown (hiding suggestions nobody has agreed to), where an opacity rule would still leave the card pressable and its lines drawn.
+  - counts: string[] — Relations to count on each card, read onto its data as `<name>Count` — `["signals", "comments"]` for "what have people made of this". The projections ride in the read the seed already makes, so a canvas of three hundred cards pays nothing extra; a query per card would be three hundred subscriptions. A type that does not declare the relation is asked for no count rather than refusing the read, since a refusal would take that whole type off the canvas. Absent for a count of zero, like every other unset field, so a rule can ask whether it is there.
+  - weigh: { signalTypeId: string; aggregate?: string; mode?: string; rangeMin?: number; rangeMax?: number; step?: number; excludeAuthors?: string[]; me?: string } — Weigh each card by one reaction type, read onto its data as `weight` (with `weightCount`, `weightMine` — what `me` gave — and `weightType`). Read the way every reaction surface reads the type: a toggle counts, a vote nets out, a rating or slider averages, and the community's own `aggregate` where the mode can express it. Absent for a vote or rating nobody has given; zero for a count. What a forest's `sortBy: 'weight'` and a heat rule read. Pass the type's `rangeMin`, `rangeMax` and `step` too, so the pretend people a development build can add answer within its range.
+  - weights: string — How much each person's voice counts in `weigh` — `did=50,did=0` in whole percent, anyone not named in full; 0 leaves them out. Applied to the answers already read, so changing it re-weighs the canvas with no query — a slider can drive it. The seed reports who answered as `onSeedSummary`'s `voices`: `{ author, cards, mean }`, the busiest first.
   - limit: number — Rows per type. Default 200.
   - Example: `{ "source": "canvas", "options": { "canvas": { "$": "local.canvasId" } } }`
 - `dataset` — Seeds a single node for the current space — the starting point for exploring outward.
@@ -1562,6 +1760,19 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - levelGap: number — Distance between one rank and the next.
   - siblingGap: number — Distance between neighbours on the same rank.
   - Example: `{ "type": "tree", "options": { "direction": "right", "levelGap": 200 } }`
+- `forest` — Separate tidy trees side by side along one named connection, each parent centred over its own children, siblings ordered by a field on the card, and everything the connection does not touch in a labelled zone of its own. This is the layout for a map somebody reads an ORDER off — "the strongest option is leftmost". Prefer `tree` where shared parents are the point and crossings are what to reduce, since ordering siblings by data and minimising crossings are the same decision and cannot both be had.
+  - spine: { field: string; value: string | number | boolean } — Which connections make a parent a parent — one field of a line and the value it must hold. `{ "field": "data.relationshipTypeId", "value": "<id>" }` follows one kind a community named. Absent follows every line, which is right only where they are all one kind. Every other line is still drawn; it simply does not decide where a card goes.
+  - sortBy: string — Card data field deciding sibling order, left to right — "weight" for strongest first, "createdAt" for oldest first, "canvasRank" for an order somebody dragged. Absent leaves the order the graph holds.
+  - sortDirection: "asc" | "desc" — Default "asc", which is what a date wants.
+  - tiebreakBy: string — The second key, used only where the first ties. Default "createdAt". Not decoration: two cards on the same number of votes otherwise swap places whenever anything else in the space changes, which reads as the map being unstable.
+  - card: { width: number; height: number } — The box every card is allotted — uniform on purpose, since ranks read as significance and cards at the sizes somebody chose on a freeform canvas would claim some the data does not support. What a card is DRAWN as is a style rule.
+  - siblingGap: number — Clear space between two cards side by side. Defaults to a share of the card's WIDTH, so a reader switching to large cards gets room to match — a constant is comfortable at one card size and reads as cards touching at another.
+  - levelGap: number — Clear space between one rank and the next. A share of the card's HEIGHT, and a larger share than the sibling gap: a rank is read along, so its cards belong together, where the vertical gap is what the lines live in and has to be legible on its own.
+  - treeGap: number — Clear space between one tree and the next. Default three sibling gaps.
+  - unattached: "right" | "bottom" — Where cards on no tree go. Default "right"; "bottom" suits a narrow screen.
+  - unattachedColumns: number — How many cards wide that zone is. Default 3.
+  - unattachedLabel: string — What the zone is called; the count is appended. Default "Unconnected", and an empty string leaves it unlabelled.
+  - Example: `{ "type": "forest", "options": { "spine": { "field": "data.relationshipTypeId", "value": { "$": "local.spine" } }, "sortBy": "weight", "sortDirection": "desc", "card": { "width": 180, "height": 120 } } }`
 - `radial` — Concentric rings by hop distance from the roots — reads as distance from a centre.
   - ringGap: number — Distance between one ring and the next.
   - Example: `{ "type": "radial" }`
@@ -1582,6 +1793,10 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
 
 - `curve` — Edge style — the shape a connection is drawn with. "smooth" (default) leaves and arrives along the axis the edge mostly runs on, the flow-chart S, so it reads as direction and suits hierarchies and pipelines. "straight" is a direct line, right when the layout is already doing the talking. "arc" bows to one side, for a graph dense enough that lines need telling apart by shape. "step" turns at right angles, for containment and org charts where the eye follows a rank. Two nodes related in both directions are always separated — shifted sideways, or crossed at different points — so picking a shape never hides a relationship.
   - Example: `"edgeStyle": [{ "style": { "curve": "smooth" } }]`
+- `sourceAnchor / targetAnchor` — Edge style — which side of each node the line leaves and arrives on ("n", "e", "s", "w"). Normally derived from where the two nodes are, which is right on a canvas, where a line between two cards somebody placed should take the shortest sensible path. It is wrong wherever the ARRANGEMENT carries the meaning: in a downward tree a parent's children sit below it and spread sideways, so the geometry attaches the outer ones to their left and right edges and only the middle one to its top — three children, three different-looking relationships, when they are the same relationship. A rule, so an edge's own stored anchors still win: those are one canvas's tidying of one connection, which is the narrower fact.
+  - Example: `"edgeStyle": [{ "style": { "sourceAnchor": "s", "targetAnchor": "n" } }]`
+- `ignoreRoute` — Edge style — ignore what one canvas has tidied about this connection, its stored anchors and the points it is bent through, and draw it as the rules say. The usual precedence is the other way round, and that is right on a canvas: a line somebody pulled to a card's left side is a decision about that connection, narrower than any rule. It is wrong wherever the ARRANGEMENT carries the meaning. In a tree every child hangs off its parent's underside and is met at its own top, and that uniformity is what makes a rank readable — so one line bending around something that is no longer in the way is a card disagreeing with the shape for a reason that belonged to a different reading of the same records. Nothing is unwritten: the route is still stored, still the canvas's, and comes back the moment an arrangement that reads it does — and a bend appearing or going away is animated over the switch rather than snapped.
+  - Example: `"edgeStyle": [{ "style": { "sourceAnchor": "s", "targetAnchor": "n", "ignoreRoute": true } }]`
 - `arrow` — Edge style — which ends carry an arrowhead. "target" (default) points at the thing being related to; "both" for a mutual relationship drawn as one line; "none" when the relation has no direction worth showing. The head scales with the line's width, and the line stops short of it rather than running underneath.
   - Example: `"edgeStyle": [{ "style": { "arrow": "none" } }]`
 - `scaleWithZoom` — Edge style. true (default) treats the line as part of the drawing, so it thickens as you zoom in — right for a canvas. false pins it to a constant on-screen width, so hairlines stay visible when you zoom out to see a whole network.
@@ -1590,6 +1805,8 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - Example: `"nodeStyle": [{ "style": { "shape": "card", "width": 180, "content": "block" } }]`
 - `contentMinZoom` — Node style. Hides card content below this zoom and falls back to the label. The sibling of labelMinZoom, and the thing that decides whether rich cards scale: a hundred documents rendered at once is a hundred component trees, and at the zoom where a canvas reads as coloured rectangles none of them is legible anyway.
   - Example: `"nodeStyle": [{ "style": { "shape": "card", "content": "block", "contentMinZoom": 0.5 } }]`
+- `badge` — Node style, cards only. Names a host-supplied mark to pin to the card's lower edge — one a reader can press without picking the card up. WE registers `reaction`, which shows a card's score for the reaction a tree is ordered by and lets a reader give, change or take back their own. Not content: a card's content is inert, so a press anywhere on it starts a drag, and it is clipped to the card's shape; a badge sits on the edge, outside the clip, and takes its own presses. Nothing is drawn when the host supplies no badge by that name.
+  - Example: `"nodeStyle": [{ "style": { "shape": "card", "badge": "reaction" } }]`
 - `scaleLabelWithZoom` — Node style. true (default) scales the label with the camera; false keeps it a constant on-screen size, which keeps text readable at any zoom on a map you navigate by reading. Affects the label only — a node mark always scales, because its size and its hit area are both world units.
   - Example: `"nodeStyle": [{ "style": { "scaleLabelWithZoom": false } }]`
 - `labelMinZoom` — Node style. Hides the label below this zoom level, so a dense graph stays readable when zoomed out and gains its detail as you move in.
@@ -1603,6 +1820,11 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
 - `community` — Groups the visible graph by label propagation. Pair with scale: "categorical" to colour each cluster differently — this is what makes a cluster map.
   - rounds: number — Propagation rounds. Default 8.
   - Example: `"nodeStyle": [{ "style": { "color": { "metric": "community", "scale": "categorical" } } }]`
+- `field` — Reads a number already on the card and normalises it against the rest of the visible graph — what makes a HEAT MAP. Pair it with a scale to colour by it — a named one ("heat") steps, and two colours, scale: { from, to }, blend continuously low to high, so a card’s shade says where in the range it sits — or a range to size by it. Works on a freeform canvas as readily as on a tree, since it is a style value rather than an arrangement. A card with no value is left out entirely rather than scored zero, so it falls through to whatever an earlier rule set: "nobody has answered this" and "this is the coldest thing here" are different facts.
+  - from: string — The data field to read — "weight", "signalsCount", or a date such as "createdAt".
+  - min: number — With max, map against a FIXED domain instead of the data's own — for a value whose scale means something absolutely (a 0..1 share, a 1..5 rating), where normalising to what is on screen would make one card at two stars look like the best there is. Values outside are clamped.
+  - max: number — The top of that fixed domain.
+  - Example: `"nodeStyle": [{ "style": { "color": { "metric": "field", "options": { "from": "weight" }, "scale": "heat" } } }]`
 
 **control**
 
@@ -1622,12 +1844,23 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
 - `pan-zoom` — Drag the background to pan, wheel to zoom about the pointer. **List it last.** It claims a press on empty canvas, and dispatch stops at the first behaviour that claims — so anything after it never sees a background press. Listed before `select`, clicking empty canvas silently stops clearing the selection.
   - Example: `"behaviours": ["select", "expand-on-double-click", "pan-zoom"]`
 - `select` — Click to select, shift-click to extend, background to clear. Emits onNodeClick, and onSelectionChange with an empty list when a background click clears it. Must be listed BEFORE pan-zoom, which claims the background press it needs to see.
-- `drag-node` — Drag a node to move it. Releases on drop by default so the layout stays in charge; pass { pin: true } on a canvas.
+- `marquee-select` — Drag a rectangle over empty canvas to select everything it touches, marking each card as the rectangle reaches it. Additive rather than a mode: it takes a background press only when Shift or Ctrl/Cmd is held, or when `armed` is set, so a plain drag still pans. List it BEFORE pan-zoom, which is the background fallback and would otherwise claim the press first. Selecting touches rather than encloses, so a card wider than the view can still be caught. Holding the modifier adds to whatever is already selected.
+  - armed: boolean — Whether a plain background drag sweeps rather than pans. Default false. Arm it from a control the user can see — a touchscreen has no modifier keys.
+  - Example: `"behaviours": [{ "type": "marquee-select", "options": { "armed": { "$": "local.selecting" } } }, "select", { "type": "drag-node", "options": { "pin": true } }, "pan-zoom"]`
+- `drag-node` — Drag a node to move it, and every other selected node with it — so a selection built by clicking or sweeping travels as one. Releases on drop by default so the layout stays in charge; pass { pin: true } on a canvas.
   - pin: boolean — Leave the node pinned where it was dropped.
   - Example: `{ "type": "drag-node", "options": { "pin": true } }`
+- `arrange-nodes` — Drag a card to another place in a hierarchy, with the tree showing the result as you go — emitting onNodeArrange when it is dropped. One rule — the place whose ghost would be nearest the card: every place it could go (each gap in each row, the level beneath a card with no children, its own place) is asked of the layout, and the one that would draw it closest to the middle of the card in the hand, on its level, is the one shown — so the gap always opens under the card, however the tree reshuffles to make room and wherever the card was picked up; where the end of one family and the start of the next land at one spot, just left of it is the first and just right the second; between levels the last place shown holds; in the unconnected zone it comes out of its tree; over its own place or off the tree it goes back where it was and nothing is emitted. A place it would land is drawn as a dashed ghost with the line it would have, and its own place as a faint hole with no line, so ‘nothing will happen’ never looks like a destination; on release the card travels into it and is held there until the write comes back, so the drop is one movement. The preview needs a layout that reports its hierarchy (forest); on one that does not, the gesture reports CHILD, SIBLING or LOOSE from where it is dropped, with no preview. Writes nothing: what a hierarchy is differs per graph, so the template decides. The alternative to drag-node rather than an addition to it — listing both has them fight for the same press.
+  - reorder: boolean — Whether a drag may change the order of siblings. Default true. Set it false while siblings are ordered by something a drag cannot change — a date, a tally — so a card can still move under another parent, and lands where that order puts it, but is never shown sliding into a place it would not keep.
+  - keep: string[] — Fields of a connection that keep a card in its tree: dragging into the unconnected zone is refused for a card whose connection to its parent holds a value in any of them, and the preview says why before it is let go. WE passes ['commentsCount', 'signalsCount'] with the canvas seed's `counts`, because it will not delete a connection people have discussed.
+  - keepReason: string — What the preview says when `keep` refuses a drop.
+  - reach: number — Without a hierarchy to preview against: how far from a card, in world units, a drop still counts as beside it. Default 240.
+  - band: number — Without a hierarchy to preview against: how tall the band searched for siblings is. Defaults to the dragged card's own height.
+  - Example: `"behaviours": ["select", { "type": "arrange-nodes", "options": { "reorder": true } }, "pan-zoom"]`
 - `connect-nodes` — Drag from one node to another to connect them, emitting onEdgeCreate with both ends. Writes nothing — what a connection means is the template's decision, so it answers by creating whatever record it thinks the connection is. List it BEFORE drag-node: both claim a press on a node and the first wins. Arm it from a control the user can see rather than a modifier key, which is undiscoverable and absent on a touchscreen.
   - armed: boolean — Whether the gesture is live. Default true. Disarmed, the press falls through to drag-node.
-  - Example: `"behaviours": [{ "type": "connect-nodes", "options": { "armed": { "$": "local.connecting" } } }, "select", { "type": "drag-node" }, "pan-zoom"]`
+  - button: "primary" | "secondary" — Which button starts it. Default "primary", armed as above. "secondary" is the quick form: a right-drag from a card draws a line whether or not anything is armed, leaving the left button to move cards — list it FIRST. A right-click that does not travel draws nothing, and the browser menu is kept off cards while it is listed. Touchscreens have no right-click, so keep another way to connect.
+  - Example: `"behaviours": [{ "type": "connect-nodes", "options": { "button": "secondary" } }, "select", { "type": "drag-node", "options": { "pin": true } }, "pan-zoom"]`
 - `node-double-click` — Double-click a node to emit onNodeDoubleClick, with the record it stands for resolved onto the payload. Writes nothing — what opening a node means is the template's decision. Pairs with canvas-double-click, which handles the same gesture on empty canvas; list both and exactly one fires. Do NOT list it alongside expand-on-double-click, which claims the same gesture to do something else.
   - Example: `"behaviours": ["node-double-click", "canvas-double-click", "pan-zoom", "select"]`
 - `canvas-double-click` — Double-click empty canvas to emit onCanvasDoubleClick with the world point. Writes nothing — what gets made there is the template's decision. List it BEFORE pan-zoom, which is the background fallback. Claims only the background, so it composes with expand-on-double-click: a double-click on a node opens it, one beside a node creates.
@@ -1751,9 +1984,12 @@ Roles work anywhere a colour token does, including inside a border shorthand
 (`{ "$": "row.selected ? 'accent-muted' : 'surface-sunken'" }`).
 
 **Not `$if` in a prop.** `$if` is a *node* type and, in a value position, resolves to a handler —
-so the colour resolver is handed a function, paints nothing, and warns about nothing. The validator
-does not catch it either. A condition that chooses a value is a ternary, which is what the
-expression language has one for.
+so the colour resolver is handed a function, paints nothing, and warns about nothing at runtime. A
+condition that chooses a value is a ternary, which is what the expression language has one for.
+
+The validator refuses it. It asks whether the prop holds a function rather than whether its name
+starts with `on`, so a handler prop that is not an event — `we-modal`'s `close`, which every
+`discardGuard` passes a `$if` to — stays legal.
 
 **Always kebab-case: `"surface-sunken"`, never `"surfaceSunken"`.** The camelCase spelling is the
 TypeScript key of a `ThemeRole`; a schema writes the CSS spelling. Getting it wrong fails silently —
@@ -1796,10 +2032,11 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | mb | SpaceValue | Margin bottom |
 | ml | SpaceValue | Margin left |
 
-**`position`, `top`, `right`, `bottom` and `left` do not respond to a breakpoint.** They are
-excluded from the tier and state pipelines, so `mdUpProps: { left: '300px' }` validates and does
-nothing at all. To move something at a breakpoint, use `x` / `y` / `rotate` (see Visual), which
-compose into `transform` and do tier — as do `width`, `height` and `zIndex`.
+**`position`, `top`, `right`, `bottom` and `left` do not respond to a breakpoint or a state.**
+They are excluded from the tier and state pipelines, so `mdUpProps: { left: '300px' }` would set a
+variable nothing reads — **the validator refuses it** rather than letting it through silently. To
+move something at a breakpoint use `x` / `y` / `rotate` (see Visual), which compose into
+`transform` and do tier — as do `width`, `height` and `zIndex`.
 
 **A row that overflows is a row where nobody said who gives up space.** Inside a `Row`, a child's
 `maxWidth` is not a promise: a flex item's automatic minimum size is its *content*, so an item whose
@@ -1834,8 +2071,8 @@ the item is never asked to be narrower than its content in the first place.
 | bgImageTint | ColorValue | Color bgImage fades toward as bgImageOpacity decreases (default: the element's own `bg`, or neutral-0) — only meaningful with bgImageOpacity |
 | color | ColorValue | Text/foreground color (token) |
 | opacity | number | Opacity (0–1) |
-| border | string | Border shorthand (e.g. "1px solid neutral-200" — color tokens are resolved) |
-| borderColor | ColorValue | Border color (token, e.g. "neutral-200", "primary-500") |
+| border | string | Border shorthand (e.g. "1px solid border" — color tokens are resolved) |
+| borderColor | ColorValue | Border color (token, e.g. "border", "border-strong") |
 | borderTop | string | Top border shorthand (color tokens resolved) |
 | borderRight | string | Right border shorthand (color tokens resolved) |
 | borderBottom | string | Bottom border shorthand (color tokens resolved) |
@@ -1926,7 +2163,7 @@ min-content — so under it the long string still pushes its container wider tha
 
 `we-text` variants (set via the `variant` prop) bundle typography presets. Always pair with a semantic `tag` prop for correct HTML structure:
 body (300, tag: p/span), label (200 + medium, tag: span), footnote (100, tag: span), subheading (400 + medium, tag: h5/p), ingress (400 + lineHeight 1.6, tag: p), heading-sm (500 + bold, tag: h4), heading-md (600 + bold, tag: h3), heading-lg (700 + bold, tag: h2), heading-xl (800 + bold, tag: h1).
-Variants set size and weight only — color is always inherited or set explicitly. For muted footnote text add `color="neutral-400"` explicitly.
+Variants set size and weight only — color is always inherited or set explicitly. For muted footnote text add `color="text-muted"` explicitly.
 
 ### State
 
@@ -2258,6 +2495,7 @@ Placement extends Ad4mModel:
   - z: number [we://z]
   - color: string [we://color]
   - cardShape: string [we://card_shape]
+  - rank: number [we://rank]
   Relations:
   - node: HasOne [we://placed_node]
 
@@ -2338,6 +2576,7 @@ Space extends WeNode:
   - enabledViews: string [we://enabled_views]
   - extractionTargets: string [we://extraction_targets]
   - autoInterpret: boolean = true [we://auto_interpret]
+  - threadMode: string = 'fractal' [we://thread_mode]
   - moduleSettings: string [we://module_settings]
   Relations:
   - location: HasOne → LocationBlock [we://location]
@@ -2384,6 +2623,8 @@ TaskState extends WeNode:
   - color: string [we://color]
   - semantic: TaskStateSemantic = 'open' [we://semantic]
   - retired: boolean = false [we://retired]
+  - approvals: number = 1 [we://approvals]
+  - approverKind: string [we://approver_kind]
   - schemaVersion: number = 1 [we://schema_version]
 
 Template extends WeNode:
@@ -2469,6 +2710,7 @@ VideoBlock extends WeNode:
 WeNode extends Ad4mModel:
   Relations:
   - comments: HasMany [we://comment]
+  - inReplyTo: HasOne [we://comment]
   - signals: HasMany → Signal [we://signal]
   - participants: HasMany [we://participants]
   - calls: HasMany [we://call]
@@ -2516,7 +2758,7 @@ AppStore:
 
 DatasetStore:
 - State:
-  - datasets: array of dataset handles (all joined datasets; AD4M perspectives in this backend)
+  - datasets: array of dataset handles (all joined datasets)
   - orderedDatasets: datasets sorted by user-defined sidebar order, system datasets excluded
   - currentDataset: dataset handle | null (the dataset currently being viewed)
   - currentDatasetUri: string | undefined — the shared URL of the current dataset with its scheme (neighbourhood://…), or undefined for a personal one. Prefer currentDatasetCid for comparisons; this is the form a share link carries
@@ -2663,6 +2905,7 @@ RecordStore:
   - relationDraft: the record being made inline for a relation field — an image for a sighting — as a draft of the same shape, or null. Its non-nullness mounts the nested form over the outer one. It is not written until the outer form saves
   - relationErrors: string[] — why the nested form's last Add was refused
   - relationshipKind: string — which named RelationshipType the pending connection is, or empty for one carrying only a label. Held beside the draft because the kinds are a list to pick from, which a generated form cannot render
+  - canvasHistory: { canUndo, canRedo, undoLabel, redoLabel } — whether the canvas on screen has anything to undo or redo, and what each press would put back. Gate a control on canUndo rather than hiding it: a disabled key with a tooltip naming the act says more than an absence does
 - Actions:
   - openRecordForm(entity?): opens the create form — on that model, or on the first offered one. Clears any pending connection
   - connectNodes(link): opens the form on a Relationship joining two records. Takes the graph's onEdgeCreate payload as it arrives
@@ -2687,12 +2930,17 @@ RecordStore:
   - dropOnCanvas(canvas: string, payload): puts something dragged in from elsewhere onto a canvas where it landed. Takes the graph's onDrop payload as it arrives. A record from this space is placed as it is; something from another dataset is brought in first (the bringIn rule) and placed — a whole post or note as a post, a single block as itself (a copy of the block, or a lone EmbedBlock quoting somebody else's), owned by the canvas. Refuses, with a toast, anything that is not a record — an agent, a space
   - bringIn(payload): takes a `we-drop-zone`'s dropped detail ({ items }) into the space on screen as posts — `onDropped: { $action: 'recordStore.bringIn', args: [{ $: 'event.detail' }] }`. Your own note or post becomes a copy (a post from another shared space records sourceRef/sourceName, shown as 'Also posted in …'); anybody else's post or block becomes a new post quoting it through an EmbedBlock carrying sourceAuthor and sourceName. Things already in this space are ignored. Each new post shows a toast with Undo
   - updateRecordField(entity: string, id: string, field: string, value): changes one property of one record — the inspector's edit mode. Takes the field name so one action serves every control; the value is coerced by the field's declared kind and a control's { detail } is unwrapped. An empty string is not written, so a text field cannot be cleared this way
-  - removeFromCanvas(canvas: string, nodeId: string): takes a record off a canvas, leaving the record itself alone. A card the canvas owns survives as an unplaced one in the tray
+  - rekeyConnection(id: string): rewrites a Relationship's dedup key (`connection`) from its label and both ends' titles, which is how an extraction pass reads the structure people drew. updateRecordField does it already; call this after saving a Relationship's label through record.update
+  - removeFromCanvas(canvas: string, node: string | string[]): takes a record — or a whole selection — off a canvas, leaving the records themselves alone. A card the canvas owns survives as an unplaced one in the tray. Takes one id or a list, so a selection is not a special case: pass the graph's onDeleteSelection or onSelectionAction records as event.records.map(r, r.recordId). UNDOABLE, which is why this rather than deleteRecords is what a canvas should bind its Delete key to
+  - deleteRecords(records): deletes several records for everyone in the space, asking ONCE. Takes the graph's onDeleteSelection or onSelectionAction `records` as they arrive — [{ recordId, recordType }]. The host raises its own confirmation and counts the list, which is why this exists: a template looping record.delete stacks one dialog per card. Irreversible and outside the undo history — a delete drops the record's links and a re-create earns a new id, so anything pointing at the old record breaks
+  - undoCanvas(canvas: string): puts back the last thing this agent did to the arrangement of THAT canvas — a move, a resize, a colour, a card taken off, a card moved in a tree. Replayed as a NEW write rather than as a rollback, so a peer’s changes in between are not discarded and a card somebody else has moved since is skipped rather than dragged back out from under them. Pass the same canvas id the GraphView’s canvas seed reads; the stack scopes itself to it, so pressing undo after opening another canvas replays nothing. Gate a control on recordStore.canvasHistory.canUndo
+  - redoCanvas(canvas: string): does again what undoCanvas put back, on the same terms and with the same argument
   - resizeOnCanvas(canvas: string, payload): resizes a card on a canvas. Takes the graph's onNodeResize payload as it arrives; the size lives on the placement, so the same post on another canvas is unaffected
   - anchorOnCanvas(canvas: string, payload): pins which SIDE of a card a connection leaves or arrives on, for this canvas. Takes the graph's onEdgeAnchor payload as it arrives; an empty side clears that end, and a route with neither end pinned and no bends is deleted. Bends survive a clear — one record holds both, and letting go of a side says nothing about the shape somebody drew. Per canvas, like a placement — the same connection on somebody else's canvas is unaffected
   - rerouteOnCanvas(canvas: string, payload): writes the shape of one connection's route on this canvas — the points it is bent through. Takes the graph's onEdgeReroute payload as it arrives; the whole list, in the edge's own frame, so a bend keeps its proportions when either card moves. An empty list straightens it, and a route with no points and no anchors is deleted
   - retargetOnCanvas(canvas: string, payload): moves one end of a connection onto a different record. Takes the graph's onEdgeRetarget payload as it arrives. Unlike anchorOnCanvas and rerouteOnCanvas this changes the CLAIM rather than how one canvas draws it — the relationship now says something different everywhere it is shown. That end's anchor is cleared; its waypoints stay
-  - setCardStyle(canvas: string, nodeId: string, field: string, value): sets one presentation property of one card on one canvas — 'color', 'cardShape', 'contentScale', 'rotation' (degrees clockwise) and 'z' (stacking order). Takes the field name so one action serves a swatch, a picker and a slider. 0 is unset for the numbers, so a card is un-rotated by writing 0. Undone by taking the card off the canvas
+  - arrangeOnTree(canvas: string, relationshipTypeId: string, payload): moves a card to another place in a tree. Takes the graph's onNodeArrange payload as it arrives, plus which kind of connection the tree follows — EMPTY meaning every kind, which mirrors what the layout does with the same answer and is the state a canvas starts in; a parent it has to create is then a connection with no kind, exactly as the canvas's own connect gesture writes one — the community's own vocabulary and the reader's chosen spine, neither of which the store can know. The counterpart of dragOnCanvas for a canvas read as a hierarchy: there a drag writes a coordinate, here it writes the structure the layout reads. A drop that makes a card a child writes the connection; one BESIDE a card reorders it there, writing ranks on the placements in the order the drop reports; one in the unconnected area takes it out of its tree. Undoable through undoCanvas, the connection and the ranks as one act. Three refusals, each with a toast: a card inside itself, a drop beside a tree's own root (which would detach it as a side effect — the unconnected area is where that is explicit), and taking out a connection people have commented on or reacted to, since that deletes the record and everything said about it — pass arrange-nodes the same rule as `keep` so the preview refuses first
+  - setCardStyle(canvas: string, node: string | string[], field: string, value): sets one presentation property of one card — or of a whole selection — on one canvas: 'color', 'cardShape', 'contentScale', 'rotation' (degrees clockwise) and 'z' (stacking order). Takes the field name so one action serves a swatch, a picker and a slider, and one id or a list so a selection is not a special case. 0 is unset for the numbers, so a card is un-rotated by writing 0. Undoable, each card keeping its own baseline — putting back a colour applied to nine cards restores nine different colours
   - previewCardStyle(nodeId: string, field: string, value): shows a presentation change without writing it — for a slider that reports while it moves. Pair with setCardStyle on release; both go through the same pending map so the card never jumps
   - setTypeColor(canvas: string, nodeType: string, color): sets the colour every card of one type is drawn in, on one canvas — the canvas's key, made writable. An empty colour clears it
   - setSpaceTypeColor(spaceId: string, nodeType: string, color): sets the colour every card of one type is drawn in across the whole space — the community's key, which a canvas falls back to where it has no colour of its own for that type. Pass spaceStore.currentSpace.id. Read the result back with a TypeStyle query scoped { anchor: 'Space', via: 'typeStyles', anchorId: spaceStore.currentSpace.id }. An empty colour clears it
@@ -2719,14 +2967,15 @@ RuntimeStore:
   - canManageApps: boolean — gate the authorized-apps section on this
   - canManageLanguages: boolean — gate the languages section on this
   - canManageAi: boolean — gate the AI section on this
-  - canConfigureAi: boolean — the models can be changed, not just listed. False for a guest on somebody else's node, where AD4M grants AI READ but refuses UPDATE/DELETE. Gate add/edit/remove/set-default controls on this and the section itself on canManageAi
+  - canConfigureAi: boolean — the models can be changed, not just listed. False for a guest on somebody else's node, which grants reading the models but refuses changing them. Gate add/edit/remove/set-default controls on this and the section itself on canManageAi
   - canConfigureExecutor: boolean — this host starts the backend, so how it starts it can be changed. False on web
-  - unsupportedCapabilities: { name, firstSeen }[] — capabilities this backend was asked for and does not have, `name` being the backend's own word for each (an AD4M executor's RPC method), so it can be searched for in that backend's source. What a node running an older build looks like from inside the app: the adapter degrades rather than failing, so the symptom is a part of the app quietly doing less, and this is the only thing connecting that to the node. EMPTY MEANS NOTHING HAS BEEN REFUSED YET, not that the backend is current — nothing is recorded until something asks — so say as much rather than rendering silence as health
+  - unsupportedCapabilities: { name, firstSeen }[] — capabilities this backend was asked for and does not have, `name` being the backend's own word for each (its RPC method name), so it can be searched for in that backend's source. What a node running an older build looks like from inside the app: the adapter degrades rather than failing, so the symptom is a part of the app quietly doing less, and this is the only thing connecting that to the node. EMPTY MEANS NOTHING HAS BEEN REFUSED YET, not that the backend is current — nothing is recorded until something asks — so say as much rather than rendering silence as health
   - aiModels: AiModelView[] — installed models, each carrying its display strings (kindLabel, sourceLabel, detail, statusText, ready) alongside id/name/kind/source/isDefault. Empty until loadAiModels() runs
   - aiTasks: AiTask[] — named prompts apps registered against a model (id, name, modelId, systemPrompt)
   - aiForm: AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>
   - aiPresetOptions: { label, value }[] — model names the backend can fetch itself, for the open form kind
   - aiFormComplete: boolean — the open form has every field its chosen source needs
+  - aiMaxContextError: string — why the open form's context limit (aiForm.apiMaxContext) cannot be saved, or empty. Bind it to that field's error: a limit that does not parse holds Save disabled, and nothing else says which field is doing it
   - aiServiceOptions: { label, value }[] — the remote services a model can be reached through (Anthropic, OpenAI, OpenRouter…) plus 'Custom endpoint', for a we-select bound to aiForm.apiService. Pass the value to setAiService. Show the protocol and base URL fields only while aiForm.apiService == 'custom'
   - canDiscoverAiModels: boolean — the backend can ask a remote endpoint which models it serves. Gate a "List models" control on it; where it is false, the model id is typed
   - aiDiscoveredModelOptions: { label, value }[] — the models the open form's endpoint said it serves, for a we-select. Empty until discoverAiModels() answers, and empty again once the protocol, URL or key changes
@@ -2734,9 +2983,9 @@ RuntimeStore:
   - languages: InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs
   - trustedAgents: string[] — trusted peer ids. Empty until loadTrustedAgents() runs
   - authorizedApps: AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs
-  - networkMetrics: string — backend diagnostic blob, already formatted for reading (indented JSON on AD4M, hashes decoded). Show it in a read-only CodeEditor with language json. Empty until requested, and emptied again while a fetch runs
+  - networkMetrics: string — backend diagnostic blob, already formatted for reading (indented JSON, hashes decoded). Show it in a read-only CodeEditor with language json. Empty until requested, and emptied again while a fetch runs
   - peerInfos: string[] — the peer-discovery records this node holds, exactly as the backend gave them: what copyPeerInfos copies. Opaque — don't display them, show peerInfosReadable
-  - peerInfosReadable: string — the same records decoded for reading, as indented JSON (on AD4M: agent, space, dates, url, arc, signature). Show it in a read-only CodeEditor with language json. Empty until loadPeerInfos() runs
+  - peerInfosReadable: string — the same records decoded for reading, as indented JSON (agent, space, dates, url, signature). Show it in a read-only CodeEditor with language json. Empty until loadPeerInfos() runs
   - pending: string[] — names of the actions with a runtime call in flight. A control's spinner reads its own: { $: "'loadPeerInfos' in runtimeStore.pending" }
   - loading: boolean — true while any runtime call is in flight. Prefer pending, so a spinner does not light for an unrelated call
   - error: string — the last runtime error, for display
@@ -2821,7 +3070,7 @@ ShapeStore:
   - savingShape: boolean — a save is in flight
   - aiAvailable: boolean — AI model generation is available (the agent has a Claude API key configured)
   - generating: boolean — an AI generation is in flight
-  - hintEntities: { entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock) plus the space's own shapes
+  - hintEntities: { entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock, Relationship) plus the space's own shapes
   - extractionCandidates: string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a call actually looks for is two layers down (spaceStore.extractionTargets, then the call's own participants). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off
   - relationshipTargets: { label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent
   - identityOptions: { label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can map options but cannot prepend one
@@ -2868,6 +3117,8 @@ ShellStore:
 - State:
   - activeShellView: string | null — id of the currently open shell overlay ('profile' | 'settings' | 'schema-tests' | 'landing-page'), or null
   - createSpaceOpen: boolean — the create-space modal is open. Shell state because more than one place opens it; bind the modal’s open prop to this and close it with setCreateSpaceOpen
+  - joinSpaceOpen: boolean — the join-a-space dialog is open, where somebody pastes an address they were sent. Shell state for createSpaceOpen’s reason, opened from the same two places. It exists because a share link only opens itself on the web: a desktop build has no address bar and registers no protocol handler, so an address arriving by any other route needs somewhere to go
+  - pendingScreenSources: ScreenSource[] — the screens and windows the host is waiting for somebody to choose between ({ id, name, thumbnail }), or empty. Non-empty only on a desktop host whose OS draws no picker of its own, and only while a share is being asked for: on the web, on macOS 15+ and under a Wayland portal the OS or the browser asks instead
   - pendingDestructive: the destructive action a space template just asked for ({ path, title, body }), or null. The host raises its own confirmation in front of every one of them — a space template arrives from a stranger, so whether it asks before deleting is not the stranger's decision. Host chrome renders it; a template writing its own dialog for a destructive store action would be a second question about one click
   - spaceSettingsOpen: boolean — the space-settings panel is open. It configures whichever space is open, so it needs no id; bind a launcher’s active state to this
   - spaceSettingsTab: string — the tab the space-settings panel opens on ('about' | 'features' | 'vocabulary'). A starting position read once as the panel mounts, not a controlled value: somebody who then walks to another tab stays there. Set it by passing a tab to openSpaceSettings
@@ -2894,6 +3145,8 @@ ShellStore:
   - openShellView(id: string, path?: string): opens a shell overlay by id, optionally at a route inside it — the overlay keeps its own memory router, so this never touches the browser URL
   - closeShellView(): closes the currently open shell overlay
   - setCreateSpaceOpen(open: boolean): opens or closes the create-space modal. Shell state rather than a page’s $localState because more than one place opens it — the settings page and the sidebar’s spaces group — and a page-scoped flag could only be set from inside that page
+  - setJoinSpaceOpen(open: boolean): opens or closes the join-a-space dialog, where somebody pastes an address they were sent. Asking for the dialog is not joining anything — spaceStore.joinSpace is where that decision is taken and keeps its own grant. Shell state for setCreateSpaceOpen’s reason, and offered beside it: the sidebar’s spaces group offers the pair behind one +
+  - chooseScreenSource(sourceId: string): answers the host’s "which screen do you want to share" with one of pendingScreenSources, or an empty id to cancel — which the page receives as the same refusal a browser’s own picker gives when dismissed. Host chrome only: a `getDisplayMedia` is outstanding the whole time the prompt is up
   - confirmDestructive(): runs the destructive action the host is asking about. Host chrome only, for the reason pendingDestructive is: an action able to answer its own confirmation is the confirmation being skipped
   - cancelDestructive(): refuses it. The waiting action resolves as though it had been blocked
   - toggleSpaceSettings(): opens or closes the settings panel for the space on screen. What a gear in chrome should call — a control that is always present toggles, so a second press puts back what the first press changed
@@ -2954,10 +3207,10 @@ SpaceStore:
   - joinSlow: boolean — that join has been going long enough to be worth mentioning. Joining a shared space has to fetch and install it before it exists anywhere, so a first join routinely takes a minute; pair with joiningSpace to say so instead of spinning in silence
   - joinError: { spaceId, message } | null — the last join failure, ready to display. Carries the space so a gate can tell whether the failure is its own: compare joinError.spaceId against the route segment, or a bare message follows the user to the next unjoined space they open
   - orderedSidebarItems: array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged
-  - foreignSpacePrefill: { name, description, avatar } | null — detected from a foreign app's own model (e.g. Flux's Community) for prefilling the "Initialize as WE space" gate; null once the perspective is a WE space or no recognized foreign model is found
+  - foreignSpacePrefill: { name, description, avatar } | null — detected from a foreign app's own model (e.g. Flux's Community) for prefilling the "Initialize as WE space" gate; null once the dataset is a WE space or no recognized foreign model is found
   - enabledModules: string[] — ids of the feature modules THIS SPACE has turned on: the community’s decision, shared with every member. An unset value means "not decided", not "none": it falls back to every registered module, so spaces predating the setting keep the chrome they had
-  - taskStates: { id, name, slug, semantic, color, retired, defined }[] — the states this community’s work moves through, its own if it has defined any and otherwise the defaults ("unset" means not decided, never none). Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community’s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `defined` is false for a default the space has never written down — a virtual state, which becomes a record the first time somebody reorders it, withdraws it, or names a state with its slug
-  - offeredTaskStates: { id, name, slug, semantic, color, retired, defined }[] — the same list without the withdrawn ones. What a state picker or a new board column should offer
+  - taskStates: { id, name, slug, semantic, color, retired, defined, approvals, approverKind }[] — the states this community’s work moves through, its own if it has defined any and otherwise the defaults ("unset" means not decided, never none). Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community’s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `defined` is false for a default the space has never written down — a virtual state, which becomes a record the first time somebody reorders it, withdraws it, or names a state with its slug. `approvals` is how many distinct people must agree before a task enters the state (1 is a plain drop) and `approverKind` the involvement kind whose holders’ agreement counts (empty: anybody’s) — see taskFlowEnabled
+  - offeredTaskStates: { id, name, slug, semantic, color, retired, defined, approvals, approverKind }[] — the same list without the withdrawn ones. What a state picker or a new board column should offer
   - taskStatesLoaded: boolean — the space has been asked for its states. An empty list is otherwise indistinguishable from "not fetched yet"; gate an empty state on it
   - involvementTypes: { id, name, slug, semantic, reflexive, appliesTo, icon, color, retired, defined }[] — the kinds of part a person can have in a record: "Assigned" and "Reviewing" on a task, "Going", "Maybe" and "Not going" on an event, plus whatever this community has named. Its own if it has named any, otherwise those defaults. `slug` is what Involvement.kind holds. `semantic` is the closed meaning underneath the name — responsible, reviewing, committed, interested, declined — so a board still finds the assignee after "Assigned" is renamed. `reflexive` kinds are an agent’s own answer, which nobody else may give, and an agent holds one per record. `appliesTo` is the entity names the kind is offered on, empty for all — filter with `'TaskBlock' in kind.appliesTo || !count(kind.appliesTo)`. Includes withdrawn kinds; offer offeredInvolvementTypes. Read who holds them through the `involvement` host function
   - offeredInvolvementTypes: { id, name, slug, semantic, reflexive, appliesTo, icon, color, retired, defined }[] — the same list without the withdrawn ones. What an assign menu or an RSVP control should offer
@@ -2987,6 +3240,7 @@ SpaceStore:
   - agentModuleSettings: SettingRow[] — the same rows, for what THIS AGENT has decided everywhere. Private. Render it in global settings, where the question is what you want in every space
   - autoInterpret: boolean — whether this space has calls interpreted (extracted into records) as they happen. A community decision, off by default. Readable by every member; writing it is space-settings
   - extractionTargets: string[] — the models a call in this space starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a call begins with, and the call's own participants add or remove from there (modules.transcribe.extractionTargets). Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings
+  - taskFlowEnabled: boolean — this space’s task states ask for agreement: some state needs more than one approval, or names whose approval counts. Where true, a card dragged into such a state waits instead of moving, and arrangedBoard(…).flow[card.id] describes what it is waiting on. Gate an explanation of the waiting on it; the board needs nothing else
   - canAdministerCurrentSpace: boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space
 - Actions:
   - createSpace(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, linkLanguageTemplate?): creates a new space with full setup. linkLanguageTemplate is an address from linkLanguageTemplateOptions and only matters for a shared space; empty uses the backend's default
@@ -3021,6 +3275,7 @@ SpaceStore:
   - autoInterpretForCall(collectionId): whether ONE CALL is extracted as it happens — its participants' answer if they gave one, else the space's. A function rather than a value because the answer is per call, like canAdministerSpace
   - setAutoInterpretForCall(collectionId, on) => turns automatic extraction on or off for ONE CALL, for everyone in it. A participant's decision, unlike setAutoInterpret, which administers the space — and it leaves the space's default alone. Does not stop a pass already running: those tokens are spent
   - setAutoInterpret(enabled: boolean, spaceUuid?): turns automatic call interpretation on or off for a space. Omit spaceUuid for the space on screen
+  - setThreadMode(mode: 'fractal' | 'flat', spaceUuid?): sets how deep conversations go here — whether a reply may itself be replied to. A decision about what may be ADDED, never about what is stored: replies are a tree either way, so switching to flat leaves existing threads drawn as they are and switching back restores the button that grows them. Read it back as spaceStore.currentSpace.threadMode; anything but 'flat' means fractal, so a space that predates the setting reads as fractal. Omit spaceUuid for the space on screen
   - setExtractionTarget(entity: string, on: boolean, spaceUuid?): adds or removes one model from what this space's calls start out extracting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. The community's decision; a call's participants override it per call
   - setModuleInstalled(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it
   - setModuleVisible(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `event.detail` bare — wrapping it in another token would evaluate at render time and send a constant
@@ -3036,7 +3291,9 @@ SpaceStore:
   - createRelationshipType(config: Partial<RelationshipType>): names a kind of connection this community makes — "contradicts", "came out of". The counterpart to createSignalType; slug derived from name if blank
   - setSignalTypeRetired(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given and re-creating one with the same slug does not restore them. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves
   - createTaskState(config: { name, semantic?, color?, icon? }): names a state this community’s work moves through — "Blocked", "In review". The counterpart to createSignalType one concept along. The defaults stay virtual beside it; a name whose slug matches a default adopts that default rather than sitting beside it. The space’s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards
-  - updateTaskState(slug: string, updates: { name?, icon?, color?, semantic? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made: the three defaults ship without one. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. By slug, so editing a default adopts it
+  - updateTaskState(slug: string, updates: { name?, icon?, color?, semantic?, approvals?, approverKind? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made: the three defaults ship without one. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. `approvals` (a whole number, 1–20) and `approverKind` (an involvement kind’s slug, or empty) set what agreement the state asks for — the first state that asks for any turns the space’s states into a flow, see taskFlowEnabled. By slug, so editing a default adopts it
+  - approveTaskMove(taskId: string): agrees with the move a task is waiting on — the same as dragging the card there yourself, so it counts toward the state’s approvals when the agent is one whose approval counts. Offer it where arrangedBoard(…).flow[card.id].canApprove
+  - withdrawTaskMove(taskId: string): takes back this agent’s own vote on the move a task is waiting on, never anybody else’s. Offer it where arrangedBoard(…).flow[card.id].mine
   - setTaskStateRetired(slug: string, retired: boolean): withdraws a state from use, or brings it back. Never touches the work sitting in it — a task names its state by slug, so deleting the state would leave the work holding a word nothing defines. The same decision setSignalTypeRetired makes. By slug, so a default can be withdrawn: doing so writes its record, which is the moment a default becomes the community’s own
   - reorderTaskStates(orderedSlugs: string[]): sets the order this community reads its states in — which is the order of a board’s columns. An ordered relation rather than a number on each state, so two people reordering at once converge instead of one write discarding the other. A state the order does not mention still appears, after the ones it does. Slugs, because a default has no id until it is placed in an order, which adopts it. Key the rows by slug and pair with we-sortable’s onReorder, passing { $: "arg.detail" }
   - setInvolvement(nodeId: string, agent: string, kind: string, on: boolean): puts somebody on a record as a kind one member says about another — assigning a task, asking for a review — or takes them off. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick it shows and a double press cannot undo itself. Every copy of the pair goes on removal. A reflexive kind is routed to respondTo, and refused for anybody but the agent it is about. Pair with a DropdownMenu of toggle entries: `onSelect: { $action: "spaceStore.setInvolvement", args: [{ $: "card.id" }, { $: "arg.id" }, "assignee", { $: "!arg.checked" }] }`
@@ -3044,8 +3301,9 @@ SpaceStore:
   - createInvolvementType(config: { name, semantic?, reflexive?, appliesTo?, icon?, color? }): names a kind of part a person can have — "Shepherd", "Second pair of eyes". `appliesTo` is entity names joined with commas. `reflexive` is fixed once made. A name whose slug matches a default adopts it
   - updateInvolvementType(slug: string, updates: { name?, icon?, color?, semantic?, appliesTo? }): changes a kind the community already has. The slug and `reflexive` are absent — every involvement stores the one, and changing the other would rewrite who said what. An empty string clears a field. By slug, so editing a default adopts it
   - setInvolvementTypeRetired(slug: string, retired: boolean): withdraws a kind from use, or brings it back, without touching anybody who holds it
-  - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
-  - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together
+  - upsertSignal(nodeId: string, signalTypeId: string, value: number | null): gives a reaction on a node, or changes one. `null` WITHDRAWS it; a zero is an ordinary value and is stored like any other. Spelling a withdrawal as 0 is what made a 0–100 slider dragged to the bottom indistinguishable from an unanswered one — pass the control's own emitted value straight through (`{ $: 'arg' }`) and both cases are right
+  - withdrawSignal(nodeId: string, signalTypeId: string): takes back this agent's reaction of one type on one record. The named form of `upsertSignal(node, type, null)`, for a control that only clears
+  - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a dataset id or a shared id (sharedUrl without its scheme prefix); pre-loads space templates before switching so the template and data arrive together
   - openRecordRef(ref: string): goes to whatever a record reference names — the space, and the record's own page within it. Takes the whole `we:…` reference rather than its parts, so nothing outside the host restates where a record's page lives. A reference naming only a dataset opens the space; a relative one (`we:./…`) resolves against the space on screen; a person has no page, so nothing happens
   - canAdministerSpace(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to me.did, so the answer can grow (multiple admins, roles) without every template changing
   - copyShareLink(uuid: string): copies that space's share link to the clipboard, with a toast either way. No-op for a personal space, which has no global id and so no shareable link — read `spaceList[].shareLink` to decide whether to offer the control at all
@@ -3058,11 +3316,12 @@ SpaceStore:
 TemplateStore:
 - State:
   - personalTemplates: array of TemplateSchema objects — core templates plus user's installed custom templates (excludes space templates)
-  - spaceTemplates: array of TemplateSchema objects — templates loaded from the current space perspective
+  - spaceTemplates: array of TemplateSchema objects — templates loaded from the current space
   - builtInTemplates: array of TemplateSchema objects — built-in system templates (always available)
   - myTemplates: array of TemplateSchema objects — user's installed custom templates only (excludes built-in and space templates)
   - allTemplates: array of TemplateSchema objects — union of built-in + personal + space templates
   - templateManagementList: TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault)
+  - refusedTemplates: RefusedTemplate[] — templates in this agent's library that no longer validate, so they cannot be loaded (id, name, icon, reason). `reason` is the validator's first complaint with where it is. Listed so they can be seen and deleted; they are in no other list. `id` is the record's own, for deleteRefusedTemplate
   - switcherGroups: TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon, editable }[] }. Groups: "Space templates", "My templates", "Built-in". Use filter(group.items, { name: { contains: local.search } }) for search since items have a flat name field. `editable` says whether editing THAT row would open a session that can be saved — gate a per-row edit control on it rather than on editorStore.isReadOnly, which answers for whichever template is currently rendered and so gives every row the same verdict.
   - currentSwitcherId: string — the id the template switcher should show as selected. The switcher's own spelling of the current template: it differs from currentTemplate.id while a space override or a preview is in effect
   - currentTemplate: TemplateSchema (the active template)
@@ -3074,6 +3333,7 @@ TemplateStore:
   - switchTemplate(newTemplateId: string): switches to another template
   - removeTemplate(): removes the current template
   - deleteTemplate(templateId: string): permanently deletes a custom template from the library
+  - deleteRefusedTemplate(id: string): permanently deletes a library template that could not be loaded, by its refusedTemplates id
   - installTemplate(templateId: string): marks an installed custom template visible in the pickers
   - uninstallTemplate(templateId: string): hides a custom template from the pickers without deleting it. The counterpart of installTemplate
   - installFromMarketplace(marketplaceTemplateId: string): copies a marketplace template into your own library. A personal act — use installToSpace to give the community a template. Asks first: the template is fetched and inspected, and the host raises a dialog naming what it will be able to do. Nothing is written until that is confirmed, so treat this as "start an install", not "install"
@@ -3093,8 +3353,8 @@ ThemeStore:
 - State:
   - builtInThemes: array of ThemeData objects — built-in registry themes (origin: "built-in", always available)
   - automaticThemes: array of ThemeData objects — modes that *resolve to* a theme rather than being one, currently just "Follow system". Listed separately because they carry no parameters: the id is answered at the point of use (by asking the OS) and resolves to one of the built-ins. Render them under their own heading, after the themes
-  - installedThemes: array of ThemeData objects — user-installed themes from root perspective (origin: "custom" | "marketplace")
-  - spaceThemes: array of ThemeData objects — themes stored in the current space perspective (origin: "custom")
+  - installedThemes: array of ThemeData objects — user-installed themes from the root dataset (origin: "custom" | "marketplace")
+  - spaceThemes: array of ThemeData objects — themes stored in the current space (origin: "custom")
   - allThemes: array of ThemeData objects — union of builtInThemes + visible installedThemes + spaceThemes (hidden themes filtered out)
   - currentThemeId: string — id of the currently active theme
   - currentTheme: ThemeData — the currently active theme object (id, name, icon, origin)
@@ -3142,9 +3402,14 @@ ThemeStore:
 Record:
 - State:
 - Actions:
-  - create(entity: string, fields: object, options?: { perspective?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities, 'datasetStore.personalDataset' for the agent's own content). See "Record mutations via $action" above
-  - update(entity: string, id: string, fields: object, options?: { perspective?: string }): updates the named fields of one record, leaving the rest
-  - delete(entity: string, id: string, options?: { perspective?: string }): deletes one record. Irreversible
+  - create(entity: string, fields: object, options?: { dataset?: string }): creates a record in the current space, or in the dataset a store path names ('datasetStore.rootDataset' for we-root entities, 'datasetStore.personalDataset' for the agent's own content). See "Record mutations via $action" above
+  - update(entity: string, id: string, fields: object, options?: { dataset?: string }): updates the named fields of one record, leaving the rest
+  - delete(entity: string, id: string, options?: { dataset?: string }): deletes one record. Irreversible
+
+Clipboard:
+- State:
+- Actions:
+  - copy(text, what?: string): copies text to the clipboard and confirms with a toast — '<what> copied', or 'Text copied'. A non-string is copied as JSON. For a copy button beside something long: a prompt, a log, an id. Host chrome only (the `clipboard` capability) — a space template's bag does not have it
 
 ---
 
@@ -3163,24 +3428,38 @@ Needs: kernels records, presence, ephemeral, media, peerConnection; permissions 
 - State (read in an expression as `modules.call.<name>`):
   - active — Whether this agent is in a call right now.
   - arrangement — The { columns, rows } the stage is currently laid out in.
+  - audioDevice — The microphone this agent has chosen, or empty for whatever the system offers.
+  - availableSfuNodes — SFU-capable executor nodes found in this neighbourhood — { did, bindAddress } each.
+  - callConfig — This space's call topology defaults — { mode, designatedPeer, fallback, maxMeshParticipants, sfuPeers } — as stored on its Social DNA.
+  - callConfigSaving — Whether a call config write is in flight.
+  - callConfigSupported — Whether the backend can read and write call configuration. False on executors without SFU support.
   - callId — The id of the call this agent is in, or null between calls.
-  - callRecordId — The id of the call record this agent's call writes into.
+  - callRecordId — The id of the call record this agent's call writes into — what a transcript, a board or a call's page follows — or empty between calls.
   - callSpace — The space the call is in as { uri, name, avatar } — name and avatar empty until the host knows them — or null between calls.
+  - cameraOptions — The cameras as picker options, on the same terms as microphoneOptions.
+  - cameras — The cameras this machine has, on the same terms as microphones.
   - canCall — Whether a call could be started here — false in a personal space, which has nobody to call.
+  - deviceSettingsOpen — Whether the camera and microphone chooser is open.
+  - devicesNamed — Whether this machine will say what its devices are called. False until capture has been allowed once.
+  - devicesProbed — Whether this machine has been asked for a device yet. Until it has, an empty device list means "not allowed to look", not "none here".
   - elsewhere — Whether the call this agent is in belongs to a space other than the one on screen.
-  - focusedId — Whose tile the stage gives most room to, or null for an even grid.
+  - focusedId — Whose tile the stage is giving most of its room to, or null for an even grid.
   - hasSessionBackend — Whether this call uses a Session backend.
-  - liveCalls — Every call running in the space on screen.
-  - media — This agent's own { audioEnabled, videoEnabled, screenShareEnabled }.
+  - liveCalls — Every call running in the space on screen, whichever this agent is in — { id, recordId, anchorNodeId, peers, faces, count, mine, label } per call.
+  - media — This agent's own { audioEnabled, videoEnabled, screenShareEnabled } — what the mute, camera and share toggles reflect.
+  - microphoneOptions — The microphones as picker options, "System default" first — ready for a we-select.
+  - microphones — The microphones this machine has — { deviceId, label, groupId } each. A label is empty until capture has been allowed once.
   - ongoing — Everyone in any call in the space on screen, as avatar faces { image, hash, initials, did }, whether or not this agent has joined.
-  - problem — Why the call could not start or a device could not be reached, or null.
+  - problem — Why the call could not start or a device could not be reached, as a sentence to show, or null.
   - qualityPreference — The SFU quality layer this agent prefers.
   - solo — Whether the spotlight has the stage to itself, with everyone else hidden.
-  - tiles — One entry per participant in the call.
-  - tileStates — Each participant's volatile flags by id.
+  - tiles — One entry per participant in the call — { id, did, stream, isSelf } — changing only when somebody joins, leaves or their stream changes.
+  - tileStates — Each participant's volatile flags by id — muted, camera, screen, connection, focused, hasPicture, plus retrying, attempts and transport for how the connection is faring — looked up with find() so a tile never remounts.
   - topology — Whether this call runs through the SFU relay ('sfu') or the peer-to-peer mesh ('mesh').
+  - videoDevice — The camera this agent has chosen, or empty for whatever the system offers.
 - Actions (`{ "$action": "modules.call.<name>" }`):
   - attachAnchor — Make the running call about the record whose id is given, without rejoining it.
+  - closeDeviceSettings — Close the camera and microphone chooser.
   - continueCall — Pick a past call back up by its record id, joining anyone already in it and writing no new record.
   - cycleQuality — Cycle through quality presets: high, medium, low.
   - dismissProblem — Dismiss the problem message.
@@ -3189,19 +3468,23 @@ Needs: kernels records, presence, ephemeral, media, peerConnection; permissions 
   - joinAnchoredCall — Join the call already happening about the record whose id is given, or start one about it.
   - joinCall — Join a running call by its id, as liveCalls lists it, leaving any call this agent is in.
   - leave — Leave the call, releasing the camera, the microphone and every connection.
+  - nameDevices — Ask for a device once so this machine will say what its hardware is called.
+  - openDeviceSettings — Open the camera and microphone chooser.
   - reconnectPeer — Build one peer's connection again from scratch, without leaving the call.
+  - refreshDevices — Re-read which microphones and cameras this machine has.
   - refreshSfuNodes — Re-scan the neighbourhood for SFU-capable executor nodes.
   - returnToCall — Go back to the space the call is in; does nothing outside a call.
   - saveCallConfig — Replace the entire call config.
   - setArrangement — Report the { columns, rows } a stage grid settled on, so fit-to-content can solve for it.
   - setCallConfigField — Write one field of the call config.
+  - setDevice — Use a different microphone or camera; an empty id means whatever the system offers.
   - setQualityPreference — Set the SFU quality layer preference.
   - startCall — Start a new call in the space on screen, optionally about the record whose id is given; resolves once joined.
   - toggleAudio — Mute or unmute this agent’s microphone.
   - toggleScreenShare — Start or stop sharing this agent’s screen; sharing replaces the camera until it stops.
   - toggleSolo — Hide everyone but the spotlight, or bring them back; does nothing while nobody is focused.
   - toggleVideo — Turn this agent’s camera on or off, reporting through problem when it is refused.
-- Parts: `call.anchoredCallButton`, `call.continueCallButton`, `call.startCallButton`, `call.tile`
+- Parts: `call.anchoredCallButton`, `call.continueCallButton`, `call.deviceSettings`, `call.startCallButton`, `call.tile`
 - Panels (`meta.panels[].dock`): `stage` "Call" (module-owned openness)
 - Settings: `iceServers` (string; deployment, space, agent) — ICE servers
 - Presence activities: `call` { id: string, anchor: object, media: object, record: string, continued: boolean }
@@ -3259,8 +3542,12 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - speaking — Whether the microphone level currently counts as speech.
   - status — What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error.
   - thresholdPercent — The speech-onset threshold as a CSS width, to mark on the same meter.
+  - tiedBusy — Whether a confirmed tied decision is still being written.
+  - tiedDecision — A decision waiting on confirmation because it decides others too — { kind, title, body, detail, confirmLabel } — or null.
   - transcribers — Everyone recording this call, this agent included — the numerator of coverage.
   - transcribing — Speech has gone to the model and its text has not come back yet.
+  - transcriptFromStart — Whether the transcript is being read from its beginning rather than following the live end.
+  - transcriptShown — How many transcript lines are loaded right now.
   - unconfirmedIds — Records a pass made that nobody has kept yet, by id.
   - watchProblem — Why the standing extraction watch is not running here; empty when it is.
 - Actions (`{ "$action": "modules.transcribe.<name>" }`):
@@ -3268,8 +3555,10 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - addMessage — Writes something a person typed into a transcript, as a typed line.
   - applyChange — Applies one suggested change to an agreed record.
   - cancelProposalEdit — Closes the open draft, discarding what was typed.
+  - cancelTiedDecision — Puts the decision waiting in tiedDecision down without making it.
   - closeExtractionPanel — Closes the extraction panel.
   - closePanel — Closes the transcript panel.
+  - confirmTiedDecision — Carries out the decision waiting in tiedDecision, with everything tied to it.
   - dismissChange — Dismisses one suggested change, leaving the record as it was.
   - editProposal — Opens one suggestion for editing, seeded with what the model proposed.
   - editUtterance — Corrects the words on a line of the transcript, marking a spoken line as corrected.
@@ -3279,15 +3568,48 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - installModel — Installs the model the backend offers and resumes recording that was waiting on one.
   - openExtractionPanel — Opens the extraction panel.
   - openPanel — Opens the transcript panel.
+  - readTranscriptFromStart — Shows the beginning of the transcript, to be read forwards.
+  - readTranscriptLive — Goes back to following the end of the transcript.
   - refreshProposals — Re-reads what is staged on a call, or on the live one.
   - rejectProposal — Drops a suggestion.
   - setProposalField — Sets one field of the open draft, by property name.
+  - showMoreTranscript — Loads one more page of the transcript, in whichever direction it is being read.
   - toggle — Starts or stops recording this agent’s microphone into the call, and opens the transcript when starting.
   - toggleAutoExtract — Turns automatic extraction on or off for this call, for everyone in it.
   - toggleExtractionTarget — Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call.
 - Parts: `transcribe.transcriptFeed` (subject: routeStore.params.call ? routeStore.params.call : modules.transcribe.collectionId), `transcribe.transcriptLines` (subject: modules.transcribe.collectionId), `transcribe.transcriptComposer`, `transcribe.captureMeter`, `transcribe.captureStatus`, `transcribe.coverage`, `transcribe.extractionTargets`, `transcribe.pendingUtterance`
 - Panels (`meta.panels[].dock`): `transcript` "Transcript" (module-owned openness), `extraction` "Extraction" (module-owned openness)
 - Settings: `recordCalls` (boolean; deployment, agent, space, agent-in-space) — Record calls automatically
+- Presence activities: `transcribe` { id: string, recording: boolean, anchor: object, collection: string }
+
+### Live presence (`live`)
+See each other’s cursors, and follow one person’s screen.
+Needs: kernels presence, ephemeral, view.
+- State (read in an expression as `modules.live.<name>`):
+  - canDrive — Whether taking the wheel is possible here.
+  - canFollow — Whether somebody else is driving, so this agent could follow them.
+  - canShareCursors — Whether live cursors are possible here — false in a space with no transport, or where they are switched off.
+  - canTakeWheel — Whether the wheel is free to take, or already this agent’s.
+  - cursorsOn — Whether this agent’s pointer is shared, and other people’s shown.
+  - driverName — The name of whoever is driving, or empty when nobody is.
+  - driving — Whether this agent has the wheel.
+  - faces — One entry per cursor on screen — { did, name, image }.
+  - following — Whether this agent is following somebody’s screen.
+  - followingName — The name of whoever this agent is following.
+  - problem — Why something could not be done, as a sentence to show, or empty.
+  - watching — How many other people here have live cursors on.
+- Actions (`{ "$action": "modules.live.<name>" }`):
+  - dismissProblem — Dismiss the problem message.
+  - follow — Follow whoever has the wheel.
+  - releaseWheel — Give up the wheel.
+  - takeWheel — Take the wheel, so anybody who opts in follows this screen.
+  - toggleCursors — Share this agent’s pointer and show other people’s, or stop.
+  - toggleFollow — Follow whoever has the wheel, or stop — whichever this press means.
+  - toggleWheel — Take the wheel, or give it up — whichever this press means.
+  - unfollow — Stop following.
+- Parts: `live.cursorToggle`, `live.wheelButton`, `live.driverStrip`
+- Settings: `cursors` (boolean; deployment, space, agent-in-space) — Live cursors; `driving` (boolean; deployment, space) — Driving
+- Presence activities: `live` { cursors: boolean }; `driving` { since: number }; `following` { id: string }
 
 ### Pocket (`pocket`) — the agent’s, not a space’s
 Keep things from any space — posts, people, spaces — in a panel that follows you.
@@ -3315,8 +3637,9 @@ Needs: kernels agentData, records.
 
 ### Globe (`globe`)
 3D globe with a modular layer system — locations, country outlines, H3 hexagons.
-Needs: permissions network:cesium-ion.
+Needs: permissions network:gibs.earthdata.nasa.gov, network:cesium-ion, network:arcgis.com, network:mapbox.com.
 - No store: everything this module does is declared.
+- Settings: `imagery` (enum; deployment, agent) — Globe imagery; `ionAccessToken` (string; deployment, agent) — Cesium ion access token; `esriApiKey` (string; deployment, agent) — Esri API key; `mapboxAccessToken` (string; deployment, agent) — Mapbox access token
 - Components: CesiumGlobe
 
 ### Graph (`graph`)
@@ -3330,6 +3653,7 @@ Ask the space a question and watch the answer arrive.
 Needs: kernels records.
 - State (read in an expression as `modules.polls.<name>`):
   - lastError — Why the last vote could not be recorded, or empty.
+  - pendingVote — This agent’s vote on a poll, written and not yet read back — { author, option }, or nothing. Keyed by poll id.
   - revealBeforeVoting — Whether a poll shows its counts before this agent has voted — the community’s setting here.
   - voting — The id of the poll a vote is being written for, or empty.
 - Actions (`{ "$action": "modules.polls.<name>" }`):
@@ -3337,7 +3661,7 @@ Needs: kernels records.
 - Parts: `polls.pollCard`, `polls.pollComposer`
 - Settings: `revealBeforeVoting` (boolean; space) — Show counts before voting
 - Functions:
-  - tally(options) — Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices).  e.g. tally({ votes: local.votes, options: block.options })
+  - tally(options) — Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices), pending (modules.polls.pendingVote[<poll id>] — this agent’s vote written and not yet read back, counted in place of their stored one so the bars move on the press).  e.g. tally({ votes: local.votes, options: block.options, pending: modules.polls.pendingVote[block.id] })
 - Views (sections a space enables): `polls` "Polls" at /polls
 - Blocks: Poll (`_type: "poll"`, drawn by `polls.pollCard`)
 - Entities (queryable with $query):
@@ -3445,6 +3769,8 @@ Example — Nested include (Conversations with their messages):
 }
 Each conversation in the result has a messages array of hydrated Message instances.
 Nesting works to any depth: "include": { "messages": { "include": { "reactions": true } } }
+— with two limits, listed under "Nested include" in the operators section: no $-projections below the
+top level, and no untyped relation nested below another.
 
 Relational drill-down (master-detail navigation across entity relations):
 Use routes + a $query `scope` when you navigate to a detail route and need only that record's children.
@@ -3607,9 +3933,10 @@ Signal types (community-specific reactions/votes):
 Signal types are created per-community by the user. Never hardcode signal type UUIDs in schemas.
 Resolve them by slug from a hoisted $queries subscription on the node.
 
-There is no store accessor for this. spaceStore.signalTypesBySlug existed once and was removed;
-schemas still referencing it filtered on undefined — a like count that silently counted the wrong
-thing. Query the SignalType entity instead, and look the slug up with find().
+There is no store accessor for signal types, which is the trap: the community's other vocabularies
+DO have one — spaceStore.taskStates, spaceStore.involvementTypes — so the analogy invites a
+spaceStore read that does not exist, and a filter on undefined counts the wrong thing silently.
+Query the SignalType entity instead, and look the slug up with find().
 
 ALWAYS ask the user: "What slug should I use? (e.g. 'like', 'upvote', 'star')"
 Then use that slug in the pattern below.
@@ -3710,10 +4037,10 @@ looks identical to a page still loading, and the reader cannot tell which.
       "type": "Column",
       "props": { "ax": "center", "ay": "center", "gap": "200", "p": "600", "width": "100%" },
       "children": [
-        { "type": "we-icon", "props": { "name": "newspaper", "size": "lg", "color": "textFaint" } },
+        { "type": "we-icon", "props": { "name": "newspaper", "size": "lg", "color": "text-faint" } },
         {
           "type": "we-text",
-          "props": { "color": "textFaint", "textAlign": "center" },
+          "props": { "color": "text-faint", "textAlign": "center" },
           "children": ["This space doesn't have any posts."]
         }
       ]
@@ -3790,11 +4117,10 @@ Use `gradient` on the icon when there is something to do, and a flat `color` (`t
 or `warning-text`) when there is not — the two read apart at a glance, and a dead end that looks
 like an invitation is worse than one that looks like a dead end.
 
-This line used to recommend `neutral-300`, and every gate prompt in the repo copied it. A scale
-position is not frozen — it follows the theme's hue, saturation and polarity — but it cannot follow
-what a theme *decides* a faint foreground is, and the contrast corrections at apply time skip it
-entirely, so nothing ever measures it against what is behind it. Guidance that names a step
-reproduces that in every template written from it.
+A role here rather than a scale position such as `neutral-300`, and the reason is sharper than
+house style. A scale position is not frozen — it follows the theme's hue, saturation and polarity —
+but it cannot follow what a theme *decides* a faint foreground is, and the contrast corrections at
+apply time skip it entirely, so nothing ever measures it against what is behind it.
 
 ### How wide is a modal — always `size`, never a pixel width
 
@@ -3944,7 +4270,6 @@ through `onReady`. So the sequence is: `onReady` stores that function in a **`fu
     {
       "type": "BlockComposer",
       "props": {
-        "perspective": { "$": "datasetStore.currentDataset.handle" },
         "onReady": { "$setLocal": "savePost", "value": { "$": "event.save" } },
         "onSave": [
           { "$setLocal": "submitting", "value": true },
@@ -4242,7 +4567,7 @@ photos overlapping at an angle, yes; three cards in a row, no.
 ```json
 {
   "type": "Card",
-  "props": { "bg": "surfaceSunken", "border": "1px solid border" },
+  "props": { "bg": "surface", "border": "1px solid border" },
   "children": [
     {
       "type": "Column",
@@ -4268,7 +4593,7 @@ photos overlapping at an angle, yes; three cards in a row, no.
       "type": "Row",
       "props": { "ay": "center", "gap": "400", "py": "100" },
       "children": [
-        { "type": "we-icon", "props": { "name": "globe", "color": "accentText" } },
+        { "type": "we-icon", "props": { "name": "globe", "color": "accent-text" } },
         {
           "type": "Column",
           "props": { "gap": "100" },
@@ -4788,6 +5113,17 @@ Native HTML elements (lowercase tags render directly without registry entries):
 - Media: img, video, audio, canvas, figure, figcaption
 - Other: a, table, tr, td, th, details, summary, dialog
 
+Only elements that display, group or take input may be mounted; the full list is
+TEMPLATE_HTML_ELEMENTS in @we/schema-shared. Anything else renders nothing and the validator reports
+it — script, style, link, meta, base, iframe, object, embed, template, svg among them, because each
+runs code, loads something into the page or makes a document of its own. For an embedded page use
+we-iframe; for formatted markup use we-html or we-markdown.
+
+A URL prop (href, src, action, poster and the like) may not hold a javascript: URL, or a data: URL
+other than an image, audio or video — it is dropped, whether written out or built by an expression.
+srcdoc is dropped everywhere, and a lowercase on… prop such as onerror is dropped from a native
+element: handlers are written onError and hold a handler token, never a string.
+
 ## Schema Validation
 
 Run `we-validate-schemas` (or `node packages/schema-system/shared/dist/cli/we-validate-schemas.js`) from the monorepo root to validate all `.schema.ts` files.
@@ -4836,6 +5172,16 @@ it gives consistently styled scrollbars across themes.
 **Token values:** Use `tokenVar` from `@we/design-utils` when you need a token value
 inside a `style={{}}` object. Prefer DS props directly where possible.
 
+**Name a colour ROLE, in code as well as in a schema.** `tokenVar('color', 'text-muted')`, not
+`tokenVar('color', 'neutral-600')` — a step is invisible to the contrast corrections at apply time
+wherever it is written, and `tokenVar` accepts a role name directly. `pnpm audit:roles` covers the
+TypeScript and SCSS as well as the schemas, and gates CI.
+
+Note what `tokenVar` does with a name it does not know: it warns in development and returns
+`var(--we-color-<name>)` anyway, so a typo or an invented family compiles to a variable nothing
+declares and the declaration is dropped. The element paints nothing, which reads as a design
+decision rather than a bug.
+
 Raw inline styles and hardcoded CSS variable strings (`var(--we-color-neutral-400)`)
 are a signal that a DS prop or primitive is being missed — check before reaching for
 `style={{}}`.
@@ -4865,23 +5211,46 @@ To add or change documented schema fields, tokens, conventions, or rules:
 
 ### Git Workflow — Default Branch & PR Summaries
 
-`main` is the production branch — it only receives periodic merges for releases.
+`main` is the production branch — it only receives periodic merges for releases, each tagged
+`v<version>` (the release steps are in `docs/contributing/ad4m-and-deploys.md`).
 `dev` is where all active work happens. Always branch from `dev`, and always
 diff/compare against `dev` (e.g. `git diff dev...HEAD`, `git log dev..HEAD`) —
 never `main`, even though it exists.
 
-**PR summary convention:** when asked to write a PR summary document for a branch,
-create a new `PR_<DESCRIPTIVE_NAME>.md` file at the repo root (e.g.
-`PR_COLLECTION_BLOCK_TEXT_CONTENT.md`), based on `git diff dev...<branch>` and the
-branch's commit log, with these sections:
+**PR summary convention:** a PR description follows `docs/contributing/pull-requests.md`. When
+asked to write one for a branch, create `PR_<DESCRIPTIVE_NAME>.md` at the repo root, based on
+`git diff dev...<branch>` and the branch's commit log, with these sections:
 
-- **Summary** — the problem being solved and the high-level approach, 1–2 paragraphs.
-- **Changes** — one entry per file or logical group, explaining *why* the change was
-  made, not just what changed (the diff already shows what).
-- **Known follow-ups** (optional) — gaps or pre-existing issues discovered during the
-  work that are intentionally out of scope for this branch.
-- **Test plan** — a checklist of what was actually verified (manual testing, builds,
-  etc.), not a hypothetical list of what could be tested.
+- **What** — what merging it changes, in a few bullets.
+- **Why** — the problem, and why this is the right fix for it.
+- **How** — where a reviewer should start and the route through the change; a table of files when
+  it is wide, explaining *why* each changed rather than restating the diff.
+- **Test plan** — what was actually verified, ticked, and what was not, unticked with the reason.
+  **A checkbox is a thing that must be true before this merges, and nothing else is a checkbox.**
+  `- [x]` done; `- [ ]` not done, and the PR is not finished. Anything that will never be
+  ticked is a BULLET, not a box — a deferral is `- **Deferred — …**` with the reason and where it
+  goes instead. GitHub counts every checkbox in a description and prints "6 of 7 tasks" on the PR,
+  so a box nobody intends to tick makes that number wrong on every PR, and a number that is always
+  wrong is one everybody learns to ignore. `scripts/pr-tasks.mjs` fails CI on an unticked box.
+
+The file is the description and nothing else — no title heading above the sections, since it is
+passed as `gh pr create --body-file` and anything above a pairing block (below) breaks it. Give
+the **title** alongside it, for `--title`, in Conventional Commits form: `type(scope):
+description`, the type lowercase (`feat`, `fix`, `refactor`, `perf`, `docs`, `test`,
+`ci`, `chore`), the scope optional, and the description short — under 60 characters, naming the
+change rather than explaining it: `ci: pair PRs with an ad4m alert block`.
+
+**If the branch needs an ad4m change that has not been published yet**, the file must START with
+this block, exactly — the preview builds against it and a check tests the PR there, and
+anything close (no colon, another heading or alert, lower down) fails rather than pairing:
+
+```markdown
+> [!IMPORTANT]
+> ### Paired with: coasys/ad4m#<N>
+```
+
+`coasys/ad4m@<branch>` names an ad4m branch instead. The rules are in
+`docs/contributing/ad4m-and-deploys.md`.
 
 **Never commit `PR_*.md` files.** They're scratch documents for the PR description.
 
@@ -4913,11 +5282,23 @@ strings target/release/ad4m-executor | grep "your log string"
 
 **After modifying `@coasys/ad4m` TypeScript (e.g. `core/src/model/Ad4mModel.ts`):**
 
-The normal pattern is that `we/package.json`'s pnpm `overrides` pins `@coasys/ad4m` to a
-**published npm tag**, not a local `file:` link. Under that normal pattern, a local
-`cd ad4m/core && pnpm run build` does NOT get picked up by WE — runtime/logic changes to
-`@coasys/ad4m` only reach WE once a new tag is published from the ad4m repo and the
-override version in `we/package.json` is bumped, followed by `pnpm install`.
+The root `package.json`'s pnpm `overrides` pin `@coasys/ad4m` and `@coasys/ad4m-connect` to a
+**published version**, not a local `file:` link, and every WE build uses that pin except a deploy
+preview whose PR description pairs it with an ad4m change. The pairing is this exact block, first in
+the description — anything close (no colon, another heading or alert, lower down, the old
+`ad4m: coasys/ad4m#<N>` line) is an error, not a pairing:
+
+```markdown
+> [!IMPORTANT]
+> ### Paired with: coasys/ad4m#<N>
+```
+
+So a local
+`cd ad4m/core && pnpm run build` does NOT get picked up by WE — changes to `@coasys/ad4m` reach WE
+once a version is published from the ad4m repo and the pin moves. A bot keeps one PR open that moves
+it to the newest ad4m `dev` version (`.github/workflows/bump-ad4m.yaml`); a feature that needs a
+new ad4m moves it in its own PR with `pnpm bump:ad4m`. Run `pnpm verify:ad4m` before merging either. The whole policy is in
+`docs/contributing/ad4m-and-deploys.md`.
 
 For active local iteration you can temporarily switch the override to
 `"@coasys/ad4m": "file:../ad4m/core"` (then `pnpm install`) so `pnpm run build` in
@@ -4969,8 +5350,8 @@ pnpm --filter @we/tokens --filter @we/themes build     # a design-token change
 pnpm --filter @we/primitives build                      # a Lit primitive
 ```
 
-**Do rebuild, though — a stale `dist` is invisible and wastes more time than the build saves.** Two
-symptoms worth recognising, both of which have happened here:
+**Do rebuild, though — a stale `dist` is invisible and wastes more time than the build saves.** Three
+symptoms worth recognising, all of which have happened here:
 
 - *"I changed the source and the app is unchanged."* The package ships a `dist` and it was not
   rebuilt. Note that packages differ: `@we/template-shell` has no `dist` and is consumed as source,
@@ -4979,6 +5360,9 @@ symptoms worth recognising, both of which have happened here:
 - *"The build says it failed but the error names a package I did not touch."* A dependency's types
   moved. Rebuild the chain in dependency order — tokens, then themes, then schema-shared, then
   whatever consumes them.
+- *"The adapter's test still sees the old behaviour."* A test that imports `@we/backend-ad4m` by its
+  own name resolves through the package's `exports` to `dist`, so it runs the last build rather than
+  `src`. Rebuild the package before `pnpm --filter @we/backend-ad4m test`.
 
 To find what is stale rather than guessing:
 
@@ -5007,25 +5391,81 @@ This validates every `.schema.ts` under `packages/app-shell/src/shared/schemas/`
 section files that are not named `.schema.ts` are still covered, because the template that composes
 them is — the walk descends into whatever a validated schema imports.
 
-Two further audits run over the same trees and are easy to miss. Both **import and walk the composed
+Further audits run over the same trees and are easy to miss. They all **import and walk the composed
 tree** rather than grepping source, which is the only way to attribute a node that a fragment from
 another package contributed:
 
 ```sh
-pnpm --filter @we/schema-shared role-audit     # colours naming a scale position where a role belongs
-pnpm --filter @we/schema-shared surface-audit  # what each surface-sunken is actually sitting on
+pnpm audit:roles                               # a scale position where a role belongs
+pnpm audit:surfaces                            # a surface-sunken invisible against its ground
+pnpm --filter @we/schema-shared tooltip-audit  # nodes asking the browser for a tooltip via `title`
+pnpm --filter @we/schema-shared query-audit    # queries that read a growing list whole
+pnpm --filter @we/schema-shared size-audit     # how big each template is, and what it says twice
 ```
 
 Run them after any template, view or fragment change. A `neutral-600` label is invisible to the
 whole contrast layer — never measured against what is behind it — so `role-audit` is the only thing
 that will report it.
 
-Two things it now catches that it used to miss, both worth knowing when adding a schema:
+**The first two gate CI**, so a scale position or an invisible well fails the build rather than
+waiting to be noticed. Both are at zero; keep them there.
 
-- **Every export in a file is checked**, not just the first one found. A fragment file exporting
-  several sections used to be judged on whichever happened to be declared at the top.
-- **A schema that fails to import is an error**, not a skip. It used to print the failure and still
-  exit 0, so an unloadable schema looked identical to a clean one.
+`role-audit` has a **code half** as well, which the root script runs by default: paths after
+`--code` are scanned textually rather than imported, because a colour in a `style={{}}`, an
+`.scss` rule or a CodeMirror theme is a string in a file and there is no tree to walk. It reads
+four spellings — `var(--we-color-<hue>-<step>)`, `tokenVar('color', '<hue>-<step>')`, a DS prop in
+TSX (`color="neutral-800"`), and a raw hex or `rgb()` next to a property that paints — plus a name
+handed to `tokenVar` that is **no colour at all**, which compiles to a variable nothing declares and
+paints nothing. Four of the editor's dividers were `ui-200`, a ramp that has never existed.
+
+A genuine palette is exempt, with its reason, in one of two places: `CODE_PALETTES` for a whole file
+(syntax highlighting, a WebGL scene, a theme's own definitions) or a `role-audit: palette` marker in
+the comment above the line, for a file that is mostly chrome and has one swatch. The reasons print on
+every run. `EditorOverlay` is the case worth reading: its annotation colours are fixed on purpose,
+because they are drawn over the template being edited in whatever theme its author is choosing.
+
+`surface-audit` judges a well by what is behind it rather than by the roles table's wording, which
+is looser than the ramp. `surface-sunken` is derived from `page`, so a trough on the page is right;
+on `chrome` it is half a lightness point away and **inverts** between light and dark, and on another
+`surface-sunken` there is no difference at all. Those two fail.
+
+`query-audit` is the one whose findings are invisible in development and expensive in a real space.
+A `$query` with no `limit` re-reads, re-hydrates and re-fingerprints every row of its entity on
+every change to that entity, so a list that grows costs O(n²) over a session — fine at twenty rows
+and unusable at two thousand, which is a transcript after forty minutes. It reports only what
+nothing else bounds: `where.id`, a `scope` with `levels` or `limitPerAnchor`, and a curated
+vocabulary all count as bounded. A list that really is read whole on purpose is declared in
+`DELIBERATE` in the script, **with the reason**, and the reasons are printed on every run so they
+get reviewed rather than accumulated.
+
+Two things about its reach, both worth knowing when adding a schema:
+
+- **Every export in a file is checked**, not just the first one found — so a fragment file
+  exporting several sections is judged on all of them.
+- **A schema that fails to import is an error**, not a skip, so an unloadable schema cannot look
+  identical to a clean one.
+
+`size-audit` measures what a template COSTS to carry around, which is a different question from
+whether it is correct. A template is data, and everything downstream pays for its size by the
+character: the editor sends the whole schema to a language model on every turn and gets a whole
+schema back, the undo history holds a copy per edit, and a template crossing the wire carries all
+of it. The hard limit is a model's context window, so a shape written twice is not untidy — it
+halves what can be reasoned about.
+
+It reports two things per schema, and they want different answers:
+
+- **`$if sides share N chars`** is a branch pair whose two sides say some of the same thing. This
+  is the one to fix, and the fix is usually one node with the condition in its props rather than a
+  `$if` holding the content down both sides — the same DOM, half the bytes, no new machinery.
+  `buildCard` in `@we/schema-kit` was exactly that, at 150,445 characters a copy in `CardsView`.
+- **`repeat ×N`** is a shape written out N times, which is usually a FRAGMENT called N times and
+  not a defect at all: a tree cannot name a shape and point at it, so a fragment's output is a
+  copy by construction. Reported because it is where the cost is, not because there is an edit.
+
+Neither gates CI. Size is a judgement — a rich template is big — and the honest summary is the
+`gzip` ratio beside it: around 4× means a template that says each thing once, and past about 8×
+means most of it is repetition. Pass `--show` to print the head of each repeated subtree, without
+which the report names a shape it gives no way to find.
 
 Asset imports (`import cover from './cover.jpg'`) resolve to a stub, so a schema that references
 an image validates without a bundler. See `src/cli/assetHooks.mjs`.
@@ -5209,7 +5649,7 @@ include: {
 ```
 
 Note: `count: true` works as a plain literal — the typed projection (`TypedIncludeProjection`)
-contextually narrows it to the `true` literal, so the `as const` workaround is no longer needed.
+contextually narrows it to the `true` literal, so it needs no `as const`.
 
 ---
 
@@ -5246,6 +5686,44 @@ await space.save();
 // ✅ Correct
 const space = await Space.create(perspective, { uuid: crypto.randomUUID(), name: 'My Space' });
 ```
+
+---
+
+### Watching the graph from `@we/backend-ad4m`
+
+To hear that something changed in a perspective, subscribe on the executor with `subscribeQuery`
+rather than `addListener('link-added' | 'link-removed')`. A link listener receives every link of a
+peer-sync burst in JS and filters there. The executor re-runs a subscription only for a diff that
+touches one of its predicates, and pushes only when the result changes.
+
+That filter needs SPARQL that writes each predicate out as a full `<iri>`: the executor reads the
+predicates from the query text. A variable predicate (even one a `FILTER` pins down), a prefixed
+name, or a Prolog query makes it re-run the subscription on every diff. `onProposalsChanged` in
+`interpretationAdapter.ts` shows the pattern, and `interpretationDecisions.test.ts` pins its query.
+
+What the SDK and executor do around a subscription, so a watch can rely on it:
+
+- A callback registered after `subscribeQuery` resolves does not receive the initial result — only
+  the changes after it.
+- After a websocket reconnect, the SDK re-subscribes and hands the current result to every
+  callback, so a watch hears a refresh rather than nothing.
+- The executor shares one server-side subscription between identical queries from the same user.
+  Disposing one ends it for the other too, until the other's 30-second keepalive fails and
+  re-subscribes. So hold one subscription per perspective and query, count its holders, and dispose
+  it a grace period after the last one lets go — `onProposalsChanged` shows how. The grace matters:
+  a dispose racing a fresh subscribe with the same text can land after it and end that one too.
+
+### Reading shapes from `@we/backend-ad4m`
+
+The `PerspectiveProxy` the app holds comes from the SDK copy bundled inside `@coasys/ad4m-connect`,
+not from the `@coasys/ad4m` this repo pins. An SDK fix reaches the app only when ad4m-connect
+republishes, so measure performance work against that copy, not the workspace one.
+
+In that copy, `getAllShacl()` reads every shape one at a time — `getShaclNames()`, then `getShacl()`
+per shape at 3 + P calls for P properties — and it rejects outright when one shape carries a
+property transform a newer SDK encoded. For a question about many shapes, ask the executor
+once with SPARQL, and read a shape in full only when the answer needs it: `readShapeProperties` and
+`getForeignShacl` in `perspectiveHelpers.ts` show how.
 
 ---
 

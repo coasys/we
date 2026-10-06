@@ -1,0 +1,194 @@
+name: AD4M executor
+description: The ad4m executor binary for one ad4m commit — restored from the cache, or built and cached.
+
+# One recipe, one cache key and one path for every workflow that needs an executor. They were two:
+# `electron-package.yaml` built one to package and `ad4m-live.yaml` built another to test, under
+# different keys and paths, so neither could restore what the other had built and the tests ran a
+# different binary from the one the app ships.
+#
+# The binary lands at `<parent of the workspace>/ad4m/target/release/ad4m-executor`, beside the WE
+# checkout, where `we-seed.json`'s `../ad4m/target/release/ad4m-executor` finds it. That path is part
+# of the cache's version as well as its location: a restore naming any other path misses an entry
+# that is there. `AD4M_DIR` is exported for the steps after this one.
+#
+# Caches are scoped by branch: a run reads its own branch's and its base branch's, never another
+# PR's. An executor cached on `dev` serves every PR; one built on a PR serves only re-runs of it.
+
+inputs:
+  ref:
+    description: ad4m branch, tag, ref or commit. Empty means the commit the pinned @coasys/ad4m was published from.
+    default: ''
+  mode:
+    description: >-
+      `build` restores, or builds and caches on a miss. `restore` restores and fails on a miss.
+      `lookup` only says whether it is cached, downloading nothing.
+    default: build
+  v8-from-source:
+    description: Build V8 from source — macOS, where the prebuilt archive does not exist.
+    default: 'false'
+
+outputs:
+  sha:
+    description: The ad4m commit.
+    value: ${{ steps.where.outputs.sha }}
+  path:
+    description: Where the binary is, or would be.
+    value: ${{ steps.where.outputs.path }}
+  cache-hit:
+    description: Whether it was already cached.
+    value: ${{ steps.lookup.outputs.cache-hit || steps.restore.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    # The executor has to match the SDK the app was tested against, which is the pinned
+    # @coasys/ad4m. npm records the commit each version was published from as `gitHead`, so that
+    # commit is what gets built — not ad4m `dev`, which moves without WE changing. A branch or tag is
+    # resolved to its commit here, without a checkout, so the cache key is always a commit.
+    - name: Resolve the ad4m commit
+      id: where
+      shell: bash
+      env:
+        REF: ${{ inputs.ref }}
+      run: |
+        if [ -z "$REF" ]; then
+          PIN="$(node -p "require('./package.json').pnpm.overrides['@coasys/ad4m']")"
+          # Outside the repo, so npm does not read the workspace's pnpm-only config.
+          SHA="$(cd "$RUNNER_TEMP" && npm view "@coasys/ad4m@$PIN" gitHead)"
+          if [ -z "$SHA" ]; then
+            echo "::error::@coasys/ad4m@$PIN on npm records no gitHead, so the commit to build the executor from is unknown. Name an ad4m ref instead."
+            exit 1
+          fi
+          echo "Pinned @coasys/ad4m $PIN was published from $SHA"
+        elif [[ "$REF" =~ ^[0-9a-f]{40}$ ]]; then
+          SHA="$REF"
+        else
+          SHA="$(git ls-remote https://github.com/coasys/ad4m.git "$REF" | head -1 | cut -f1)"
+          if [ -z "$SHA" ]; then
+            echo "::error::No ad4m ref named $REF."
+            exit 1
+          fi
+          echo "ad4m $REF is at $SHA"
+        fi
+        DIR="$(dirname "$GITHUB_WORKSPACE")/ad4m"
+        echo "AD4M_DIR=$DIR" >> "$GITHUB_ENV"
+        {
+          echo "sha=$SHA"
+          echo "dir=$DIR"
+          echo "path=$DIR/target/release/ad4m-executor"
+          echo "key=ad4m-executor-${RUNNER_OS}-${RUNNER_ARCH}-$SHA"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Is it cached
+      id: lookup
+      if: inputs.mode == 'lookup'
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.where.outputs.path }}
+        key: ${{ steps.where.outputs.key }}
+        lookup-only: true
+
+    - name: Restore the executor
+      id: restore
+      if: inputs.mode != 'lookup'
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.where.outputs.path }}
+        key: ${{ steps.where.outputs.key }}
+        fail-on-cache-miss: ${{ inputs.mode == 'restore' }}
+
+    # Everything below runs only to build: on a hit, none of it is needed — not even the source.
+
+    # A manual fetch rather than `actions/checkout`, which documents `path` as under the workspace.
+    # GitHub serves any commit by hash, so the fetch is shallow whatever the ref was.
+    - name: Check out ad4m
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        DIR: ${{ steps.where.outputs.dir }}
+        SHA: ${{ steps.where.outputs.sha }}
+      run: |
+        git init -q "$DIR"
+        git -C "$DIR" fetch -q --depth 1 https://github.com/coasys/ad4m.git "$SHA"
+        git -C "$DIR" checkout -q FETCH_HEAD
+
+    # ALSA headers for `alsa-sys`; ninja and Python for the V8 source build on macOS.
+    - name: Build dependencies (Linux)
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true' && runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake protobuf-compiler libasound2-dev
+    - name: Build dependencies (macOS)
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true' && runner.os == 'macOS'
+      shell: bash
+      run: brew install cmake protobuf ninja
+    - name: Python (macOS)
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true' && runner.os == 'macOS'
+      uses: actions/setup-python@v7
+      with:
+        python-version: '3.11'
+
+    # The version comes from ad4m's own `rust-toolchain.toml`, which rustup would honour over anything
+    # pinned here anyway — so it follows ad4m instead of going stale. rustup is preinstalled on both
+    # runner images.
+    - name: Rust toolchain
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ steps.where.outputs.dir }}
+      run: rustup toolchain install
+
+    # ad4m's build.rs downloads alliance.dna with a bare `curl` (no --retry), and a transient GitHub
+    # 504 used to kill a 40-minute build. curl reads ~/.curlrc, so that one download retries without
+    # the whole cargo build being retried — which, on a genuine compile error, only fails the same way
+    # again. Cargo's own fetches retry through CARGO_NET_RETRY.
+    - name: Retry transient downloads
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      run: printf 'retry = 5\nretry-connrefused\nretry-delay = 10\n' >> ~/.curlrc
+
+    # The executor embeds `rust-executor/dapp/dist/` via `include_dir!` at compile time — the ad4m
+    # launcher's own UI, gitignored and normally built by `pnpm build-libs` across the whole ad4m JS
+    # workspace. WE starts the executor with `--run-dapp-server false`, so the binary only needs the
+    # directory to exist, and a placeholder satisfies the macro.
+    - name: dapp placeholder
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        DIR: ${{ steps.where.outputs.dir }}
+      run: |
+        mkdir -p "$DIR/rust-executor/dapp/dist"
+        echo '<html><body>AD4M</body></html>' > "$DIR/rust-executor/dapp/dist/index.html"
+
+    # Two stages. The Deno V8 snapshot is gitignored and `include_bytes!`-ed by the library, so it is
+    # generated first, by a binary behind the `generate_snapshot` feature. Then only the executor:
+    # `-p ad4m --bin ad4m-executor` builds the cli crate and what it needs — not the Tauri launcher,
+    # not the languages, not the SDK.
+    #
+    # Linux needs glibc 2.38 or later to link: the prebuilt V8 calls `__isoc23_*`. The hosted
+    # Ubuntu 24.04 image has 2.39; ad4m's own 22.04 CI image does not (coasys/ad4m#1305).
+    - name: Generate the Deno snapshot
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ steps.where.outputs.dir }}/rust-executor
+      env:
+        V8_FROM_SOURCE: ${{ inputs.v8-from-source == 'true' && '1' || '' }}
+        CARGO_NET_RETRY: '10'
+      run: cargo run --release --features generate_snapshot --bin generate_snapshot
+
+    - name: Build the executor
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ steps.where.outputs.dir }}
+      env:
+        V8_FROM_SOURCE: ${{ inputs.v8-from-source == 'true' && '1' || '' }}
+        CARGO_NET_RETRY: '10'
+      run: cargo build --release -p ad4m --bin ad4m-executor
+
+    # Saved as soon as it exists, so a later failure in the calling job does not throw it away.
+    - name: Save the executor
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ steps.where.outputs.path }}
+        key: ${{ steps.where.outputs.key }}

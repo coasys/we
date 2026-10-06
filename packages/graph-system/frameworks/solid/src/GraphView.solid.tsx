@@ -40,13 +40,15 @@ import {
   FOLD_BUNDLE,
   GraphEngine,
   matches,
-  nodeVisual,
+  PENDING_EDGE_PREFIX,
+  PENDING_EDGE_TYPE,
   PluginRegistry,
   polyline,
   readField,
   resolveStyle,
   routesAlike,
   splineThrough,
+  trimCubicEnd,
   waypointFromWorld,
   waypointsOf,
   waypointToWorld,
@@ -59,8 +61,10 @@ import type {
   ControlContext,
   EdgeGeometry,
   EdgeSide,
+  GraphEdge,
   GraphNode,
   GraphValue,
+  NodeVisual,
   Point,
   PointerInput,
 } from '@we/graph-protocol';
@@ -80,7 +84,7 @@ import {
 import { createStore, reconcile, type SetStoreFunction } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
 
-import type { GraphViewProps, NodeContent } from './GraphView.types';
+import type { GraphViewProps, NodeBadge, NodeContent } from './GraphView.types';
 import { isSettled, patched } from './pending';
 import { type Grip, HANDLES, resizeBox } from './resize';
 
@@ -102,9 +106,79 @@ const DEFAULT_BEHAVIOURS = ['pan-zoom', 'select', 'expand-on-double-click'];
  * into one syntax. A canvas renderer would write the same three cases into `ctx.quadraticCurveTo`
  * without re-deriving anything.
  */
+/**
+ * How much of the morph the content spends fading on each side of its switch, as a fraction of the morph.
+ * A quarter each way puts the whole fade in the fast early part of an eased-out switch.
+ */
+const CONTENT_FADE = 0.25;
+
+/**
+ * How a card's content is laid out, and how visible it is, while the card changes shape.
+ *
+ * Text cannot be animated between two layouts that wrap differently: reflow is discrete, so a word can only
+ * jump between lines. So the content FADES THROUGH the change, which is the convention wherever a container
+ * morphs around content that has to re-wrap. It is laid out as the shape the card is leaving for the first
+ * half of the morph and as the shape it is becoming for the second, and it is invisible at the moment it
+ * switches. Each half is that shape's own resting layout, so nothing jumps at either end either: the morph
+ * starts with the content as it was and ends with it as it will stay.
+ *
+ * Images and embeds follow the same switch rather than easing their margins, since text reflows around them
+ * and a moving margin would bring back the jitter by another route.
+ */
+export function contentLayout(visual: { cardShape?: string; morph?: { from: string; at: number } }): {
+  cardShape?: string;
+  opacity: number;
+} {
+  const morph = visual.morph;
+  if (!morph) return { cardShape: visual.cardShape, opacity: 1 };
+  return {
+    cardShape: morph.at < 0.5 ? morph.from : visual.cardShape,
+    opacity: Math.min(1, Math.abs(morph.at - 0.5) / CONTENT_FADE),
+  };
+}
+
+/**
+ * A held card's ghost as an SVG path in world units: its own silhouette, centred on where it would land.
+ *
+ * A rounded box for a note, with the corner the morph outlines use; an ellipse for a round card; the cut
+ * shapes' own points; a circle for a card that is not a card at all.
+ */
+export function ghostOutline(visual: NodeVisual, at: Point): string {
+  if (visual.shape !== 'card') {
+    const r = visual.size;
+    return `M ${at.x - r} ${at.y} a ${r} ${r} 0 1 0 ${r * 2} 0 a ${r} ${r} 0 1 0 ${-r * 2} 0 Z`;
+  }
+  const width = visual.width ?? 160;
+  const height = visual.height ?? 120;
+  const left = at.x - width / 2;
+  const top = at.y - height / 2;
+  if (visual.cardShape === 'round') {
+    const [rx, ry] = [width / 2, height / 2];
+    return `M ${left} ${at.y} a ${rx} ${ry} 0 1 0 ${width} 0 a ${rx} ${ry} 0 1 0 ${-width} 0 Z`;
+  }
+  const cut = cardSilhouette(visual.cardShape as CardShape | undefined);
+  if (cut) return `M ${cut.map(([x, y]) => `${left + x * width} ${top + y * height}`).join(' L ')} Z`;
+  const r = Math.min(width, height) / 12;
+  return (
+    `M ${left + r} ${top} H ${left + width - r} Q ${left + width} ${top} ${left + width} ${top + r} ` +
+    `V ${top + height - r} Q ${left + width} ${top + height} ${left + width - r} ${top + height} ` +
+    `H ${left + r} Q ${left} ${top + height} ${left} ${top + height - r} V ${top + r} Q ${left} ${top} ${left + r} ${top} Z`
+  );
+}
+
 export function pathFrom(route: EdgeGeometry, endGap = 0): string {
   const { from, control, control2, elbows, segments } = route;
   const to = endGap > 0 ? backOff(route, endGap) : route.to;
+  /*
+    A curve ending under an arrowhead is CUT short rather than having its end dragged back — see
+    `trimCubicEnd`. Dragging reshapes the last piece by an amount that depends on how long it is, so one
+    line drawn in two pieces and the same line drawn in one would be stroked into different shapes. A
+    straight ending needs no such care: moving along a straight leg is already a cut.
+  */
+  const cubic = (start: Point, c1: Point, c2: Point, end: Point, last: boolean) => {
+    const [, a, b, stop] = last && endGap > 0 ? trimCubicEnd([start, c1, c2, end], endGap) : [start, c1, c2, end];
+    return `C ${a.x} ${a.y} ${b.x} ${b.y} ${stop.x} ${stop.y}`;
+  };
   /*
     A hand-shaped route: one command per segment, and the last one ends where the arrowhead does.
 
@@ -112,19 +186,20 @@ export function pathFrom(route: EdgeGeometry, endGap = 0): string {
     span between two nodes and this is several.
   */
   if (segments) {
+    let at = from;
     const drawn = segments.map((segment, index) => {
-      const end = index === segments.length - 1 ? to : segment.to;
+      const start = at;
+      at = segment.to;
+      const last = index === segments.length - 1;
       return segment.control && segment.control2
-        ? `C ${segment.control.x} ${segment.control.y} ${segment.control2.x} ${segment.control2.y} ${end.x} ${end.y}`
-        : `L ${end.x} ${end.y}`;
+        ? cubic(start, segment.control, segment.control2, segment.to, last)
+        : `L ${last ? to.x : segment.to.x} ${last ? to.y : segment.to.y}`;
     });
     return `M ${from.x} ${from.y} ` + drawn.join(' ');
   }
   if (elbows) return `M ${from.x} ${from.y} ` + [...elbows, to].map((p) => `L ${p.x} ${p.y}`).join(' ');
   // The second control is what makes it cubic — a renderer needs no other signal to pick its command.
-  if (control && control2) {
-    return `M ${from.x} ${from.y} C ${control.x} ${control.y} ${control2.x} ${control2.y} ${to.x} ${to.y}`;
-  }
+  if (control && control2) return `M ${from.x} ${from.y} ` + cubic(from, control, control2, route.to, true);
   if (control) return `M ${from.x} ${from.y} Q ${control.x} ${control.y} ${to.x} ${to.y}`;
   return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
 }
@@ -146,18 +221,37 @@ export function pathFrom(route: EdgeGeometry, endGap = 0): string {
  * Backing off along the closing tangent rather than re-solving the curve is an approximation, and a
  * deliberate one — over an arrowhead's length the error is far below a pixel, and the alternative is
  * splitting a cubic at an arc length nobody can see.
+ *
+ * On a route made of *straight* legs the tangent is walked back through them until it has covered the
+ * gap, rather than read off the one point before the end. A leg shorter than the arrowhead would
+ * otherwise send the direction all the way back to the route's start, which on a line that turns is the
+ * chord rather than the approach — so the head would point one way and the line arrive from another.
+ * Reachable on a canvas with a `straight` line bent twice near its target.
  */
 function backOff(route: EdgeGeometry, gap: number): Point {
   const { to, control, control2, elbows, segments } = route;
-  // The closing tangent of whichever shape this is. For a hand-shaped route that is the last
-  // segment's second control, or the point before it when the leg is straight.
   const last = segments?.[segments.length - 1];
-  const previous =
-    (last && (last.control2 ?? (segments!.length > 1 ? segments![segments!.length - 2].to : route.from))) ??
-    elbows?.[elbows.length - 1] ??
-    control2 ??
-    control ??
-    route.from;
+  // A chain of straight legs: walk back through them until the gap is covered, so the direction comes
+  // from a span long enough to have one.
+  if (segments && !last?.control2) {
+    const back = [
+      ...segments
+        .slice(0, -1)
+        .map((segment) => segment.to)
+        .reverse(),
+      route.from,
+    ];
+    for (const point of back) {
+      const length = Math.hypot(to.x - point.x, to.y - point.y);
+      if (length > gap) {
+        return { x: to.x - ((to.x - point.x) / length) * gap, y: to.y - ((to.y - point.y) / length) * gap };
+      }
+    }
+    return to;
+  }
+  // The closing tangent of whichever shape this is. For a hand-shaped route that is the last
+  // segment's second control.
+  const previous = last?.control2 ?? elbows?.[elbows.length - 1] ?? control2 ?? control ?? route.from;
   const dx = to.x - previous.x;
   const dy = to.y - previous.y;
   const length = Math.hypot(dx, dy);
@@ -273,6 +367,25 @@ function foldTravel(): number {
 }
 
 /**
+ * How long a switch between arrangements takes — the one number to change for how it feels, or to raise
+ * several-fold to watch a switch frame by frame.
+ *
+ * Longer than a fold, deliberately. A fold is punctuation — one card going away — and the eye only has to
+ * catch the direction. A switch moves everything at once, and what the travel is for is letting a reader
+ * keep hold of a particular card while the arrangement reorganises around it. It eases out, so most of the
+ * distance is covered early and the rest reads as the arrangement settling.
+ *
+ * Asked here rather than in the engine for the fold's reason: only the renderer can ask the browser
+ * whether the reader wants less movement, and then the answer is zero.
+ */
+const LAYOUT_TRAVEL_MS = 1260;
+
+function layoutTravel(): number {
+  if (typeof window === 'undefined' || !window.matchMedia) return LAYOUT_TRAVEL_MS;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : LAYOUT_TRAVEL_MS;
+}
+
+/**
  * How much of a value is worth carrying to a panel.
  *
  * Long enough for a sentence, short enough that one field cannot become the whole panel.
@@ -313,6 +426,31 @@ function readableFields(node: GraphNode): { name: string; value: string }[] {
  * Unknown names fall through to `--we-color-<token>` exactly as before, so nothing that worked
  * stops — including a name this build's role list has not heard of.
  */
+/** One colour inside a `color-mix`: a role or a scale position resolved, anything else left as CSS. */
+function mixStop(stop: string): string {
+  if (ROLE_NAMES.has(stop)) return `var(--we-role-${stop})`;
+  if (/^(neutral|primary|success|warning|danger)-\d+$/.test(stop)) return `var(--we-color-${stop})`;
+  // A nested mix gets the same treatment; a CSS colour, a function or a name is CSS already.
+  return /^color-mix\(/i.test(stop) ? color(stop, '') : stop;
+}
+
+/** Split on commas that are not inside brackets — the arguments of a CSS function. */
+function splitTopLevel(text: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '(') depth++;
+    else if (text[i] === ')') depth--;
+    else if (text[i] === ',' && depth === 0) {
+      parts.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(text.slice(start));
+  return parts;
+}
+
 export function color(value: string | undefined, fallback: string): string {
   /*
     `||`, not `??`: an empty value means "nothing chosen" and should reach the fallback, where `??`
@@ -333,7 +471,24 @@ export function color(value: string | undefined, fallback: string): string {
     that format left the card uncoloured with nothing to say why.
   */
   if (/^#/.test(token)) return token;
-  if (/^(rgba?|hsla?|oklch|oklab|lch|lab|hwb|color|color-mix|var)\(/i.test(token)) return token;
+  /*
+    A mix, with its colours resolved by these same rules — a heat scale blends between two stops a reader
+    picked, and those may be tokens or roles that only mean anything here. Passed through whole, as it
+    used to be, `color-mix(in oklch, accent 40%, primary-100)` names two colours CSS has never heard of.
+    Each argument after the colour space is a colour with an optional share. Only a role or a scale
+    position is resolved inside one: a bare word there may equally be a CSS colour name (`red`), and a
+    mix written in plain CSS has to come out exactly as it went in.
+  */
+  const mix = /^color-mix\(\s*(in [^,]+),(.*)\)$/i.exec(token);
+  if (mix) {
+    const parts = splitTopLevel(mix[2]).map((part) => {
+      const piece = /^(.*?)(\s+[\d.]+%)?$/.exec(part.trim());
+      const [, stop = '', share = ''] = piece ?? [];
+      return `${mixStop(stop.trim())}${share}`;
+    });
+    return `color-mix(${mix[1].trim()}, ${parts.join(', ')})`;
+  }
+  if (/^(rgba?|hsla?|oklch|oklab|lch|lab|hwb|color|var)\(/i.test(token)) return token;
   if (/^(transparent|currentcolor)$/i.test(token)) return token;
   if (ROLE_NAMES.has(token)) return `var(--we-role-${token})`;
   return `var(--we-color-${token})`;
@@ -414,6 +569,28 @@ export function GraphView(props: GraphViewProps) {
    */
   const [handleHint, setHandleHint] = createSignal<{ at: Point; text: string } | null>(null);
   /**
+   * The pointer handlers that raise one handle's hint, and withdraw it with the handle.
+   *
+   * Leaving is not enough to withdraw it. A browser fires no `pointerleave` for an element taken out
+   * from under the pointer, and handles are taken out all the time — the hovered line changes, a card
+   * is deselected, the canvas switches to a tree that offers no anchors — so a hint raised by a handle
+   * that has gone stayed on screen with nothing left to leave, and no way to close it. Withdrawn on the
+   * handle's own cleanup instead, and only if it is still that handle's: the pointer may already have
+   * raised the next one.
+   */
+  const hintFor = (hint: () => { at: Point; text: string }) => {
+    let raised: { at: Point; text: string } | null = null;
+    const withdraw = () => {
+      if (raised && handleHint() === raised) setHandleHint(null);
+      raised = null;
+    };
+    onCleanup(withdraw);
+    return {
+      onPointerEnter: () => setHandleHint((raised = hint())),
+      onPointerLeave: withdraw,
+    };
+  };
+  /**
    * The connection a handle gesture is under way on — its edge id, or `connect` for a new line.
    *
    * Two jobs, both of which need the gesture to outlive the pointer's whereabouts. The hint is
@@ -471,6 +648,9 @@ export function GraphView(props: GraphViewProps) {
     },
     onEvent: (event) => {
       switch (event.type) {
+        case 'seedSummary':
+          props.onSeedSummary?.({ ...event.summary, source: event.source });
+          break;
         case 'nodeClick': {
           // The behaviour only knows an address; the template wants the node, so it is resolved
           // here where the store is in reach.
@@ -597,6 +777,37 @@ export function GraphView(props: GraphViewProps) {
           });
           break;
         }
+        case 'nodeArrange': {
+          /*
+            Resolved to records here, exactly as `nodeDragEnd` is: a node address is the engine's
+            business and a store writes against record ids. A card that does not stand for a record has
+            nothing to arrange — a property node, a cluster — so the gesture is dropped rather than
+            reported with an empty id, which a store would then write against nothing.
+          */
+          const at = parseAddress(event.node.id);
+          if (at?.kind !== 'entity' || !at.id) break;
+          const target = event.target ? parseAddress(event.target.id) : undefined;
+          // A target that is not a record is the same case one step along: "under that" means nothing
+          // if "that" cannot be named. Treated as a loose drop, which is the safe reading.
+          const named = target?.kind === 'entity' && target.id ? target : undefined;
+          // The order as records, for the same reason; a card in it that is not a record has no rank to write.
+          const order = event.order?.flatMap((id) => {
+            const card = parseAddress(id);
+            return card?.kind === 'entity' && card.id ? [card.id] : [];
+          });
+          props.onNodeArrange?.({
+            id: event.node.id,
+            into: named || event.into === 'loose' ? event.into : 'loose',
+            recordId: at.id,
+            recordType: at.type ?? '',
+            ...(named ? { targetId: named.id, targetType: named.type ?? '' } : {}),
+            ...(event.before === undefined ? {} : { before: event.before }),
+            ...(order ? { order } : {}),
+            x: event.at.x,
+            y: event.at.y,
+          });
+          break;
+        }
         default:
           break;
       }
@@ -605,14 +816,59 @@ export function GraphView(props: GraphViewProps) {
 
   engine.subscribe((reason) => {
     batch(() => {
-      if (reason === 'viewport') setViewportVersion((n) => n + 1);
-      else if (reason === 'status') setStatusVersion((n) => n + 1);
+      if (reason === 'viewport') {
+        setViewportVersion((n) => n + 1);
+        /*
+          Reported from the notification rather than from an effect on the version signal, and the
+          difference matters: an effect would also fire for the *first* measurement, before there is a
+          camera worth describing, and a region of nothing at the origin is worse than no answer.
+          `visibleWorldRect` is empty until the surface has a size, and the guard below says so.
+        */
+        const region = engine.viewport.visibleWorldRect();
+        if (region.width > 0 && region.height > 0) props.onViewport?.(region);
+      } else if (reason === 'status') setStatusVersion((n) => n + 1);
       else if (reason === 'connection') setConnectionVersion((n) => n + 1);
       // Its own signal, not the general one: a sweep fires on every pointer move and moves one
       // rectangle, where `version` re-derives every node and every edge.
       else if (reason === 'marquee') setMarqueeVersion((n) => n + 1);
       else setVersion((n) => n + 1);
     });
+  });
+
+  /**
+   * The marks a host wants drawn, split into the two questions the render asks separately.
+   *
+   * `decorationIds` is what `<For>` iterates, so a row is keyed by id rather than by the object the
+   * host happened to build this tick. `decorationsById` is how that row then reads its own position,
+   * which is the part that changes. Splitting them is what lets a moving mark be a transform on an
+   * element that stays put — see the note at the `<For>` itself.
+   */
+  const decorations = createMemo(() => props.host?.decorations?.() ?? []);
+  const decorationIds = createMemo(() => decorations().map((mark) => mark.id));
+  const decorationsById = createMemo(() => new Map(decorations().map((mark) => [mark.id, mark])));
+
+  /**
+   * Follow somebody else's view: frame the region they are looking at, once per change.
+   *
+   * `framed` is what keeps this from fighting the reader. Without it the effect re-runs on every
+   * camera notification — `engine.frame` itself notifies — and the camera would be pinned to the
+   * region for as long as it was set, so a follower could not pan at all and the graph would fight
+   * every gesture. Compared by value rather than by identity, since a host recomputing an equal
+   * region on an unrelated update is ordinary and must not re-frame.
+   */
+  let framed: string | undefined;
+  createEffect(() => {
+    const region = props.region;
+    if (!region) {
+      // Following nobody leaves the camera exactly where it is. Cleared so that following the same
+      // person again re-frames rather than being taken for a region already applied.
+      framed = undefined;
+      return;
+    }
+    const key = `${region.x},${region.y},${region.width},${region.height}`;
+    if (key === framed) return;
+    framed = key;
+    untrack(() => engine.frame(region));
   });
 
   /**
@@ -674,6 +930,46 @@ export function GraphView(props: GraphViewProps) {
     live: props.live,
   });
 
+  /**
+   * A seed spec split into the part that decides which graph this is and the part that only reads it
+   * again — see `refreshOptions` on `SeedSource`.
+   *
+   * `seeds` is one bag holding both, and tracked whole it restarted the graph for a change that left it
+   * the same graph. Only the seed knows which of its own options are which, so it says.
+   *
+   * A spec naming a source nothing has registered, or a literal one, has nothing to refresh and lands
+   * entirely in the structural key, which is the behaviour every seed had before this.
+   */
+  const splitSeed = (spec: unknown): [structural: unknown, refresh: unknown, derive: unknown] => {
+    const source = (spec as { source?: unknown } | null)?.source;
+    const options = (spec as { options?: Record<string, unknown> } | null)?.options;
+    const seed = typeof source === 'string' ? registry.seed(source) : undefined;
+    const refreshing = seed?.refreshOptions ?? [];
+    const deriving = seed?.deriveOptions ?? [];
+    if ((!refreshing.length && !deriving.length) || !options) return [spec, null, null];
+
+    const structural: Record<string, unknown> = {};
+    const refresh: Record<string, unknown> = {};
+    const derive: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(options)) {
+      if (deriving.includes(key)) derive[key] = value;
+      else if (refreshing.includes(key)) refresh[key] = value;
+      else structural[key] = value;
+    }
+    return [{ ...(spec as object), options: structural }, refresh, derive];
+  };
+
+  /** The three parts of every seed, as comparable strings. */
+  const seedKeys = () => {
+    const specs = Array.isArray(props.seeds) ? props.seeds : props.seeds ? [props.seeds] : [];
+    const split = specs.map(splitSeed);
+    return {
+      structural: JSON.stringify([split.map(([s]) => s), props.expansion ?? null]),
+      refresh: JSON.stringify(split.map(([, r]) => r)),
+      derive: JSON.stringify(split.map(([, , d]) => d)),
+    };
+  };
+
   // Reload when what the graph *is* changes — where it starts and how far it opens. Deliberately
   // narrow: recolouring a map must never re-run its queries, and depending on the whole prop bag
   // would do exactly that. `props.layout` is read untracked so a layout swap does not land here.
@@ -687,11 +983,55 @@ export function GraphView(props: GraphViewProps) {
       which looks like a layout bug and is really this effect firing on churn. The layout and style
       effects below already compare; this one is the reason to.
     */
-    const next = JSON.stringify([props.seeds ?? null, props.expansion ?? null]);
+    const next = seedKeys().structural;
     if (previous === next) return next;
     untrack(() => {
       engine.setSpec(currentSpec());
       void engine.start();
+    });
+    return next;
+  });
+
+  /*
+    The same graph, read again: a marker changing, or more being read about the same cards — see
+    `refreshOptions`. Sent down `refresh`, which re-reads and merges rather than clearing — so the
+    graph stays on screen, keeps its positions and its arrangement, and `reloading` is never raised.
+
+    That last part is what this is for. `start` raises it, and `reloading` is what drops every layer
+    to 40% and puts a spinner over the middle of the canvas. On the workshop's canvas the suggestion
+    markers come straight from the transcriber, so with auto-extract on a call the whole screen faded
+    under a "Loading graph…" every couple of minutes for two cards changing opacity; and ordering a
+    tree by a reaction dimmed and redrew everything for a re-sort.
+
+    `setSpec` first, or `refresh` would re-read the seeds against the options they had last time.
+
+    The first run only records the value: the structural effect above has already loaded, and firing
+    here on mount would run every seed query a second time — the reason the revision effect below
+    does the same.
+  */
+  createEffect((previous: string | undefined) => {
+    const next = seedKeys().refresh;
+    if (previous === undefined || previous === next) return next;
+    untrack(() => {
+      engine.setSpec(currentSpec());
+      void engine.refresh();
+    });
+    return next;
+  });
+
+  /*
+    The same rows finished differently: an option the seed applies to what it already fetched — see
+    `SeedSource.deriveOptions`. Nothing is read, so a slider re-weighing whose reactions count can move
+    the cards on every step of the drag rather than a round trip behind it.
+
+    The first run only records the value, for the reason the refresh effect's does.
+  */
+  createEffect((previous: string | undefined) => {
+    const next = seedKeys().derive;
+    if (previous === undefined || previous === next) return next;
+    untrack(() => {
+      engine.setSpec(currentSpec());
+      void engine.rederive();
     });
     return next;
   });
@@ -990,19 +1330,46 @@ export function GraphView(props: GraphViewProps) {
     return next;
   });
 
-  // A layout swap rearranges what is already loaded rather than reloading it — the whole point of
-  // offering several layouts is to see the same graph differently.
+  /*
+    A layout swap rearranges what is already loaded rather than reloading it — the whole point of
+    offering several layouts is to see the same graph differently.
+
+    It travels rather than cutting, because the value of seeing the same graph two ways is in
+    recognising a card across the change, and an instant swap is a new picture the reader has to find
+    their card in again.
+
+    **The camera moves only when the layout does.** Re-tuning a layout — a different sort key, a
+    different spine — is the same arrangement answering a different question, and refitting on one
+    lurches the view every time a vote lands and re-orders a row. A different layout genuinely needs
+    the camera to go and find the graph, which may now occupy a quite different region.
+
+    The one exception is the host's to name: `reframeOn` changing with the arrangement brings the graph
+    back into view without zooming in — see its doc. Read in the same effect so the camera travels with
+    the cards that are moving, rather than a frame later after they have landed off screen.
+  */
   createEffect((previous: string | undefined) => {
-    const next = JSON.stringify(props.layout ?? {});
+    const layout = props.layout ?? {};
+    const reframe = props.reframeOn ?? null;
+    const next = JSON.stringify({ layout, reframe });
     if (previous !== undefined && previous !== next) {
+      const was = JSON.parse(previous) as { layout: { type?: string }; reframe: unknown };
       engine.setSpec(currentSpec());
-      engine.relayout({ fit: true });
+      const fit = props.layout?.type !== was.layout?.type ? true : reframe !== was.reframe ? 'contain' : false;
+      engine.relayout({ fit, travel: layoutTravel() });
     }
     return next;
   });
 
-  // Restyling re-sizes hit areas but must never re-run a query or move a node, so it updates the spec
-  // and reindexes rather than restarting or re-laying out.
+  /*
+    Restyling re-sizes hit areas but must never re-run a query or move a node, so it updates the spec and
+    reindexes rather than restarting or re-laying out.
+
+    **Declared after the layout effect above, and that is load-bearing.** A mode that rearranges the
+    cards and restyles them together fires both in one flush, and the travel blends the card boxes and
+    the line anchors from the styling it is leaving — which `refreshHitAreas` lets go of, since its
+    meaning is "the styling changed and nothing is moving". Run first, it would discard what the travel
+    was about to blend from. See `GraphEngine.refreshHitAreas`.
+  */
   createEffect((previous: string | undefined) => {
     const next = JSON.stringify([props.nodeStyle ?? [], props.edgeStyle ?? []]);
     if (previous !== undefined && previous !== next) {
@@ -1024,14 +1391,38 @@ export function GraphView(props: GraphViewProps) {
     onCleanup(() => observer.disconnect());
   });
 
+  /*
+    How long a rearrangement the engine decides on by itself should take — a card released back to a
+    layout that computes once, which has to be drawn into place rather than left where the hand let go.
+    Stated here because only the renderer can ask the browser whether the reader wants less movement.
+  */
+  engine.setSelfTravel(layoutTravel());
+
   onCleanup(() => engine.dispose());
 
   // ─── Reactive projections ────────────────────────────────────────────────────
+
+  /**
+   * Areas of the arrangement the layout named — the `forest`'s zone of unconnected cards, and whatever
+   * a later layout wants to caption.
+   *
+   * Drawn rather than left implicit because a region of cards with nothing said about it reads as a
+   * tree whose lines failed to render, which is a much worse thing to conclude than the truth. And
+   * drawn from the layout's own answer rather than derived here: only the layout knows which of its
+   * cards are in which part of its arrangement.
+   */
+  const regions = createMemo(() => {
+    version();
+    return [...engine.getLayoutRegions()];
+  });
 
   const nodes = createMemo(() => {
     version();
     const placed = engine.getPositions();
     const selected = new Set(engine.getSelection());
+    const held = engine.heldCard();
+    // Whether letting go of the held card would change anything — see `getArrangePreview`.
+    const heldIdle = held ? engine.getArrangePreview()?.change === false : false;
     return [...engine.store.nodes()].flatMap((rawNode) => {
       const at = placed.get(rawNode.id);
       if (!at) return [];
@@ -1039,13 +1430,23 @@ export function GraphView(props: GraphViewProps) {
       // effect below. Hit-testing and edge routing resolve from the same values, so a card cannot be
       // drawn at one size and picked at another.
       const node = patched(rawNode, engine.overlayFor(rawNode.id));
-      const style = resolveStyle(node, props.nodeStyle);
       return [
         {
           node,
           at,
-          visual: nodeVisual(node, style, engine.getMetrics()),
+          /*
+            Asked of the engine rather than resolved here.
+
+            `nodeVisual` is the one function both the drawing and the picking come from, and a card's box
+            and silhouette are mid-change for the length of a rearrangement that restyles them — so the
+            blend has to happen where that invariant is kept. See `GraphEngine.visualOf`. It also means
+            the renderer is no longer the only thing that knows how to read a style rule.
+          */
+          visual: engine.visualOf(rawNode),
           selected: selected.has(node.id),
+          // In the hand during a rearranging drag — read onto the row like `selected`, so it repaints.
+          held: held === node.id,
+          heldIdle: held === node.id && heldIdle,
           expanded: engine.expansion.isExpanded(node.id),
           hasMore: engine.expansion.hasMore(node.id),
           /*
@@ -1288,6 +1689,66 @@ export function GraphView(props: GraphViewProps) {
   });
 
   /*
+    The host's pending connections, turned from records into this graph's nodes and edges.
+
+    Records the graph is not showing are skipped rather than guessed at: a line to a card that is not
+    on the canvas has nowhere to be drawn, and a connection the canvas does not show has nothing to
+    hide. Tracks `version()` so a card arriving after the hold went up is picked up when it does.
+  */
+  createEffect(() => {
+    version();
+    const pending = props.host?.pendingConnections?.();
+    if (!pending) return;
+    const nodeOf = new Map<string, string>();
+    const edgeOf = new Map<string, string>();
+    untrack(() => {
+      for (const node of engine.store.nodes()) {
+        const at = parseAddress(node.id);
+        if (at?.kind === 'entity' && at.id) nodeOf.set(at.id, node.id);
+      }
+      for (const edge of engine.store.edges()) {
+        const at = edge.reifiedAs ? parseAddress(edge.reifiedAs) : null;
+        if (at?.kind === 'entity' && at.id) edgeOf.set(at.id, edge.id);
+      }
+    });
+    const added: GraphEdge[] = pending.added.flatMap((line) => {
+      const [source, target] = [nodeOf.get(line.source), nodeOf.get(line.target)];
+      return source && target
+        ? [{ id: `${PENDING_EDGE_PREFIX}${line.key}`, source, target, type: PENDING_EDGE_TYPE, data: line.data ?? {} }]
+        : [];
+    });
+    const patches = new Map<string, Record<string, GraphValue>>();
+    for (const move of pending.moved) {
+      const [edge, to] = [edgeOf.get(move.id), nodeOf.get(move.to)];
+      if (edge && to) patches.set(edge, { ...patches.get(edge), [move.end]: to });
+    }
+    const removed = new Set(pending.removed.flatMap((id) => (edgeOf.has(id) ? [edgeOf.get(id)!] : [])));
+    engine.setPendingEdges({ added, patches, removed });
+  });
+
+  /*
+    What the graph is drawing from its own data, in records, for the host to judge its pending
+    connections against. Only while something is pending, and from the store rather than the drawn
+    list — the drawn list already carries the promises, and asking it would call every one kept.
+  */
+  createEffect(() => {
+    version();
+    const pending = props.host?.pendingConnections?.();
+    const report = props.host?.observeConnections;
+    if (!report || !pending || !(pending.added.length + pending.moved.length + pending.removed.length)) return;
+    const observed = untrack(() =>
+      [...engine.store.edges()].flatMap((edge) => {
+        const record = edge.reifiedAs ? parseAddress(edge.reifiedAs) : null;
+        const [source, target] = [parseAddress(edge.source), parseAddress(edge.target)];
+        return record?.kind === 'entity' && record.id && source?.id && target?.id
+          ? [{ id: record.id, source: source.id, target: target.id }]
+          : [];
+      }),
+    );
+    report(observed);
+  });
+
+  /*
     The anchor draft, handed to the engine so the line follows it, and dropped once it is redundant.
 
     The same shape as the node overlay above and settled by the same question — asked of the edge's
@@ -1349,7 +1810,8 @@ export function GraphView(props: GraphViewProps) {
     const geometry = engine.getEdgeGeometry();
     const metrics = engine.getMetrics();
     /*
-      The store's lines, plus the ones standing in for what a fold hid.
+      The store's lines, plus the ones standing in for what a fold hid — and, through `drawnEdges`,
+      less a connection just removed and plus one just drawn, while each is waiting to come back.
 
       The bundles are not in the store, deliberately — they are derived from the fold and would
       otherwise have to be merged in and taken back out on every fold, refresh and reload, with a
@@ -1358,10 +1820,10 @@ export function GraphView(props: GraphViewProps) {
       by the same geometry, which is what makes one fan apart from a real line between the same pair
       instead of lying under it.
     */
-    return [...engine.store.edges(), ...engine.foldBundles()].flatMap((edge) => {
+    return engine.drawnEdges().flatMap((edge) => {
       const route = geometry.get(edge.id);
       if (!route) return [];
-      const visual = edgeVisual(edge, resolveStyle(edge, props.edgeStyle), metrics);
+      const visual = edgeVisual(edge, resolveStyle(edge, props.edgeStyle, metrics), metrics);
       // The gap is the arrowhead's own length, in world units — the marker scales with stroke width,
       // so the stroke has to give up the same amount it takes.
       const gap = visual.arrow === 'none' ? 0 : ARROW_LENGTH * visual.width;
@@ -1380,6 +1842,16 @@ export function GraphView(props: GraphViewProps) {
   const pending = createMemo(() => {
     connectionVersion();
     return engine.getPendingConnection();
+  });
+
+  /*
+    A card held by a rearranging drag: the ghost where the drop would put it, and its line — see
+    `getArrangePreview`. On the general channel, since the ghost moves when the tree makes room for it rather
+    than with the pointer, and that is a relayout like any other.
+  */
+  const arranging = createMemo(() => {
+    version();
+    return engine.getArrangePreview();
   });
 
   /**
@@ -1471,13 +1943,34 @@ export function GraphView(props: GraphViewProps) {
    * keeps whatever width and height somebody gave it, and forcing it square would silently undo a
    * resize the moment the shape was changed.
    */
-  function nodeRadius(visual: { shape: string; cardShape?: string }): string {
-    if (visual.shape === 'circle') return '50%';
-    if (visual.shape !== 'card') return 'var(--we-radius-300)';
-    if (visual.cardShape === 'square') return '0';
-    if (visual.cardShape === 'round') return '50%';
+  function radiusOf(shape: string, cardShape?: string): string {
+    if (shape === 'circle') return '50%';
+    if (shape !== 'card') return 'var(--we-radius-300)';
+    // `0px` rather than `0`: identical at rest, and the one form `calc` will add to a length when
+    // `nodeRadius` blends it against another shape's radius.
+    if (cardShape === 'square') return '0px';
+    if (cardShape === 'round') return '50%';
     // The note: rounded enough that choosing it over a square is visible on the card itself.
     return 'var(--we-radius-500)';
+  }
+
+  /**
+   * The radius, eased across a shape change rather than switched.
+   *
+   * The polygon takes over the outlining during a morph, and a note's corners squaring on the first
+   * frame — while the outline is still exactly the box — is a visible pop at the one moment the
+   * transition exists to smooth. `calc` does the blending, which is why these stay CSS strings: a
+   * percentage and a token are both lengths there, so `50%` can ease to `0` without either being
+   * resolved here.
+   */
+  function nodeRadius(visual: Shaped): string {
+    const to = radiusOf(visual.shape, visual.cardShape);
+    const morph = visual.morph;
+    if (!morph) return to;
+    const from = radiusOf('card', morph.from);
+    if (from === to) return to;
+    const at = Math.round(morph.at * 1000) / 1000;
+    return `calc(${from} * ${1 - at} + ${to} * ${at})`;
   }
 
   /**
@@ -1492,9 +1985,15 @@ export function GraphView(props: GraphViewProps) {
    */
   /** Points in the box's own 0..1 space, as the shared table gives them. */
   type Outline = readonly (readonly [number, number])[];
-  type Shaped = { shape: string; cardShape?: string };
+  type Shaped = { shape: string; cardShape?: string; morph?: NodeVisual['morph'] };
+  /*
+    Mid-change, the blended outline is the shape — it is the whole point of `morph`, and every consumer
+    below reads it from here so none of them can disagree about which silhouette a frame is drawing.
+    A card whose shape is not changing has none, which is the ordinary case and pays nothing.
+  */
   const cutPoints = (visual: Shaped) =>
-    visual.shape === 'card' ? cardSilhouette(visual.cardShape as CardShape | undefined) : undefined;
+    visual.morph?.outline ??
+    (visual.shape === 'card' ? cardSilhouette(visual.cardShape as CardShape | undefined) : undefined);
   const pct = (value: number) => `${Math.round(value * 10000) / 100}%`;
 
   /** The polygon a card is cut to. A clip rather than a drawn outline, so the card stays a box. */
@@ -1503,17 +2002,22 @@ export function GraphView(props: GraphViewProps) {
     return points ? `polygon(${points.map(([x, y]) => `${pct(x)} ${pct(y)}`).join(', ')})` : 'none';
   }
 
-  /** The outline text wraps to: a cut shape's own points, or an ellipse sampled for a round card. */
+  /**
+   * The outline text wraps to: a cut shape's own points, or an ellipse sampled for a round card. Mid-morph,
+   * the resting outline of whichever shape the content is laid out as — see `contentLayout` — and never the
+   * moving silhouette, which text reflowed around would hop between lines on every frame.
+   */
   function flowPoints(visual: Shaped): Outline | undefined {
     if (visual.shape !== 'card') return undefined;
-    if (visual.cardShape === 'round') {
+    const cardShape = contentLayout(visual).cardShape;
+    if (cardShape === 'round') {
       const steps = 24;
       return Array.from({ length: steps }, (_, i) => {
         const angle = -Math.PI / 2 + (i / steps) * Math.PI * 2;
         return [0.5 + 0.5 * Math.cos(angle), 0.5 + 0.5 * Math.sin(angle)] as const;
       });
     }
-    return cutPoints(visual);
+    return cardSilhouette(cardShape as CardShape | undefined);
   }
 
   /**
@@ -1617,21 +2121,30 @@ export function GraphView(props: GraphViewProps) {
    * lands in the largest rectangle the shape holds. Text needs none of this: it wraps to the floats
    * the stylesheet lays along the outline.
    */
-  function nodeInset(visual: Shaped): string {
-    if (visual.shape !== 'card') return '0';
-    switch (visual.cardShape) {
+  function insetOf(cardShape?: string): number {
+    switch (cardShape) {
       case 'triangle':
       case 'diamond':
       case 'hexagon':
-        return '25%';
+        return 25;
       case 'pentagon':
-        return '18%';
+        return 18;
       case 'round':
-        return '15%';
+        return 15;
       default:
-        return '0';
+        return 0;
     }
   }
+
+  function nodeInset(visual: Shaped): string {
+    if (visual.shape !== 'card') return '0';
+    // Switched with the text rather than eased — see `contentLayout`.
+    return `${insetOf(contentLayout(visual).cardShape)}%`;
+  }
+
+  /** The badge a card's style names, when the host supplies one — see `NodeStyle.badge`. */
+  const cardBadge = (visual: { badge?: string }): NodeBadge | undefined =>
+    visual.badge ? props.host?.nodeBadges?.[visual.badge] : undefined;
 
   const cardContent = (visual: { content?: string; contentMinZoom?: number }): NodeContent | undefined => {
     if (!visual.content) return undefined;
@@ -2449,6 +2962,16 @@ export function GraphView(props: GraphViewProps) {
         )
       : null;
 
+  /** Whether a right-drag from a card draws a connection here — the `connect-nodes` quick form. */
+  const rightDragConnects = createMemo(() =>
+    (props.behaviours ?? []).some(
+      (spec) =>
+        typeof spec === 'object' &&
+        spec?.type === 'connect-nodes' &&
+        (spec.options as { button?: string } | undefined)?.button === 'secondary',
+    ),
+  );
+
   function dispatch(phase: Parameters<typeof dispatchPointer>[1], event: PointerEvent | WheelEvent | MouseEvent) {
     dispatchPointer(behaviours(), phase, toInput(event), engine.behaviourContext());
   }
@@ -2563,7 +3086,8 @@ export function GraphView(props: GraphViewProps) {
   function armCarry(event: PointerEvent): void {
     carrying = null;
     carriedAway = false;
-    if (!props.carry || engine.isLocked()) return;
+    // The primary button only: a right-drag from a card is a connection, not a card being carried off.
+    if (!props.carry || engine.isLocked() || event.button !== 0) return;
     const [hit] = engine.index.hitTest(engine.viewport.toWorld(toInput(event).at));
     if (!hit) return;
     const ids = draggedBy(hit);
@@ -2623,12 +3147,38 @@ export function GraphView(props: GraphViewProps) {
     for (const { id, at } of held.home) engine.pin(id, at);
   }
 
+  /**
+   * The last world point reported to `onPointerAt`, and whether a report is already queued.
+   *
+   * Coalesced to one per animation frame because a pointer fires far more often than a screen
+   * changes — on a high-rate mouse, several times per frame — and a consumer that has to sample it
+   * itself is a consumer doing the host's job. The *latest* position is sent when the frame comes, so
+   * nothing is averaged and nothing lags.
+   */
+  let pointerFrame: number | null = null;
+  let pointerAt: { x: number; y: number } | null = null;
+
+  function reportPointer(at: { x: number; y: number } | null) {
+    if (!props.onPointerAt) return;
+    pointerAt = at;
+    if (pointerFrame !== null) return;
+    pointerFrame = requestAnimationFrame(() => {
+      pointerFrame = null;
+      props.onPointerAt?.(pointerAt);
+    });
+  }
+
+  onCleanup(() => {
+    if (pointerFrame !== null) cancelAnimationFrame(pointerFrame);
+  });
+
   function onPointerMove(event: PointerEvent) {
     carryTo(event);
     dispatch('onPointerMove', event);
     // Hover is read straight off the index rather than from DOM enter/leave, so it behaves the same
     // whether the node is an element or a painted shape.
     const at = engine.viewport.toWorld(toInput(event).at);
+    reportPointer(at);
     const [hit] = engine.index.hitTest(at);
     if (hit !== hovered()) setHovered(hit ?? null);
     /*
@@ -2697,6 +3247,16 @@ export function GraphView(props: GraphViewProps) {
         with it: chrome that takes text.
       */
       onKeyDown={onKeyDown}
+      /*
+        The pointer left the graph, so there is nothing to report about it.
+
+        On the **root**, not on `.we-graph__surface`, for the reason the keyboard is: the node layer,
+        every card's chrome and the selection's bar are siblings of the hit surface rather than
+        descendants, so a pointer moving from the canvas onto a card's own controls *leaves* the
+        surface without leaving the graph. Bound there, a peer's cursor would blink out every time
+        they passed over a card.
+      */
+      onPointerLeave={() => reportPointer(null)}
       style={{
         width: props.width ?? '100%',
         height: props.height ?? '100%',
@@ -2776,6 +3336,15 @@ export function GraphView(props: GraphViewProps) {
           dispatch('onPointerCancel', event);
         }}
         onDblClick={(event) => dispatch('onDoubleClick', event)}
+        /*
+          The browser's own menu, kept off a card while a right-drag there means something — see
+          `connect-nodes`'s `button`. Only on a card, so the canvas around them keeps it.
+        */
+        onContextMenu={(event) => {
+          if (!rightDragConnects()) return;
+          const [hit] = engine.index.hitTest(engine.viewport.toWorld(toInput(event).at));
+          if (hit) event.preventDefault();
+        }}
         onWheel={(event) => {
           event.preventDefault();
           dispatch('onWheel', event);
@@ -2791,7 +3360,10 @@ export function GraphView(props: GraphViewProps) {
         canvas is what is arriving.
       */}
       <div
-        classList={{ 'we-graph__layer': true, 'we-graph__layer--stale': status().reloading }}
+        classList={{
+          'we-graph__layer': true,
+          'we-graph__layer--stale': status().reloading,
+        }}
         style={{
           transform: transform(),
           /*
@@ -2811,6 +3383,35 @@ export function GraphView(props: GraphViewProps) {
           '--graph-zoom': String(zoom()),
         }}
       >
+        {/*
+          The areas the layout named, behind everything.
+
+          First in document order, so a card always covers its region rather than the other way round —
+          a region is *about* the cards in it, exactly as a decoration is about the canvas. It is inside
+          the camera's layer, so it pans and zooms with the drawing for nothing.
+
+          The caption is counter-scaled against the camera, like a decoration's content: a zone's name
+          is chrome about the arrangement rather than part of the drawing, and a label that shrank to
+          nothing when the reader zoomed out to see the whole forest would vanish exactly when it is
+          most needed.
+        */}
+        <For each={regions()}>
+          {(region) => (
+            <div
+              class="we-graph__region"
+              style={{
+                transform: `translate(${region.bounds.minX}px, ${region.bounds.minY}px)`,
+                width: `${Math.max(0, region.bounds.maxX - region.bounds.minX)}px`,
+                height: `${Math.max(0, region.bounds.maxY - region.bounds.minY)}px`,
+              }}
+            >
+              <Show when={region.label}>
+                <span class="we-graph__region-label">{region.label}</span>
+              </Show>
+            </div>
+          )}
+        </For>
+
         <svg class="we-graph__edges" aria-hidden="true">
           <For each={edges()}>
             {(entry) => (
@@ -2819,10 +3420,19 @@ export function GraphView(props: GraphViewProps) {
                   A wider, transparent copy of the line under the real one — the hover mark, and the
                   reason it is a second path rather than a thicker stroke: the visible line keeps its
                   own width, so nothing about the drawing changes shape when the pointer is near it.
+
+                  The **selected** line carries the same mark, one step stronger, and keeps it once
+                  the pointer has gone. A card says which one is selected with a ring that stays; an
+                  edge said it with nothing at all, so selecting a line and moving away left the
+                  inspector talking about a connection nobody could see on the canvas. One path
+                  rather than two, so the two states cannot stack into a third brightness.
                 */}
-                <Show when={hoveredEdge() === entry.edge.id}>
+                <Show when={hoveredEdge() === entry.edge.id || selectedEdge() === entry.edge.id}>
                   <path
-                    class="we-graph__edge-hover"
+                    classList={{
+                      'we-graph__edge-hover': true,
+                      'we-graph__edge-hover--selected': selectedEdge() === entry.edge.id,
+                    }}
                     d={entry.path}
                     fill="none"
                     stroke={color(entry.visual.color, 'neutral-300')}
@@ -2880,15 +3490,10 @@ export function GraphView(props: GraphViewProps) {
                           event.stopPropagation();
                           removeWaypoint(entry.edge.id, handle.index);
                         }}
-                        onPointerEnter={() =>
-                          setHandleHint({
-                            at: handle.at,
-                            text: handle.insert
-                              ? 'Drag to bend the line here'
-                              : 'Drag to move · double-click to remove',
-                          })
-                        }
-                        onPointerLeave={() => setHandleHint(null)}
+                        {...hintFor(() => ({
+                          at: handle.at,
+                          text: handle.insert ? 'Drag to bend the line here' : 'Drag to move · double-click to remove',
+                        }))}
                       >
                         <circle
                           class="we-graph__handle-hit"
@@ -2923,13 +3528,10 @@ export function GraphView(props: GraphViewProps) {
                       <g
                         class="we-graph__handle we-graph__handle--anchor"
                         onPointerDown={(event) => beginAnchor(event, entry.edge.id, end)}
-                        onPointerEnter={() =>
-                          setHandleHint({
-                            at: end === 'source' ? entry.route.from : entry.route.to,
-                            text: 'Drag around the card to pin a side · onto another card to reconnect',
-                          })
-                        }
-                        onPointerLeave={() => setHandleHint(null)}
+                        {...hintFor(() => ({
+                          at: end === 'source' ? entry.route.from : entry.route.to,
+                          text: 'Drag around the card to pin a side · onto another card to reconnect',
+                        }))}
                       >
                         {/*
                           The target, and then the dot. Two circles because they answer different
@@ -2971,7 +3573,7 @@ export function GraphView(props: GraphViewProps) {
 
             The arrowhead says which way round the connection will be, which nothing else does — the
             highlight under the pointer names the card and not the direction. Its own marker rather
-            than the edges', because that one is filled `neutral-400` and this line is not; `context-
+            than the edges', because that one is filled `border-strong` and this line is not; `context-
             stroke` would say it once, and Safari does not support it.
           */}
           <Show when={pending()}>
@@ -2979,12 +3581,46 @@ export function GraphView(props: GraphViewProps) {
               <path
                 d={pathFrom(route(), ARROW_LENGTH * PENDING_WIDTH)}
                 fill="none"
-                stroke="var(--we-color-primary-500)"
+                stroke="var(--we-role-accent)"
                 stroke-width={PENDING_WIDTH}
                 stroke-dasharray="6 4"
                 vector-effect="non-scaling-stroke"
                 marker-end="url(#we-graph-arrow-pending)"
               />
+            )}
+          </Show>
+          {/*
+            The place a held card would land, and the line it would have there.
+
+            An outline in the card's own shape rather than a second copy of the card: it reads as a place, not
+            as another card, and it needs none of the card's content. Dashed like the connect gesture's line,
+            because both say the same thing — a proposal, not yet written.
+
+            Where letting go would change nothing, the place is the card's own and is drawn as a hole: a faint
+            neutral outline, and its line drawn solid in the ordinary line colour and faded to match — the
+            connection it already has, still there. Without the line the hole read as a card about to be cut
+            loose from its parent. Two looks, so that "nothing will happen" is never mistaken for one more
+            destination.
+          */}
+          <Show when={arranging()}>
+            {(preview) => (
+              <g class="we-graph__ghost" classList={{ 'we-graph__ghost--home': !preview().change }}>
+                <path class="we-graph__ghost-outline" d={ghostOutline(preview().visual, preview().at)} />
+                <Show when={preview().line}>
+                  {(line) => (
+                    <path
+                      class="we-graph__ghost-line"
+                      d={pathFrom(line(), ARROW_LENGTH * PENDING_WIDTH)}
+                      fill="none"
+                      stroke={preview().change ? 'var(--we-role-accent)' : 'var(--we-role-border-strong)'}
+                      stroke-width={PENDING_WIDTH}
+                      stroke-dasharray={preview().change ? '6 4' : undefined}
+                      vector-effect="non-scaling-stroke"
+                      marker-end={preview().change ? 'url(#we-graph-arrow-pending)' : 'url(#we-graph-arrow)'}
+                    />
+                  )}
+                </Show>
+              </g>
             )}
           </Show>
           {/*
@@ -3023,7 +3659,7 @@ export function GraphView(props: GraphViewProps) {
               markerHeight={ARROW_LENGTH}
               orient="auto-start-reverse"
             >
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--we-color-neutral-400)" />
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--we-role-border-strong)" />
             </marker>
             {/*
               One head per colour anybody has actually asked for.
@@ -3063,7 +3699,7 @@ export function GraphView(props: GraphViewProps) {
               markerHeight={ARROW_LENGTH}
               orient="auto-start-reverse"
             >
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--we-color-primary-500)" />
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--we-role-accent)" />
             </marker>
           </defs>
         </svg>
@@ -3112,6 +3748,65 @@ export function GraphView(props: GraphViewProps) {
         </For>
 
         {/*
+          Marks something outside the graph put on the canvas — a peer's cursor, a pin on a card.
+
+          Inside the camera's own layer, which is the whole reason this is cheap: a decoration pans
+          and zooms with the drawing for nothing, because the layer it sits in is the thing being
+          transformed. Nothing here recomputes on a pan.
+
+          Before the nodes in document order, so a card drawn afterwards covers a mark rather than the
+          other way round — a mark is *about* the canvas and must not obscure what it is about. A
+          cursor is the exception and says so itself: `we-live-cursor` carries its own `z-index`.
+        */}
+        <Show when={props.host?.decorations}>
+          <div class="we-graph__decorations">
+            {/*
+              Keyed by **id**, which is why this iterates ids rather than marks.
+
+              `<For>` keys by reference, and a host recomputing its list hands over fresh objects every
+              time — so iterating the marks themselves recreates every row on every move. That is not a
+              performance note: a recreated element has no previous transform to transition *from*, so
+              a cursor jumps and the CSS meant to smooth it is still there looking correct. Iterating
+              ids is enough to fix it, because two equal strings are the same value.
+            */}
+            <For each={decorationIds()}>
+              {(id) => {
+                const mark = () => decorationsById().get(id);
+                /*
+                  Drawn once while this id is present, and then left alone — see `render`'s own note.
+                  Calling it inside the JSX would re-run it whenever the list was rebuilt, which is
+                  the remount this is all here to avoid.
+                */
+                const drawn = mark()?.render();
+                return (
+                  <div
+                    class="we-graph__decoration"
+                    classList={{ 'we-graph__decoration--eased': mark()?.ease === true }}
+                    style={{
+                      transform: `translate(${mark()?.x ?? 0}px, ${mark()?.y ?? 0}px)`,
+                      // A variable rather than the transition itself, so the stylesheet keeps the curve
+                      // and the timing function and this carries only the one number it knows.
+                      ...(mark()?.easeMs ? { '--we-decoration-ease': `${mark()!.easeMs}ms` } : {}),
+                    }}
+                  >
+                    {/*
+                    Counter-scaled against the camera, so a mark stays the size it was drawn at.
+
+                    In CSS rather than in JS: the layer publishes `--graph-zoom`, so this costs one
+                    declaration and no reactive computation per mark. A separate element from the one
+                    carrying the translate because that one may be transitioned — see `ease` — and a
+                    zoom folded into a transitioned transform would make every wheel click animate
+                    the cursors as well as move them.
+                  */}
+                    <div class="we-graph__decoration-scale">{drawn}</div>
+                  </div>
+                );
+              }}
+            </For>
+          </div>
+        </Show>
+
+        {/*
           The nodes, in a stacking context of their own — see `.we-graph__nodes`. A card's `z` orders
           it among the other cards and can never lift it over the selection chrome drawn after this.
         */}
@@ -3131,6 +3826,9 @@ export function GraphView(props: GraphViewProps) {
                   // though: under a layout that reads positions from the data every node is placed, so
                   // the same mark lands on all of them and says nothing.
                   'we-graph__node--pinned': entry.at.fixed === true && engine.pinningIsMeaningful(),
+                  // In the hand during a rearranging drag, lifted above the tree making room under it.
+                  'we-graph__node--held': entry.held,
+                  'we-graph__node--held-idle': entry.heldIdle,
                 }}
                 style={{
                   ...anchorStyle(entry, entry.foldScale),
@@ -3144,6 +3842,7 @@ export function GraphView(props: GraphViewProps) {
                   '--node-radius': nodeRadius(entry.visual),
                   '--node-clip': nodeClip(entry.visual),
                   '--node-inset': nodeInset(entry.visual),
+                  '--content-opacity': String(contentLayout(entry.visual).opacity),
                   '--flow-left': nodeFlow(entry.visual).left,
                   '--flow-right': nodeFlow(entry.visual).right,
                   /*
@@ -3231,7 +3930,20 @@ export function GraphView(props: GraphViewProps) {
                   <div
                     class="we-graph__card"
                     classList={{
-                      'we-graph__card--cut': nodeClip(entry.visual) !== 'none',
+                      /*
+                        Cut, but not while it is *becoming* cut.
+
+                        `--cut` strips the border, the radius and the box-shadow, because none of the
+                        three belongs on a polygon. Applied from the first frame of a morph it is a pop
+                        at the one moment the transition exists to smooth: a note's corners square and
+                        its border vanishes while the outline is still exactly its box. So a morphing
+                        card keeps all three and lets the clip take them away *geometrically* — the
+                        border shows wherever the polygon still meets the box edge, and is gone by the
+                        time it does not — and borrows only the drop-shadow, which is the one part that
+                        has to follow the silhouette rather than the box.
+                      */
+                      'we-graph__card--cut': nodeClip(entry.visual) !== 'none' && !entry.visual.morph,
+                      'we-graph__card--morphing': !!entry.visual.morph,
                       'we-graph__card--flow': nodeFlow(entry.visual).left !== 'none',
                     }}
                   >
@@ -3277,6 +3989,46 @@ export function GraphView(props: GraphViewProps) {
                         <span class="we-graph__more we-graph__more--card">+</span>
                       </Show>
                     </div>
+                    {/*
+                      A mark on the card's lower edge that takes its own presses — see `NodeStyle.badge`.
+                      A sibling of the shape rather than inside it, so no silhouette's clip and no long
+                      note's overflow can cut it off.
+
+                      Its presses are its own without anything being stopped: the canvas takes presses on
+                      the surface beneath the drawn layers, which are inert, so a badge that takes the
+                      pointer is the only thing a press on it reaches.
+                    */}
+                    <Show when={cardBadge(entry.visual)}>
+                      {(Badge) => {
+                        const at = parseAddress(entry.node.id);
+                        /*
+                          The card stays where it is while the pointer is on its badge, so a press that
+                          changes its place does not slide it out from under the hand — see
+                          `GraphEngine.keepStill`. Released on the way out, and if the badge goes away
+                          with the pointer still on it, which fires no leave.
+                        */
+                        const pointer = `badge-pointer:${entry.node.id}`;
+                        const opened = `badge-open:${entry.node.id}`;
+                        onCleanup(() => {
+                          engine.keepStill(pointer, false);
+                          engine.keepStill(opened, false);
+                        });
+                        return (
+                          <div
+                            class="we-graph__badge"
+                            onPointerEnter={() => engine.keepStill(pointer, true)}
+                            onPointerLeave={() => engine.keepStill(pointer, false)}
+                          >
+                            <Dynamic
+                              component={Badge()}
+                              node={entry.node}
+                              keepStill={(on: boolean) => engine.keepStill(opened, on)}
+                              {...(at?.kind === 'entity' && at.id ? { recordId: at.id, recordType: at.type } : {})}
+                            />
+                          </div>
+                        );
+                      }}
+                    </Show>
                   </div>
                 </Show>
               </div>
@@ -3332,12 +4084,11 @@ export function GraphView(props: GraphViewProps) {
                 what every canvas tool does and what keeps a selected card from being ringed with
                 furniture.
               */}
-              <Show when={props.onNodeResize && entry.visual.shape === 'card'}>
+              <Show when={props.onNodeResize && props.resizable !== false && entry.visual.shape === 'card'}>
                 <For each={HANDLES}>
                   {(handle) => (
                     <div
                       class={`we-graph__resize we-graph__resize--${handle.id}`}
-                      title="Resize"
                       onPointerDown={(event) => beginResize(event, entry, handle.grip)}
                     />
                   )}
@@ -3380,10 +4131,7 @@ export function GraphView(props: GraphViewProps) {
                         outright — a blue plate with a white outline over a canvas that is neither —
                         and there is no way to style one.
                       */
-                      onPointerEnter={() =>
-                        setHandleHint({ at: connectDotAt(entry, handle.edge), text: 'Drag to connect' })
-                      }
-                      onPointerLeave={() => setHandleHint(null)}
+                      {...hintFor(() => ({ at: connectDotAt(entry, handle.edge), text: 'Drag to connect' }))}
                     >
                       {/*
                         A plain screen-pixel length: the handle is laid out at its real size and
@@ -3716,8 +4464,10 @@ export function GraphView(props: GraphViewProps) {
         canvas renderer that has no elements at all. So they stay raw, and the SCSS that remains is
         exactly that: the canvas, plus where these overlays sit.
       */}
-      <Show when={controls().length > 0}>
-        <Column position="absolute" right={past('right')} bottom={past('bottom')} gap="100">
+      <Show when={controls().length > 0 || props.host?.overlay}>
+        <Column position="absolute" right={past('right')} bottom={past('bottom')} gap="100" ax="end">
+          {/* The host's own furniture, stacked over the controls so the two never share a corner. */}
+          {props.host?.overlay?.()}
           <For each={controls()}>
             {(control) => {
               /*
@@ -3767,6 +4517,39 @@ export function GraphView(props: GraphViewProps) {
         which is what keeps the tooltip one size at every zoom without any counter-scaling: it is
         chrome, and chrome is not part of the drawing.
       */}
+      {/*
+        Why a drop would change nothing, when the reason is a refusal rather than the card being home — said
+        above the card in the hand, where the reader is looking, before it is let go rather than after.
+      */}
+      <Show when={arranging()?.refused ? arranging() : null}>
+        {(preview) => {
+          const top = () => {
+            const at = engine.getPositions().get(preview().id);
+            const half = (preview().visual.height ?? preview().visual.size * 2) / 2;
+            return at ? engine.viewport.toScreen({ x: at.x, y: at.y - half }) : null;
+          };
+          return (
+            <Show when={top()}>
+              {(point) => (
+                <we-tooltip
+                  open
+                  content={preview().refused}
+                  placement="top"
+                  style={{
+                    position: 'absolute',
+                    left: `${point().x}px`,
+                    top: `${point().y - TOOLTIP_LIFT}px`,
+                    'pointer-events': 'none',
+                  }}
+                >
+                  <div style={{ width: '0px', height: '0px' }} />
+                </we-tooltip>
+              )}
+            </Show>
+          );
+        }}
+      </Show>
+
       <Show when={!gesturing() && handleHint()}>
         {(hint) => (
           <we-tooltip

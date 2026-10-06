@@ -122,14 +122,21 @@ const PRESETS: Record<AiModelKind, string[]> = {
 const PROTOCOL_TO_AD4M: Record<AiApiProtocol, string> = {
   openai: 'OPEN_AI',
   anthropic: 'ANTHROPIC',
+  ollama: 'OLLAMA',
 };
 
 /**
  * An unrecognised API type reads as OpenAI, which is what every remote model was before there was a
  * choice — and what the executor itself assumes when none is given.
+ *
+ * Every type the executor answers with must be named here. One that was not read as OpenAI, and the
+ * next save wrote it back as one: an Ollama model edited in settings lost its own provider.
  */
 function toProtocol(apiType: unknown): AiApiProtocol {
-  return String(apiType).toUpperCase() === 'ANTHROPIC' ? 'anthropic' : 'openai';
+  const type = String(apiType).toUpperCase();
+  if (type === 'ANTHROPIC') return 'anthropic';
+  if (type === 'OLLAMA') return 'ollama';
+  return 'openai';
 }
 
 const KIND_TO_AD4M: Record<AiModelKind, ModelType> = {
@@ -161,6 +168,7 @@ function toSource(model: AIModel): AiModelSource {
       baseUrl: model.api.baseUrl,
       apiKey: model.api.apiKey,
       model: model.api.model,
+      ...(model.api.maxNumCtx ? { maxContext: model.api.maxNumCtx } : {}),
     };
   }
   const local = model.local;
@@ -196,6 +204,8 @@ function toModelInput(draft: AiModelDraft): ModelInput {
       apiKey: source.apiKey,
       model: source.model,
       apiType: PROTOCOL_TO_AD4M[source.protocol],
+      // An update replaces the record, so a ceiling left out here is a ceiling removed.
+      ...(source.maxContext ? { maxNumCtx: source.maxContext } : {}),
     };
   } else if (source.kind === 'huggingface') {
     input.local = {

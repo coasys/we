@@ -62,6 +62,23 @@
  *    sweep ({@link CallMesh.tick}) rather than on a single event.
  * 4. **A `reset` message**, so a rebuild is agreed rather than unilateral. See `protocol.ts`.
  *
+ * ## Which connection a message is about
+ *
+ * Retrying has a cost the four above do not pay on their own: a pair now has many connections over
+ * its life, and on this transport the two sides routinely disagree for a moment about which one is
+ * current. A rebuild's new offer overtakes its `reset`; a peer that reloads offers from a fresh
+ * connection with no reset at all; a resend lands after the pair has moved on. Applied to the wrong
+ * connection, each is refused by the browser — "The order of m-lines in subsequent offer doesn't
+ * match order from previous offer/answer" — and the pair stays broken until the ladder rebuilds it.
+ *
+ * So every connection names itself ({@link PeerSlot.generation}) and every message says which
+ * connection sent it and which it is for ({@link CallGenerations}). A receiver then has three
+ * answers, worked out in {@link placeOf}: the message is for the connection it holds; it is from a
+ * connection the peer has replaced, or for one this side has, and is dropped; or it is from a
+ * connection this side has not heard of yet — and an offer from one means the peer has started over,
+ * so this side does too ({@link handle}). A generation once replaced is never accepted again, which
+ * is what lets a late message be told from a new one without either side keeping a clock.
+ *
  * ## Who repairs, and why not both
  *
  * Recovery uses the same tie-break as offers: the **impolite** peer acts first. Two peers restarting
@@ -80,7 +97,13 @@
  * has no WebRTC at all, so abstracting over them would buy nothing. The *constructor* is injected all
  * the same, so tests can drive the whole negotiation with a fake and no browser.
  */
-import { CALL_PROTOCOL_VERSION, type CallBody, type CallMessage, parseCallMessage } from './protocol';
+import {
+  CALL_PROTOCOL_VERSION,
+  type CallBody,
+  type CallGenerations,
+  type CallMessage,
+  parseCallMessage,
+} from './protocol';
 
 /** Structurally an `EphemeralChannel`, restated so this module is testable with a fake and carries no
  *  import-time dependency on the port. */
@@ -250,6 +273,18 @@ export const REPAIR_SPACING_MS = 1_500;
  */
 const MAX_EARLY_CANDIDATES = 64;
 
+/**
+ * How many of a peer's replaced connections are remembered, so a late message from one is refused.
+ *
+ * A message is late by seconds, and a pair is rebuilt a handful of times at most before the ladder
+ * gives up, so this is generous. Forgetting the oldest costs nothing worse than the bug this exists
+ * for, and only for a message delayed past sixteen rebuilds.
+ */
+const MAX_RETIRED_PER_PEER = 16;
+
+/** A name for a new connection. Unique enough among one peer's connections, which is all it is compared with. */
+const newGeneration = () => Math.random().toString(36).slice(2, 10);
+
 /** The handful of `RTCStats` fields {@link CallMesh.transportOf} reads. The DOM types the report as
  *  `ReadonlyMap<string, any>`, so naming what is actually used is the only typing available. */
 interface RtcStatReport {
@@ -262,6 +297,10 @@ interface RtcStatReport {
 
 interface PeerSlot {
   pc: RTCPeerConnection;
+  /** This connection's name, sent on everything it says. See "Which connection a message is about". */
+  generation: string;
+  /** The peer's connection this one is talking to, once the peer has named it. */
+  remoteGeneration: string | null;
   /** Decided by id comparison — symmetric, so the two peers always disagree, which is the point. */
   polite: boolean;
   makingOffer: boolean;
@@ -293,8 +332,12 @@ interface PeerSlot {
   work: Promise<void>;
   /** A remote description has been applied, so candidates can be too. */
   remoteReady: boolean;
-  /** Candidates that arrived before {@link remoteReady}, replayed the moment it is true. */
-  earlyCandidates: RTCIceCandidateInit[];
+  /**
+   * Candidates that cannot be applied yet, each with the peer connection that gathered it: those
+   * that arrived before {@link remoteReady}, replayed the moment it is true, and those from a peer
+   * connection this side has not heard describe itself, carried over if it turns out to be the new one.
+   */
+  earlyCandidates: { gen?: string; candidate: RTCIceCandidateInit }[];
   /** The last description this side sent, so a lost one can be sent again rather than rebuilt. */
   lastSent: RTCSessionDescriptionInit | null;
   /**
@@ -405,10 +448,28 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
    *
    * It is addressing, never privacy: on an emulated transport every peer still receives the bytes.
    */
-  const send = (to: string, message: CallBody) => {
+  const send = (to: string, message: CallBody & CallGenerations) => {
     if (reportsSends) outstanding += 1;
     channel.publish({ v: CALL_PROTOCOL_VERSION, call: callId, to, ...message }, { agentId: to });
   };
+
+  /** Which connections a message from this slot is between — see {@link CallGenerations}. */
+  const stamp = (slot: PeerSlot): CallGenerations =>
+    slot.remoteGeneration ? { gen: slot.generation, peerGen: slot.remoteGeneration } : { gen: slot.generation };
+
+  const sendFrom = (peerId: string, slot: PeerSlot, message: CallBody) => send(peerId, { ...message, ...stamp(slot) });
+
+  /** The peer connections each peer has replaced. Kept past a slot, so a late message cannot revive one. */
+  const retired = new Map<string, string[]>();
+
+  function retire(peerId: string, generation: string | null | undefined) {
+    if (!generation) return;
+    const list = retired.get(peerId) ?? [];
+    if (list.includes(generation)) return;
+    list.push(generation);
+    if (list.length > MAX_RETIRED_PER_PEER) list.shift();
+    retired.set(peerId, list);
+  }
 
   function connect(peerId: string): PeerSlot {
     const existing = slots.get(peerId);
@@ -417,6 +478,8 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
     const pc = createPeerConnection(configuration);
     const slot: PeerSlot = {
       pc,
+      generation: newGeneration(),
+      remoteGeneration: null,
       // Comparing ids gives each pair exactly one polite side without a round trip.
       polite: selfId > peerId,
       makingOffer: false,
@@ -447,7 +510,7 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
           // difference between the second rung of the ladder and the third: the peer connection is
           // intact and only the message was dropped, so nothing needs rebuilding.
           slot.lastSent = { type: pc.localDescription.type, sdp: pc.localDescription.sdp };
-          send(peerId, { kind: 'description', description: pc.localDescription });
+          sendFrom(peerId, slot, { kind: 'description', description: pc.localDescription });
         }
       } catch (error) {
         fail(`negotiating with ${peerId}`, error);
@@ -457,7 +520,7 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
     };
 
     pc.onicecandidate = ({ candidate }) => {
-      if (candidate) send(peerId, { kind: 'ice', candidate: candidate.toJSON() });
+      if (candidate) sendFrom(peerId, slot, { kind: 'ice', candidate: candidate.toJSON() });
     };
 
     pc.ontrack = ({ track }) => {
@@ -468,6 +531,25 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
         slot.stream.removeTrack(track);
         emitStreams();
       });
+      /*
+        A remote track that stops receiving goes MUTED, not ended — and that is the frozen frame.
+
+        `ended` is about the sender deliberately stopping a track, which is the replacement case
+        above. When a peer leaves, crashes or drops off the network, nothing ends: the track stays
+        `readyState === 'live'` for as long as the connection object exists, and what changes is
+        `muted`, which the browser sets when RTP stops arriving. Nothing was listening, so the
+        `<video>` kept its `srcObject` and went on painting the last frame it had decoded — for the
+        minutes it took the roster to drop the peer.
+
+        Re-emitting on both edges rather than only on `mute`: a connection that recovers unmutes the
+        same track, and a tile that had fallen back to an avatar has to come back to the picture
+        without waiting for some other event to happen to fire.
+
+        No state of its own. The streams map is rebuilt from the slots and the store reads the tracks
+        it holds, so re-emitting is the whole of telling it something changed — see `hasLiveVideo`.
+      */
+      track.addEventListener('mute', emitStreams);
+      track.addEventListener('unmute', emitStreams);
       emitStreams();
     };
 
@@ -485,7 +567,9 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
         */
         slot.attempts = 0;
         slot.disconnectedAt = 0;
-        slot.earlyCandidates.length = 0;
+        // Nothing held for this connection is needed now. Anything from a peer connection it has not
+        // met stays: that may be the one the peer is about to offer from.
+        slot.earlyCandidates = slot.earlyCandidates.filter((held) => held.gen && held.gen !== slot.remoteGeneration);
       }
       if (state === 'disconnected' && !slot.disconnectedAt) slot.disconnectedAt = now();
       if (state === 'connected' || state === 'failed') slot.disconnectedAt = 0;
@@ -548,6 +632,9 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
     }
     slots.delete(peerId);
     states.delete(peerId);
+    // Whatever the peer's connection was saying to this one is over, whether or not the peer knows
+    // yet. A late message from it must not be mistaken for a new connection when the peer returns.
+    retire(peerId, slot.remoteGeneration);
     // Held signalling belongs to the connection that is going away. Kept, it would be replayed into
     // a connection it was never part of the moment the peer reappeared on the roster.
     pending.delete(peerId);
@@ -620,19 +707,84 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
    */
   function enqueue(peerId: string, slot: PeerSlot, message: CallMessage): void {
     slot.work = slot.work.then(async () => {
-      // The pair may have been torn down or rebuilt while this waited its turn, in which case this
-      // message is about a connection that no longer exists.
-      if (closed || slots.get(peerId) !== slot) return;
+      if (closed) return;
+      const current = slots.get(peerId);
+      if (!current) return;
+      /*
+        The pair was rebuilt while this waited its turn. A message that says which connections it is
+        between can follow the pair to its replacement and be judged there — it may be from the very
+        peer connection the rebuild was for. One that does not say is about a connection that no
+        longer exists, as far as anything can tell.
+      */
+      if (current !== slot) {
+        if (message.gen) enqueue(peerId, current, message);
+        return;
+      }
       await handle(peerId, slot, message);
     });
   }
 
+  /**
+   * Where a message stands against the connection this side holds for its sender.
+   *
+   * - `current` — it is from the peer connection this one is talking to, or from the first one to
+   *   name itself, or it names nothing (a peer predating generations, read as it always was).
+   * - `stale` — it is for a connection of this side's that has been replaced, or from one of the
+   *   peer's that has. Nothing it says applies to anything.
+   * - `newer` — it is from a peer connection this side has not met: the peer has started over.
+   */
+  function placeOf(peerId: string, slot: PeerSlot, message: CallMessage): 'current' | 'stale' | 'newer' {
+    if (message.peerGen && message.peerGen !== slot.generation) return 'stale';
+    if (!message.gen) return 'current';
+    if (retired.get(peerId)?.includes(message.gen)) return 'stale';
+    if (!slot.remoteGeneration || slot.remoteGeneration === message.gen) return 'current';
+    return 'newer';
+  }
+
   async function handle(peerId: string, slot: PeerSlot, message: CallMessage) {
     try {
+      const place = placeOf(peerId, slot, message);
+      if (place === 'stale') return;
+      if (place === 'current' && message.gen && !slot.remoteGeneration) slot.remoteGeneration = message.gen;
+
       if (message.kind === 'reset') {
         // The peer is starting over. Rebuild to match, and say nothing back — two peers each
-        // answering a reset with a reset is a loop with no floor.
+        // answering a reset with a reset is a loop with no floor. The connection it was sent from
+        // is finished with, so nothing more from it is accepted.
+        retire(peerId, message.gen);
         rebuild(peerId, { announce: false, rung: 'rebuild' });
+        return;
+      }
+
+      if (place === 'newer') {
+        // A candidate can overtake the offer it belongs to, so it waits to see whether that offer
+        // comes rather than being dropped.
+        if (message.kind === 'ice') {
+          if (slot.earlyCandidates.length < MAX_EARLY_CANDIDATES) {
+            slot.earlyCandidates.push({ gen: message.gen, candidate: message.candidate });
+          }
+          return;
+        }
+        /*
+          The peer has a connection this side has never heard from, so it has started over: a
+          reload, a rebuild whose reset was lost, a reset this offer overtook. Applying its offer to
+          the connection held here is the "order of m-lines" refusal, so this side starts over too.
+
+          Handled now rather than queued, and on purpose. The new connection fires
+          `negotiationneeded` once it settles, and an offer of its own would collide with the very
+          offer it was made for — which on the impolite side would be ignored, and the peer would
+          have to start over a second time. Applying the offer first leaves nothing to negotiate.
+
+          An answer from an unknown connection is the peer's new connection answering this side's
+          old offer. There is nothing to apply it to, so this side starts over and offers afresh,
+          and the peer follows that offer the same way.
+        */
+        const next = rebuild(peerId, { announce: false, rung: 'rebuild' });
+        next.earlyCandidates = slot.earlyCandidates.filter((held) => held.gen === message.gen);
+        if (message.kind === 'description' && message.description.type === 'offer') {
+          next.remoteGeneration = message.gen ?? null;
+          next.work = handle(peerId, next, message);
+        }
         return;
       }
 
@@ -662,14 +814,16 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
           await slot.pc.setLocalDescription();
           if (slot.pc.localDescription) {
             slot.lastSent = { type: slot.pc.localDescription.type, sdp: slot.pc.localDescription.sdp };
-            send(peerId, { kind: 'description', description: slot.pc.localDescription });
+            sendFrom(peerId, slot, { kind: 'description', description: slot.pc.localDescription });
           }
         }
         return;
       }
 
       if (!slot.remoteReady) {
-        if (slot.earlyCandidates.length < MAX_EARLY_CANDIDATES) slot.earlyCandidates.push(message.candidate);
+        if (slot.earlyCandidates.length < MAX_EARLY_CANDIDATES) {
+          slot.earlyCandidates.push({ gen: message.gen, candidate: message.candidate });
+        }
         return;
       }
 
@@ -687,8 +841,11 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
 
   async function flushCandidates(peerId: string, slot: PeerSlot) {
     if (!slot.earlyCandidates.length) return;
-    const held = slot.earlyCandidates.splice(0, slot.earlyCandidates.length);
-    for (const candidate of held) {
+    // Only this connection's. A candidate from a peer connection it has not met stays held.
+    const mine = (held: { gen?: string }) => !held.gen || held.gen === slot.remoteGeneration;
+    const ready = slot.earlyCandidates.filter(mine).map((held) => held.candidate);
+    slot.earlyCandidates = slot.earlyCandidates.filter((held) => !mine(held));
+    for (const candidate of ready) {
       try {
         await slot.pc.addIceCandidate(candidate);
       } catch (error) {
@@ -706,11 +863,13 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
    * the new slot rather than resetting with it, or a pair that rebuilds every time would never reach
    * {@link MAX_RECOVERY_ATTEMPTS} and would retry forever.
    */
-  function rebuild(peerId: string, opts: { announce: boolean; rung: RecoveryRung }) {
+  function rebuild(peerId: string, opts: { announce: boolean; rung: RecoveryRung }): PeerSlot {
     const previous = slots.get(peerId);
     const attempts = (previous?.attempts ?? 0) + 1;
+    // Sent from the connection being thrown away, so the peer can tell a late reset from a new one.
+    const farewell = previous ? stamp(previous) : {};
     disconnect(peerId);
-    if (opts.announce) send(peerId, { kind: 'reset' });
+    if (opts.announce) send(peerId, { kind: 'reset', ...farewell });
     const slot = connect(peerId);
     slot.attempts = attempts;
     slot.lastAttempt = now();
@@ -718,6 +877,7 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
     // renders the old, now-dead object.
     emitStreams();
     options.onPeerRecovery?.(peerId, { rung: opts.rung, attempts });
+    return slot;
   }
 
   /**
@@ -770,7 +930,7 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
     */
     if (!slot.everConnected && slot.lastSent && slot.lastSent.sdp !== slot.lastResent) {
       slot.lastResent = slot.lastSent.sdp ?? null;
-      send(peerId, { kind: 'description', description: slot.lastSent });
+      sendFrom(peerId, slot, { kind: 'description', description: slot.lastSent });
       options.onPeerRecovery?.(peerId, { rung: 'resend', attempts });
       return;
     }

@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { buildValidationContext, validateSemantic } from './semanticValidation';
+import { buildValidationContext, validateSemantic, withEntities } from './semanticValidation';
 import type { SchemaNode } from './types';
 
 // The same generated context the CLI reads, loaded the same way — this package deliberately does
@@ -359,6 +359,34 @@ describe('breakpoint tiers', () => {
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain('did you mean "mdUpProps"');
   });
+
+  /*
+    An offset in a tier bag is accepted by every check an author has and read by nothing.
+
+    Both bags resolve through one pipeline over `INTERACTIVE_SPECS`, which excludes positioning —
+    see "what the state and tier axes cover" in `@we/design-utils`, which pins that exclusion from
+    the other side. The bag is a `Partial<DesignSystemProps>`, so it typechecks; the prop is a real
+    DS prop, so it validated; and an unwritten variable renders as the base value, which is exactly
+    what a breakpoint that has not been crossed looks like.
+  */
+  it('refuses an offset in a tier or state bag, and says what to use instead', () => {
+    for (const bag of ['mdUpProps', 'hoverProps']) {
+      const errors = messages({ type: 'Column', props: { [bag]: { left: '300px' } } }, 'error');
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain('does not vary by state or breakpoint');
+      expect(errors[0]).toContain('"x", "y" or "rotate"');
+    }
+  });
+
+  it('leaves an offset alone outside a bag, where it works', () => {
+    expect(messages({ type: 'Column', props: { position: 'absolute', left: '300px' } }, 'error')).toEqual([]);
+  });
+
+  it('still accepts what a tier does carry', () => {
+    // `x`/`y`/`rotate` compose into `transform`, which IS on the interactive surface — the whole
+    // point of the message above.
+    expect(messages({ type: 'Column', props: { mdUpProps: { x: 300, width: '50%' } } }, 'error')).toEqual([]);
+  });
 });
 
 describe('"open" on a panel that supplies its own node', () => {
@@ -468,5 +496,94 @@ describe('space values', () => {
   it('rejects a family on an axis that has none', () => {
     // A family says how much room a box puts inside itself, which answers nothing about a margin.
     expect(messages({ type: 'Column', props: { m: 'surface' } }, 'error')).toHaveLength(1);
+  });
+});
+
+describe('a write wired to an event nobody causes', () => {
+  const unasked = (node: SchemaNode) => messages(node, 'warning').filter((m) => m.includes('fires without anybody'));
+  const create = { $action: 'record.create', args: ['TaskBlock', { title: 'x' }] };
+
+  it('warns when an image loading would write', () => {
+    expect(unasked({ type: 'img', props: { src: 'a.png', onLoad: create } })).toHaveLength(1);
+  });
+
+  it('finds the write inside a handler list and inside a lifecycle callback', () => {
+    const nested = { $action: 'routeStore.navigate', args: ['/'], onSuccess: [create] };
+    expect(unasked({ type: 'details', props: { onToggle: [{ $setLocal: 'x', value: 1 }, nested] } })).toHaveLength(1);
+  });
+
+  it('says nothing about the same write on a press', () => {
+    expect(unasked({ type: 'we-button', props: { onClick: create } })).toEqual([]);
+  });
+
+  it('says nothing about an action that may run unasked', () => {
+    expect(
+      unasked({ type: 'img', props: { src: 'a.png', onLoad: { $action: 'routeStore.navigate', args: ['/'] } } }),
+    ).toEqual([]);
+    expect(unasked({ type: 'Grid', props: { onArrange: { $action: 'modules.call.setArrangement' } } })).toEqual([]);
+  });
+
+  it('says nothing about a blur, which counts as asking once somebody typed', () => {
+    expect(unasked({ type: 'we-input', props: { onBlur: create } })).toEqual([]);
+  });
+});
+
+describe('native elements outside the allowlist', () => {
+  const errors = (node: SchemaNode) =>
+    messages(node, 'error').filter((m) => m.includes('not an element a template may mount'));
+
+  it('reports a script or an iframe, which render nothing', () => {
+    expect(errors({ type: 'script', children: ['x'] })).toHaveLength(1);
+    expect(errors({ type: 'Column', children: [{ type: 'iframe', props: { srcdoc: 'x' } }] })).toHaveLength(1);
+  });
+
+  it('says nothing about an element on the list', () => {
+    expect(errors({ type: 'div', children: [{ type: 'img', props: { src: 'a.png', alt: '' } }] })).toEqual([]);
+  });
+});
+
+describe('comparing an included relation as if it were an id', () => {
+  const included = (m: string) => m.includes('is the included') || m.includes('compares the included');
+  const listOf = (expression: string, include = true): SchemaNode => ({
+    type: 'Column',
+    $queries: {
+      events: { entity: 'EventBlock', ...(include ? { include: { location: true } } : {}), limit: 20 },
+    },
+    children: [{ type: 'we-text', children: [{ $: expression }] }],
+  });
+
+  it('warns about a comprehension comparing the relation itself', () => {
+    expect(
+      messages(listOf("count(local.events.filter(e, e.location == 'p1'))"), 'warning').filter(included),
+    ).toHaveLength(1);
+  });
+
+  it('warns about a where-object keyed by the relation', () => {
+    expect(messages(listOf("find(local.events, { location: 'p1' }).title"), 'warning').filter(included)).toHaveLength(
+      1,
+    );
+  });
+
+  it('says nothing when the comparison reads the id', () => {
+    expect(
+      messages(listOf("count(local.events.filter(e, e.location.id == 'p1'))"), 'warning').filter(included),
+    ).toEqual([]);
+  });
+
+  it('says nothing when the query does not include the relation, where it is an id', () => {
+    expect(
+      messages(listOf("count(local.events.filter(e, e.location == 'p1'))", false), 'warning').filter(included),
+    ).toEqual([]);
+  });
+});
+
+describe('withEntities', () => {
+  it('teaches a context kinds of record it did not know, without touching the original', () => {
+    const query: SchemaNode = { type: 'Column', $queries: { rows: { entity: 'Sighting', limit: 5 } } };
+    const unknown = (ctx: typeof context) =>
+      validateSemantic(query, ctx).errors.filter((e) => e.message.includes('Sighting')).length;
+    expect(unknown(context)).toBeGreaterThan(0);
+    expect(unknown(withEntities(context, ['Sighting']))).toBe(0);
+    expect(context.entityNames.has('Sighting')).toBe(false);
   });
 });

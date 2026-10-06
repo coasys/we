@@ -25,13 +25,17 @@
  * something it may not have would throw away the ninety-nine that were fine, and the reference is
  * already inert. So it is admitted and reported — which is the first time anybody could have known.
  *
+ * An element a template may not mount (`script`, an `iframe`) is the same case: the renderer
+ * already draws nothing for it, so it is admitted and reported, with the elements named. A template
+ * carrying one is either confused or hostile, and either way the person installing it should hear.
+ *
  * Semantic validation (does this component exist, does it take this prop) is deliberately *not*
  * run here. It is the expensive half, it runs on every space switch if it runs at all, and its
  * failure mode is mild — an unknown component renders nothing rather than taking the tree down.
  * The editor runs it where it belongs, against the template being written.
  */
 import type { TemplateSchema } from '@we/schema-shared';
-import { validateStructure } from '@we/schema-shared';
+import { isTemplateElement, validateStructure } from '@we/schema-shared';
 
 import type { CapabilityGroup, SurfaceReference } from './registries/templateSurface';
 import { CAPABILITY_GROUPS, inspectTemplateSurface, SPACE_TIER } from './registries/templateSurface';
@@ -52,6 +56,8 @@ export interface TemplateAcceptance {
    * decides whether to install.
    */
   groups: CapabilityGroup[];
+  /** Native elements it names that a template may not mount, each once. They will render nothing. */
+  refusedElements: string[];
 }
 
 export interface AcceptTemplateOptions {
@@ -80,11 +86,49 @@ export function acceptTemplate(decoded: unknown, options: AcceptTemplateOptions)
       refusals: [`Template from ${options.origin} is not a valid schema`, ...detail],
       blocked: [],
       groups: [],
+      refusedElements: [],
     };
   }
 
   const { blocked, groups } = inspectTemplateSurface(decoded, options.grants ?? SPACE_TIER);
-  return { schema: decoded as TemplateSchema, refusals: [], blocked, groups };
+  return {
+    schema: decoded as TemplateSchema,
+    refusals: [],
+    blocked,
+    groups,
+    refusedElements: refusedElements(decoded),
+  };
+}
+
+/**
+ * Lowercase node types outside the allowlist, found anywhere in the tree.
+ *
+ * Walks every object rather than one walker's idea of a child, so a node held in `$defs`, a panel or
+ * a prop is found too. A thing counts as a node when it has a string `type` and `props` or
+ * `children` beside it — the shape the renderer mounts. Reporting, not enforcement: the renderer is
+ * what refuses, so a node this misses is still drawn as nothing.
+ */
+function refusedElements(schema: unknown): string[] {
+  const found = new Set<string>();
+  const seen = new WeakSet<object>();
+  const walk = (value: unknown): void => {
+    if (!value || typeof value !== 'object' || seen.has(value)) return;
+    seen.add(value);
+    if (Array.isArray(value)) return value.forEach(walk);
+    const node = value as Record<string, unknown>;
+    const type = node.type;
+    if (
+      typeof type === 'string' &&
+      ('props' in node || 'children' in node) &&
+      /^[a-z][a-z0-9]*$/.test(type) &&
+      !isTemplateElement(type)
+    ) {
+      found.add(type);
+    }
+    Object.values(node).forEach(walk);
+  };
+  walk(schema);
+  return [...found].sort();
 }
 
 /**
@@ -108,5 +152,22 @@ export function describeAcceptance(acceptance: TemplateAcceptance, origin: strin
     const named = acceptance.blocked.map((reference) => reference.path).join(', ');
     lines.push(`Template from ${origin} refers to ${named}, which it is not allowed to use here.`);
   }
+  if (acceptance.refusedElements.length) {
+    const tags = acceptance.refusedElements.map((tag) => `<${tag}>`).join(', ');
+    lines.push(`Template from ${origin} contains ${tags}, which a template may not use. They will not render.`);
+  }
   return lines;
+}
+
+/**
+ * The first reason a refused template gives, short enough for a settings row. A path into a template
+ * can run to thirty segments, and only the last few say where to look.
+ */
+export function describeRefusal(acceptance: TemplateAcceptance): string {
+  const first = acceptance.refusals[1] ?? acceptance.refusals[0] ?? '';
+  const split = first.indexOf(': ');
+  if (split < 0) return first;
+  const segments = first.slice(0, split).split('.');
+  const where = segments.length > 4 ? `…${segments.slice(-4).join('.')}` : segments.join('.');
+  return `${first.slice(split + 2)} (at ${where})`;
 }

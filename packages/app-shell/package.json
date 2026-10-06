@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
-    "test:browser": "node tests/browser/run.mjs"
+    "test:browser": "node tests/browser/run.mjs",
+    "eval:context": "vitest run --config vitest.eval.config.ts"
   },
   "bin": {
     "we-seed": "./dist/seed/cli.js"
@@ -41,7 +42,7 @@
     }
   },
   "dependencies": {
-    "@coasys/ad4m": "0.13.0-test-interpretation-2",
+    "@coasys/ad4m": "0.13.0-test-flows-1",
     "@solidjs/router": "^0.16.3",
     "@we/ai-context": "workspace:*",
     "@we/backend-ad4m": "workspace:*",
@@ -61,6 +62,7 @@
     "@we/module-call": "workspace:*",
     "@we/module-globe": "workspace:*",
     "@we/module-graph": "workspace:*",
+    "@we/module-live": "workspace:*",
     "@we/module-notes": "workspace:*",
     "@we/module-pocket": "workspace:*",
     "@we/module-polls": "workspace:*",
@@ -89,10 +91,11 @@
     "@solidjs/testing-library": "^0.8.10",
     "@types/node": "^26.4.0",
     "@types/three": "^0.185.4",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^5.0.2",
     "@we/backend-inmemory": "workspace:*",
     "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
+    "@we/csp": "workspace:*",
     "esbuild": "^0.28.2",
     "jsdom": "^30.0.1",
     "playwright-core": "^1.56.0",
@@ -100,6 +103,6 @@
     "tsup": "^8.5.1",
     "vite": "^8.2.2",
     "vite-plugin-solid": "^2.11.14",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.2"
   }
 }

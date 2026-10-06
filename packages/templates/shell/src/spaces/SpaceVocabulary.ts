@@ -30,7 +30,7 @@ import { topicsSection } from './vocabulary/TopicsSection.ts';
  */
 const openSpaceFirst: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Column',

@@ -1,0 +1,41 @@
+# Unticked boxes in a PR description are things the PR says are not done.
+#
+# Runs on `edited` as well as the usual pushes, so ticking the last box clears the check without
+# needing a commit — otherwise the only way to go green is to push something, and people push
+# something.
+#
+# Drafts are skipped on purpose. A draft is work in progress and its boxes are a plan; the check
+# belongs at `ready_for_review`, which is also when the convention says the description is written.
+name: PR tasks
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-tasks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  unticked:
+    name: Every task is ticked
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/pr-tasks.mjs
+            scripts/pr-tasks.test.mjs
+          sparse-checkout-cone-mode: false
+      # The parser's own tests, here because the root has no test runner to put them in — and a
+      # parser that silently stopped recognising a box would pass every PR.
+      - name: The parser still recognises what GitHub recognises
+        run: node --test scripts/pr-tasks.test.mjs
+      - name: Check the description's tasks
+        env:
+          EVENT_BODY: ${{ github.event.pull_request.body }}
+        run: node scripts/pr-tasks.mjs

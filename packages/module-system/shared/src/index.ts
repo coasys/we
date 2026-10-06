@@ -21,6 +21,9 @@ export type {
   DocumentAccess,
   KernelName,
   LanguageModelKernel,
+  LiveAnchor,
+  LiveDecoration,
+  MediaDevice,
   MediaKernel,
   ModuleKernels,
   PeerConnectionKernel,
@@ -29,6 +32,8 @@ export type {
   RecordsKernel,
   SecretsKernel,
   TranscriptionKernel,
+  ViewFrame,
+  ViewKernel,
   WrittenDocument,
 } from './kernels';
 export {
@@ -77,7 +82,7 @@ export type {
   SlotAnchor,
   SlotContribution,
 } from './module';
-export { markAction, markState, memberDoc, memberKind, storeSurface } from './store';
+export { markAction, markState, memberAmbient, memberDoc, memberKind, storeSurface } from './store';
 export type { ModuleMemberKind, ModuleMemberSurface, ModuleStore, ModuleStoreSurface } from './store';
 
 /**

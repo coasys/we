@@ -16,7 +16,7 @@ import {
   sortByPresence,
 } from './presence';
 
-const SPACE = 'neighbourhood://QmSpace';
+const SPACE = 'shared://QmSpace';
 
 function state(agentId: string, overrides: Partial<PresenceState> = {}): PresenceState {
   return {
@@ -30,7 +30,7 @@ function state(agentId: string, overrides: Partial<PresenceState> = {}): Presenc
 
 /**
  * A fan-out channel with no transport. `deliver` plays a message into every subscriber except the
- * named sender, which is what a real broadcast does (AD4M's `sendBroadcastU` does not loop back).
+ * named sender, which is what a real broadcast does (the production transport does not loop back).
  */
 function createFakeChannel() {
   const subscribers: Array<(from: string, payload: unknown) => void> = [];
@@ -133,7 +133,7 @@ describe('selectors', () => {
     [
       state('here', { focus: { datasetUri: SPACE, path: '/kanban', nodeId: 'card-1' } }),
       state('elsewhere-in-space', { focus: { datasetUri: SPACE, path: '/docs' } }),
-      state('other-space', { focus: { datasetUri: 'neighbourhood://QmOther', path: '/kanban' } }),
+      state('other-space', { focus: { datasetUri: 'shared://QmOther', path: '/kanban' } }),
       state('gone', { updatedAt: -90_000, focus: { datasetUri: SPACE, path: '/kanban' } }),
     ],
     now,

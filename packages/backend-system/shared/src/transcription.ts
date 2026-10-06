@@ -3,8 +3,8 @@
  *
  * `RuntimeAdminPort` already knows about transcription models — it lists them, adds them, downloads
  * them and picks a default. What it cannot do is *use* one. That gap is why transcription could not
- * be ported without a module reaching for `@coasys/ad4m` directly and declaring `backends: ['ad4m']`,
- * which is the coupling the module contract exists to avoid.
+ * be ported without a module reaching for a backend's client directly and declaring itself
+ * backend-specific, which is the coupling the module contract exists to avoid.
  *
  * ## Why a stream rather than a function
  *

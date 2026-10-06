@@ -8,6 +8,9 @@ import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegi
 import { provideChromeBag, provideTemplateBag } from '@shared/registries/templateBag';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
+import { flowStateOf } from '@shared/taskFlow';
+import { taskFlowLive } from '@shared/taskFlowLive';
+import { copyText } from '@shared/utils';
 
 import { signalOptimism } from '../../../shared/signalOptimism';
 import { signalOrder } from '../../../shared/signalOrder';
@@ -46,7 +49,7 @@ import { CollectionBlock, getEntity } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import type { DocumentAccess } from '@we/module-shared';
 import type { TemplateSchema } from '@we/schema-shared';
-import { expandViewRoutes, hasViewsMarker, SPACE_ROUTE_PATH } from '@we/schema-shared';
+import { expandViewRoutes, hasViewsMarker, installGestureTracking, SPACE_ROUTE_PATH } from '@we/schema-shared';
 import type { VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
 import { CHROME_RAIL_WIDTH } from '@we/template-shell';
@@ -113,22 +116,22 @@ export default function TemplateProvider() {
    * The personal space rather than the root: what a module keeps for somebody is theirs, and the
    * root is the app's configuration. See `systemDatasets.ts`.
    */
-  const PERSONAL_PERSPECTIVE = 'datasetStore.personalDataset';
+  const PERSONAL_DATASET = 'datasetStore.personalDataset';
 
   // Record mutations — one instance of an entity, written through the entity's registered class
-  // with the perspective injected. Pass `{ perspective: 'store.path' }` in options to target a
+  // with the dataset injected. Pass `{ dataset: 'store.path' }` in options to target a
   // different one (e.g. 'datasetStore.rootDataset' for we-root entities like AgentSettings).
   const recordActions = {
     create: (entity: string, data: Record<string, unknown> = {}, options?: Record<string, unknown>) => {
-      const [Entity, p] = resolve(entity, options as { perspective?: string });
-      const rest = Object.fromEntries(Object.entries(options ?? {}).filter(([k]) => k !== 'perspective'));
+      const [Entity, p] = resolve(entity, options as { dataset?: string });
+      const rest = Object.fromEntries(Object.entries(options ?? {}).filter(([k]) => k !== 'dataset'));
       return Entity.create(p, data, Object.keys(rest).length ? rest : undefined);
     },
-    update: (entity: string, id: string, data: Record<string, unknown>, options?: { perspective?: string }) => {
+    update: (entity: string, id: string, data: Record<string, unknown>, options?: { dataset?: string }) => {
       const [Entity, p] = resolve(entity, options);
       return Entity.update(p, id, data);
     },
-    delete: (entity: string, id: string, options?: { perspective?: string }) => {
+    delete: (entity: string, id: string, options?: { dataset?: string }) => {
       const [Entity, p] = resolve(entity, options);
       return Entity.delete(p, id);
     },
@@ -224,7 +227,7 @@ export default function TemplateProvider() {
       /*
         `options.dataset` names where, and an unresolvable name refuses.
 
-        Passing no perspective used to mean `resolve()` fell through to `datasetStore.currentDataset()`
+        Passing no dataset used to mean `resolve()` fell through to `datasetStore.currentDataset()`
         — the space *on screen* — which is right for a write caused by the person looking at it and
         wrong for every module whose work outlives the view. #161 made a call survive navigation, and
         transcribe kept writing utterances into whichever space had been opened since. See
@@ -245,8 +248,8 @@ export default function TemplateProvider() {
         This agent's own records, in their personal space — the write half of
         `entities: { scope: 'agent' }`.
 
-        Everything goes through `recordActions` with the personal perspective named, so there is one
-        place that knows how a perspective path is resolved and an agent-scoped module cannot reach a
+        Everything goes through `recordActions` with the personal dataset named, so there is one
+        place that knows how a dataset path is resolved and an agent-scoped module cannot reach a
         space by accident: the path is fixed here rather than passed in.
       */
       agentData: {
@@ -259,23 +262,23 @@ export default function TemplateProvider() {
           if (!datasetStore.personalDataset()) return null;
           const created = (await recordActions.create(entity, fields, {
             ...options,
-            perspective: PERSONAL_PERSPECTIVE,
+            dataset: PERSONAL_DATASET,
           })) as { id?: string } | undefined;
           return created?.id ?? null;
         },
         find: async (entity, query) => {
           if (!datasetStore.personalDataset()) return [];
-          const [Model, p] = resolve(entity, { perspective: PERSONAL_PERSPECTIVE });
+          const [Model, p] = resolve(entity, { dataset: PERSONAL_DATASET });
           const rows = (await Model.findAll(p, query as never)) as unknown as Record<string, unknown>[];
           return rows ?? [];
         },
         update: async (entity, id, fields) => {
           if (!datasetStore.personalDataset()) return;
-          await recordActions.update(entity, id, fields, { perspective: PERSONAL_PERSPECTIVE });
+          await recordActions.update(entity, id, fields, { dataset: PERSONAL_DATASET });
         },
         remove: async (entity, id) => {
           if (!datasetStore.personalDataset()) return;
-          await recordActions.delete(entity, id, { perspective: PERSONAL_PERSPECTIVE });
+          await recordActions.delete(entity, id, { dataset: PERSONAL_DATASET });
         },
         documents: documentAccess(() => datasetStore.personalDataset()),
       },
@@ -376,6 +379,21 @@ export default function TemplateProvider() {
     modules: moduleStores,
     consoleStore,
     record: recordActions,
+    /*
+      Copy a string, and say so. A host action rather than a store's, because what is copied is
+      whatever the schema is showing — a prompt, a log, an id — and no store owns that. The toast is
+      the only sign a copy happened, so it names what was copied when the caller says.
+    */
+    clipboard: {
+      copy: async (text: unknown, what?: unknown) => {
+        const named = typeof what === 'string' && what ? what : 'Text';
+        if (await copyText(typeof text === 'string' ? text : JSON.stringify(text ?? ''))) {
+          toastService.success(`${named} copied`);
+        } else {
+          toastService.error(`Could not copy the ${named.toLowerCase()}`);
+        }
+      },
+    },
     // Host wiring, not backend adaptation — any backend would wire these the same way, so they stay
     // here rather than pretending to be AD4M-specific.
     $onError: (msg: string) => toastService.error(msg),
@@ -440,6 +458,8 @@ export default function TemplateProvider() {
       currentDataset: () => datasetStore.currentDataset()?.handle ?? null,
       currentDatasetEntities: modelsForBindings,
       profiles: profileStore.profiles,
+      // Per-DID, so a `$agent` row depends on its own agent rather than on the whole cache.
+      profileFor: profileStore.profileFor,
       fetchProfile: profileStore.fetchProfile,
       ephemeral: sessionStore.ephemeralPort,
     }),
@@ -490,12 +510,15 @@ export default function TemplateProvider() {
     ...sources,
     arrangedBoard: (options: unknown) => {
       const given = (options ?? {}) as { columns?: unknown; board?: unknown };
+      const flowView = taskFlowLive.view();
       const view = arrangedBoardSource({
         ...given,
         pending: boardOptimism.overlay(),
         // Who is on each card, including a tick nobody's subscription has carried back yet — a
         // filter that ignored it would dim the card somebody was just assigned to.
         pendingInvolvements: involvementOptimism.overlay(),
+        // Where the space's states ask for agreement, a card is where its run is. See `taskFlow.ts`.
+        flow: flowView,
       });
 
       const rows = new Map<string, readonly string[]>();
@@ -515,7 +538,9 @@ export default function TemplateProvider() {
         ? (given as { records: unknown[] }).records
         : []) as unknown[]) {
         const row = record as { id?: string; status?: unknown } | null;
-        if (row?.id) rows.set(`${row.id}.status`, [String(row.status ?? '')]);
+        // Against the state the board draws — the run's where there is one — or a drop that moved a
+        // run would be held until `status` caught up, which it may never do if nobody mirrors it.
+        if (row?.id) rows.set(`${row.id}.status`, [flowStateOf(flowView, row.id) ?? String(row.status ?? '')]);
       }
 
       queueMicrotask(() => boardOptimism.settle((id, relation) => rows.get(`${id}.${relation}`)));
@@ -627,7 +652,7 @@ export default function TemplateProvider() {
 
   const BINDING_KEYS = [
     '$getEntity',
-    '$getEntitiesForPerspective',
+    '$getEntityForDataset',
     '$currentDataset',
     '$identities',
     '$queryAdapter',
@@ -641,7 +666,7 @@ export default function TemplateProvider() {
   }
 
   /**
-   * The dataset accessors a `perspective` option may name.
+   * The dataset accessors a `dataset` option may name.
    *
    * ## Why this is a list and not a walk
    *
@@ -650,7 +675,7 @@ export default function TemplateProvider() {
    * straight here from a template, so
    *
    * ```json
-   * { "$action": "record.create", "args": ["TextBlock", {}, { "perspective": "sessionStore.logout" }] }
+   * { "$action": "record.create", "args": ["TextBlock", {}, { "dataset": "sessionStore.logout" }] }
    * ```
    *
    * logged the user out from a synced space template, and `runtimeStore.restartExecutor`,
@@ -667,7 +692,7 @@ export default function TemplateProvider() {
    * is a deliberate widening of what a template may write into, not something that arrives by
    * being reachable.
    */
-  const PERSPECTIVE_PATHS = new Set([
+  const DATASET_PATHS = new Set([
     'datasetStore.currentDataset',
     'datasetStore.rootDataset',
     'datasetStore.personalDataset',
@@ -677,9 +702,9 @@ export default function TemplateProvider() {
 
   // Resolves one of the named dataset accessors above. Only called at action-dispatch time, so
   // `stores` is always fully initialized.
-  function resolvePerspective(path?: string): DatasetProxy | null {
-    if (!path || !PERSPECTIVE_PATHS.has(path)) {
-      if (path) console.warn(`perspective: "${path}" is not a dataset; using the current one`);
+  function resolveDataset(path?: string): DatasetProxy | null {
+    if (!path || !DATASET_PATHS.has(path)) {
+      if (path) console.warn(`dataset: "${path}" is not a dataset accessor; using the current one`);
       return null;
     }
     const [storeName, member] = path.split('.');
@@ -695,11 +720,8 @@ export default function TemplateProvider() {
 
   // Mutations need the raw model class (create/update/delete), not the renderer's read-only
   // handle — resolved through the model layer's own registry.
-  function resolve(entityName: string, opts?: { perspective?: string }) {
-    return [
-      getEntity(entityName),
-      resolvePerspective(opts?.perspective) ?? datasetStore.currentDataset()!.handle,
-    ] as const;
+  function resolve(entityName: string, opts?: { dataset?: string }) {
+    return [getEntity(entityName), resolveDataset(opts?.dataset) ?? datasetStore.currentDataset()!.handle] as const;
   }
 
   /*
@@ -714,7 +736,18 @@ export default function TemplateProvider() {
     who wrote this schema — and the renderer has no way to know that. It stays neutral and walks
     whatever bag it is given, which is the same division that keeps `ModuleStoreDeps` honest.
   */
-  const chromeBag = buildTemplateBag(stores, { grants: CHROME_TIER });
+  /*
+    Whether somebody asked, for the gesture gate on both bags below: an action other than an
+    `ambient` one runs only when a press, a key or typing reached the part of the template calling
+    it, so an image that finishes loading cannot write into a space. See `gesture.ts` in
+    `@we/schema-shared`.
+
+    Chrome only reports — runs the action and says so in the console. It is authored here and
+    reviewed, so refusing there buys little and could break something nobody has exercised since;
+    the report is how anything that slips through gets found before it is turned on.
+  */
+  onCleanup(installGestureTracking(window));
+  const chromeBag = buildTemplateBag(stores, { grants: CHROME_TIER, gesture: 'report' });
   /*
     The space bag, with the host's own confirmation in front of every destructive action.
 
@@ -731,6 +764,8 @@ export default function TemplateProvider() {
   const templateBag = buildTemplateBag(stores, {
     grants: SPACE_TIER,
     onDestructive: (path, args) => shellStore.requestDestructive(path, args),
+    // Enforced: this is the bag a stranger's template renders against.
+    gesture: 'enforce',
   });
 
   onCleanup(provideTemplateBag(templateBag));
@@ -1228,7 +1263,7 @@ export default function TemplateProvider() {
       }}
       // Where a reference inside a composition goes when somebody follows it. The host's knowledge
       // for the same reason the dataset is: a block cannot know where a record's page lives, and
-      // threading a handler from every call site is the `perspective` string all over again.
+      // threading a handler from every call site is the `dataset` string all over again.
       openRef={(ref) => void spaceStore.openRecordRef(ref)}
       // A quote names whose words it holds. A person not yet cached is fetched, and the name arrives
       // through the same reactive cache a byline reads.

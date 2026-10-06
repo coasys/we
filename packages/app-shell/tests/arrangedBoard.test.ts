@@ -403,6 +403,41 @@ describe('while a drag is in flight', () => {
     expect(view.columns.map((c) => c.id)).toEqual(['c2', 'c1']);
   });
 
+  /*
+    A bound column shows work by STATE as well as by arrangement, and a card on screen is not
+    work to bring in. `available` asked what the board had been given — only arrangements — so on
+    a gathering board it offered whatever was sitting in the next column along, and picking one
+    moved a card from where it was to where it was.
+  */
+  it('leaves out a card a bound column is already showing by state', () => {
+    const view = arrangedBoard({
+      // Nothing arranged anywhere: both cards reach their columns by status alone.
+      ...gathering([
+        { id: 'c1', slug: 'todo', arranges: [] },
+        { id: 'c2', slug: 'doing', arranges: [] },
+      ]),
+      records: [todo, doing, orphan],
+      states,
+    });
+
+    expect(view.contents.c1.unarranged.map((r) => r.id)).toEqual(['t1']);
+    expect(view.contents.c2.unarranged.map((r) => r.id)).toEqual(['t2']);
+    // Neither is work to bring in; the one no column claims is on the board too, under Unplaced.
+    expect(view.available).toEqual([]);
+    expect(view.unplaced.map((r) => r.id)).toEqual(['t4']);
+  });
+
+  it('still offers work a curated board does not draw at all', () => {
+    // The counterpart: a made board's pool is what it holds, so a state match draws nothing and
+    // the card really is elsewhere.
+    const view = arrangedBoard({
+      ...curated([{ id: 'c1', slug: 'todo', arranges: ['t1'] }]),
+      records: [todo, doing],
+      states,
+    });
+    expect(view.available.map((r) => r.id)).toEqual(['t2']);
+  });
+
   it('keeps a dragged-in card out of the "bring in existing work" picker', () => {
     // `available` is what the board holds nowhere. A card the board is about to hold is not that,
     // and offering it would let somebody add the card they are in the middle of moving.
@@ -521,5 +556,70 @@ describe('a board read by who is on the work', () => {
       pendingInvolvements: [{ node: 't3', agent: BEN, kind: 'assignee', on: true }],
     });
     expect(view.dimmed).not.toContain('t3');
+  });
+});
+
+describe('a board over task states that ask for agreement', () => {
+  const ANA = 'did:key:ana';
+  const BEN = 'did:key:ben';
+  const kinds = [{ slug: 'reviewer', semantic: 'reviewing' }];
+  const todoCol: Col = { id: 'c1', slug: 'todo', arranges: [] };
+  const doingCol: Col = { id: 'c2', slug: 'doing', arranges: [] };
+  const doneCol: Col = { id: 'c3', slug: 'done', arranges: [] };
+  // `status` still says todo; the run has moved on. The run is what the board shows.
+  const moved = { id: 't1', status: 'todo' };
+  const waitingCard = { id: 't2', status: 'doing' };
+  const flow = {
+    snapshot: {
+      runs: [
+        { id: 'r1', subject: 't1', state: 'doing', startedAt: 1 },
+        { id: 'r2', subject: 't2', state: 'doing', startedAt: 2 },
+      ],
+      proposals: [{ id: 'p1', run: 'r2', from: 'doing', to: 'done', proposer: ANA, voters: [ANA], settled: false }],
+    },
+    rules: { done: { approvals: 1, approverKind: 'reviewer' } },
+  };
+  const base = {
+    ...gathering([todoCol, doingCol, doneCol]),
+    records: [moved, waitingCard],
+    states,
+    kinds,
+    involvements: [{ node: 't2', agent: BEN, kind: 'reviewer' }],
+    flow,
+  };
+
+  it('puts a card in the column its run is in, whatever its status says', () => {
+    const view = arrangedBoard({ ...base, me: ANA });
+    expect(view.contents.c2.unarranged.map((r) => r.id)).toEqual(['t1', 't2']);
+    expect(view.contents.c1.count).toBe(0);
+  });
+
+  it('describes a waiting move on its card, counting only whoever holds the kind on it', () => {
+    const view = arrangedBoard({ ...base, me: ANA });
+    expect(view.flow.t2).toMatchObject({
+      to: 'done',
+      voters: [ANA],
+      counted: 0,
+      needs: 1,
+      mine: true,
+      canApprove: false,
+    });
+    expect(view.flow.t1).toBeUndefined();
+    expect(arrangedBoard({ ...base, me: BEN }).awaiting).toEqual(['t2']);
+    expect(view.awaiting).toEqual([]);
+  });
+
+  it('draws only the cards waiting on the viewer when asked, and keeps the counts true', () => {
+    const view = arrangedBoard({ ...base, me: BEN, awaitingMe: true });
+    expect(view.awaitingOnly).toBe(true);
+    expect(view.contents.c2.unarranged.map((r) => r.id)).toEqual(['t2']);
+    expect(view.contents.c2.count).toBe(2);
+    expect(view.contents.c2.shown).toBe(1);
+  });
+
+  it('reads status, and describes nothing, where the space has no flow', () => {
+    const view = arrangedBoard({ ...base, flow: null, me: BEN });
+    expect(view.contents.c1.unarranged.map((r) => r.id)).toEqual(['t1']);
+    expect(view.flow).toEqual({});
   });
 });

@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { CHROME_TIER, inspectTemplateSurface, SPACE_TIER } from '../src/shared/registries/templateSurface';
-import { acceptTemplate } from '../src/shared/templateAcceptance';
+import { acceptTemplate, describeRefusal } from '../src/shared/templateAcceptance';
 
 const meta = { name: 'Test', description: 'A template', icon: 'star' };
 
@@ -148,5 +148,57 @@ describe('finding the references at all', () => {
     ]);
 
     expect(inspectTemplateSurface(schema, SPACE_TIER).groups.sort()).toEqual(['content', 'navigation']);
+  });
+});
+
+describe('elements a template may not mount', () => {
+  it('admits the template and names them, wherever they are in the tree', () => {
+    const accepted = acceptTemplate(
+      {
+        type: 'Column',
+        meta: { name: 'T', description: 'd', icon: 'x' },
+        $defs: { d1: { type: 'iframe', props: { srcdoc: 'x' } } },
+        children: [{ type: 'div', children: [{ type: 'script', children: ['x'] }] }],
+      },
+      { origin: 'a space' },
+    );
+    expect(accepted.schema).not.toBeNull();
+    expect(accepted.refusedElements).toEqual(['iframe', 'script']);
+  });
+
+  it('names nothing for a template of permitted elements', () => {
+    const accepted = acceptTemplate(
+      {
+        type: 'div',
+        meta: { name: 'T', description: 'd', icon: 'x' },
+        children: [{ type: 'img', props: { src: 'a.png' } }],
+      },
+      { origin: 'a space' },
+    );
+    expect(accepted.refusedElements).toEqual([]);
+  });
+});
+
+/*
+  What a refused template's row in Settings says. A refused template used to be in no list at all,
+  so it could be neither seen nor deleted; listing it is only useful if the line under its name says
+  what is wrong in words that fit a row.
+*/
+describe('the one line a refused template is listed with', () => {
+  it('names the fault and the last few steps to it, not thirty', () => {
+    // The shape `formModal` wrote before October: a close on a `$if`, which nothing reads.
+    const button = {
+      type: 'we-button',
+      props: { onClick: { $if: { condition: { $: 'local.x' }, then: { $action: 'store.go' } }, onSuccess: [] } },
+      children: ['Go'],
+    };
+    const deep = { type: 'Column', children: [{ type: 'Column', children: [{ type: 'Column', children: [button] }] }] };
+    const accepted = acceptTemplate(
+      { type: 'Column', meta: { name: 'Old copy', description: '', icon: 'cube' }, children: [deep] },
+      { origin: 'your library', grants: CHROME_TIER },
+    );
+
+    expect(accepted.schema).toBeNull();
+    expect(describeRefusal(accepted)).toBe('Unrecognized key: "onSuccess" (at …children.0.props.onClick)');
   });
 });

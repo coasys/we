@@ -251,6 +251,22 @@ const RELATIVE =
   /^oklch\(from\s+var\((--we-(?:role|color)-[a-z0-9-]+)\)\s+calc\(l\s*([+-])\s*(?:([\d.]+)|var\(--we-state-(hover|active)-([a-z]+),\s*var\(--we-state-(?:hover|active)\)\))\)\s+c\s+h\)$/;
 
 /**
+ * The same form with the step bounded at both ends — `surfaceInverse`, and so far only it.
+ *
+ * `clamp(lo, calc(l - n), hi)` is how a role says "this far off what I am measured from, but not
+ * past either end of the ramp": the middle term carries the relationship and the bounds are the two
+ * polarities stating what they need. A separate pattern rather than three optional groups bolted
+ * onto `RELATIVE`, because a regex that matched either form would leave the caller unable to tell
+ * which it had — and the bounds are the whole point of this one.
+ */
+const RELATIVE_CLAMPED =
+  /^oklch\(from\s+var\((--we-role-[a-z0-9-]+)\)\s+clamp\(([\d.]+),\s*calc\(l\s*([+-])\s*([\d.]+)\),\s*([\d.]+)\)\s+c\s+h\)$/;
+
+/** `--we-role-surface-sunken` → `surfaceSunken`, the one spelling change between CSS and the tokens. */
+const roleOf = (cssVar: string): ThemeRole =>
+  cssVar.replace(/^--we-role-/, '').replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()) as ThemeRole;
+
+/**
  * Every role a theme resolves to, by running the *actual* derivation over resolved base colours.
  *
  * ## Why this stopped being modelled here
@@ -300,6 +316,25 @@ function themeColors(theme: ThemeOverrides): Map<ThemeRole, Rgba> {
       const to = alias[1].replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()) as ThemeRole;
       return resolveDeclared(to, new Set([...seen, name]));
     }
+    /*
+      The bounded form, before the plain one — `clamp()` never matches `RELATIVE`, so the order is
+      only about reading top to bottom, but an unhandled relative value falls through to `resolve`
+      and comes back null, which takes every role measured against it down with it.
+    */
+    const clamped = RELATIVE_CLAMPED.exec(value.trim());
+    if (clamped) {
+      const [, base, lo, sign, amount, hi] = clamped;
+      if (seen.has(name)) return null;
+      const from = resolveDeclared(roleOf(base), new Set([...seen, name]));
+      if (!from) return null;
+      const { l, c, h } = rgbToOklch(from);
+      const stepped = l + (sign === '-' ? -1 : 1) * parseFloat(amount);
+      // CSS `clamp(a, b, c)` is `max(a, min(b, c))` — which is not the same as clamping in the other
+      // order when the bounds cross, and a theme whose page sits below `lo` is exactly that case.
+      const bounded = Math.max(parseFloat(lo), Math.min(stepped, parseFloat(hi)));
+      return { ...oklchToRgb(Math.min(1, Math.max(0, bounded)), c, h), a: from.a };
+    }
+
     const relative = RELATIVE.exec(value.trim());
     if (!relative) return resolve(value, theme);
 
@@ -315,7 +350,7 @@ function themeColors(theme: ThemeOverrides): Map<ThemeRole, Rgba> {
     */
     const from = base.startsWith('--we-color-')
       ? resolve(`var(${base})`, theme)
-      : resolveDeclared(base.replace(/^--we-role-/, '').replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()) as ThemeRole, new Set([...seen, name])); // prettier-ignore
+      : resolveDeclared(roleOf(base), new Set([...seen, name]));
     if (!from) return null;
     const { l, c, h } = rgbToOklch(from);
     const moved = Math.min(1, Math.max(0, l + (sign === '-' ? -1 : 1) * parseFloat(amount)));
@@ -594,6 +629,74 @@ describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s elevation', (name) 
       lum('surface'),
     );
     expect(lum('surfaceSunken'), `${name}: a sunken well is not below the surface`).toBeLessThanOrEqual(lum('surface'));
+  });
+});
+
+/**
+ * Is the tooltip's chip actually distinguishable from the plane it is drawn over?
+ *
+ * The one question the whole contrast layer could not ask. Every other check here is a *foreground*
+ * on a background — `onInverse` on `surfaceInverse` was asserted throughout — and a bubble whose
+ * text is perfectly legible against a fill that is the same colour as the sidebar behind it passes
+ * all of them. `surface-audit` asks the background-on-background question for schemas, but it knows
+ * about `surface-sunken` and nothing else.
+ *
+ * So this ran for four themes with the tooltip at an absolute L 24.8% while their pages drifted onto
+ * it: in `dark` the chip landed 0.2 points from the chrome and 0.3 from a sunken well, and in
+ * `black` it was lighter than every plane in the theme. Nothing failed, because nothing asked.
+ *
+ * Four points is the floor rather than the target, and the arithmetic sets it. The rule in `role.ts`
+ * is nine off the page; the nearest plane to that is `surfaceSunken`, three and a half below the
+ * page, so the design's own margin is five and a half in every dark theme and seventy-five in a
+ * light one. A threshold at the design's figure would fail on rounding, and one far under it would
+ * never fire — four is under the margin and well over the 0.2 points `dark` was shipping, which is
+ * the distance this exists to refuse.
+ *
+ * It moves when the step moves, and that is correct rather than a weakness: the assertion is "the
+ * relationship still holds", and what the relationship *is* lives in `role.ts`. What it must not
+ * become is a number nudged down to accommodate a chip that has drifted back onto the stack.
+ */
+describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s tooltip separation', (name) => {
+  const theme = THEME_PRESETS[name].parameters as ThemeOverrides;
+  const MINIMUM = 4;
+
+  const lightness = (r: ThemeRole) => {
+    const c = roleColor(r, theme);
+    expect(c, `could not resolve ${r}`).toBeTruthy();
+    return rgbToOklch(c!).l * 100;
+  };
+
+  /*
+    Every plane a tooltip can be drawn over, which is all of them — it is promoted to the top layer
+    and positioned against whatever the trigger happens to sit on, so there is no ground it can be
+    assumed to avoid. `chrome` and `surfaceSunken` are the two that caught this: a tooltip on the
+    module rail and a tooltip on an input trough are both ordinary, and both were invisible.
+  */
+  it.each(['chrome', 'page', 'surface', 'surfaceRaised', 'surfaceSunken'] as ThemeRole[])(
+    'reads as a separate plane from %s',
+    (ground) => {
+      const gap = lightness('surfaceInverse') - lightness(ground);
+      expect(
+        Math.abs(gap),
+        `${name}: the tooltip is ${Math.abs(gap).toFixed(1)} lightness points from ${ground}, which is not an edge`,
+      ).toBeGreaterThanOrEqual(MINIMUM);
+    },
+  );
+
+  /*
+    And on the darker side of all of them, not merely far from them.
+
+    Distance alone would accept a chip that has gone *lighter* than the page, which is what `black`
+    was rendering — a tooltip brighter than every surface in a theme whose whole character is that
+    nothing is bright. It passed as "opposite" on the arithmetic and read as a mistake on screen.
+  */
+  it('sits below every plane rather than above one', () => {
+    for (const ground of ['chrome', 'page', 'surface', 'surfaceRaised', 'surfaceSunken'] as ThemeRole[]) {
+      expect(
+        lightness('surfaceInverse'),
+        `${name}: the tooltip is lighter than ${ground}, so the inverse is inverted`,
+      ).toBeLessThan(lightness(ground));
+    }
   });
 });
 

@@ -48,7 +48,7 @@ export const installPrompt: SchemaNode = confirmModal({
     // more useful than omitting the section and leaving the reader to wonder what was hidden.
     {
       type: 'Column',
-      props: { gap: '200', bg: 'surface-sunken', r: '400', p: '400' },
+      props: { gap: '200', bg: 'surface', r: '400', p: '400' },
       children: [
         {
           type: 'we-text',

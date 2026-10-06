@@ -1,3 +1,4 @@
+import { captureGesture, runWithGesture } from '../gesture';
 import type { resolveProp } from './dispatcher';
 import { isDeferredArg } from './expression';
 import { deepUnwrap } from './reactive';
@@ -162,21 +163,30 @@ export function resolveActionProp(
       const unwrappedArgs = argsToUse.map(deepUnwrap);
       const result = method.apply(store, unwrappedArgs);
 
-      // Attach lifecycle callbacks if the action returned a Promise
+      /*
+        Attach lifecycle callbacks if the action returned a Promise.
+
+        Each runs as part of the gesture that called the action, captured now — before the promise —
+        because by the time it settles the press that caused it has finished dispatching. "Save, then
+        navigate to what was saved" is one thing a person did; without this the navigation would be
+        refused as though nobody had asked. See `gesture.ts`.
+      */
       if (result instanceof Promise) {
+        const gesture = captureGesture();
         result
           .then((resolved: unknown) => {
-            if (token.onSuccess) dispatchActions(token.onSuccess, { ...context, result: resolved });
+            if (token.onSuccess)
+              runWithGesture(gesture, () => dispatchActions(token.onSuccess!, { ...context, result: resolved }));
           })
           .catch((err: unknown) => {
             if (token.onError) {
-              dispatchActions(token.onError, { ...context, result: err });
+              runWithGesture(gesture, () => dispatchActions(token.onError!, { ...context, result: err }));
             } else {
               console.error(`[$action] ${token.$action} failed:`, err);
             }
           })
           .finally(() => {
-            if (token.onFinally) dispatchActions(token.onFinally, context);
+            if (token.onFinally) runWithGesture(gesture, () => dispatchActions(token.onFinally!, context));
           });
       }
 

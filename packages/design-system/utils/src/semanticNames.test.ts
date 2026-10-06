@@ -109,6 +109,8 @@ describe('named tokens of a scale', () => {
     ['letter-spacing', 'wide'],
     ['font-size', 'base'],
     ['shadow', 'lg'],
+    ['color', 'white'],
+    ['color', 'black'],
   ])('resolves %s "%s" without reporting it', (prefix, token) => {
     const spy = warn();
 
@@ -122,6 +124,13 @@ describe('named tokens of a scale', () => {
     // A name of its own: reports are deduped for the life of the process, so a name another test
     // has already used would pass this whatever the rule underneath did.
     expect(tokenVar('radius', 'recessed')).toBe('var(--we-radius-recessed)');
+    expect(spy).toHaveBeenCalledOnce();
+  });
+
+  it('still reports a colour name the scale does not have', () => {
+    const spy = warn();
+
+    expect(tokenVar('color', 'blackish')).toBe('var(--we-color-blackish)');
     expect(spy).toHaveBeenCalledOnce();
   });
 

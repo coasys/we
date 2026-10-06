@@ -15,6 +15,10 @@ const SOLID_TESTS = [
   'tests/runtimeStore.test.tsx',
   'tests/accountStore.test.tsx',
   'tests/profileStore.test.tsx',
+  // Counts effect re-runs through a real provider. The node project resolves solid-js to its SSR
+  // build, where `createEffect` never runs again — so every count would be 1 and the test would
+  // pass whether or not the cache is fine-grained, which is the one thing it exists to tell apart.
+  'tests/profileIndex.test.tsx',
   'tests/routeStore.test.tsx',
   'tests/shellRouteStore.test.tsx',
   'tests/shellPathMemory.test.tsx',
@@ -47,6 +51,21 @@ const SOLID_TESTS = [
   'tests/dockStowAndReveal.test.tsx',
   // Mounts the real RecordStore over a stand-in data layer to drive a canvas's undo round trip.
   'tests/canvasHistory.test.tsx',
+  // The same, for a card dragged to another place in a tree.
+  'tests/treeUndo.test.tsx',
+  // Mounts a card's reaction mark and presses it.
+  'tests/reactionBadge.test.tsx',
+  // Nothing renders, but every case measures a real element's box and reads real attributes off a
+  // real tree — the DOM is the subject, and the frame maths is what a live cursor is right or
+  // silently wrong by.
+  'tests/liveView.test.ts',
+  // Drives real Solid effects, which is the whole subject: the failure is what a framework does with
+  // an effect whose first run tracked nothing, and the node project's SSR build never re-runs one.
+  'tests/moduleServiceBinding.test.ts',
+  // Builds a module's store against a real reactive graph. The module package's own tests use the
+  // one-shot effect, which cannot reproduce an effect that re-triggers itself — the bug that froze the
+  // app before login.
+  'tests/liveStoreReactive.test.tsx',
 ];
 
 export default defineConfig({

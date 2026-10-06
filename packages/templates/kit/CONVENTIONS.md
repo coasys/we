@@ -73,6 +73,79 @@ self-documenting and keeps it visually parallel to its recipe in `@we/ai-context
   - value has a default, key always present → `px: opts.px ?? '400'`
   - the key itself is optional → `...(opts.minHeight !== undefined && { minHeight: opts.minHeight })`
 
+## A `$if` whose branches agree about their content is one node
+
+A fragment's output is DATA, and its size is paid for continuously: the editor sends the whole
+schema to a language model on every turn and gets a whole schema back, the undo history holds a
+copy per edit, and the template crosses the wire with all of it. A fragment is also the shape many
+templates inherit, so a copy here is a copy at every call site at once.
+
+So when a mode or a flag changes the WRAPPER around some content and not the content itself, put
+the condition in the wrapper's props rather than writing the content down both sides of a `$if`:
+
+```ts
+// One body. The mode decides what is around it.
+{ type: 'CollapsedContent',
+  props: { collapsed: { $: "local.displayMode != 'expanded' && !local.expanded" },
+           showToggle: { $: "local.displayMode != 'expanded'" } },
+  children: [body] }
+
+// Not this — `body` is in the output twice, and `body` is the whole of a card.
+{ type: '$if', props: { condition: { $: "local.displayMode == 'expanded'" },
+                        then: { type: 'Column', children: body },
+                        else: { type: 'CollapsedContent', children: [{ type: 'Column', children: body }] } } }
+```
+
+`buildCard` was the second shape, which made every card in WE carry its body three times — 150,445
+characters a copy in `CardsView`. Collapsing it took that view down 28%.
+
+### Three shapes this takes
+
+**The wrapper varies and the content does not** — the case above, and the one to reach for first.
+The condition moves into the wrapper's props and the content is written once.
+
+**The branch is around too much.** `taskBoard`'s board row chose between a row per person and the
+board's columns, and both sides then listed the add-column button and the Unplaced column. The two
+arrangements differ in what comes FIRST and agree about everything after it, so the `$if` belongs
+around that first position rather than around the whole row:
+
+```ts
+{ type: 'Row', props: { gap: '400' }, children: [
+  { type: '$if', props: { condition: byPerson, then: personRows(), else: columns() } },
+  { type: '$if', props: { condition: notByPerson, then: addColumnButton() } },
+  unplacedColumn(),
+] }
+```
+
+This one is usually a readability _improvement_ as well: written as two rows, a reader had to diff
+them to find out what actually differed.
+
+**Two overlapping conditions over one node.** `signalDisplay` showed a reactor list outright for
+one person and a summary-plus-disclosure for a crowd, with the list written into both sides of a
+`total == 1` branch. The questions are independent, so they can be asked separately — the summary
+when there is more than one, the list when there is one _or_ when anybody asked.
+
+**Be honest about the cost of this third shape.** The branch read as a sentence — _one person is
+shown; a crowd is summarised_ — and two overlapping conditions do not: a reader has to combine
+them to recover it. The data is better and the behaviour is identical, but the intent is a step
+less legible, so **carry the sentence into a comment on the condition**. If the two conditions
+cannot be written without restating most of each other, the branch was the clearer form and the
+duplication is the price of saying what you meant.
+
+Two things to know before reaching for any of them:
+
+- **A component may have to meet you halfway.** `CollapsedContent` renders its children bare when
+  there is nothing to collapse and no toggle offered, which is what makes the expanded mode's DOM
+  identical to what the `$if` used to produce. Without that the content would sit inside an
+  `overflow: hidden` box — a no-op for height, and not a no-op for anything that needs to escape
+  it. Check what the component does in the mode you are collapsing INTO rather than assuming.
+- **This is not the same as deduplicating a fragment.** A fragment called ten times produces ten
+  copies because a tree cannot name a shape and point at it; that is the data model, and nothing
+  you write here fixes it. This rule is only about one `$if` saying the same thing twice.
+
+`pnpm --filter @we/schema-shared size-audit` reports both, separately — a branch pair that shares
+content, and a shape that merely recurs.
+
 ## Colour — roles only
 
 Every `bg`, `color` and border colour a fragment emits names a **semantic role** (`surface`,

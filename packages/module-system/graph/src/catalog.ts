@@ -3,9 +3,9 @@
  *
  * This file is the reason the plugin system is usable rather than merely well-designed. Props tell an
  * author that `layout.type` is a string; nothing in a prop list says which strings exist, and a plugin
- * nobody can name might as well not be registered. The globe is the cautionary case — its layer
- * protocol is good, and an LLM still cannot author a globe template, because no catalog of layer names
- * ever reaches the generated context.
+ * nobody can name might as well not be registered. The globe was the cautionary case — a good layer
+ * protocol that no LLM could author a template for, because no catalog of layer names reached the
+ * generated context — until it got one (`GLOBE_LAYER_CATALOG` in `@we/module-globe`).
  *
  * So the catalog is declared here and picked up by `@we/ai-context` (`context: { type: 'plugins' }` in
  * this package's `package.json`), landing in CLAUDE.md alongside the component registry. A module
@@ -22,6 +22,18 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
   component: 'GraphView',
   description:
     'Names resolvable inside GraphView props: seed sources (seeds.source), expanders (expansion.expanders), layouts (layout.type) and behaviours (behaviours[]).',
+  /*
+    Where each name is written, so the validator refuses one that does not exist rather than leaving
+    the graph to render nothing. Style fields and metrics are not here: they sit deep in style rules,
+    and a metric is as often computed as written.
+  */
+  placements: [
+    { prop: 'seeds', key: 'source', categories: ['seed'] },
+    { prop: 'layout', key: 'type', categories: ['layout'] },
+    { prop: 'expansion', key: 'expanders', categories: ['expander'] },
+    { prop: 'behaviours', key: 'type', categories: ['behaviour'], bare: true },
+    { prop: 'controls', key: 'type', categories: ['control'], bare: true },
+  ],
   plugins: [
     // ─── Seed sources ──────────────────────────────────────────────────────────
     {
@@ -100,6 +112,18 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           type: 'string[]',
           description:
             'Relations to count on each card, read onto its data as `<name>Count` — `["signals", "comments"]` for "what have people made of this". The projections ride in the read the seed already makes, so a canvas of three hundred cards pays nothing extra; a query per card would be three hundred subscriptions. A type that does not declare the relation is asked for no count rather than refusing the read, since a refusal would take that whole type off the canvas. Absent for a count of zero, like every other unset field, so a rule can ask whether it is there.',
+        },
+        {
+          name: 'weigh',
+          type: '{ signalTypeId: string; aggregate?: string; mode?: string; rangeMin?: number; rangeMax?: number; step?: number; excludeAuthors?: string[]; me?: string }',
+          description:
+            "Weigh each card by one reaction type, read onto its data as `weight` (with `weightCount`, `weightMine` — what `me` gave — and `weightType`). Read the way every reaction surface reads the type: a toggle counts, a vote nets out, a rating or slider averages, and the community's own `aggregate` where the mode can express it. Absent for a vote or rating nobody has given; zero for a count. What a forest's `sortBy: 'weight'` and a heat rule read. Pass the type's `rangeMin`, `rangeMax` and `step` too, so the pretend people a development build can add answer within its range.",
+        },
+        {
+          name: 'weights',
+          type: 'string',
+          description:
+            "How much each person's voice counts in `weigh` — `did=50,did=0` in whole percent, anyone not named in full; 0 leaves them out. Applied to the answers already read, so changing it re-weighs the canvas with no query — a slider can drive it. The seed reports who answered as `onSeedSummary`'s `voices`: `{ author, cards, mean }`, the busiest first.",
         },
         { name: 'limit', type: 'number', description: 'Rows per type. Default 200.' },
       ],
@@ -186,6 +210,69 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `{ "type": "tree", "options": { "direction": "right", "levelGap": 200 } }`,
     },
     {
+      id: 'forest',
+      category: 'layout',
+      description:
+        'Separate tidy trees side by side along one named connection, each parent centred over its own children, siblings ordered by a field on the card, and everything the connection does not touch in a labelled zone of its own. This is the layout for a map somebody reads an ORDER off — "the strongest option is leftmost". Prefer `tree` where shared parents are the point and crossings are what to reduce, since ordering siblings by data and minimising crossings are the same decision and cannot both be had.',
+      options: [
+        {
+          name: 'spine',
+          type: '{ field: string; value: string | number | boolean }',
+          description:
+            'Which connections make a parent a parent — one field of a line and the value it must hold. `{ "field": "data.relationshipTypeId", "value": "<id>" }` follows one kind a community named. Absent follows every line, which is right only where they are all one kind. Every other line is still drawn; it simply does not decide where a card goes.',
+        },
+        {
+          name: 'sortBy',
+          type: 'string',
+          description:
+            'Card data field deciding sibling order, left to right — "weight" for strongest first, "createdAt" for oldest first, "canvasRank" for an order somebody dragged. Absent leaves the order the graph holds.',
+        },
+        { name: 'sortDirection', type: '"asc" | "desc"', description: 'Default "asc", which is what a date wants.' },
+        {
+          name: 'tiebreakBy',
+          type: 'string',
+          description:
+            'The second key, used only where the first ties. Default "createdAt". Not decoration: two cards on the same number of votes otherwise swap places whenever anything else in the space changes, which reads as the map being unstable.',
+        },
+        {
+          name: 'card',
+          type: '{ width: number; height: number }',
+          description:
+            'The box every card is allotted — uniform on purpose, since ranks read as significance and cards at the sizes somebody chose on a freeform canvas would claim some the data does not support. What a card is DRAWN as is a style rule.',
+        },
+        {
+          name: 'siblingGap',
+          type: 'number',
+          description:
+            "Clear space between two cards side by side. Defaults to a share of the card's WIDTH, so a reader switching to large cards gets room to match — a constant is comfortable at one card size and reads as cards touching at another.",
+        },
+        {
+          name: 'levelGap',
+          type: 'number',
+          description:
+            "Clear space between one rank and the next. A share of the card's HEIGHT, and a larger share than the sibling gap: a rank is read along, so its cards belong together, where the vertical gap is what the lines live in and has to be legible on its own.",
+        },
+        {
+          name: 'treeGap',
+          type: 'number',
+          description: 'Clear space between one tree and the next. Default three sibling gaps.',
+        },
+        {
+          name: 'unattached',
+          type: '"right" | "bottom"',
+          description: 'Where cards on no tree go. Default "right"; "bottom" suits a narrow screen.',
+        },
+        { name: 'unattachedColumns', type: 'number', description: 'How many cards wide that zone is. Default 3.' },
+        {
+          name: 'unattachedLabel',
+          type: 'string',
+          description:
+            'What the zone is called; the count is appended. Default "Unconnected", and an empty string leaves it unlabelled.',
+        },
+      ],
+      example: `{ "type": "forest", "options": { "spine": { "field": "data.relationshipTypeId", "value": { "$": "local.spine" } }, "sortBy": "weight", "sortDirection": "desc", "card": { "width": 180, "height": 120 } } }`,
+    },
+    {
       id: 'radial',
       category: 'layout',
       description: 'Concentric rings by hop distance from the roots — reads as distance from a centre.',
@@ -236,6 +323,20 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `"edgeStyle": [{ "style": { "curve": "smooth" } }]`,
     },
     {
+      id: 'sourceAnchor / targetAnchor',
+      category: 'style',
+      description:
+        'Edge style — which side of each node the line leaves and arrives on ("n", "e", "s", "w"). Normally derived from where the two nodes are, which is right on a canvas, where a line between two cards somebody placed should take the shortest sensible path. It is wrong wherever the ARRANGEMENT carries the meaning: in a downward tree a parent\'s children sit below it and spread sideways, so the geometry attaches the outer ones to their left and right edges and only the middle one to its top — three children, three different-looking relationships, when they are the same relationship. A rule, so an edge\'s own stored anchors still win: those are one canvas\'s tidying of one connection, which is the narrower fact.',
+      example: `"edgeStyle": [{ "style": { "sourceAnchor": "s", "targetAnchor": "n" } }]`,
+    },
+    {
+      id: 'ignoreRoute',
+      category: 'style',
+      description:
+        "Edge style — ignore what one canvas has tidied about this connection, its stored anchors and the points it is bent through, and draw it as the rules say. The usual precedence is the other way round, and that is right on a canvas: a line somebody pulled to a card's left side is a decision about that connection, narrower than any rule. It is wrong wherever the ARRANGEMENT carries the meaning. In a tree every child hangs off its parent's underside and is met at its own top, and that uniformity is what makes a rank readable — so one line bending around something that is no longer in the way is a card disagreeing with the shape for a reason that belonged to a different reading of the same records. Nothing is unwritten: the route is still stored, still the canvas's, and comes back the moment an arrangement that reads it does — and a bend appearing or going away is animated over the switch rather than snapped.",
+      example: `"edgeStyle": [{ "style": { "sourceAnchor": "s", "targetAnchor": "n", "ignoreRoute": true } }]`,
+    },
+    {
       id: 'arrow',
       category: 'style',
       description:
@@ -262,6 +363,13 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       description:
         'Node style. Hides card content below this zoom and falls back to the label. The sibling of labelMinZoom, and the thing that decides whether rich cards scale: a hundred documents rendered at once is a hundred component trees, and at the zoom where a canvas reads as coloured rectangles none of them is legible anyway.',
       example: `"nodeStyle": [{ "style": { "shape": "card", "content": "block", "contentMinZoom": 0.5 } }]`,
+    },
+    {
+      id: 'badge',
+      category: 'style',
+      description:
+        "Node style, cards only. Names a host-supplied mark to pin to the card's lower edge — one a reader can press without picking the card up. WE registers `reaction`, which shows a card's score for the reaction a tree is ordered by and lets a reader give, change or take back their own. Not content: a card's content is inert, so a press anywhere on it starts a drag, and it is clipped to the card's shape; a badge sits on the edge, outside the clip, and takes its own presses. Nothing is drawn when the host supplies no badge by that name.",
+      example: `"nodeStyle": [{ "style": { "shape": "card", "badge": "reaction" } }]`,
     },
     {
       id: 'scaleLabelWithZoom',
@@ -294,6 +402,27 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
         'Groups the visible graph by label propagation. Pair with scale: "categorical" to colour each cluster differently — this is what makes a cluster map.',
       options: [{ name: 'rounds', type: 'number', description: 'Propagation rounds. Default 8.' }],
       example: `"nodeStyle": [{ "style": { "color": { "metric": "community", "scale": "categorical" } } }]`,
+    },
+    {
+      id: 'field',
+      category: 'metric',
+      description:
+        'Reads a number already on the card and normalises it against the rest of the visible graph — what makes a HEAT MAP. Pair it with a scale to colour by it — a named one ("heat") steps, and two colours, scale: { from, to }, blend continuously low to high, so a card’s shade says where in the range it sits — or a range to size by it. Works on a freeform canvas as readily as on a tree, since it is a style value rather than an arrangement. A card with no value is left out entirely rather than scored zero, so it falls through to whatever an earlier rule set: "nobody has answered this" and "this is the coldest thing here" are different facts.',
+      options: [
+        {
+          name: 'from',
+          type: 'string',
+          description: 'The data field to read — "weight", "signalsCount", or a date such as "createdAt".',
+        },
+        {
+          name: 'min',
+          type: 'number',
+          description:
+            "With max, map against a FIXED domain instead of the data's own — for a value whose scale means something absolutely (a 0..1 share, a 1..5 rating), where normalising to what is on screen would make one card at two stars look like the best there is. Values outside are clamped.",
+        },
+        { name: 'max', type: 'number', description: 'The top of that fixed domain.' },
+      ],
+      example: `"nodeStyle": [{ "style": { "color": { "metric": "field", "options": { "from": "weight" }, "scale": "heat" } } }]`,
     },
 
     // ─── Controls ──────────────────────────────────────────────────────────────
@@ -370,6 +499,44 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `{ "type": "drag-node", "options": { "pin": true } }`,
     },
     {
+      id: 'arrange-nodes',
+      category: 'behaviour',
+      description:
+        'Drag a card to another place in a hierarchy, with the tree showing the result as you go — emitting onNodeArrange when it is dropped. One rule — the place whose ghost would be nearest the card: every place it could go (each gap in each row, the level beneath a card with no children, its own place) is asked of the layout, and the one that would draw it closest to the middle of the card in the hand, on its level, is the one shown — so the gap always opens under the card, however the tree reshuffles to make room and wherever the card was picked up; where the end of one family and the start of the next land at one spot, just left of it is the first and just right the second; between levels the last place shown holds; in the unconnected zone it comes out of its tree; over its own place or off the tree it goes back where it was and nothing is emitted. A place it would land is drawn as a dashed ghost with the line it would have, and its own place as a faint hole with no line, so ‘nothing will happen’ never looks like a destination; on release the card travels into it and is held there until the write comes back, so the drop is one movement. The preview needs a layout that reports its hierarchy (forest); on one that does not, the gesture reports CHILD, SIBLING or LOOSE from where it is dropped, with no preview. Writes nothing: what a hierarchy is differs per graph, so the template decides. The alternative to drag-node rather than an addition to it — listing both has them fight for the same press.',
+      options: [
+        {
+          name: 'reorder',
+          type: 'boolean',
+          description:
+            'Whether a drag may change the order of siblings. Default true. Set it false while siblings are ordered by something a drag cannot change — a date, a tally — so a card can still move under another parent, and lands where that order puts it, but is never shown sliding into a place it would not keep.',
+        },
+        {
+          name: 'keep',
+          type: 'string[]',
+          description:
+            "Fields of a connection that keep a card in its tree: dragging into the unconnected zone is refused for a card whose connection to its parent holds a value in any of them, and the preview says why before it is let go. WE passes ['commentsCount', 'signalsCount'] with the canvas seed's `counts`, because it will not delete a connection people have discussed.",
+        },
+        {
+          name: 'keepReason',
+          type: 'string',
+          description: 'What the preview says when `keep` refuses a drop.',
+        },
+        {
+          name: 'reach',
+          type: 'number',
+          description:
+            'Without a hierarchy to preview against: how far from a card, in world units, a drop still counts as beside it. Default 240.',
+        },
+        {
+          name: 'band',
+          type: 'number',
+          description:
+            "Without a hierarchy to preview against: how tall the band searched for siblings is. Defaults to the dragged card's own height.",
+        },
+      ],
+      example: `"behaviours": ["select", { "type": "arrange-nodes", "options": { "reorder": true } }, "pan-zoom"]`,
+    },
+    {
       id: 'connect-nodes',
       category: 'behaviour',
       description:
@@ -380,8 +547,14 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           type: 'boolean',
           description: 'Whether the gesture is live. Default true. Disarmed, the press falls through to drag-node.',
         },
+        {
+          name: 'button',
+          type: '"primary" | "secondary"',
+          description:
+            'Which button starts it. Default "primary", armed as above. "secondary" is the quick form: a right-drag from a card draws a line whether or not anything is armed, leaving the left button to move cards — list it FIRST. A right-click that does not travel draws nothing, and the browser menu is kept off cards while it is listed. Touchscreens have no right-click, so keep another way to connect.',
+        },
       ],
-      example: `"behaviours": [{ "type": "connect-nodes", "options": { "armed": { "$": "local.connecting" } } }, "select", { "type": "drag-node" }, "pan-zoom"]`,
+      example: `"behaviours": [{ "type": "connect-nodes", "options": { "button": "secondary" } }, "select", { "type": "drag-node", "options": { "pin": true } }, "pan-zoom"]`,
     },
     {
       id: 'node-double-click',

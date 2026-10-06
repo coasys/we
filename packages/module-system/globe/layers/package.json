@@ -8,7 +8,8 @@
     "build:steps": "tsup",
     "build": "we-build",
     "dev": "tsup --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -17,10 +18,17 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./vite": {
+      "types": "./vite-plugin.d.mts",
+      "import": "./vite-plugin.mjs"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "assets",
+    "vite-plugin.mjs",
+    "vite-plugin.d.mts"
   ],
   "keywords": [
     "cesium",
@@ -40,8 +48,10 @@
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
+    "@we/globe-protocol": "workspace:*",
     "tsup": "^8.5.1",
-    "typescript": "^5.7.2",
-    "@we/globe-protocol": "workspace:*"
+    "typescript": "^6.0.3",
+    "vite": "^8.2.2",
+    "vitest": "^5.0.2"
   }
 }

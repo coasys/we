@@ -5,7 +5,11 @@ export interface CollapsedContentProps {
   collapsed: boolean;
   /** Called when the expand/collapse toggle button is clicked. Wire to $toggleLocal or $setLocal for modal. */
   onExpandClick?: () => void;
-  /** Show the expand/collapse toggle button. Default true. Pass false in 'expanded' display mode. */
+  /**
+   * Show the expand/collapse toggle button. Default true. Pass false in 'expanded' display mode —
+   * with `collapsed` false as well, the component renders its children and nothing else, so one
+   * node can serve a surface that collapses in some modes and not in others.
+   */
   showToggle?: boolean;
   /** Icon name for the toggle button. Defaults to caret-down/caret-up. Pass 'arrows-out' for grid/modal mode. */
   icon?: string;

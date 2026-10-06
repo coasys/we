@@ -72,7 +72,7 @@ export function registerDynamicEntities(perspectiveUuid: string, models: Record<
  * that owns it, and wrong for a second contributor: space-shape classes registered after the sweep
  * would otherwise erase every foreign class (or be erased by the next sweep, depending on order).
  * The given classes win name collisions within the dynamic map; native classes still win over both
- * in `getEntitiesForPerspective`, so a space shape can never shadow core vocabulary.
+ * in `getEntityForDataset`, so a space shape can never shadow core vocabulary.
  */
 export function mergeDynamicEntities(perspectiveUuid: string, models: Record<string, EntityClass>): void {
   const existing = perspectiveEntityRegistry.get(perspectiveUuid) ?? {};
@@ -94,7 +94,7 @@ export function mergeDynamicEntities(perspectiveUuid: string, models: Record<str
  * handle, so only here is the concrete type known. Note `uuid` must be read rather than `id`, since
  * a `PerspectiveProxy` also carries an unrelated `id` (a subscription id) that must not win.
  */
-export function getEntitiesForPerspective(name: string, dataset?: unknown): EntityClass | undefined {
+export function getEntityForDataset(name: string, dataset?: unknown): EntityClass | undefined {
   // Prefer globally registered native class first
   const global = entityRegistry[name];
   if (global) return global;

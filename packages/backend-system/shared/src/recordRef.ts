@@ -3,8 +3,7 @@
  *
  * ## Why this is not a relation
  *
- * A link's target lives in the same dataset as its source — in AD4M, in the same perspective — and
- * a record's id is local to it. So a personal collection cannot *relate* to a post in a space: not
+ * A link's target lives in the same dataset as its source, and a record's id is local to it. So a personal collection cannot *relate* to a post in a space: not
  * because the three tiers in `docs/architecture/relations.md` disagree about which to use, but
  * because none of them applies. A connection that crosses a dataset boundary is a fourth thing, and
  * it is a **value**: an address, written down.
@@ -22,12 +21,12 @@
  * we:./<Entity>/<recordId>               a record in the same dataset as whatever holds this
  * ```
  *
- * - `datasetKey` is `n:<cid>` for a neighbourhood — **portable**, the same string for every agent
- *   who has joined it — or `p:<uuid>` for a personal dataset, which means something only on this
- *   agent's machine. {@link isPortableRef} is the question to ask before putting one in anything
+ * - `datasetKey` is `n:<sharedId>` for a shared dataset — **portable**, the same string for every
+ *   agent who has joined it — or `p:<id>` for a personal dataset, whose id means something only on
+ *   this agent's machine. {@link isPortableRef} is the question to ask before putting one in anything
  *   somebody else will read.
- * - `recordId` is **everything after the second slash**, because an id is itself a URI
- *   (`ad4m://obj/<uuid>`) and contains slashes. `datasetKey` and `Entity` never do, so the rule is
+ * - `recordId` is **everything after the second slash**, because an id is itself a URI and may
+ *   contain slashes. `datasetKey` and `Entity` never do, so the rule is
  *   unambiguous and nothing needs escaping.
  * - The bare dataset form matters more than it looks: a space dragged out of a sidebar has a
  *   dataset before its `Space` record has loaded, and navigation only ever needs the dataset.
@@ -37,10 +36,10 @@
  *   to where it came from. `.` is also the only form a writer with no store access can produce, and
  *   the composer is exactly that.
  *
- * ## Neutral on purpose
+ * ## In the contract on purpose
  *
- * Here rather than in `@we/backend-ad4m` because an address that only one backend can write is not
- * an address. Nothing in this file knows what a perspective is.
+ * Here rather than in an adapter because an address that only one backend can write is not an
+ * address. Nothing in this file knows what a dataset's native handle is.
  */
 
 /** The scheme, with its colon. */
@@ -48,7 +47,7 @@ const SCHEME = 'we:';
 
 /** What a parsed reference says. */
 export interface RecordRef {
-  /** `n:<cid>`, `p:<uuid>`, or `agent` for the agent form. */
+  /** `n:<sharedId>`, `p:<id>`, or `agent` for the agent form. */
   datasetKey: string;
   /** The model name, or `Agent`. Empty for the bare dataset form. */
   entity: string;
@@ -57,7 +56,7 @@ export interface RecordRef {
 }
 
 /** How a dataset is named inside a reference. */
-export type DatasetKind = 'neighbourhood' | 'personal' | 'agent' | 'relative';
+export type DatasetKind = 'shared' | 'personal' | 'agent' | 'relative';
 
 /** The dataset a reference is *read* in — see the relative form. */
 export const HERE = '.';
@@ -65,7 +64,7 @@ export const HERE = '.';
 /**
  * Name a dataset for a reference.
  *
- * Prefer the CID wherever there is one: a personal key is this machine's and travels nowhere.
+ * Prefer the shared id wherever there is one: a personal key is this machine's and travels nowhere.
  */
 export function datasetKey(options: { cid?: string | null; uuid?: string | null }): string {
   if (options.cid) return `n:${stripScheme(options.cid)}`;
@@ -73,16 +72,19 @@ export function datasetKey(options: { cid?: string | null; uuid?: string | null 
   return '';
 }
 
-/** `neighbourhood://<cid>` and `<cid>` are the same dataset; references always hold the bare form. */
-function stripScheme(cid: string): string {
-  return cid.replace(/^neighbourhood:\/\//, '');
+/**
+ * A shared id with its URI scheme and without are the same dataset; references always hold the bare
+ * form. Any scheme is dropped — which one a backend spells its shared URIs with is its business.
+ */
+function stripScheme(id: string): string {
+  return id.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
 }
 
 /**
  * One spelling for one dataset.
  *
- * A caller usually has the neighbourhood URL rather than the bare CID — it is what `Space.url`
- * holds and what a share link carries — so both arrive here, and two spellings of one dataset would
+ * A caller usually has the shared URI rather than the bare id — it is what `Space.url` holds and
+ * what a share link carries — so both arrive here, and two spellings of one dataset would
  * mean two references to one record: gathering the same post twice, from two surfaces, and getting
  * two rows. Applied inside {@link formatRef}, so nowhere else has to remember.
  */
@@ -90,7 +92,7 @@ function normaliseKey(key: string): string {
   if (key === 'agent' || key === HERE) return key;
   if (key.startsWith('p:')) return key;
   if (key.startsWith('n:')) return `n:${stripScheme(key.slice(2))}`;
-  // A bare URL or CID handed straight in — the shape a template has, since an expression cannot
+  // A bare URI or id handed straight in — the shape a template has, since an expression cannot
   // strip a prefix.
   return `n:${stripScheme(key)}`;
 }
@@ -99,12 +101,12 @@ function normaliseKey(key: string): string {
 export function datasetKindOf(key: string): DatasetKind | null {
   if (key === 'agent') return 'agent';
   if (key === HERE) return 'relative';
-  if (key.startsWith('n:')) return 'neighbourhood';
+  if (key.startsWith('n:')) return 'shared';
   if (key.startsWith('p:')) return 'personal';
   return null;
 }
 
-/** The CID or uuid inside a key, without its prefix. */
+/** The id inside a key, without its prefix. */
 export function datasetIdOf(key: string): string {
   return key.startsWith('n:') || key.startsWith('p:') ? key.slice(2) : key;
 }
@@ -152,7 +154,7 @@ export function parseRef(value: string | null | undefined): RecordRef | null {
   const secondSlash = after.indexOf('/');
   if (secondSlash === -1) return null;
   const entity = after.slice(0, secondSlash);
-  // Everything after the second slash — an id is `ad4m://obj/<uuid>` and carries its own slashes.
+  // Everything after the second slash — an id is itself a URI and may carry its own slashes.
   const id = after.slice(secondSlash + 1);
   return entity && id ? { datasetKey: key, entity, id } : null;
 }
@@ -160,8 +162,8 @@ export function parseRef(value: string | null | undefined): RecordRef | null {
 /**
  * Whether this reference means the same thing to somebody else.
  *
- * False for anything in a personal dataset: `p:<uuid>` is a local perspective id, so a peer handed
- * one would resolve it against a dataset of their own or not at all. Gate anything shareable on
+ * False for anything in a personal dataset: `p:<id>` is a backend-local id, so a peer handed one
+ * would resolve it against a dataset of their own or not at all. Gate anything shareable on
  * this — a share that quietly includes dead addresses is worse than one that says what it dropped.
  */
 export function isPortableRef(value: string): boolean {
@@ -170,7 +172,7 @@ export function isPortableRef(value: string): boolean {
   const kind = datasetKindOf(ref.datasetKey);
   // Relative counts: it resolves against whatever record carries it, so it means the same thing to
   // every reader of that record — which is exactly what portable has to mean here.
-  return kind === 'neighbourhood' || kind === 'agent' || kind === 'relative';
+  return kind === 'shared' || kind === 'agent' || kind === 'relative';
 }
 
 /** The two references name the same record. String equality, given the grammar has one spelling. */

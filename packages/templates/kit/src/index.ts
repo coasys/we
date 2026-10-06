@@ -73,6 +73,7 @@ export { marketplaceList } from './we/marketplaceList.ts';
 export type { MarketplaceListOptions } from './we/marketplaceList.ts';
 export { peopleFilter } from './we/peopleFilter.ts';
 export type { PeopleFilterOptions } from './we/peopleFilter.ts';
+export { peopleAtPath } from './we/peopleAtPath.ts';
 export { peopleRow } from './we/peopleRow.ts';
 export { typePicker, typePickerLists } from './we/typePicker.ts';
 export type { TypePickerOptions } from './we/typePicker.ts';
@@ -98,6 +99,7 @@ export {
   stateIcon,
   stateIconFor,
 } from './we/taskStates.ts';
+export type { PeopleAtPathOptions } from './we/peopleAtPath.ts';
 export type { PeopleRowOptions } from './we/peopleRow.ts';
 export { linkedRecords } from './we/linkedRecords.ts';
 export type { LinkedRecordsOptions } from './we/linkedRecords.ts';

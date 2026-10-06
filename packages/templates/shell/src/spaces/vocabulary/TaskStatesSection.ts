@@ -187,6 +187,73 @@ const EDITING = 'find(spaceStore.taskStates, { slug: local.editTaskStateSlug })'
  *
  * Not the slug, which is what every task stores — see the docblock above.
  */
+/**
+ * What agreement a state asks for before work enters it — offered to whoever administers the space.
+ *
+ * The first state that asks for any turns the space's states into a flow: a card dragged into it
+ * waits, showing who has agreed, until enough people have. See `shared/taskFlow.ts` in the app shell.
+ *
+ * Administrators only, because the rules become one definition the whole space's boards are derived
+ * from, and it is installed by the person the space's other shared settings answer to. Offered to
+ * anybody, a member's change would be saved on the state and not take effect until an administrator
+ * next opened the space — a setting that silently does nothing.
+ *
+ * The approver is a kind of involvement rather than a list of people: who reviews a task is already
+ * recorded on the task, by whoever assigned it. Reflexive kinds are left out — "going" is somebody's
+ * own answer about an event, not a part in a piece of work.
+ */
+const agreementFields: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'spaceStore.canAdministerCurrentSpace' },
+    then: {
+      type: 'Column',
+      props: { gap: '300', width: '100%' },
+      children: [
+        { type: 'we-divider' },
+        {
+          type: 'we-form-field',
+          props: {
+            label: 'Approvals needed',
+            description: 'How many people must agree before a card moves here. At 1 a drag moves it straight away.',
+          },
+          children: [
+            {
+              type: 'we-number-input',
+              props: {
+                value: { $: 'local.editApprovals' },
+                min: 1,
+                max: 20,
+                step: 1,
+                onChange: { $setLocal: 'editApprovals', value: { $: 'event.detail' } },
+              },
+            },
+          ],
+        },
+        {
+          type: 'we-form-field',
+          props: {
+            label: 'Whose approval counts',
+            description: 'Only people holding this part in the task being moved — its reviewers, say.',
+          },
+          children: [
+            {
+              type: 'we-select',
+              props: {
+                options: {
+                  $: "distinct([{ label: 'Any member', value: '' }], spaceStore.offeredInvolvementTypes.filter(k, !k.reflexive).map(k, { label: k.name, value: k.slug }))",
+                },
+                value: { $: 'local.editApproverKind' },
+                onChange: { $setLocal: 'editApproverKind', value: { $: 'event.detail' } },
+              },
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 const editModal: SchemaNode = formModal({
   open: { $: 'local.editTaskStateSlug' },
   close: { $setLocal: 'editTaskStateSlug', value: '' },
@@ -197,6 +264,8 @@ const editModal: SchemaNode = formModal({
     editSemantic: { type: 'string', initial: { $: `${EDITING}.semantic` } },
     editColor: { type: 'string', initial: { $: `${EDITING}.color` } },
     editIcon: { type: 'string', initial: { $: `${EDITING}.icon` } },
+    editApprovals: { type: 'number', initial: { $: `${EDITING}.approvals ?? 1` } },
+    editApproverKind: { type: 'string', initial: { $: `${EDITING}.approverKind ?? ''` } },
   },
   children: [
     ...stateFields({ name: 'editName', semantic: 'editSemantic', icon: 'editIcon', color: 'editColor' }),
@@ -206,12 +275,14 @@ const editModal: SchemaNode = formModal({
       props: { variant: 'footnote', color: 'text-faint' },
       children: [{ $: '`Tasks store this state as “${' + EDITING + '.slug}”, whatever it is called.`' }],
     },
+    agreementFields,
   ],
   disabled: { $: '!local.editName' },
   discardWhen: {
     $:
       `local.editName != ${EDITING}.name || local.editSemantic != ${EDITING}.semantic || ` +
-      `local.editIcon != ${EDITING}.icon || local.editColor != ${EDITING}.color`,
+      `local.editIcon != ${EDITING}.icon || local.editColor != ${EDITING}.color || ` +
+      `local.editApprovals != (${EDITING}.approvals ?? 1) || local.editApproverKind != (${EDITING}.approverKind ?? '')`,
   },
   submitLabel: 'Save',
   submit: {
@@ -223,6 +294,8 @@ const editModal: SchemaNode = formModal({
         semantic: { $: 'local.editSemantic' },
         color: { $: 'local.editColor' },
         icon: { $: 'local.editIcon' },
+        approvals: { $: 'local.editApprovals' },
+        approverKind: { $: 'local.editApproverKind' },
       },
     ],
   },
@@ -298,6 +371,23 @@ const stateRow: SchemaNode = {
               props: {
                 condition: { $: 'state.retired' },
                 then: { type: 'we-badge', props: { size: 'xs' }, children: ['withdrawn'] },
+              },
+            },
+            {
+              // What agreement the state asks for, where it asks for any — the one thing about a state
+              // that changes what dragging a card into it does.
+              type: '$if',
+              props: {
+                condition: { $: 'state.approvals > 1 || state.approverKind' },
+                then: {
+                  type: 'we-badge',
+                  props: { size: 'xs', variant: 'warning' },
+                  children: [
+                    {
+                      $: "`needs ${state.approvals}${state.approverKind ? ' · ' + (find(spaceStore.involvementTypes, { slug: state.approverKind }).name ?? state.approverKind) : ''}`",
+                    },
+                  ],
+                },
               },
             },
             {
@@ -382,7 +472,7 @@ const stateRow: SchemaNode = {
 export const taskStatesSection: SchemaNode = sectionCard({
   title: 'Task States',
   description:
-    'The stages work moves through here — "To do", "Blocked", "Shipped". Each becomes a column on the tasks board, and each says what it counts as so the rest of the app can still tell finished work from outstanding.',
+    'The stages work moves through here — "To do", "Blocked", "Shipped". Each becomes a column on the tasks board, and each says what it counts as so the rest of the app can still tell finished work from outstanding. A state can also ask for agreement: then a card dragged into it waits until enough people have approved.',
   aside: {
     type: 'we-button',
     props: { variant: 'secondary', size: 'sm', onClick: { $setLocal: 'createTaskStateOpen', value: true } },

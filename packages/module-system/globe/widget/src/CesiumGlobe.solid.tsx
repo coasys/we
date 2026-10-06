@@ -2,26 +2,38 @@
  * Cesium Globe Widget
  *
  * A 3D globe with modular layer system.
- * Uses CDN for all Cesium assets (no local bundling required).
+ * Cesium's runtime files are served by the host app — see `CESIUM_BASE_URL` below.
  */
 
-import { Cartesian3, Ion, Viewer } from 'cesium';
-import { createEffect, createSignal, onCleanup, onMount } from 'solid-js';
+import { Cartesian3, type ImageryLayer, VERSION, Viewer } from 'cesium';
+import { createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
 
 export type * from './CesiumGlobe.types';
 import type { CesiumLayer, LayerConfig, LayerEventBus, LayerFactory, LayerStore } from '@we/globe-protocol';
 
-import type { CesiumGlobeProps } from './CesiumGlobe.types';
+import type {} from './cesium-env';
+import type { CesiumGlobeProps, ImageryChoice } from './CesiumGlobe.types';
+import { baseImagery, detailImagery } from './imagery';
 
-// Configure Cesium CDN
-(window as Window & { CESIUM_BASE_URL?: string }).CESIUM_BASE_URL =
-  'https://cdn.jsdelivr.net/npm/cesium@1.136.0/Build/Cesium/';
+/**
+ * Where Cesium's workers, wasm, widget CSS and textures are served from.
+ *
+ * From the app's own origin wherever the host builds with `cesiumAssets()` from
+ * `@we/globe-widget/vite`, which every WE app does: that is what lets the globe draw offline, and
+ * what keeps a CDN out of the content security policy. A host without the plugin falls back to
+ * jsDelivr, at the installed engine's own version — a hand-typed one once drifted eight releases
+ * behind the package.
+ */
+const CESIUM_BASE_URL =
+  import.meta.env.WE_CESIUM_BASE_URL ?? `https://cdn.jsdelivr.net/npm/cesium@${VERSION}/Build/Cesium/`;
+
+(window as Window & { CESIUM_BASE_URL?: string }).CESIUM_BASE_URL = CESIUM_BASE_URL;
 
 // Load Cesium CSS
 if (typeof document !== 'undefined' && !document.querySelector('link[href*="cesium"]')) {
   const cesiumCss = document.createElement('link');
   cesiumCss.rel = 'stylesheet';
-  cesiumCss.href = 'https://cdn.jsdelivr.net/npm/cesium@1.136.0/Build/Cesium/Widgets/widgets.css';
+  cesiumCss.href = `${CESIUM_BASE_URL}Widgets/widgets.css`;
   document.head.appendChild(cesiumCss);
 }
 
@@ -130,11 +142,6 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
 
   const [viewerReady, setViewerReady] = createSignal(false);
 
-  // Set Ion token if provided
-  if (props.ionAccessToken) {
-    Ion.defaultAccessToken = props.ionAccessToken;
-  }
-
   onMount(() => {
     if (!containerRef) return;
 
@@ -151,6 +158,9 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
 
       // Create Cesium viewer with minimal UI
       viewer = new Viewer(containerRef, {
+        // Never Cesium's default, which is ion imagery behind a demo token that expires. The detail
+        // imagery effect below adds the layer above this one. See `imagery.ts`.
+        baseLayer: baseImagery(),
         timeline: false,
         animation: false,
         baseLayerPicker: false,
@@ -229,6 +239,72 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
     });
   });
 
+  /**
+   * The imagery choice as a value, not as whatever the host reads to produce it. The host resolves it
+   * through the module settings, which re-emit whenever the space or the agent's settings do; read
+   * directly, every re-emission rebuilt the imagery and the surface flashed blue while the new tiles
+   * loaded. Compared by content, since the host builds a new object each time.
+   */
+  const suppliedImagery = createMemo<ImageryChoice | undefined>(() => props.imagery, undefined, {
+    equals: (a, b) => a?.provider === b?.provider && a?.key === b?.key,
+  });
+
+  /**
+   * A key its provider has refused: expired (a release's demo token lives about two months), revoked,
+   * over quota, or unreachable offline. Held so the globe can carry on without it, and cleared when the
+   * network comes back, since an offline refusal says nothing about the key.
+   */
+  const [refusedKey, setRefusedKey] = createSignal<string>();
+
+  /** The imagery in use: the one supplied, unless its provider has refused the key. */
+  const imageryChoice = createMemo<ImageryChoice | undefined>(
+    () => {
+      const choice = suppliedImagery();
+      return choice && choice.key !== refusedKey() ? choice : undefined;
+    },
+    undefined,
+    { equals: (a, b) => a?.provider === b?.provider && a?.key === b?.key },
+  );
+
+  /** For layers that need an ion account, whatever imagery is drawn. */
+  const ionToken = createMemo(() => props.ionAccessToken || undefined);
+
+  /**
+   * Bumped when the browser reports the network is back. Cesium never asks again for a tile that
+   * failed, so a globe opened offline would otherwise keep Natural Earth II for good.
+   */
+  const [onlineEpoch, setOnlineEpoch] = createSignal(0);
+  const onOnline = () => {
+    setRefusedKey(undefined);
+    setOnlineEpoch((n) => n + 1);
+  };
+  window.addEventListener('online', onOnline);
+  onCleanup(() => window.removeEventListener('online', onOnline));
+
+  /** The layers above Natural Earth II that this globe added, so it replaces exactly those. */
+  let detail: ImageryLayer[] = [];
+
+  // Detail imagery: replaced when the choice of imagery or its key changes, and when the network
+  // comes back. Natural Earth II stays underneath throughout, so a replacement never shows bare blue.
+  createEffect(() => {
+    onlineEpoch();
+    const choice = imageryChoice();
+    if (!viewerReady() || !viewer) return;
+    const imagery = viewer.imageryLayers;
+    // Refused, the key is set aside and this runs again without it: NASA's imagery, not nothing.
+    const next = detailImagery(choice, () => setRefusedKey(choice?.key));
+    // Directly above the base, in order, beneath any imagery a WE layer has added.
+    next.forEach((layer, index) => imagery.add(layer, 1 + index));
+    for (const layer of detail) imagery.remove(layer, true);
+    detail = next;
+  });
+
+  /**
+   * A layer that needs an ion account is left out when there is no token, rather than mounted to
+   * fail. Absent, as a kind with no renderer will be: nothing errors and nothing is drawn.
+   */
+  const needsMissingIon = (instance: CesiumLayer) => !!instance.metadata?.requiresIonAccount && !ionToken();
+
   // Reactive background layer mounting/unmounting
   createEffect(() => {
     // Track viewer readiness signal
@@ -252,6 +328,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
       try {
         const factory = resolveLayerFactory(config.factory, props.layerFactoryRegistry);
         const instance = factory(config.options);
+        if (needsMissingIon(instance)) continue;
         enabledResolved.push({ config, instance, layerKey: config.id ?? instance.name });
       } catch (err) {
         console.error(`Error resolving background layer factory:`, err);
@@ -333,6 +410,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
       try {
         const factory = resolveLayerFactory(config.factory, props.layerFactoryRegistry);
         const instance = factory(config.options);
+        if (needsMissingIon(instance)) continue;
         enabledResolved.push({ config, instance, layerKey: config.id ?? instance.name });
       } catch (err) {
         console.error(`Error resolving layer factory:`, err);

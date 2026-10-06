@@ -1,0 +1,32 @@
+{
+  "name": "@we/backend-conformance",
+  "version": "0.1.0",
+  "description": "One test suite every backend runs — the contract's behaviour, asserted the same way against each implementation",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "typecheck": "tsc --noEmit"
+  },
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@we/backend-shared": "workspace:*",
+    "@we/entities": "workspace:*"
+  },
+  "peerDependencies": {
+    "vitest": "^5.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "@we/cli": "workspace:*",
+    "tsup": "^8.5.1",
+    "vitest": "^5.0.2"
+  },
+  "sideEffects": false
+}

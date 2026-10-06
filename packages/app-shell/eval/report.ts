@@ -1,0 +1,96 @@
+/**
+ * An eval run as a table a person can read, and paste into a PR.
+ */
+import type { CaseScore } from './score';
+
+export interface EvalRecord extends Omit<CaseScore, 'outcome'> {
+  model: string;
+  strategy: string;
+  caseId: string;
+  run: number;
+  outcome: CaseScore['outcome'] | 'error';
+  ms: number;
+  /** The system prompt's length. */
+  systemChars: number;
+  /** Everything sent, summed over the run's model calls. Divide by ~4 for tokens, before any caching. */
+  requestChars: number;
+  modelCalls: number;
+  contextCalls: number;
+  validationRetries: number;
+  /** The model attempted no edit at all — see `scoreCase`. */
+  asked: boolean;
+}
+
+export interface EvalMeta {
+  startedAt: string;
+  url: string;
+  models: string[];
+  strategies: string[];
+  cases: string[];
+  repeat: number;
+}
+
+const tokens = (chars: number) => `${Math.round(chars / 4 / 1000)}K`;
+const mean = (values: number[]) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0);
+const median = (values: number[]) => {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
+};
+
+export function reportMarkdown(meta: EvalMeta, records: EvalRecord[]): string {
+  const groups = new Map<string, EvalRecord[]>();
+  for (const record of records) {
+    const key = `${record.model}\0${record.strategy}`;
+    groups.set(key, [...(groups.get(key) ?? []), record]);
+  }
+
+  const summary = [...groups.values()].map((group) => {
+    const { model, strategy } = group[0];
+    const passed = group.filter((r) => r.passed).length;
+    const asked = group.filter((r) => r.asked).length;
+    return `| ${model} | ${strategy} | ${passed}/${group.length} | ${group.filter((r) => r.valid).length}/${group.length} | ${asked} | ${mean(group.map((r) => r.modelCalls)).toFixed(1)} | ${mean(group.map((r) => r.contextCalls)).toFixed(1)} | ${mean(group.map((r) => r.validationRetries)).toFixed(1)} | ${tokens(group[0].systemChars)} | ${tokens(mean(group.map((r) => r.requestChars)))} | ${(median(group.map((r) => r.ms)) / 1000).toFixed(0)}s |`;
+  });
+
+  const columns = [...groups.values()].map((g) => `${g[0].model} · ${g[0].strategy}`);
+  const byCase = meta.cases.map((caseId) => {
+    const cells = [...groups.values()].map((group) => {
+      const runs = group.filter((r) => r.caseId === caseId);
+      const passed = runs.filter((r) => r.passed).length;
+      return runs.length === 1 ? (passed ? '✓' : '✗') : `${passed}/${runs.length}`;
+    });
+    return `| ${caseId} | ${cells.join(' | ')} |`;
+  });
+
+  const failures = records
+    .filter((r) => !r.passed)
+    .map(
+      (r) =>
+        `- **${r.model} · ${r.strategy} · ${r.caseId}${meta.repeat > 1 ? ` #${r.run}` : ''}** — ${r.reason || r.outcome}`,
+    );
+
+  return [
+    `# Context eval — ${meta.startedAt}`,
+    '',
+    `Node ${meta.url} · ${meta.cases.length} cases × ${meta.repeat} run(s)`,
+    '',
+    '| Model | Strategy | Passed | Valid | Asked | Model calls | Context calls | Retries | System prompt | Sent per case | Median time |',
+    '|---|---|---|---|---|---|---|---|---|---|---|',
+    ...summary,
+    '',
+    '"Sent per case" is every character sent across a case\'s model calls, divided by four — before prompt',
+    'caching, which a provider applies to a repeated system prompt and not to tool results.',
+    '',
+    '"Asked" counts the runs that attempted no edit at all — the model asked something or declined. Those',
+    'are failures, since the request did not get done, but a different kind: a case drawing several of',
+    'them is usually ambiguous rather than hard, and scoring them together rewards guessing over asking.',
+    '',
+    `| Case | ${columns.join(' | ')} |`,
+    `|---|${columns.map(() => '---').join('|')}|`,
+    ...byCase,
+    '',
+    failures.length ? '## Failures' : '## No failures',
+    '',
+    ...failures,
+    '',
+  ].join('\n');
+}

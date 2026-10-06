@@ -24,6 +24,15 @@ import type { CodeEditorProps } from './CodeEditor.types';
  * takes only the room it needs and a long one scrolls inside the cap rather than reserving the
  * full height regardless.
  */
+/**
+ * Where counting matches stops.
+ *
+ * High enough that a real search — a prop name, an id — is counted exactly, and low enough that
+ * typing one character into the box over a half-megabyte schema is not a scan of the whole thing
+ * per keystroke. Past it the caller says "500+", which answers the question a count is asked for.
+ */
+const MATCH_CAP = 500;
+
 function themeSpecFor(maxHeight?: string): Record<string, Record<string, string>> {
   if (!maxHeight) return baseThemeSpec;
   return { ...baseThemeSpec, '&': { ...baseThemeSpec['&'], height: 'auto', maxHeight } };
@@ -76,17 +85,28 @@ const baseThemeSpec: Record<string, Record<string, string>> = {
     position: 'relative',
     top: '-3px',
   },
-  // Search panel
-  '.cm-panels-bottom': {
-    all: 'unset',
+  /*
+    Search panel.
+
+    `EditorView.theme` defaults to `dark: false`, so CodeMirror applies its own LIGHT defaults
+    whatever the app's theme is doing — `.cm-panels { color: black }` and a `#ddd` rule under a
+    top panel. Black labels on a dark panel and a white line beneath it are both that, and the
+    previous `.cm-panels-bottom { all: unset }` was hiding the bottom twin rather than answering
+    it. Named here in roles instead, which follow the theme and survive moving the panel.
+  */
+  '.cm-panels': {
+    backgroundColor: 'var(--we-role-surface)',
+    color: 'var(--we-role-text)',
   },
+  '.cm-panels-top': { borderBottom: '1px solid var(--we-role-border)' },
+  '.cm-panels-bottom': { borderTop: '1px solid var(--we-role-border)' },
   '.cm-panel.cm-search': {
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
     padding: '6px 10px',
-    backgroundColor: 'var(--we-role-surface)',
-    borderTop: '1px solid var(--we-role-border)',
+    // The editor is monospace and its chrome is not: a find bar is UI, like the toolbar above it.
+    fontFamily: 'var(--we-font-family)',
     flexWrap: 'wrap',
     fontSize: 'var(--we-font-size-100)',
   },
@@ -105,6 +125,28 @@ const baseThemeSpec: Record<string, Record<string, string>> = {
     color: 'var(--we-role-text)',
     outline: 'none',
     height: '26px',
+    /*
+      Border-box and able to shrink, or the field leaves the panel.
+
+      A text input carries a default size in CHARACTERS, which is a width the panel never agreed
+      to; with the border counted outside it, the field crossed the edge as soon as the row ran
+      out of room. These two keep it inside whatever width it is given.
+    */
+    boxSizing: 'border-box',
+    minWidth: '0',
+    maxWidth: '100%',
+  },
+  /*
+    A tick is not a text field.
+
+    The rule above sizes the search box, and `.cm-search input` catches the checkboxes too — a
+    26px tall box with 8px of padding, which is why they sat oddly against their labels.
+  */
+  '.cm-search input[type=checkbox]': {
+    height: 'auto',
+    minWidth: 'auto',
+    padding: '0',
+    accentColor: 'var(--we-role-accent)',
   },
   '.cm-search input:focus': {
     borderColor: 'var(--we-role-accent)',
@@ -175,9 +217,11 @@ export function CodeEditor(props: CodeEditorProps) {
   // Captured from the loaded module so the effects below can reconfigure without importing again.
   let readOnlyCompartment: Compartment | undefined;
   let state: typeof EditorState | undefined;
+  /** The query the count was last reported for, so typing in the document does not recount it. */
+  let lastQuery = '';
 
   onMount(async () => {
-    const [langCss, langJson, language, cmState, cmView, highlight, cm] = await Promise.all([
+    const [langCss, langJson, language, cmState, cmView, highlight, cm, cmSearch] = await Promise.all([
       import('@codemirror/lang-css'),
       import('@codemirror/lang-json'),
       import('@codemirror/language'),
@@ -185,6 +229,7 @@ export function CodeEditor(props: CodeEditorProps) {
       import('@codemirror/view'),
       import('@lezer/highlight'),
       import('codemirror'),
+      import('@codemirror/search'),
     ]);
 
     // The component can unmount while the editor is still loading; without this the view mounts
@@ -229,10 +274,51 @@ export function CodeEditor(props: CodeEditorProps) {
             },
           ]),
         ),
+        /*
+          The find bar at the TOP, under whatever toolbar the caller has.
+
+          CodeMirror puts it at the bottom by default, which on a tall docked panel is the far
+          end of the document from the control that opened it and from the count beside that
+          control. Top keeps the three together.
+        */
+        cmSearch.search({ top: true }),
+        /*
+          How many matches there are, reported outward.
+
+          CodeMirror's panel shows none, so "did it find everything?" is unanswerable — which
+          matters most where this editor is used to CHECK something, as it was when reading
+          whether an AI edit had reached one node or two.
+
+          Counted here and not drawn here: the panel is CodeMirror's DOM, and appending to it
+          would be a guess about markup nobody promised. STOPPED at a cap, because a schema runs
+          to hundreds of thousands of characters and a one-character query matches most of them,
+          on every keystroke.
+        */
+        cmView.EditorView.updateListener.of((update) => {
+          if (!props.onSearchMatches) return;
+          const query = cmSearch.getSearchQuery(update.state);
+          const text = query.search;
+          if (text === lastQuery && !update.docChanged) return;
+          lastQuery = text;
+          if (!text || !query.valid) return props.onSearchMatches({ query: '', matches: 0, capped: false });
+
+          let matches = 0;
+          let capped = false;
+          const cursor = query.getCursor(update.state);
+          for (let next = cursor.next(); !next.done; next = cursor.next()) {
+            if (++matches >= MATCH_CAP) {
+              capped = true;
+              break;
+            }
+          }
+          props.onSearchMatches({ query: text, matches, capped });
+        }),
       ],
       parent: containerRef,
       root: containerRef.ownerDocument,
     });
+
+    props.onReady?.({ find: () => view && cmSearch.openSearchPanel(view) });
   });
 
   // Sync external code changes (e.g. undo/redo from outside, node switching)

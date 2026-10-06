@@ -307,6 +307,62 @@ export interface GraphViewProps {
     carried?: { recordId: string; recordType: string; x: number; y: number }[];
   }) => void;
   /**
+   * The user dragged a card to somewhere else in a hierarchy — see the `arrange-nodes` behaviour.
+   *
+   * Binding it is what makes a structured reading of a graph editable rather than merely viewable, and
+   * it pairs with a layout that derives positions (`forest`, `tree`) exactly as `onNodeDragEnd` pairs
+   * with `manual`. Where positions come from the data, a drag means "put the card here"; where the
+   * layout decides them, it means "change what the layout reads".
+   *
+   * Three intents, told apart geometrically so the gesture needs no knowledge of what a parent means
+   * here:
+   *
+   * - `child` — dropped on `targetId`, which becomes its parent.
+   * - `sibling` — dropped in the gap beside `targetId`, at the same level. `before` says which side,
+   *   and the consumer resolves the actual parent from the target, since only it knows which relation
+   *   the hierarchy is.
+   * - `loose` — dropped out of every tree. No target.
+   *
+   * **Nothing is validated against the graph, and it cannot be.** A drop onto a card's own descendant
+   * would make a cycle, and only the consumer knows which relation to walk to find out. So refuse it
+   * there, and say so — the card has already been handed back to the layout, so a refusal that writes
+   * nothing puts it back where it was with no special case.
+   */
+  /**
+   * What a seed said about everything it loaded — see `SeedSource.derive`. The canvas seed reports the
+   * people whose reactions a weighted score was made from (`{ type, voices }`), which a template lists
+   * beside the canvas for a reader to turn up or down. Called when it changes, with the seed's id.
+   */
+  onSeedSummary?: (payload: { source: string } & Record<string, unknown>) => void;
+  onNodeArrange?: (payload: {
+    id: string;
+    into: 'child' | 'sibling' | 'loose';
+    recordId: string;
+    recordType: string;
+    targetId?: string;
+    targetType?: string;
+    before?: boolean;
+    /**
+     * The new parent's children as record ids, left to right, as the reader saw them land — the card
+     * included. Write the order from this rather than working it out again: rules that differ from the
+     * layout's, for cards nobody has ranked yet say, would write an order the reader did not choose.
+     * Absent where the drop sets no order.
+     */
+    order?: string[];
+    /** Where the pointer let go, for a consumer that also wants to keep a position. */
+    x: number;
+    y: number;
+  }) => void;
+  /**
+   * Whether a selected card offers its resize handles. Default true, where `onNodeResize` is bound.
+   *
+   * For an arrangement that decides the size itself: a tree gives every card one box, so a card's own
+   * size is not drawn there and a handle would change nothing anybody can see — and the handles would
+   * cover the card's badge, which sits on the edge they run along. A handler cannot be bound
+   * conditionally, so this is how a template says "not in this reading".
+   */
+  resizable?: boolean;
+  /**
    * The user dragged a selected card's edge or corner, giving it this box in world units.
    *
    * Binding it is what puts the handles on screen — a handle that moved and then changed nothing is
@@ -607,10 +663,112 @@ export interface GraphViewProps {
   /** Ctrl/Cmd+Shift+Z, and Ctrl+Y — both spellings, because both are in use. */
   onRedo?: () => void;
   /**
+   * The pointer moved, reported in the canvas's **own world coordinates**, or `null` as it leaves.
+   *
+   * World units rather than screen pixels because that is the frame the canvas's content is stored
+   * in, so it is the one two agents at different zoom, in differently-shaped panels, already agree
+   * about. Converting is the graph's to do — it holds the camera, and nothing outside it can.
+   *
+   * Coalesced to one report per animation frame: a pointer fires far more often than a screen
+   * changes, and a consumer sampling it should not have to do that itself.
+   */
+  onPointerAt?: (at: { x: number; y: number } | null) => void;
+  /**
+   * What is visible now, in world coordinates — reported whenever the camera moves.
+   *
+   * The shape to hand somebody who is following along. See `Viewport.visibleWorldRect` for why a
+   * region rather than a camera: a zoom means a different amount of canvas in a different box.
+   */
+  onViewport?: (region: GraphRegion) => void;
+  /**
+   * Frame this world rectangle — the other half of `onViewport`, for following somebody else's view.
+   *
+   * Applied when the value **changes**, not continuously, so a reader who pans afterwards is not
+   * dragged back: whoever set it decides when to set it again. Set it to `null` to follow nobody,
+   * which leaves the camera exactly where it is rather than moving it anywhere.
+   *
+   * Framed with no margin, unlike the `fit` control: the region already describes what somebody could
+   * see, so padding it would show a follower slightly less at every hop.
+   */
+  region?: GraphRegion | null;
+  /**
+   * A value that, when it changes, has the graph brought back into view with its next arrangement —
+   * centred, and zoomed out only as far as it takes to show all of it, never in.
+   *
+   * For a change the reader made to how big everything is, such as a tree's card size. A layout being
+   * re-tuned keeps the camera where it is on purpose — re-ordering a row must not lurch the view — but
+   * bigger cards make a bigger tree, and one left where it was pushes cards off the screen. Framing it
+   * fully would undo the choice instead: a small tree would be zoomed into and a big one zoomed out to
+   * the size it was. So it is centred, and the zoom only ever goes down.
+   *
+   * Compared by value; the first value is recorded, not acted on.
+   */
+  reframeOn?: string | number | boolean | null;
+  /**
    * Data-layer bindings, injected by the host's component registry rather than written in a template.
    * Templates never supply these.
    */
   host?: GraphHostBindings;
+}
+
+/** A rectangle in the canvas's own world coordinates. */
+export interface GraphRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * A mark drawn on the canvas at a world point by something outside the graph.
+ *
+ * A live cursor, a pin on a card, a highlight on something an extraction pass touched. The graph
+ * positions it and nothing else: what it *is* comes from the host, exactly as `nodeContent` does, so a
+ * graph package meant to be portable never learns what a cursor or a comment is.
+ *
+ * Drawn inside the camera's own transformed layer, which is what makes this cheap — a decoration pans
+ * and zooms with the drawing for nothing, because the layer it sits in is the thing being transformed.
+ * It is counter-scaled so it stays a constant size on screen, since a cursor that grew with the zoom
+ * would be a cursor whose tip moved.
+ */
+export interface GraphDecoration {
+  /**
+   * Stable for as long as this is the same mark — an agent's id for their cursor.
+   *
+   * Keyed by it, so a mark that moves is a transform on an element that stays put in the DOM. Without
+   * that there is nothing for a transition to interpolate and nothing for `ease` to mean.
+   */
+  id: string;
+  /** Where, in world coordinates. The mark's own origin lands here. */
+  x: number;
+  y: number;
+  /**
+   * Ease toward each new position rather than jumping to it.
+   *
+   * A CSS transition on the mark's own transform, which is the whole implementation: a cursor arrives
+   * a dozen times a second at best, and a transition just longer than that gap turns those steps into
+   * continuous movement with no animation loop anywhere. Only the mark's *own* movement is eased —
+   * the camera's is not, because the layer above it carries no transition, so panning stays exact.
+   */
+  ease?: boolean;
+  /**
+   * How long that ease takes, in milliseconds. Ignored unless {@link ease}.
+   *
+   * Absent means the stylesheet's own default, tuned for a mark arriving as fast as a transport allows.
+   * A producer that knows how far apart its positions are really arriving should say so: the easing is
+   * there to cover the time until the next one, so a duration much shorter than the real gap draws a
+   * brief glide followed by stillness, which is the stutter it was meant to remove.
+   */
+  easeMs?: number;
+  /**
+   * What to draw. Host-supplied, for the reason `nodeContent` is.
+   *
+   * **Called once while this `id` is present**, not on every change to the list: what a mark *is* stays
+   * the same while it is the same mark, and only where it sits moves. So anything inside it that can
+   * change — a name that arrives late, a peer going idle — must be read from a reactive source within
+   * the returned tree rather than captured as a value before returning it.
+   */
+  render: () => JSX.Element;
 }
 
 /** One control offered above a selected node — see {@link GraphViewProps.nodeActions}. */
@@ -658,6 +816,22 @@ export interface NodeAction {
 export type NodeContent = (props: { node: GraphNode }) => JSX.Element;
 
 /**
+ * A mark pinned to a card's lower edge — see `NodeStyle.badge`. Handed the node, and the record it
+ * stands for where the node is one, so a press can write to it. Draws its own box; the graph places it,
+ * and a press on it goes nowhere else.
+ *
+ * `keepStill` holds the cards where they are while the badge needs them there — a popover it opened,
+ * which the pointer leaves the badge to use. The graph already holds them while the pointer is over the
+ * badge itself. See `GraphEngine.keepStill`.
+ */
+export type NodeBadge = (props: {
+  node: GraphNode;
+  recordId?: string;
+  recordType?: string;
+  keepStill: (on: boolean) => void;
+}) => JSX.Element;
+
+/**
  * A control the host lends a node's action header — see {@link NodeAction.control}.
  *
  * Handed the node, the value the action's `value` names on it (undefined where the node carries
@@ -677,6 +851,27 @@ export type NodeControl = (props: {
 }) => JSX.Element;
 
 /** What the host lends the graph so its expanders can read data without knowing the backend. */
+/** A connection as the host thinks of it — records at both ends. */
+export interface ObservedConnection {
+  /** The record the line stands for. */
+  id: string;
+  source: string;
+  target: string;
+}
+
+/**
+ * What a host has written about connections and not yet seen come back. Everything is a record id.
+ *
+ * `added` are lines to draw between two records before the connection exists, each with a key of the
+ * host's own; `moved` re-attach one end of an existing connection to another record; `removed` stop
+ * drawing a connection that is being deleted.
+ */
+export interface PendingConnections {
+  added: { key: string; source: string; target: string; data?: Record<string, GraphValue> }[];
+  moved: { id: string; end: 'source' | 'target'; to: string }[];
+  removed: string[];
+}
+
 export interface GraphHostBindings {
   /**
    * Components a style rule may name with `content`, keyed by name.
@@ -686,12 +881,33 @@ export interface GraphHostBindings {
    * such component simply has a card that falls back to its label.
    */
   nodeContent?: Record<string, NodeContent>;
+  /** Badges a node style may name with `badge`, keyed by that name — see {@link NodeBadge}. */
+  nodeBadges?: Record<string, NodeBadge>;
   /**
    * Controls a node action may name with `control`, keyed by name — a colour picker, a shape menu,
    * a scale slider. Lent by the host for the reason `nodeContent` is: the primitives are the
    * host's, and a graph package that named one would stop being portable.
    */
   nodeControls?: Record<string, NodeControl>;
+  /**
+   * Marks to draw on the canvas at world points — see {@link GraphDecoration}.
+   *
+   * A reactive accessor, read inside the render, exactly as `pendingData` is: the set changes as
+   * peers move, and the alternative is the host pushing a prop down a component that re-runs its
+   * whole style pass when its props change.
+   *
+   * On the host seam rather than in props because a template has no business drawing these: what a
+   * mark means comes from a capability, and the host is the only thing that can turn one into
+   * something renderable.
+   */
+  decorations?(): GraphDecoration[];
+  /**
+   * Furniture of the host's own, stacked above the controls in the graph's lower right corner and clear of whatever
+   * `obscured` says is covering it — for a control about how this graph is being read that belongs
+   * to no template, such as a development tool. Screen-anchored, unlike a decoration, and inert to
+   * the canvas's gestures, which it sits outside.
+   */
+  overlay?(): JSX.Element;
   /**
    * Fields to lay over a node's own data, keyed by the record id the node stands for.
    *
@@ -736,6 +952,21 @@ export interface GraphHostBindings {
    * arrives again — which is exactly the flicker optimism was added to remove.
    */
   confirmPending?(recordIds: string[]): void;
+  /**
+   * Connections the host has written and not yet seen come back, in records rather than nodes — see
+   * {@link PendingConnections}. Drawn at once: a line somebody just drew, one they just deleted, an end
+   * they just moved. The graph translates them to its own nodes and edges, and draws nothing for a
+   * record it is not showing.
+   *
+   * Reactive: read inside an effect, so a host signal here redraws the lines it names.
+   */
+  pendingConnections?(): PendingConnections;
+  /**
+   * The connections the graph is now drawing from its own data, in records — for the host to judge
+   * which of its pending ones the data has overtaken. The counterpart of {@link confirmPending}, and
+   * reported from what is drawn for the same reason. Only called while something is pending.
+   */
+  observeConnections?(connections: ObservedConnection[]): void;
   query(request: Record<string, unknown>): Promise<Record<string, unknown>[]>;
   /**
    * Report changes to records of a type, and return a function that stops reporting.

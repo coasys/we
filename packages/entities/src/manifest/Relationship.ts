@@ -42,7 +42,7 @@ export const Relationship: CoreEntityDef = {
   base: 'WeNode',
   entity: {
     interpretationHint:
-      'A relationship a person asserted between two specific records — "contradicts", "caused by", "same as". Only extract one when the speakers connect two things that both already exist as records.',
+      'A connection the speakers made between two specific things — one depends on another, includes it, leads to it, blocks it, contradicts it. Extract one whenever somebody says how two things relate, whether each end is already listed here or is something you are creating in this response. One connection joins exactly one pair: a goal with three prerequisites is three connections.',
     flag: { predicate: 'we://flag', value: 'we://relationship' },
     /**
      * A candidate for extraction — off in a space that has made no choice, on where one has.
@@ -56,6 +56,15 @@ export const Relationship: CoreEntityDef = {
      * act than "somebody committed to something" — so a space turns this on deliberately rather than
      * finding relationships appearing in a meeting about anything else.
      */
+    /*
+      On, after a spell off. It was switched off because nothing had ever carried an extracted
+      connection end to end, and three things stood in the way, all fixed with it: the class hint
+      allowed only connections between records that already existed, which ruled out the case that
+      matters — a new task said to depend on an old one; the canvas drew a line only between two
+      *placed* cards, and everything a call extracts lands unplaced, in the tray; and a connection
+      drawn by hand carried no `connection` key, and the executor shows a model only the instances
+      that have one, so the structure people had drawn was invisible to the pass meant to extend it.
+    */
     extractable: true,
     // `sourceType`/`targetType` are absent: they are set from what was connected, not typed by hand,
     // and so is `relationshipTypeId` — the form offers the kinds this community has named.
@@ -72,22 +81,34 @@ export const Relationship: CoreEntityDef = {
        * alone collapses every "contradicts" in a space into one record; either end alone is wrong by
        * construction, since the whole point is that a record has many connections.
        *
-       * Written by the model rather than derived, because machine-authored instances go through
+       * Written by the model for what it extracts, because machine-authored instances go through
        * `create_subject` server-side and never pass WE's own write path — the hint spells the format.
-       * Denormalised and never recomputed: relabel the connection and the next pass sees a different
-       * one and writes a new record. That is the accepted cost of a single-property key, and it fails
-       * in the safe direction — a duplicate somebody deletes, rather than two distinct claims merged.
+       * Written by WE for what people draw, in the same format (`connectionKey` in `RecordStore`),
+       * and that is not optional: the executor shows a model only the instances whose identity is
+       * set, so a connection drawn by hand without one was invisible to the pass meant to extend the
+       * structure it was part of.
        *
-       * Not `required`, deliberately, and for the reason `occurrence` records: required would mean
-       * every connection drawn by hand on a board carries `uninitialized`, and two of them would then
-       * dedup into each other. Left unset, an instance is invisible to dedup — the right answer for a
-       * record no machine is managing.
+       * Titles rather than ids, so the existing connections in a prompt read as the tree they are —
+       * "Launch the beta → Write the onboarding guide: depends on" — and so a key a person's
+       * connection carries and the one a model writes for the same claim are the same string. Ids
+       * were tried first: a small model then had to resolve every key against the record list to
+       * read the tree, misread one, and wrote titles in its own keys regardless.
+       *
+       * Denormalised, and kept in step by WE's own writes: rewritten when an end moves, when the
+       * connection is relabelled, and when a record it joins is renamed through the inspector. A
+       * rename made anywhere else leaves the key behind until the next of those, and the next pass may
+       * then write a second record. That fails in the safe direction — a duplicate somebody deletes,
+       * rather than two distinct claims merged.
+       *
+       * Not `required`, deliberately, and for the reason `occurrence` records: required would mean a
+       * connection written without one carries `uninitialized`, and two of them would then dedup into
+       * each other.
        */
       connection: {
         type: 'string',
         predicate: 'we://connection',
         interpretationHint:
-          'A dedup key, not a display value: the source id, the target id and the label joined, e.g. "we://a \u2192 we://b: contradicts". Always set it when you create a connection. Reuse an existing connection\u2019s exact value only when this is the same claim about the same pair.',
+          'A dedup key, not a display value: the two ends\u2019 titles and the label joined as "<source title> \u2192 <target title>: <label>". Write each end exactly as it is titled in this prompt, or as you title it when you are creating it in this response \u2014 never an id, and never a "new:" reference. Always set it when you create a connection. Reuse an existing connection\u2019s exact value only when this is the same claim about the same pair; a connection is never re-pointed at a different pair.',
         identity: true,
         default: '',
       },
@@ -124,7 +145,7 @@ export const Relationship: CoreEntityDef = {
         type: 'string',
         predicate: 'we://title',
         interpretationHint:
-          'What the connection is, in the speakers\u2019 own words \u2014 a short lowercase verb phrase read source-to-target: "contradicts", "came out of", "blocks", "is the same as". Not a sentence, and not a summary of either end.',
+          'What the connection is, in the speakers\u2019 own words \u2014 a short lowercase verb phrase read source-to-target, so from the broader end: "depends on", "includes", "leads to", "blocks", "contradicts". "Includes" rather than "is part of", which reads from the wrong end. Not a sentence, and not a summary of either end.',
         default: '',
       },
       /** Why — the room a one-word label does not leave. */
@@ -160,8 +181,25 @@ export const Relationship: CoreEntityDef = {
         each of which can be argued with and weighted separately, where one record holding a list
         would collapse them into a claim nobody can disagree with a part of.
       */
-      source: { target: '', cardinality: 'one', predicate: 'we://relationship_source' },
-      target: { target: '', cardinality: 'one', predicate: 'we://relationship_target' },
+      /*
+        Hinted, because which end is which is the one thing a tree needs and the declaration cannot
+        say. The workshop reads a connection as parent → child, source first; a model left to guess
+        connects a goal to its prerequisites either way round, and half the tree comes out inverted.
+      */
+      source: {
+        target: '',
+        cardinality: 'one',
+        predicate: 'we://relationship_source',
+        interpretationHint:
+          'The broader or governing end: the goal, the whole, or the thing that needs the other. Read from source to target, connections form a tree from its roots down. For one step that leads to another, the earlier step, labelled "leads to". Between peers, as with "contradicts", either way round. An existing entry\u2019s id, or a new:<Class>:<n> reference to something you create in this response.',
+      },
+      target: {
+        target: '',
+        cardinality: 'one',
+        predicate: 'we://relationship_target',
+        interpretationHint:
+          'The narrower or following end: what the source needs, a part of it, or the step it leads to. An existing entry\u2019s id, or a new:<Class>:<n> reference to something you create in this response.',
+      },
     },
   },
 };

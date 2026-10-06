@@ -1,12 +1,25 @@
 name: AD4M compatibility
 
-# Is unreleased AD4M about to break WE?
+# Does WE still build, typecheck and test against an AD4M change that is not published yet?
 #
-# The required build (`build.yaml`) installs the AD4M version this repo pins, so it answers
-# "does this commit work?" — one question, one answer per commit. This job answers a
-# different one: WE compiled against AD4M's `dev` *source*, so an AD4M change that breaks WE
-# surfaces before a tag is cut. It is also how a cross-repo change is tested — a WE branch
-# needing an unpublished AD4M API can be run against the AD4M branch carrying it.
+# The required build (`build.yaml`) installs the AD4M version this repo pins. A paired deploy
+# preview (a `Paired with:` block in a PR description) builds WE against an AD4M change, but only builds
+# it. This job answers the remaining question: WE compiled against an AD4M change's *source*, with
+# its typecheck and tests, before that change is published. It runs two ways:
+#
+# - **On a paired pull request**, automatically. It reads the pairing and tests the pull
+#   request's own commit against what it names. This is the check that says whether a paired
+#   change works, while the required jobs are red waiting for the pin to move — without it, a
+#   paired pull request went days with Typecheck, Test and schemas never running at all, and a
+#   real regression could hide behind the failure everyone expected. Unpaired pull requests skip
+#   it. Editing the pairing does not start a run: push again, or re-run this one, which reads the
+#   description as it is now rather than as it was when the run first started.
+# - **From the Actions tab**, naming an AD4M branch, against the last WE commit that passed CI.
+#
+# It used to run nightly against AD4M `dev` and keep a tracking issue. Now every merge to AD4M
+# `dev` is published and the bump workflow (`bump-ad4m.yaml`) opens a PR for it within the hour,
+# with CI and a preview, which answers the same question sooner and where the fix goes. See
+# docs/contributing/ad4m-and-deploys.md.
 #
 # What it deliberately is not is a gate. It compiles against a branch, so its result depends
 # on when it runs and on what someone else pushed to another repository; a WE pull request
@@ -30,9 +43,7 @@ name: AD4M compatibility
 # blinds this job — it keeps answering about the last thing that worked.
 
 on:
-  schedule:
-    # 03:00 UTC daily — after AD4M's working day, before WE's.
-    - cron: '0 3 * * *'
+  pull_request:
   workflow_dispatch:
     inputs:
       ad4m_branch:
@@ -42,51 +53,162 @@ on:
       we_ref:
         description: 'WE ref to test (default: the last commit that passed CI on dev)'
         required: false
-      file_issue:
-        description: 'Also open/close the tracking issue (scheduled runs always do)'
-        type: boolean
-        required: false
-        default: false
 
-# `issues: write` to file and close the tracking issue; `actions: read` to find the last
-# green Build run and the previous run of this workflow.
+# `actions: read` to find the last green Build run and the previous run of this workflow.
+# `pull-requests` and `issues` to keep the pairing's comment and label on a paired pull request
+# (`.github/actions/pairing-status`); `issues` because a label is created through it.
 permissions:
   contents: read
   actions: read
+  pull-requests: write
   issues: write
 
+# One run per pull request, or per AD4M branch from the Actions tab.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.inputs.ad4m_branch || 'dev' }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event.inputs.ad4m_branch || 'dev' }}
   cancel-in-progress: true
 
 env:
   GH_TOKEN: ${{ github.token }}
-  ISSUE_LABEL: ad4m-drift
-  ISSUE_TITLE: 'AD4M `dev` has diverged from what WE pins'
 
 jobs:
-  compat:
-    # Without this the run renders as "AD4M compatibility / compat".
-    name: Build and verify
+  # Which AD4M to build against, and whether there is anything to do at all.
+  #
+  # A job of its own so the job below can be skipped outright on an unpaired pull request: a
+  # job-level `if` needs the answer before that job starts. It has to run on every pull request to
+  # find out — the PR template carries the block commented out, so no filter on the
+  # raw description can tell a paired one apart.
+  resolve:
+    name: Read the ad4m pairing
     runs-on: ubuntu-latest
+    outputs:
+      pairing: ${{ steps.resolve.outputs.pairing }}
+      ref: ${{ steps.resolve.outputs.ref }}
     steps:
-      # ---------------------------------------------------------------- resolve what to test
+      # Only the parser and the action that reports it. Nothing here is built or installed.
+      - uses: actions/checkout@v7
+        if: github.event_name == 'pull_request'
+        with:
+          sparse-checkout: |
+            scripts/ad4m-pairing.mjs
+            scripts/ad4m-pairing.test.mjs
+            .github/actions/pairing-status
+          sparse-checkout-cone-mode: false
 
-      # Dispatch inputs reach the shell as environment variables rather than being
-      # interpolated into the script text, so a branch name is always data and never
-      # something that can end up parsed as part of the command.
-      - name: Resolve AD4M branch
-        id: ad4m-branch
+      # The parser's own cases, run where the parser is used — the repository root has no test
+      # runner to keep them in. They matter because the parser's contract is that a near miss
+      # FAILS rather than reading as unpaired: one that quietly stopped refusing would build a
+      # paired PR against the pin and say nothing about it.
+      - name: The pairing parser still refuses what it should
+        if: github.event_name == 'pull_request'
+        run: node --test scripts/ad4m-pairing.test.mjs
+
+      # Inputs and the description reach the shell as environment variables rather than being
+      # interpolated into the script text, so they are always data and never something that can
+      # end up parsed as part of the command. The parser refuses a ref that is not a plain name.
+      - name: Resolve
+        id: resolve
         env:
+          # The description as it was when the run was triggered — a fallback only; see below.
+          EVENT_BODY: ${{ github.event.pull_request.body }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           REQUESTED_BRANCH: ${{ github.event.inputs.ad4m_branch }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
+          if [ "${{ github.event_name }}" = 'pull_request' ]; then
+            # Paired → pairing, ref and reason; unpaired → nothing, and the job below is skipped.
+            # A pairing that cannot be read, or names a pull request that cannot be found, fails
+            # here, as the preview does — and the parser writes the comment that says why, with the
+            # corrected block to paste.
+            #
+            # The description as it is NOW, not the copy in the event: a re-run replays the event it
+            # was started by, description included, so reading the event would make "fix the pairing,
+            # then re-run" silently test the old one. Falls back to the event if the API cannot answer.
+            PR_BODY="$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.body // ""')" || PR_BODY="$EVENT_BODY"
+            printf '%s' "$PR_BODY" \
+              | node scripts/ad4m-pairing.mjs --resolve --error-comment pairing-comment.md \
+              | tee -a "$GITHUB_OUTPUT"
+            exit "${PIPESTATUS[1]}"
+          fi
+
           BRANCH="${REQUESTED_BRANCH:-dev}"
           if ! git ls-remote --exit-code --heads \
             https://github.com/coasys/ad4m.git "$BRANCH" >/dev/null 2>&1; then
             echo "::error::No such AD4M branch: $BRANCH"
             exit 1
           fi
-          echo "name=$BRANCH" >> "$GITHUB_OUTPUT"
+          {
+            echo "pairing=coasys/ad4m@$BRANCH"
+            echo "ref=$BRANCH"
+            echo "reason=requested from the Actions tab"
+          } >> "$GITHUB_OUTPUT"
+
+      # Say on the pull request itself that it is paired, before the long check starts: the
+      # required checks go red within minutes, and this is what tells a reviewer why. The job below
+      # replaces it with what it found. An unpaired pull request loses the comment and label, which
+      # is how they go away once the pin has moved and the block is removed.
+      - name: Write the pending comment
+        if: github.event_name == 'pull_request' && steps.resolve.outputs.paired == 'true'
+        env:
+          PAIRING: ${{ steps.resolve.outputs.pairing }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          cat > pairing-comment.md <<EOF
+          ### :hourglass: Testing this PR against $PAIRING
+
+          The required checks build against the ad4m version WE pins, which does not have this change, so
+          they stay red until it is published and \`pnpm bump:ad4m\` moves the pin. Whether this PR works
+          against $PAIRING is answered by **AD4M compatibility / Against the paired ad4m**, which is
+          [running now]($RUN_URL) and takes about ten minutes. This comment will say what it found.
+          EOF
+
+      - name: Show the pairing on the pull request
+        if: github.event_name == 'pull_request' && steps.resolve.outputs.paired == 'true'
+        uses: ./.github/actions/pairing-status
+        with:
+          body-file: pairing-comment.md
+          paired: 'true'
+
+      - name: Clear the pairing from the pull request
+        if: github.event_name == 'pull_request' && steps.resolve.outputs.paired == 'false'
+        uses: ./.github/actions/pairing-status
+        with:
+          paired: 'false'
+
+      # A pairing that cannot be read fails this job, and the preview — said on the pull request as
+      # well, since a failing "Read the ad4m pairing" row is easy to read past. The parser wrote the
+      # comment, corrected block included; this is only for a failure it never reached.
+      - name: Write the error comment
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -s pairing-comment.md ] && exit 0
+          {
+            echo '### :x: The ad4m pairing could not be read'
+            echo
+            echo "Reading the description failed before it could be parsed — see [the run]($RUN_URL)."
+          } > pairing-comment.md
+
+      - name: Report the error on the pull request
+        if: failure() && github.event_name == 'pull_request'
+        uses: ./.github/actions/pairing-status
+        with:
+          body-file: pairing-comment.md
+          paired: 'false'
+
+  compat:
+    needs: resolve
+    if: needs.resolve.outputs.ref != ''
+    # A fixed name, not one built from the pairing: GitHub shows a SKIPPED job's name unevaluated,
+    # so on every unpaired pull request the check list would read `Against ${{ … }}`. Which change
+    # it ran against is the first line of the run's summary, and the required checks' warning
+    # names it too.
+    name: Against the paired ad4m
+    runs-on: ubuntu-latest
+    steps:
+      # ---------------------------------------------------------------- resolve what to test
 
       # The control. A green Build run on `dev` means that commit compiles, typechecks and
       # tests against the AD4M this repo pins — so if it fails below, AD4M is the difference.
@@ -94,11 +216,24 @@ jobs:
       # `controlled=false` records the two cases where that guarantee does not hold: an
       # explicitly requested ref, and the case where no green run could be found at all. The
       # report says so rather than claiming an attribution it has not earned.
+      #
+      # A pull request is tested at its own commit, which is the question there: does THIS
+      # change work against the AD4M change it pairs with. `mode=pr` also turns on the checks
+      # the required jobs skip while Build is red.
       - name: Resolve WE ref
         id: we-ref
         env:
           REQUESTED: ${{ github.event.inputs.we_ref }}
         run: |
+          if [ "${{ github.event_name }}" = 'pull_request' ]; then
+            echo "ref=${{ github.sha }}"  >> "$GITHUB_OUTPUT"
+            echo "controlled=false"       >> "$GITHUB_OUTPUT"
+            echo "why=this pull request"  >> "$GITHUB_OUTPUT"
+            echo "mode=pr"                >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "mode=dispatch" >> "$GITHUB_OUTPUT"
+
           if [ -n "$REQUESTED" ]; then
             echo "ref=$REQUESTED"        >> "$GITHUB_OUTPUT"
             echo "controlled=false"      >> "$GITHUB_OUTPUT"
@@ -152,11 +287,15 @@ jobs:
 
       # ---------------------------------------------------------------- build the AD4M SDK
 
-      - name: Clone AD4M
+      # A fetch of one ref rather than `git clone --branch`, which cannot take a commit or a pull
+      # request ref — and a paired pull request names `pull/N/head`, or a merge commit once merged.
+      - name: Fetch AD4M
+        env:
+          AD4M_REF: ${{ needs.resolve.outputs.ref }}
         run: |
-          git clone --depth 1 --single-branch \
-            --branch "${{ steps.ad4m-branch.outputs.name }}" \
-            https://github.com/coasys/ad4m.git ad4m
+          git init -q ad4m
+          git -C ad4m fetch -q --depth 1 https://github.com/coasys/ad4m.git "$AD4M_REF"
+          git -C ad4m checkout -q FETCH_HEAD
 
       - name: Get AD4M commit hash
         id: ad4m-hash
@@ -236,19 +375,41 @@ jobs:
           set -o pipefail
           pnpm test 2>&1 | tee -a compat.log
 
+      # On a pull request, the rest of what the required jobs check after Build. While the pair is
+      # waiting on the pin, Build fails there and these never run anywhere else — so a pull request
+      # could merge the moment the pin moved having never had its schemas validated.
+      #
+      # Not from the Actions tab: that tests a commit that already passed all of them against the
+      # pin, and none of them can be changed by which AD4M ran.
+      - name: Validate schemas and audits
+        id: schemas
+        if: steps.we-ref.outputs.mode == 'pr'
+        run: |
+          set -o pipefail
+          { pnpm validate:schemas && pnpm audit:roles && pnpm audit:surfaces; } 2>&1 | tee -a compat.log
+
+      - name: Browser tests
+        id: browser
+        if: steps.we-ref.outputs.mode == 'pr'
+        run: |
+          set -o pipefail
+          pnpm --filter @we/primitives test:browser 2>&1 | tee -a compat.log
+
       # ---------------------------------------------------------------- report
 
-      # Written on success and on failure alike: the run page is where somebody lands from a
-      # notification, and "green, and here is what it proved" is worth as much as the
-      # failure. The same text becomes the issue body below.
+      # Written on success and on failure alike, to the run's summary page: "green, and here is
+      # what it proved" is worth as much as the failure.
+      # Not when cancelled: a superseded run has no stages that failed, and would report green.
       - name: Write report
         id: report
-        if: always()
+        if: ${{ !cancelled() }}
         env:
-          AD4M_BRANCH: ${{ steps.ad4m-branch.outputs.name }}
+          AD4M_LABEL: ${{ needs.resolve.outputs.pairing }}
+          AD4M_REF: ${{ needs.resolve.outputs.ref }}
           AD4M_HASH: ${{ steps.ad4m-hash.outputs.hash }}
           WE_REF: ${{ steps.we-ref.outputs.ref }}
           CONTROLLED: ${{ steps.we-ref.outputs.controlled }}
+          MODE: ${{ steps.we-ref.outputs.mode }}
           WHY: ${{ steps.we-ref.outputs.why }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -261,27 +422,39 @@ jobs:
                    'WE install:${{ steps.install.outcome }}' \
                    'Build:${{ steps.build.outcome }}' \
                    'Typecheck:${{ steps.typecheck.outcome }}' \
-                   'Test:${{ steps.test.outcome }}'; do
+                   'Test:${{ steps.test.outcome }}' \
+                   'Schemas and audits:${{ steps.schemas.outcome }}' \
+                   'Browser tests:${{ steps.browser.outcome }}'; do
             if [ "${s##*:}" = 'failure' ]; then STAGE="${s%%:*}"; break; fi
           done
+          # A step outside that list failed — fetching AD4M, say. Still a failure, never a pass.
+          if [ -z "$STAGE" ] && [ "${{ job.status }}" != 'success' ]; then STAGE='Setup'; fi
 
           {
             if [ -z "$STAGE" ]; then
-              echo "## WE builds against AD4M \`$AD4M_BRANCH\` :green_circle:"
+              echo "## WE builds against $AD4M_LABEL :green_circle:"
               echo
               echo "WE \`${WE_REF:0:12}\` builds, typechecks and tests against AD4M \`${AD4M_HASH:0:12}\`."
+              if [ "$MODE" = 'pr' ]; then
+                echo
+                echo "Schemas, audits and browser tests pass too. Required jobs that fail on this pull request"
+                echo "are waiting for the pin to move, not for a fix."
+              fi
             else
-              echo "## WE does not build against AD4M \`$AD4M_BRANCH\` :red_circle:"
+              echo "## WE does not build against $AD4M_LABEL :red_circle:"
               echo
               echo "| | |"
               echo "|---|---|"
               echo "| WE commit | \`${WE_REF:0:12}\` ($WHY) |"
-              echo "| AD4M commit | [\`${AD4M_HASH:0:12}\`](https://github.com/coasys/ad4m/commit/$AD4M_HASH) on \`$AD4M_BRANCH\` |"
+              echo "| AD4M commit | [\`${AD4M_HASH:0:12}\`](https://github.com/coasys/ad4m/commit/$AD4M_HASH) from \`$AD4M_REF\` |"
               echo "| Failed at | **$STAGE** |"
               echo "| Run | [$RUN_URL]($RUN_URL) |"
               echo
 
-              if [ "$CONTROLLED" = 'true' ]; then
+              if [ "$MODE" = 'pr' ]; then
+                echo "This is the pull request's own commit, built against the AD4M change it pairs with, so"
+                echo "the failure is this pair's to fix — on whichever side the error points at."
+              elif [ "$CONTROLLED" = 'true' ]; then
                 echo "This commit passes against the AD4M version WE pins — that is what made it"
                 echo "eligible to be tested here — so **AD4M is the difference**. Either AD4M needs a"
                 echo "fix before the next tag, or WE is using an API that exists only in the pinned"
@@ -297,11 +470,12 @@ jobs:
               # Printed only when it is non-empty — a heading over nothing reads as a failed
               # lookup, and the list is genuinely empty whenever the drift is older than the
               # last green run.
-              SINCE="$(gh api \
-                "repos/${{ github.repository }}/actions/workflows/ad4m-compat.yaml/runs?status=success&per_page=1" \
+              SINCE=''
+              [ "$MODE" = 'pr' ] || SINCE="$(gh api \
+                "repos/${{ github.repository }}/actions/workflows/ad4m-compat.yaml/runs?event=workflow_dispatch&status=success&per_page=1" \
                 --jq '.workflow_runs[0].created_at // empty' 2>/dev/null || true)"
               if [ -n "$SINCE" ]; then
-                COMMITS="$(gh api "repos/coasys/ad4m/commits?sha=$AD4M_BRANCH&since=$SINCE&per_page=30" \
+                COMMITS="$(gh api "repos/coasys/ad4m/commits?sha=$AD4M_REF&since=$SINCE&per_page=30" \
                   --jq '.[] | "- [`\(.sha[0:8])`](\(.html_url)) \(.commit.message | split("\n")[0])"' \
                   2>/dev/null || true)"
                 if [ -n "$COMMITS" ]; then
@@ -331,37 +505,112 @@ jobs:
           cat report.md >> "$GITHUB_STEP_SUMMARY"
           echo "stage=$STAGE" >> "$GITHUB_OUTPUT"
 
-      # Scheduled runs always report; a manual dispatch opts in, because somebody who
-      # dispatched this is already looking at the output and does not need an issue filed at
-      # them. The label is created on demand — `gh issue create` fails on a label that does
-      # not exist yet, which would otherwise make the very first failure silent.
-      - name: File or update the tracking issue
-        if: failure() && (github.event_name == 'schedule' || github.event.inputs.file_issue == 'true')
+      # The same report, as the pull request's pairing comment — replacing the "running" one the
+      # resolve job wrote.
+      #
+      # Its own layout rather than the run summary's, which also serves runs from the Actions tab: a
+      # reviewer wants the verdict, which stages passed, and what the red required checks mean — in
+      # that order. It names the branch's own head commit, not the commit the run checked out: on a
+      # pull request that is a merge with the base GitHub makes and never shows among the commits.
+      - name: Write the result comment
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        env:
+          PAIRING: ${{ needs.resolve.outputs.pairing }}
+          AD4M_HASH: ${{ steps.ad4m-hash.outputs.hash }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          JOB_STATUS: ${{ job.status }}
+          SDK_CACHED: ${{ steps.ad4m-cache.outputs.cache-hit }}
+          SDK: ${{ steps.ad4m-build.outcome }}
+          INSTALL: ${{ steps.install.outcome }}
+          BUILD: ${{ steps.build.outcome }}
+          TYPECHECK: ${{ steps.typecheck.outcome }}
+          TEST: ${{ steps.test.outcome }}
+          SCHEMAS: ${{ steps.schemas.outcome }}
+          BROWSER: ${{ steps.browser.outcome }}
         run: |
-          gh label create "$ISSUE_LABEL" \
-            --color 'B60205' \
-            --description 'WE does not build against unreleased AD4M' 2>/dev/null || true
+          # One row per stage. A stage after a failure was never run, which is not the same as
+          # passing, so it says so.
+          row() {
+            case "$2" in
+              success) echo "- :white_check_mark: $1" ;;
+              failure) echo "- :x: **$1**" ;;
+              *)       echo "- :fast_forward: $1 — not run" ;;
+            esac
+          }
 
-          EXISTING="$(gh issue list --label "$ISSUE_LABEL" --state open --limit 1 --json number --jq '.[0].number // empty')"
+          # The SDK step is skipped on a cache hit, which is a pass; installing WE against it is
+          # the same stage as far as a reader is concerned.
+          [ "$SDK_CACHED" = 'true' ] && SDK=success
+          [ "$SDK" = success ] && [ "$INSTALL" != success ] && SDK="$INSTALL"
 
-          if [ -n "$EXISTING" ]; then
-            # Update in place rather than commenting. A failure that persists for a week is
-            # one problem, not seven notifications; the body always reflects the latest run.
-            gh issue edit "$EXISTING" --body-file report.md
-            echo "Updated #$EXISTING"
-          else
-            gh issue create \
-              --title "$ISSUE_TITLE" \
-              --label "$ISSUE_LABEL" \
-              --body-file report.md
-          fi
+          FAILED=''
+          for o in "$SDK" "$BUILD" "$TYPECHECK" "$TEST" "$SCHEMAS" "$BROWSER"; do
+            [ "$o" = failure ] && FAILED=1
+          done
 
-      - name: Close the tracking issue
-        if: success() && (github.event_name == 'schedule' || github.event.inputs.file_issue == 'true')
-        run: |
-          EXISTING="$(gh issue list --label "$ISSUE_LABEL" --state open --limit 1 --json number --jq '.[0].number // empty')"
-          if [ -n "$EXISTING" ]; then
-            gh issue comment "$EXISTING" --body-file report.md
-            gh issue close "$EXISTING" --reason completed
-            echo "Closed #$EXISTING"
-          fi
+          {
+            if [ "$JOB_STATUS" = success ]; then
+              echo "### :white_check_mark: This PR works against $PAIRING"
+            elif [ -n "$FAILED" ]; then
+              echo "### :x: This PR fails against $PAIRING"
+            else
+              echo "### :x: This PR could not be tested against $PAIRING"
+            fi
+            echo
+            VERB='Tested'
+            [ "$JOB_STATUS" = success ] || [ -n "$FAILED" ] || VERB='Tried'
+            TESTED="$VERB at [\`${HEAD_SHA:0:9}\`]($PR_URL/commits/$HEAD_SHA), merged with \`$BASE_REF\`"
+            if [ -n "$AD4M_HASH" ]; then
+              TESTED="$TESTED, against ad4m [\`${AD4M_HASH:0:9}\`](https://github.com/coasys/ad4m/commit/$AD4M_HASH)"
+            fi
+            echo "$TESTED."
+            echo
+
+            if [ "$JOB_STATUS" = success ]; then
+              echo "**The red required checks are only the ad4m pin.** They clear once $PAIRING is"
+              echo "published and \`pnpm bump:ad4m\` moves the pin."
+            elif [ -n "$FAILED" ]; then
+              echo "**Something is broken**, in this PR or in $PAIRING. The error below says which side."
+            else
+              echo "**The check failed before it could build anything** — see [the run]($RUN_URL)."
+            fi
+            echo
+
+            # Never a PR reference in a row: GitHub expands one inside a list item into the
+            # referenced PR's whole title. The heading names the ad4m PR, once, as a link.
+            row 'ad4m SDK' "$SDK"
+            row 'Build' "$BUILD"
+            row 'Typecheck' "$TYPECHECK"
+            row 'Tests' "$TEST"
+            row 'Schemas and audits' "$SCHEMAS"
+            row 'Browser tests' "$BROWSER"
+
+            if [ -n "$FAILED" ] && [ -f compat.log ]; then
+              echo
+              echo '<details><summary>Error</summary>'
+              echo
+              echo '```'
+              # The lines a reader wants, out of a log whose first two thousand lines are install
+              # chatter — the same patterns the run summary uses.
+              if grep -qE 'error TS[0-9]+|ERR_PNPM|FAIL |✗ |AssertionError' compat.log; then
+                grep -E 'error TS[0-9]+|ERR_PNPM|FAIL |✗ |AssertionError' compat.log | head -25
+              else
+                tail -25 compat.log
+              fi
+              echo '```'
+              echo
+              echo '</details>'
+            fi
+
+            echo
+            echo "<sub>[The run]($RUN_URL) · updated on every push</sub>"
+          } > pairing-comment.md
+
+      - name: Report on the pull request
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        uses: ./.github/actions/pairing-status
+        with:
+          body-file: pairing-comment.md

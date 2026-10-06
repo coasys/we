@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
-    "typescript": "^5.7.2",
+    "typescript": "^6.0.3",
     "vite": "^8.2.2"
   }
 }

@@ -114,6 +114,15 @@ export interface InterpretationKernel {
   accept: (id: string, property?: string, target?: DatasetTarget) => Promise<boolean>;
   /** Drop a staged suggestion. Resolves `false`, like {@link accept}, when it is no longer staged. */
   reject: (id: string, property?: string, target?: DatasetTarget) => Promise<boolean>;
+  /**
+   * What a record is tied to by connections: the records it joins, if it is one, and the connections
+   * that join it. For deciding a suggestion together with the ones it cannot stand without. Resolves
+   * `null` where the host cannot say. Optional so a host that predates it type-checks.
+   */
+  connections?: (
+    id: string,
+    target?: DatasetTarget,
+  ) => Promise<{ ends: string[]; connections: { id: string; entity: string }[] } | null>;
 }
 
 /**

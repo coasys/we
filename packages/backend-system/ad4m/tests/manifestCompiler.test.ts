@@ -1,5 +1,4 @@
 /**
-import type { EntityManifest } from '@we/backend-shared';
  * Golden test: the compiler is faithful on everything the manifest layer can express.
  *
  * Every hand-written WE model is projected to its manifest entry (the neutral-expressible
@@ -10,6 +9,7 @@ import type { EntityManifest } from '@we/backend-shared';
  * compile path mints its own type flag; models needing the rest stay decorated).
  */
 import type { Ad4mModel, SHACLShape } from '@coasys/ad4m';
+import type { EntityManifest } from '@we/backend-shared';
 import { FILE_STORAGE_LANGUAGE, getEntityPredicates } from '@we/entities';
 import { describe, expect, it } from 'vitest';
 

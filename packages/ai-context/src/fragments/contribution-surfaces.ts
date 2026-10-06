@@ -103,9 +103,9 @@ the seed's list is correct code that never appears.
 | Entity | \`entities/src/manifest/\` | \`entities/CONVENTIONS.md\` + \`docs/architecture/relations.md\` | \`--filter @we/entities generate:types\` **and** \`--filter @we/backend-ad4m generate:classes\` | \`--filter @we/backend-ad4m test\` |
 | Feature module | \`module-system/<id>/\` (or any package exporting \`createModule\`) | \`docs/guides/writing-a-module.md\`, then \`module-system/shared/src/module.ts\` | seed \`modules\` — the registry is generated from it by \`--filter @we/app-shell generate-modules\` | \`--filter @we/module-shared test\`, \`validate:schemas\`, then \`generate-context\` |
 | Graph plugin | \`graph-system/expanders/src/\`, \`layouts/src/\` | \`graph-system/CONVENTIONS.md\` | package index **and** \`GRAPH_PLUGIN_CATALOG\` in \`module-system/graph/src/catalog.ts\` | \`--filter @we/graph-core test\`, then \`generate-context\` |
-| Globe layer | \`module-system/globe/layers/src/\` | its \`README.md\` / \`EXAMPLES.md\` | export from \`index.ts\` | \`--filter @we/globe-layers typecheck\` |
+| Globe layer | \`module-system/globe/layers/src/\` | its \`README.md\` / \`EXAMPLES.md\` | export from \`index.ts\`, \`layerFactoryRegistry\` in \`module-system/globe/module/src/layers.ts\` **and** \`GLOBE_LAYER_CATALOG\` in \`module-system/globe/module/src/catalog.ts\` | \`--filter @we/app-shell test\` (\`globeModule\`), then \`generate-context\` |
 | Seed | \`we-seed.json\` | \`docs/getting-started/seed-system.md\` | — | \`pnpm validate:seed\` |
-| Backend adapter | \`backend-system/<name>/\` | \`backend-system/shared/README.md\` | entity proxy registry | model the \`inmemory\` package |
+| Backend adapter | \`backend-system/<name>/\` | \`backend-system/shared/README.md\` | entity proxy registry | \`describeBackendConformance\` from \`@we/backend-conformance\` |
 | Platform host | \`apps/<name>/\` | — | — | \`--filter <app> build\` |
 
 Widgets (\`design-system/5-widgets\`) are the nineteenth and are **currently empty by design**: the one
@@ -121,8 +121,8 @@ works.
 
 **The graph catalog entry is not bookkeeping.** Props tell an author that \`layout.type\` is a string;
 nothing in a prop list says which strings exist, so a plugin nobody can name might as well not be
-registered. The globe is the cautionary case — its layer protocol is good, no catalog of layer names
-reaches the generated context, and so an LLM cannot author a globe template.
+registered. The globe was the cautionary case — a good layer protocol, no catalog of layer names in
+the generated context, and so no LLM could author a globe template until it got one.
 
 ### Distribution — what is real
 

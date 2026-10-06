@@ -1,9 +1,9 @@
 /**
  * Entities over plain rows — the in-memory half of what a declared manifest means.
  *
- * The AD4M adapter compiles a manifest into decorated model classes that write triples against
- * minted predicates. This compiles the *same manifest* into classes that write objects into
- * arrays, and the difference is invisible to a caller: `Space.findAll(dataset, { where, include })`,
+ * The production adapter compiles a manifest into model classes that write links against minted
+ * predicates. This compiles the *same manifest* into classes that write objects into arrays, and
+ * the difference is invisible to a caller: `Space.findAll(dataset, { where, include })`,
  * `space.save()`, `settings.addInstalledTemplates(t)` all mean what they always meant.
  *
  * That equivalence is the point. Stores and the boot sequence can then be tested against real
@@ -49,6 +49,20 @@ interface RelationInfo {
 }
 
 const manyForeignKey = (entity: string, relation: string) => `__${entity}_${relation}`;
+
+/**
+ * One field written to an existing row — where `''` clears it, as it does in production.
+ *
+ * Production removes a cleared property rather than storing an empty one, so the record then has no
+ * value for it: it still reads back as its declared default, and no query matches it — not
+ * `{ field: '' }`, not `{ field: { not: x } }`. This backend used to keep the `''`, so a cleared field
+ * went on matching a `not` here and dropped out of the same query in production. Creation is not a
+ * clear: a `''` written then, a default included, is a value on both backends.
+ */
+function writeField(row: Record<string, unknown>, key: string, value: unknown): void {
+  if (value === '') delete row[key];
+  else row[key] = value;
+}
 
 /** Writes notify per dataset, so a live query re-runs exactly when its dataset changed. */
 const listeners = new WeakMap<object, Set<() => void>>();
@@ -131,8 +145,8 @@ export interface EntityClassLike {
 /**
  * The contract, checked: this backend's compiled entities present the same static surface the
  * entity proxies are typed as — which is what makes it a second *conforming* implementation
- * rather than a lookalike. (The AD4M lane cannot make this assertion structurally — its statics
- * are `this`-polymorphic — so this is also the one place the contract is compiler-verified
+ * rather than a lookalike. (The production lane cannot make this assertion structurally — its
+ * statics are `this`-polymorphic — so this is also the one place the contract is compiler-verified
  * end to end.)
  */
 type Satisfies<A extends B, B> = A;
@@ -188,9 +202,8 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
       // children" rather than an error, and `CollectionBlock.children` — untyped by design, since a
       // collection holds any block type — is the relation every showcase template drills through.
       //
-      // The cost is that an `include` over an untyped relation now resolves to `[]` rather than
-      // being absent. That case is already documented as unsupported (a relation with no declared
-      // target cannot say which table to read), and both spellings render as nothing.
+      // An `include` over one reads every table, each member tagged with the entity it came from —
+      // see `resolveRelation` in the shared query engine.
       engineRelations[name][relName] = {
         target: info.target,
         cardinality,
@@ -203,6 +216,32 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
     }
     relationsByEntity[name] = infos;
   }
+
+  /*
+    The reverse relations, by the forward relation they read back: `comments` → `inReplyTo`.
+
+    A reverse relation (`reverseOf`) is the same link read from the other end, so nothing writes it
+    directly — and nothing here derived it either, so `inReplyTo` was empty on every record. Every
+    comment thread rebuilds its tree from it, and the feeds leave replies out with
+    `inReplyTo: { none: {} }`, so on this backend a reply showed up as a post of its own and a thread
+    had no shape. The forward write now stamps the parent on the child under the reverse relation's
+    name, which is where the query engine reads a to-one link from.
+  */
+  const reversesOf = new Map<string, string[]>();
+  for (const name of Object.keys(manifest.entities)) {
+    for (const [relName, spec] of Object.entries(resolved(name).relations)) {
+      if (!spec.reverseOf) continue;
+      const names = reversesOf.get(spec.reverseOf) ?? [];
+      if (!names.includes(relName)) reversesOf.set(spec.reverseOf, [...names, relName]);
+    }
+  }
+  const linkReverse = (forward: string, child: AnyRow, parentId: string, linked: boolean) => {
+    for (const reverse of reversesOf.get(forward) ?? []) {
+      if (linked) child[reverse] = parentId;
+      // Only if it still points here: a child since linked under another parent keeps that one.
+      else if (child[reverse] === parentId) delete child[reverse];
+    }
+  };
 
   const datasetOf = (handle: unknown): DatasetEntry => {
     const entry = handle as DatasetEntry | undefined;
@@ -248,7 +287,9 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         if (!row) throw new Error(`${name}.save(): row ${(this as unknown as AnyRow).id} no longer exists`);
         for (const [key, value] of Object.entries(this as unknown as Record<string, unknown>)) {
           if (typeof value === 'function' || key.startsWith('$')) continue;
-          row[key] = value;
+          // Only what changed: an unchanged `''` from creation is a value, not a clear.
+          if (row[key] === value || (value === '' && !(key in row))) continue;
+          writeField(row, key, value);
         }
         notify(dataset);
       }
@@ -293,7 +334,9 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
       }
 
       static rowsFor(dataset: DatasetEntry, query: Record<string, unknown> = {}): AnyRow[] {
-        const { where, order, limit, offset, include, scope, ...rest } = query;
+        // `select` is the template dialect; `properties` is the record contract's name for the same list.
+        const { where, order, limit, offset, include, select = query.properties, scope, properties, ...rest } = query;
+        void properties;
         void rest;
         const { ir, unsupported } = compileQuery({
           entity: name,
@@ -302,6 +345,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           ...(typeof limit === 'number' ? { limit } : {}),
           ...(typeof offset === 'number' ? { offset } : {}),
           ...(include ? { include: include as Record<string, unknown> } : {}),
+          ...(Array.isArray(select) ? { select: select as string[] } : {}),
           // A drill-down the engine has always been able to execute (`scopeRows`) and this layer
           // silently dropped into `rest` — so a scoped query answered as if it were unscoped,
           // returning every row in the table rather than one container's children.
@@ -317,9 +361,23 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         return executeQueryIR(ir, data) as AnyRow[];
       }
 
+      /**
+       * Rows as instances. Under a field selection an instance carries only what was selected, as any
+       * backend's does: the class's field defaults would otherwise stand in for fields the query never
+       * asked for, and an empty title reads as a real one.
+       */
+      static read(dataset: DatasetEntry, query: Record<string, unknown>): Entity[] {
+        const narrowed = Array.isArray(query.select ?? query.properties);
+        return Entity.rowsFor(dataset, query).map((row) => {
+          const instance = Entity.hydrate(dataset, row) as Entity & Record<string, unknown>;
+          if (narrowed) for (const key of Object.keys(instance)) if (!(key in row)) delete instance[key];
+          return instance;
+        });
+      }
+
       static async findAll(handle: unknown, query: Record<string, unknown> = {}): Promise<Entity[]> {
         const dataset = datasetOf(handle);
-        return Entity.rowsFor(dataset, query).map((row) => Entity.hydrate(dataset, row));
+        return Entity.read(dataset, query);
       }
 
       static async findOne(handle: unknown, query: Record<string, unknown> = {}): Promise<Entity | null> {
@@ -344,7 +402,28 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         }
         tableOf(dataset, name).push(row);
         notify(dataset);
-        return Entity.hydrate(dataset, row);
+        const instance = Entity.hydrate(dataset, row);
+        /*
+          Relations named in the data are linked, not dropped.
+
+          They used to be skipped, so `record.create('Loan', { item })` wrote a loan pointing at
+          nothing — while AD4M's `save()` sets relations on a new instance, so the two backends
+          disagreed and the preview, built on this one, showed a template broken that was not. Linked
+          through the same accessors as `add<Relation>`, so this write and that one keep the foreign
+          keys in step in one place. An id or an instance, one or a list.
+        */
+        for (const [key, value] of Object.entries(data)) {
+          if (!relationNames.has(key) || value == null) continue;
+          const add = (instance as unknown as Record<string, unknown>)[
+            `add${key.charAt(0).toUpperCase()}${key.slice(1)}`
+          ];
+          if (typeof add !== 'function') continue;
+          for (const one of Array.isArray(value) ? value : [value]) {
+            const id = typeof one === 'string' ? one : (one as AnyRow | null)?.id;
+            if (typeof id === 'string' && id) await (add as (target: string) => Promise<void>).call(instance, id);
+          }
+        }
+        return instance;
       }
 
       static async update(handle: unknown, id: string, data: Record<string, unknown>): Promise<Entity | null> {
@@ -353,7 +432,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         if (!row) return null;
         for (const [key, value] of Object.entries(data)) {
           if (relationNames.has(key)) continue;
-          row[key] = value;
+          writeField(row, key, value);
         }
         row.updatedAt = new Date().toISOString();
         notify(dataset);
@@ -448,7 +527,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         return {
           async subscribe(callback: (rows: unknown[]) => void) {
             const run = () => {
-              const rows = Entity.rowsFor(dataset, q).map((row) => Entity.hydrate(dataset, row));
+              const rows = Entity.read(dataset, q);
               callback(rows);
               return rows;
             };
@@ -490,7 +569,10 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
             : Object.values(dataset.tables)
                 .flatMap((rows) => rows as AnyRow[])
                 .find((r) => r.id === relatedId);
-          if (targetRow) targetRow[relation.foreignKey] = this.id;
+          if (targetRow) {
+            targetRow[relation.foreignKey] = this.id;
+            linkReverse(relation.name, targetRow, this.id as string, true);
+          }
           const current = Array.isArray(this[relation.name]) ? (this[relation.name] as unknown[]) : [];
           if (!current.includes(relatedId)) this[relation.name] = [...current, relatedId];
           const row = tableOf(dataset, name).find((r) => r.id === this.id);
@@ -521,10 +603,17 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           if (row) row[relation.foreignKey] = '';
           this[relation.name] = '';
         } else {
+          // Looked up across every table when the relation is untyped, as `add` does — otherwise
+          // removing from an untyped relation left the child's key behind.
           const targetRow = relation.target
             ? tableOf(dataset, relation.target).find((r) => r.id === relatedId)
-            : undefined;
-          if (targetRow) delete targetRow[relation.foreignKey];
+            : Object.values(dataset.tables)
+                .flatMap((rows) => rows as AnyRow[])
+                .find((r) => r.id === relatedId);
+          if (targetRow) {
+            delete targetRow[relation.foreignKey];
+            linkReverse(relation.name, targetRow, this.id as string, false);
+          }
           const current = Array.isArray(this[relation.name]) ? (this[relation.name] as unknown[]) : [];
           this[relation.name] = current.filter((id) => id !== relatedId);
           if (row) row[relation.name] = this[relation.name];
@@ -534,8 +623,9 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
 
       /*
         The whole list at once, in this order — the accessor an *ordered* relation is written through.
-        `setChildren` on AD4M diffs the list against what it holds and records only what moved; here
-        the list simply becomes the row's, since nothing concurrent can happen to an in-memory table.
+        A backend with concurrent writers diffs the list against what it holds and records only what
+        moved; here the list simply becomes the row's, since nothing concurrent can happen to an
+        in-memory table.
         Without it a consumer that arranges a relation — a board column — had no accessor on this
         backend at all, and the fixtures could only append.
       */
@@ -556,11 +646,17 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           for (const id of current) {
             if (next.includes(id)) continue;
             const targetRow = rowsOf(id);
-            if (targetRow) delete targetRow[relation.foreignKey];
+            if (targetRow) {
+              delete targetRow[relation.foreignKey];
+              linkReverse(relation.name, targetRow, this.id as string, false);
+            }
           }
           for (const id of next) {
             const targetRow = rowsOf(id);
-            if (targetRow) targetRow[relation.foreignKey] = this.id;
+            if (targetRow) {
+              targetRow[relation.foreignKey] = this.id;
+              linkReverse(relation.name, targetRow, this.id as string, true);
+            }
           }
           this[relation.name] = next;
           const row = tableOf(dataset, name).find((r) => r.id === this.id);

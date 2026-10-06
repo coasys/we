@@ -9,6 +9,7 @@ import type { Expander, ExpanderContext, GraphValue, SeedSource } from '@we/grap
 import { describe, expect, it, vi } from 'vitest';
 
 import { GraphEngine } from './engine';
+import { defaultMetrics } from './metrics';
 import { PluginRegistry } from './registry';
 
 const context: ExpanderContext = {
@@ -1326,13 +1327,33 @@ describe('data overlay', () => {
   });
 
   it('re-routes the edges that meet an overlaid node', async () => {
-    const engine = await canvasEngine();
+    /*
+      Spaced out, because the claim below is about a *border*.
+
+      The shared fixture puts its nodes ten units apart, which for cards a hundred wide is two cards on
+      top of each other — so the line "stopping short of the border" of the wider one lands well behind
+      the card it came from, and the assertion is true of a configuration where none of it means
+      anything. Half a screen apart it measures the thing it says: the widths differ by exactly the 150
+      units the overlay adds.
+    */
+    const spaced = {
+      grid: () => ({
+        id: 'grid',
+        init: (input: { nodes: { id: string }[] }) => ({
+          positions: new Map(input.nodes.map((node, index) => [node.id, { x: index * 600, y: 0 }])),
+        }),
+      }),
+    };
+    const registry = new PluginRegistry({ seeds: [twoCards], expanders: [], layouts: spaced });
+    const engine = engineWith({ seeds: { source: 'two' }, layout: { type: 'grid' }, nodeStyle: cardStyle }, registry);
+    await engine.start();
     const before = engine.getEdgeGeometry().get('a->b');
 
     engine.setDataOverlay(new Map([['b', { canvasWidth: 400 }]]));
 
     // The line stops short of the node's border, so a wider target ends the edge sooner.
     expect(engine.getEdgeGeometry().get('a->b')?.to).not.toEqual(before?.to);
+    expect(engine.getEdgeGeometry().get('a->b')!.to.x).toBeCloseTo(before!.to.x - 150);
   });
 
   it('leaves the node the seeds returned alone', async () => {
@@ -2039,5 +2060,245 @@ describe('GraphEngine folding', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+/**
+ * A load that has been replaced has nothing to say about what is on screen now.
+ *
+ * `refresh` serialises itself, but nothing serialised a `refresh` against a `start` — so switching
+ * canvases while a refresh was in flight left the older load to finish afterwards and reconcile its
+ * rows into the graph that had replaced it. Rare, silent, and indistinguishable from the backend
+ * having answered about the wrong canvas.
+ */
+describe('a superseded load', () => {
+  /** A seed that answers when told to, so two loads can be held open at once. */
+  function gatedSeed(): { source: SeedSource; release: (label: string) => void; waiting: () => number } {
+    const gates: { label: string; go: () => void }[] = [];
+    let current = 'first';
+    return {
+      waiting: () => gates.length,
+      release: (label: string) => {
+        const gate = gates.find((g) => g.label === label);
+        gate?.go();
+      },
+      source: {
+        id: 'test',
+        async seed() {
+          const label = current;
+          current = 'second';
+          await new Promise<void>((resolve) => gates.push({ label, go: resolve }));
+          return {
+            nodes: [{ id: `${label}-node`, kind: 'entity' as const, type: 'Thing', label }],
+            edges: [],
+          };
+        },
+      },
+    };
+  }
+
+  it('does not reconcile its rows into the graph that replaced it', async () => {
+    const gate = gatedSeed();
+    const registry = new PluginRegistry({ seeds: [gate.source], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+
+    // Two loads open at once: the first still waiting when the second begins.
+    const first = engine.start();
+    await Promise.resolve();
+    const second = engine.start();
+    await Promise.resolve();
+    expect(gate.waiting(), 'both loads are in flight').toBe(2);
+
+    // The replacement answers first and lands; the one it replaced answers afterwards.
+    gate.release('second');
+    await second;
+    gate.release('first');
+    await first;
+
+    const ids = [...engine.store.nodes()].map((n) => n.id);
+    expect(ids, 'the older load overwrote the newer one').toEqual(['second-node']);
+  });
+
+  it('hands the seed a signal, so its reads can stop when it is replaced', async () => {
+    /*
+      Every seed here takes an `AbortSignal` and threads it through each of its reads — the canvas
+      seed has done so since it was written — and nothing ever passed one, so the whole of that
+      plumbing was dead and a superseded load's queries all ran to completion. On a canvas that is
+      eleven reads nobody is waiting for.
+    */
+    const seen: (AbortSignal | undefined)[] = [];
+    const registry = new PluginRegistry({
+      seeds: [
+        {
+          id: 'test',
+          async seed(_options, _context, signal) {
+            seen.push(signal);
+            return { nodes: [], edges: [] };
+          },
+        },
+      ],
+      layouts,
+    });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+
+    await engine.start();
+    expect(seen[0], 'the seed was called without a signal').toBeInstanceOf(AbortSignal);
+    expect(seen[0]?.aborted, 'the load that is running is not aborted').toBe(false);
+
+    await engine.start();
+    expect(seen[0]?.aborted, 'starting again did not abort the load it replaced').toBe(true);
+  });
+
+  /*
+    Dropping a replaced load also drops the framing it owed, and nothing else was going to do it.
+
+    `start` is the only caller that asks for a fit, and it gives up before asking when its load has
+    been replaced. `resize` re-frames on a first measurement, which on a cold boot happens seconds
+    before any row arrives and so finds no positions to frame. So a refresh landing while the first
+    load was in flight left a whole canvas at the origin — which reads as cards missing rather than
+    as a camera that was never moved.
+  */
+  it('frames the graph the load it replaced was going to frame', async () => {
+    const gate = gatedSeed();
+    const registry = new PluginRegistry({ seeds: [gate.source], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+
+    // The renderer measures itself on mount, before the seeds have answered.
+    engine.resize(800, 600);
+    expect(engine.viewport.get(), 'nothing to frame yet').toMatchObject({ x: 0, y: 0, zoom: 1 });
+
+    // A marker arriving from elsewhere refreshes while the first load is still out.
+    const start = engine.start();
+    await Promise.resolve();
+    const refresh = engine.refresh();
+    await Promise.resolve();
+    expect(gate.waiting(), 'both loads are in flight').toBe(2);
+
+    gate.release('second');
+    await refresh;
+    gate.release('first');
+    await start;
+
+    const camera = engine.viewport.get();
+    expect(camera.x === 0 && camera.y === 0, 'the graph was left at the origin').toBe(false);
+  });
+
+  it('still leaves the camera alone when it merges into a graph already on screen', async () => {
+    // The other half of the rule, and the reason it is written as "the screen was empty" rather
+    // than "this is a refresh": a viewport that jumped whenever a peer wrote something would make
+    // a shared graph unusable.
+    const registry = new PluginRegistry({ seeds: [seedOf(4)], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    engine.resize(800, 600);
+    engine.behaviourContext().pan(120, 90);
+    const panned = { ...engine.viewport.get() };
+
+    await engine.refresh();
+
+    expect(engine.viewport.get().x).toBe(panned.x);
+    expect(engine.viewport.get().y).toBe(panned.y);
+  });
+});
+
+describe('a heat rule', () => {
+  /** Three cards carrying a weight and one carrying none. */
+  const weighed: SeedSource = {
+    id: 'weighed',
+    async seed() {
+      const weights: Record<string, number | undefined> = { low: 1, middle: 5, high: 9, none: undefined };
+      return {
+        nodes: Object.entries(weights).map(([id, weight]) => ({
+          id,
+          kind: 'entity' as const,
+          type: 'Thing',
+          label: id,
+          data: (weight === undefined ? {} : { weight, comments: 10 - weight }) as Record<string, GraphValue>,
+        })),
+        edges: [],
+      };
+    },
+  };
+
+  it('reads the field it names, and two rules reading different fields read their own', async () => {
+    // The options never reached `compute`, so `field` did not know what to read and every heat rule
+    // fell through to its fallback — the catalogue's own heat-map recipe drew plain cards.
+    const engine = new GraphEngine({
+      spec: {
+        seeds: { source: 'weighed' },
+        layout: { type: 'grid' },
+        nodeStyle: [
+          // What an unscored card is, before the heat rule — which has nothing to say about one.
+          { style: { color: 'plain' } },
+          {
+            style: {
+              color: { metric: 'field', options: { from: 'weight' }, scale: 'heat' },
+              size: { metric: 'field', options: { from: 'comments' }, range: [10, 20] },
+            },
+          },
+        ] as never,
+      },
+      registry: new PluginRegistry({ seeds: [weighed], expanders: [], metrics: defaultMetrics() }),
+      context,
+    });
+    await engine.start();
+    const visual = (id: string) => engine.visualOf(engine.store.node(id)!);
+
+    expect(visual('low').color).not.toBe(visual('high').color);
+    // By comments, which run the other way: the low-weight card is the big one.
+    expect(visual('low').size).toBeGreaterThan(visual('high').size);
+    // A card with no value falls through to the rule before, rather than claiming the coldest colour —
+    // or the built-in default, which is what an unanswered metric used to overwrite it with.
+    expect(visual('none').color).toBe('plain');
+    expect(visual('low').color).not.toBe('plain');
+  });
+});
+
+describe('a seed finishing what it read', () => {
+  it('re-applies derive to the rows it has, with no read, and announces a summary only when it changes', async () => {
+    let reads = 0;
+    const seed: SeedSource = {
+      id: 'scored',
+      async seed() {
+        reads += 1;
+        return {
+          nodes: ['a', 'b'].map((id, i) => ({ id, kind: 'entity' as const, type: 'Thing', data: { raw: i + 1 } })),
+          edges: [],
+        };
+      },
+      deriveOptions: ['factor'],
+      derive(fragment, options) {
+        const factor = Number((options as { factor?: number }).factor ?? 1);
+        return {
+          nodes: fragment.nodes.map((node) => ({
+            ...node,
+            data: { ...node.data, score: Number(node.data?.raw) * factor },
+          })),
+          edges: fragment.edges,
+          summary: { factor },
+        };
+      },
+    };
+    const summaries: unknown[] = [];
+    const spec = { seeds: { source: 'scored', options: { factor: 1 } }, layout: { type: 'grid' } };
+    const engine = new GraphEngine({
+      spec,
+      registry: new PluginRegistry({ seeds: [seed], expanders: [] }),
+      context,
+      onEvent: (event) => event.type === 'seedSummary' && summaries.push(event.summary),
+    });
+    await engine.start();
+    expect(engine.store.node('b')?.data?.score).toBe(2);
+
+    engine.setSpec({ ...spec, seeds: { source: 'scored', options: { factor: 10 } } });
+    await engine.rederive();
+
+    expect(engine.store.node('b')?.data?.score).toBe(20);
+    expect(reads).toBe(1);
+    expect(summaries).toEqual([{ factor: 1 }, { factor: 10 }]);
+
+    // The same summary again is not news.
+    await engine.rederive();
+    expect(summaries).toHaveLength(2);
   });
 });

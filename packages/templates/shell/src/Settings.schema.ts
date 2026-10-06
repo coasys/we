@@ -88,13 +88,13 @@ const templatesSection: SchemaNode = {
                 ay: 'center',
                 p: '300',
                 r: '200',
-                bg: { $: "template.isDefault ? 'surface-sunken' : 'transparent'" },
+                bg: { $: "template.isDefault ? 'accent-muted' : 'transparent'" },
               },
               children: [
                 // Template icon + name
                 {
                   type: 'Row',
-                  props: { gap: '300', ay: 'center', styles: { flex: '1', 'min-width': '0' } },
+                  props: { gap: '300', ay: 'center', flex: '1', minWidth: '0' },
                   children: [
                     { type: 'we-icon', props: { name: { $: 'template.icon' }, size: '20px' } },
                     {
@@ -225,8 +225,78 @@ const templatesSection: SchemaNode = {
         },
       ],
     },
+    refusedTemplatesGroup(),
   ],
 };
+
+/**
+ * Templates in the library that no longer validate. Without this they were in no list at all: not
+ * offered, not deletable, and present only as a warning in the console on every boot.
+ */
+function refusedTemplatesGroup(): SchemaNode {
+  return {
+    type: '$if',
+    props: {
+      condition: { $: 'count(templateStore.refusedTemplates)' },
+      then: {
+        type: 'Column',
+        props: { gap: '200', pt: '300' },
+        children: [
+          { type: 'we-text', props: { fontWeight: 'semibold' }, children: ["Couldn't load"] },
+          {
+            type: 'we-text',
+            props: { variant: 'label', color: 'text-muted' },
+            children: [
+              'These templates in your library no longer pass validation, so they cannot be used. ' +
+                'Usually a copy made before a change to the template rules. Delete them, then copy the ' +
+                'built-in again if you want it back.',
+            ],
+          },
+          {
+            type: '$each',
+            props: { items: { $: 'templateStore.refusedTemplates' }, as: 'refused' },
+            children: [
+              {
+                type: 'Row',
+                props: { gap: '300', ay: 'center', p: '300', r: '200', bg: 'surface' },
+                children: [
+                  { type: 'we-icon', props: { name: 'warning', size: '20px', color: 'warning-text' } },
+                  {
+                    type: 'Column',
+                    props: { flex: '1', minWidth: '0' },
+                    children: [
+                      {
+                        type: 'we-text',
+                        props: { variant: 'body', fontWeight: 'medium' },
+                        children: [{ $: 'refused.name' }],
+                      },
+                      {
+                        type: 'we-text',
+                        props: { variant: 'label', color: 'text-muted' },
+                        children: [{ $: 'refused.reason' }],
+                      },
+                    ],
+                  },
+                  {
+                    type: 'we-button',
+                    props: {
+                      variant: 'ghost',
+                      size: 'sm',
+                      label: 'Delete',
+                      loading: { $: 'templateStore.operationLoading == `delete:${refused.id}`' },
+                      onClick: { $action: 'templateStore.deleteRefusedTemplate', args: [{ $: 'refused.id' }] },
+                    },
+                    children: [{ type: 'we-icon', props: { name: 'trash', size: '16px', color: 'danger-text' } }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+}
 
 /**
  * Whether a space's theme covers the whole window, or only the space's own content.
@@ -251,7 +321,7 @@ const themeScopeSection: SchemaNode = {
         ax: 'between',
         gap: '300',
         p: '300',
-        bg: 'surface-sunken',
+        bg: 'surface',
         r: '300',
         border: '1px solid border',
       },
@@ -297,7 +367,7 @@ const themeScopeSection: SchemaNode = {
         ax: 'between',
         gap: '300',
         p: '300',
-        bg: 'surface-sunken',
+        bg: 'surface',
         r: '300',
         border: '1px solid border',
       },
@@ -348,13 +418,13 @@ const themesSection: SchemaNode = {
                 ay: 'center',
                 p: '300',
                 r: '200',
-                bg: { $: "theme.isDefault ? 'surface-sunken' : 'transparent'" },
+                bg: { $: "theme.isDefault ? 'accent-muted' : 'transparent'" },
               },
               children: [
                 // Theme icon + name
                 {
                   type: 'Row',
-                  props: { gap: '300', ay: 'center', styles: { flex: '1', 'min-width': '0' } },
+                  props: { gap: '300', ay: 'center', flex: '1', minWidth: '0' },
                   children: [
                     { type: 'we-icon', props: { name: { $: 'theme.icon' }, size: '20px' } },
                     {
@@ -481,7 +551,7 @@ function moduleRow(control: SchemaNode): SchemaNode {
       ax: 'between',
       gap: '300',
       p: '300',
-      bg: 'surface-sunken',
+      bg: 'surface',
       r: '300',
       border: '1px solid border',
     },
@@ -573,7 +643,7 @@ const agentModuleSettingsSection: SchemaNode = {
                 gap: '400',
                 ay: 'center',
                 p: '400',
-                bg: 'surface-sunken',
+                bg: 'surface',
                 r: '300',
                 border: '1px solid border',
               },
@@ -779,65 +849,68 @@ const modulesSection: SchemaNode = {
   ],
 };
 
-const createSpaceButton: SchemaNode = {
-  type: 'we-button',
-  props: {
-    text: 'Create New Space',
-    variant: 'primary',
-    height: '40px',
-    onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
-  },
+/**
+ * The two ways a space gets into the list above, as a pair.
+ *
+ * They were a primary button and, under it, a labelled input with a Join beside it — two different
+ * shapes for two halves of one question, and the second of them a second copy of a form the sidebar
+ * now also needs. Both are dialogs held by the shell, so both are buttons here and there is one
+ * join form in the app rather than two that can drift.
+ *
+ * Joining is `secondary`: creating is the thing somebody arrives at this page to do, and an address
+ * you were sent is more often pasted from the sidebar, which is where it is now offered.
+ */
+const spaceActions: SchemaNode = {
+  type: 'Row',
+  props: { gap: '200', ay: 'center', wrap: true },
+  children: [
+    {
+      type: 'we-button',
+      props: {
+        text: 'Create New Space',
+        variant: 'primary',
+        height: '40px',
+        onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
+      },
+    },
+    {
+      type: 'we-button',
+      props: {
+        text: 'Join a Space',
+        variant: 'secondary',
+        height: '40px',
+        onClick: { $action: 'shellStore.setJoinSpaceOpen', args: [true] },
+      },
+    },
+  ],
 };
 
 /**
- * Join a space someone sent you.
+ * Which microphone and camera calls use, out of a call.
  *
- * On the web a share link is a URL the browser can open, and the space gate takes it from there.
- * Nothing else has an address bar, so a desktop build needs somewhere to put the thing you were
- * sent — this is that place. `joinSpace` accepts a full URL, a `neighbourhood://` URI or a bare
- * id, so whichever form the link arrived in is the form that works.
+ * The same chooser the call bar's More menu opens, placed inline — one `$part`, so there is one
+ * device picker in the app rather than two that can drift. The call module owns it because the call
+ * module owns the devices; this screen is a second door onto it.
+ *
+ * Out of a call is the harder half and the reason this exists rather than only the in-call sheet:
+ * nothing is captured here, so the machine will not say what its hardware is called until it has
+ * been asked for a device once. The part handles that itself — it offers to ask — which is why this
+ * section is three lines and not thirty.
  */
-const joinSpaceByLink: SchemaNode = {
+const deviceSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '200' },
-  $localState: { joinLink: { type: 'string', initial: '' }, joining: { type: 'boolean', initial: false } },
+  props: { gap: '300' },
   children: [
-    { type: 'we-text', props: { variant: 'label' }, children: ['Join with a link'] },
+    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Camera & microphone'] },
     {
-      type: 'Row',
-      props: { gap: '200', ay: 'center', wrap: true },
-      children: [
-        {
-          type: 'we-input',
-          props: {
-            flex: '1',
-            value: { $: 'local.joinLink' },
-            placeholder: 'Paste a space link or neighbourhood:// address',
-            disabled: { $: 'local.joining' },
-            onInput: { $setLocal: 'joinLink', value: { $: 'event.detail' } },
-          },
-        },
-        {
-          type: 'we-button',
-          props: {
-            variant: 'secondary',
-            // Gated on having typed something rather than on validation: whether an address
-            // resolves is only knowable by trying it, so the button asks rather than predicts.
-            disabled: { $: '!local.joinLink || local.joining' },
-            loading: { $: 'local.joining' },
-            onClick: [
-              { $setLocal: 'joining', value: true },
-              {
-                $action: 'spaceStore.joinSpace',
-                args: [{ $: 'local.joinLink' }],
-                onSuccess: [{ $setLocal: 'joinLink', value: '' }],
-                onFinally: [{ $setLocal: 'joining', value: false }],
-              },
-            ],
-          },
-          children: ['Join'],
-        },
-      ],
+      type: 'we-text',
+      props: { variant: 'body', color: 'text-muted' },
+      children: ['What calls capture with on this computer. Remembered here, and not carried to your other devices.'],
+    },
+    {
+      type: 'Card',
+      props: { bg: 'surface' },
+      children: [{ type: '$part', props: { id: 'call.deviceSettings' } }],
     },
   ],
 };
@@ -896,7 +969,7 @@ const developerSection: SchemaNode = {
         ax: 'between',
         gap: '300',
         p: '300',
-        bg: 'surface-sunken',
+        bg: 'surface',
         r: '300',
         border: '1px solid border',
       },
@@ -963,8 +1036,7 @@ export const settingsTemplate: TemplateSchema = {
       path: '/spaces',
       ...page([
         spacesListSection,
-        createSpaceButton,
-        joinSpaceByLink,
+        spaceActions,
         // Below the spaces themselves: it is about all of this data at once, and it is the one
         // control here that writes a file rather than changing what is on screen.
         backup,
@@ -975,6 +1047,7 @@ export const settingsTemplate: TemplateSchema = {
     // standing — see `spaceSettingsPage`.
     { path: '/spaces/:uuid', ...page([spaceSettingsPage]) },
     { path: '/modules', ...page([modulesSection]) },
+    { path: '/devices', ...page([deviceSection]) },
     { path: '/ai', ...page([runtimeError, aiSection]) },
     {
       path: '/languages',
@@ -1014,6 +1087,19 @@ export const settingsTemplate: TemplateSchema = {
                 navItem('Appearance', 'palette', '/appearance'),
                 navItem('Spaces & data', 'stack', '/spaces'),
                 navItem('Modules', 'squares-four', '/modules'),
+                /*
+                  Only where calls are installed, which is what makes a top-level entry honest:
+                  microphones and cameras are for calling with, and a deployment without the module
+                  would be offering a screen about hardware it never touches. `modules.call`
+                  resolves to nothing where it is absent, so the entry simply is not there.
+                */
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'modules.call' },
+                    then: navItem('Camera & microphone', 'video-camera', '/devices'),
+                  },
+                },
                 // The rest are feature-detected: a backend that administers nothing has nothing to
                 // show, so the entry goes rather than leading to an empty page.
                 {

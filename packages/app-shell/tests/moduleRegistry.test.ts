@@ -73,6 +73,8 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
       'core:consentSecret',
       'core:removeAccount',
       'core:createSpace',
+      'core:joinSpace',
+      'core:screenSource',
       'core:namePrompt',
       'core:installPrompt',
       'core:destructivePrompt',
@@ -649,6 +651,14 @@ describe('what a store is handed, and what it publishes', () => {
     expect(seen!.settings?.()).toEqual({ verbose: true });
     expect(seen!.kernels.secrets?.get('token')).toBe('shh');
     expect(seen!.kernels.secrets?.get('verbose')).toBeUndefined();
+    // The host's own read — for a component it lends the module — answers what the store got.
+    expect(moduleRegistry.settingsOf('sec')).toEqual({ verbose: true });
+    moduleRegistry.provideSettings(() => ({}));
+  });
+
+  it('answers nothing for the settings of a module nobody registered', () => {
+    moduleRegistry.provideSettings(() => ({ leaked: 'yes' }));
+    expect(moduleRegistry.settingsOf('nobody')).toEqual({});
     moduleRegistry.provideSettings(() => ({}));
   });
 

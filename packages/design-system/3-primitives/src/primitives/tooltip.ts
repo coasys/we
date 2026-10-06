@@ -88,10 +88,26 @@ const CSS_STYLES = css`
     font-weight: 500;
     padding: var(--we-space-300, 8px) var(--we-space-300, 8px);
     /* The inverse pair. Not text/onInverse: those are scale positions, so they flip with the
-       theme and a dark tooltip in light mode became a white one in dark. Both halves of this pair
-       hold a fixed lightness, so the tooltip stays opposite to the page in either polarity. */
+       theme and a dark tooltip in light mode became a white one in dark. This pair is measured
+       from the page instead, so the bubble stays a fixed distance off it in either polarity —
+       see surfaceInverse in @we/tokens for the measurements that made that necessary. */
     background: var(--we-role-surface-inverse);
     color: var(--we-role-on-inverse);
+    /*
+      No border, deliberately — the fill is the whole separation.
+
+      One was tried while the chip was being moved off the page, on the reasoning that the shadow
+      below is built from shadow-color, which is pinned near-black and so invisible on a dark page.
+      True, and it does not follow that the bubble needs an outline: once the fill sits nine
+      lightness points below whatever is behind it, the edge is already drawn by the fill, and a
+      line on top of it reads as a framed object rather than as a shape floating over the page.
+
+      It also had nowhere good to end. The arrow is 8px, rotated 45 degrees and half-buried in the
+      bubble, so bordering it draws a seam across the join and leaving it bare stops the outline
+      dead at the tail.
+
+      (No backticks in here either: this is the same tagged template literal.)
+    */
     border-radius: var(--we-border-radius, 4px);
     box-shadow: 0 2px 8px color-mix(in srgb, var(--we-role-shadow-color) 15%, transparent);
     /*

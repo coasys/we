@@ -1,5 +1,5 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "useDefineForClassFields": true,
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
@@ -18,7 +18,6 @@
     "noFallthroughCasesInSwitch": true,
 
     /* Path aliases */
-    "baseUrl": ".",
     // `@shared`/`@solid` are the shell's own aliases, which existed only in Vite's config. Without
     // them every import inside the shell's source failed to resolve, and the unresolved types then
     // cascaded into a hundred implicit-any errors none of which were in this app's code.
@@ -36,5 +35,5 @@
     which is why this package could not be typechecked at all.
   */
   // `vite.config.ts` belongs to the referenced node project, which builds it separately.
-  "include": ["src"]
+  "include": ["src", "../../packages/app-shell/src/shared/global.d.ts"]
 }

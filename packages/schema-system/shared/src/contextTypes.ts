@@ -73,6 +73,12 @@ export interface StoreEntry {
   name: string;
   state: Record<string, StateMemberMeta>;
   actions: string[];
+  /**
+   * Actions safe to run with nobody asking — navigating, opening a surface, editing an unsaved draft.
+   * Every other action runs only when somebody did something to the part of the template calling it,
+   * so the validator can say so when one is wired to an event that happens by itself.
+   */
+  ambient?: string[];
 }
 
 /** A token category (e.g. space, color, size) */
@@ -87,8 +93,8 @@ export interface TokenCategory {
  *
  * Components with a sub-registry are otherwise invisible to schema authoring: their props document
  * that a `layout.type` is a string, and nothing says which strings exist. The globe demonstrated the
- * failure mode — its layer system is well-designed, and an LLM cannot author a globe template
- * because no catalog of layer names ever reaches the context. A component that resolves plugins by
+ * failure mode — its layer system is well-designed, and an LLM could not author a globe template
+ * until a catalog of layer names reached the context. A component that resolves plugins by
  * name declares them here so the names are as documented as the props are.
  */
 export interface PluginEntry {
@@ -103,12 +109,35 @@ export interface PluginEntry {
   example?: string;
 }
 
+/**
+ * Where a catalogued name is written in a component's props, so the validator can check it.
+ *
+ * `{ prop: 'planetLayers', key: 'factory', categories: ['planet'] }` reads: `planetLayers` is a list
+ * of objects (or one object), and each one's `factory` must be a `planet` plugin. A literal name not in
+ * those categories is an error, with the nearest catalogued name as a suggestion; a name from another
+ * category is reported as being in the wrong place. A value computed by an expression is not checked,
+ * since the validator cannot know what it will be.
+ */
+export interface PluginPlacement {
+  prop: string;
+  /** The key in each entry holding the name: one name, or a list of names (`expansion.expanders`). */
+  key: string;
+  categories: string[];
+  /**
+   * An entry may also be the name itself rather than an object holding it, as in
+   * `behaviours: ['select', { type: 'drag-node' }]` or `controls: ['zoom-in', 'fit']`.
+   */
+  bare?: boolean;
+}
+
 /** A component's plugin registry, as documented for schema authors. */
 export interface PluginCatalog {
   /** The component whose props these names appear in. */
   component: string;
   description?: string;
   plugins: PluginEntry[];
+  /** Where the names are written, for the validator. Without it the names are documented, not checked. */
+  placements?: PluginPlacement[];
 }
 
 /**
@@ -177,7 +206,7 @@ export interface ModuleCatalogEntry {
   /** What a person agrees to, derived. */
   capabilities: string[];
   /** The store's public members — `modules.<id>.<name>` — with what each is and means. */
-  members: { name: string; kind: 'state' | 'action'; doc: string }[];
+  members: { name: string; kind: 'state' | 'action'; doc: string; ambient?: true }[];
   /** Fragments a template may place with `$part` as `<id>.<name>`. */
   parts: { name: string; subject?: string }[];
   /** Panels, by the name `meta.panels[].dock` addresses. */

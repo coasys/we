@@ -29,6 +29,8 @@ function copyViaExecCommand(text: string) {
 }
 
 export function CodeViewer(props: CodeViewerProps) {
+  const [find, setFind] = createSignal<(() => void) | undefined>();
+  const [matches, setMatches] = createSignal({ query: '', matches: 0, capped: false });
   const [editing, setEditing] = createSignal(false);
   const [editValue, setEditValue] = createSignal('');
   const [error, setError] = createSignal('');
@@ -69,7 +71,7 @@ export function CodeViewer(props: CodeViewerProps) {
         gap="200"
         px="400"
         py="200"
-        borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
+        borderBottom={`1px solid ${tokenVar('color', 'border')}`}
         flexShrink="0"
       >
         <Show
@@ -99,6 +101,24 @@ export function CodeViewer(props: CodeViewerProps) {
           <we-icon name="copy" size="sm" />
           Copy
         </we-button>
+        {/*
+          A door with a handle on it, and an answer to "did it find everything?".
+
+          CodeMirror's search has always been here and only Mod-F opened it, which is no use to
+          somebody who does not know it exists — and it reports no count, so this panel could not
+          answer the question it is most often open for: whether a value appears once or twice.
+        */}
+        <we-button size="sm" variant="ghost" onClick={() => find()?.()} disabled={!find()}>
+          <we-icon name="magnifying-glass" size="sm" />
+          Find
+        </we-button>
+        <Show when={matches().query}>
+          <we-text fontSize="200" color="text-muted">
+            {matches().matches === 0
+              ? 'No matches'
+              : `${matches().matches}${matches().capped ? '+' : ''} ${matches().matches === 1 ? 'match' : 'matches'}`}
+          </we-text>
+        </Show>
       </Row>
 
       {/* Editor */}
@@ -107,6 +127,8 @@ export function CodeViewer(props: CodeViewerProps) {
         language={language()}
         readOnly={!editing()}
         onChange={setEditValue}
+        onReady={(api) => setFind(() => api.find)}
+        onSearchMatches={setMatches}
         styles={{ flex: '1', 'min-height': '0' }}
       />
     </Column>

@@ -1,0 +1,90 @@
+name: Show a pull request's ad4m pairing
+description: Keep one comment and one label on a paired pull request saying what it is paired with and what the paired check found.
+
+# Why this exists. On a paired pull request the required checks are red until the ad4m pin moves,
+# and whether that red is only the pin is answered by a different check, `AD4M compatibility /
+# Against the paired ad4m`. A warning on the red check said so — as an annotation, one of a dozen,
+# collapsed, on a page a reviewer reaches only by opening the check. Nothing on the pull request
+# itself said it was paired at all.
+#
+# GitHub offers no badge beside a pull request's title or above its description, so this keeps the
+# two nearest things:
+#
+# - A LABEL, which the pull request list shows beside the title.
+# - ONE COMMENT, updated in place rather than added to, holding what the paired check found. Found
+#   again by a marker on its first line, and only among comments this workflow wrote, so a person
+#   quoting it is never overwritten.
+#
+# A pull request from a fork gets neither: its workflow token cannot write to this repository. The
+# annotation on the red check is still there for it.
+
+inputs:
+  body-file:
+    description: A file holding the comment, in Markdown, without the marker. Empty removes the comment.
+    required: false
+    default: ''
+  paired:
+    description: "'true' adds the label, 'false' removes it, empty leaves it alone."
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Update the comment and label
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        PR: ${{ github.event.pull_request.number }}
+        BODY_FILE: ${{ inputs.body-file }}
+        PAIRED: ${{ inputs.paired }}
+      run: |
+        if [ "$HEAD_REPO" != "$REPO" ]; then
+          echo "::notice::A pull request from a fork cannot be commented on by its own workflow; the pairing is reported on the checks only."
+          exit 0
+        fi
+
+        MARKER='<!-- ad4m-pairing -->'
+        LABEL='paired with ad4m'
+
+        # Never fail the job over this: it reports a result, it is not one.
+        set +e
+
+        EXISTING="$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
+          --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$MARKER\"))) | .id" | head -1)"
+
+        if [ -z "$BODY_FILE" ]; then
+          [ -n "$EXISTING" ] && gh api -X DELETE "repos/$REPO/issues/comments/$EXISTING" >/dev/null
+        else
+          FILE="$(mktemp)"
+          { echo "$MARKER"; cat "$BODY_FILE"; } > "$FILE"
+          if [ -n "$EXISTING" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$EXISTING" -F body=@"$FILE" >/dev/null
+          else
+            gh api -X POST "repos/$REPO/issues/$PR/comments" -F body=@"$FILE" >/dev/null
+          fi
+        fi
+
+        case "$PAIRED" in
+          true)
+            # The label is defined HERE, not in the repository's settings: `--force` updates the one
+            # label in place, so a colour changed by hand reverts on the next run. Change it in this
+            # line. The purple is GitHub's own for `[!IMPORTANT]`, so it matches the alert the pairing
+            # is written as.
+            gh label create "$LABEL" -R "$REPO" --color 8250DF --force \
+              --description "Paired with an unpublished ad4m change: required checks stay red until the pin moves" >/dev/null
+            gh api -X POST "repos/$REPO/issues/$PR/labels" -f "labels[]=$LABEL" >/dev/null
+            ;;
+          false)
+            # Unpaired, so not waiting on anything either: the `ready to bump ad4m` label and its
+            # comment (scripts/ad4m-ready-to-bump.mjs) go with the pairing.
+            gh api -X DELETE "repos/$REPO/issues/$PR/labels/${LABEL// /%20}" >/dev/null 2>&1
+            gh api -X DELETE "repos/$REPO/issues/$PR/labels/ready%20to%20bump%20ad4m" >/dev/null 2>&1
+            READY="$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
+              --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- ad4m-ready-to-bump -->"))) | .id' | head -1)"
+            [ -n "$READY" ] && gh api -X DELETE "repos/$REPO/issues/comments/$READY" >/dev/null
+            ;;
+        esac
+        exit 0

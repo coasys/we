@@ -79,6 +79,7 @@
  */
 import { fillForSemantic, iconForSemantic } from '@we/template-kit';
 
+import { flowStateOf, type TaskFlowView, type TaskMoveCard, taskMoveCard } from '../taskFlow';
 import {
   involvement,
   type InvolvementKindInput,
@@ -118,6 +119,16 @@ export interface ArrangedBoardOptions {
   me?: string | null;
   /** Involvements written and not yet seen — see `involvementOptimism`. Supplied by the host. */
   pendingInvolvements?: readonly PendingInvolvement[] | null;
+  /**
+   * The space's task flow, where its states ask for agreement — supplied by the host.
+   *
+   * A card with a run is read as being in its run's state rather than its `status`, substituted with
+   * the optimistic overlay at the one place a state is read, so every count follows. See
+   * `shared/taskFlow.ts` for why the two can differ at all.
+   */
+  flow?: TaskFlowView | null;
+  /** Draw only the cards waiting on the viewer's approval. */
+  awaitingMe?: boolean | null;
 }
 
 /** The key of the row for work nobody is on. DIDs begin `did:`, so it cannot collide with one. */
@@ -261,6 +272,15 @@ export interface ArrangedBoard {
   cells: Record<string, Record<string, CellContents>>;
   /** In `rows`: how many cards each row holds across the board. */
   rowCounts: Record<string, number>;
+  /**
+   * The move each card is waiting on, by card id — only cards waiting on one. Empty where the space
+   * asks for no agreement.
+   */
+  flow: Record<string, TaskMoveCard>;
+  /** Cards on the board whose waiting move the viewer's approval would help. */
+  awaiting: string[];
+  /** Whether only those are being drawn. */
+  awaitingOnly: boolean;
 }
 
 /**
@@ -319,8 +339,12 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
     orderOf(record?.id, 'arranges', record?.arranges);
   const childrenOf = (record: { id?: string; children?: unknown } | null | undefined) =>
     orderOf(record?.id, 'children', record?.children);
+  // The stored state is the run's where the task has one, and `status` otherwise — then the overlay,
+  // so a drop into a column that asks for nothing still lands before the round trip does.
+  const flow = options?.flow ?? null;
+  const storedStatusOf = (record: CardRow): string | undefined => flowStateOf(flow, record.id) ?? record.status;
   const statusOf = (record: CardRow): string | undefined =>
-    pending?.status?.(record.id, record.status) ?? record.status;
+    pending?.status?.(record.id, storedStatusOf(record)) ?? storedStatusOf(record);
 
   const ready = Boolean(board && typeof board === 'object' && board.id);
   const gathers = Boolean(ready && board?.gathers);
@@ -389,6 +413,24 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
   const unplacedAll = pool.filter((r) => !placed.has(r.id) && !boundSlugs.has(statusOf(r) ?? ''));
 
   /*
+    Everything this board DRAWS, which is not the same as everything it has been given.
+
+    A bound column shows work by state as well as by arrangement — that is what binding a column
+    means — so a card can be on screen without anybody having placed it. `available` asked `held`,
+    which counts only arrangements, and so offered cards the board was already showing: on a
+    gathering board the "bring in work that already exists" picker listed what was sitting in the
+    next column along, and picking one moved a card from where it was to where it was.
+
+    Taken here, before the people filter runs: that narrows what is DRAWN for one reader, and
+    whether a card is already on the board is not a question about who is looking at it.
+  */
+  const shown = new Set<string>(unplacedAll.map((r) => r.id));
+  for (const column of columns) {
+    for (const record of contents[column.id].arranged) shown.add(record.id);
+    for (const record of contents[column.id].unarranged) shown.add(record.id);
+  }
+
+  /*
     People. Worked out after the columns rather than threaded through them, so everything above says
     what the board holds and everything below says what of it to draw — and a board nobody filters
     runs exactly the code it ran before this existed.
@@ -416,6 +458,27 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
     for (const record of [...cell.arranged, ...cell.unarranged]) onBoard.set(record.id, record);
   }
   for (const record of unplacedAll) onBoard.set(record.id, record);
+
+  // The move each card is waiting on. Who counts toward it is whoever holds the state's kind on
+  // that card, read off the same involvement rows the people filter uses.
+  const flowCards: Record<string, TaskMoveCard> = {};
+  const awaiting: string[] = [];
+  if (flow) {
+    for (const record of onBoard.values()) {
+      const holders = (kind: string) =>
+        (on[record.id]?.pairs ?? [])
+          .filter((pair) => pair.endsWith(`|${kind}`))
+          .map((pair) => pair.slice(0, -kind.length - 1));
+      const card = taskMoveCard(flow, record.id, holders, options?.me ?? null);
+      if (!card) continue;
+      flowCards[record.id] = card;
+      if (card.canApprove) awaiting.push(record.id);
+    }
+  }
+  const awaitingOnly = Boolean(options?.awaitingMe);
+  const waiting = new Set(awaiting);
+  const awaited = (record: CardRow) => !awaitingOnly || waiting.has(record.id);
+
   const onThisBoard = new Set<string>();
   for (const record of onBoard.values()) for (const did of peopleOn(record)) onThisBoard.add(did);
 
@@ -460,11 +523,27 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
       cell.unarranged = cell.unarranged.filter(matches);
     }
   }
+  // "Waiting on me" hides like the people filter does: counts stay true, `shown` says what is drawn.
+  if (awaitingOnly) {
+    for (const column of columns) {
+      const cell = contents[column.id];
+      cell.arranged = cell.arranged.filter(awaited);
+      cell.unarranged = cell.unarranged.filter(awaited);
+    }
+    for (const row of rows) {
+      for (const column of columns) {
+        const cell = cells[row][column.id];
+        cell.arranged = cell.arranged.filter(awaited);
+        cell.unarranged = cell.unarranged.filter(awaited);
+        cell.count = cell.arranged.length + cell.unarranged.length;
+      }
+    }
+  }
   for (const column of columns) {
     const cell = contents[column.id];
     cell.shown = cell.arranged.length + cell.unarranged.length;
   }
-  const unplaced = hiding ? unplacedAll.filter(matches) : unplacedAll;
+  const unplaced = (hiding ? unplacedAll.filter(matches) : unplacedAll).filter(awaited);
   const seen = new Set<string>();
   const unplacedStates: { slug: string; name: string }[] = [];
   for (const record of unplacedAll) {
@@ -481,7 +560,7 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
     contents,
     unplaced,
     unplacedStates,
-    available: records.filter((r) => !held.has(r.id)),
+    available: records.filter((r) => !shown.has(r.id)),
     choices: columns.map((c) => ({ id: c.id, label: contents[c.id].label })),
     unboundStates: states
       .filter((s) => s && s.slug && !s.retired && !boundSlugs.has(s.slug))
@@ -501,5 +580,8 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
     rows,
     cells,
     rowCounts,
+    flow: flowCards,
+    awaiting,
+    awaitingOnly,
   };
 }
