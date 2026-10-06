@@ -221,6 +221,19 @@ panel's to design, and seventeen of them had arrived at five treatments before t
 The rules, the two standing exceptions and the reason the title is not simply in the titlebar are in
 `docs/architecture/chrome-and-panels.md` § "A panel names itself, once, at the top".
 
+## Name the root with `key` when an option identifies it
+
+A built-in's node ids are derived from its path, because there is nowhere to keep them between runs
+(`deriveNodeIds` in `@we/schema-shared`). A path step is a node's type and how many siblings of that
+type come before it — so moving a field above another one gives both of them new ids, and anything
+that named them, a selection or a comment, stops resolving.
+
+`key` names a node among its siblings instead, and the derived id follows it through a reorder. A
+fragment that takes an option saying _which_ thing it renders sets `key` from that option:
+`field({ name })` keys by the name, `railGroup({ id })` by the id, `discussionSection({ record })` by
+the record it discusses. Leave it off where nothing identifies the output: a key two siblings share
+is told apart by position again, which is no better than having none.
+
 ## Ambient scope
 
 Fragments may read locals from ancestors and write results into them — that is what makes

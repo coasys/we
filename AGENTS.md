@@ -2847,7 +2847,7 @@ EditorStore:
   - sessions: ChatSession[] — this template's saved AI sessions (id, name, templateId), newest first
   - activeSessionId: string | null — the session whose messages are shown
   - contentMode: 'preview' | 'visual' — whether the editor shows the rendered template or the visual editing surface
-  - schemaJson: string — the template being edited, serialised — what the code panel shows and edits
+  - schemaJson: string — the template being edited, serialised with its node ids — what the code panel shows and edits. Ids are permanent, so a save keeps them
   - canUndo: boolean (true when there are schema edits that can be undone)
   - canRedo: boolean (true when there are undone schema edits that can be redone)
   - isEditingTemplate: boolean — a template editing session is open
