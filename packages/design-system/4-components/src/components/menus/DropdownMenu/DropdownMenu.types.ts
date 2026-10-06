@@ -67,6 +67,11 @@ export interface DropdownMenuGroup {
   disabled?: boolean;
   collapsible?: boolean;
   collapsed?: boolean;
+  /**
+   * Leave the whole group out while true, as `hidden` does an item — a section that does not apply
+   * here (the background layers of a globe whose engine draws none).
+   */
+  hidden?: boolean;
   items: DropdownMenuEntry[];
 }
 

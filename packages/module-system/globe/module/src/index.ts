@@ -12,13 +12,15 @@
  * (`layerKinds` is injected, and it touches no WE store), so it
  * is correctly a widget. The layers stay in `@we/globe-layers`.
  *
- * ## Why this module has no store
+ * ## Its store is one fact
  *
- * Layer visibility is local state inside the route schema (`enabled: { $: 'local.showSkybox' }`).
- * A module with no store is a legitimate shape, and worth having as the first example so nobody
- * assumes stores are mandatory.
+ * Layer visibility is local state inside the route schema (`enabled: { $: 'local.showSkybox' }`). The
+ * store holds only which engine is drawing (`./store`), so a template can leave out the layers that
+ * engine cannot draw.
  */
 import { defineModule, type ModuleDefinition, type ModuleHost } from '@we/module-shared';
+
+import { createGlobeStore } from './store';
 
 /**
  * Build the module definition.
@@ -133,6 +135,7 @@ export function createGlobeModule(cesiumGlobeComponent: unknown): ModuleDefiniti
         },
       ],
     },
+    createStore: createGlobeStore,
   });
 }
 

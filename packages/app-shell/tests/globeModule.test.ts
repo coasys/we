@@ -65,6 +65,7 @@ const MAPLIBRE_DRAWS = [
   'hexbinLayer',
   'pointLocationsLayer',
   'countryOutlinesLayer',
+  'h3HexagonsLayer',
 ];
 
 describe('globe module — the MapLibre engine', () => {
@@ -81,7 +82,7 @@ describe('globe module — the MapLibre engine', () => {
     }
   });
 
-  it('draws the data kinds and the borders, and nothing of the space around the earth', () => {
+  it('draws every planet kind, and nothing of the space around the earth', () => {
     for (const name of EXPECTED_LAYERS) {
       const drawn = typeof maplibreLayerKinds[name].renderers.maplibre === 'function';
       expect([name, drawn]).toEqual([name, MAPLIBRE_DRAWS.includes(name)]);
@@ -162,10 +163,17 @@ describe('globe module — what it declares', () => {
     expect(imagery?.options?.map((o) => o.value)).toEqual(['nasa', 'ion', 'esri', 'mapbox']);
   });
 
-  it('owns no store, which is a legitimate module shape', () => {
-    // Layer visibility is $local state in the route schema. Inventing a store would be new behaviour
-    // and would break the "identical afterwards" property this conversion exists to prove.
-    expect(definition.createStore).toBeUndefined();
+  it('publishes which engine draws, and nothing else', () => {
+    // Layer visibility stays $local state in the route schema; the store is the one fact a template
+    // cannot work out for itself — whether the space around the earth will be drawn.
+    const build = (engine: string) =>
+      definition.createStore!({
+        state: (accessor: unknown) => accessor,
+        settings: () => ({ engine }),
+      } as never) as Record<string, () => unknown>;
+    expect(Object.keys(build('cesium')).sort()).toEqual(['drawsSpace', 'engine']);
+    expect([build('cesium').engine(), build('cesium').drawsSpace()]).toEqual(['cesium', true]);
+    expect([build('maplibre').engine(), build('maplibre').drawsSpace()]).toEqual(['maplibre', false]);
   });
 });
 

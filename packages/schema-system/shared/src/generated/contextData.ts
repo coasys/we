@@ -3999,7 +3999,18 @@ export const contextData: ContextData = {
         'network:mapbox.com',
         'components',
       ],
-      members: [],
+      members: [
+        {
+          name: 'drawsSpace',
+          kind: 'state',
+          doc: 'Whether the globe draws the space around the earth — the skybox, stars and solar system. False on MapLibre.',
+        },
+        {
+          name: 'engine',
+          kind: 'state',
+          doc: 'Which engine draws the globe here — "cesium" or "maplibre" — from the setting and this device.',
+        },
+      ],
       parts: [],
       panels: [],
       launchers: [],

@@ -76,6 +76,8 @@ export const globeView: TemplateSchema = {
                         id: 'background',
                         label: 'Background',
                         collapsible: true,
+                        // The space around the earth, which only the full 3D engine draws.
+                        hidden: { $: '!modules.globe.drawsSpace' },
                         items: [
                           {
                             type: 'toggle',
