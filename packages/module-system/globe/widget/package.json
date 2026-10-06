@@ -18,7 +18,8 @@
   },
   "dependencies": {
     "@we/globe-core": "workspace:*",
-    "@we/globe-protocol": "workspace:*"
+    "@we/globe-protocol": "workspace:*",
+    "maplibre-gl": "^6.12.0"
   },
   "peerDependencies": {
     "cesium": "^1.144.0",

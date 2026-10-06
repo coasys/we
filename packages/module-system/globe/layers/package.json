@@ -40,12 +40,13 @@
     "maps"
   ],
   "dependencies": {
+    "@we/globe-core": "workspace:*",
     "h3-js": "^4.1.0",
-    "@we/globe-core": "workspace:*"
+    "maplibre-gl": "^6.12.0"
   },
   "peerDependencies": {
-    "cesium": "^1.144.0",
-    "@we/globe-protocol": "workspace:*"
+    "@we/globe-protocol": "workspace:*",
+    "cesium": "^1.144.0"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",

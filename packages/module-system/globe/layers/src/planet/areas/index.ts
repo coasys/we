@@ -15,25 +15,18 @@ import {
 } from '@we/globe-core';
 
 import type {} from '../../env';
+import { AREAS } from '../../meta';
 import type { CesiumRendererContext, LayerKind, LayerRenderer } from '../../types';
 import { cesiumColors, pickFeatures } from '../cesium';
-import { COUNTRY_OUTLINES_URL } from '../country-outlines';
+import { countriesUrl } from '../countries';
 import { polygonDrawer } from '../polygons';
 
 export type { AreasOptions };
 
 export const areasLayer: LayerKind<AreasOptions> = {
-  id: 'areasLayer',
-  slot: 'planet',
-  description: 'Filled shapes from rows of data — each row’s own, or the countries the rows name — raised by rules.',
+  ...AREAS,
   renderers: { cesium: renderAreas },
 };
-
-/** The countries the app serves, with their names and codes. */
-function countriesUrl(): string {
-  const served = import.meta.env.WE_GLOBE_LAYER_ASSETS_URL;
-  return served ? `${served}country-outlines.geojson` : COUNTRY_OUTLINES_URL;
-}
 
 export async function renderAreas(
   context: CesiumRendererContext,

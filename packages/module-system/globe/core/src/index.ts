@@ -17,6 +17,8 @@ export {
   type Polygon,
 } from './areas';
 export { clusterCellDegrees, ClusterLevels, clusterPoints, type Cluster } from './cluster';
+export { clusterMark, clusterRadiusOf, DEFAULT_CLUSTER_RADIUS, type Mark, markOf, marksOf } from './marks';
+export { PICTURE_OVERSAMPLE, ringedPicture } from './pictures';
 export { createColorResolver, withOpacity, type ColorResolver, type Rgba } from './color';
 export { drawingKey, FeatureDiffer, type FeatureDiff } from './diff';
 export { EventBus } from './events';

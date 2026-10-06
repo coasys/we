@@ -10,11 +10,15 @@ import {
   type Cluster,
   clusterCellDegrees,
   ClusterLevels,
+  clusterRadiusOf,
   FeatureDiffer,
   type LonLat,
+  type Mark,
+  marksOf,
   type PointFeature,
   pointFeatures,
   type PointsOptions,
+  ringedPicture,
 } from '@we/globe-core';
 import {
   Billboard,
@@ -32,6 +36,7 @@ import {
   VerticalOrigin,
 } from 'cesium';
 
+import { POINTS } from '../../meta';
 import type { CesiumRendererContext, LayerKind, LayerRenderer } from '../../types';
 import { cesiumColors, markerAltitude, metresPerPixel, pickFeatures } from '../cesium';
 
@@ -45,23 +50,6 @@ const PICTURE_HOVER_SCALE = 1.3;
  * cover nine tenths, quick enough to follow the pointer and slow enough to read as growing.
  */
 const HOVER_EASE = 0.2;
-const DEFAULT_CLUSTER_RADIUS = 60;
-
-/** A thing drawn: one feature, or a cluster standing for several. */
-interface Mark {
-  id: string;
-  position: LonLat;
-  label?: string;
-  image?: string;
-  color: string;
-  size: number;
-  opacity: number;
-  borderColor: string;
-  borderWidth: number;
-  labelColor?: string;
-  /** How many features it stands for; 1 for a feature drawn as itself. */
-  count: number;
-}
 
 interface Drawn {
   mark: Mark;
@@ -70,81 +58,7 @@ interface Drawn {
   label?: Label;
 }
 
-export const pointsLayer: LayerKind<PointsOptions> = {
-  id: 'pointsLayer',
-  slot: 'planet',
-  description: 'A marker per row of data — a dot or a picture, with a label — styled by rules.',
-  renderers: { cesium: renderPoints },
-};
-
-/** A picture with a ring, drawn once per URL, size and ring and shared by every marker using it. */
-const pictures = new Map<string, Promise<HTMLCanvasElement | null>>();
-
-function ringedPicture(
-  url: string,
-  diameter: number,
-  ring: number,
-  ringCss: string,
-): Promise<HTMLCanvasElement | null> {
-  const key = `${url}|${diameter}|${ring}|${ringCss}`;
-  let pending = pictures.get(key);
-  if (!pending) {
-    pending = new Promise((resolve) => {
-      // Four times over, for a sharp ring on a high-density screen.
-      const scale = 4;
-      const size = Math.ceil(diameter * scale);
-      const canvas = document.createElement('canvas');
-      canvas.width = canvas.height = size;
-      const context = canvas.getContext('2d');
-      if (!context) return resolve(null);
-      const image = new Image();
-      image.crossOrigin = 'anonymous';
-      image.onload = () => {
-        const radius = size / 2;
-        const border = ring * scale;
-        if (border > 0) {
-          context.beginPath();
-          context.arc(radius, radius, radius, 0, Math.PI * 2);
-          context.fillStyle = ringCss;
-          context.fill();
-        }
-        context.save();
-        context.beginPath();
-        context.arc(radius, radius, radius - border, 0, Math.PI * 2);
-        context.clip();
-        context.drawImage(image, border, border, size - border * 2, size - border * 2);
-        context.restore();
-        resolve(canvas);
-      };
-      image.onerror = () => resolve(null);
-      image.src = url;
-    });
-    pictures.set(key, pending);
-  }
-  return pending;
-}
-
-function markOf(feature: PointFeature): Mark {
-  const { id, position, label, image, color, size, opacity, borderColor, borderWidth, labelColor } = feature;
-  return { id, position, label, image, color, size, opacity, borderColor, borderWidth, labelColor, count: 1 };
-}
-
-/** A cluster drawn as one dot, its size growing with what it holds, labelled with the count. */
-function clusterMark(cluster: Cluster<PointFeature>, color: string): Mark {
-  const first = cluster.members[0];
-  const count = cluster.members.length;
-  return {
-    id: cluster.id,
-    position: cluster.position,
-    label: String(count),
-    color,
-    size: Math.min(40, 14 + 4 * Math.log2(count)),
-    opacity: 1,
-    borderColor: first.borderColor,
-    borderWidth: first.borderWidth,
-    count,
-  };
-}
+export const pointsLayer: LayerKind<PointsOptions> = { ...POINTS, renderers: { cesium: renderPoints } };
 
 /** The Cesium renderer. Its state lives for one mount; the layer set calls `update` when its options change. */
 export async function renderPoints(
@@ -174,24 +88,16 @@ export async function renderPoints(
 
   const cartesian = (position: LonLat) => Cartesian3.fromDegrees(position[0], position[1], altitude);
 
-  const clusterRadius = () => {
-    const cluster = options.cluster;
-    if (!cluster) return 0;
-    return typeof cluster === 'object' ? (cluster.radius ?? DEFAULT_CLUSTER_RADIUS) : DEFAULT_CLUSTER_RADIUS;
-  };
+  const clusterRadius = () => clusterRadiusOf(options.cluster);
 
   /** The clusters for this camera, or null when clustering is off. */
   const currentClusters = () =>
     levels ? levels.at(clusterCellDegrees(clusterRadius(), metresPerPixel(viewer))) : null;
 
   const marks = (): Mark[] => {
-    if (!grouped) {
-      clusters = new Map();
-      return features.map(markOf);
-    }
-    const clusterColor = typeof options.cluster === 'object' ? (options.cluster.color ?? 'accent') : 'accent';
-    clusters = new Map(grouped.filter((c) => c.members.length > 1).map((c) => [c.id, c.members]));
-    return grouped.map((c) => (c.members.length > 1 ? clusterMark(c, clusterColor) : markOf(c.members[0])));
+    const next = marksOf(features, grouped, options.cluster);
+    clusters = next.clusters;
+    return next.marks;
   };
 
   const remove = (id: string) => {

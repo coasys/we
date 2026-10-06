@@ -10,9 +10,14 @@
  * different people. Pure types: nothing here runs, and every import of Cesium is `import type`.
  */
 import type { Viewer } from 'cesium';
+import type { Map as MapLibreMap } from 'maplibre-gl';
 
-/** The engines a globe can draw with. MapLibre joins Cesium in the next stage of this work. */
-export type GlobeEngine = 'cesium';
+/**
+ * The engines a globe can draw with. Cesium is the full 3D globe: imagery, extruded data, arcs, and the
+ * space around the earth. MapLibre is the light one, for phones and lighter builds: the earth and the
+ * data on it, with lines drawn flat and no background.
+ */
+export type GlobeEngine = 'cesium' | 'maplibre';
 
 /** Event bus shared by the layers on one globe, for layer-to-layer coordination. */
 export interface LayerEventBus {
@@ -38,6 +43,11 @@ export interface CesiumRendererContext extends RendererContext {
   viewer: Viewer;
 }
 
+/** A MapLibre renderer's context: the shared one, and the map, already on its globe projection. */
+export interface MapLibreRendererContext extends RendererContext {
+  map: MapLibreMap;
+}
+
 /** What a renderer hands back once mounted. */
 export interface LayerRenderer<TOptions> {
   /**
@@ -56,6 +66,7 @@ export type RendererFactory<TOptions, TContext extends RendererContext> = (
 /** The renderers a kind has, by engine. */
 export interface LayerRenderers<TOptions> {
   cesium?: RendererFactory<TOptions, CesiumRendererContext>;
+  maplibre?: RendererFactory<TOptions, MapLibreRendererContext>;
 }
 
 /** A layer kind: what a template's `factory` names. */
