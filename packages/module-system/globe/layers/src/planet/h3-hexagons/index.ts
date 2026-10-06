@@ -1,4 +1,13 @@
 import {
+  cellAt,
+  cellOutline,
+  cellsAround,
+  type GridPlan,
+  gridPlan,
+  primaryResolution,
+  viewRadiusMetres,
+} from '@we/globe-core';
+import {
   Cartesian2,
   Cartesian3,
   Cartographic,
@@ -14,55 +23,12 @@ import {
   PolylineCollection,
   Primitive,
 } from 'cesium';
-import { cellToBoundary, getHexagonEdgeLengthAvg, gridDisk, latLngToCell } from 'h3-js';
 
 import { H3_GRID } from '../../meta';
 import type { CesiumRendererContext, LayerKind } from '../../types';
 
-// H3 Helper Functions
-function hexToDegreesArray(h3Index: string): number[] {
-  const boundary = cellToBoundary(h3Index) as Array<[number, number]>;
-  const degreesArray: number[] = [];
-  boundary.forEach(([lat, lng]) => {
-    degreesArray.push(lng, lat);
-  });
-  if (boundary.length > 0) {
-    const [firstLat, firstLng] = boundary[0];
-    degreesArray.push(firstLng, firstLat);
-  }
-  return degreesArray;
-}
-
-type ResMetrics = { res: number; edgeMeters: number };
-
-function computeResMetrics(maxRes = 15): ResMetrics[] {
-  const out: ResMetrics[] = [];
-  for (let r = 0; r <= maxRes; r++) {
-    out.push({ res: r, edgeMeters: getHexagonEdgeLengthAvg(r, 'm') });
-  }
-  return out;
-}
-
-function viewRadiusMeters(height: number, fovRadians: number, aspect: number): number {
-  const viewHeight = 2 * height * Math.tan(fovRadians / 2);
-  const viewWidth = viewHeight * aspect;
-  return Math.sqrt((viewWidth / 2) ** 2 + (viewHeight / 2) ** 2);
-}
-
-type RenderPlan = { res: number; ring: number; alpha: number };
-
-function computeRenderPlan(metrics: ResMetrics[], radiusMeters: number, maxRings = 8): RenderPlan[] {
-  const desiredHexAcross = 8;
-  const idealEdge = Math.max(1, radiusMeters / desiredHexAcross);
-  const sigma = 0.9;
-
-  return metrics.map((m) => {
-    const ring = Math.max(1, Math.min(maxRings, Math.ceil(radiusMeters / Math.max(m.edgeMeters, 1))));
-    const logDiff = Math.log2(Math.max(m.edgeMeters, 1) / idealEdge);
-    const alpha = Math.exp(-0.5 * (logDiff / sigma) ** 2);
-    return { res: m.res, ring, alpha };
-  });
-}
+/** A cell's outline as Cesium's flat [longitude, latitude, …] list. */
+const hexToDegreesArray = (cell: string): number[] => cellOutline(cell).flatMap(([lon, lat]) => [lon, lat]);
 
 export interface H3HexagonsOptions {
   maxResolution?: number;
@@ -89,7 +55,6 @@ export const h3HexagonsLayer: LayerKind<H3HexagonsOptions> = {
         onHexagonClick,
       } = options;
 
-      const metrics = computeResMetrics(maxResolution);
       const prevAlphaRef = new Map<number, number>();
       const alphaSmoothing = 0.22;
       let hoverCellId: string | null = null;
@@ -114,7 +79,7 @@ export const h3HexagonsLayer: LayerKind<H3HexagonsOptions> = {
         return c;
       }
 
-      function drawForPlan(centerLat: number, centerLng: number, plan: RenderPlan[]) {
+      function drawForPlan(centerLat: number, centerLng: number, plan: GridPlan[]) {
         if (destroyed) return;
 
         const desiredByRes = new Map<number, Set<string>>();
@@ -129,8 +94,7 @@ export const h3HexagonsLayer: LayerKind<H3HexagonsOptions> = {
           const displayed = prev + (p.alpha - prev) * alphaSmoothing;
           prevAlphaRef.set(p.res, displayed);
 
-          const h3center = latLngToCell(centerLat, centerLng, p.res);
-          const hexes = gridDisk(h3center, p.ring);
+          const hexes = cellsAround([centerLng, centerLat], p.res, p.ring);
           let collection: PolylineCollection;
           try {
             collection = ensureCollection(p.res);
@@ -229,7 +193,7 @@ export const h3HexagonsLayer: LayerKind<H3HexagonsOptions> = {
       const camCarto = Cartographic.fromCartesian(viewer.camera.position);
       const fov = (viewer.camera.frustum as PerspectiveFrustum | undefined)?.fov ?? Math.PI / 3;
       const aspect = viewer.canvas.clientWidth / viewer.canvas.clientHeight || 1;
-      const initialPlan = computeRenderPlan(metrics, viewRadiusMeters(camCarto.height, fov, aspect), 6);
+      const initialPlan = gridPlan(viewRadiusMetres(camCarto.height, fov, aspect), maxResolution);
       drawForPlan(0, 0, initialPlan);
 
       let raf = 0;
@@ -244,15 +208,15 @@ export const h3HexagonsLayer: LayerKind<H3HexagonsOptions> = {
         const cLng = (cam.longitude * 180) / Math.PI;
 
         const fov2 = (viewer.camera.frustum as PerspectiveFrustum | undefined)?.fov ?? Math.PI / 3;
-        const radius = viewRadiusMeters(cam.height, fov2, viewer.canvas.clientWidth / viewer.canvas.clientHeight);
-        const plan = computeRenderPlan(metrics, radius, 6);
+        const radius = viewRadiusMetres(cam.height, fov2, viewer.canvas.clientWidth / viewer.canvas.clientHeight);
+        const plan = gridPlan(radius, maxResolution);
 
         if (!selectedCell && lastPointer) {
           const pick = viewer.camera.pickEllipsoid(new Cartesian2(lastPointer.x, lastPointer.y));
           if (pick) {
             const carto = Cartographic.fromCartesian(pick);
-            const primary = plan.reduce((best, cur) => (cur.alpha > best.alpha ? cur : best), plan[0]).res;
-            const h3idx = latLngToCell((carto.latitude * 180) / Math.PI, (carto.longitude * 180) / Math.PI, primary);
+            const primary = primaryResolution(plan);
+            const h3idx = cellAt([(carto.longitude * 180) / Math.PI, (carto.latitude * 180) / Math.PI], primary);
             hoverCellId = `${primary}-${h3idx}`;
             hoverTargetAlpha = hoverOpacity;
           } else {
@@ -290,16 +254,15 @@ export const h3HexagonsLayer: LayerKind<H3HexagonsOptions> = {
         const rect = viewer.canvas.getBoundingClientRect();
         const cam = Cartographic.fromCartesian(viewer.camera.position);
         const fov = (viewer.camera.frustum as PerspectiveFrustum | undefined)?.fov ?? Math.PI / 3;
-        const plan = computeRenderPlan(
-          metrics,
-          viewRadiusMeters(cam.height, fov, viewer.canvas.clientWidth / viewer.canvas.clientHeight),
-          6,
+        const plan = gridPlan(
+          viewRadiusMetres(cam.height, fov, viewer.canvas.clientWidth / viewer.canvas.clientHeight),
+          maxResolution,
         );
         const pick = viewer.camera.pickEllipsoid(new Cartesian2(e.clientX - rect.left, e.clientY - rect.top));
         if (pick) {
           const carto = Cartographic.fromCartesian(pick);
-          const primary = plan.reduce((best, cur) => (cur.alpha > best.alpha ? cur : best), plan[0]).res;
-          const h3idx = latLngToCell((carto.latitude * 180) / Math.PI, (carto.longitude * 180) / Math.PI, primary);
+          const primary = primaryResolution(plan);
+          const h3idx = cellAt([(carto.longitude * 180) / Math.PI, (carto.latitude * 180) / Math.PI], primary);
           const cellId = `${primary}-${h3idx}`;
 
           // Toggle selection - if clicking the same hexagon, deselect it

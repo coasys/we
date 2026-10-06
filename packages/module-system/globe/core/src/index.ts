@@ -34,6 +34,7 @@ export {
   type PathFeature,
   type PointFeature,
 } from './features';
+export { cellAt, cellOutline, cellsAround, type GridPlan, gridPlan, primaryResolution, viewRadiusMetres } from './grid';
 export { arcPositions, distance, EARTH_RADIUS, isLonLat, type LonLat, type LonLatHeight } from './geo';
 export { forwardingHandlers, LayerSet, type LayerSetOptions, optionsEqual } from './layerSet';
 export type {

@@ -23,7 +23,8 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
     'what a $queries entry fetched: read it with { "$": "local.rows.map(…)" }. The imagery is the globe\'s own ' +
     'and is not a layer. A globe is drawn by one of two engines, which the deployment or the person chooses and ' +
     'a template never names: Cesium, the full 3D globe, or MapLibre, a lighter one for phones. Both draw every ' +
-    'planet kind but h3HexagonsLayer; only Cesium draws the background kinds, and on MapLibre lines lie flat. ' +
+    'planet kind; only Cesium draws the background kinds, and on MapLibre lines lie flat. Read ' +
+    'modules.globe.drawsSpace to leave the background kinds out of a menu where they would do nothing. ' +
     'A kind an engine does not draw is simply absent there, so place them as you would anyway. ' +
     'The data kinds (pointsLayer, pathsLayer, areasLayer, hexbinLayer) each take rows as `data`, field paths saying ' +
     'where in a row its geometry is (dotted for nested fields: "location.latitude"), and `style`: rules in the ' +
@@ -241,7 +242,7 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
       id: 'h3HexagonsLayer',
       category: 'planet',
       description:
-        'The H3 hexagon grid, finer as the camera comes closer: each zoom draws the resolution whose cells suit it. A hovered cell is highlighted. Drawn by the Cesium engine only.',
+        'The H3 hexagon grid, finer as the camera comes closer: each zoom draws the resolution whose cells suit it. A hovered cell is highlighted.',
       options: [
         { name: 'maxResolution', type: 'number', description: 'Finest H3 resolution drawn, 0–15. Default 8.' },
         { name: 'color', type: 'string', description: 'CSS colour of the cell edges. Default "#3388ff".' },

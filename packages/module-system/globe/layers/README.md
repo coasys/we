@@ -37,10 +37,10 @@ light builds. The globe module's `engine` setting chooses (`auto` picks MapLibre
 a small machine); a template never names one. Each engine has its own registry so a MapLibre build
 never loads Cesium:
 
-| Engine   | Registry                                           | Draws                                                                 |
-| -------- | -------------------------------------------------- | --------------------------------------------------------------------- |
-| Cesium   | `layerKinds` (`@we/module-globe/layers`)           | every kind                                                            |
-| MapLibre | `maplibreLayerKinds` (`@we/globe-layers/maplibre`) | the data kinds, `pointLocationsLayer` and the borders; lines lie flat |
+| Engine   | Registry                                           | Draws                                                           |
+| -------- | -------------------------------------------------- | --------------------------------------------------------------- |
+| Cesium   | `layerKinds` (`@we/module-globe/layers`)           | every kind                                                      |
+| MapLibre | `maplibreLayerKinds` (`@we/globe-layers/maplibre`) | every planet kind; lines lie flat, and nothing around the earth |
 
 The MapLibre registry lists the Cesium-only kinds too, with no renderer, so a template using one is
 told once that it is not drawn there rather than that it does not exist.

@@ -3,8 +3,7 @@
  *
  * Each is the same kind as on Cesium — the same id, slot and options, from `../meta` — with a
  * MapLibre renderer. A separate entry so a MapLibre build never imports Cesium. What MapLibre does not
- * draw is simply not here: the space around the earth (skybox, stars, the solar system) and the bare
- * H3 grid, which a template on this engine finds absent rather than broken — listed with no renderer, so
+ * draw is simply not here: the space around the earth (skybox, stars, the solar system), which a template on this engine finds absent rather than broken — listed with no renderer, so
  * the globe says so once.
  */
 import type { AreasOptions, HexbinOptions, PathsOptions, PointsOptions } from '@we/globe-core';
@@ -22,8 +21,10 @@ import {
   SOLAR_SYSTEM,
 } from '../meta';
 import type { CountryOutlinesOptions } from '../planet/country-outlines';
+import type { H3HexagonsOptions } from '../planet/h3-hexagons';
 import { asPointsOptions, type PointLocationsOptions } from '../planet/point-locations/options';
 import type { LayerKind, LayerKinds, LayerRenderer } from '../types';
+import { renderGrid } from './grid';
 import { renderOutlines } from './outlines';
 import { renderPaths } from './paths';
 import { renderPoints } from './points';
@@ -46,6 +47,8 @@ export const pointLocationsLayer: LayerKind<PointLocationsOptions> = {
   },
 };
 
+export const h3HexagonsLayer: LayerKind<H3HexagonsOptions> = { ...H3_GRID, renderers: { maplibre: renderGrid } };
+
 export const countryOutlinesLayer: LayerKind<CountryOutlinesOptions> = {
   ...COUNTRY_OUTLINES,
   renderers: { maplibre: renderOutlines },
@@ -64,6 +67,7 @@ export const maplibreLayerKinds: LayerKinds = Object.fromEntries(
     hexbinLayer,
     pointLocationsLayer,
     countryOutlinesLayer,
-    ...[SKYBOX, PROCEDURAL_STARS, SOLAR_SYSTEM, H3_GRID].map((meaning): LayerKind => ({ ...meaning, renderers: {} })),
+    h3HexagonsLayer,
+    ...[SKYBOX, PROCEDURAL_STARS, SOLAR_SYSTEM].map((meaning): LayerKind => ({ ...meaning, renderers: {} })),
   ].map((kind) => [kind.id, kind]),
 );

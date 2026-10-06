@@ -45,8 +45,8 @@ export const COUNTRY_OUTLINES: Meaning = {
   description: 'Country boundaries from Natural Earth 50m data. Good balance of detail and performance.',
 };
 
-// Drawn by Cesium only. Listed so the other engine can say a template's use of one is not drawn there,
-// rather than that no such kind exists.
+// The space around the earth, drawn by Cesium only — listed so the other engine can say a template's
+// use of one is not drawn there, rather than that no such kind exists — and the H3 grid, which both draw.
 
 export const SKYBOX: Meaning = {
   id: 'skyboxLayer',
