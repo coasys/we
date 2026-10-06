@@ -84,7 +84,7 @@ function shapeLayers(context: MapLibreRendererContext, repaint: () => void) {
             // A solid takes the layer's opacity; a flat fill carries its own in its colour.
             color: colors.color(shape.color, shape.height > 0 ? 1 : shape.opacity),
             height: shape.height,
-            borderColor: shape.borderColor ? colors.color(shape.borderColor) : 'rgba(0, 0, 0, 0)',
+            borderColor: shape.borderColor ? colors.color(shape.borderColor) : 'transparent',
             borderWidth: shape.borderColor ? shape.borderWidth : 0,
           },
         })),
