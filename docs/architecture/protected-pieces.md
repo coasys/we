@@ -75,6 +75,16 @@ host's:
 The prompt layer knows a prompt is open by looking at its own DOM, so **a new safety prompt is one
 more id in `PROTECTED_SLOTS`** and gets all three.
 
+**A template does not ask first.** The host's delete prompt is in front of every destructive action
+a space template runs, so a template's own "are you sure?" in front of one is a second question about
+the same click. Call the action from the control; the validator warns about a `we-modal` that
+confirms one. What the template's dialog used to say, the host says: `describeDestructive` writes the
+question, and for a `deleteCollection` it first counts what goes with the record (`collectionFacts`
+— whether it is a reply, and how many responses sit under it), so "Delete this reply and the 3
+responses under it?" comes from the data rather than from the template. Chrome is judged without
+this rule (`asHostChrome`): its bag has no host prompt in front of it, so its own dialog is the
+only question.
+
 ## The way out
 
 Safe mode draws WE's own templates and themes in place of the chosen ones, for the tab, until

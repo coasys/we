@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { buildValidationContext, validateSemantic, withEntities } from './semanticValidation';
+import { asHostChrome, buildValidationContext, validateSemantic, withEntities } from './semanticValidation';
 import type { SchemaNode } from './types';
 
 // The same generated context the CLI reads, loaded the same way — this package deliberately does
@@ -525,6 +525,36 @@ describe('a write wired to an event nobody causes', () => {
 
   it('says nothing about a blur, which counts as asking once somebody typed', () => {
     expect(unasked({ type: 'we-input', props: { onBlur: create } })).toEqual([]);
+  });
+});
+
+describe('a dialog asking about what the host asks about anyway', () => {
+  const twice = (node: SchemaNode, ctx = context) =>
+    validateSemantic(node, ctx)
+      .errors.filter((e) => e.severity === 'warning')
+      .map((e) => e.message)
+      .filter((m) => m.includes('two questions about one click'));
+  const sheet = (children: unknown[]) =>
+    ({ type: '$if', props: { condition: { $: 'true' }, then: { type: 'we-modal', children } } }) as SchemaNode;
+  const deleteButton = {
+    type: 'we-button',
+    props: { onClick: { $action: 'spaceStore.deleteCollection', args: ['c1'] } },
+  };
+
+  it('warns about a confirmation in front of a delete', () => {
+    expect(twice(sheet([{ type: 'we-text', children: ['Delete this?'] }, deleteButton]))).toHaveLength(1);
+  });
+
+  it('says nothing about a delete pressed directly, which is the shape it asks for', () => {
+    expect(twice(deleteButton as SchemaNode)).toEqual([]);
+  });
+
+  it('says nothing about a form whose Delete sits beside fields', () => {
+    expect(twice(sheet([{ type: 'we-input', props: { value: 'x' } }, deleteButton]))).toEqual([]);
+  });
+
+  it('says nothing in host chrome, where no confirmation is raised for it', () => {
+    expect(twice(sheet([deleteButton]), asHostChrome(context))).toEqual([]);
   });
 });
 

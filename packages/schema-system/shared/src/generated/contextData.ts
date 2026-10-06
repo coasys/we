@@ -2211,6 +2211,7 @@ export const contextData: ContextData = {
         'clearError',
       ],
       ambient: ['refresh', 'requestRemoval', 'cancelRemoval', 'clearError'],
+      destructive: ['removeAccount', 'confirmRemoval'],
     },
     {
       name: 'appStore',
@@ -2247,6 +2248,7 @@ export const contextData: ContextData = {
       },
       actions: ['switchDataset', 'reorderDatasets', 'removeDataset', 'cleanupSpaceSdna'],
       ambient: ['switchDataset'],
+      destructive: ['removeDataset'],
     },
     {
       name: 'editorStore',
@@ -2332,6 +2334,7 @@ export const contextData: ContextData = {
         'closeThemePanel',
         'toggleVisualPanel',
       ],
+      destructive: ['deleteSession', 'clearHistory'],
     },
     {
       name: 'interpretationStore',
@@ -2464,6 +2467,7 @@ export const contextData: ContextData = {
         'previewCardStyle',
         'createOnCanvas',
       ],
+      destructive: ['deleteRecords'],
     },
     {
       name: 'routeStore',
@@ -2611,6 +2615,19 @@ export const contextData: ContextData = {
         'loadPeerInfos',
         'dismissConsentSecret',
       ],
+      destructive: [
+        'removeAiModel',
+        'removeAiTask',
+        'removeLanguage',
+        'trustAgent',
+        'untrustAgent',
+        'revokeApp',
+        'removeApp',
+        'restartNetwork',
+        'importDatabase',
+        'restartExecutor',
+        'approveConsent',
+      ],
     },
     {
       name: 'sessionStore',
@@ -2730,6 +2747,7 @@ export const contextData: ContextData = {
         'closeHintEditor',
         'setHintDraft',
       ],
+      destructive: ['deleteShape'],
     },
     {
       name: 'shellStore',
@@ -3017,6 +3035,7 @@ export const contextData: ContextData = {
         'canAdministerSpace',
         'getSubgroupMessages',
       ],
+      destructive: ['removeSpace', 'deleteCollection', 'removeSpaceFromGlobal'],
     },
     {
       name: 'templateStore',
@@ -3062,6 +3081,7 @@ export const contextData: ContextData = {
         'leaveSafeMode',
       ],
       ambient: ['cancelInstall', 'refreshSpaceTemplates'],
+      destructive: ['removeTemplate', 'deleteTemplate', 'deleteRefusedTemplate', 'deleteMarketplaceTemplate'],
     },
     {
       name: 'themeStore',
@@ -3119,8 +3139,9 @@ export const contextData: ContextData = {
         'refreshSpaceThemes',
       ],
       ambient: ['focusRole', 'previewThemeScope', 'refreshSpaceThemes'],
+      destructive: ['deleteTheme', 'uninstallTheme', 'deleteMarketplaceTheme'],
     },
-    { name: 'record', state: {}, actions: ['create', 'update', 'delete'] },
+    { name: 'record', state: {}, actions: ['create', 'update', 'delete'], destructive: ['delete'] },
     { name: 'clipboard', state: {}, actions: ['copy'] },
   ],
   shellComponents: [

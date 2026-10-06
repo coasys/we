@@ -4143,14 +4143,19 @@ they share an icon, a heading, a width and a button row:
 
 ```ts
 confirmModal({
-  open: { $: 'local.confirmDeleteOpen' },
-  close: { $setLocal: 'confirmDeleteOpen', value: false },
-  title: 'Delete post?',
-  body: 'This will permanently delete the post and everything inside it. This cannot be undone.',
-  confirmLabel: 'Delete',
-  confirm: { $action: 'spaceStore.deleteCollection', args: [{ $: 'post.id' }] },
+  open: { $: 'local.confirmRemoveOpen' },
+  close: { $setLocal: 'confirmRemoveOpen', value: false },
+  title: 'Remove this column?',
+  body: 'The cards in it stay on the board, in the state they are in.',
+  confirmLabel: 'Remove',
+  confirm: { $action: 'spaceStore.removeBoardColumn', args: [{ $: 'board.id' }, { $: 'column.id' }] },
 })
 ```
+
+**Never in front of a delete.** The host asks before every destructive action a space template runs
+— `spaceStore.deleteCollection`, `record.delete`, `recordStore.deleteRecords` and the rest —
+in its own words, saying what goes with it. Call one straight from the button. A dialog of your own
+in front of it is a second question about one click, and the validator warns about it.
 
 It returns the `$if` as well as the modal, and clears `open` from all three exits — the backdrop,
 Cancel, and the action's `onSuccess`.
@@ -4162,7 +4167,7 @@ Cancel, and the action's `onSuccess`.
 - `tone: 'primary'` for a question with no casualty; the default `danger` picks a warning icon and
   a danger confirm button.
 - `detail` for a quieter second line, `children` for a `we-alert` naming a surprising consequence.
-- `busyLocal` if the action is not instant — a recursive delete walks its whole collection, and
+- `busyLocal` if the action is not instant — a write that walks a board or a thread takes a while, and
   without a spinner the button absorbs the click and invites a second one. `busy` instead when a
   store already owns the flag.
 
