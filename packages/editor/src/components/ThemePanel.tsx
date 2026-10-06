@@ -406,16 +406,30 @@ type SpacingPreset = keyof typeof SPACING_PRESETS;
 
 // ─── Shared atoms ─────────────────────────────────────────────────────────────
 
-function HueSwatch(props: { hue: number }) {
+/**
+ * The colour a hue slider sets, drawn from the edited theme's own palette — its 500 step, the
+ * middle of the family's ramp.
+ *
+ * It was `hsl(hue 60% 50%)`, and a theme's hues are OKLCH angles, not HSL ones: blue is 263 in
+ * OKLCH and about 220 in HSL, so every dot sat some way round the wheel from the colour the slider
+ * actually chose, and the preview above disagreed with it. Drawing through the theme's formula also
+ * follows its saturation, lightness range and chroma ceilings rather than a fixed 60% and 50%.
+ *
+ * `palette` is the edited theme's `--we-color-*` declarations, carried on the dot itself: the panel
+ * is editor chrome, so a bare `var()` here would resolve against the app's theme rather than the one
+ * being edited.
+ */
+function HueSwatch(props: { family: string; palette: Record<string, string> }) {
   return (
     <div
       style={{
+        ...props.palette,
         width: '20px',
         height: '20px',
         'border-radius': '50%',
-        // role-audit: palette — a preview of the hue being chosen, so it IS the raw value. The rest
-        // of this panel is ordinary chrome and stays on roles.
-        background: `hsl(${props.hue} 60% 50%)`,
+        // role-audit: palette — a preview of the hue being chosen, so it IS that family's colour. The
+        // rest of this panel is ordinary chrome and stays on roles.
+        background: `var(--we-color-${props.family}-500)`,
         'flex-shrink': '0',
         border: `1px solid ${tokenVar('color', 'border')}`,
       }}
@@ -560,7 +574,7 @@ export function ThemePanel() {
         <we-text minWidth="80px" fontSize="300" color="text-muted">
           {label}
         </we-text>
-        <HueSwatch hue={val()} />
+        <HueSwatch family={key.replace(/Hue$/, '')} palette={editedPalette()} />
         <we-slider
           flex="1"
           value={val()}
