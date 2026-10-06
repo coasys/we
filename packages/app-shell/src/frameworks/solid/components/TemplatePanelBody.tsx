@@ -16,7 +16,7 @@ import { resolveParts } from '@shared/registries/moduleParts';
 import { templateBag } from '@shared/registries/templateBag';
 import { onTemplatePanelsChanged, templatePanels } from '@shared/registries/templatePanels';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
-import type { SchemaNode } from '@we/schema-shared';
+import { EDIT_SURFACE_ATTR, type SchemaNode } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { createMemo, createSignal, onCleanup } from 'solid-js';
 
@@ -65,7 +65,16 @@ export function TemplatePanelBody(props: { panelId?: string; moduleId?: string; 
     return RenderSchema({ node: declared, stores: bag, registry });
   });
 
-  return <>{body()}</>;
+  /*
+    Marked as the template's, so the visual editor can select what the template drew here as readily
+    as what it drew in the content — the frame around it stays the app's. Box-less, so the panel lays
+    out exactly as it did.
+  */
+  return (
+    <div style={{ display: 'contents' }} {...{ [EDIT_SURFACE_ATTR]: '' }}>
+      {body()}
+    </div>
+  );
 }
 
 export default TemplatePanelBody;
