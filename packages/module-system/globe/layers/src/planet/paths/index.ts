@@ -101,7 +101,6 @@ export async function renderPaths(
       const feature = byId.get(id);
       if (feature) options.onSelect?.(feature.row);
     },
-    hover() {},
   });
 
   context.onCleanup(() => {

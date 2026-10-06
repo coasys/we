@@ -53,7 +53,6 @@ export function renderHexbin(context: CesiumRendererContext, initial: HexbinOpti
       const { rows, count, value } = feature.group;
       options.onSelect?.({ cell: feature.cell, rows, count, value });
     },
-    hover() {},
   });
 
   update(initial);

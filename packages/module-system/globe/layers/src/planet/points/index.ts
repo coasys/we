@@ -211,7 +211,7 @@ export async function renderPoints(
     if (!mark.label) return undefined;
     const clustered = mark.count > 1;
     return labels.add({
-      id: { layer, feature: mark.id },
+      id: { layer, feature: mark.id, label: true },
       position: cartesian(mark.position),
       text: mark.label,
       font: clustered ? 'bold 12px sans-serif' : '14px sans-serif',

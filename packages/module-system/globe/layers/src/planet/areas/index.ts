@@ -86,7 +86,6 @@ export async function renderAreas(
       const feature = byId.get(id);
       if (feature) options.onSelect?.(feature.selected);
     },
-    hover() {},
   });
 
   await update(initial);

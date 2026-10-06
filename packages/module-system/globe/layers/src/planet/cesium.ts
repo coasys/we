@@ -15,10 +15,14 @@ import {
 
 import type { CesiumRendererContext } from '../types';
 
-/** The id a data kind's primitive carries, so a pick can be traced back to its layer and feature. */
+/**
+ * The id a data kind's primitive carries, so a pick can be traced back to its layer and feature.
+ * `label` marks a feature's text, which is pressable but is not the feature's shape.
+ */
 export interface PickId {
   layer: string;
   feature: string;
+  label?: boolean;
 }
 
 export function isPickId(value: unknown, layer: string): value is PickId {
@@ -75,7 +79,10 @@ export function metresPerPixel(viewer: Viewer): number {
 
 /**
  * One handler for presses and hovers on this layer's primitives. `select` gets the feature id under a
- * press; `hover` the one under the pointer, or null when it leaves.
+ * press, its label included. `hover` gets the feature whose shape is under the pointer, or null —
+ * a label alone is pressable and shows the pointer, but does not count as hovering the feature: the
+ * gap between a name and its marker would otherwise end the hover on the way from one to the other,
+ * and a marker growing on hover would shrink and grow again as the pointer crossed it.
  */
 export function pickFeatures(
   context: CesiumRendererContext,
@@ -83,28 +90,33 @@ export function pickFeatures(
 ): void {
   const { viewer, id: layer } = context;
   const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
-  const at = (position: Cartesian2): string | null => {
+  const at = (position: Cartesian2): PickId | null => {
     // drillPick rather than pick: a marker raised above the ground can sit behind the globe in the
-    // pick buffer while drawing in front of it.
-    const hit = viewer.scene
+    // pick buffer while drawing in front of it. A shape wins over a label drawn on it, as a cluster's
+    // count is.
+    const hits = viewer.scene
       .drillPick(position, 5)
-      .find((p: { id?: unknown; primitive?: Primitive }) => defined(p) && isPickId(p.id, layer));
-    return hit ? (hit.id as PickId).feature : null;
+      .map((p: { id?: unknown; primitive?: Primitive }) => (defined(p) && isPickId(p.id, layer) ? p.id : null))
+      .filter((id: PickId | null): id is PickId => id !== null);
+    return hits.find((id: PickId) => !id.label) ?? hits[0] ?? null;
   };
   handler.setInputAction((click: { position: Cartesian2 }) => {
-    const feature = at(click.position);
-    if (feature !== null) handlers.select(feature);
+    const hit = at(click.position);
+    if (hit) handlers.select(hit.feature);
   }, ScreenSpaceEventType.LEFT_CLICK);
-  if (handlers.hover) {
-    let current: string | null = null;
-    handler.setInputAction((move: { endPosition: Cartesian2 }) => {
-      const feature = at(move.endPosition);
-      if (feature === current) return;
-      current = feature;
-      viewer.scene.canvas.style.cursor = feature === null ? '' : 'pointer';
-      handlers.hover?.(feature);
-    }, ScreenSpaceEventType.MOUSE_MOVE);
-  }
+  let pressable = false;
+  let hovered: string | null = null;
+  handler.setInputAction((move: { endPosition: Cartesian2 }) => {
+    const hit = at(move.endPosition);
+    if (!!hit !== pressable) {
+      pressable = !!hit;
+      viewer.scene.canvas.style.cursor = pressable ? 'pointer' : '';
+    }
+    const shape = hit && !hit.label ? hit.feature : null;
+    if (shape === hovered) return;
+    hovered = shape;
+    handlers.hover?.(shape);
+  }, ScreenSpaceEventType.MOUSE_MOVE);
   context.onCleanup(() => {
     handler.destroy();
     viewer.scene.canvas.style.cursor = '';
