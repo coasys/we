@@ -3684,10 +3684,12 @@ Needs: kernels agentData, records.
   - NoteShare: noteId: string (required), ref: string (required), spaceName: string, sharedAt: string
 
 ### Globe (`globe`)
-3D globe with a modular layer system — locations, country outlines, H3 hexagons.
+A globe with a modular layer system — data on the earth, borders, the sky — drawn by Cesium or MapLibre.
 Needs: permissions network:gibs.earthdata.nasa.gov, network:cesium-ion, network:arcgis.com, network:mapbox.com.
-- No store: everything this module does is declared.
-- Settings: `imagery` (enum; deployment, agent) — Globe imagery; `ionAccessToken` (string; deployment, agent) — Cesium ion access token; `esriApiKey` (string; deployment, agent) — Esri API key; `mapboxAccessToken` (string; deployment, agent) — Mapbox access token
+- State (read in an expression as `modules.globe.<name>`):
+  - drawsSpace — Whether the globe draws the space around the earth — the skybox, stars and solar system. False on MapLibre.
+  - engine — Which engine draws the globe here — "cesium" or "maplibre" — from the setting and this device.
+- Settings: `engine` (enum; deployment, agent) — Globe engine; `imagery` (enum; deployment, agent) — Globe imagery; `ionAccessToken` (string; deployment, agent) — Cesium ion access token; `esriApiKey` (string; deployment, agent) — Esri API key; `mapboxAccessToken` (string; deployment, agent) — Mapbox access token
 - Components: CesiumGlobe
 
 ### Graph (`graph`)
