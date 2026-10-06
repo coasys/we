@@ -391,7 +391,10 @@ function editorProbe(): void {
     button.id = `probe-${id}`;
     button.textContent = label;
     button.style.cssText = 'width: 160px; height: 60px';
+    button.style.cursor = 'pointer';
     button.addEventListener('click', () => record('__probePressed', id));
+    // What a tooltip listens for. Nothing of the template's should hear the pointer while it is edited.
+    button.addEventListener('pointerenter', () => record('__probeEntered', id));
     wrapper.append(button);
     return wrapper;
   };

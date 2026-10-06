@@ -133,16 +133,51 @@ function surfaceOf(el: Element | null): Element | null {
 }
 
 /**
- * Whether a node can be seen where it is: the middle of its box, hit-tested, lands inside the same
- * surface. Answers no for a node scrolled out of its surface, one under a panel, and everything while
- * a settings page is open over the template — the cases where a ring drawn on top would point at
- * something nobody can see.
+ * Whether a node can be seen where it is: whatever is hit-tested at the middle of its box is its own
+ * surface or something holding it. A template's contents take no pointer while it is edited (see
+ * `INERT_CONTENT_CSS`), so the hit is the surface itself, or the panel frame around a panel's body —
+ * unless something else is on top. Answers no for a node scrolled out of its surface, one under
+ * another panel, and everything while a settings page is open over the template: the cases where a
+ * ring drawn on top would point at something nobody can see. No rule is lifted for this, so running
+ * it every frame costs a hit-test and nothing else.
  */
 function seenAt(el: Element, rect: DOMRect): boolean {
   const surface = surfaceOf(el);
   if (!surface) return false;
   const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-  return !!hit && surface.contains(hit);
+  return !!hit && (surface.contains(hit) || hit.contains(surface));
+}
+
+/*
+  While a template is being edited, its contents take no pointer: one arrow cursor over everything, no
+  hover styles, no tooltips opening, and no handler of the template's hearing a press. What the old
+  covering box did, without a box — the template's surfaces are not one rectangle, and a box over all
+  of them would cover the app's own panels too. The surfaces themselves keep the pointer, so the
+  content still scrolls under the wheel.
+
+  On every descendant rather than the surface's children, and important, so a node whose own props
+  say pointer-events: auto cannot opt itself back in.
+*/
+const EDITING_ATTR = 'data-we-visual-editing';
+const HIT_TESTING_ATTR = 'data-we-hit-testing';
+const INERT_CONTENT_CSS = `
+  [${EDITING_ATTR}]:not([${HIT_TESTING_ATTR}]) ${SURFACE_SELECTOR} * { pointer-events: none !important; }
+  [${EDITING_ATTR}] ${SURFACE_SELECTOR} { cursor: default; }
+`;
+
+/**
+ * What is under a point, as though the template's contents took the pointer — they do not while it is
+ * edited, so the rule is lifted for the one question and put straight back. Nothing paints between the
+ * two, so nothing is seen to change.
+ */
+function templateElementAt(x: number, y: number): Element | null {
+  const root = document.documentElement;
+  root.setAttribute(HIT_TESTING_ATTR, '');
+  try {
+    return document.elementFromPoint(x, y);
+  } finally {
+    root.removeAttribute(HIT_TESTING_ATTR);
+  }
 }
 
 /**
@@ -518,7 +553,7 @@ function VisualEditorLayer() {
 
   function cleanupResizeListeners() {
     document.removeEventListener('pointermove', handleResizeMouseMove);
-    document.removeEventListener('pointerup', handleResizeMouseUp);
+    window.removeEventListener('pointerup', handleResizeMouseUp, true);
     document.removeEventListener('keydown', handleResizeKeyDown);
     document.body.style.cursor = '';
   }
@@ -636,7 +671,9 @@ function VisualEditorLayer() {
     document.body.style.cursor = handleCursor(handle);
 
     document.addEventListener('pointermove', handleResizeMouseMove);
-    document.addEventListener('pointerup', handleResizeMouseUp);
+    // The window, in capture: a release over the template is stopped before it reaches the
+    // document, and a resize that never heard its release would never end.
+    window.addEventListener('pointerup', handleResizeMouseUp, true);
     document.addEventListener('keydown', handleResizeKeyDown);
   }
 
@@ -651,7 +688,7 @@ function VisualEditorLayer() {
       clearTimeout(dndHoldTimer);
       dndHoldTimer = null;
     }
-    document.removeEventListener('pointerup', handleDndPointerUp);
+    window.removeEventListener('pointerup', handleDndPointerUp, true);
     document.removeEventListener('keydown', handleDndKeyDown);
     document.body.style.cursor = '';
     dndPendingNodeId = null;
@@ -725,7 +762,7 @@ function VisualEditorLayer() {
 
   function updateDndDropTarget(x: number, y: number) {
     if (!overlayRef) return;
-    const hit = document.elementFromPoint(x, y);
+    const hit = templateElementAt(x, y);
     // Only the template's own surfaces take a drop — never the sidebar, a titlebar, an editor panel.
     const under = surfaceOf(hit) ? hit : null;
 
@@ -1007,7 +1044,7 @@ function VisualEditorLayer() {
     }
 
     // Normal hover — over the template's own surfaces only. Anywhere else is the app's, and clears it.
-    const hit = document.elementFromPoint(e.clientX, e.clientY);
+    const hit = templateElementAt(e.clientX, e.clientY);
     if (!surfaceOf(hit)) {
       handlePointerLeave();
       return;
@@ -1058,7 +1095,7 @@ function VisualEditorLayer() {
     if (e.button !== 0) return;
     if (isResizing()) return;
     // A press outside the template is the app's — a titlebar, the inspector, a resize grip of ours.
-    const hit = document.elementFromPoint(e.clientX, e.clientY);
+    const hit = templateElementAt(e.clientX, e.clientY);
     if (!surfaceOf(hit)) return;
     // Selecting, not operating: the template's own button, field or link never hears this press.
     e.preventDefault();
@@ -1120,7 +1157,8 @@ function VisualEditorLayer() {
         dndHoldTimer = null;
         if (dndPendingNodeId) startDrag(dndPendingNodeId);
       }, DND_HOLD_MS);
-      document.addEventListener('pointerup', handleDndPointerUp);
+      // The window, in capture, for the reason the resize's is: see `handleResizeMouseUp`.
+      window.addEventListener('pointerup', handleDndPointerUp, true);
       document.addEventListener('keydown', handleDndKeyDown);
     }
   }
@@ -1153,10 +1191,40 @@ function VisualEditorLayer() {
     e.preventDefault();
     e.stopPropagation();
   };
-  const onWindowPointerMove = (e: PointerEvent) => handlePointerMove(e);
+  const inertStyle = document.createElement('style');
+  inertStyle.textContent = INERT_CONTENT_CSS;
+  document.head.append(inertStyle);
+  document.documentElement.setAttribute(EDITING_ATTR, '');
+  onCleanup(() => {
+    document.documentElement.removeAttribute(EDITING_ATTR);
+    inertStyle.remove();
+  });
+
+  /*
+    One hover per frame. Each lifts the inert rule for a hit-test, which restyles the template, and a
+    pointer reports far more often than the screen draws.
+  */
+  let pendingMove: PointerEvent | null = null;
+  let moveFrame = 0;
+  const onWindowPointerMove = (e: PointerEvent) => {
+    pendingMove = e;
+    if (moveFrame) return;
+    moveFrame = requestAnimationFrame(() => {
+      moveFrame = 0;
+      const latest = pendingMove;
+      pendingMove = null;
+      if (latest) handlePointerMove(latest);
+    });
+  };
+  onCleanup(() => cancelAnimationFrame(moveFrame));
   const onWindowPointerDown = (e: PointerEvent) => handlePointerDown(e);
   const onWindowContextMenu = () => handleContextMenu();
-  const swallowed = ['click', 'dblclick', 'auxclick', 'mousedown', 'mouseup', 'pointerup'] as const;
+  /*
+    Not the releases. The contents hear nothing while edited anyway, and the editor's own drag and
+    resize listen for the release to know a press is over — swallowing it started a drag on every
+    click, held until Escape.
+  */
+  const swallowed = ['click', 'dblclick', 'auxclick', 'mousedown'] as const;
   window.addEventListener('pointermove', onWindowPointerMove, true);
   window.addEventListener('pointerdown', onWindowPointerDown, true);
   window.addEventListener('contextmenu', onWindowContextMenu, true);

@@ -316,6 +316,28 @@ async function main() {
         },
         /** What a page-level listener recorded — for counting what a gesture actually emitted. */
         recorded: (key) => page.evaluate((k) => globalThis[k] ?? [], key),
+        /*
+          A press and a move at an element's middle, by coordinates. Playwright's own click refuses an
+          element that takes no pointer — the point, for a case about an editor that makes them so.
+        */
+        clickAt: async (sel) => {
+          const b = await page.locator(sel).first().boundingBox();
+          await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+          // Past the editor's 200 ms hold, so a press that wrongly became a drag would show it.
+          await page.waitForTimeout(300);
+        },
+        moveTo: async (sel) => {
+          const b = await page.locator(sel).first().boundingBox();
+          await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+          await page.waitForTimeout(100);
+        },
+        /** The cursor the page shows at an element's middle. */
+        cursorAt: (sel) =>
+          page.evaluate((s) => {
+            const r = document.querySelector(s).getBoundingClientRect();
+            const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            return hit ? getComputedStyle(hit).cursor : '';
+          }, sel),
         /** Run one of the page's own setups by name — for a case whose subject is not a schema. */
         call: (fn, ...args) => page.evaluate(([n, a]) => window.__harness[n](...a), [fn, args]),
 
