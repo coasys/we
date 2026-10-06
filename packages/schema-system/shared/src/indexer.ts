@@ -332,6 +332,35 @@ export function collectComponentTypes(schema: SchemaNode): Set<string> {
 }
 
 /**
+ * Call fn on every node of a tree, parents before their children: children, routes, slots, nodes
+ * held in props, the nodes `meta.panels` entries carry, and the shapes in `$defs`.
+ *
+ * The one walk anything assigning, reading or renaming ids should use, so that none of them
+ * disagrees with the others about what counts as a node — which is how 62% of the workshop
+ * template's nodes once went without ids.
+ */
+export function forEachNode(schema: SchemaNode, fn: (node: SchemaNode) => void): void {
+  const visit = (node: SchemaNode): void => {
+    fn(node);
+    if (node.children) {
+      for (const child of node.children) {
+        if (isSchemaChild(child)) visit(child);
+      }
+    }
+    if (node.routes) {
+      for (const route of node.routes) visit(route as SchemaNode);
+    }
+    if (node.slots) {
+      for (const slotNode of Object.values(node.slots)) visit(slotNode);
+    }
+    forEachPropsNode(node, visit);
+    forEachDefinition(node, visit);
+    forEachPanelNode(node, visit);
+  };
+  visit(schema);
+}
+
+/**
  * Give every node that has no id one, and every node sharing an id with an earlier one a new one.
  *
  * Ids are permanent (see `nodeIdentity.ts`), so this only ever fills gaps: a node somebody just
@@ -349,7 +378,7 @@ export function ensureNodeIds(schema: SchemaNode, mint: () => string = newNodeId
   const seen = new Set<string>();
   const renewed: string[] = [];
 
-  function assignIds(node: SchemaNode): void {
+  forEachNode(schema, (node) => {
     if (!node.id) {
       node.id = mint();
     } else if (seen.has(node.id)) {
@@ -357,23 +386,7 @@ export function ensureNodeIds(schema: SchemaNode, mint: () => string = newNodeId
       node.id = mint();
     }
     seen.add(node.id);
-
-    if (node.children) {
-      for (const child of node.children) {
-        if (isSchemaChild(child)) assignIds(child);
-      }
-    }
-    if (node.routes) {
-      for (const route of node.routes) assignIds(route as SchemaNode);
-    }
-    if (node.slots) {
-      for (const slotNode of Object.values(node.slots)) assignIds(slotNode);
-    }
-    forEachPropsNode(node, assignIds);
-    forEachDefinition(node, assignIds);
-    forEachPanelNode(node, assignIds);
-  }
-  assignIds(schema);
+  });
 
   if (renewed.length) {
     console.warn(
@@ -408,24 +421,7 @@ export function copyWithNewIds<T extends SchemaNode>(node: T, mint: () => string
  * template's own — back. Mutates the schema in place and returns it.
  */
 export function stripNodeIds(schema: SchemaNode): SchemaNode {
-  function strip(node: SchemaNode): void {
-    delete node.id;
-    if (node.children) {
-      for (const child of node.children) {
-        if (isSchemaChild(child)) strip(child);
-      }
-    }
-    if (node.routes) {
-      for (const route of node.routes) strip(route as SchemaNode);
-    }
-    if (node.slots) {
-      for (const slotNode of Object.values(node.slots)) strip(slotNode);
-    }
-    forEachPropsNode(node, strip);
-    forEachDefinition(node, strip);
-    forEachPanelNode(node, strip);
-  }
-  strip(schema);
+  forEachNode(schema, (node) => delete node.id);
   return schema;
 }
 

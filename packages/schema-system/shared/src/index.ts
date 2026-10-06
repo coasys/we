@@ -136,6 +136,7 @@ export {
   ensureSections,
   collectComponentTypes,
   copyWithNewIds,
+  forEachNode,
   ensureNodeIds,
   stripNodeIds,
   findNodeById,

@@ -10,6 +10,7 @@
  */
 import { chatContext, formatExternalManifestForPrompt, requestMessage, updateSchemaTool } from '@shared/ai/aiInfra';
 import { countedPatches, runEditSession } from '@shared/ai/editSession';
+import { prepareForModel } from '@shared/ai/nodeAliases';
 import { boundTemplate } from '@shared/ai/templateContext';
 import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
@@ -28,14 +29,7 @@ import { ChatMessage as ChatMessageRecord, ChatSession as ChatSessionRecord } fr
 import type { DockEdge, DockSize } from '@we/module-shared';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { contextData, setLocalWarningSink } from '@we/schema-shared';
-import {
-  buildValidationContext,
-  compactDefinitions,
-  ensureNodeIds,
-  expandDefinitions,
-  stripNodeIds,
-  withEntities,
-} from '@we/schema-shared';
+import { buildValidationContext, stripNodeIds, withEntities } from '@we/schema-shared';
 import {
   Accessor,
   createContext,
@@ -1021,9 +1015,8 @@ export function EditorStoreProvider(props: ParentProps) {
       side, to one inline copy of it. It validated, it saved, it changed something plausible, and
       the model's explanation of what it had done was confidently wrong.
     */
-    const schemaForRequest = ensureNodeIds(
-      compactDefinitions(deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode).schema,
-    );
+    const modelTree = prepareForModel(deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode);
+    const schemaForRequest = modelTree.schema;
     const prepared = await chatContext({ request: text, schema: schemaForRequest });
     /*
       How much of the TEMPLATE goes with it. `chatContext` bounds the reference; this bounds the
@@ -1043,6 +1036,8 @@ export function EditorStoreProvider(props: ParentProps) {
       // Buffered changes if there are any, so a conversation resumed against a read-only template
       // continues from them rather than reverting them.
       schema: schemaForRequest,
+      mint: modelTree.mint,
+      uses: modelTree.uses,
       validationContext: getValidationCtx(),
       onDisplay: setStreamingContent,
       debug: devLog,
@@ -1053,8 +1048,11 @@ export function EditorStoreProvider(props: ParentProps) {
           template. A stored `$defs` would be a second shape for everything downstream to
           understand — the code panel, a published template, the next turn's compaction — in
           exchange for nothing, since the saving is in what is sent.
+
+          And given back its permanent ids: every node the model left alone keeps the id it came
+          in with, and one it made gets a new one. See `nodeAliases.ts`.
         */
-        const authored = stripNodeIds(expandDefinitions(merged)) as TemplateSchema;
+        const authored = modelTree.restore(merged) as TemplateSchema;
         if (isReadOnly()) {
           setPendingTemplate(authored);
           return 'Schema changes validated and buffered. Template is read-only — user must fork to apply.';
