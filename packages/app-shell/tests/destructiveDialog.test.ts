@@ -51,3 +51,23 @@ describe('deleting a set of records', () => {
     expect(ask([{ recordId: 'a' }]).title).toBe('Delete this record?');
   });
 });
+
+describe('deleting a collection', () => {
+  const ask = (facts?: Parameters<typeof describeDestructive>[2]) =>
+    describeDestructive('spaceStore.deleteCollection', ['c1'], facts);
+
+  it('names the responses that go with a reply', () => {
+    // The question the template's own dialog used to ask, now asked once, by the host, from the data.
+    expect(ask({ reply: true, responses: 3 }).title).toBe('Delete this reply and the 3 responses under it?');
+    expect(ask({ reply: true, responses: 1 }).title).toBe('Delete this reply and the 1 response under it?');
+  });
+
+  it('asks plainly about a reply nobody answered', () => {
+    expect(ask({ reply: true, responses: 0 }).title).toBe('Delete this reply?');
+  });
+
+  it('counts the responses to anything else, and keeps the plain question when there are none', () => {
+    expect(ask({ responses: 2 }).body).toContain('and the 2 responses to it');
+    expect(ask().title).toBe('Delete this and everything in it?');
+  });
+});

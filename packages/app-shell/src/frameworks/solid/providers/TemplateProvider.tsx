@@ -1,5 +1,6 @@
 import { boardOptimism } from '@shared/boardOptimism';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
+import { collectionFacts } from '@shared/destructiveFacts';
 import { involvementOptimism } from '@shared/involvementOptimism';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
@@ -773,7 +774,15 @@ export default function TemplateProvider() {
   */
   const templateBag = buildTemplateBag(stores, {
     grants: SPACE_TIER,
-    onDestructive: (path, args) => shellStore.requestDestructive(path, args),
+    // What a delete takes with it is counted by the host, from the data, while it asks.
+    onDestructive: (path, args) =>
+      shellStore.requestDestructive(
+        path,
+        args,
+        path === 'spaceStore.deleteCollection'
+          ? collectionFacts(datasetStore.currentDataset()?.handle, String(args[0] ?? ''))
+          : undefined,
+      ),
     // Enforced: this is the bag a stranger's template renders against.
     gesture: 'enforce',
   });
