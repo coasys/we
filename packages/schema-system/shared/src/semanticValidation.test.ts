@@ -617,3 +617,107 @@ describe('withEntities', () => {
     expect(context.entityNames.has('Sighting')).toBe(false);
   });
 });
+
+/*
+  Tokens inside the plain data a prop holds — a globe's layer entries, a menu's items — went
+  unchecked: the prop walk opened lists and never an object's own fields, so a misspelt local or
+  module member one level into an entry passed and showed up only as a control that did nothing.
+*/
+describe('tokens inside the data a prop holds', () => {
+  const template = (children: SchemaNode[]) =>
+    ({
+      meta: { name: 'T', description: 'd', icon: 'globe' },
+      type: 'Column',
+      $localState: { showA: { type: 'boolean', initial: true } },
+      children,
+    }) as SchemaNode;
+
+  it('checks a layer entry’s expressions and handlers', () => {
+    const errors = messages(
+      template([
+        {
+          type: 'CesiumGlobe',
+          props: {
+            planetLayers: [
+              {
+                factory: 'pointsLayer',
+                enabled: { $: 'local.showB' },
+                options: { onSelect: { $setLocal: 'picked', value: { $: 'event' } } },
+              },
+            ],
+          },
+        },
+      ]),
+      'error',
+    ).join('\n');
+    expect(errors).toContain('local.showB');
+    expect(errors).toContain('"picked"');
+  });
+
+  it('checks a menu entry’s, inside a group too', () => {
+    const errors = messages(
+      template([
+        {
+          type: 'DropdownMenu',
+          props: {
+            items: [
+              {
+                type: 'group',
+                id: 'g',
+                label: 'G',
+                hidden: { $: '!modules.globe.drawsSpacez' },
+                items: [
+                  {
+                    type: 'toggle',
+                    id: 'x',
+                    label: 'X',
+                    checked: { $: 'local.showC' },
+                    onToggle: { $toggleLocal: 'showD' },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ]),
+      'error',
+    ).join('\n');
+    expect(errors).toContain('drawsSpacez');
+    expect(errors).toContain('local.showC');
+    expect(errors).toContain('"showD"');
+  });
+
+  it('passes the same entries when every name is right', () => {
+    expect(
+      messages(
+        template([
+          { type: 'CesiumGlobe', props: { planetLayers: [{ factory: 'pointsLayer', enabled: { $: 'local.showA' } }] } },
+          {
+            type: 'DropdownMenu',
+            props: {
+              items: [
+                {
+                  type: 'toggle',
+                  id: 'a',
+                  label: 'A',
+                  checked: { $: 'local.showA' },
+                  hidden: { $: '!modules.globe.drawsSpace' },
+                },
+              ],
+            },
+          },
+        ]),
+        'error',
+      ),
+    ).toEqual([]);
+  });
+
+  it('does not judge a subtree a prop holds against the scope outside it', () => {
+    // A node held in a prop is rendered by its component, which may bind names the scope outside
+    // it has never heard of. Data is opened; a subtree is left to whatever renders it.
+    const node = template([
+      { type: 'GraphView', props: { emptyAction: { type: 'Row', children: [{ $: 'row.title' }] } } },
+    ]);
+    expect(messages(node, 'error')).toEqual([]);
+  });
+});
