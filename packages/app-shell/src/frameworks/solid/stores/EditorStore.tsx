@@ -29,7 +29,7 @@ import { ChatMessage as ChatMessageRecord, ChatSession as ChatSessionRecord } fr
 import type { DockEdge, DockSize } from '@we/module-shared';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { contextData, setLocalWarningSink } from '@we/schema-shared';
-import { buildValidationContext, stripNodeIds, withEntities } from '@we/schema-shared';
+import { buildValidationContext, withEntities } from '@we/schema-shared';
 import {
   Accessor,
   createContext,
@@ -323,8 +323,12 @@ export function EditorStoreProvider(props: ParentProps) {
 
   // --- Content mode (preview / visual / code) ---
   const [contentMode, setContentModeSignal] = createSignal<'preview' | 'visual'>('preview');
-  const schemaJson = () =>
-    JSON.stringify(stripNodeIds(deepClone(templateStore.currentTemplate) as SchemaNode), null, 2);
+  /*
+    Ids shown, not stripped: they are permanent, so they are part of what a template IS, and the
+    code panel is where somebody reads the template exactly. Stripping them made every save from the
+    panel renumber the whole tree.
+  */
+  const schemaJson = () => JSON.stringify(templateStore.currentTemplate, null, 2);
 
   // --- Template context (computed) ---
   const templateName = () => templateStore.currentTemplate.meta?.name || templateStore.currentTemplate.id || 'Template';
@@ -1179,9 +1183,13 @@ export function EditorStoreProvider(props: ParentProps) {
     try {
       const parsed = JSON.parse(json);
       pushSnapshot();
-      // stripNodeIds deletes the root node's id, but at the TemplateSchema level that
-      // id is the template identifier, not an internal node id — restore it.
-      const schema = { ...stripNodeIds(parsed as SchemaNode), id: templateStore.currentTemplate.id } as TemplateSchema;
+      /*
+        Ids kept as typed: a node keeps its identity through an edit here like any other. One typed
+        without an id is given one by `updateTemplate`, and one pasted with an id already in use is
+        given a new one there too, with a warning. The root's id is the template's, and the panel
+        does not get to change which template this is.
+      */
+      const schema = { ...(parsed as TemplateSchema), id: templateStore.currentTemplate.id } as TemplateSchema;
       templateStore.updateTemplate(schema);
       void commitEdit();
       setMessages((prev) => [...prev, createMessage('assistant', 'Schema updated from JSON editor.')]);
