@@ -13,7 +13,7 @@
  */
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-import { EventBus, LayerSet } from '@we/globe-core';
+import { ClockLink, EventBus, LayerSet } from '@we/globe-core';
 import type { MapLibreRendererContext } from '@we/globe-protocol';
 import { type LayerSpecification, Map as MapLibreMap, setWorkerUrl, type StyleSpecification } from 'maplibre-gl';
 import maplibreWorker from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
@@ -21,6 +21,7 @@ import { createEffect, createMemo, createSignal, onCleanup, onMount } from 'soli
 
 import type {} from '../cesium-env';
 import type { CesiumGlobeProps, ImageryChoice } from '../CesiumGlobe.types';
+import { followClock } from '../clock';
 import { baseSource, detailSources, registerImageryProtocols } from './imagery';
 
 // MapLibre finds its worker beside its own file, which a bundle moves; this is the copy Vite built.
@@ -53,6 +54,9 @@ export function MapLibreGlobe(props: MapLibreGlobeProps) {
   let background: LayerSet<MapLibreRendererContext> | undefined;
   let resizeObserver: ResizeObserver | undefined;
   const [ready, setReady] = createSignal(false);
+  /** The clock the layers follow, from the `clock` prop. See `../clock.ts`. */
+  const clock = new ClockLink();
+  followClock(props, clock, ready);
 
   onMount(() => {
     if (!containerRef) return;
@@ -84,6 +88,7 @@ export function MapLibreGlobe(props: MapLibreGlobeProps) {
           kinds: () => props.layerKinds,
           context: (shared) => ({ ...shared, map: loaded }),
           events,
+          clock,
         });
       planet = layers();
       background = layers();

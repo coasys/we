@@ -1050,7 +1050,37 @@ const codeInTemplate = (): Scenario => {
   };
 };
 
+/**
+ * Sliders with labelled marks, one at each size the thumb differs at, so a mark's place can be
+ * checked against where the thumb really goes rather than against the arithmetic that placed it.
+ */
+const sliderMarks = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { gap: '600', p: '400' },
+    children: (['sm', 'md', 'lg'] as const).map((size) => ({
+      type: 'we-slider',
+      props: {
+        size,
+        min: 0,
+        max: 1,
+        step: 0.001,
+        value: 0.5,
+        marks: [
+          { value: 0, label: 'Jan 2026' },
+          { value: 0.25, label: 'Apr' },
+          { value: 0.5, label: 'Jul' },
+          { value: 0.75, label: 'Oct' },
+          { value: 1, label: 'Jan 2027' },
+        ],
+      },
+    })),
+  },
+  tables: {},
+});
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
+  'ds:slider-marks': sliderMarks,
   'security:self-firing-events': selfFiringEvents,
   'security:code-in-template': codeInTemplate,
   'canvas:tree-strip': treeStripOverCanvas,

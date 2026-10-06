@@ -24,12 +24,14 @@ import { describe, expect, it } from 'vitest';
 
 import { moduleRegistry } from '../src/shared/registries/moduleRegistry';
 
-/** Exactly the set `componentRegistry.tsx` held before the conversion. */
+/** The set `componentRegistry.tsx` held before the conversion, and the kinds added since. */
 const EXPECTED_LAYERS = [
   'pointsLayer',
   'pathsLayer',
   'areasLayer',
   'hexbinLayer',
+  'heatmapLayer',
+  'satelliteOverlayLayer',
   'pointLocationsLayer',
   'countryOutlinesLayer',
   'h3HexagonsLayer',
@@ -63,6 +65,8 @@ const MAPLIBRE_DRAWS = [
   'pathsLayer',
   'areasLayer',
   'hexbinLayer',
+  'heatmapLayer',
+  'satelliteOverlayLayer',
   'pointLocationsLayer',
   'countryOutlinesLayer',
   'h3HexagonsLayer',

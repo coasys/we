@@ -9,11 +9,12 @@ import { Cartesian3, type ImageryLayer, VERSION, Viewer } from 'cesium';
 import { createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js';
 
 export type * from './CesiumGlobe.types';
-import { EventBus, LayerSet } from '@we/globe-core';
+import { ClockLink, EventBus, LayerSet } from '@we/globe-core';
 import type { CesiumRendererContext, LayerKind } from '@we/globe-protocol';
 
 import type {} from './cesium-env';
 import type { CesiumGlobeProps, ImageryChoice } from './CesiumGlobe.types';
+import { followClock } from './clock';
 import { baseImagery, detailImagery } from './imagery';
 
 /**
@@ -52,6 +53,9 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
   let disposed = false;
 
   const [viewerReady, setViewerReady] = createSignal(false);
+  /** The clock the layers follow, from the `clock` prop. See `../clock.ts`. */
+  const clock = new ClockLink();
+  followClock(props, clock, viewerReady);
 
   onMount(() => {
     if (!containerRef) return;
@@ -148,6 +152,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
           context: (shared) => ({ ...shared, viewer: ready }),
           events,
           available: (kind) => !needsMissingIon(kind),
+          clock,
         });
       planet = layers();
       background = layers();

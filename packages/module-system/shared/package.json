@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@we/backend-shared": "workspace:*",
+    "@we/clock": "workspace:*",
     "@we/schema-shared": "workspace:*"
   },
   "devDependencies": {

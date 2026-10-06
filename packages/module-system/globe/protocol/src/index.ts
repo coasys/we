@@ -27,6 +27,23 @@ export interface LayerEventBus {
   once(event: string, handler: (...args: unknown[]) => void): void;
 }
 
+/**
+ * The moment a layer draws, when the globe follows a clock.
+ *
+ * Every layer has one, and it reads `null` when the globe follows no clock or nobody has set a moment
+ * yet — which means "no particular moment": draw everything, as a globe without a clock always has.
+ * A layer whose data has dates contributes the span they cover, so a template's scrubber can run
+ * from the first to the last without anybody having to know them.
+ */
+export interface LayerClock {
+  /** The moment shown, in milliseconds since 1970, or `null` for no particular moment. */
+  at(): number | null;
+  /** Hear each change of the moment — every frame while it plays. Returns the unsubscribe. */
+  subscribe(listener: () => void): () => void;
+  /** The span this layer's data covers, so the clock's range includes it. `null` withdraws it. */
+  extent(span: readonly [number, number] | null): void;
+}
+
 /** What every renderer receives, whatever its engine. */
 export interface RendererContext {
   /** This layer instance's key: its config `id`, or the kind's id when the template gave none. */
@@ -34,6 +51,8 @@ export interface RendererContext {
   /** Stacking order among planet layers; each kind interprets it for its own drawing. */
   zIndex?: number;
   events: LayerEventBus;
+  /** The moment to draw. Always present; reads `null` when there is no clock. */
+  clock: LayerClock;
   /** Register something to undo when the layer unmounts. Everything a renderer adds goes here. */
   onCleanup(cleanup: () => void): void;
 }
