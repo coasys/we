@@ -34,7 +34,14 @@ import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';
 import { panelResizing } from '@we/editor/runtime';
 import type { SchemaNode } from '@we/schema-shared';
-import { applyThemeVars, clearThemeVars, parseOverrides, SPACE_ROUTE_DEPTH, surfaceStyles } from '@we/schema-shared';
+import {
+  applyThemeVars,
+  clearThemeVars,
+  EDIT_SURFACE_ATTR,
+  parseOverrides,
+  SPACE_ROUTE_DEPTH,
+  surfaceStyles,
+} from '@we/schema-shared';
 import { lazy } from 'solid-js';
 
 const EditorOverlay = lazy(() => import('@we/editor').then((m) => ({ default: m.EditorOverlay })));
@@ -458,6 +465,8 @@ export function TemplateLayout(
           // present, not conditional on there being a scoped theme: it marks where the edge of the
           // template content is, which is true whether or not anything is currently scoped to it.
           {...{ [THEME_SCOPE_ATTRIBUTE]: '' }}
+          // What the visual editor may select from — the template's own content. See EDIT_SURFACE_ATTR.
+          {...{ [EDIT_SURFACE_ATTR]: '' }}
           // …and the boundary a template's *size* is measured against, which is the same edge.
           {...templateSurface.outerAttrs}
           // The element a scoped theme is applied to — see the effect above.
@@ -524,9 +533,9 @@ export function TemplateLayout(
           </TemplateBoundary>
         </Column>
 
-        {/* Code / visual editor overlay — sits above template (z:5), below shell (z:11).
-            Fetched with the rest of the editing surface, so a session that never edits never
-            downloads it. */}
+        {/* The visual editor's annotations. Portalled to a layer of its own above the panels, since
+            the template draws inside panels as well as here — see EditorOverlay. Fetched with the
+            rest of the editing surface, so a session that never edits never downloads it. */}
         <EditorOverlay />
 
         {/* Shell overlay rendered above the template */}

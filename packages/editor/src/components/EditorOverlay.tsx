@@ -1,5 +1,6 @@
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import {
+  EDIT_SURFACE_ATTR,
   findNodeById,
   insertChild,
   mergeNode,
@@ -10,6 +11,7 @@ import {
 } from '@we/schema-shared';
 import { useVisualEditor } from '@we/schema-solid';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
+import { Portal } from 'solid-js/web';
 
 import {
   computeSizeDelta,
@@ -114,6 +116,34 @@ function resolveSizeTokens(): Array<{ token: string; px: number }> {
 // -----------------------------------------------------------------------
 // DOM helpers
 // -----------------------------------------------------------------------
+
+/**
+ * Where the annotations paint: above every panel (they count up from 200) and the app's chrome
+ * (250), below a modal (300). A selection ring is the editor saying "this one" about something the
+ * template drew, and the template draws inside panels as well as in the content — so the ring has to
+ * be able to sit over a panel, the way a browser's inspector highlight sits over everything.
+ */
+const ANNOTATION_LAYER_Z = 260;
+
+const SURFACE_SELECTOR = `[${EDIT_SURFACE_ATTR}]`;
+
+/** The template surface an element is inside — the content, or the body of a panel it supplied. */
+function surfaceOf(el: Element | null): Element | null {
+  return el?.closest(SURFACE_SELECTOR) ?? null;
+}
+
+/**
+ * Whether a node can be seen where it is: the middle of its box, hit-tested, lands inside the same
+ * surface. Answers no for a node scrolled out of its surface, one under a panel, and everything while
+ * a settings page is open over the template — the cases where a ring drawn on top would point at
+ * something nobody can see.
+ */
+function seenAt(el: Element, rect: DOMRect): boolean {
+  const surface = surfaceOf(el);
+  if (!surface) return false;
+  const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  return !!hit && surface.contains(hit);
+}
 
 /**
  * What the pointer is over: a node of the template being edited, or the edge of another template.
@@ -339,7 +369,10 @@ function VisualEditorLayer() {
     let rafId: number;
     const update = () => {
       const el = getNodeBoundsElement(id);
-      if (el) setSelectRect(el.getBoundingClientRect());
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        setSelectRect(seenAt(el, rect) ? rect : null);
+      }
       rafId = requestAnimationFrame(update);
     };
     rafId = requestAnimationFrame(update);
@@ -692,9 +725,9 @@ function VisualEditorLayer() {
 
   function updateDndDropTarget(x: number, y: number) {
     if (!overlayRef) return;
-    overlayRef.style.pointerEvents = 'none';
-    const under = document.elementFromPoint(x, y);
-    overlayRef.style.pointerEvents = 'auto';
+    const hit = document.elementFromPoint(x, y);
+    // Only the template's own surfaces take a drop — never the sidebar, a titlebar, an editor panel.
+    const under = surfaceOf(hit) ? hit : null;
 
     if (!under) {
       dndDropTargetId = null;
@@ -973,10 +1006,13 @@ function VisualEditorLayer() {
       }
     }
 
-    // Normal hover
-    overlayRef.style.pointerEvents = 'none';
-    const under = document.elementFromPoint(e.clientX, e.clientY);
-    overlayRef.style.pointerEvents = 'auto';
+    // Normal hover — over the template's own surfaces only. Anywhere else is the app's, and clears it.
+    const hit = document.elementFromPoint(e.clientX, e.clientY);
+    if (!surfaceOf(hit)) {
+      handlePointerLeave();
+      return;
+    }
+    const under = hit;
     hoveredElement = under;
 
     const boundary = findBoundary(under);
@@ -1021,7 +1057,13 @@ function VisualEditorLayer() {
   function handlePointerDown(e: PointerEvent) {
     if (e.button !== 0) return;
     if (isResizing()) return;
+    // A press outside the template is the app's — a titlebar, the inspector, a resize grip of ours.
+    const hit = document.elementFromPoint(e.clientX, e.clientY);
+    if (!surfaceOf(hit)) return;
+    // Selecting, not operating: the template's own button, field or link never hears this press.
     e.preventDefault();
+    e.stopPropagation();
+    hoveredElement = hit;
 
     const clicked = findBoundary(hoveredElement);
 
@@ -1092,6 +1134,40 @@ function VisualEditorLayer() {
     hoveredElement = null;
   }
 
+  /*
+    Heard on the window, in the capture phase, rather than on an element laid over the template.
+
+    The overlay used to be one box stretched over the content viewport, catching every press over it.
+    A panel the template supplied is not under that box — it floats above the content, docks beside
+    it, or sits on another edge — and panels paint above the content's whole stacking context, so a
+    press on one went straight to the panel and nothing in it could be selected. No z-index fixes
+    that without the box also swallowing the app's own panels, including the inspector it feeds.
+
+    Asking where a press landed instead covers every surface the template draws in, wherever the host
+    puts it, and leaves everything else working. Capture, so the template's own handlers never see a
+    press meant for selecting; the click that follows is stopped the same way, or a template button
+    would still fire on the release.
+  */
+  const swallowInSurface = (e: Event) => {
+    if (!surfaceOf(e.target as Element | null)) return;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  const onWindowPointerMove = (e: PointerEvent) => handlePointerMove(e);
+  const onWindowPointerDown = (e: PointerEvent) => handlePointerDown(e);
+  const onWindowContextMenu = () => handleContextMenu();
+  const swallowed = ['click', 'dblclick', 'auxclick', 'mousedown', 'mouseup', 'pointerup'] as const;
+  window.addEventListener('pointermove', onWindowPointerMove, true);
+  window.addEventListener('pointerdown', onWindowPointerDown, true);
+  window.addEventListener('contextmenu', onWindowContextMenu, true);
+  for (const type of swallowed) window.addEventListener(type, swallowInSurface, true);
+  onCleanup(() => {
+    window.removeEventListener('pointermove', onWindowPointerMove, true);
+    window.removeEventListener('pointerdown', onWindowPointerDown, true);
+    window.removeEventListener('contextmenu', onWindowContextMenu, true);
+    for (const type of swallowed) window.removeEventListener(type, swallowInSurface, true);
+  });
+
   // ---- render helpers ----
 
   const isHoverSameAsSelect = () =>
@@ -1103,134 +1179,131 @@ function VisualEditorLayer() {
   );
 
   return (
-    <div
-      ref={overlayRef}
-      style={{
-        position: 'absolute',
-        top: '0',
-        left: '0',
-        width: '100%',
-        height: '100%',
-        'z-index': 5,
-        'pointer-events': 'auto',
-        overflow: 'hidden',
-      }}
-      onPointerMove={handlePointerMove}
-      onPointerDown={handlePointerDown}
-      onPointerLeave={handlePointerLeave}
-      onContextMenu={handleContextMenu}
-    >
-      {/* Another template's territory — outlined and named, never selectable. */}
-      <Show when={viewRegionRelRect()}>
-        <ViewBoundary rect={viewRegionRelRect()!} name={viewRegion()!.name} />
-      </Show>
-
-      {/* Hover highlight — skip when same as selected */}
-      <Show when={hoverRelRect() && !isHoverSameAsSelect()}>
-        <NodeHighlight
-          rect={hoverRelRect()!}
-          style={isLogicType(hoveredType()) ? 'logic' : 'visual'}
-          selected={false}
-        />
-      </Show>
-
-      {/* $each parent selected: amber outline spanning all instances + ghost outlines on each instance */}
-      <Show when={isEachParentSelected()}>
-        <Show when={eachContainerRelRect()}>
-          <NodeHighlight rect={eachContainerRelRect()!} style="each-parent" selected />
+    <Portal>
+      <div
+        ref={overlayRef}
+        // Drawing only: the window's listeners above decide what a press means, so this takes none
+        // itself — its grips and buttons opt back in where they sit.
+        style={{
+          position: 'fixed',
+          inset: '0',
+          'z-index': ANNOTATION_LAYER_Z,
+          'pointer-events': 'none',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Another template's territory — outlined and named, never selectable. */}
+        <Show when={viewRegionRelRect()}>
+          <ViewBoundary rect={viewRegionRelRect()!} name={viewRegion()!.name} />
         </Show>
-        <For each={instanceRelRects()}>
-          {(rect) => <NodeHighlight rect={rect} style="each-instance" selected={false} />}
-        </For>
-      </Show>
 
-      {/* In entered-template mode: highlight all instances in blue */}
-      <Show when={!isEachParentSelected() && instanceRelRects().length > 0}>
-        <For each={instanceRelRects()}>{(rect) => <NodeHighlight rect={rect} style="visual" selected />}</For>
-      </Show>
+        {/* Hover highlight — skip when same as selected */}
+        <Show when={hoverRelRect() && !isHoverSameAsSelect()}>
+          <NodeHighlight
+            rect={hoverRelRect()!}
+            style={isLogicType(hoveredType()) ? 'logic' : 'visual'}
+            selected={false}
+          />
+        </Show>
 
-      {/* Normal single-node selection (no $each context) — hidden during drag */}
-      <Show when={selectRelRect() && !isEachParentSelected() && instanceRelRects().length === 0 && !isDragging()}>
-        <NodeHighlight
-          rect={selectRelRect()!}
-          style={isLogicType(selectedInfo()?.node.type) ? 'logic' : 'visual'}
-          selected
-        />
-      </Show>
+        {/* $each parent selected: amber outline spanning all instances + ghost outlines on each instance */}
+        <Show when={isEachParentSelected()}>
+          <Show when={eachContainerRelRect()}>
+            <NodeHighlight rect={eachContainerRelRect()!} style="each-parent" selected />
+          </Show>
+          <For each={instanceRelRects()}>
+            {(rect) => <NodeHighlight rect={rect} style="each-instance" selected={false} />}
+          </For>
+        </Show>
 
-      {/* D&D: receded placeholder at the dragged node's original position */}
-      <Show when={isDragging() && selectRelRect()}>
-        <div
-          style={{
-            position: 'absolute',
-            top: selectRelRect()!.top,
-            left: selectRelRect()!.left,
-            width: selectRelRect()!.width,
-            height: selectRelRect()!.height,
-            background: ANNOTATION.wash(0.05),
-            border: `1px dashed ${ANNOTATION.wash(0.3)}`,
-            'border-radius': '2px',
-            'pointer-events': 'none',
-            'box-sizing': 'border-box',
-          }}
-        />
-      </Show>
+        {/* In entered-template mode: highlight all instances in blue */}
+        <Show when={!isEachParentSelected() && instanceRelRects().length > 0}>
+          <For each={instanceRelRects()}>{(rect) => <NodeHighlight rect={rect} style="visual" selected />}</For>
+        </Show>
 
-      {/* D&D: $each scope — amber ring around all iterations when dropping into a $each template */}
-      <Show when={isDragging() && dndEachScopeContainerRelRect()}>
-        <NodeHighlight rect={dndEachScopeContainerRelRect()!} style="each-parent" selected />
-      </Show>
-      <Show when={isDragging() && dndEachScopeInstanceRelRects().length > 0}>
-        <For each={dndEachScopeInstanceRelRects()}>
-          {(rect) => <NodeHighlight rect={rect} style="each-instance" selected={false} />}
-        </For>
-      </Show>
+        {/* Normal single-node selection (no $each context) — hidden during drag */}
+        <Show when={selectRelRect() && !isEachParentSelected() && instanceRelRects().length === 0 && !isDragging()}>
+          <NodeHighlight
+            rect={selectRelRect()!}
+            style={isLogicType(selectedInfo()?.node.type) ? 'logic' : 'visual'}
+            selected
+          />
+        </Show>
 
-      {/* D&D: faint tint + dashed border on the current drop target container */}
-      <Show when={isDragging() && dragDropTargetRelRect()}>
-        <div
-          style={{
-            position: 'absolute',
-            top: dragDropTargetRelRect()!.top,
-            left: dragDropTargetRelRect()!.left,
-            width: dragDropTargetRelRect()!.width,
-            height: dragDropTargetRelRect()!.height,
-            background: ANNOTATION.wash(0.07),
-            border: `1px dashed ${ANNOTATION.wash(0.5)}`,
-            'border-radius': '3px',
-            'pointer-events': 'none',
-            'box-sizing': 'border-box',
-          }}
-        />
-      </Show>
+        {/* D&D: receded placeholder at the dragged node's original position */}
+        <Show when={isDragging() && selectRelRect()}>
+          <div
+            style={{
+              position: 'absolute',
+              top: selectRelRect()!.top,
+              left: selectRelRect()!.left,
+              width: selectRelRect()!.width,
+              height: selectRelRect()!.height,
+              background: ANNOTATION.wash(0.05),
+              border: `1px dashed ${ANNOTATION.wash(0.3)}`,
+              'border-radius': '2px',
+              'pointer-events': 'none',
+              'box-sizing': 'border-box',
+            }}
+          />
+        </Show>
 
-      {/* D&D: insertion line with terminal dots */}
-      <Show when={isDragging() && dragInsertionLine()}>
-        <InsertionLine
-          x={dragInsertionLine()!.x}
-          y={dragInsertionLine()!.y}
-          w={dragInsertionLine()!.w}
-          h={dragInsertionLine()!.h}
-        />
-      </Show>
+        {/* D&D: $each scope — amber ring around all iterations when dropping into a $each template */}
+        <Show when={isDragging() && dndEachScopeContainerRelRect()}>
+          <NodeHighlight rect={dndEachScopeContainerRelRect()!} style="each-parent" selected />
+        </Show>
+        <Show when={isDragging() && dndEachScopeInstanceRelRects().length > 0}>
+          <For each={dndEachScopeInstanceRelRects()}>
+            {(rect) => <NodeHighlight rect={rect} style="each-instance" selected={false} />}
+          </For>
+        </Show>
 
-      {/* Resize handles + snap toggle — only for non-logic selected nodes */}
-      <Show when={showResizeHandles()}>
-        <ResizeHandles
-          rect={selectRelRect()!}
-          snapEnabled={snapEnabled()}
-          snapAvailable={snapAvailable()}
-          liveTooltip={liveTooltip()}
-          onSnapToggle={() => setSnapEnabled((v) => !v)}
-          onHandlePointerDown={handleResizePointerDown}
-        />
-      </Show>
+        {/* D&D: faint tint + dashed border on the current drop target container */}
+        <Show when={isDragging() && dragDropTargetRelRect()}>
+          <div
+            style={{
+              position: 'absolute',
+              top: dragDropTargetRelRect()!.top,
+              left: dragDropTargetRelRect()!.left,
+              width: dragDropTargetRelRect()!.width,
+              height: dragDropTargetRelRect()!.height,
+              background: ANNOTATION.wash(0.07),
+              border: `1px dashed ${ANNOTATION.wash(0.5)}`,
+              'border-radius': '3px',
+              'pointer-events': 'none',
+              'box-sizing': 'border-box',
+            }}
+          />
+        </Show>
 
-      {/* Delete button — shown for any deletable selected node, including logic/$each nodes */}
-      <Show when={selectRelRect() && canDeleteSelected() && !isDragging() && !isResizing()}>
-        <DeleteButton rect={selectRelRect()!} onDelete={deleteSelectedNode} />
-      </Show>
-    </div>
+        {/* D&D: insertion line with terminal dots */}
+        <Show when={isDragging() && dragInsertionLine()}>
+          <InsertionLine
+            x={dragInsertionLine()!.x}
+            y={dragInsertionLine()!.y}
+            w={dragInsertionLine()!.w}
+            h={dragInsertionLine()!.h}
+          />
+        </Show>
+
+        {/* Resize handles + snap toggle — only for non-logic selected nodes */}
+        <Show when={showResizeHandles()}>
+          <ResizeHandles
+            rect={selectRelRect()!}
+            snapEnabled={snapEnabled()}
+            snapAvailable={snapAvailable()}
+            liveTooltip={liveTooltip()}
+            onSnapToggle={() => setSnapEnabled((v) => !v)}
+            onHandlePointerDown={handleResizePointerDown}
+          />
+        </Show>
+
+        {/* Delete button — shown for any deletable selected node, including logic/$each nodes */}
+        <Show when={selectRelRect() && canDeleteSelected() && !isDragging() && !isResizing()}>
+          <DeleteButton rect={selectRelRect()!} onDelete={deleteSelectedNode} />
+        </Show>
+      </div>
+    </Portal>
   );
 }
 
