@@ -4,20 +4,22 @@ WE's first-party globe layers: what can be drawn on the earth (`planet`) and in 
 (`background`). Part of the globe family in `packages/module-system/globe/`: **module** (registry and
 catalogue) · **protocol** (the contract) · **layers** (this) · **widget** (`CesiumGlobe`).
 
-| Kind                   | Slot       | What it draws                                                             |
-| ---------------------- | ---------- | ------------------------------------------------------------------------- |
-| `pointsLayer`          | planet     | A marker per row — a dot or a picture, labelled, clustered if asked       |
-| `pathsLayer`           | planet     | A line per row, between two places or along several, arcing               |
-| `areasLayer`           | planet     | Filled shapes, a row's own or the countries the rows name                 |
-| `hexbinLayer`          | planet     | Rows gathered into H3 cells, shaded and raised by what is in each         |
-| `pointLocationsLayer`  | planet     | `pointsLayer` with its earlier option names, for the templates using them |
-| `countryOutlinesLayer` | planet     | Country borders, Natural Earth 1:50m, served by the app                   |
-| `h3HexagonsLayer`      | planet     | The H3 grid, finer as the camera comes closer                             |
-| `skyboxLayer`          | background | NASA's Tycho-2 star map                                                   |
-| `proceduralStarsLayer` | background | Stars at random depths, with parallax                                     |
-| `solarSystemLayer`     | background | The sun, the planets for today, and their orbits                          |
+| Kind                    | Slot       | What it draws                                                             |
+| ----------------------- | ---------- | ------------------------------------------------------------------------- |
+| `pointsLayer`           | planet     | A marker per row — a dot or a picture, labelled, clustered if asked       |
+| `pathsLayer`            | planet     | A line per row, between two places or along several, arcing               |
+| `areasLayer`            | planet     | Filled shapes, a row's own or the countries the rows name                 |
+| `hexbinLayer`           | planet     | Rows gathered into H3 cells, shaded and raised by what is in each         |
+| `heatmapLayer`          | planet     | Rows as a continuous glow, bright where they gather                       |
+| `satelliteOverlayLayer` | planet     | One day of NASA's imagery: the day's photo, fires, snow, rain, night      |
+| `pointLocationsLayer`   | planet     | `pointsLayer` with its earlier option names, for the templates using them |
+| `countryOutlinesLayer`  | planet     | Country borders, Natural Earth 1:50m, served by the app                   |
+| `h3HexagonsLayer`       | planet     | The H3 grid, finer as the camera comes closer                             |
+| `skyboxLayer`           | background | NASA's Tycho-2 star map                                                   |
+| `proceduralStarsLayer`  | background | Stars at random depths, with parallax                                     |
+| `solarSystemLayer`      | background | The sun, the planets for today, and their orbits                          |
 
-The first four are the **data kinds**: each takes rows (`data`), field paths saying where in a row its
+The first five are the **data kinds**: each takes rows (`data`), field paths saying where in a row its
 geometry is, and `style` rules in the GraphView's dialect, so a globe can draw a template's own data —
 members coloured by role, countries shaded by how many posts came from them, a heat of activity. They
 are general on purpose: a layer somebody shares is a configuration of these, as data, and a new
@@ -37,13 +39,34 @@ light builds. The globe module's `engine` setting chooses (`auto` picks MapLibre
 a small machine); a template never names one. Each engine has its own registry so a MapLibre build
 never loads Cesium:
 
-| Engine   | Registry                                           | Draws                                                           |
-| -------- | -------------------------------------------------- | --------------------------------------------------------------- |
-| Cesium   | `layerKinds` (`@we/module-globe/layers`)           | every kind                                                      |
-| MapLibre | `maplibreLayerKinds` (`@we/globe-layers/maplibre`) | every planet kind; lines lie flat, and nothing around the earth |
+| Engine   | Registry                                           | Draws                                           |
+| -------- | -------------------------------------------------- | ----------------------------------------------- |
+| Cesium   | `layerKinds` (`@we/module-globe/layers`)           | every kind                                      |
+| MapLibre | `maplibreLayerKinds` (`@we/globe-layers/maplibre`) | every planet kind, and nothing around the earth |
 
 The MapLibre registry lists the Cesium-only kinds too, with no renderer, so a template using one is
 told once that it is not drawn there rather than that it does not exist.
+
+MapLibre's own lines lie on the ground, so a `pathsLayer` arc is drawn there by a custom WebGL layer
+(`src/maplibre/arcs.ts`) projected by MapLibre's own shader code, rather than by deck.gl, which would
+be several hundred kilobytes on the engine that exists to be light.
+
+## Time
+
+A globe can follow a **clock** (`@we/clock`): `clock: "events"` names one of the app's clocks, the
+same one `clockStore.clocks.events` reads and `clockStore.toggle` plays, so the controls beside a
+globe are ordinary template nodes. A data kind given `time: "<field>"` then draws only the rows up to
+the clock's moment; `window: "7d"` keeps only the recent ones, which fade out over the last quarter
+of it. The clock's range is the span of every timed layer's rows, so nobody has to know the dates.
+Until somebody plays or scrubs, the clock has no moment and every row is drawn.
+`satelliteOverlayLayer` shows the clock's day.
+
+Every renderer gets `context.clock`, which always answers and reads `null` with no clock. A data
+kind's renderer follows it with `followTime` from `@we/globe-core`: hand it a redraw, and on every
+redraw ask it for the slice to draw with `time.slice(options.data, options)`, passing that to the
+kind's feature function. It contributes the rows' span to the clock and calls the redraw only when
+what shows changes — a row's moment crossed, or a fade stepping down — so a playing clock costs a
+layer nothing between those. Give it a `minInterval` for a redraw that rebuilds a batch.
 
 ## Writing a layer
 
@@ -120,6 +143,9 @@ can take the globe down with it (a skybox whose textures failed stopped Cesium's
   default once it has arrived. See `background/skybox`.
 - **Never hand Cesium a URL that may fail** where a failure is rethrown during rendering, as a cube
   map's is. Load it yourself and pass Cesium the image.
+- **The exception is imagery that is the network's by nature**: `satelliteOverlayLayer` shows what
+  NASA's satellites saw on a day, which no app can ship. Offline it draws nothing, through Cesium's
+  and MapLibre's ordinary tile loading, which already tolerate a tile that does not come.
 
 ### Events
 

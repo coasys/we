@@ -27,6 +27,7 @@ import type {
 import type { Row } from './rows';
 import { readNumber, readPath, readText, rowId, subjectOf } from './rows';
 import { StyleResolver } from './style';
+import type { TimeSlice } from './time';
 
 /** What every feature carries: its identity, what it was made from, and the subject its style read. */
 export interface FeatureBase {
@@ -140,16 +141,37 @@ function identified(
   return out;
 }
 
+/**
+ * The rows to draw: the slice's when a clock has narrowed them, the layer's own otherwise. See
+ * `./time` — a slice is null whenever every row shows.
+ */
+function rowsOf(data: readonly Row[] | undefined, slice: TimeSlice | null | undefined): readonly Row[] {
+  if (slice) return slice.rows;
+  return Array.isArray(data) ? data : [];
+}
+
+/** What time adds to a row's subject: its age in days, for a rule to read as `data.age`. */
+function timeExtra(row: Row, slice: TimeSlice | null | undefined): Record<string, GraphValue> {
+  const age = slice?.age(row);
+  return age === undefined ? {} : { age: Math.round(age * 1000) / 1000 };
+}
+
 // ── points ──────────────────────────────────────────────────────────────────
 
-export function pointFeatures(options: PointsOptions): PointFeature[] {
-  const placed = identified(options.data, options.id, 'pointsLayer').flatMap(({ id, row }) => {
+export function pointFeatures(options: PointsOptions, slice?: TimeSlice | null): PointFeature[] {
+  const placed = identified(rowsOf(options.data, slice), options.id, 'pointsLayer').flatMap(({ id, row }) => {
     const latitude = readNumber(row, options.latitude ?? 'latitude');
     const longitude = readNumber(row, options.longitude ?? 'longitude');
     if (!isLonLat(longitude, latitude)) return [];
     const label = options.label === '' ? undefined : readText(row, options.label ?? 'name');
     return [
-      { id, row, position: [longitude!, latitude!] as LonLat, label, subject: subjectOf(id, 'point', row, {}, label) },
+      {
+        id,
+        row,
+        position: [longitude!, latitude!] as LonLat,
+        label,
+        subject: subjectOf(id, 'point', row, timeExtra(row, slice), label),
+      },
     ];
   });
   const styles = new StyleResolver<PointStyle>(
@@ -168,7 +190,7 @@ export function pointFeatures(options: PointsOptions): PointFeature[] {
       image: resolveString(style.image, subject),
       color: styles.color(style.color, subject, 'primary-500'),
       size: Math.max(1, styles.number(style.size, subject, 12)),
-      opacity: clamp01(styles.number(style.opacity, subject, 1)),
+      opacity: clamp01(styles.number(style.opacity, subject, 1)) * (slice?.fade(row) ?? 1),
       borderColor,
       borderWidth: Math.max(0, styles.number(style.borderWidth, subject, 2)),
       labelColor: style.labelColor !== undefined ? styles.color(style.labelColor, subject, 'white') : undefined,
@@ -202,11 +224,12 @@ function lengthOf(line: LonLat[]): number {
   return Math.round(metres / 100) / 10;
 }
 
-export function pathFeatures(options: PathsOptions): PathFeature[] {
-  const placed = identified(options.data, options.id, 'pathsLayer').flatMap(({ id, row }) => {
+export function pathFeatures(options: PathsOptions, slice?: TimeSlice | null): PathFeature[] {
+  const placed = identified(rowsOf(options.data, slice), options.id, 'pathsLayer').flatMap(({ id, row }) => {
     const positions = readLine(row, options);
     if (!positions) return [];
-    return [{ id, row, positions, subject: subjectOf(id, 'path', row, { length: lengthOf(positions) }) }];
+    const extra = { length: lengthOf(positions), ...timeExtra(row, slice) };
+    return [{ id, row, positions, subject: subjectOf(id, 'path', row, extra) }];
   });
   const styles = new StyleResolver<PathStyle>(
     placed.map((p) => p.subject),
@@ -221,7 +244,7 @@ export function pathFeatures(options: PathsOptions): PathFeature[] {
       positions,
       color: styles.color(style.color, subject, 'primary-500'),
       width: Math.max(0.5, styles.number(style.width, subject, 2)),
-      opacity: clamp01(styles.number(style.opacity, subject, 1)),
+      opacity: clamp01(styles.number(style.opacity, subject, 1)) * (slice?.fade(row) ?? 1),
       arcHeight: Math.min(2, Math.max(0, styles.number(style.arcHeight, subject, 0))),
       dashed: style.dashed === true,
     };
@@ -243,37 +266,37 @@ function groupData(group: Group, extra: Record<string, GraphValue>): { row: Row;
  * are grouped by the area they name and each named area drawn once — so "members per country" is a
  * list of members, not a list of countries somebody had to count first.
  */
-export function areaFeatures(options: AreasOptions, areas?: AreaIndex): AreaFeature[] {
-  type Placed = { id: string; polygons: Polygon[]; subject: GraphNode; selected: unknown };
+export function areaFeatures(options: AreasOptions, areas?: AreaIndex, slice?: TimeSlice | null): AreaFeature[] {
+  type Placed = { id: string; polygons: Polygon[]; subject: GraphNode; selected: unknown; fade: number };
   let placed: Placed[];
   if (options.area) {
     if (!areas) return [];
     const match = options.match ?? 'iso_a2';
-    const groups = reduce(
-      groupByKey(Array.isArray(options.data) ? options.data : [], options.key ?? 'country'),
-      options,
-    );
+    const groups = reduce(groupByKey(rowsOf(options.data, slice), options.key ?? 'country'), options);
     placed = groups.flatMap((group) => {
       const area = findArea(areas, match, group.key);
       if (!area) return [];
       const { row, extra } = groupData(group, { key: group.key, name: area.name });
       const id = `${match}:${group.key}`;
       const selected = { key: group.key, name: area.name, rows: group.rows, count: group.count, value: group.value };
-      return [{ id, polygons: area.polygons, subject: subjectOf(id, 'area', row, extra, area.name), selected }];
+      return [
+        { id, polygons: area.polygons, subject: subjectOf(id, 'area', row, extra, area.name), selected, fade: 1 },
+      ];
     });
   } else {
     const geometryPath = options.geometry ?? 'geometry';
-    placed = identified(options.data, options.id, 'areasLayer').flatMap(({ id, row }) => {
+    placed = identified(rowsOf(options.data, slice), options.id, 'areasLayer').flatMap(({ id, row }) => {
       const polygons = polygonsOf(readPath(row, geometryPath));
       if (!polygons.length) return [];
-      return [{ id, polygons, subject: subjectOf(id, 'area', row), selected: row }];
+      const subject = subjectOf(id, 'area', row, timeExtra(row, slice));
+      return [{ id, polygons, subject, selected: row, fade: slice?.fade(row) ?? 1 }];
     });
   }
   const styles = new StyleResolver<AreaStyle>(
     placed.map((p) => p.subject),
     options.area ? [...DEFAULT_HEAT, ...(options.style ?? [])] : options.style,
   );
-  return placed.map(({ id, polygons, subject, selected }) => {
+  return placed.map(({ id, polygons, subject, selected, fade }) => {
     const style = styles.style(subject);
     return {
       id,
@@ -281,7 +304,7 @@ export function areaFeatures(options: AreasOptions, areas?: AreaIndex): AreaFeat
       polygons,
       selected,
       color: styles.color(style.color, subject, 'primary-500'),
-      opacity: clamp01(styles.number(style.opacity, subject, 0.6)),
+      opacity: clamp01(styles.number(style.opacity, subject, 0.6)) * fade,
       borderColor: style.borderColor !== undefined ? styles.color(style.borderColor, subject, 'white') : undefined,
       borderWidth: Math.max(0, styles.number(style.borderWidth, subject, style.borderColor !== undefined ? 1 : 0)),
       height: Math.max(0, styles.number(style.height, subject, 0)),
@@ -291,9 +314,9 @@ export function areaFeatures(options: AreasOptions, areas?: AreaIndex): AreaFeat
 
 // ── hexbins ─────────────────────────────────────────────────────────────────
 
-export function hexFeatures(options: HexbinOptions): HexFeature[] {
+export function hexFeatures(options: HexbinOptions, slice?: TimeSlice | null): HexFeature[] {
   const resolution = hexResolution(options.resolution);
-  const groups = reduce(groupByCell(Array.isArray(options.data) ? options.data : [], options, resolution), options);
+  const groups = reduce(groupByCell(rowsOf(options.data, slice), options, resolution), options);
   const placed = groups.map((group) => {
     const { row, extra } = groupData(group, { cell: group.key });
     return { group, subject: subjectOf(group.key, 'hexbin', row, extra) };

@@ -1,2 +1,2 @@
 export { CesiumGlobe } from './CesiumGlobe.solid';
-export type { CesiumGlobeProps, ImageryChoice } from './CesiumGlobe.types';
+export type { CesiumGlobeProps, GlobeClockOptions, ImageryChoice } from './CesiumGlobe.types';

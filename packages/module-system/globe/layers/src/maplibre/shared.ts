@@ -30,6 +30,10 @@ export function maplibreColors(context: MapLibreRendererContext, repaint: () => 
     color(value: string | undefined, opacity?: number): string {
       return css(withOpacity(resolver.rgba(value), opacity));
     },
+    /** The same as four numbers, for a layer that paints with WebGL itself. */
+    channels(value: string | undefined, opacity?: number): Rgba {
+      return withOpacity(resolver.rgba(value), opacity);
+    },
   };
 }
 

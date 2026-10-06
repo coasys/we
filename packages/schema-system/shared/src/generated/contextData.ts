@@ -2224,6 +2224,12 @@ export const contextData: ContextData = {
       ambient: ['activateApp', 'deactivateApp'],
     },
     {
+      name: 'clockStore',
+      state: { clocks: { type: 'object' } },
+      actions: ['play', 'pause', 'toggle', 'seek', 'seekProgress', 'setSpeed', 'setLoop', 'configure'],
+      ambient: ['play', 'pause', 'toggle', 'seek', 'seekProgress', 'setSpeed', 'setLoop', 'configure'],
+    },
+    {
       name: 'datasetStore',
       state: {
         datasets: { type: 'array', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
@@ -4198,6 +4204,8 @@ export const contextData: ContextData = {
         { id: 'pathsLayer', category: 'planet' },
         { id: 'areasLayer', category: 'planet' },
         { id: 'hexbinLayer', category: 'planet' },
+        { id: 'heatmapLayer', category: 'planet' },
+        { id: 'satelliteOverlayLayer', category: 'planet' },
         { id: 'pointLocationsLayer', category: 'planet' },
         { id: 'countryOutlinesLayer', category: 'planet' },
         { id: 'h3HexagonsLayer', category: 'planet' },

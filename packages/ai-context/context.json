@@ -5970,6 +5970,16 @@
       "ambient": ["activateApp", "deactivateApp"]
     },
     {
+      "name": "clockStore",
+      "state": {
+        "clocks": {
+          "type": "object"
+        }
+      },
+      "actions": ["play", "pause", "toggle", "seek", "seekProgress", "setSpeed", "setLoop", "configure"],
+      "ambient": ["play", "pause", "toggle", "seek", "seekProgress", "setSpeed", "setLoop", "configure"]
+    },
+    {
       "name": "datasetStore",
       "state": {
         "datasets": {
@@ -9119,6 +9129,14 @@
         },
         {
           "id": "hexbinLayer",
+          "category": "planet"
+        },
+        {
+          "id": "heatmapLayer",
+          "category": "planet"
+        },
+        {
+          "id": "satelliteOverlayLayer",
           "category": "planet"
         },
         {

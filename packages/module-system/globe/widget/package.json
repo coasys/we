@@ -21,6 +21,7 @@
     }
   },
   "dependencies": {
+    "@we/clock": "workspace:*",
     "@we/globe-core": "workspace:*",
     "@we/globe-protocol": "workspace:*",
     "maplibre-gl": "^6.12.0"

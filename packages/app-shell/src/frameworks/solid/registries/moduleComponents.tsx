@@ -15,6 +15,7 @@
 import { deviceHints, engineChoiceFrom, imageryChoiceFrom, ionTokenFrom, resolveEngine } from '@we/module-globe';
 import { createMemo, lazy, Show } from 'solid-js';
 
+import { clockRegistry } from '../../../shared/clocks';
 import { moduleRegistry } from '../../../shared/registries/moduleRegistry';
 
 /**
@@ -24,7 +25,9 @@ import { moduleRegistry } from '../../../shared/registries/moduleRegistry';
  *
  * Each engine is its own chunk, with its own layer registry, so a device on MapLibre never downloads
  * Cesium. The imagery choice and its key are filled in here from the module's settings, after the
- * template's own props so a template cannot supply them: see `CesiumGlobeProps.imagery`.
+ * template's own props so a template cannot supply them: see `CesiumGlobeProps.imagery`. So are the
+ * app's clocks, which a template's `clock: "<name>"` resolves against, so the globe follows the same
+ * clock `clockStore` plays.
  */
 const globeSettings = () => moduleRegistry.settingsOf('globe');
 
@@ -38,6 +41,7 @@ const CesiumEngine = lazy(async () => {
       <CesiumGlobe
         {...props}
         layerKinds={layerKinds}
+        clocks={clockRegistry}
         imagery={imageryChoiceFrom(globeSettings())}
         ionAccessToken={ionTokenFrom(globeSettings())}
       />
@@ -52,7 +56,12 @@ const MapLibreEngine = lazy(async () => {
   ]);
   return {
     default: (props: Record<string, unknown>) => (
-      <MapLibreGlobe {...props} layerKinds={maplibreLayerKinds} imagery={imageryChoiceFrom(globeSettings())} />
+      <MapLibreGlobe
+        {...props}
+        layerKinds={maplibreLayerKinds}
+        clocks={clockRegistry}
+        imagery={imageryChoiceFrom(globeSettings())}
+      />
     ),
   };
 });

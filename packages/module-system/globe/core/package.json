@@ -21,6 +21,7 @@
     "dist"
   ],
   "dependencies": {
+    "@we/clock": "workspace:*",
     "@we/design-utils": "workspace:*",
     "@we/globe-protocol": "workspace:*",
     "@we/graph-core": "workspace:*",
