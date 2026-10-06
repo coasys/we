@@ -27,8 +27,11 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
     "GraphView's dialect, [{ when?, style }], applied in order with later matches winning per property. A rule's " +
     '`when` reads a row\'s fields as "data.<field>"; a style value is a literal, { "from": "data.<field>" } to read ' +
     'it off the row, or { "metric": "field", "options": { "from": "<field>" }, "range": [min, max] } (a number) or ' +
-    '"scale": "heat" | "cool" | "categorical" | { "from": colour, "to": colour } (a colour) to scale it across all ' +
-    'the rows. Colours are roles or tokens ("accent", "warning-500") or CSS. Pressing a feature calls onSelect.',
+    '"scale": { "from": colour, "to": colour } (a colour) to scale it across all ' +
+    'the rows. Colours are roles or tokens ("accent", "warning-500") or CSS. For a heat, use ' +
+    '{ "from": "success-500", "to": "danger-500" }, green to red, which reads the same way round in a light and a ' +
+    'dark theme; the graph\'s named scales ("heat") follow the page\'s theme and turn around in a dark one, which ' +
+    'is wrong over satellite imagery. Start a height range above 0 so the least still shows. Pressing a feature calls onSelect.',
   placements: [
     { prop: 'planetLayers', key: 'factory', categories: ['planet'] },
     { prop: 'backgroundLayers', key: 'factory', categories: ['background'] },
@@ -109,7 +112,7 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
       id: 'areasLayer',
       category: 'planet',
       description:
-        'Filled shapes. Either each row carries its own (GeoJSON), or the rows name countries and are grouped into them: rows naming the same country become one shaded country, with how many rows (or the sum, mean, least or greatest of a field) as data.value — shaded cool to hot by it when no style is given. For choropleths: members per country, posts per country, a region somebody drew.',
+        'Filled shapes. Either each row carries its own (GeoJSON), or the rows name countries and are grouped into them: rows naming the same country become one shaded country, with how many rows (or the sum, mean, least or greatest of a field) as data.value — shaded green to red by it when no style is given. For choropleths: members per country, posts per country, a region somebody drew.',
       options: [
         { name: 'data', type: 'object[]', description: 'The rows.' },
         {
@@ -151,13 +154,13 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
           description: 'Runs when a shape is pressed: with the row, or with area, { key, name, rows, count, value }.',
         },
       ],
-      example: `{ "factory": "areasLayer", "id": "members-by-country", "options": { "data": { "$": "spaceStore.members.filter(m, m.location)" }, "area": "countries", "key": "location.countryCode", "style": [{ "style": { "color": { "metric": "field", "options": { "from": "value" }, "scale": { "from": "surface-sunken", "to": "accent" } }, "opacity": 0.7, "height": { "metric": "field", "options": { "from": "value" }, "range": [0, 400000] } } }] } }`,
+      example: `{ "factory": "areasLayer", "id": "members-by-country", "options": { "data": { "$": "spaceStore.members.filter(m, m.location)" }, "area": "countries", "key": "location.countryCode", "style": [{ "style": { "color": { "metric": "field", "options": { "from": "value" }, "scale": { "from": "success-500", "to": "danger-500" } }, "opacity": 0.7, "height": { "metric": "field", "options": { "from": "value" }, "range": [30000, 400000] } } }] } }`,
     },
     {
       id: 'hexbinLayer',
       category: 'planet',
       description:
-        "Rows gathered into hexagonal H3 cells, one shaded cell per place with rows in it, so density reads without placing every row. A cell's data.value is how many rows (or the sum, mean, least or greatest of a field); shaded cool to hot by it when no style is given, and raised into a column by a height rule. Different from h3HexagonsLayer, which draws the empty grid.",
+        "Rows gathered into hexagonal H3 cells, one shaded cell per place with rows in it, so density reads without placing every row. A cell's data.value is how many rows (or the sum, mean, least or greatest of a field); shaded green to red by it when no style is given, and raised into a column by a height rule. Different from h3HexagonsLayer, which draws the empty grid.",
       options: [
         { name: 'data', type: 'object[]', description: 'The rows. Rows without a place are left out.' },
         { name: 'latitude', type: 'string', description: 'Field path to the latitude. Default "latitude".' },
@@ -185,7 +188,7 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
           description: 'Runs when a cell is pressed, with { cell, rows, count, value }.',
         },
       ],
-      example: `{ "factory": "hexbinLayer", "id": "post-heat", "enabled": { "$": "local.showHeat" }, "options": { "data": { "$": "local.posts" }, "latitude": "location.latitude", "longitude": "location.longitude", "resolution": 3, "style": [{ "style": { "color": { "metric": "field", "options": { "from": "value" }, "scale": "heat" }, "height": { "metric": "field", "options": { "from": "value" }, "range": [0, 300000] } } }], "onSelect": { "$setLocal": "cell", "value": { "$": "event" } } } }`,
+      example: `{ "factory": "hexbinLayer", "id": "post-heat", "enabled": { "$": "local.showHeat" }, "options": { "data": { "$": "local.posts" }, "latitude": "location.latitude", "longitude": "location.longitude", "resolution": 3, "style": [{ "style": { "color": { "metric": "field", "options": { "from": "value" }, "scale": { "from": "success-500", "to": "danger-500" } }, "height": { "metric": "field", "options": { "from": "value" }, "range": [30000, 300000] } } }], "onSelect": { "$setLocal": "cell", "value": { "$": "event" } } } }`,
     },
     {
       id: 'pointLocationsLayer',

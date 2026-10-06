@@ -266,9 +266,14 @@ export const globeView: TemplateSchema = {
               style: [
                 {
                   style: {
-                    color: { metric: 'field', options: { from: 'value' }, scale: 'heat' },
+                    color: {
+                      metric: 'field',
+                      options: { from: 'value' },
+                      scale: { from: 'success-500', to: 'danger-500' },
+                    },
                     opacity: 0.6,
-                    height: { metric: 'field', options: { from: 'value' }, range: [0, 300000] },
+                    // The least is still raised: a cell with one space in it is not a cell with none.
+                    height: { metric: 'field', options: { from: 'value' }, range: [30000, 300000] },
                   },
                 },
               ],

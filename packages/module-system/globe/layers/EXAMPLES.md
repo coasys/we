@@ -119,7 +119,7 @@ who has never posted is drawn at the base size rather than the smallest.
 
 `areasLayer` with `area: "countries"` groups rows by the country they name and draws each country
 once, with how many rows as `data.value` — so the rows need no counting first. With no `style` the
-countries are shaded cool to hot; a rule can raise them too.
+countries are shaded green to red; a rule can raise them too.
 
 ```json
 {
@@ -131,8 +131,12 @@ countries are shaded cool to hot; a rule can raise them too.
     "style": [
       {
         "style": {
-          "color": { "metric": "field", "options": { "from": "value" }, "scale": "heat" },
-          "height": { "metric": "field", "options": { "from": "value" }, "range": [0, 400000] }
+          "color": {
+            "metric": "field",
+            "options": { "from": "value" },
+            "scale": { "from": "success-500", "to": "danger-500" }
+          },
+          "height": { "metric": "field", "options": { "from": "value" }, "range": [30000, 400000] }
         }
       }
     ]
@@ -196,9 +200,13 @@ like the ones above, as data: it installs with a template or a fragment, from an
     "style": [
       {
         "style": {
-          "color": { "metric": "field", "options": { "from": "value" }, "scale": "heat" },
+          "color": {
+            "metric": "field",
+            "options": { "from": "value" },
+            "scale": { "from": "success-500", "to": "danger-500" }
+          },
           "opacity": 0.6,
-          "height": { "metric": "field", "options": { "from": "value" }, "range": [0, 300000] }
+          "height": { "metric": "field", "options": { "from": "value" }, "range": [30000, 300000] }
         }
       }
     ]

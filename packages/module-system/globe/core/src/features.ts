@@ -80,9 +80,20 @@ export interface HexFeature extends FeatureBase {
   height: number;
 }
 
-/** What a grouping kind draws when no rules are given: each place shaded by its value, cool to hot. */
+/**
+ * What a grouping kind draws when no rules are given: each place shaded by its value, green for the
+ * least to red for the most, blended through yellow.
+ *
+ * Not the graph's named `heat` scale. That steps along the primary ramp, which a dark theme turns
+ * around, so the most came out near-white there and the least deep purple — right on a page, where
+ * brightest is what stands out, and wrong over satellite imagery, which keeps its colours whatever the
+ * theme. The middle of the success and danger ramps holds its place when the ramp turns, so this
+ * reads the same way round in both, and still takes the theme's own green and red.
+ */
+export const GLOBE_HEAT = { from: 'success-500', to: 'danger-500' } as const;
+
 const DEFAULT_HEAT: StyleRules<{ color?: StyleValue<string> }> = [
-  { style: { color: { metric: 'field', options: { from: 'value' }, scale: 'heat' } } },
+  { style: { color: { metric: 'field', options: { from: 'value' }, scale: GLOBE_HEAT } } },
 ];
 
 function isFieldRef(value: unknown): value is FieldRef<string> {

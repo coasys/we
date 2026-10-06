@@ -22,6 +22,7 @@ export { drawingKey, FeatureDiffer, type FeatureDiff } from './diff';
 export { EventBus } from './events';
 export {
   areaFeatures,
+  GLOBE_HEAT,
   hexFeatures,
   pathFeatures,
   pointFeatures,

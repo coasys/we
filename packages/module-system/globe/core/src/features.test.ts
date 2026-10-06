@@ -162,8 +162,9 @@ describe('areas', () => {
     const byName = Object.fromEntries(features.map((f) => [f.subject.label, f]));
     expect(byName.France.subject.data).toMatchObject({ count: 2, value: 2 });
     expect(byName['United Kingdom'].subject.data).toMatchObject({ count: 1, role: 'admin', name: 'United Kingdom' });
-    // Shaded by count, cool to hot, when no rules are given.
-    expect(byName.France.color).toBe('primary-900');
+    // Shaded by count, green to red, when no rules are given.
+    expect(byName.France.color).toBe('danger-500');
+    expect(byName['United Kingdom'].color).toBe('success-500');
   });
 
   it('sums a field instead of counting', () => {
@@ -212,7 +213,7 @@ describe('hexbins', () => {
     const paris = features.find((f) => f.group.count === 2)!;
     expect(paris.group.rows.map((r) => r.id)).toEqual(['b', 'c']);
     expect(paris.boundary.length).toBeGreaterThanOrEqual(6);
-    expect(paris.color).toBe('primary-900');
+    expect(paris.color).toBe('danger-500');
   });
 
   it('raises a cell by a rule reading its value', () => {
