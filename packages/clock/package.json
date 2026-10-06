@@ -1,7 +1,8 @@
 {
-  "name": "@we/module-shared",
+  "name": "@we/clock",
   "version": "0.1.0",
-  "description": "The feature-module contract — what a module declares, and what the host lends it",
+  "description": "A moment being looked at, and the playback that moves it — shared by whatever follows it, on any framework",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build:steps": "tsup",
@@ -9,22 +10,23 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
-  "types": "dist/index.d.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
   },
-  "dependencies": {
-    "@we/backend-shared": "workspace:*",
-    "@we/clock": "workspace:*",
-    "@we/schema-shared": "workspace:*"
-  },
+  "files": [
+    "dist"
+  ],
   "devDependencies": {
     "@types/node": "^26.4.0",
     "@we/cli": "workspace:*",
     "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
     "vitest": "^5.0.2"
   },
   "sideEffects": false

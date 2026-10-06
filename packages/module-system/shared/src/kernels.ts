@@ -30,6 +30,7 @@
  * type.
  */
 import type { Activity, EphemeralPort, Peer, TranscriptionPort } from '@we/backend-shared';
+import type { Clock } from '@we/clock';
 import type { SchemaNode } from '@we/schema-shared';
 
 import type { InterpretationKernel } from './interpretation';
@@ -48,6 +49,7 @@ export interface ModuleKernels {
   languageModel: LanguageModelKernel;
   interpretation: InterpretationKernel;
   secrets: SecretsKernel;
+  clocks: ClocksKernel;
 }
 
 export type KernelName = keyof ModuleKernels;
@@ -65,6 +67,7 @@ export const KERNEL_NAMES: readonly KernelName[] = [
   'languageModel',
   'interpretation',
   'secrets',
+  'clocks',
 ];
 
 /**
@@ -552,4 +555,19 @@ export interface LanguageModelKernel {
 export interface SecretsKernel {
   /** The agent's value for a secret setting of this module, or `undefined` when none is set. Reactive. */
   get: (key: string) => string | undefined;
+}
+
+/**
+ * Clocks by name: the moment something is showing, and the playback that moves it.
+ *
+ * The same clocks a template reaches through `clockStore` and a globe follows when given a `clock`
+ * prop, so a module that plays something — a call's recording, a facilitator's timer — shares one
+ * with them by sharing its name. A clock is made the first time its name is asked for and kept for the
+ * session; a name should say what is being played (`call:<id>`), since names are app-wide.
+ *
+ * Needs nothing from the backend, so it is always available.
+ */
+export interface ClocksKernel {
+  /** The clock with this name, made now if there is none yet. See `Clock` in `@we/clock`. */
+  clock: (id: string) => Clock;
 }

@@ -548,6 +548,9 @@ importers:
       '@we/block-solid':
         specifier: workspace:*
         version: link:../block-system/frameworks/solid
+      '@we/clock':
+        specifier: workspace:*
+        version: link:../clock
       '@we/components':
         specifier: workspace:*
         version: link:../design-system/4-components
@@ -958,6 +961,24 @@ importers:
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.13)(typescript@6.0.3)(yaml@2.9.0)
+      vitest:
+        specifier: ^5.0.2
+        version: 5.0.2(@types/node@26.4.0)(@vitest/coverage-v8@5.0.2)(happy-dom@20.12.0)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.4.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.13)(yaml@2.9.0))
+
+  packages/clock:
+    devDependencies:
+      '@types/node':
+        specifier: ^26.4.0
+        version: 26.4.0
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../cli
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.13)(typescript@6.0.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
       vitest:
         specifier: ^5.0.2
         version: 5.0.2(@types/node@26.4.0)(@vitest/coverage-v8@5.0.2)(happy-dom@20.12.0)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.2(@types/node@26.4.0)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.103.1)(tsx@4.23.13)(yaml@2.9.0))
@@ -1510,6 +1531,9 @@ importers:
 
   packages/module-system/globe/core:
     dependencies:
+      '@we/clock':
+        specifier: workspace:*
+        version: link:../../../clock
       '@we/design-utils':
         specifier: workspace:*
         version: link:../../../design-system/utils
@@ -1627,6 +1651,9 @@ importers:
 
   packages/module-system/globe/widget:
     dependencies:
+      '@we/clock':
+        specifier: workspace:*
+        version: link:../../../clock
       '@we/globe-core':
         specifier: workspace:*
         version: link:../core
@@ -1809,6 +1836,9 @@ importers:
       '@we/backend-shared':
         specifier: workspace:*
         version: link:../../backend-system/shared
+      '@we/clock':
+        specifier: workspace:*
+        version: link:../../clock
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../../schema-system/shared

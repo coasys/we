@@ -11,6 +11,7 @@ export { type TemplateStore, useTemplateStore, TemplateStoreProvider } from './T
 export { type RouteStore, useRouteStore, RouteStoreProvider } from './RouteStore';
 export { type EditorStore, useEditorStore, EditorStoreProvider } from './EditorStore';
 export { type AppStore, useAppStore, AppStoreProvider } from './AppStore';
+export { type ClockStore, type ClockView, useClockStore, ClockStoreProvider } from './ClockStore';
 export {
   type InterpretationActivityView,
   type InterpretationStore,
