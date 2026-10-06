@@ -355,7 +355,7 @@ layers (skybox, stars, solar system).
 
 - **Lives in** `packages/module-system/globe/layers/src/planet/` or `background/`
 - **Conventions** [globe/layers/README.md](../../packages/module-system/globe/layers/README.md) and its `EXAMPLES.md`
-- **Register** export from `src/index.ts`, add it to `layerFactoryRegistry` in
+- **Register** export from `src/index.ts`, add it to `layerKinds` in
   `packages/module-system/globe/module/src/layers.ts`, **and add an entry to `GLOBE_LAYER_CATALOG`**
   in `packages/module-system/globe/module/src/catalog.ts`, filed under the `slot` its metadata declares
 - **Verify** `pnpm --filter @we/app-shell test` (`globeModule.test.ts` checks the catalogue against the

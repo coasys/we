@@ -9088,6 +9088,22 @@
       ],
       "plugins": [
         {
+          "id": "pointsLayer",
+          "category": "planet"
+        },
+        {
+          "id": "pathsLayer",
+          "category": "planet"
+        },
+        {
+          "id": "areasLayer",
+          "category": "planet"
+        },
+        {
+          "id": "hexbinLayer",
+          "category": "planet"
+        },
+        {
           "id": "pointLocationsLayer",
           "category": "planet"
         },

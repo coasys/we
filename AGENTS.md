@@ -285,7 +285,7 @@ the seed's list is correct code that never appears.
 | Entity | `entities/src/manifest/` | `entities/CONVENTIONS.md` + `docs/architecture/relations.md` | `--filter @we/entities generate:types` **and** `--filter @we/backend-ad4m generate:classes` | `--filter @we/backend-ad4m test` |
 | Feature module | `module-system/<id>/` (or any package exporting `createModule`) | `docs/guides/writing-a-module.md`, then `module-system/shared/src/module.ts` | seed `modules` — the registry is generated from it by `--filter @we/app-shell generate-modules` | `--filter @we/module-shared test`, `validate:schemas`, then `generate-context` |
 | Graph plugin | `graph-system/expanders/src/`, `layouts/src/` | `graph-system/CONVENTIONS.md` | package index **and** `GRAPH_PLUGIN_CATALOG` in `module-system/graph/src/catalog.ts` | `--filter @we/graph-core test`, then `generate-context` |
-| Globe layer | `module-system/globe/layers/src/` | its `README.md` / `EXAMPLES.md` | export from `index.ts`, `layerFactoryRegistry` in `module-system/globe/module/src/layers.ts` **and** `GLOBE_LAYER_CATALOG` in `module-system/globe/module/src/catalog.ts` | `--filter @we/app-shell test` (`globeModule`), then `generate-context` |
+| Globe layer | `module-system/globe/layers/src/` | its `README.md` / `EXAMPLES.md` | export from `index.ts`, `layerKinds` in `module-system/globe/module/src/layers.ts` **and** `GLOBE_LAYER_CATALOG` in `module-system/globe/module/src/catalog.ts` | `--filter @we/app-shell test` (`globeModule`), then `generate-context` |
 | Seed | `we-seed.json` | `docs/getting-started/seed-system.md` | — | `pnpm validate:seed` |
 | Backend adapter | `backend-system/<name>/` | `backend-system/shared/README.md` | entity proxy registry | `describeBackendConformance` from `@we/backend-conformance` |
 | Platform host | `apps/<name>/` | — | — | `--filter <app> build` |
@@ -1643,10 +1643,51 @@ a name not listed here does not exist, and the component will warn rather than r
 
 ### CesiumGlobe
 
-Layers are listed in two props: planetLayers (drawn on the earth) and backgroundLayers (the space around it). Each entry is { factory, id?, enabled?, zIndex?, options? }: factory names the kind below; id is required when one kind appears twice, or the two collide and one is not drawn; enabled takes an expression, so a layer can follow a toggle; zIndex is a planet layer's stacking order, which each kind interprets. Options take expressions and handlers like any prop, so a layer can draw what a $queries entry fetched: read it with { "$": "local.rows.map(…)" }. The imagery is the globe's own and is not a layer.
+Layers are listed in two props: planetLayers (drawn on the earth) and backgroundLayers (the space around it). Each entry is { factory, id?, enabled?, zIndex?, options? }: factory names the kind below; id is required when one kind appears twice, or the two collide and one is not drawn; enabled takes an expression, so a layer can follow a toggle; zIndex is a planet layer's stacking order, which each kind interprets. Options take expressions and handlers like any prop, so a layer can draw what a $queries entry fetched: read it with { "$": "local.rows.map(…)" }. The imagery is the globe's own and is not a layer. The data kinds (pointsLayer, pathsLayer, areasLayer, hexbinLayer) each take rows as `data`, field paths saying where in a row its geometry is (dotted for nested fields: "location.latitude"), and `style`: rules in the GraphView's dialect, [{ when?, style }], applied in order with later matches winning per property. A rule's `when` reads a row's fields as "data.<field>"; a style value is a literal, { "from": "data.<field>" } to read it off the row, or { "metric": "field", "options": { "from": "<field>" }, "range": [min, max] } (a number) or "scale": { "from": colour, "to": colour } (a colour) to scale it across all the rows. Colours are roles or tokens ("accent", "warning-500") or CSS. For a heat, use { "from": "success-500", "to": "danger-500" }, green to red, which reads the same way round in a light and a dark theme; the graph's named scales ("heat") follow the page's theme and turn around in a dark one, which is wrong over satellite imagery. Start a height range above 0 so the least still shows. Pressing a feature calls onSelect.
 
 **planet**
 
+- `pointsLayer` — A marker per row: a dot, or a picture, with a label. For members, spaces, events, sightings — anything with a place. Thousands are fine; close together they can cluster into one marker with a count.
+  - data: object[] — The rows. Rows without a place are left out.
+  - latitude: string — Field path to the latitude. Default "latitude".
+  - longitude: string — Field path to the longitude. Default "longitude".
+  - id: string — Field naming each row, so an update restyles rather than redraws. Default "id".
+  - label: string — Field shown beside each marker. Default "name"; "" for none.
+  - labelMaxAltitude: number — Labels show only while the camera is below this many metres — e.g. 2000000 to hide them from orbit.
+  - style: rules — Properties: size (pixels, default 12), color, opacity, borderColor (default white), borderWidth (default 2), image (a picture instead of a dot, usually { "from": "data.avatar" }), labelColor.
+  - cluster: boolean | { radius?, color? } — Draw markers within radius pixels (default 60) of each other as one, with a count; pressing one zooms in.
+  - onSelect: handler — Runs when a marker is pressed, with its row as event.
+  - Example: `{ "factory": "pointsLayer", "id": "members", "options": { "data": { "$": "spaceStore.members.filter(m, m.location)" }, "latitude": "location.latitude", "longitude": "location.longitude", "label": "name", "style": [{ "style": { "color": "accent", "image": { "from": "data.avatar" } } }, { "when": { "data.role": "admin" }, "style": { "borderColor": "warning-500" } }], "cluster": true, "onSelect": { "$setLocal": "selected", "value": { "$": "event" } } } }`
+- `pathsLayer` — A line per row: between two places, or along a list of them. Follows the earth's curve, and can arc — a share of its own length, so longer routes arc higher. For travel, routes between events, who replied to whom across the world.
+  - data: object[] — The rows. Rows without both ends are left out.
+  - from: { latitude, longitude } — Field paths to where each line starts. Default "from.latitude" / "from.longitude".
+  - to: { latitude, longitude } — Field paths to where it ends. Default "to.latitude" / "to.longitude".
+  - coordinates: string — Instead of from/to: a field holding the whole line as [longitude, latitude] pairs.
+  - id: string — Field naming each row. Default "id".
+  - style: rules — Properties: width (pixels, default 2), color, opacity, dashed (true/false), arcHeight (0 flat … 0.5 tall, a share of the line's length; default 0). A rule can read a line's length in kilometres as "data.length".
+  - onSelect: handler — Runs when a line is pressed, with its row as event.
+  - Example: `{ "factory": "pathsLayer", "id": "trips", "options": { "data": { "$": "local.trips" }, "from": { "latitude": "origin.latitude", "longitude": "origin.longitude" }, "to": { "latitude": "destination.latitude", "longitude": "destination.longitude" }, "style": [{ "style": { "color": "accent", "width": 2, "arcHeight": 0.2 } }, { "when": { "data.length": { "gt": 5000 } }, "style": { "color": "warning-500" } }] } }`
+- `areasLayer` — Filled shapes. Either each row carries its own (GeoJSON), or the rows name countries and are grouped into them: rows naming the same country become one shaded country, with how many rows (or the sum, mean, least or greatest of a field) as data.value — shaded green to red by it when no style is given. For choropleths: members per country, posts per country, a region somebody drew.
+  - data: object[] — The rows.
+  - area: "countries" — Group the rows into the countries they name, rather than drawing their own shapes.
+  - key: string — With area: the field naming a row's country. Default "country".
+  - match: "iso_a2" | "iso_a3" | "name" — With area: what key holds — "FR", "FRA" or "France". Default "iso_a2". Case does not matter.
+  - aggregate: "count" | "sum" | "mean" | "min" | "max" — With area: how a country's rows become data.value. Default "count".
+  - value: string — With area: the field summed, averaged or compared.
+  - geometry: string — Without area: the field holding each row's shape as a GeoJSON Polygon or MultiPolygon. Default "geometry".
+  - style: rules — Properties: color (the fill), opacity (default 0.6), borderColor, borderWidth (default 1 with a border colour), height (metres to raise it as a solid; default 0, flat). With area, a rule reads "data.value", "data.count" and "data.name".
+  - onSelect: handler — Runs when a shape is pressed: with the row, or with area, { key, name, rows, count, value }.
+  - Example: `{ "factory": "areasLayer", "id": "members-by-country", "options": { "data": { "$": "spaceStore.members.filter(m, m.location)" }, "area": "countries", "key": "location.countryCode", "style": [{ "style": { "color": { "metric": "field", "options": { "from": "value" }, "scale": { "from": "success-500", "to": "danger-500" } }, "opacity": 0.7, "height": { "metric": "field", "options": { "from": "value" }, "range": [30000, 400000] } } }] } }`
+- `hexbinLayer` — Rows gathered into hexagonal H3 cells, one shaded cell per place with rows in it, so density reads without placing every row. A cell's data.value is how many rows (or the sum, mean, least or greatest of a field); shaded green to red by it when no style is given, and raised into a column by a height rule. Different from h3HexagonsLayer, which draws the empty grid.
+  - data: object[] — The rows. Rows without a place are left out.
+  - latitude: string — Field path to the latitude. Default "latitude".
+  - longitude: string — Field path to the longitude. Default "longitude".
+  - resolution: number — Cell size: 2 is countries, 4 (default) about 22 km across, 7 a town, 10 a few streets.
+  - aggregate: "count" | "sum" | "mean" | "min" | "max" — How a cell's rows become data.value. Default "count".
+  - value: string — The field summed, averaged or compared.
+  - style: rules — Properties: color, opacity (default 0.7), height (metres to raise the cell; default 0). A rule reads "data.value" and "data.count".
+  - onSelect: handler — Runs when a cell is pressed, with { cell, rows, count, value }.
+  - Example: `{ "factory": "hexbinLayer", "id": "post-heat", "enabled": { "$": "local.showHeat" }, "options": { "data": { "$": "local.posts" }, "latitude": "location.latitude", "longitude": "location.longitude", "resolution": 3, "style": [{ "style": { "color": { "metric": "field", "options": { "from": "value" }, "scale": { "from": "success-500", "to": "danger-500" } }, "height": { "metric": "field", "options": { "from": "value" }, "range": [30000, 300000] } } }], "onSelect": { "$setLocal": "cell", "value": { "$": "event" } } } }`
 - `pointLocationsLayer` — Markers at places on the earth, each with a label, drawn as the avatar when one is given and as a coloured dot otherwise. Pressing one calls onLocationClick with that location, every field included, so a location can carry what a modal needs (a kind, an id).
   - locations: { id, name, latitude, longitude, avatar?, color? }[] — What to mark. Usually an expression over a query or a store — any extra fields ride along to onLocationClick.
   - markerSize: number — Diameter in pixels. Default 15.
