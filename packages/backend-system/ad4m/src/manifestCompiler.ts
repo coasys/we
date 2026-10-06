@@ -143,6 +143,12 @@ export function buildEntityFromEntry(
       }
       Property({
         through: p.predicate,
+        // Stated rather than left to inference: AD4M infers a datatype from a field's initial value,
+        // and a compiled entry has one only when it declares a default — so a boolean without one
+        // would be shaped as a string, where the hand-written `flag: boolean = false` is not.
+        // Decimal rather than integer for numbers, as AD4M infers: a `= 0` must not refuse 0.5.
+        ...(p.type === 'boolean' ? { datatype: 'xsd://boolean' } : {}),
+        ...(p.type === 'number' ? { datatype: 'xsd://decimal' } : {}),
         ...(p.required ? { required: true } : {}),
         ...(p.writable === false ? { readOnly: true } : {}),
         ...(p.resolveLanguage !== undefined ? { resolveLanguage: p.resolveLanguage } : {}),
