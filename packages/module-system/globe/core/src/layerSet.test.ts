@@ -148,15 +148,19 @@ describe('a layer set', () => {
     warn.mockRestore();
   });
 
-  it('skips a kind with no renderer for its engine, and one it does not know', async () => {
+  it('skips a kind with no renderer for its engine quietly, and warns of one it does not know', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
     const log: Log = { mounts: [], updates: [], cleanups: [] };
     const set = setUp({ a: { id: 'a', slot: 'planet', description: 'a', renderers: {} } });
     set.sync([{ factory: 'a' }, { factory: 'missing' }]);
+    set.sync([{ factory: 'a' }, { factory: 'missing' }]);
     await settle();
     expect(log.mounts).toEqual([]);
-    expect(warn).toHaveBeenCalledTimes(2);
+    expect(info).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledOnce();
     warn.mockRestore();
+    info.mockRestore();
   });
 });
 

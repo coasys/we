@@ -234,3 +234,34 @@ describe('a menu about people', () => {
     expect(uppercase(text('Ana Ruiz'))).toBe(false);
   });
 });
+
+describe('a group that does not apply here', () => {
+  it('is left out, heading and entries, while hidden, and comes back when it is not', () => {
+    const [hidden, setHidden] = createSignal(true);
+    const menu = mount(() => (
+      <DropdownMenu
+        triggerLabel="Layers"
+        items={[
+          {
+            type: 'group',
+            id: 'background',
+            label: 'Background',
+            get hidden() {
+              return hidden();
+            },
+            items: [{ type: 'toggle', id: 'stars', label: 'Stars', checked: true }],
+          },
+          {
+            type: 'group',
+            id: 'planet',
+            label: 'Planet',
+            items: [{ type: 'toggle', id: 'borders', label: 'Borders', checked: true }],
+          },
+        ]}
+      />
+    ));
+    expect(menu.labels()).toEqual(['Planet', 'Borders']);
+    setHidden(false);
+    expect(menu.labels()).toEqual(['Background', 'Stars', 'Planet', 'Borders']);
+  });
+});

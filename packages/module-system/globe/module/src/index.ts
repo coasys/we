@@ -12,13 +12,15 @@
  * (`layerKinds` is injected, and it touches no WE store), so it
  * is correctly a widget. The layers stay in `@we/globe-layers`.
  *
- * ## Why this module has no store
+ * ## Its store is one fact
  *
- * Layer visibility is local state inside the route schema (`enabled: { $: 'local.showSkybox' }`).
- * A module with no store is a legitimate shape, and worth having as the first example so nobody
- * assumes stores are mandatory.
+ * Layer visibility is local state inside the route schema (`enabled: { $: 'local.showSkybox' }`). The
+ * store holds only which engine is drawing (`./store`), so a template can leave out the layers that
+ * engine cannot draw.
  */
 import { defineModule, type ModuleDefinition, type ModuleHost } from '@we/module-shared';
+
+import { createGlobeStore } from './store';
 
 /**
  * Build the module definition.
@@ -33,7 +35,8 @@ export function createGlobeModule(cesiumGlobeComponent: unknown): ModuleDefiniti
     manifest: {
       id: 'globe',
       name: 'Globe',
-      description: '3D globe with a modular layer system — locations, country outlines, H3 hexagons.',
+      description:
+        'A globe with a modular layer system — data on the earth, borders, the sky — drawn by Cesium or MapLibre.',
       icon: 'globe-hemisphere-west',
       // Backend-agnostic: no owned entities, so no manifest→SDNA gap to fall into. Cesium's own files
       // are served by the app, so what reaches the network is the imagery: NASA's, and a commercial
@@ -68,6 +71,23 @@ export function createGlobeModule(cesiumGlobeComponent: unknown): ModuleDefiniti
        * restrictions set on them in the provider's dashboard (allowed URLs), not by being hidden.
        */
       settings: [
+        {
+          key: 'engine',
+          label: 'Globe engine',
+          description:
+            'What draws the globe. Cesium is the full 3D globe, with the stars and planets around it and lines that ' +
+            'arc. MapLibre is lighter and quicker on a phone: the same earth and the same data, with lines drawn ' +
+            'flat and nothing around the earth. Automatic uses MapLibre on phones, tablets and small machines, and ' +
+            'Cesium everywhere else.',
+          type: 'enum',
+          options: [
+            { label: 'Automatic', value: 'auto' },
+            { label: 'Cesium (full 3D)', value: 'cesium' },
+            { label: 'MapLibre (lighter)', value: 'maplibre' },
+          ],
+          default: 'auto',
+          levels: ['deployment', 'agent'],
+        },
         {
           key: 'imagery',
           label: 'Globe imagery',
@@ -115,6 +135,7 @@ export function createGlobeModule(cesiumGlobeComponent: unknown): ModuleDefiniti
         },
       ],
     },
+    createStore: createGlobeStore,
   });
 }
 
@@ -122,4 +143,5 @@ export function createGlobeModule(cesiumGlobeComponent: unknown): ModuleDefiniti
 export const createModule = (host: ModuleHost): ModuleDefinition => createGlobeModule(host.components.CesiumGlobe);
 
 export { GLOBE_LAYER_CATALOG } from './catalog';
+export { type DeviceHints, deviceHints, engineChoiceFrom, type GlobeEngineChoice, resolveEngine } from './engine';
 export { type ImageryChoice, imageryChoiceFrom, ionTokenFrom } from './imagery';

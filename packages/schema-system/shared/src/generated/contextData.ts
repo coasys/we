@@ -4005,7 +4005,8 @@ export const contextData: ContextData = {
     {
       id: 'globe',
       name: 'Globe',
-      description: '3D globe with a modular layer system — locations, country outlines, H3 hexagons.',
+      description:
+        'A globe with a modular layer system — data on the earth, borders, the sky — drawn by Cesium or MapLibre.',
       icon: 'globe-hemisphere-west',
       scope: 'space',
       requires: {
@@ -4024,11 +4025,30 @@ export const contextData: ContextData = {
         'network:mapbox.com',
         'components',
       ],
-      members: [],
+      members: [
+        {
+          name: 'drawsSpace',
+          kind: 'state',
+          doc: 'Whether the globe draws the space around the earth — the skybox, stars and solar system. False on MapLibre.',
+        },
+        {
+          name: 'engine',
+          kind: 'state',
+          doc: 'Which engine draws the globe here — "cesium" or "maplibre" — from the setting and this device.',
+        },
+      ],
       parts: [],
       panels: [],
       launchers: [],
       settings: [
+        {
+          key: 'engine',
+          label: 'Globe engine',
+          description:
+            'What draws the globe. Cesium is the full 3D globe, with the stars and planets around it and lines that arc. MapLibre is lighter and quicker on a phone: the same earth and the same data, with lines drawn flat and nothing around the earth. Automatic uses MapLibre on phones, tablets and small machines, and Cesium everywhere else.',
+          type: 'enum',
+          levels: ['deployment', 'agent'],
+        },
         {
           key: 'imagery',
           label: 'Globe imagery',

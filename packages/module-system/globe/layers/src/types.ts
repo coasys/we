@@ -20,6 +20,7 @@ export type {
   LayerKinds,
   LayerRenderer,
   LayerRenderers,
+  MapLibreRendererContext,
   RendererContext,
   RendererFactory,
 } from '@we/globe-protocol';

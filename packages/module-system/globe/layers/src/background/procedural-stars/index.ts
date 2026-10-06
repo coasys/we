@@ -1,5 +1,6 @@
 import { Cartesian3, Color, PointPrimitive, PointPrimitiveCollection } from 'cesium';
 
+import { PROCEDURAL_STARS } from '../../meta';
 import type { CesiumRendererContext, LayerKind } from '../../types';
 
 export interface ProceduralStarsLayerOptions {
@@ -67,9 +68,7 @@ export interface ProceduralStarsLayerOptions {
  * Stars are distributed at varying distances to create depth.
  */
 export const proceduralStarsLayer: LayerKind<ProceduralStarsLayerOptions> = {
-  id: 'proceduralStarsLayer',
-  slot: 'background',
-  description: 'Generate a random field of point stars with 3D parallax effect.',
+  ...PROCEDURAL_STARS,
   renderers: {
     cesium: (context: CesiumRendererContext, options: ProceduralStarsLayerOptions) => {
       const { viewer, onCleanup } = context;

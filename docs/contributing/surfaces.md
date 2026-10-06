@@ -106,7 +106,7 @@ trust boundary as data; the right column merges.
 | [Models](#models)                             | A kind of thing that gets stored                | Repo                      |
 | [Feature modules](#feature-modules)           | A stateful capability a community turns on      | Repo (bundled)            |
 | [Graph plugins](#graph-plugins)               | Expanders, layouts, renderers, behaviours       | Repo                      |
-| [Globe layers](#globe-layers)                 | A layer on the Cesium globe                     | Repo                      |
+| [Globe layers](#globe-layers)                 | A layer on the globe                            | Repo                      |
 | [Seeds](#seeds)                               | What a deployment _is_                          | Fork                      |
 | [Backend adapters](#backend-adapters)         | WE over something other than AD4M               | Repo                      |
 | [Platform hosts](#platform-hosts)             | WE on a new platform                            | Repo                      |
@@ -350,13 +350,14 @@ change to the core. Layouts, renderers and behaviours plug in the same way.
 
 ### Globe layers
 
-A layer on the Cesium globe — surface layers (points, country outlines, H3 hexagons) and background
-layers (skybox, stars, solar system).
+A layer on the globe — surface layers (data, country outlines, H3 hexagons) and background layers
+(skybox, stars, solar system). Drawn by Cesium, and by MapLibre where a kind has a MapLibre renderer.
 
 - **Lives in** `packages/module-system/globe/layers/src/planet/` or `background/`
 - **Conventions** [globe/layers/README.md](../../packages/module-system/globe/layers/README.md) and its `EXAMPLES.md`
 - **Register** export from `src/index.ts`, add it to `layerKinds` in
-  `packages/module-system/globe/module/src/layers.ts`, **and add an entry to `GLOBE_LAYER_CATALOG`**
+  `packages/module-system/globe/module/src/layers.ts` and to `maplibreLayerKinds` in
+  `packages/module-system/globe/layers/src/maplibre/index.ts`, **and add an entry to `GLOBE_LAYER_CATALOG`**
   in `packages/module-system/globe/module/src/catalog.ts`, filed under the `slot` its metadata declares
 - **Verify** `pnpm --filter @we/app-shell test` (`globeModule.test.ts` checks the catalogue against the
   registry), then `generate-context`

@@ -15,15 +15,14 @@ import {
 } from '@we/globe-core';
 import { Cartesian3, Material, type Polyline, PolylineCollection } from 'cesium';
 
+import { PATHS } from '../../meta';
 import type { CesiumRendererContext, LayerKind, LayerRenderer } from '../../types';
 import { cesiumColors, markerAltitude, pickFeatures } from '../cesium';
 
 export type { PathsOptions };
 
 export const pathsLayer: LayerKind<PathsOptions> = {
-  id: 'pathsLayer',
-  slot: 'planet',
-  description: 'A line per row of data, between two places or along several, flat or arcing.',
+  ...PATHS,
   renderers: { cesium: renderPaths },
 };
 

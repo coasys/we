@@ -8,6 +8,7 @@
  */
 import { FeatureDiffer, type HexbinOptions, type HexFeature, hexFeatures } from '@we/globe-core';
 
+import { HEXBIN } from '../../meta';
 import type { CesiumRendererContext, LayerKind, LayerRenderer } from '../../types';
 import { cesiumColors, pickFeatures } from '../cesium';
 import { polygonDrawer } from '../polygons';
@@ -15,9 +16,7 @@ import { polygonDrawer } from '../polygons';
 export type { HexbinOptions };
 
 export const hexbinLayer: LayerKind<HexbinOptions> = {
-  id: 'hexbinLayer',
-  slot: 'planet',
-  description: 'Rows of data gathered into hexagonal cells, each shaded and raised by what is in it.',
+  ...HEXBIN,
   renderers: { cesium: renderHexbin },
 };
 

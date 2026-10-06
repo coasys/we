@@ -19,6 +19,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./maplibre": {
+      "types": "./dist/maplibre.d.ts",
+      "import": "./dist/maplibre.js"
+    },
     "./vite": {
       "types": "./vite-plugin.d.mts",
       "import": "./vite-plugin.mjs"
@@ -40,14 +44,16 @@
     "maps"
   ],
   "dependencies": {
+    "@we/globe-core": "workspace:*",
     "h3-js": "^4.1.0",
-    "@we/globe-core": "workspace:*"
+    "maplibre-gl": "^6.12.0"
   },
   "peerDependencies": {
-    "cesium": "^1.144.0",
-    "@we/globe-protocol": "workspace:*"
+    "@we/globe-protocol": "workspace:*",
+    "cesium": "^1.144.0"
   },
   "devDependencies": {
+    "@types/geojson": "^7946.0.16",
     "@we/cli": "workspace:*",
     "@we/globe-protocol": "workspace:*",
     "tsup": "^8.5.1",

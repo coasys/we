@@ -2,7 +2,9 @@ import { permittedDataUrl } from '@we/globe-core';
 import { Cartesian3, Color } from 'cesium';
 
 import type {} from '../../env';
+import { COUNTRY_OUTLINES } from '../../meta';
 import type { CesiumRendererContext, LayerKind } from '../../types';
+import { COUNTRY_OUTLINES_URL, outlinesUrl } from '../countries';
 
 export interface CountryOutlinesOptions {
   /** Outline color (CSS color string) */
@@ -31,38 +33,15 @@ export { permittedDataUrl };
  * Renders borders using Entity API for simplicity and reliability.
  */
 
-/**
- * Where the country boundaries come from in a host that does not serve them itself — a **tagged
- * release**, not a branch. Every WE app serves a reduced copy of this same file (`assets/`), which is
- * what lets the borders draw offline; this is the fallback.
- *
- * This was `.../natural-earth-vector/master/...`, which is a third party's moving branch: every
- * globe in every deployment fetched whatever was at the tip of somebody else's repository at page
- * load, unpinned and unverified, and a change there changed what WE drew with nothing to notice it.
- * Natural Earth publishes versioned tags precisely so a consumer does not have to do that.
- *
- * Move it forward deliberately, and look at what changed when you do — these are national borders,
- * and which lines are drawn where is not a detail to inherit silently from upstream.
- */
-export const COUNTRY_OUTLINES_URL =
-  'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_50m_admin_0_countries.geojson';
+export { COUNTRY_OUTLINES_URL };
 
 export const countryOutlinesLayer: LayerKind<CountryOutlinesOptions> = {
-  id: 'countryOutlinesLayer',
-  slot: 'planet',
-  description: 'Country boundaries from Natural Earth 50m data. Good balance of detail and performance.',
+  ...COUNTRY_OUTLINES,
   renderers: {
     cesium: async (context: CesiumRendererContext, options: CountryOutlinesOptions) => {
       const { viewer, events, onCleanup } = context;
-      const served = import.meta.env.WE_GLOBE_LAYER_ASSETS_URL;
       const { color = '#ffffff', opacity = 0.5, width = 2 } = options;
-      const requested = permittedDataUrl(options?.dataUrl, window.location.href);
-      if (options?.dataUrl && !requested) {
-        console.warn(
-          `[country-outlines] dataUrl ${options.dataUrl} is not on this app's origin, so the default is used.`,
-        );
-      }
-      const dataUrl = requested ?? (served ? `${served}country-outlines.geojson` : COUNTRY_OUTLINES_URL);
+      const dataUrl = outlinesUrl(options.dataUrl);
 
       const entities: string[] = [];
       let cancelled = false;

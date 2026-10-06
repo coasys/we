@@ -10,6 +10,7 @@ import {
   PointPrimitiveCollection,
 } from 'cesium';
 
+import { SOLAR_SYSTEM } from '../../meta';
 import type { CesiumRendererContext, LayerKind } from '../../types';
 
 export interface SolarSystemLayerOptions {
@@ -191,9 +192,7 @@ function calculateOrbitalPosition(elements: OrbitalElements, meanAnomaly: number
  * Uses simplified Keplerian orbital mechanics for visualization.
  */
 export const solarSystemLayer: LayerKind<SolarSystemLayerOptions> = {
-  id: 'solarSystemLayer',
-  slot: 'background',
-  description: 'Display planets and their orbital paths in the solar system.',
+  ...SOLAR_SYSTEM,
   renderers: {
     cesium: (context: CesiumRendererContext, options: SolarSystemLayerOptions) => {
       const { viewer, onCleanup } = context;
