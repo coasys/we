@@ -1414,8 +1414,16 @@ function checkProps(
 
     const propPath = `${path}.props.${propName}`;
 
-    // Check for token values in props (regardless of whether prop is known)
-    checkTokenValue(propValue, propPath, ctx, state, errors);
+    /*
+      Every token in the prop, however deep it sits in plain data.
+
+      This was `checkTokenValue`, which walks into a list but stops at a plain object — so a token
+      one level into an entry was never looked at: a globe layer's `enabled` (`{ factory, enabled:
+      { $: … } }`), a menu item's `checked` or `hidden`. A misspelt local or module member there
+      passed and showed up only as a control that did nothing. Subtrees are left to the walk that
+      owns them; see `checkNestedTokens`.
+    */
+    checkNestedTokens(propValue, propPath, ctx, state, errors);
     checkValuePositionIf(propName, propValue, propPath, propTypes, errors);
 
     if (COLOUR_PROPS.has(propName) || BORDER_PROPS.has(propName)) {
@@ -1763,7 +1771,22 @@ function checkQueryInternals(
   }
 }
 
-/** Descend plain structure; hand any token to {@link checkTokenValue} and let it own its internals. */
+/**
+ * Whether a value is a schema node rather than data: a `type` beside the things only a node carries.
+ * A menu entry (`{ type: 'toggle', checked }`) has a `type` too, and is data.
+ */
+function isSchemaNodeShape(value: Record<string, unknown>): boolean {
+  if (typeof value.type !== 'string') return false;
+  return ['props', 'children', 'slots', 'routes', '$localState', '$queries'].some((key) => key in value);
+}
+
+/**
+ * Descend plain structure; hand any token to {@link checkTokenValue} and let it own its internals.
+ *
+ * Stops at a schema node held as data — a branch, a panel's content, a component's empty state. Those
+ * are rendered by whatever holds them, which may bind names the scope outside has never heard of (a
+ * row, a card); judged from here, every such name would read as unknown.
+ */
 function checkNestedTokens(
   value: unknown,
   path: string,
@@ -1778,6 +1801,7 @@ function checkNestedTokens(
     return;
   }
   if (typeof value !== 'object' || value === null) return;
+  if (isSchemaNodeShape(value as Record<string, unknown>)) return;
 
   if (isTokenObject(value)) {
     checkTokenValue(value, path, ctx, state, errors);

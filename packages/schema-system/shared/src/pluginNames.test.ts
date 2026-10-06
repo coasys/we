@@ -65,7 +65,7 @@ describe('a plugin name in a catalogued position', () => {
   });
 
   it('is left alone when an expression computes it', () => {
-    expect(faults({ planetLayers: [{ factory: { $: 'local.kind' } }] })).toEqual([]);
+    expect(faults({ planetLayers: [{ factory: { $: "1 > 0 ? 'pointsLayer' : 'pathsLayer'" } }] })).toEqual([]);
   });
 
   it('lists what exists when nothing is close', () => {
