@@ -17,6 +17,7 @@
     }
   },
   "dependencies": {
+    "@we/globe-core": "workspace:*",
     "@we/globe-protocol": "workspace:*"
   },
   "peerDependencies": {

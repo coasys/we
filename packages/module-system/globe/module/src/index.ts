@@ -9,7 +9,7 @@
  * ## What moved, and what did not
  *
  * Only the *wiring* moved. `CesiumGlobe` stays in `@we/globe-widget` — it passes the props-only test
- * (`layerFactoryRegistry` is injected, and its `LayerStore` is a private `Map`, not a WE store), so it
+ * (`layerKinds` is injected, and it touches no WE store), so it
  * is correctly a widget. The layers stay in `@we/globe-layers`.
  *
  * ## Why this module has no store

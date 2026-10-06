@@ -4148,6 +4148,10 @@ export const contextData: ContextData = {
         { prop: 'backgroundLayers', key: 'factory', categories: ['background'] },
       ],
       plugins: [
+        { id: 'pointsLayer', category: 'planet' },
+        { id: 'pathsLayer', category: 'planet' },
+        { id: 'areasLayer', category: 'planet' },
+        { id: 'hexbinLayer', category: 'planet' },
         { id: 'pointLocationsLayer', category: 'planet' },
         { id: 'countryOutlinesLayer', category: 'planet' },
         { id: 'h3HexagonsLayer', category: 'planet' },
