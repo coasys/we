@@ -572,6 +572,8 @@ export const contextData: ContextData = {
         { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
         { name: 'showValue', type: 'boolean', optional: false, default: 'false' },
         { name: 'ticks', type: "'auto' | 'on' | 'off'", optional: false, default: "'auto'" },
+        { name: 'marks', type: 'SliderMark[]', optional: false, default: '[]' },
+        { name: 'valueText', type: 'string', optional: false, default: "''" },
       ],
     },
     {
@@ -2222,6 +2224,12 @@ export const contextData: ContextData = {
       },
       actions: ['activateApp', 'deactivateApp'],
       ambient: ['activateApp', 'deactivateApp'],
+    },
+    {
+      name: 'clockStore',
+      state: { clocks: { type: 'object' } },
+      actions: ['play', 'pause', 'toggle', 'seek', 'seekProgress', 'setSpeed', 'setLoop', 'configure'],
+      ambient: ['play', 'pause', 'toggle', 'seek', 'seekProgress', 'setSpeed', 'setLoop', 'configure'],
     },
     {
       name: 'datasetStore',
@@ -4226,6 +4234,8 @@ export const contextData: ContextData = {
         { id: 'pathsLayer', category: 'planet' },
         { id: 'areasLayer', category: 'planet' },
         { id: 'hexbinLayer', category: 'planet' },
+        { id: 'heatmapLayer', category: 'planet' },
+        { id: 'satelliteOverlayLayer', category: 'planet' },
         { id: 'pointLocationsLayer', category: 'planet' },
         { id: 'countryOutlinesLayer', category: 'planet' },
         { id: 'h3HexagonsLayer', category: 'planet' },
