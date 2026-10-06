@@ -227,30 +227,23 @@ export const globeView: TemplateSchema = {
           },
         ],
         planetLayers: [
+          // Spaces and members on one layer, so markers that overlap — a member in a space's city —
+          // cluster into one count rather than two drawn on top of each other. Each toggle filters its
+          // own rows out, and a rule keeps each kind its colour and size.
           {
-            factory: 'pointLocationsLayer',
-            id: 'space-locations',
-            enabled: { $: 'local.showSpaceLocations' },
+            factory: 'pointsLayer',
+            id: 'locations',
             options: {
-              locations: {
-                $: "local.spaceRows.map(s, { id: s.id, kind: 'space', name: s.name, latitude: s.location.latitude, longitude: s.location.longitude, avatar: s.avatar })",
+              data: {
+                $: "distinct(local.showSpaceLocations ? local.spaceRows.map(s, { id: s.id, kind: 'space', name: s.name, latitude: s.location.latitude, longitude: s.location.longitude, avatar: s.avatar }) : [], local.showUserLocations ? filter(spaceStore.members, { location: { exists: true }, handle: { contains: local.searchText } }).map(item, { id: item.did, kind: 'agent', name: item.name, latitude: item.location.latitude, longitude: item.location.longitude, avatar: item.avatar }) : [])",
               },
-              markerSize: 20,
-              defaultColor: '#a855f7',
-              onLocationClick: { $setLocal: 'selectedPin', value: { $: 'event' } },
-            },
-          },
-          {
-            factory: 'pointLocationsLayer',
-            id: 'agent-locations',
-            enabled: { $: 'local.showUserLocations' },
-            options: {
-              locations: {
-                $: "filter(spaceStore.members, { location: { exists: true }, handle: { contains: local.searchText } }).map(item, { id: item.did, kind: 'agent', name: item.name, latitude: item.location.latitude, longitude: item.location.longitude, avatar: item.avatar })",
-              },
-              markerSize: 30,
-              defaultColor: '#f97316',
-              onLocationClick: { $setLocal: 'selectedPin', value: { $: 'event' } },
+              label: 'name',
+              cluster: true,
+              style: [
+                { style: { size: 20, color: '#a855f7', image: { from: 'data.avatar' } } },
+                { when: { 'data.kind': 'agent' }, style: { size: 30, color: '#f97316' } },
+              ],
+              onSelect: { $setLocal: 'selectedPin', value: { $: 'event' } },
             },
           },
           // Where spaces gather: the same rows as the pins, binned into cells and raised by how many.
