@@ -19,7 +19,7 @@ import { hostSourceBag } from '@shared/sources';
 import { injectDSInteropStyles } from '@solid/dsInterop';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import { createInMemoryBackend } from '@we/backend-inmemory';
-import { EditorHostProvider, EditorOverlay, OwnerCard, PartCard } from '@we/editor';
+import { EditorHostProvider, EditorOverlay, OwnerCard, PartCard, PartsPalette } from '@we/editor';
 import {
   EDIT_SURFACE_ATTR,
   installGestureTracking,
@@ -551,7 +551,7 @@ function editorProbe(): void {
  * answers for one part and one module panel. What each route writes lands in `__probeTemplates`, as
  * the template it handed `updateTemplate`, so a case can read what taking a region over did.
  */
-function ownerCardProbe(kind: 'part' | 'panel'): void {
+function ownerCardProbe(kind: 'part' | 'panel' | 'palette'): void {
   const record = (key: string, value: unknown) => {
     const bag = globalThis as unknown as Record<string, unknown[]>;
     (bag[key] ??= []).push(value);
@@ -581,7 +581,17 @@ function ownerCardProbe(kind: 'part' | 'panel'): void {
     },
     owners: {
       part: () => ({ id: 'demo.box', label: 'Box', moduleId: 'demo', moduleName: 'Demo', inputs: [], missing: '' }),
-      parts: () => [],
+      parts: () => [
+        {
+          id: 'demo.box',
+          label: 'Box',
+          description: 'A box.',
+          moduleId: 'demo',
+          moduleName: 'Demo',
+          inputs: [],
+          missing: '',
+        },
+      ],
       openPart: (_placement: unknown, depth: 'one' | 'all') =>
         depth === 'one'
           ? { type: 'Column', children: [{ type: '$part', props: { id: 'demo.inner' } }] }
@@ -621,6 +631,7 @@ function ownerCardProbe(kind: 'part' | 'panel'): void {
           return createComponent(VisualEditorProvider, {
             value: visual as never,
             get children() {
+              if (kind === 'palette') return createComponent(PartsPalette, { node: template as never });
               return kind === 'part'
                 ? createComponent(PartCard, { node: (template.children as Record<string, unknown>[])[0] as never })
                 : createComponent(OwnerCard, { owner: { kind: 'panel', id: 'call:stage', name: 'Call' } });

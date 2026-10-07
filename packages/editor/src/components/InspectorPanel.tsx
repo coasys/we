@@ -21,7 +21,7 @@ import { paintedRoles } from '../paintedRoles';
 import { deepClone } from '../utils';
 import { ConditionEditor } from './ConditionEditor';
 import { ContentEditor } from './ContentEditor';
-import { OwnerCard, PartCard } from './OwnerCard';
+import { acceptsParts, OwnerCard, PartCard, PartsPalette } from './OwnerCard';
 import { ValueEditor } from './ValueEditor';
 
 // -----------------------------------------------------------------------
@@ -924,6 +924,10 @@ function NodeProperties(props: {
               )}
             </For>
           </Column>
+        </Show>
+
+        <Show when={acceptsParts(props.node)}>
+          <PartsPalette node={props.node} />
         </Show>
       </we-scroll-area>
     </>

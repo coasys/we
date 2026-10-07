@@ -57,5 +57,19 @@ export async function check({ call, recorded }) {
     await call('editorProbeDispose');
   }
 
+  await call('ownerCardProbe', 'palette');
+  try {
+    if (!(await call('pressButton', 'Add'))) problems.push('the palette offers no part to add');
+    const [added] = (await recorded('__probeTemplates')).slice(-1);
+    const last = added?.children?.at(-1);
+    if (last?.type !== '$part' || last?.props?.id !== 'demo.box') problems.push('adding a part did not place it');
+    if (!isNodeId(last?.id)) problems.push('a placed part has no id of its own');
+    if (!added?.meta?.requires?.modules?.includes('demo')) problems.push('adding a part did not declare its module');
+    const selected = await recorded('__probeSelected');
+    if (selected.at(-1) !== last?.id) problems.push('adding a part did not select it');
+  } finally {
+    await call('editorProbeDispose');
+  }
+
   return problems;
 }

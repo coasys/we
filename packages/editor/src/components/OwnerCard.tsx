@@ -29,7 +29,7 @@ import {
   type TemplateSchema,
 } from '@we/schema-shared';
 import { type OwnerRef, useVisualEditor } from '@we/schema-solid';
-import { createMemo, For, type JSX, Show } from 'solid-js';
+import { createMemo, createSignal, For, type JSX, Show } from 'solid-js';
 
 import { type OwnedPart, useEditorHost } from '../host';
 import { deepClone } from '../utils';
@@ -382,6 +382,124 @@ function ViewCard(props: { id: string }) {
           </Column>
         </Column>
       )}
+    </Show>
+  );
+}
+
+// -----------------------------------------------------------------------
+// The parts a template can place
+// -----------------------------------------------------------------------
+
+/** Nodes a part can go inside: layout that holds children, and anything already holding some. */
+const CONTAINERS = new Set([
+  'Column',
+  'Row',
+  'Grid',
+  'Card',
+  'Canvas',
+  'div',
+  'section',
+  'main',
+  'aside',
+  'header',
+  'footer',
+  'nav',
+  'article',
+]);
+
+export function acceptsParts(node: SchemaNode): boolean {
+  if (node.type?.startsWith('$')) return false;
+  return (
+    CONTAINERS.has(node.type ?? '') ||
+    !!node.children?.some((child) => typeof child === 'object' && child !== null && 'type' in child)
+  );
+}
+
+/**
+ * Every part a template can place here, to add inside the selected node.
+ *
+ * Nobody composes with a piece they cannot discover. The generated reference lists every part a
+ * module publishes; until now the editor showed none of them, so a template author who did not read
+ * the reference could not know a transcript feed or a microphone meter was there to be placed.
+ *
+ * Adding one appends it and selects it, so a part that needs names from around it says so at once.
+ * The module goes into `meta.requires.modules`, which is how a template declares what it depends on —
+ * and what lets a space without that module say what is missing rather than draw a hole.
+ */
+export function PartsPalette(props: { node: SchemaNode }) {
+  const host = useEditorHost();
+  const visualEditor = useVisualEditor();
+  const write = useTemplateWriter();
+  const [search, setSearch] = createSignal('');
+
+  const groups = createMemo(() => {
+    const wanted = search().trim().toLowerCase();
+    const parts = (host.owners?.parts() ?? []).filter(
+      (part) =>
+        !wanted ||
+        part.label.toLowerCase().includes(wanted) ||
+        part.moduleName.toLowerCase().includes(wanted) ||
+        (part.description ?? '').toLowerCase().includes(wanted),
+    );
+    const byModule = new Map<string, OwnedPart[]>();
+    for (const part of parts) byModule.set(part.moduleName, [...(byModule.get(part.moduleName) ?? []), part]);
+    return [...byModule.entries()].map(([moduleName, entries]) => ({ moduleName, entries }));
+  });
+
+  const add = (part: OwnedPart) => {
+    const placed = ensureNodeIds({ type: '$part', props: { id: part.id } });
+    const written = write((template) => {
+      const found = findNodeById(template, props.node.id ?? '');
+      if (!found) return false;
+      (found.node.children ??= []).push(placed);
+      const meta = (template as TemplateSchema).meta;
+      if (meta) {
+        const requires = (meta.requires ??= {});
+        const modules = (requires.modules ??= []);
+        if (!modules.includes(part.moduleId)) modules.push(part.moduleId);
+      }
+      return true;
+    });
+    if (written && placed.id) visualEditor.onSelect(placed.id);
+  };
+
+  return (
+    <Show when={host.owners && host.owners.parts().length}>
+      <Column gap="200" px="400" py="300" borderTop="1px solid border">
+        <we-text {...SECTION_LABEL_PROPS}>Add a module’s part</we-text>
+        <we-input
+          size="sm"
+          placeholder="Search parts"
+          value={search()}
+          on:input={(event: Event) => setSearch(String((event as CustomEvent).detail ?? ''))}
+        />
+        <For each={groups()}>
+          {(group) => (
+            <Column gap="100">
+              <we-text variant="footnote" color="text-muted">
+                {group.moduleName}
+              </we-text>
+              <For each={group.entries}>
+                {(part) => (
+                  <Row ax="between" ay="center" gap="300" py="100">
+                    <Column gap="0" flex="1 1 auto" minWidth="0">
+                      <we-text variant="label">{part.label}</we-text>
+                      <Show when={part.description}>
+                        <we-text variant="footnote" color="text-muted">
+                          {part.description}
+                        </we-text>
+                      </Show>
+                    </Column>
+                    <we-button size="xs" variant="ghost" disabled={host.session.isReadOnly()} onClick={() => add(part)}>
+                      Add
+                    </we-button>
+                  </Row>
+                )}
+              </For>
+            </Column>
+          )}
+        </For>
+      </Column>
     </Show>
   );
 }
