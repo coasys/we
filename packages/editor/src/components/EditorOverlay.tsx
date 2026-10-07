@@ -183,28 +183,34 @@ function templateElementAt(x: number, y: number): Element | null {
 /**
  * What the pointer is over: a node of the template being edited, or the edge of another template.
  *
- * One `closest` over both markers, and the nearer one wins — which is the whole mechanism. A click
- * inside a view meets the view's boundary before any shell node, so it can never again be answered
- * by a node several levels up that merely happens to be the nearest thing carrying an id.
+ * The OUTERMOST boundary between the press and its surface answers, and failing one, the nearest
+ * node. A section is another template, and its own nodes carry ids — derived ones, for a built-in —
+ * which the template being edited does not contain. Answered by the nearest id, a press inside a
+ * section selected a node the inspector could not find, and the panel went blank. Before those ids
+ * existed the same rule was quietly true, because nothing inside a section was stamped at all.
  *
- * That was the old behaviour, and it is the reason a section read as a hole: the editor selected the
- * shell container around the view, and everything inside the section was unreachable with nothing
- * to say why.
+ * Outermost rather than nearest, because a region somebody else provides holds everything inside
+ * it, whatever that happens to carry: the shell does not own a node of the section just because the
+ * node has an id.
  */
 type Boundary = { kind: 'node'; id: string } | { kind: 'view'; id: string; name: string; el: HTMLElement };
 
 function findBoundary(el: Element | null): Boundary | null {
   if (!el) return null;
-  const hit = el.closest(`[data-we-node-id],[${VIEW_BOUNDARY_ATTR}]`) as HTMLElement | null;
-  if (!hit) return null;
-
-  const viewId = hit.getAttribute(VIEW_BOUNDARY_ATTR);
-  if (viewId) {
-    return { kind: 'view', id: viewId, name: hit.getAttribute(VIEW_BOUNDARY_NAME_ATTR) ?? viewId, el: hit };
+  const surface = surfaceOf(el);
+  let nearest: string | null = null;
+  let outer: HTMLElement | null = null;
+  for (let at: Element | null = el; at; at = at.parentElement) {
+    if (at.hasAttribute(VIEW_BOUNDARY_ATTR)) outer = at as HTMLElement;
+    else if (nearest === null && at.hasAttribute('data-we-node-id')) nearest = at.getAttribute('data-we-node-id');
+    if (at === surface) break;
   }
 
-  const nodeId = hit.getAttribute('data-we-node-id');
-  return nodeId ? { kind: 'node', id: nodeId } : null;
+  if (outer) {
+    const id = outer.getAttribute(VIEW_BOUNDARY_ATTR) ?? '';
+    return { kind: 'view', id, name: outer.getAttribute(VIEW_BOUNDARY_NAME_ATTR) ?? id, el: outer };
+  }
+  return nearest ? { kind: 'node', id: nearest } : null;
 }
 
 // Walk DOM ancestors to find the nearest schema node that is a direct child of a $each.

@@ -20,7 +20,12 @@ import { injectDSInteropStyles } from '@solid/dsInterop';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import { createInMemoryBackend } from '@we/backend-inmemory';
 import { EditorHostProvider, EditorOverlay } from '@we/editor';
-import { EDIT_SURFACE_ATTR, installGestureTracking } from '@we/schema-shared';
+import {
+  EDIT_SURFACE_ATTR,
+  installGestureTracking,
+  VIEW_BOUNDARY_ATTR,
+  VIEW_BOUNDARY_NAME_ATTR,
+} from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { VisualEditorProvider } from '@we/schema-solid';
 import { createComponent, createSignal } from 'solid-js';
@@ -421,6 +426,16 @@ function editorProbe(): void {
   content.setAttribute(EDIT_SURFACE_ATTR, '');
   content.style.cssText = 'position: fixed; left: 0; top: 0; width: 400px; height: 400px; z-index: 1;';
   content.append(node('n-content', 'content'));
+  /*
+    A section, as the shell's `$views` mounts one: a boundary naming the view, and inside it the
+    view's own nodes — which carry ids of their own, derived for a built-in, that the template being
+    edited does not contain.
+  */
+  const section = document.createElement('div');
+  section.setAttribute(VIEW_BOUNDARY_ATTR, 'about');
+  section.setAttribute(VIEW_BOUNDARY_NAME_ATTR, 'About');
+  section.append(node('n-view-inner', 'section'));
+  content.append(section);
 
   // A panel, painted where the dock registry paints them: above the content's whole context.
   const panel = document.createElement('div');
