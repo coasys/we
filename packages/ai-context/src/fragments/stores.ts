@@ -1507,7 +1507,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         activeSessionId: 'string | null — the session whose messages are shown',
         contentMode:
           "'preview' | 'visual' — whether the editor shows the rendered template or the visual editing surface",
-        schemaJson: 'string — the template being edited, serialised — what the code panel shows and edits',
+        schemaJson:
+          'string — the template being edited, serialised with its node ids — what the code panel shows and edits. Ids are permanent, so a save keeps them',
         isEditingTemplate: 'boolean — a template editing session is open',
         editAction: "'edit' | 'fork' | 'fresh' | null — how the current template session began, null outside one",
         codePanelOpen: 'boolean — the code panel is open',

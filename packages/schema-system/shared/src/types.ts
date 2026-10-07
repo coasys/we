@@ -325,7 +325,13 @@ export type { ThemeOverrides, ThemeRole } from '@we/themes/presets';
 import type { ThemeOverrides } from '@we/themes/presets';
 
 export type SchemaNode = {
-  id?: string; // Stable node identifier for ID-based patching (assigned by ensureNodeIds)
+  id?: string; // The node's permanent identity — minted when it is made, derived for a built-in. See `nodeIdentity.ts`
+  /**
+   * What names this node among its siblings, set by whoever wrote it — `field({ name })` keys its
+   * field by the name. Only a built-in's derived ids read it: with a key, a node's id follows the
+   * node when its siblings are reordered, rather than following its position.
+   */
+  key?: string;
   type?: string; // Used to look up the node's component in the registry (if not included, children rendered in a fragment)
   props?: Record<string, SchemaProp>; // Props to pass to the component
   slots?: Record<string, SchemaNode>; // Named slots for components that support them

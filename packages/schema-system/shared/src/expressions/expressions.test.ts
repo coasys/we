@@ -283,6 +283,20 @@ describe('checking', () => {
     expect(check('post.tags.count(1)')[0].message).toMatch(/given 2/);
   });
 
+  it('warns when text or a number sits beside && or ||, which answer true or false', () => {
+    // The timeline that showed "true" where its date belonged.
+    const [fallback] = check("post.title || 'Untitled'");
+    expect(fallback.severity).toBe('warning');
+    expect(fallback.message).toMatch(/never one of its sides.*a \? a : 'text'/);
+    expect(check('local.search && `Searching ${local.search}`')[0].message).toMatch(/condition \? 'text' : ''/);
+    expect(check('post.count || 0')).toHaveLength(1);
+    // Conditions, booleans and the fallback operator that does answer with a side are left alone.
+    expect(check("post.title || local.search != ''")).toEqual([]);
+    expect(check('post.done || false')).toEqual([]);
+    expect(check("post.title ?? 'Untitled'")).toEqual([]);
+    expect(check("post.title ? post.title : 'Untitled'")).toEqual([]);
+  });
+
   it('is lenient about unknown roots in a fragment', () => {
     expect(checkExpression(parseExpression('anything.at.all'), { ...scope, strict: false, locals: null })).toEqual([]);
   });

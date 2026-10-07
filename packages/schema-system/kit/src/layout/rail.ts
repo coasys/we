@@ -589,6 +589,9 @@ export function railGroup(opts: RailGroupOptions): SchemaNode {
 
   return {
     type: 'Column',
+    // The group's id says which it is, so its id holds if the rail's groups are reordered. Only a
+    // literal one: an id computed per row is not known until render, and a key is fixed when written.
+    ...(typeof opts.id === 'string' && { key: opts.id }),
     props: { width: '100%', gap: '200' },
     children: [
       /*

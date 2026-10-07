@@ -103,12 +103,15 @@ export {
   type CompactOptions,
   compactDefinitions,
   type CompactResult,
+  type DefinitionUses,
+  definitionHolding,
   definitionsOf,
   expandDefinitions,
   type OutlineEntry,
   outlineOf,
   REF_TYPE,
   type RefProps,
+  splitUse,
   useCountOf,
 } from './definitions';
 export {
@@ -132,6 +135,8 @@ export {
   validatePatches,
   ensureSections,
   collectComponentTypes,
+  copyWithNewIds,
+  forEachNode,
   ensureNodeIds,
   stripNodeIds,
   findNodeById,
@@ -140,6 +145,7 @@ export {
   removeChild,
 } from './indexer';
 export type { SectionEntry, StoredTemplate, FindNodeResult, PatchError } from './indexer';
+export { deriveNodeIds, derivedNodeId, isNodeId, newNodeId, NODE_ID_LENGTH } from './nodeIdentity';
 export { createStoredTemplate, listSections, getSection, updateSection } from './sections';
 export {
   expandViewRoutes,

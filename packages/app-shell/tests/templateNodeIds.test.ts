@@ -1,8 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { ensureNodeIds } from '@we/schema-shared';
+import { deriveNodeIds, ensureNodeIds, forEachNode, isNodeId, type SchemaNode } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
+
+import { bundledTemplates } from '../src/shared/registries/bundledTemplates.generated';
+import { templateRegistry } from '../src/shared/registries/templateRegistry';
+import { viewRegistry } from '../src/shared/registries/viewRegistry';
 
 const STORE = join(__dirname, '../src/frameworks/solid/stores/TemplateStore.tsx');
 const EDITOR_STORE = join(__dirname, '../src/frameworks/solid/stores/EditorStore.tsx');
@@ -74,5 +78,34 @@ describe('the starter template', () => {
     walk(tree);
     expect(ids.every(Boolean)).toBe(true);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+/**
+ * A built-in is code run at load, so its ids are worked out rather than kept — and they have to come
+ * out the same every time, or every node of every built-in is somebody new after a restart. Checked
+ * over the real registries, since the property that matters is about the templates this build ships.
+ */
+describe('the templates this build ships', () => {
+  const idsOf = (node: SchemaNode): string[] => {
+    const out: string[] = [];
+    forEachNode(node, (n) => n.id && out.push(n.id));
+    return out;
+  };
+  const registries = { ...templateRegistry, ...viewRegistry };
+
+  it.each(Object.keys(registries))('%s: every node below the root has an id, and no two share one', (id) => {
+    const template = registries[id] as SchemaNode;
+    const ids = idsOf(template);
+    let without = 0;
+    forEachNode(template, (n) => n !== template && !n.id && without++);
+    expect(without).toBe(0);
+    expect(ids.every(isNodeId)).toBe(true);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it.each(Object.entries(bundledTemplates))('%s: has the same ids however many times it is derived', (id, source) => {
+    const again = deriveNodeIds(JSON.parse(JSON.stringify(source)) as SchemaNode, id);
+    expect(idsOf(again)).toEqual(idsOf(templateRegistry[id] as SchemaNode));
   });
 });

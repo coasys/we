@@ -13,7 +13,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { compactDefinitions, definitionsOf, expandDefinitions, REF_TYPE } from './definitions';
+import { compactDefinitions, definitionsOf, expandDefinitions, REF_TYPE, splitUse } from './definitions';
 import type { SchemaNode } from './types';
 
 /*
@@ -140,7 +140,11 @@ describe('the shipped threshold', () => {
 });
 
 describe('expanding it again', () => {
-  const trip = (node: SchemaNode) => expandDefinitions(compact(node).schema);
+  // The exact inverse, given the table compaction hands back — see `DefinitionUses`.
+  const trip = (node: SchemaNode) => {
+    const { schema, uses } = compact(node);
+    return expandDefinitions(schema, { uses });
+  };
 
   it('gives back exactly what went in', () => {
     const before = root([body('Same'), body('Same'), { type: 'we-text', children: ['tail'] }]);
@@ -266,10 +270,10 @@ describe('finding and patching a shared shape', () => {
     }
   });
 
-  it('is unchanged by a round trip through ids', async () => {
+  it('is unchanged in shape by a round trip through ids', async () => {
     const { ensureNodeIds, stripNodeIds } = await import('./indexer');
     const { schema } = compactDefinitions(root([body('Same'), body('Same')]));
-    expect(stripNodeIds(ensureNodeIds(structuredClone(schema)))).toEqual(schema);
+    expect(stripNodeIds(ensureNodeIds(structuredClone(schema)))).toEqual(stripNodeIds(structuredClone(schema)));
   });
 
   /*
@@ -296,5 +300,85 @@ describe('finding and patching a shared shape', () => {
     // The same id in the other numbering is a different node — or no node at all.
     const elsewhere = findNodeById(uncompacted, shared.id!)?.node;
     expect(elsewhere).not.toEqual(shared);
+  });
+});
+
+/*
+  Ids are permanent, so a round trip through compaction must give every node back the id it went in
+  with — a shared shape is three sets of nodes, and the definition holding it once cannot carry any
+  of them. Without the table, every edit the assistant made would renumber the parts it never
+  touched.
+*/
+describe('the ids of a shared shape', () => {
+  const ids = (node: SchemaNode, out: string[] = []): string[] => {
+    if (node.id) out.push(node.id);
+    for (const c of node.children ?? []) if (c && typeof c === 'object' && 'type' in c) ids(c as SchemaNode, out);
+    return out;
+  };
+
+  const withIds = async (node: SchemaNode) => {
+    const { ensureNodeIds } = await import('./indexer');
+    return ensureNodeIds(node);
+  };
+
+  it('come back from expansion as they went in', async () => {
+    const before = await withIds(root([body('Same'), body('Same'), body('Other')]));
+    const { schema, uses } = compactDefinitions(structuredClone(before));
+    expect(expandDefinitions(schema, { uses })).toEqual(before);
+  });
+
+  it('come back through a shape nested inside another', async () => {
+    const inner = () => body('Shared inner');
+    const outer = (): SchemaNode => ({ type: 'Row', props: { gap: '400' }, children: [inner(), inner()] });
+    const before = await withIds(root([outer(), outer()]));
+    const { schema, uses } = compactDefinitions(structuredClone(before), { minChars: 20 });
+    expect(Object.keys(definitionsOf(schema)).length).toBeGreaterThan(1);
+    expect(expandDefinitions(schema, { uses })).toEqual(before);
+  });
+
+  it('are not carried by the definition, which has ids of its own', async () => {
+    const before = await withIds(root([body('Same'), body('Same')]));
+    const { schema } = compactDefinitions(structuredClone(before));
+    const own = Object.values(definitionsOf(schema)).flatMap((d) => ids(d));
+    expect(own.length).toBeGreaterThan(0);
+    expect(own.filter((id) => ids(before).includes(id))).toEqual([]);
+  });
+
+  it('give a node added to the shape a new id at each use', async () => {
+    const before = await withIds(root([body('Same'), body('Same')]));
+    const { schema, uses } = compactDefinitions(structuredClone(before));
+    const def = Object.values(definitionsOf(schema))[0];
+    def.children!.push({ type: 'we-text', id: 'added', children: ['new'] });
+    const after = expandDefinitions(schema, { uses });
+    const added = after.children!.map((c) => (c as SchemaNode).children!.at(-1) as SchemaNode);
+    expect(added.map((n) => n.id)).toEqual([undefined, undefined]);
+  });
+
+  it('are given to the copy a split makes, and the other use keeps its own', async () => {
+    const before = await withIds(root([body('Same'), body('Same')]));
+    const { schema, uses } = compactDefinitions(structuredClone(before));
+    const [first] = schema.children as SchemaNode[];
+    const copy = structuredClone(definitionsOf(schema)[(first.props as { def: string }).def]);
+    splitUse(schema, copy, first.id!, uses);
+    schema.children![0] = copy;
+    expect(ids(copy)).toEqual(ids(before.children![0] as SchemaNode));
+    expect(expandDefinitions(schema, { uses })).toEqual(before);
+  });
+
+  it('survive a split of a shape inside another shared shape', async () => {
+    const inner = () => body('Shared inner');
+    const outer = (): SchemaNode => ({ type: 'Row', props: { gap: '400' }, children: [inner(), inner()] });
+    const before = await withIds(root([outer(), outer()]));
+    const { schema, uses } = compactDefinitions(structuredClone(before), { minChars: 20 });
+
+    // The outer definition holds two references to the inner one; split the first of them.
+    const defs = definitionsOf(schema);
+    const outerDef = Object.values(defs).find((d) => d.type === 'Row')!;
+    const ref = outerDef.children![0] as SchemaNode;
+    const copy = structuredClone(defs[(ref.props as { def: string }).def]);
+    splitUse(schema, copy, ref.id!, uses);
+    outerDef.children![0] = copy;
+
+    expect(expandDefinitions(schema, { uses })).toEqual(before);
   });
 });
