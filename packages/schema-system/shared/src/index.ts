@@ -128,6 +128,7 @@ export {
   themeParametersToStyle,
 } from './themeStyles';
 export { validateField } from './validation';
+export { type FreeNames, freeNames } from './freeNames';
 export {
   computeSectionIndex,
   extractByPath,
@@ -153,6 +154,10 @@ export {
   SPACE_ROUTE_DEPTH,
   SPACE_ROUTE_PATH,
   EDIT_SURFACE_ATTR,
+  OWNER_ATTR,
+  OWNER_NAME_ATTR,
+  PART_ATTR,
+  PART_NODE_ATTR,
   VIEW_BOUNDARY_ATTR,
   VIEW_BOUNDARY_NAME_ATTR,
   VIEWS_MARKER,

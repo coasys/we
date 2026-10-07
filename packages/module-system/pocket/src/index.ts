@@ -64,7 +64,9 @@ export const pocketModule: ModuleDefinition = defineModule({
     // Declared rather than written against a backend, and installed into the personal space.
     entities: { manifest: POCKET_MANIFEST, scope: 'agent' },
 
-    parts: { toggleButton },
+    parts: {
+      toggleButton: { node: toggleButton, label: 'Pocket button', description: 'Opens and closes your Pocket.' },
+    },
 
     /**
      * The panel. The Pocket keeps ownership of whether it is open — `open`, `show`, `close` name its

@@ -62,9 +62,21 @@ export const liveModule: ModuleDefinition = defineModule({
      * controls; the anchors below are the default for a deployment that arranges nothing.
      */
     parts: {
-      cursorToggle,
-      wheelButton,
-      driverStrip,
+      cursorToggle: {
+        node: cursorToggle,
+        label: 'Live cursors',
+        description: 'Shares your pointer and shows everyone else’s, or stops.',
+      },
+      wheelButton: {
+        node: wheelButton,
+        label: 'Take the wheel',
+        description: 'Leads, so anyone who follows sees your screen.',
+      },
+      driverStrip: {
+        node: driverStrip,
+        label: 'Who is driving',
+        description: 'Says who is leading, and lets you follow or stop.',
+      },
       // Development only, and absent rather than inert in a production bundle — see `devCursors.ts`.
       ...(devCursorsAvailable ? { fakeCursorControls } : {}),
     },

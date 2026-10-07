@@ -54,10 +54,18 @@ export function createGraphModule(graphViewComponent: unknown): ModuleDefinition
        * reads better in a template than a fragment plus an override.
        */
       parts: {
-        schemaMap,
-        contentTree,
-        staticDiagram,
-        knowledgeMapPosts: knowledgeMap({ entity: 'Post' }),
+        schemaMap: {
+          node: schemaMap,
+          label: 'Schema map',
+          description: 'The kinds of thing this space holds, and how they connect.',
+        },
+        contentTree: { node: contentTree, label: 'Content tree', description: 'What this space holds, as a tree.' },
+        staticDiagram: { node: staticDiagram, label: 'Diagram', description: 'A small fixed diagram, to start from.' },
+        knowledgeMapPosts: {
+          node: knowledgeMap({ entity: 'Post' }),
+          label: 'Knowledge map',
+          description: 'The posts here and what connects them.',
+        },
       },
     },
   });
