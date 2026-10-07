@@ -493,8 +493,10 @@ Operators, in JavaScript's spelling and precedence:
   == !=                          strict equality
   < > <= >=                      numeric comparison
   in                             list membership:  item.role in ['admin', 'moderator']
-  ! && ||                        boolean logic. && and || ANSWER WITH A BOOLEAN, never with an operand
-  ??                             the fallback-value idiom:  local.name ?? 'Untitled'
+  ! && ||                        boolean logic. && and || ANSWER WITH A BOOLEAN, never with an operand,
+                                 so name || 'Untitled' is true, not a name — the validator warns
+  ??                             the fallback-value idiom:  local.name ?? 'Untitled' — for absent only;
+                                 an empty string stays empty, so write name ? name : 'Untitled' for both
   test ? a : b                   conditional value
   + - * / %                      arithmetic; + joins strings when either side is one; / by 0 is 0
   `…${expr}…`                    interpolation
@@ -2891,7 +2893,7 @@ EditorStore:
   - sessions: ChatSession[] — this template's saved AI sessions (id, name, templateId), newest first
   - activeSessionId: string | null — the session whose messages are shown
   - contentMode: 'preview' | 'visual' — whether the editor shows the rendered template or the visual editing surface
-  - schemaJson: string — the template being edited, serialised — what the code panel shows and edits
+  - schemaJson: string — the template being edited, serialised with its node ids — what the code panel shows and edits. Ids are permanent, so a save keeps them
   - canUndo: boolean (true when there are schema edits that can be undone)
   - canRedo: boolean (true when there are undone schema edits that can be redone)
   - isEditingTemplate: boolean — a template editing session is open
