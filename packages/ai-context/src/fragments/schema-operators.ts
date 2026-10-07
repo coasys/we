@@ -215,8 +215,10 @@ Operators, in JavaScript's spelling and precedence:
   == !=                          strict equality
   < > <= >=                      numeric comparison
   in                             list membership:  item.role in ['admin', 'moderator']
-  ! && ||                        boolean logic. && and || ANSWER WITH A BOOLEAN, never with an operand
-  ??                             the fallback-value idiom:  local.name ?? 'Untitled'
+  ! && ||                        boolean logic. && and || ANSWER WITH A BOOLEAN, never with an operand,
+                                 so name || 'Untitled' is true, not a name — the validator warns
+  ??                             the fallback-value idiom:  local.name ?? 'Untitled' — for absent only;
+                                 an empty string stays empty, so write name ? name : 'Untitled' for both
   test ? a : b                   conditional value
   + - * / %                      arithmetic; + joins strings when either side is one; / by 0 is 0
   \`…\${expr}…\`                    interpolation
