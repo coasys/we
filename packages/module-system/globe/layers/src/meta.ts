@@ -33,6 +33,19 @@ export const HEXBIN: Meaning = {
   description: 'Rows of data gathered into hexagonal cells, each shaded and raised by what is in it.',
 };
 
+export const HEATMAP: Meaning = {
+  id: 'heatmapLayer',
+  slot: 'planet',
+  description: 'Rows of data as a continuous glow, bright where they gather — density at a glance, with no cells.',
+};
+
+export const SATELLITE_OVERLAY: Meaning = {
+  id: 'satelliteOverlayLayer',
+  slot: 'planet',
+  description:
+    'NASA’s satellite imagery of one day over the earth: the day’s photo, fires, snow, rain, smoke, sea ice, night lights.',
+};
+
 export const POINT_LOCATIONS: Meaning = {
   id: 'pointLocationsLayer',
   slot: 'planet',

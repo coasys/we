@@ -10,6 +10,7 @@ import {
   clusterCellDegrees,
   ClusterLevels,
   clusterRadiusOf,
+  followTime,
   type Mark,
   marksOf,
   PICTURE_OVERSAMPLE,
@@ -310,9 +311,11 @@ export async function renderPoints(
     },
   );
 
+  const time = followTime(context, () => rebuild(options));
+
   const rebuild = (next: PointsOptions) => {
     options = next;
-    features = pointFeatures(next);
+    features = pointFeatures(next, time.slice(next.data, next));
     byId = new Map(features.map((f) => [f.id, f]));
     levels = clusterRadiusOf(next.cluster) ? new ClusterLevels(features) : null;
     grouped = currentClusters();

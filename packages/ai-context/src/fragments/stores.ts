@@ -597,6 +597,11 @@ export const storeEntries: StoreEntry[] = [
     state: {},
     actions: ['create', 'update', 'delete'],
   },
+  {
+    name: 'clockStore',
+    state: { clocks: { type: 'object' } },
+    actions: ['play', 'pause', 'toggle', 'seek', 'seekProgress', 'setSpeed', 'setLoop', 'configure'],
+  },
   // Pseudo-store for the clipboard.copy $action, wired the same way as `record` — documented in
   // the descriptions below, since nothing else describes it.
   {
@@ -1737,6 +1742,24 @@ export function generateStoresText(entries: StoreEntry[]): string {
         update:
           '(entity: string, id: string, fields: object, options?: { dataset?: string }): updates the named fields of one record, leaving the rest',
         delete: '(entity: string, id: string, options?: { dataset?: string }): deletes one record. Irreversible',
+      },
+    },
+    clockStore: {
+      state: {
+        clocks:
+          "Record<name, { at, atIso, atLabel, ticks, from, fromIso, to, toIso, progress, playing, speed, loop, canPlay }> — the app's clocks by name. A clock is the moment something shows and the playback that moves it: a globe given `clock: \"events\"` follows the clock of that name, and every control reading or driving \"events\" moves it too. `at` is milliseconds since 1970, or null until somebody plays or seeks, which shows everything; `from`/`to` are the range, which the globe works out from its layers' data; `atIso` is ready for a we-timestamp, and `atLabel` is the moment already written as precisely as the range calls for (with the time across a day, the month alone across decades); `ticks` are marks along the range, { at, fraction, label }, on round moments at the scale it calls for — hours, days, months or years — to place at `fraction` of a scrubber's width; `progress` is 0–1 through the range, for a we-slider (max 1, step 0.001). Published about five times a second while playing. A name nothing has used yet reads as undefined, so guard a control on it: { $: 'clockStore.clocks.events.canPlay' }",
+      },
+      actions: {
+        play: '(name: string): plays from the start, or from where it was paused; does nothing with no range to cross',
+        pause: '(name: string): stops where it is',
+        toggle: '(name: string): plays or pauses — what one button calls',
+        seek: '(name: string, at: number | string | null): shows that moment, in milliseconds or an ISO date; null shows everything again',
+        seekProgress:
+          "(name: string, fraction: number): shows the moment that far through the range, 0 to 1 — what a we-slider's onChange passes as event.detail",
+        setSpeed: '(name: string, speed: number): plays faster or slower — 2 is twice as fast. Default 1',
+        setLoop: '(name: string, loop: boolean): starts again at the end rather than stopping',
+        configure:
+          '(name: string, settings: { from?, to?, speed?, duration?, rate?, loop? }): several at once. `duration` is how long the whole range takes to play at speed 1 — seconds or a span ("45s", "2m"), default 30s; `rate` instead runs at a fixed pace (1 is real time, for a countdown); from/to fix the range rather than taking it from the data',
       },
     },
     interpretationStore: {

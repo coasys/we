@@ -43,6 +43,20 @@ const TRACK_HEIGHT: Record<ComponentSize, string> = {
  */
 const MIN_TICK_GAP = 10;
 
+/**
+ * A labelled place along the track: `value` in the slider's own range, and what to call it.
+ *
+ * General on purpose. A timeline's dates, a rating's "poor" and "great", a zoom level's names are all
+ * this: the caller decides which places matter and what they say; the slider decides where they go.
+ */
+export interface SliderMark {
+  value: number;
+  label?: string;
+}
+
+/** How far a mark at either end may stray before it is aligned to the end rather than centred on it. */
+const END_SHARE = 0.03;
+
 const THUMB_SIZE: Record<ComponentSize, string> = {
   xs: '12px',
   sm: '14px',
@@ -155,6 +169,67 @@ const styles = css`
     opacity: 0.55;
   }
 
+  /*
+    Labelled marks beneath the track.
+
+    Placed in pixels from the thumb's geometry, for the reason the fill and the step ticks are: a mark
+    at a value has to sit under the thumb's centre at that value, and a percentage of the track would
+    be half a thumb out at each end. A caller placing its own marks from outside cannot know the
+    thumb's size, which is why this is the slider's job.
+
+    The marks hang below the input rather than taking part in the row's layout, and the wrapper keeps
+    room for them with a margin rather than padding: padding would move the vertical middle the step
+    ticks are centred on.
+
+    The same room is kept above as below, so the track stays the slider's vertical middle. Kept
+    below only, a slider in a row centred on its cross axis sat its track above the middle of the
+    row, out of line with the button and the label beside it.
+  */
+  [part='track-wrapper'].marked {
+    margin-block: calc(var(--we-font-size-100) * 1.4 + 7px);
+  }
+
+  [part='marks'] {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    pointer-events: none;
+  }
+
+  [part='mark'] {
+    position: absolute;
+    top: 2px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    transform: translateX(-50%);
+  }
+
+  [part='mark'].start {
+    align-items: flex-start;
+    transform: none;
+  }
+
+  [part='mark'].end {
+    align-items: flex-end;
+    transform: translateX(-100%);
+  }
+
+  [part='mark-line'] {
+    width: 1px;
+    height: 5px;
+    background: var(--we-role-border-strong);
+  }
+
+  [part='mark-label'] {
+    font-size: var(--we-font-size-100);
+    line-height: 1.4;
+    color: var(--we-role-text-muted);
+    white-space: nowrap;
+  }
+
   :host([disabled]) {
     opacity: 0.5;
     pointer-events: none;
@@ -200,6 +275,17 @@ export default class Slider extends DesignSystemElement {
    * are the point, or one deliberately drawn as a continuous sweep.
    */
   @property({ type: String, reflect: true }) ticks: 'auto' | 'on' | 'off' = 'auto';
+  /**
+   * Labelled places beneath the track — see {@link SliderMark}. A mark outside `min`–`max` is not
+   * drawn. Empty by default, and then nothing beneath the track takes any room.
+   */
+  @property({ type: Array }) marks: SliderMark[] = [];
+  /**
+   * What the value means, for somebody who cannot see the slider: read out instead of the number.
+   * A slider whose value is a fraction of a timeline should say "6 Oct 2026", not "0.437". Empty
+   * reads the number, as a range input does.
+   */
+  @property({ type: String }) valueText = '';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   /** The track's measured width, for the geometry below. 0 until it has been laid out. */
@@ -254,6 +340,20 @@ export default class Slider extends DesignSystemElement {
     const along = span > 0 ? Math.min(1, Math.max(0, (this.value - this.min) / span)) : 0;
     const steps = this.step > 0 && span > 0 ? Math.round(span / this.step) : 0;
     return { thumb, travel, steps, fill: thumb / 2 + along * travel, gap: steps ? travel / steps : 0 };
+  }
+
+  /** Each mark's place in pixels, under where the thumb's centre is at its value. */
+  private _marks(thumb: number): { x: number; label?: string; edge: string }[] {
+    const span = this.max - this.min;
+    if (!Array.isArray(this.marks) || !this.marks.length || span <= 0 || this._width <= 0) return [];
+    const travel = Math.max(0, this._width - thumb);
+    return this.marks.flatMap((mark) => {
+      const value = Number(mark?.value);
+      if (!Number.isFinite(value) || value < this.min || value > this.max) return [];
+      const along = (value - this.min) / span;
+      const edge = along < END_SHARE ? 'start' : along > 1 - END_SHARE ? 'end' : '';
+      return [{ x: thumb / 2 + along * travel, label: mark.label, edge }];
+    });
   }
 
   static getDefaultProps() {
@@ -356,10 +456,11 @@ export default class Slider extends DesignSystemElement {
     const { thumb, steps, fill, gap } = this._geometry();
     const showTicks =
       this.ticks === 'on' || (this.ticks === 'auto' && steps > 1 && gap >= MIN_TICK_GAP && this._width > 0);
+    const marks = this._marks(thumb);
 
     return html`
       <div part="base" style=${styleMap(this.styles || {})}>
-        <div part="track-wrapper" ${ref(this._measure)}>
+        <div part="track-wrapper" class=${marks.length ? 'marked' : ''} ${ref(this._measure)}>
           ${
             showTicks
               ? html`<div
@@ -376,6 +477,7 @@ export default class Slider extends DesignSystemElement {
           <input
             part="native"
             aria-label=${this.label || nothing}
+            aria-valuetext=${this.valueText || nothing}
             type="range"
             min=${this.min}
             max=${this.max}
@@ -393,6 +495,19 @@ export default class Slider extends DesignSystemElement {
               '--fill': `${fill}px`,
             })}
           />
+          ${
+            marks.length
+              ? html`<div part="marks" aria-hidden="true">
+                  ${marks.map(
+                    (mark) =>
+                      html`<div part="mark" class=${mark.edge} style=${styleMap({ left: `${mark.x}px` })}>
+                        <div part="mark-line"></div>
+                        ${mark.label ? html`<span part="mark-label">${mark.label}</span>` : null}
+                      </div>`,
+                  )}
+                </div>`
+              : null
+          }
         </div>
         ${this.showValue ? html`<span part="value">${this.value}</span>` : null}
       </div>
