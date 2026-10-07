@@ -23,7 +23,7 @@
  * isolation — `{ $: 'part.id' }` names nothing the validator can resolve, so the module's own
  * fragment would stop being checkable. This way the part stays the module's working node.
  */
-import type { SchemaNode } from '@we/schema-shared';
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import { moduleRegistry } from './moduleRegistry';
 
@@ -75,6 +75,27 @@ function subjectExpression(prop: unknown): string | undefined {
 }
 
 /**
+ * Bind the names a placement provides around a part — `inputs: { tile: { $: 'participant' } }`.
+ *
+ * A part that reads a name its parents bind declares it (`ModulePart.inputs`). Placed where nothing
+ * binds it, the placement says what it is, and this binds it: a one-row `$each` over the value, the
+ * only node that binds an arbitrary value to a name. One wrapper per input, so each is the name the
+ * part's own expressions already use.
+ */
+function bindInputs(node: SchemaNode, inputs: unknown): SchemaNode {
+  if (!inputs || typeof inputs !== 'object' || Array.isArray(inputs)) return node;
+  let bound = node;
+  for (const [name, value] of Object.entries(inputs as Record<string, unknown>)) {
+    const expression = subjectExpression(value);
+    const items = (
+      expression !== undefined && typeof value === 'object' ? { $: `[${expression}]` } : [value]
+    ) as SchemaProp;
+    bound = { type: '$each', props: { items, as: name }, children: [bound] };
+  }
+  return bound;
+}
+
+/**
  * Expand every `$part` in a tree.
  *
  * An unknown part renders nothing **and says so**. Silence is this codebase's recurring failure —
@@ -93,20 +114,34 @@ export function resolveParts(node: SchemaNode): SchemaNode | SchemaNode[] {
   if (node.type === '$panels') return { ...node, type: 'PanelLane' };
 
   if (node.type === '$part') {
-    const props = (node.props ?? {}) as { id?: unknown; subject?: unknown };
+    const props = (node.props ?? {}) as { id?: unknown; subject?: unknown; inputs?: unknown };
     const id = typeof props.id === 'string' ? props.id : '';
     if (!id) return [];
+
+    /*
+      Every placement is framed, the part a template placed and the parts a module composes its own
+      panel from alike. The frame carries where the part came from — so the editor selects the
+      template's `$part` node rather than a node of the module's — and draws what is missing when the
+      module is not here to draw it. Box-less, so a part lays out exactly as it did.
+    */
+    const frame = (children: SchemaNode[]): SchemaNode => ({
+      type: 'PartFrame',
+      ...(node.id ? { id: node.id } : {}),
+      props: { part: id, ...(node.id ? { at: node.id } : {}) },
+      children,
+    });
 
     const part = moduleRegistry.parts()[id];
     if (!part) {
       warnUnknown(id);
-      return [];
+      return frame([]);
     }
 
     const wanted = subjectExpression(props.subject);
     const resolved = part.subject && wanted ? substitute(part.node, part.subject, wanted) : part.node;
     // Recursive: a part may itself be composed of parts, which is how a module's own panel is built.
-    return resolveParts(resolved);
+    const expanded = resolveParts(bindInputs(resolved, props.inputs));
+    return frame(Array.isArray(expanded) ? expanded : [expanded]);
   }
 
   const children = resolveList(node.children);

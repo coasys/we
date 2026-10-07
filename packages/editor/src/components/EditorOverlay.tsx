@@ -4,12 +4,16 @@ import {
   findNodeById,
   insertChild,
   mergeNode,
+  OWNER_ATTR,
+  OWNER_NAME_ATTR,
+  PART_ATTR,
+  PART_NODE_ATTR,
   removeChild,
   replaceNodeInTree,
   VIEW_BOUNDARY_ATTR,
   VIEW_BOUNDARY_NAME_ATTR,
 } from '@we/schema-shared';
-import { useVisualEditor } from '@we/schema-solid';
+import { type OwnerRef, useVisualEditor } from '@we/schema-solid';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
@@ -181,36 +185,83 @@ function templateElementAt(x: number, y: number): Element | null {
 }
 
 /**
- * What the pointer is over: a node of the template being edited, or the edge of another template.
+ * What the pointer is over: a node of the template being edited, or a region somebody else provides.
  *
  * The OUTERMOST boundary between the press and its surface answers, and failing one, the nearest
- * node. A section is another template, and its own nodes carry ids — derived ones, for a built-in —
- * which the template being edited does not contain. Answered by the nearest id, a press inside a
- * section selected a node the inspector could not find, and the panel went blank. Before those ids
- * existed the same rule was quietly true, because nothing inside a section was stamped at all.
+ * node. Three kinds of boundary, all regions whose insides the template does not own:
  *
- * Outermost rather than nearest, because a region somebody else provides holds everything inside
- * it, whatever that happens to carry: the shell does not own a node of the section just because the
- * node has an id.
+ * - **A section** the shell mounts — another template, whose nodes carry ids of their own (derived,
+ *   for a built-in) that the template being edited does not contain. Answered by the nearest id, a
+ *   press inside one selected a node the inspector could not find.
+ * - **A module's own panel**, which the module draws. Selected as a whole and named, which is how
+ *   somebody finds out it can be arranged, restyled or replaced.
+ * - **A part the template placed.** The placement is the template's node and the part's insides
+ *   are the module's, so a press anywhere in it selects the `$part` node.
+ *
+ * Outermost rather than nearest, because a region somebody else provides holds everything inside it,
+ * whatever that happens to carry: the shell does not own a node of a section just because the node
+ * has an id, and a part a module composes inside its own panel is still the module's panel.
  */
-type Boundary = { kind: 'node'; id: string } | { kind: 'view'; id: string; name: string; el: HTMLElement };
+type Boundary = { kind: 'node'; id: string } | { kind: 'owner'; owner: OwnerRef; el: HTMLElement };
+
+function ownerAt(el: Element): OwnerRef | null {
+  const viewId = el.getAttribute(VIEW_BOUNDARY_ATTR);
+  if (viewId) return { kind: 'view', id: viewId, name: el.getAttribute(VIEW_BOUNDARY_NAME_ATTR) ?? viewId };
+  const owner = el.getAttribute(OWNER_ATTR);
+  if (owner?.startsWith('panel:')) {
+    const id = owner.slice('panel:'.length);
+    return { kind: 'panel', id, name: el.getAttribute(OWNER_NAME_ATTR) ?? id };
+  }
+  return null;
+}
 
 function findBoundary(el: Element | null): Boundary | null {
   if (!el) return null;
   const surface = surfaceOf(el);
   let nearest: string | null = null;
-  let outer: HTMLElement | null = null;
+  let outer: Boundary | null = null;
   for (let at: Element | null = el; at; at = at.parentElement) {
-    if (at.hasAttribute(VIEW_BOUNDARY_ATTR)) outer = at as HTMLElement;
-    else if (nearest === null && at.hasAttribute('data-we-node-id')) nearest = at.getAttribute('data-we-node-id');
+    const owner = ownerAt(at);
+    if (owner) outer = { kind: 'owner', owner, el: at as HTMLElement };
+    else if (at.hasAttribute(PART_ATTR) && at.getAttribute(PART_NODE_ATTR)) {
+      outer = { kind: 'node', id: at.getAttribute(PART_NODE_ATTR)! };
+    } else if (nearest === null && at.hasAttribute('data-we-node-id')) nearest = at.getAttribute('data-we-node-id');
     if (at === surface) break;
   }
+  return outer ?? (nearest ? { kind: 'node', id: nearest } : null);
+}
 
-  if (outer) {
-    const id = outer.getAttribute(VIEW_BOUNDARY_ATTR) ?? '';
-    return { kind: 'view', id, name: outer.getAttribute(VIEW_BOUNDARY_NAME_ATTR) ?? id, el: outer };
+/** The element an owned region is drawn round — a module's panel by its whole body. */
+function ownerElement(owner: OwnerRef): Element | null {
+  const marked =
+    owner.kind === 'view'
+      ? document.querySelector(`[${VIEW_BOUNDARY_ATTR}="${CSS.escape(owner.id)}"]`)
+      : document.querySelector(`[${OWNER_ATTR}="panel:${CSS.escape(owner.id)}"]`);
+  return marked?.closest('[data-we-dock-content]') ?? marked;
+}
+
+/**
+ * Where an element is on screen, including one that generates no box.
+ *
+ * A placed part is framed box-less — `display: contents`, so it lays out as though nothing wrapped it
+ * — and a box-less element measures as nothing, which drew a ring of no size round a selected part.
+ * Its children's boxes together are where it is.
+ */
+function boxOf(el: Element): DOMRect {
+  if (getComputedStyle(el).display !== 'contents') return el.getBoundingClientRect();
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  for (const child of Array.from(el.children)) {
+    const r = boxOf(child);
+    if (!r.width && !r.height) continue;
+    left = Math.min(left, r.left);
+    top = Math.min(top, r.top);
+    right = Math.max(right, r.right);
+    bottom = Math.max(bottom, r.bottom);
   }
-  return nearest ? { kind: 'node', id: nearest } : null;
+  return left === Infinity ? new DOMRect() : new DOMRect(left, top, right - left, bottom - top);
 }
 
 // Walk DOM ancestors to find the nearest schema node that is a direct child of a $each.
@@ -318,7 +369,9 @@ function VisualEditorLayer() {
   const [selectRect, setSelectRect] = createSignal<DOMRect | null>(null);
   const [hoveredType, setHoveredType] = createSignal<string | undefined>(undefined);
   /** The section under the pointer, when the pointer is over another template rather than this one. */
-  const [viewRegion, setViewRegion] = createSignal<{ id: string; name: string; rect: DOMRect } | null>(null);
+  const [viewRegion, setViewRegion] = createSignal<{ owner: OwnerRef; rect: DOMRect } | null>(null);
+  /** Where the selected owned region is, tracked a frame at a time as nodes are. */
+  const [ownerRect, setOwnerRect] = createSignal<DOMRect | null>(null);
   const [instanceRects, setInstanceRects] = createSignal<DOMRect[]>([]);
   const [enteredEachParentId, setEnteredEachParentId] = createSignal<string | null>(null);
 
@@ -411,9 +464,26 @@ function VisualEditorLayer() {
     const update = () => {
       const el = getNodeBoundsElement(id);
       if (el) {
-        const rect = el.getBoundingClientRect();
+        const rect = boxOf(el);
         setSelectRect(seenAt(el, rect) ? rect : null);
       }
+      rafId = requestAnimationFrame(update);
+    };
+    rafId = requestAnimationFrame(update);
+    onCleanup(() => cancelAnimationFrame(rafId));
+  });
+
+  createEffect(() => {
+    const owner = visualEditor.selectedOwner();
+    if (!owner) {
+      setOwnerRect(null);
+      return;
+    }
+    let rafId: number;
+    const update = () => {
+      const el = ownerElement(owner);
+      const rect = el ? boxOf(el) : null;
+      setOwnerRect(el && rect && seenAt(el, rect) ? rect : null);
       rafId = requestAnimationFrame(update);
     };
     rafId = requestAnimationFrame(update);
@@ -442,6 +512,7 @@ function VisualEditorLayer() {
 
   const hoverRelRect = createMemo(() => toRelative(hoverRect()));
   const viewRegionRelRect = createMemo(() => toRelative(viewRegion()?.rect ?? null));
+  const ownerRelRect = createMemo(() => toRelative(ownerRect()));
   const selectRelRect = createMemo(() => toRelative(selectRect()));
   const instanceRelRects = createMemo(() =>
     instanceRects()
@@ -1070,8 +1141,9 @@ function VisualEditorLayer() {
       would promise a click that does nothing. It reports what the region *is* instead, and clears
       the node hover so the inspector does not sit on a shell node the pointer is nowhere near.
     */
-    if (boundary?.kind === 'view') {
-      setViewRegion({ id: boundary.id, name: boundary.name, rect: boundary.el.getBoundingClientRect() });
+    if (boundary?.kind === 'owner') {
+      const el = ownerElement(boundary.owner) ?? boundary.el;
+      setViewRegion({ owner: boundary.owner, rect: boxOf(el) });
       visualEditor.onHover(null);
       lastHoveredId = null;
       setHoverRect(null);
@@ -1087,7 +1159,7 @@ function VisualEditorLayer() {
       const wrapper = (under as HTMLElement).closest('[data-we-node-id]') as HTMLElement | null;
       if (wrapper) {
         const boundsEl = (wrapper.firstElementChild as HTMLElement) ?? wrapper;
-        setHoverRect(boundsEl.getBoundingClientRect());
+        setHoverRect(boxOf(boundsEl));
         if (nodeId !== lastHoveredId) {
           lastHoveredId = nodeId;
           setHoveredType(findNodeById(templateStore.currentTemplate, nodeId)?.node.type);
@@ -1113,10 +1185,10 @@ function VisualEditorLayer() {
 
     const clicked = findBoundary(hoveredElement);
 
-    // Clicking a section clears the selection rather than falling through to the shell node behind
-    // it. Selecting the container a view happens to sit in is what made this look broken.
-    if (clicked?.kind === 'view') {
-      visualEditor.onSelect(null);
+    // A region somebody else provides is selected as a whole — a section, or a module's own panel —
+    // never the shell node behind it, which is what made a section look broken.
+    if (clicked?.kind === 'owner') {
+      visualEditor.onSelectOwner(clicked.owner);
       setEnteredEachParentId(null);
       return;
     }
@@ -1270,8 +1342,11 @@ function VisualEditorLayer() {
         }}
       >
         {/* Another template's territory — outlined and named, never selectable. */}
-        <Show when={viewRegionRelRect()}>
-          <ViewBoundary rect={viewRegionRelRect()!} name={viewRegion()!.name} />
+        <Show when={viewRegionRelRect() && viewRegion()!.owner.id !== visualEditor.selectedOwner()?.id}>
+          <OwnerBoundary rect={viewRegionRelRect()!} owner={viewRegion()!.owner} />
+        </Show>
+        <Show when={ownerRelRect()}>
+          <OwnerBoundary rect={ownerRelRect()!} owner={visualEditor.selectedOwner()!} selected />
         </Show>
 
         {/* Hover highlight — skip when same as selected */}
@@ -1612,18 +1687,20 @@ interface HighlightRect {
 type HighlightStyle = 'visual' | 'logic' | 'each-parent' | 'each-instance';
 
 /**
- * A section of the space that is a template of its own.
+ * A region somebody else provides: a section that is a template of its own, or a panel a module
+ * draws itself.
  *
- * Grey and dashed on purpose — every other outline in here is a colour that means "this responds to
- * you", and this one means the opposite. The name is the point of it: "not editable" alone would
- * read as a fault, where "About — a separate view" reads as a boundary and tells you what to go and
- * edit instead.
+ * Grey and dashed on purpose — every other outline in here is a colour that means "this is the
+ * template's", and this one means somebody else's. The name is the point of it: "not editable" alone
+ * would read as a fault, where "Transcript — a module's panel" reads as a boundary and says whose.
+ * Selected, it goes solid, and the inspector says what can be done about it.
  *
  * The label sits inside the top-left corner rather than above it, because a section commonly starts
  * at the very top of the content area and a chip hung above the edge would be clipped by the
  * viewport on the one view most likely to be clicked first.
  */
-function ViewBoundary(props: { rect: HighlightRect; name: string }) {
+function OwnerBoundary(props: { rect: HighlightRect; owner: OwnerRef; selected?: boolean }) {
+  const kind = () => (props.owner.kind === 'view' ? 'a section of this space' : "a module's panel");
   return (
     <div
       style={{
@@ -1632,7 +1709,7 @@ function ViewBoundary(props: { rect: HighlightRect; name: string }) {
         left: props.rect.left,
         width: props.rect.width,
         height: props.rect.height,
-        outline: `1px dashed ${ANNOTATION.boundary}`,
+        outline: `${props.selected ? 2 : 1}px ${props.selected ? 'solid' : 'dashed'} ${ANNOTATION.boundary}`,
         'outline-offset': '-1px',
         'pointer-events': 'none',
         'box-sizing': 'border-box',
@@ -1658,8 +1735,11 @@ function ViewBoundary(props: { rect: HighlightRect; name: string }) {
           'text-overflow': 'ellipsis',
         }}
       >
-        <span>{props.name}</span>
-        <span style={{ color: ANNOTATION.boundary, 'font-weight': '400' }}>a separate view — edit it on its own</span>
+        <span>{props.owner.name}</span>
+        <span style={{ color: ANNOTATION.boundary, 'font-weight': '400' }}>
+          {kind()}
+          {props.selected ? '' : ' — select it for options'}
+        </span>
       </div>
     </div>
   );

@@ -23,6 +23,10 @@ import { EditorHostProvider, EditorOverlay } from '@we/editor';
 import {
   EDIT_SURFACE_ATTR,
   installGestureTracking,
+  OWNER_ATTR,
+  OWNER_NAME_ATTR,
+  PART_ATTR,
+  PART_NODE_ATTR,
   VIEW_BOUNDARY_ATTR,
   VIEW_BOUNDARY_NAME_ATTR,
 } from '@we/schema-shared';
@@ -436,6 +440,30 @@ function editorProbe(): void {
   section.setAttribute(VIEW_BOUNDARY_NAME_ATTR, 'About');
   section.append(node('n-view-inner', 'section'));
   content.append(section);
+  /*
+    A part the template placed: the placement is the template's node, and inside it the part's own
+    nodes, which are the module's — one of them stamped with an id of its own.
+  */
+  const placed = document.createElement('div');
+  placed.setAttribute('data-we-node-id', 'n-part');
+  const frame = document.createElement('div');
+  frame.style.display = 'contents';
+  frame.setAttribute(PART_ATTR, 'call.tile');
+  frame.setAttribute(PART_NODE_ATTR, 'n-part');
+  frame.append(node('n-part-inner', 'part'));
+  placed.append(frame);
+  content.append(placed);
+
+  // A panel a module draws itself: an edit surface the editor can reach, owned by the module.
+  const owned = document.createElement('div');
+  owned.style.cssText = 'position: fixed; left: 0; top: 460px; width: 200px; height: 80px; z-index: 1;';
+  const ownedBody = document.createElement('div');
+  ownedBody.setAttribute(EDIT_SURFACE_ATTR, '');
+  ownedBody.setAttribute(OWNER_ATTR, 'panel:call:stage');
+  ownedBody.setAttribute(OWNER_NAME_ATTR, 'Call');
+  ownedBody.append(node('n-owned-inner', 'owned'));
+  owned.append(ownedBody);
+  document.body.append(owned);
 
   // A panel, painted where the dock registry paints them: above the content's whole context.
   const panel = document.createElement('div');
@@ -463,10 +491,12 @@ function editorProbe(): void {
     children: [
       { id: 'n-content', type: 'we-button' },
       { id: 'n-panel', type: 'we-button' },
+      { id: 'n-part', type: '$part', props: { id: 'call.tile' } },
     ],
   };
   const [selected, setSelected] = createSignal<string | null>(null);
   const [hovered, setHovered] = createSignal<string | null>(null);
+  const [owner, setOwner] = createSignal<{ kind: string; id: string; name: string } | null>(null);
   const visual = {
     enabled: true,
     hoveredId: hovered,
@@ -475,6 +505,11 @@ function editorProbe(): void {
     onSelect: (id: string | null) => {
       setSelected(id);
       record('__probeSelected', id);
+    },
+    selectedOwner: owner,
+    onSelectOwner: (next: { kind: string; id: string } | null) => {
+      setOwner(next as never);
+      record('__probeOwner', next ? `${next.kind}:${next.id}` : null);
     },
     registerNode: () => () => {},
     getNodeElement: (id: string) => document.querySelector(`[data-we-node-id="${id}"]`) as HTMLElement | null,
@@ -489,6 +524,7 @@ function editorProbe(): void {
   // Taken down by `editorProbeDispose`, so the next case on this page meets none of it.
   probeDisposers.push(() => {
     content.remove();
+    owned.remove();
     panel.remove();
     root.remove();
   });

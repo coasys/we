@@ -18,4 +18,4 @@ export type { SchemaUpdateResult } from './schemaUpdater';
 export type { ComponentRegistry, RenderProps, RendererOutput, SchemaNode, ThemeOverrides } from './types';
 
 export { VisualEditorProvider, useVisualEditor } from './VisualEditorContext';
-export type { VisualEditorContextValue } from './VisualEditorContext';
+export type { OwnerRef, VisualEditorContextValue } from './VisualEditorContext';
