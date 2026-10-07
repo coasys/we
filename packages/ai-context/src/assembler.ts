@@ -341,7 +341,15 @@ function formatModules(modules: ModuleCatalogEntry[]): string {
     }
     if (mod.parts.length) {
       lines.push(
-        `- Parts: ${mod.parts.map((p) => `\`${mod.id}.${p.name}\`${p.subject ? ` (subject: ${p.subject})` : ''}`).join(', ')}`,
+        `- Parts: ${mod.parts
+          .map((p) => {
+            const notes = [
+              ...(p.subject ? [`subject: ${p.subject}`] : []),
+              ...(p.inputs ?? []).map((input) => `needs ${input.name} — ${input.description}`),
+            ];
+            return `\`${mod.id}.${p.name}\`${notes.length ? ` (${notes.join('; ')})` : ''}`;
+          })
+          .join(', ')}`,
       );
     }
     if (mod.panels.length) {

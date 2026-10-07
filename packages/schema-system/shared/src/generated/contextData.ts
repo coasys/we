@@ -3160,6 +3160,7 @@ export const contextData: ContextData = {
     'EditorInspectorPanel',
     'EditorThemePanel',
     'PanelLane',
+    'PartFrame',
     'TemplateCard',
     'TemplatePanelBody',
     'WeCube',
@@ -3478,11 +3479,17 @@ export const contextData: ContextData = {
         },
       ],
       parts: [
-        { name: 'anchoredCallButton' },
+        {
+          name: 'anchoredCallButton',
+          inputs: [{ name: 'node', description: 'the record the call is about — anything with an id' }],
+        },
         { name: 'continueCallButton' },
         { name: 'deviceSettings' },
         { name: 'startCallButton' },
-        { name: 'tile' },
+        {
+          name: 'tile',
+          inputs: [{ name: 'tile', description: 'the participant to show — one of modules.call.tiles' }],
+        },
       ],
       panels: [{ name: 'stage', title: 'Call', hostOwned: false }],
       launchers: [{ key: 'call', label: 'Start call' }],
@@ -4143,7 +4150,10 @@ export const contextData: ContextData = {
         },
         { name: 'voting', kind: 'state', doc: 'The id of the poll a vote is being written for, or empty.' },
       ],
-      parts: [{ name: 'pollCard' }, { name: 'pollComposer' }],
+      parts: [
+        { name: 'pollCard', inputs: [{ name: 'block', description: 'the Poll record to show' }] },
+        { name: 'pollComposer' },
+      ],
       panels: [],
       launchers: [],
       settings: [

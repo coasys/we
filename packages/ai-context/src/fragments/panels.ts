@@ -203,8 +203,17 @@ over a call somebody opened from a link rather than the one being recorded:
 { "type": "$part", "props": { "id": "transcribe.transcriptFeed", "subject": { "$": "routeStore.params.call" } } }
 \`\`\`
 
-A part naming a module nobody has installed renders nothing and reports itself, the same way a
-contribution to an unprovided anchor does. Placing the module's *whole* panel is still
+Some parts draw one thing out of a list — a call tile draws one participant, a poll card one poll —
+and read it under a name the list binds. The module lists those as what a part **needs** (see Feature
+Modules). Place such a part inside an \`$each\` that binds the name, or give it with \`inputs\`:
+
+\`\`\`json
+{ "type": "$part", "props": { "id": "call.tile", "inputs": { "tile": { "$": "first(modules.call.tiles)" } } } }
+\`\`\`
+
+A part whose module is not here — not in this build, turned off by the person, or off in the space —
+draws a placeholder saying which, and how to turn it back on. Declare the modules a template places
+parts from in \`meta.requires.modules\`. Placing the module's *whole* panel is still
 \`{ "module": "<id>" }\` in \`meta.panels\`; parts are for building something else out of it.
 
 **Supplying a module's panel yourself.** A \`meta.panels\` entry carrying **both** \`module\` and
