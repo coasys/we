@@ -77,7 +77,11 @@ export function renderSatelliteOverlay(
       alpha: overlayOpacity(options),
       ...(product.keyBlack ? { colorToAlpha: Color.BLACK, colorToAlphaThreshold: 0.12 } : {}),
     });
-    layers.add(layer);
+    // A new day takes the old day's place in the stack, directly above it, rather than going on top:
+    // with the photograph and the fires both shown, the photograph's next day added on top would
+    // cover the fires the moment the clock moved.
+    if (shown && layers.contains(shown)) layers.add(layer, layers.indexOf(shown) + 1);
+    else layers.add(layer);
     if (shown) {
       outgoing.add(shown);
       setTimeout(() => (outgoing.size ? retire() : undefined), SWAP_TIMEOUT);
