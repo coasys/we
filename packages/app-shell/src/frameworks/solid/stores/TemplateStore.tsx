@@ -1,3 +1,4 @@
+import { withDerivedIds } from '@shared/registries/derivedIds';
 import { templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
 import { reserveId } from '@shared/templateIdentity';
@@ -256,8 +257,8 @@ export function TemplateStoreProvider(props: ParentProps) {
   // Shell templates — static system pages (profile, settings, testing)
   // landing-page is now an overlay (activeShellView), not a currentTemplate value
   const shellTemplates: TemplateSchema[] = [
-    { ...deepClone(profileTemplate), id: 'profile' },
-    { ...deepClone(settingsTemplate), id: 'settings' },
+    { ...deepClone(withDerivedIds(profileTemplate, 'profile')), id: 'profile' },
+    { ...deepClone(withDerivedIds(settingsTemplate, 'settings')), id: 'settings' },
     /*
       The schema-test harness is deliberately absent, and was dead weight here rather than a feature.
 
@@ -771,7 +772,8 @@ export function TemplateStoreProvider(props: ParentProps) {
   // Actions
   function updateTemplate(newTemplate: TemplateSchema) {
     const clone = deepClone(newTemplate) as SchemaNode;
-    ensureNodeIds(clone);
+    // Against the template it replaces, so a node pasted with an id already in use is the one renewed.
+    ensureNodeIds(clone, undefined, currentTemplate as SchemaNode);
     const result = updateSchema(currentTemplate, clone as TemplateSchema, setCurrentTemplate);
     if (!result.applied && result.errors?.length) {
       toastService.error(`Schema validation failed: ${result.errors[0].message}`);

@@ -5,8 +5,17 @@
  * session (which decides whether a validated result is applied or buffered). Pure schema
  * mechanics — no Solid, no stores, no network.
  */
-import type { SchemaNode } from '@we/schema-shared';
-import { definitionsOf, findNodeById, insertChild, mergeNode, REF_TYPE, removeChild } from '@we/schema-shared';
+import type { DefinitionUses, SchemaNode } from '@we/schema-shared';
+import {
+  definitionsOf,
+  findNodeById,
+  insertChild,
+  mergeNode,
+  REF_TYPE,
+  removeChild,
+  splitUse,
+  stripNodeIds,
+} from '@we/schema-shared';
 
 /**
  * Replace one `$ref` with a copy of the shape it names, leaving every other use sharing.
@@ -20,6 +29,7 @@ import { definitionsOf, findNodeById, insertChild, mergeNode, REF_TYPE, removeCh
 function splitSharedShape(
   schema: SchemaNode,
   targetId: string,
+  options: PatchOptions,
 ): { schema: SchemaNode; copy?: SchemaNode; error?: string } {
   const found = findNodeById(schema, targetId);
   if (!found) return { schema, error: `No node with id "${targetId}" found in the current schema.` };
@@ -36,20 +46,14 @@ function splitSharedShape(
     return { schema, error: `The $ref at "${targetId}" names no definition this template carries.` };
   }
 
-  // Ids are per position and this copy is a new one, so it takes none of the definition's.
-  const copy = JSON.parse(JSON.stringify(source)) as SchemaNode;
-  const shed = (node: SchemaNode) => {
-    delete node.id;
-    for (const child of node.children ?? []) if (child && typeof child === 'object') shed(child as SchemaNode);
-    for (const route of node.routes ?? []) shed(route as SchemaNode);
-    for (const slot of Object.values(node.slots ?? {})) shed(slot);
-    for (const value of Object.values(node.props ?? {})) {
-      for (const one of Array.isArray(value) ? value : [value]) {
-        if (one && typeof one === 'object' && 'type' in one) shed(one as SchemaNode);
-      }
-    }
-  };
-  shed(copy);
+  /*
+    The copy is that use of the shape, so with the table it takes that use's ids: the nodes it was
+    before compaction are the nodes it is after the split. Without one, it takes none of the
+    definition's — those belong to the shape — and is numbered fresh.
+  */
+  const copy = structuredClone(source);
+  if (options.uses) splitUse(schema, copy, targetId, options.uses, options.mint);
+  else stripNodeIds(copy);
   (copy as { forkedFrom?: string }).forkedFrom = name;
 
   const { parent, key, index } = found;
@@ -68,6 +72,14 @@ function splitSharedShape(
   // The object itself, not a path: whoever numbers the tree next mutates in place, so reading
   // `copy.id` afterwards is how the caller learns what to tell the model the copy is called.
   return { schema, copy };
+}
+
+/** What a session holding a compacted tree passes, so a split keeps the ids of the use it copies. */
+export interface PatchOptions {
+  /** The table `compactDefinitions` returned. See `DefinitionUses`. */
+  uses?: DefinitionUses;
+  /** How a node new to the tree is given an id. */
+  mint?: () => string;
 }
 
 export type SchemaPatch = {
@@ -98,15 +110,16 @@ export type SchemaPatch = {
  * clone and only promote it once validation passes. Returns `error` (and an unspecified partial
  * schema) on the first failing patch.
  *
- * `splits` holds the copy a `split` made, in patch order. A copy carries no ids — ids are per
- * position and this is a new one — so the caller numbers the tree and then reads `.id` off these
- * to tell the model what the copy is called. Without that the operation is a dead end inside a
+ * `splits` holds the copy a `split` made, in patch order. With `options.uses` the copy carries the
+ * ids of the use it replaced; without, none, and the caller numbers the tree. Either way the
+ * caller reads `.id` off these afterwards to tell the model what the copy is called. Without that the operation is a dead end inside a
  * session: the schema reaches the model in the user's turn and nowhere else, so a model that
  * split a use out would have no name for the thing it had just made, and nothing to patch.
  */
 export function applySchemaPatches(
   schema: SchemaNode,
   patches: SchemaPatch[],
+  options: PatchOptions = {},
 ): { schema: SchemaNode; splits: SchemaNode[]; error?: string } {
   const splits: SchemaNode[] = [];
   try {
@@ -121,7 +134,7 @@ export function applySchemaPatches(
       }
 
       if (patch.split) {
-        const split = splitSharedShape(schema, patch.targetId);
+        const split = splitSharedShape(schema, patch.targetId, options);
         if (split.error) return { schema, splits, error: split.error };
         schema = split.schema;
         if (split.copy) splits.push(split.copy);

@@ -670,6 +670,8 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
 
   return {
     type: 'Column',
+    // Named for what it discusses, so its id holds when the content beside it changes shape.
+    key: `discussion-${opts.record}`,
     props: { gap: '300', width: '100%' },
     $localState: {
       [REPLY_TO]: { type: 'string', initial: '' },

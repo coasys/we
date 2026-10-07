@@ -6,14 +6,15 @@
  * one that would fail silently — a node missing from the outline is a node the model cannot
  * address, and the symptom is an edit that lands somewhere plausible instead.
  */
-import { compactDefinitions, ensureNodeIds, type SchemaNode } from '@we/schema-shared';
+import type { SchemaNode } from '@we/schema-shared';
 import { kanbanTemplate } from '@we/template-showcase';
 import { describe, expect, it } from 'vitest';
 
+import { prepareForModel } from '../src/shared/ai/nodeAliases';
 import { boundTemplate, outlineText } from '../src/shared/ai/templateContext';
 
-const prepared = (template: unknown) =>
-  ensureNodeIds(compactDefinitions(structuredClone(template) as SchemaNode).schema);
+// The tree as the model is shown it: compacted, and aliased.
+const prepared = (template: unknown) => prepareForModel(template as SchemaNode).schema;
 
 const kanban = () => prepared(kanbanTemplate);
 

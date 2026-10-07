@@ -19,6 +19,7 @@
  * - "panel"      — large child subtrees within a route (keyed by qualifier)
  */
 
+import { newNodeId } from './nodeIdentity';
 import { isPropsSchemaNode, isSchemaChild, panelsOf } from './treeUtils';
 import type { RouteSchema, SchemaNode, TemplateSchema } from './types';
 
@@ -64,8 +65,7 @@ function forEachPropsNode(node: SchemaNode, fn: (child: SchemaNode) => void): vo
  * rendered and had no id — so the model could see it and could not patch it, which is not an
  * error anywhere, just an edit that never lands. 1,127 of `workshopTemplate`'s 1,807 nodes.
  *
- * `strip` walks it too. An id left behind in a panel would be stored in the template, which is
- * the thing `stripNodeIds` exists to prevent.
+ * `strip` walks it too, so a copy made with `copyWithNewIds` keeps none of its source's ids there.
  */
 function forEachPanelNode(node: SchemaNode, fn: (child: SchemaNode) => void): void {
   for (const panel of panelsOf(node) ?? []) {
@@ -297,11 +297,6 @@ export type FindNodeResult = {
 };
 
 /**
- * Assign stable IDs to every node in the tree that lacks one.
- * Deduplicates: if two nodes share the same ID, the second gets a new one.
- * Mutates the schema in place and returns it.
- */
-/**
  * Every component name a schema mounts, anywhere in its tree.
  *
  * Derived by walking rather than read from `meta.components`, because nothing keeps a hand-written
@@ -336,89 +331,127 @@ export function collectComponentTypes(schema: SchemaNode): Set<string> {
   return found;
 }
 
-export function ensureNodeIds(schema: SchemaNode): SchemaNode {
-  // First pass: collect all existing IDs and find max numeric suffix
-  const existingIds = new Set<string>();
-  let maxSuffix = 0;
-
-  function collectIds(node: SchemaNode): void {
-    if (node.id) {
-      const m = /^n(\d+)$/.exec(node.id);
-      if (m) maxSuffix = Math.max(maxSuffix, parseInt(m[1], 10));
-    }
+/**
+ * Call fn on every node of a tree, parents before their children: children, routes, slots, nodes
+ * held in props, the nodes `meta.panels` entries carry, and the shapes in `$defs`.
+ *
+ * The one walk anything assigning, reading or renaming ids should use, so that none of them
+ * disagrees with the others about what counts as a node — which is how 62% of the workshop
+ * template's nodes once went without ids.
+ */
+export function forEachNode(schema: SchemaNode, fn: (node: SchemaNode, parent: SchemaNode | undefined) => void): void {
+  const visit = (node: SchemaNode, parent: SchemaNode | undefined): void => {
+    fn(node, parent);
+    const into = (child: SchemaNode) => visit(child, node);
     if (node.children) {
       for (const child of node.children) {
-        if (isSchemaChild(child)) collectIds(child);
+        if (isSchemaChild(child)) into(child);
       }
     }
     if (node.routes) {
-      for (const route of node.routes) collectIds(route as SchemaNode);
+      for (const route of node.routes) into(route as SchemaNode);
     }
     if (node.slots) {
-      for (const slotNode of Object.values(node.slots)) collectIds(slotNode);
+      for (const slotNode of Object.values(node.slots)) into(slotNode);
     }
-    forEachPropsNode(node, collectIds);
-    forEachDefinition(node, collectIds);
-    forEachPanelNode(node, collectIds);
+    forEachPropsNode(node, into);
+    forEachDefinition(node, into);
+    forEachPanelNode(node, into);
+  };
+  visit(schema, undefined);
+}
+
+/**
+ * Give every node that has no id one, and every node sharing an id with another a new one.
+ *
+ * Ids are permanent (see `nodeIdentity.ts`), so this only ever fills gaps: a node somebody just
+ * made, a node a language model wrote without one. `mint` says what a new id is — a permanent one
+ * by default; the assistant's session passes its own, since a model is shown short aliases in
+ * place of ids and must be handed one for a node it can then target.
+ *
+ * A duplicate is a node copied without being given an identity of its own, and both copies claiming
+ * one identity would make every edit to it ambiguous, so all but one are renewed — and that is
+ * reported, because a copy that kept its source's ids is a bug in whatever copied it.
+ *
+ * WHICH one keeps it matters: the original must, or a paste takes the identity of the thing it
+ * copied and anything that named the original now names the paste. Walk order cannot say which is
+ * the original — a node pasted near the top of a tree is reached before one deep in its routes — so
+ * pass `previous`, the tree before the edit, and the id stays with the node whose parent is the
+ * same as it was. Parents rather than positions, because a parent's id survives an edit and a
+ * position shifts whenever a sibling is inserted. Without `previous`, or when no candidate matches,
+ * the first in walk order keeps it.
+ *
+ * Mutates the schema in place and returns it.
+ */
+export function ensureNodeIds(schema: SchemaNode, mint: () => string = newNodeId, previous?: SchemaNode): SchemaNode {
+  const parentBefore = new Map<string, string | undefined>();
+  if (previous) forEachNode(previous, (node, parent) => node.id && parentBefore.set(node.id, parent?.id));
+
+  // Who claims each id, so a duplicate can be settled before anybody is renewed.
+  const claims = new Map<string, { node: SchemaNode; parent?: string }[]>();
+  forEachNode(schema, (node, parent) => {
+    if (!node.id) return;
+    const list = claims.get(node.id) ?? [];
+    list.push({ node, parent: parent?.id });
+    claims.set(node.id, list);
+  });
+
+  // A new id must not be one already in the tree — a model can write an alias the minter has yet to reach.
+  const fresh = (): string => {
+    let id = mint();
+    while (claims.has(id)) id = mint();
+    claims.set(id, []);
+    return id;
+  };
+
+  const renewed: string[] = [];
+  for (const [id, list] of claims) {
+    if (list.length < 2) continue;
+    const keeper = (parentBefore.has(id) && list.find((claim) => claim.parent === parentBefore.get(id))) || list[0];
+    for (const claim of list) {
+      if (claim === keeper) continue;
+      renewed.push(id);
+      claim.node.id = fresh();
+    }
   }
-  collectIds(schema);
+  forEachNode(schema, (node) => {
+    if (!node.id) node.id = fresh();
+  });
 
-  // Second pass: assign/deduplicate IDs
-  let counter = maxSuffix + 1;
-
-  function assignIds(node: SchemaNode): void {
-    if (!node.id) {
-      node.id = `n${counter++}`;
-    } else if (existingIds.has(node.id)) {
-      // Duplicate — reassign
-      node.id = `n${counter++}`;
-    }
-    existingIds.add(node.id);
-
-    if (node.children) {
-      for (const child of node.children) {
-        if (isSchemaChild(child)) assignIds(child);
-      }
-    }
-    if (node.routes) {
-      for (const route of node.routes) assignIds(route as SchemaNode);
-    }
-    if (node.slots) {
-      for (const slotNode of Object.values(node.slots)) assignIds(slotNode);
-    }
-    forEachPropsNode(node, assignIds);
-    forEachDefinition(node, assignIds);
-    forEachPanelNode(node, assignIds);
+  if (renewed.length) {
+    console.warn(
+      `[ensureNodeIds] ${renewed.length} node(s) shared an id with another node and were given new ones ` +
+        `(${renewed.slice(0, 5).join(', ')}${renewed.length > 5 ? ', …' : ''}). ` +
+        'Whatever copied them should give the copy ids of its own — see copyWithNewIds.',
+    );
   }
-  assignIds(schema);
-
   return schema;
 }
 
 /**
- * Remove all auto-assigned node IDs from the tree.
- * IDs are transient — only needed when passing the schema to the AI for patch editing.
- * Mutates the schema in place and returns it.
+ * A copy of a subtree with an identity of its own: every id inside it is new.
+ *
+ * What anything that duplicates part of a template should call. A copy that kept its source's ids
+ * would claim to be the same nodes, so a later edit, a comparison with an original, or a comment
+ * left on one could land on the other. Strips and re-mints rather than mapping, so no id from the
+ * source survives in the copy.
+ */
+export function copyWithNewIds<T extends SchemaNode>(node: T, mint: () => string = newNodeId): T {
+  const copy = structuredClone(node);
+  stripNodeIds(copy);
+  return ensureNodeIds(copy, mint) as T;
+}
+
+/**
+ * Remove every node id from the tree, the root's included.
+ *
+ * Ids are permanent, so this is not how a template is saved. It is for the few places that want a
+ * shape without an identity: comparing two trees by content, and making a copy that will be given
+ * ids of its own (`copyWithNewIds`). A caller holding a template must put the root's id — the
+ * template's own — back. Mutates the schema in place and returns it.
  */
 export function stripNodeIds(schema: SchemaNode): SchemaNode {
-  function strip(node: SchemaNode): void {
-    delete node.id;
-    if (node.children) {
-      for (const child of node.children) {
-        if (isSchemaChild(child)) strip(child);
-      }
-    }
-    if (node.routes) {
-      for (const route of node.routes) strip(route as SchemaNode);
-    }
-    if (node.slots) {
-      for (const slotNode of Object.values(node.slots)) strip(slotNode);
-    }
-    forEachPropsNode(node, strip);
-    forEachDefinition(node, strip);
-    forEachPanelNode(node, strip);
-  }
-  strip(schema);
+  forEachNode(schema, (node) => delete node.id);
   return schema;
 }
 

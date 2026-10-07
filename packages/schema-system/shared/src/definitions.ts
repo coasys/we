@@ -39,6 +39,7 @@
  * run, re-run, and re-merge freely. The one invariant that must hold is that an edit never leaks
  * from one use to another.
  */
+import { newNodeId } from './nodeIdentity';
 import { isPropsSchemaNode, isSchemaChild, panelsOf } from './treeUtils';
 import type { SchemaNode } from './types';
 
@@ -72,7 +73,29 @@ export interface CompactOptions {
    * repeating the moment their parent was hoisted.
    */
   minChars?: number;
+  /** How a definition's own nodes are given ids. A permanent id by default — see `DefinitionUses`. */
+  mint?: () => string;
 }
+
+/**
+ * Which node each use of a shared shape really is, so expanding it gives back the ids it had.
+ *
+ * Ids are permanent, and a shape used three times is three sets of nodes with three sets of ids.
+ * A definition holds the shape ONCE, so its nodes cannot carry anybody's ids: they get ids of their
+ * own, local to the definition, and this table says, per use, which real node each of them stands
+ * for. Without it, compacting a template and expanding it again would hand every node inside a
+ * shared shape a new identity — every edit the assistant made would renumber the parts it never
+ * touched.
+ *
+ * Keyed by the id of each `$ref` in the tree, which is the id of the node that use replaced. Inside
+ * that, by a definition node's local id — or, for a node reached through a `$ref` inside a
+ * definition, by that reference's local id, a `/`, and the key inside it: `x7/k2` is node `k2` of
+ * the shape that the reference `x7` names, at this use.
+ *
+ * Out of band rather than in the schema, because it is bookkeeping for the round trip and nothing
+ * that renders or that a reader edits. Only an edit session holds one, for as long as it lasts.
+ */
+export type DefinitionUses = Record<string, Record<string, string>>;
 
 export interface CompactResult {
   /** The root, with `$defs` and every repeat replaced by a `$ref`. */
@@ -81,6 +104,8 @@ export interface CompactResult {
   hoisted: number;
   /** Characters saved, serialised: the whole tree before minus the whole tree after. */
   saved: number;
+  /** Which node each use of each new definition stands for — pass it back to `expandDefinitions`. */
+  uses: DefinitionUses;
 }
 
 const CANON = new WeakMap<object, string>();
@@ -163,7 +188,36 @@ function mapChildren(node: SchemaNode, map: (child: SchemaNode) => SchemaNode): 
   return out;
 }
 
+/**
+ * The child positions of a node, each with a name saying where it is.
+ *
+ * `childPositions` lists the same nodes in an order; this names them, so two trees that are the
+ * same shape can be walked side by side. Not by index, because two shapes compaction calls the same
+ * may have written their props in different orders — `canonical` sorts keys, and so must anything
+ * that pairs one with the other.
+ */
+function namedPositions(node: SchemaNode): [string, SchemaNode][] {
+  const out: [string, SchemaNode][] = [];
+  const push = (name: string, v: unknown) => {
+    if (Array.isArray(v)) v.forEach((one, i) => push(`${name}.${i}`, one));
+    else if (isSchemaChild(v) || isPropsSchemaNode(v)) out.push([name, v as SchemaNode]);
+  };
+  if (Array.isArray(node.children)) push('c', node.children);
+  if (Array.isArray(node.routes)) push('r', node.routes);
+  if (node.slots) for (const [k, v] of Object.entries(node.slots)) push(`s:${k}`, v);
+  if (node.props) for (const [k, v] of Object.entries(node.props)) if (k !== 'styles') push(`p:${k}`, v);
+  (panelsOf(node) ?? []).forEach((panel, i) => push(`panel:${i}`, panel.node));
+  return out;
+}
+
 const isRef = (node: SchemaNode): boolean => node.type === REF_TYPE;
+const refName = (node: SchemaNode): string | undefined => (node.props as RefProps | undefined)?.def;
+
+/** Every node of a definition's body, `$ref`s included, without following them. */
+function forEachInBody(node: SchemaNode, fn: (n: SchemaNode) => void): void {
+  fn(node);
+  if (!isRef(node)) for (const child of childPositions(node)) forEachInBody(child, fn);
+}
 
 /** The definitions a root carries, or an empty object. */
 export function definitionsOf(schema: SchemaNode): Record<string, SchemaNode> {
@@ -267,10 +321,135 @@ export function compactDefinitions(schema: SchemaNode, options: CompactOptions =
     }
   }
 
-  if (!Object.keys(defs).length) return { schema, hoisted: 0, saved: 0 };
+  if (!Object.keys(defs).length) return { schema, hoisted: 0, saved: 0, uses: {} };
 
+  const uses = rememberUses(schema, rewritten, defs, options.mint ?? newNodeId);
   const out: SchemaNode = { ...rewritten, $defs: { ...definitionsOf(schema), ...defs } } as SchemaNode;
-  return { schema: out, hoisted: Object.keys(defs).length, saved: before - JSON.stringify(out).length };
+  return { schema: out, hoisted: Object.keys(defs).length, saved: before - JSON.stringify(out).length, uses };
+}
+
+/**
+ * Give the new definitions ids of their own, and record which real node each use's nodes were.
+ *
+ * Walks the tree as it arrived beside the compacted one: where the compacted one has a `$ref`, the
+ * walk carries on into the definition, pairing each of its nodes with the node it replaced. That
+ * pairing is the table. Pairs by named position rather than by index — see `namedPositions`.
+ *
+ * Only references this pass made are followed. One the template already carried pairs with itself.
+ */
+function rememberUses(
+  original: SchemaNode,
+  rewritten: SchemaNode,
+  defs: Record<string, SchemaNode>,
+  mint: () => string,
+): DefinitionUses {
+  for (const body of Object.values(defs)) forEachInBody(body, (n) => (n.id = mint()));
+
+  const uses: DefinitionUses = {};
+  type At = { table: Record<string, string>; prefix: string } | null;
+
+  const pair = (before: SchemaNode, after: SchemaNode, at: At) => {
+    const name = isRef(after) && !isRef(before) ? refName(after) : undefined;
+    const body = name ? defs[name] : undefined;
+    if (body) {
+      let into: At;
+      if (at) {
+        into = { table: at.table, prefix: `${at.prefix}${after.id}/` };
+      } else {
+        // A use in the tree itself: the reference takes the id of the node it stands in for.
+        after.id = before.id ?? mint();
+        into = { table: (uses[after.id] = {}), prefix: '' };
+      }
+      pair(before, body, into);
+      return;
+    }
+    if (at && before.id && after.id) at.table[at.prefix + after.id] = before.id;
+    const beforeChildren = new Map(namedPositions(before));
+    for (const [where, child] of namedPositions(after)) {
+      const match = beforeChildren.get(where);
+      if (match) pair(match, child, at);
+    }
+  };
+
+  pair(original, rewritten, null);
+  return uses;
+}
+
+/**
+ * The definition whose body holds the node with this id, if any — whether a node is shared.
+ */
+export function definitionHolding(schema: SchemaNode, id: string): string | undefined {
+  for (const [name, body] of Object.entries(definitionsOf(schema))) {
+    let found = false;
+    forEachInBody(body, (n) => (found ||= n.id === id));
+    if (found) return name;
+  }
+  return undefined;
+}
+
+/**
+ * Give one use of a shared shape the copy a split makes, with that use's ids, and keep the table
+ * true afterwards.
+ *
+ * `copy` is a fresh clone of the definition's body, and `refId` the reference it replaces. Two
+ * cases, because a reference can stand in the tree or inside another definition:
+ *
+ * - **In the tree.** The copy is that use, so each of its nodes takes the id the table recorded for
+ *   it, and a node the table has no entry for is new and takes a new id. A reference inside the copy
+ *   becomes a use in the tree itself, so it takes its own use's id and its part of the table.
+ * - **Inside a definition.** The copy is part of a shape that is still shared, so it gets ids local
+ *   to that definition, and every key in the table that went through the reference is rewritten to
+ *   go through the copy instead.
+ *
+ * Mutates `copy` and `uses`.
+ */
+export function splitUse(
+  schema: SchemaNode,
+  copy: SchemaNode,
+  refId: string,
+  uses: DefinitionUses,
+  mint: () => string = newNodeId,
+): void {
+  const defs = definitionsOf(schema);
+
+  if (!definitionHolding(schema, refId)) {
+    const table = uses[refId] ?? {};
+    delete uses[refId];
+    forEachInBody(copy, (n) => {
+      const local = n.id ?? '';
+      if (isRef(n)) {
+        const root = defs[refName(n) ?? '']?.id;
+        const own = `${local}/`;
+        const id = (root && table[own + root]) || mint();
+        uses[id] = Object.fromEntries(
+          Object.entries(table)
+            .filter(([key]) => key.startsWith(own))
+            .map(([key, real]) => [key.slice(own.length), real]),
+        );
+        n.id = id;
+      } else {
+        n.id = table[local] ?? mint();
+      }
+    });
+    return;
+  }
+
+  const renamed = new Map<string, string>();
+  forEachInBody(copy, (n) => {
+    const fresh = mint();
+    if (n.id) renamed.set(n.id, fresh);
+    n.id = fresh;
+  });
+  for (const table of Object.values(uses)) {
+    for (const [key, real] of Object.entries(table)) {
+      const steps = key.split('/');
+      const at = steps.indexOf(refId);
+      if (at < 0 || at === steps.length - 1) continue;
+      delete table[key];
+      const next = renamed.get(steps[at + 1]);
+      if (next) table[[...steps.slice(0, at), next, ...steps.slice(at + 2)].join('/')] = real;
+    }
+  }
 }
 
 /**
@@ -330,9 +509,10 @@ export function useCountOf(root: SchemaNode, targetId: string): number {
  * one file is also what lets a test assert the round trip, which is the only real guarantee that
  * compaction is lossless.
  */
-export function expandDefinitions(schema: SchemaNode): SchemaNode {
+export function expandDefinitions(schema: SchemaNode, options: { uses?: DefinitionUses } = {}): SchemaNode {
   const defs = definitionsOf(schema);
   if (!Object.keys(defs).length) return schema;
+  const { uses } = options;
 
   /*
     A definition may itself hold references, so expansion recurses — and a reference cycle would
@@ -341,17 +521,35 @@ export function expandDefinitions(schema: SchemaNode): SchemaNode {
     one could contain `d1 -> d2 -> d1`. The `open` set turns that into a missing node rather than a
     hung tab.
   */
-  const expand = (node: SchemaNode, open: ReadonlySet<string>): SchemaNode => {
+  /*
+    With a table, each node of a definition takes the id its use recorded for it, and a node the
+    table does not know — one added to the shape this session, or every node of a use the table
+    never saw — takes none, so whoever numbers the tree next gives it a new one. Without a table a
+    definition's ids are copied into every use, as they always were.
+  */
+  type At = { table: Record<string, string> | undefined; prefix: string } | null;
+  const expand = (node: SchemaNode, open: ReadonlySet<string>, at: At): SchemaNode => {
     if (isRef(node)) {
-      const name = (node.props as RefProps | undefined)?.def;
+      const name = refName(node);
       const target = typeof name === 'string' ? defs[name] : undefined;
       if (!target || !name || open.has(name)) return { type: 'Column' };
-      return expand(target, new Set([...open, name]));
+      const into: At = !uses
+        ? null
+        : at
+          ? { table: at.table, prefix: `${at.prefix}${node.id}/` }
+          : { table: uses[node.id ?? ''], prefix: '' };
+      return expand(target, new Set([...open, name]), into);
     }
-    return mapChildren(node, (child) => expand(child, open));
+    const out = mapChildren(node, (child) => expand(child, open, at));
+    if (at) {
+      const real = at.table?.[at.prefix + (node.id ?? '')];
+      if (real) out.id = real;
+      else delete out.id;
+    }
+    return out;
   };
 
-  const out = mapChildren(schema, (child) => expand(child, new Set()));
+  const out = mapChildren(schema, (child) => expand(child, new Set(), null));
   delete (out as { $defs?: unknown }).$defs;
   return out;
 }

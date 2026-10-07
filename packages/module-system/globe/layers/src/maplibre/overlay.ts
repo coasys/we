@@ -69,12 +69,21 @@ export function renderSatelliteOverlay(
   };
 
   /** Beneath every data layer: directly above the globe's own imagery and any overlay already there. */
-  const beneath = () =>
-    map
-      .getStyle()
-      .layers.find(
-        (layer) => layer.id !== 'space' && !layer.id.startsWith('imagery-') && !layer.id.startsWith('overlay:'),
-      )?.id;
+  /**
+   * Where a new day goes. The first goes beneath every data layer, above the globe's own imagery and
+   * any overlay already there. A later day takes the old day's place, directly above it: put back on
+   * top of the overlays, the photograph's next day would cover the fires the moment the clock moved.
+   */
+  const beneath = (previous: string | null) => {
+    const layers = map.getStyle().layers;
+    if (previous) {
+      const at = layers.findIndex((layer) => layer.id === previous);
+      if (at >= 0) return layers[at + 1]?.id;
+    }
+    return layers.find(
+      (layer) => layer.id !== 'space' && !layer.id.startsWith('imagery-') && !layer.id.startsWith('overlay:'),
+    )?.id;
+  };
 
   const keyNow = () => `${overlayProduct(options).id}:${overlayDay(options, context.clock.at())}`;
 
@@ -100,7 +109,7 @@ export function renderSatelliteOverlay(
     });
     map.addLayer(
       { id: name, type: 'raster', source: name, paint: { 'raster-opacity': overlayOpacity(options) } },
-      beneath(),
+      beneath(shown),
     );
     const previous = shown;
     shown = name;

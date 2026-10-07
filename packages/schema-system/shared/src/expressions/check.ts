@@ -160,6 +160,26 @@ export function checkExpression(expr: Expr, scope: ExpressionScope): ExpressionI
   }
 
   walkExpr(expr, (node) => {
+    if (node.kind === 'logical' && node.op !== '??') {
+      /*
+        `&&` and `||` answer true or false, never one of their sides — on purpose, so a condition is
+        always a boolean. The cost is the JavaScript habit: `label || 'Untitled'` reads as a fallback
+        and renders "true". It typechecks, validates and draws, so nothing said so; a globe timeline
+        showed "true" where its date belonged. Text or a number beside one is never what was meant.
+      */
+      const literal = [node.left, node.right].find(isValueLiteral);
+      if (literal) {
+        issues.push({
+          message:
+            node.op === '||'
+              ? `"${node.op}" answers true or false, never one of its sides, so this is never the text beside it. For a fallback write "a ? a : 'text'" (or "a ?? 'text'" when a is absent rather than empty)`
+              : `"${node.op}" answers true or false, never one of its sides, so this is never the text beside it. For a value shown only when a condition holds, write "condition ? 'text' : ''"`,
+          severity: 'warning',
+          span: node.span,
+        });
+      }
+      return;
+    }
     if (node.kind !== 'call') return;
     // The form-state readers name a field as a string; it has to be one the scope declares.
     if (FIELD_READERS.has(node.callee) && scope.locals !== null) {
@@ -199,6 +219,15 @@ export function checkExpression(expr: Expr, scope: ExpressionScope): ExpressionI
   });
 
   return issues;
+}
+
+/**
+ * A value written out — text, a number, a list or an object — as opposed to a boolean, `null` or
+ * anything computed. Beside `&&` or `||` it can only have been meant as the result.
+ */
+function isValueLiteral(expr: Expr): boolean {
+  if (expr.kind === 'literal') return typeof expr.value === 'string' || typeof expr.value === 'number';
+  return expr.kind === 'template' || expr.kind === 'list' || expr.kind === 'object';
 }
 
 /** Whether the expression reads a name that only exists once a callback has fired. */

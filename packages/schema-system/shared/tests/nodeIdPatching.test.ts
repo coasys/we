@@ -1,12 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { ensureNodeIds, findNodeById, insertChild, mergeNode, removeChild } from '../src/indexer';
+import { isNodeId } from '../src/nodeIdentity';
 import type { SchemaNode } from '../src/types';
 
 // ── ensureNodeIds ──────────────────────────────────────────────────
 
 describe('ensureNodeIds', () => {
-  it('assigns IDs to all nodes in a tree with no existing IDs', () => {
+  it('gives every node without an id a permanent one', () => {
     const schema: SchemaNode = {
       type: 'Column',
       children: [
@@ -17,45 +18,64 @@ describe('ensureNodeIds', () => {
 
     ensureNodeIds(schema);
 
-    expect(schema.id).toBe('n1');
-    expect((schema.children![0] as SchemaNode).id).toBe('n2');
-    expect((schema.children![1] as SchemaNode).id).toBe('n3');
+    const ids = [schema.id, ...schema.children!.map((c) => (c as SchemaNode).id)];
+    for (const id of ids) expect(isNodeId(id)).toBe(true);
+    expect(new Set(ids).size).toBe(3);
   });
 
-  it('preserves existing IDs and fills gaps', () => {
+  it('keeps the ids nodes already have, whatever their format', () => {
     const schema: SchemaNode = {
       type: 'Column',
-      id: 'n5',
+      id: 'workshop',
       children: [
         { type: 'we-text', props: { text: 'Hello' } },
-        { type: 'we-button', id: 'n10', props: { text: 'Click' } },
+        { type: 'we-button', id: 'k3j9x0q2pd', props: { text: 'Click' } },
       ],
     };
 
     ensureNodeIds(schema);
 
-    expect(schema.id).toBe('n5');
-    expect((schema.children![0] as SchemaNode).id).toBe('n11'); // counter starts after max (10)
-    expect((schema.children![1] as SchemaNode).id).toBe('n10');
+    expect(schema.id).toBe('workshop');
+    expect(isNodeId((schema.children![0] as SchemaNode).id)).toBe(true);
+    expect((schema.children![1] as SchemaNode).id).toBe('k3j9x0q2pd');
   });
 
-  it('deduplicates: second node with same ID gets reassigned', () => {
+  it('mints with the function it is given', () => {
+    let n = 0;
+    const schema: SchemaNode = { type: 'Column', children: [{ type: 'we-text' }] };
+    ensureNodeIds(schema, () => `n${++n}`);
+    expect(schema.id).toBe('n1');
+    expect((schema.children![0] as SchemaNode).id).toBe('n2');
+  });
+
+  it('renews the second of two nodes sharing an id, and says so', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const schema: SchemaNode = {
       type: 'Column',
-      id: 'n1',
+      id: 'a1b2c3d4e5',
       children: [
-        { type: 'we-text', id: 'n1' }, // duplicate!
-        { type: 'we-button', id: 'n2' },
+        { type: 'we-text', id: 'a1b2c3d4e5' }, // duplicate!
+        { type: 'we-button', id: 'f6g7h8i9j0' },
       ],
     };
 
     ensureNodeIds(schema);
 
-    expect(schema.id).toBe('n1');
-    // The duplicate gets reassigned
-    expect((schema.children![0] as SchemaNode).id).not.toBe('n1');
-    expect((schema.children![0] as SchemaNode).id).toMatch(/^n\d+$/);
-    expect((schema.children![1] as SchemaNode).id).toBe('n2');
+    expect(schema.id).toBe('a1b2c3d4e5');
+    const renewed = (schema.children![0] as SchemaNode).id;
+    expect(renewed).not.toBe('a1b2c3d4e5');
+    expect(isNodeId(renewed)).toBe(true);
+    expect((schema.children![1] as SchemaNode).id).toBe('f6g7h8i9j0');
+    expect(warn).toHaveBeenCalledOnce();
+    expect(String(warn.mock.calls[0][0])).toContain('a1b2c3d4e5');
+    warn.mockRestore();
+  });
+
+  it('does not warn when nothing was duplicated', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    ensureNodeIds({ type: 'Column', children: [{ type: 'we-text' }] });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it('walks children, routes, and slots', () => {
@@ -497,5 +517,45 @@ describe('removeChild', () => {
     const err = removeChild(schema, '', 'children', 'c1');
     expect(err).toBeUndefined();
     expect(schema.children).toHaveLength(2);
+  });
+});
+
+/*
+  A paste that kept its source's id. Walk order puts the paste first when it lands near the top of
+  the tree and the original sits deep in its routes — found in the app, where the paste kept the id
+  and the heading it copied lost it.
+*/
+describe('ensureNodeIds and a copy that kept its source’s id', () => {
+  const tree = (withPaste: boolean): SchemaNode => ({
+    id: 'root',
+    type: 'Column',
+    children: withPaste ? [{ type: 'we-text', id: 'aaaaaaaaaa', children: ['Heading'] }] : [],
+    routes: [
+      {
+        path: '/',
+        id: 'routeaaaaa',
+        type: 'Column',
+        children: [{ type: 'we-text', id: 'aaaaaaaaaa', children: ['Heading'] }],
+      },
+    ],
+  });
+
+  it('leaves the id with the node whose parent held it before, wherever the walk meets it first', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const after = ensureNodeIds(tree(true), undefined, tree(false));
+    const original = after.routes![0].children![0] as SchemaNode;
+    const paste = after.children![0] as SchemaNode;
+    expect(original.id).toBe('aaaaaaaaaa');
+    expect(paste.id).not.toBe('aaaaaaaaaa');
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
+  it('never mints an id already in the tree', () => {
+    let n = 0;
+    const schema: SchemaNode = { type: 'Column', children: [{ type: 'we-text', id: 'n2' }, { type: 'we-text' }] };
+    ensureNodeIds(schema, () => `n${++n}`);
+    const ids = [schema.id, ...(schema.children as SchemaNode[]).map((c) => c.id)];
+    expect(new Set(ids).size).toBe(3);
   });
 });

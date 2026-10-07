@@ -10,6 +10,7 @@
  */
 import { chatContext, formatExternalManifestForPrompt, requestMessage, updateSchemaTool } from '@shared/ai/aiInfra';
 import { countedPatches, runEditSession } from '@shared/ai/editSession';
+import { prepareForModel } from '@shared/ai/nodeAliases';
 import { boundTemplate } from '@shared/ai/templateContext';
 import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
@@ -28,14 +29,7 @@ import { ChatMessage as ChatMessageRecord, ChatSession as ChatSessionRecord } fr
 import type { DockEdge, DockSize } from '@we/module-shared';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { contextData, setLocalWarningSink } from '@we/schema-shared';
-import {
-  buildValidationContext,
-  compactDefinitions,
-  ensureNodeIds,
-  expandDefinitions,
-  stripNodeIds,
-  withEntities,
-} from '@we/schema-shared';
+import { buildValidationContext, withEntities } from '@we/schema-shared';
 import {
   Accessor,
   createContext,
@@ -329,8 +323,12 @@ export function EditorStoreProvider(props: ParentProps) {
 
   // --- Content mode (preview / visual / code) ---
   const [contentMode, setContentModeSignal] = createSignal<'preview' | 'visual'>('preview');
-  const schemaJson = () =>
-    JSON.stringify(stripNodeIds(deepClone(templateStore.currentTemplate) as SchemaNode), null, 2);
+  /*
+    Ids shown, not stripped: they are permanent, so they are part of what a template IS, and the
+    code panel is where somebody reads the template exactly. Stripping them made every save from the
+    panel renumber the whole tree.
+  */
+  const schemaJson = () => JSON.stringify(templateStore.currentTemplate, null, 2);
 
   // --- Template context (computed) ---
   const templateName = () => templateStore.currentTemplate.meta?.name || templateStore.currentTemplate.id || 'Template';
@@ -1021,9 +1019,8 @@ export function EditorStoreProvider(props: ParentProps) {
       side, to one inline copy of it. It validated, it saved, it changed something plausible, and
       the model's explanation of what it had done was confidently wrong.
     */
-    const schemaForRequest = ensureNodeIds(
-      compactDefinitions(deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode).schema,
-    );
+    const modelTree = prepareForModel(deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode);
+    const schemaForRequest = modelTree.schema;
     const prepared = await chatContext({ request: text, schema: schemaForRequest });
     /*
       How much of the TEMPLATE goes with it. `chatContext` bounds the reference; this bounds the
@@ -1043,6 +1040,8 @@ export function EditorStoreProvider(props: ParentProps) {
       // Buffered changes if there are any, so a conversation resumed against a read-only template
       // continues from them rather than reverting them.
       schema: schemaForRequest,
+      mint: modelTree.mint,
+      uses: modelTree.uses,
       validationContext: getValidationCtx(),
       onDisplay: setStreamingContent,
       debug: devLog,
@@ -1053,8 +1052,11 @@ export function EditorStoreProvider(props: ParentProps) {
           template. A stored `$defs` would be a second shape for everything downstream to
           understand — the code panel, a published template, the next turn's compaction — in
           exchange for nothing, since the saving is in what is sent.
+
+          And given back its permanent ids: every node the model left alone keeps the id it came
+          in with, and one it made gets a new one. See `nodeAliases.ts`.
         */
-        const authored = stripNodeIds(expandDefinitions(merged)) as TemplateSchema;
+        const authored = modelTree.restore(merged) as TemplateSchema;
         if (isReadOnly()) {
           setPendingTemplate(authored);
           return 'Schema changes validated and buffered. Template is read-only — user must fork to apply.';
@@ -1181,9 +1183,13 @@ export function EditorStoreProvider(props: ParentProps) {
     try {
       const parsed = JSON.parse(json);
       pushSnapshot();
-      // stripNodeIds deletes the root node's id, but at the TemplateSchema level that
-      // id is the template identifier, not an internal node id — restore it.
-      const schema = { ...stripNodeIds(parsed as SchemaNode), id: templateStore.currentTemplate.id } as TemplateSchema;
+      /*
+        Ids kept as typed: a node keeps its identity through an edit here like any other. One typed
+        without an id is given one by `updateTemplate`, and one pasted with an id already in use is
+        given a new one there too, with a warning. The root's id is the template's, and the panel
+        does not get to change which template this is.
+      */
+      const schema = { ...(parsed as TemplateSchema), id: templateStore.currentTemplate.id } as TemplateSchema;
       templateStore.updateTemplate(schema);
       void commitEdit();
       setMessages((prev) => [...prev, createMessage('assistant', 'Schema updated from JSON editor.')]);
