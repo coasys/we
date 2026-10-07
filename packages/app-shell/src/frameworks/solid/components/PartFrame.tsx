@@ -17,7 +17,7 @@
  * off should not find its pieces still working in a template. Outside a space — settings, the root
  * chrome — only whether this build has the module at all counts, since no space has decided anything.
  */
-import { type MissingPart as MissingPartReason, whyMissing } from '@shared/partAvailability';
+import { describeMissing, fixFor, type MissingPart as MissingPartReason, whyMissing } from '@shared/partAvailability';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { Column, Row } from '@we/components/solid';
 import { findNodeById, PART_ATTR, PART_NODE_ATTR, type SchemaNode, type TemplateSchema } from '@we/schema-shared';
@@ -88,40 +88,16 @@ function MissingPart(props: { part: string; at?: string; why: MissingPartReason 
   const moduleName = () => moduleRegistry.get(moduleId())?.definition.manifest.name ?? humanise(moduleId());
   const label = () => moduleRegistry.parts()[props.part]?.label ?? humanise(props.part.split('.')[1] ?? props.part);
 
-  const reason = () => {
-    switch (props.why) {
-      case 'not-in-build':
-        return `It comes from ${moduleName()}, which this app does not include.`;
-      case 'no-such-part':
-        return `${moduleName()} no longer offers this piece.`;
-      case 'off-for-you':
-        return `You have turned ${moduleName()} off.`;
-      case 'off-in-space':
-        return spaceStore.canAdministerCurrentSpace()
-          ? `${moduleName()} is turned off in this space.`
-          : `${moduleName()} is turned off in this space. Whoever runs the space can turn it on.`;
-      case 'hidden-here':
-        return `You have hidden ${moduleName()} in this space.`;
-    }
-  };
+  const reason = () =>
+    describeMissing(props.why, { moduleName: moduleName(), canAdminister: spaceStore.canAdministerCurrentSpace() });
 
-  /** Where turning it back on lives, when somebody here can. */
-  const fix = (): { label: string; go: () => void } | null => {
-    switch (props.why) {
-      case 'off-for-you':
-        return { label: 'Turn it on', go: () => shellStore.openShellView('settings', '/modules') };
-      case 'off-in-space':
-        return spaceStore.canAdministerCurrentSpace()
-          ? { label: 'Space features', go: () => shellStore.openSpaceSettings('features') }
-          : null;
-      case 'hidden-here': {
-        const id = datasetStore.currentDataset()?.id;
-        return id ? { label: 'Show it here', go: () => shellStore.openShellView('settings', `/spaces/${id}`) } : null;
-      }
-      default:
-        return null;
-    }
-  };
+  const fix = () =>
+    fixFor(props.why, {
+      canAdminister: spaceStore.canAdministerCurrentSpace(),
+      datasetId: datasetStore.currentDataset()?.id,
+      openShellView: shellStore.openShellView,
+      openSpaceSettings: shellStore.openSpaceSettings,
+    });
 
   const editing = () => editorStore.isEditingTemplate() && !editorStore.isReadOnly();
 

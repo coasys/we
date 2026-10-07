@@ -19,7 +19,7 @@ import { hostSourceBag } from '@shared/sources';
 import { injectDSInteropStyles } from '@solid/dsInterop';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import { createInMemoryBackend } from '@we/backend-inmemory';
-import { EditorHostProvider, EditorOverlay } from '@we/editor';
+import { EditorHostProvider, EditorOverlay, OwnerCard, PartCard } from '@we/editor';
 import {
   EDIT_SURFACE_ATTR,
   installGestureTracking,
@@ -547,6 +547,100 @@ function editorProbe(): void {
 }
 
 /**
+ * The inspector's card for a region somebody else provides, mounted against a host whose owners port
+ * answers for one part and one module panel. What each route writes lands in `__probeTemplates`, as
+ * the template it handed `updateTemplate`, so a case can read what taking a region over did.
+ */
+function ownerCardProbe(kind: 'part' | 'panel'): void {
+  const record = (key: string, value: unknown) => {
+    const bag = globalThis as unknown as Record<string, unknown[]>;
+    (bag[key] ??= []).push(value);
+  };
+  let template: Record<string, unknown> = {
+    id: 'probe',
+    type: 'Column',
+    meta: { name: 'Probe', description: '', icon: '', panels: [{ id: 'stage', module: 'call', snap: 'right' }] },
+    children: [{ id: 'aaaaaaaaaa', type: '$part', props: { id: 'demo.box', subject: { $: 'local.chosen' } } }],
+  };
+  const host = {
+    session: {
+      isReadOnly: () => false,
+      pushSnapshot() {},
+      commitEdit: async () => {},
+      openThemePanel: () => record('__probeTheme', true),
+      startFork() {},
+    },
+    template: {
+      get currentTemplate() {
+        return template;
+      },
+      updateTemplate: (next: Record<string, unknown>) => {
+        template = next;
+        record('__probeTemplates', JSON.parse(JSON.stringify(next)));
+      },
+    },
+    owners: {
+      part: () => ({ id: 'demo.box', label: 'Box', moduleId: 'demo', moduleName: 'Demo', inputs: [], missing: '' }),
+      parts: () => [],
+      openPart: (_placement: unknown, depth: 'one' | 'all') =>
+        depth === 'one'
+          ? { type: 'Column', children: [{ type: '$part', props: { id: 'demo.inner' } }] }
+          : { type: 'Column', children: [{ type: 'we-text', children: ['inner'] }] },
+      panel: () => ({
+        dockId: 'call:stage',
+        moduleId: 'call',
+        moduleName: 'Calls',
+        dock: 'stage',
+        title: 'Call',
+        composed: true,
+      }),
+      panelNode: () => ({ type: 'Column', children: [{ type: '$part', props: { id: 'call.tile' } }] }),
+      view: () => null,
+    },
+  };
+  const visual = {
+    enabled: true,
+    selectedId: () => null,
+    hoveredId: () => null,
+    onHover() {},
+    onSelect: (id: string | null) => record('__probeSelected', id),
+    selectedOwner: () => null,
+    onSelectOwner() {},
+    registerNode: () => () => {},
+    getNodeElement: () => null,
+  };
+  const root = document.createElement('div');
+  root.style.cssText = 'position: fixed; left: 0; top: 0; width: 320px;';
+  document.body.append(root);
+  probeDisposers.push(() => root.remove());
+  const dispose = render(
+    () =>
+      createComponent(EditorHostProvider, {
+        value: host as never,
+        get children() {
+          return createComponent(VisualEditorProvider, {
+            value: visual as never,
+            get children() {
+              return kind === 'part'
+                ? createComponent(PartCard, { node: (template.children as Record<string, unknown>[])[0] as never })
+                : createComponent(OwnerCard, { owner: { kind: 'panel', id: 'call:stage', name: 'Call' } });
+            },
+          });
+        },
+      }),
+    root,
+  );
+  probeDisposers.unshift(dispose);
+}
+
+/** Press the button in the probe whose words are these — what a route's button says. */
+function pressButton(words: string): boolean {
+  const button = [...document.querySelectorAll('we-button')].find((b) => b.textContent?.trim() === words);
+  (button as HTMLElement | undefined)?.click();
+  return !!button;
+}
+
+/**
  * A page over the template, standing in for settings opened mid-edit: a fixed sheet above the content,
  * as the shell's own view is.
  */
@@ -570,6 +664,8 @@ injectDSInteropStyles();
 (window as unknown as Record<string, unknown>).__harness = {
   editorProbe,
   editorProbeCover,
+  ownerCardProbe,
+  pressButton,
   editorProbeDispose,
   mount,
   profile,

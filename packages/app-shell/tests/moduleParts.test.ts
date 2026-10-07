@@ -8,7 +8,7 @@
  * it at a record the module has never heard of, which is the difference between a reusable fragment
  * and one welded to whatever state its module happens to hold.
  */
-import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
+import { openPart, resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import type { ModuleDefinition } from '@we/module-shared';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
@@ -222,5 +222,60 @@ describe('placing a part outside a panel', () => {
     const routes = [{ path: '/board', type: 'Column', children: [{ type: 'we-text' }] }];
 
     expect(resolvePartsInRoutes(routes)).toBe(routes);
+  });
+});
+
+/*
+  What the editor writes in a part's place when somebody takes it over. Opening one level keeps the
+  pieces below it as references, which is what lets a module fix still land in them; forking follows
+  every reference down.
+*/
+describe('opening a placed part', () => {
+  const nested: ModuleDefinition = {
+    manifest: { id: 'deep', name: 'Deep' },
+    contributes: {
+      parts: {
+        leaf: { type: 'we-badge', children: ['leaf'] },
+        branch: { type: 'Column', children: [{ type: '$part', props: { id: 'deep.leaf' } }] },
+      },
+    },
+  };
+
+  function withNested<T>(run: () => T): T {
+    moduleRegistry.register(nested, host);
+    try {
+      return run();
+    } finally {
+      moduleRegistry.unregister('deep');
+    }
+  }
+
+  it('opens one level and leaves the pieces below it as references', () => {
+    withNested(() => {
+      const opened = openPart({ type: '$part', props: { id: 'deep.branch' } }, 'one')!;
+      expect(opened.type).toBe('Column');
+      expect((opened.children as SchemaNode[])[0]).toEqual({ type: '$part', props: { id: 'deep.leaf' } });
+    });
+  });
+
+  it('follows every reference down for a fork, and draws no frames into the template', () => {
+    withNested(() => {
+      const forked = openPart({ type: '$part', props: { id: 'deep.branch' } }, 'all')!;
+      expect(JSON.stringify(forked)).not.toContain('$part');
+      expect(JSON.stringify(forked)).not.toContain('PartFrame');
+      expect((forked.children as SchemaNode[])[0]).toEqual({ type: 'we-badge', children: ['leaf'] });
+    });
+  });
+
+  it('answers nothing for a part nobody publishes', () => {
+    expect(openPart({ type: '$part', props: { id: 'nobody.thing' } }, 'one')).toBeNull();
+  });
+
+  it('never hands back the registry’s own node', () => {
+    withNested(() => {
+      const opened = openPart({ type: '$part', props: { id: 'deep.leaf' } }, 'one')!;
+      opened.children = ['changed'];
+      expect((moduleRegistry.parts()['deep.leaf'].node as SchemaNode).children).toEqual(['leaf']);
+    });
   });
 });

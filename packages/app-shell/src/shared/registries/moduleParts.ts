@@ -168,6 +168,37 @@ export function resolveParts(node: SchemaNode): SchemaNode | SchemaNode[] {
 }
 
 /**
+ * A placed part as nodes the template owns — what "open" and "fork" in the editor write in its place.
+ *
+ * `one` opens a single level: the part's own tree, pointed at the placement's subject and bound to
+ * its inputs, with any `$part` inside it left as a reference. The arrangement becomes the template's
+ * and every piece below it is still the module's, so a fix to one of those still lands. `all` follows
+ * every reference down, which is a fork of the whole thing: nothing in it is the module's any more.
+ *
+ * No frames, unlike `resolveParts`: a frame is how the host draws a part, and what this returns is
+ * written into a template. Null for a part nobody publishes — there is nothing to open.
+ */
+export function openPart(placement: SchemaNode, depth: 'one' | 'all'): SchemaNode | null {
+  const props = (placement.props ?? {}) as { id?: unknown; subject?: unknown; inputs?: unknown };
+  const part = typeof props.id === 'string' ? moduleRegistry.parts()[props.id] : undefined;
+  if (!part) return null;
+
+  const wanted = subjectExpression(props.subject);
+  const node = structuredClone(part.subject && wanted ? substitute(part.node, part.subject, wanted) : part.node);
+  const bound = bindInputs(node, props.inputs);
+  return depth === 'all' ? inlineParts(bound) : bound;
+}
+
+/** Every `$part` below a node replaced by what it is, all the way down. One nobody publishes stays. */
+function inlineParts<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((entry) => inlineParts(entry)) as unknown as T;
+  if (!value || typeof value !== 'object') return value;
+  const record = value as Record<string, unknown>;
+  if (record.type === '$part') return (openPart(record as SchemaNode, 'all') ?? record) as T;
+  return Object.fromEntries(Object.entries(record).map(([key, entry]) => [key, inlineParts(entry)])) as T;
+}
+
+/**
  * Expand every `$part` in a route table.
  *
  * A route is not a node — it carries a `path` and may carry no `type` at all — so it needs its own

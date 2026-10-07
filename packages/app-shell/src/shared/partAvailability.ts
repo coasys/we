@@ -36,3 +36,45 @@ export function whyMissing(facts: PartFacts): MissingPart | null {
   if (!facts.enabled) return 'off-in-space';
   return 'hidden-here';
 }
+
+/** What stands in a missing part's place says this: why it is not here, in a sentence. */
+export function describeMissing(why: MissingPart, facts: { moduleName: string; canAdminister: boolean }): string {
+  switch (why) {
+    case 'not-in-build':
+      return `It comes from ${facts.moduleName}, which this app does not include.`;
+    case 'no-such-part':
+      return `${facts.moduleName} no longer offers this piece.`;
+    case 'off-for-you':
+      return `You have turned ${facts.moduleName} off.`;
+    case 'off-in-space':
+      return facts.canAdminister
+        ? `${facts.moduleName} is turned off in this space.`
+        : `${facts.moduleName} is turned off in this space. Whoever runs the space can turn it on.`;
+    case 'hidden-here':
+      return `You have hidden ${facts.moduleName} in this space.`;
+  }
+}
+
+/** Where turning a missing part's module back on lives, when the person looking can. */
+export function fixFor(
+  why: MissingPart,
+  deps: {
+    canAdminister: boolean;
+    datasetId?: string;
+    openShellView: (id: string, path?: string) => void;
+    openSpaceSettings: (tab?: string) => void;
+  },
+): { label: string; go: () => void } | null {
+  switch (why) {
+    case 'off-for-you':
+      return { label: 'Turn it on', go: () => deps.openShellView('settings', '/modules') };
+    case 'off-in-space':
+      return deps.canAdminister ? { label: 'Space features', go: () => deps.openSpaceSettings('features') } : null;
+    case 'hidden-here':
+      return deps.datasetId
+        ? { label: 'Show it here', go: () => deps.openShellView('settings', `/spaces/${deps.datasetId}`) }
+        : null;
+    default:
+      return null;
+  }
+}
