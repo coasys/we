@@ -18,7 +18,7 @@ import type {
   ConversationToolCall,
   ConversationTurn,
 } from '@we/backend-shared';
-import type { SchemaNode, TemplateSchema, ValidationContext } from '@we/schema-shared';
+import type { DefinitionUses, SchemaNode, TemplateSchema, ValidationContext } from '@we/schema-shared';
 import {
   ensureNodeIds,
   expandDefinitions,
@@ -44,6 +44,13 @@ export interface EditSessionOptions {
   resolveTool?: (call: ConversationToolCall) => string | undefined;
   /** The template the first patch applies to. */
   schema: SchemaNode;
+  /**
+   * How a node the session makes is named — an alias, when the schema came from `prepareForModel`,
+   * so every id the model sees is one. A permanent id when absent.
+   */
+  mint?: () => string;
+  /** The compaction table for `schema`, so a split gives its copy that use's ids. See `DefinitionUses`. */
+  uses?: DefinitionUses;
   validationContext: ValidationContext;
   /** A model other than the default, by id or name. */
   model?: string;
@@ -181,7 +188,8 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
    * of five tool calls across five turns only the last survived, and all five were reported as
    * applied. Held here, and advanced wherever a turn's patches are accepted.
    */
-  let workingSchema: SchemaNode = ensureNodeIds(structuredClone(options.schema));
+  const { mint, uses } = options;
+  let workingSchema: SchemaNode = ensureNodeIds(structuredClone(options.schema), mint);
 
   for (let turn = 0; turn <= maxContinuations; turn++) {
     const request: ConversationRequest = {
@@ -222,7 +230,13 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
       path that matters: acceptance.
     */
     const results: Array<{ callId: string; content: string; note?: string; isError?: boolean; patch: boolean }> = [];
-    let accumulated: SchemaNode = ensureNodeIds(structuredClone(workingSchema));
+    let accumulated: SchemaNode = ensureNodeIds(structuredClone(workingSchema), mint);
+    /*
+      The table this turn's splits rewrite — a copy, because a turn is accepted whole or not at all,
+      and a refused split must not leave the table pointing at a copy that was never kept. Written
+      back into the caller's object on accept, which is the one its restore reads.
+    */
+    const turnUses = uses && structuredClone(uses);
 
     /*
       A template is judged as the tree it will RENDER, so it is expanded before it is validated —
@@ -288,7 +302,7 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
         .filter((places) => places > 1)
         .sort((a, b) => b - a);
 
-      const applied = applySchemaPatches(accumulated, patches);
+      const applied = applySchemaPatches(accumulated, patches, { uses: turnUses, mint });
       if (applied.error) {
         debug(`[editSession] patch failed: ${applied.error}`);
         transcript += '\n\n<span class="warning">⚠ Template failed validation. Retrying...</span>';
@@ -297,11 +311,11 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
         patchesApplied = false;
         continue;
       }
-      accumulated = ensureNodeIds(applied.schema);
+      accumulated = ensureNodeIds(applied.schema, mint, workingSchema);
 
       /*
-        A split's copy is numbered HERE, which is the only moment its id exists, so this is the
-        only place that can name it.
+        A split's copy is numbered by now — with that use's ids, or fresh — and this is the only
+        place that can name it.
 
         The schema reaches the model in the user's turn and nowhere else. Without the id in the
         result, a model that split a use out has no name for the thing it just made and cannot
@@ -374,6 +388,10 @@ export async function runEditSession(options: EditSessionOptions): Promise<EditS
             `Semantic validation failed (${fresh.length} issues). Top issues: ${top}. Fix the invalid tokens/props and retry.`,
           );
         } else {
+          if (uses && turnUses) {
+            for (const key of Object.keys(uses)) delete uses[key];
+            Object.assign(uses, turnUses);
+          }
           const said = await options.accept(merged);
           stats.accepted++;
           workingSchema = merged;

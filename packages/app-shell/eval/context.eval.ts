@@ -14,11 +14,12 @@ import { join } from 'node:path';
 import { requestMessage, updateSchemaTool } from '@shared/ai/aiInfra';
 import { CONTEXT_STRATEGIES, type ContextStrategyId, prepareContext } from '@shared/ai/contextStrategies';
 import { type EditSessionResult, runEditSession } from '@shared/ai/editSession';
+import { prepareForModel } from '@shared/ai/nodeAliases';
 import { boundTemplate, DEFAULT_TEMPLATE_BUDGET } from '@shared/ai/templateContext';
 import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
 import { schemaContext } from '@we/ai-context';
 import { createAd4mLanguageModelPort } from '@we/backend-ad4m';
-import { buildValidationContext, compactDefinitions, contextData, ensureNodeIds } from '@we/schema-shared';
+import { buildValidationContext, contextData } from '@we/schema-shared';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 
 import { EVAL_CASES, scaleOf, startingTemplate } from './cases';
@@ -172,7 +173,7 @@ for (const model of models) {
           it(`${evalCase.id}${repeat > 1 ? ` #${run}` : ''}`, async () => {
             const start = startingTemplate(evalCase.template);
             /*
-              One tree, compacted and numbered once, exactly as `EditorStore.sendMessage` does.
+              One tree, compacted and aliased once, exactly as `EditorStore.sendMessage` does.
 
               This harness exists so a result describes what the editor actually does, and the
               editor stopped sending the authored template when `$defs` landed — it sends a
@@ -184,7 +185,8 @@ for (const model of models) {
               order and compaction changes the order, so a second derivation drifts and the ids
               the model is given stop meaning what the patcher resolves them to.
             */
-            const sent = ensureNodeIds(compactDefinitions(structuredClone(start)).schema);
+            const modelTree = prepareForModel(start);
+            const sent = modelTree.schema;
             const prepared = prepareContext(strategy, chatSystemPreamble, schemaContext, {
               request: evalCase.request,
               schema: sent,
@@ -226,6 +228,8 @@ for (const model of models) {
                 tools: [updateSchemaTool, ...prepared.tools, ...bounded.tools],
                 resolveTool: (call) => prepared.resolveTool?.(call) ?? bounded.resolveTool?.(call),
                 schema: sent,
+                mint: modelTree.mint,
+                uses: modelTree.uses,
                 validationContext,
                 model: model === 'default' ? undefined : model,
                 accept: () => 'Template updated successfully.',

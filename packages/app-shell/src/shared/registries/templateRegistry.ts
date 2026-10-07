@@ -31,8 +31,10 @@
  * 5. TemplateStoreProvider reads the registry
  */
 import { bundledTemplates } from './bundledTemplates.generated';
+import { withDerivedIdsAll } from './derivedIds';
 
-export const templateRegistry = bundledTemplates;
+/** With the ids each template's nodes have in every build — see `derivedIds.ts`. */
+export const templateRegistry = withDerivedIdsAll(bundledTemplates);
 
 export type TemplateId = keyof typeof templateRegistry;
 

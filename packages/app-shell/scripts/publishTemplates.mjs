@@ -40,14 +40,18 @@ const seed = JSON.parse(await readFile(resolve(repoRoot, 'we-seed.json'), 'utf8'
 const ids = seed.templates ?? ['default'];
 
 const { bundledTemplates } = await import(resolve(here, '../src/shared/registries/bundledTemplates.generated.ts'));
+// The ids the app gives these templates' nodes, so a published copy names its nodes exactly as the
+// built-in does and an install can be compared with it. See `derivedIds.ts`.
+const { deriveNodeIds } = await import('@we/schema-shared');
 
 const templates = [];
 for (const id of ids) {
-  const schema = bundledTemplates[id];
-  if (!schema) {
+  const source = bundledTemplates[id];
+  if (!source) {
     console.error(`seed names "${id}" but the generated registry has no such template — run generate-templates first`);
     process.exit(1);
   }
+  const schema = deriveNodeIds(JSON.parse(JSON.stringify(source)), id);
   const meta = schema.meta ?? {};
   templates.push({
     slug: id,
