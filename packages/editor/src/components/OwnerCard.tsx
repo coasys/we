@@ -361,6 +361,20 @@ function PanelCard(props: { dockId: string }) {
 function ViewCard(props: { id: string }) {
   const host = useEditorHost();
   const info = createMemo(() => host.owners?.view(props.id) ?? null);
+  /** Asking before replacing a section for everyone — 'ask' once pressed, 'busy' while it saves. */
+  const [step, setStep] = createSignal<'idle' | 'ask' | 'busy'>('idle');
+  const [made, setMade] = createSignal<string | null>(null);
+  const [failed, setFailed] = createSignal(false);
+
+  const fork = async () => {
+    setStep('busy');
+    setFailed(false);
+    const id = (await host.owners?.forkView?.(props.id)) ?? null;
+    setMade(id);
+    setFailed(!id);
+    setStep('idle');
+  };
+
   return (
     <Show when={info()}>
       {(view) => (
@@ -379,6 +393,55 @@ function ViewCard(props: { id: string }) {
               action="Theme"
               onPress={() => host.session.openThemePanel()}
             />
+            <Show when={host.owners?.forkView}>
+              <Show
+                when={!made()}
+                fallback={
+                  <Route
+                    title="Your copy is in its place"
+                    detail="Open it on its own to change it. Switch back to this template from the template menu when you are done."
+                    action="Edit it"
+                    onPress={() => host.owners?.openTemplate?.(made()!)}
+                  />
+                }
+              >
+                <Show
+                  when={step() !== 'idle'}
+                  fallback={
+                    <Route
+                      title="Make your own copy"
+                      detail={
+                        view().forkBlocked ||
+                        `A copy of this section, yours to change, in its place for everyone in this space. It will no longer receive updates to ${view().name}, and its address changes.`
+                      }
+                      action="Copy"
+                      disabled={!!view().forkBlocked}
+                      onPress={() => setStep('ask')}
+                    />
+                  }
+                >
+                  <Column gap="200" p="300" r="surface" bg="warning-surface">
+                    <we-text variant="footnote" color="warning-text">
+                      Replace {view().name} with a copy for everyone here? The copy stops receiving updates to the
+                      original.
+                    </we-text>
+                    <Row gap="200">
+                      <we-button size="xs" variant="primary" loading={step() === 'busy'} onClick={fork}>
+                        Make the copy
+                      </we-button>
+                      <we-button size="xs" variant="ghost" disabled={step() === 'busy'} onClick={() => setStep('idle')}>
+                        Cancel
+                      </we-button>
+                    </Row>
+                  </Column>
+                </Show>
+              </Show>
+              <Show when={failed()}>
+                <we-text variant="footnote" color="danger-text">
+                  The copy could not be made.
+                </we-text>
+              </Show>
+            </Show>
           </Column>
         </Column>
       )}

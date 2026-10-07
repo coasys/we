@@ -71,5 +71,30 @@ export async function check({ call, recorded }) {
     await call('editorProbeDispose');
   }
 
+  /*
+    A section is replaced for everyone, so the copy is asked about first and its cost is said before
+    it is made. Somebody who does not run the space is told why rather than offered a dead button.
+  */
+  await call('ownerCardProbe', 'view');
+  try {
+    await call('pressButton', 'Copy');
+    if ((await recorded('__probeForked')).length) problems.push('a section was copied without being asked about');
+    if (!(await call('pressButton', 'Make the copy'))) problems.push('copying a section asked nothing first');
+    await call('idleFrames', 2);
+    if ((await recorded('__probeForked')).at(-1) !== 'about') problems.push('confirming did not copy the section');
+    if (!(await call('pressButton', 'Edit it'))) problems.push('a copied section offers no way to edit it');
+    if ((await recorded('__probeOpened')).at(-1) !== 'about-yours') problems.push('“Edit it” did not open the copy');
+  } finally {
+    await call('editorProbeDispose');
+  }
+
+  await call('ownerCardProbe', 'view-blocked');
+  try {
+    if (await call('pressButton', 'Copy'))
+      problems.push('a section can be copied by somebody who does not run the space');
+  } finally {
+    await call('editorProbeDispose');
+  }
+
   return problems;
 }

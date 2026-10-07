@@ -290,6 +290,8 @@ export interface OwnedView {
   name: string;
   /** Where it comes from, as a phrase: "built into WE", "from Polls", "this space's own". */
   source: string;
+  /** Why a copy cannot be made in its place here, as a sentence — empty when it can. */
+  forkBlocked: string;
 }
 
 export interface OwnersPort {
@@ -305,6 +307,13 @@ export interface OwnersPort {
   /** The module's own composition of a panel — what arranging it copies into the template. */
   panelNode: (dockId: string) => SchemaNode | null;
   view: (id: string) => OwnedView | null;
+  /**
+   * Copy a section into the space and put the copy in its place for everyone there. Resolves to the
+   * copy's id, or null when it could not be made.
+   */
+  forkView?: (id: string) => Promise<string | null>;
+  /** Open a template on its own, to edit it — how a section of a space is edited. */
+  openTemplate?: (id: string) => void;
 }
 
 export interface EditorHost {

@@ -551,7 +551,7 @@ function editorProbe(): void {
  * answers for one part and one module panel. What each route writes lands in `__probeTemplates`, as
  * the template it handed `updateTemplate`, so a case can read what taking a region over did.
  */
-function ownerCardProbe(kind: 'part' | 'panel' | 'palette'): void {
+function ownerCardProbe(kind: 'part' | 'panel' | 'palette' | 'view' | 'view-blocked'): void {
   const record = (key: string, value: unknown) => {
     const bag = globalThis as unknown as Record<string, unknown[]>;
     (bag[key] ??= []).push(value);
@@ -605,7 +605,17 @@ function ownerCardProbe(kind: 'part' | 'panel' | 'palette'): void {
         composed: true,
       }),
       panelNode: () => ({ type: 'Column', children: [{ type: '$part', props: { id: 'call.tile' } }] }),
-      view: () => null,
+      view: () => ({
+        id: 'about',
+        name: 'About',
+        source: 'built into WE',
+        forkBlocked: kind === 'view-blocked' ? 'Only whoever runs this space can replace its sections.' : '',
+      }),
+      forkView: async (id: string) => {
+        record('__probeForked', id);
+        return 'about-yours';
+      },
+      openTemplate: (id: string) => record('__probeOpened', id),
     },
   };
   const visual = {
@@ -632,6 +642,8 @@ function ownerCardProbe(kind: 'part' | 'panel' | 'palette'): void {
             value: visual as never,
             get children() {
               if (kind === 'palette') return createComponent(PartsPalette, { node: template as never });
+              if (kind === 'view' || kind === 'view-blocked')
+                return createComponent(OwnerCard, { owner: { kind: 'view', id: 'about', name: 'About' } });
               return kind === 'part'
                 ? createComponent(PartCard, { node: (template.children as Record<string, unknown>[])[0] as never })
                 : createComponent(OwnerCard, { owner: { kind: 'panel', id: 'call:stage', name: 'Call' } });
@@ -644,11 +656,16 @@ function ownerCardProbe(kind: 'part' | 'panel' | 'palette'): void {
   probeDisposers.unshift(dispose);
 }
 
-/** Press the button in the probe whose words are these — what a route's button says. */
+/**
+ * Press the button in the probe whose words are these — what a route's button says. Answers whether
+ * there was one to press, and a disabled one counts as none: it would not have done anything either.
+ */
 function pressButton(words: string): boolean {
-  const button = [...document.querySelectorAll('we-button')].find((b) => b.textContent?.trim() === words);
-  (button as HTMLElement | undefined)?.click();
-  return !!button;
+  const button = [...document.querySelectorAll('we-button')].find((b) => b.textContent?.trim() === words) as
+    (HTMLElement & { disabled?: boolean }) | undefined;
+  if (!button || button.disabled) return false;
+  button.click();
+  return true;
 }
 
 /**
