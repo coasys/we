@@ -438,9 +438,22 @@ jobs:
           BROWSER: ${{ steps.browser.outcome }}
         run: |
           # Records what was found and ends the step, which never fails: its result is the verdict.
+          # What `dev` ran into goes to this step's log, so a verdict can be checked: its commands
+          # write to base.log rather than the log, which would bury the PR's own output.
           verdict() {
             echo "verdict=$1" >> "$GITHUB_OUTPUT"
             if [ -n "${2:-}" ]; then echo "base_stage=$2" >> "$GITHUB_OUTPUT"; fi
+            echo "Verdict: $1${2:+ (WE dev failed at $2)}"
+            LOG="$GITHUB_WORKSPACE/base.log"
+            if [ -f "$LOG" ]; then
+              echo "::group::What WE dev ran into"
+              if grep -qE 'error TS[0-9]+|ERR_PNPM|FAIL |✗ |AssertionError' "$LOG"; then
+                grep -E 'error TS[0-9]+|ERR_PNPM|FAIL |✗ |AssertionError' "$LOG" | head -25
+              else
+                tail -25 "$LOG"
+              fi
+              echo "::endgroup::"
+            fi
             exit 0
           }
 
