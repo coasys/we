@@ -7,6 +7,8 @@
 
 import type { SchemaNode } from '@we/schema-shared';
 
+import type { SpaceStarter } from '../shared/spaceStarter';
+
 /**
  * One module a deployment ships, when a bare id is not enough to say.
  *
@@ -251,6 +253,13 @@ export interface WeSeedFile {
    * Create this perspective locally, publish it as a neighbourhood, then paste its sharedUrl here.
    */
   globalSpaceUrl?: string;
+
+  /**
+   * What every new space starts with, beyond the structure the host always makes — settings
+   * defaults, a few records, the roles templates find them by, and the opinionated switches. See
+   * `shared/spaceStarter.ts`. Absent, a space starts with its structure and nothing else.
+   */
+  spaceStarter?: SpaceStarter;
 
   /**
    * The neighbourhood URL of the module marketplace.

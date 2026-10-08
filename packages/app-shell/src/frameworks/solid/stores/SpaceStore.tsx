@@ -55,6 +55,7 @@ import {
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
+import { applyStarterRecords, SPACE_COLLECTION_KIND, type SpaceStarter, starterSettings } from '@shared/spaceStarter';
 import {
   isSpaceSelf,
   type LocationData,
@@ -120,11 +121,11 @@ import {
   SignalType,
   Space,
   SpacePreference,
+  SpaceRole,
   TaskState,
 } from '@we/entities';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
 import { hasViewsMarker } from '@we/schema-shared';
-import { DEFAULT_SIGNAL_TYPE } from '@we/template-kit';
 import {
   Accessor,
   createContext,
@@ -823,6 +824,23 @@ export interface SpaceStore {
   setAgentModuleSetting: (group: string, key: string, value?: SettingValue) => Promise<void>;
   /** Whether this space has calls interpreted as they happen. A community decision; defaults off. */
   autoInterpret: Accessor<boolean>;
+  /**
+   * Whether the messages typed straight into this space, outside any call, are extracted too. Whether,
+   * not when — `autoInterpret` still decides that. See `Space.extractLooseMessages`.
+   */
+  extractLooseMessages: Accessor<boolean>;
+  setExtractLooseMessages: (enabled: boolean, spaceUuid?: string) => Promise<void>;
+  /**
+   * The id of this space's collection — the one everything top-level hangs off (`Space.root`). Empty
+   * outside a space, and in a space made before spaces had one.
+   */
+  root: Accessor<string>;
+  /**
+   * The records this space names by role, as name → id: `roles.canvas` is the space's canvas. A role
+   * the space never named is simply absent, and a template must handle that, since a space can
+   * switch template and a template must never assume what another set up.
+   */
+  roles: Accessor<Record<string, string>>;
   /**
    * Whether one call is extracted as it happens: its participants' answer, else the space's.
    *
@@ -1643,6 +1661,44 @@ export function SpaceStoreProvider(props: ParentProps) {
     return readBack ?? (spaceRecord as Space);
   }
 
+  /**
+   * The structure every space has, and then what the starter adds to it.
+   *
+   * The **space collection** first: the one collection everything top-level in the space hangs off
+   * (`Space.root`). The host makes it in every space, whatever the starter says, because where
+   * top-level content lives is not an opinion — and it is made here, at the create press, so there is
+   * exactly one. Anything that finds a space's collection reads `Space.root`, never "the first
+   * collection of this kind", which is how a second one would split the space's content.
+   *
+   * Then the starter's records, each contained by the collection unless it names another, and a
+   * `SpaceRole` per role. A starter record that fails is reported and skipped: everything above has
+   * been written, and the person's space exists.
+   */
+  async function writeSpaceStructure(dataset: DatasetProxy, space: Space, starter?: SpaceStarter): Promise<void> {
+    const root = await CollectionBlock.create(dataset, { kind: SPACE_COLLECTION_KIND, type: 'collection', title: '' });
+    await space.setRoot({ id: root.id } as CollectionBlock);
+
+    await applyStarterRecords(starter, root.id, {
+      create: async (entity, fields, parentId) => {
+        const Model = getEntityForDataset(entity, dataset);
+        if (!Model) throw new Error(`no ${entity} in this space's schema`);
+        const made = await Model.create(
+          dataset,
+          fields as never,
+          {
+            parent: { id: parentId, predicate: PREDICATES.CHILDREN },
+          } as never,
+        );
+        return (made as { id: string }).id;
+      },
+      role: async (name, nodeId) => {
+        // An untyped to-one is written as a one-element list at creation — see `createBoard`.
+        const role = await SpaceRole.create(dataset, { name, node: [nodeId] } as never);
+        await Space.addRelation(dataset, space.id, 'roles', role.id);
+      },
+    });
+  }
+
   async function createSpace(
     name: string,
     description: string,
@@ -1689,14 +1745,16 @@ export function SpaceStoreProvider(props: ParentProps) {
       const coverImageData = coverImageFile ? await compressImageToFileData(coverImageFile, 'space-cover') : undefined;
 
       // Assemble Space + optional location data — used for both own and parent datasets
+      const starter = getSeed()?.spaceStarter;
       const spaceData = {
         uuid: spaceRef.id,
         url: publishedSharedId,
         name,
         description,
         discovery,
-        defaultTemplateId: 'default',
-        defaultThemeId: 'dark',
+        // The deployment's defaults for a new space — template, theme, extraction — are its starter's,
+        // not this file's. A seed with none leaves every setting at its declared default.
+        ...(starterSettings(starter) as Partial<SpaceInput>),
         ...(avatarData && { avatar: avatarData }),
         ...(coverImageData && { coverImage: coverImageData }),
       };
@@ -1707,28 +1765,14 @@ export function SpaceStoreProvider(props: ParentProps) {
       trace('space', 'created', { id: spaceRecord.id });
 
       /*
-        One reaction to start with, so a new space is not mute.
+        The space collection, and then the starter: the like reaction, the canvas, the roles.
 
-        A community names its own vocabulary and nothing here decides what it should be — but
-        arriving with NONE is not neutrality, it is a blank: every reaction surface in the app draws
-        nothing, and the only way to learn that a space names its own is to find Settings →
-        Vocabulary unprompted. A like is the one starting point nobody has to be taught, and it is
-        adapted or retired in two presses.
-
-        It pays off in code that already exists. The cards feed resolves the slug for its
-        `$likeCount` projection and for sorting by it; in a fresh space that quietly counted nothing.
-        Both sides read `DEFAULT_SIGNAL_TYPE`, since two files naming the same string is how they
-        come apart.
-
-        At creation, which is the only place a default belongs. Not on read: a space that has since
-        retired everything must not have a heart conjured back by a renderer, and `setSignalTypeRetired`
-        exists precisely so a type can be withdrawn without stranding the signals given with it.
+        The like used to be written here by name, on the argument that a space arriving with no
+        reaction is a blank rather than a neutral start. The argument holds and now lives with the
+        starter, which is where every other "a new space begins with" belongs — and where a
+        deployment that wants different defaults can say so without editing this file.
       */
-      await SignalType.create(spaceHandle, { ...DEFAULT_SIGNAL_TYPE }).catch((error: unknown) => {
-        // A space with no reaction is worse than a space, and a space nobody could create is worse
-        // than both. Reported rather than thrown: everything above this has already been written.
-        console.error('createSpace: could not seed the default signal type', error);
-      });
+      await writeSpaceStructure(spaceHandle, spaceRecord, starter);
 
       // Sync to global discovery space when the user opted in.
       // Space.create returns relations unhydrated, so we pass avatarData, coverImageData,
@@ -1795,18 +1839,20 @@ export function SpaceStoreProvider(props: ParentProps) {
       avatarData = dataURIToFileData(avatarValue, 'space-avatar');
     }
 
+    const starter = getSeed()?.spaceStarter;
     const spaceData: SpaceInput = {
       uuid: ds.id,
       url: ds.sharedId,
       name,
       description,
       discovery: 'hidden',
-      defaultTemplateId: 'default',
-      defaultThemeId: 'dark',
+      ...(starterSettings(starter) as Partial<SpaceInput>),
       ...(avatarData && { avatar: avatarData }),
     };
 
     const spaceRecord = await addSpaceToDataset(ds.handle, spaceData);
+    // A space made from a foreign perspective is still a new WE space, so it gets the same structure.
+    await writeSpaceStructure(ds.handle as DatasetProxy, spaceRecord, starter);
 
     if (!mySpaces().some((s) => s.uuid === spaceRecord.uuid)) {
       setMySpaces((prev) => [...prev, spaceRecord]);
@@ -2045,7 +2091,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     // in the space. A message names its channel through `we://child`; a reply names whatever it
     // answers through `we://comment`. Both arrive from a schema as ids, which is all a template
     // has, and both are `$each`/route values rather than anything the store could derive.
-    const { kind = 'post', parentId, predicate = PREDICATES.CHILDREN } = options;
+    // With no anchor named, a post goes in the space collection — the space's top level — rather than
+    // nowhere. Read at the call, not destructured as a default, so a space entered after this store
+    // was built still gets its own.
+    const { kind = 'post', predicate = PREDICATES.CHILDREN } = options;
+    const parentId = options.parentId ?? (spaceRoot() || undefined);
 
     // The action arrives from a schema as unknown; the composer produced it, so it is a content document.
     const root = await createBlocks(p, json as ContentInput, {
@@ -2889,6 +2939,48 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   const [currentSpace, setCurrentSpace] = createSignal<Space | null>(null);
 
+  /*
+    ── The space's structure ────────────────────────────────────────────────────────────────────
+
+    Its collection and its roles, read on entering the space. Both are written once, at the create
+    press, so there is nothing to follow live: a role somebody adds later is picked up on the next
+    entry. `root` is read through the relation and never by looking for "the collection of kind
+    space", which is the read a second one would silently split.
+
+    Two roles of one name are not prevented — roles are written at creation, by one person — and the
+    newest wins. A role whose record has since been deleted still reads here; a template reading it
+    finds nothing at that id and treats it as absent, which is what it must do for a missing role
+    anyway.
+  */
+  const [spaceRoot, setSpaceRoot] = createSignal('');
+  const [spaceRoles, setSpaceRoles] = createSignal<Record<string, string>>({});
+  createEffect(() => {
+    const dataset = datasetStore.currentDataset()?.handle;
+    const uuid = datasetStore.currentDataset()?.id;
+    const weSpace = datasetStore.isWeSpace();
+    setSpaceRoot('');
+    setSpaceRoles({});
+    if (!dataset || !weSpace) return;
+    void (async () => {
+      try {
+        const space = await Space.findOne(dataset, { include: { root: true } });
+        const roles = await SpaceRole.findAll(dataset);
+        if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
+        setSpaceRoot(space?.root?.id ?? '');
+        const byName: Record<string, { id: string; at: string }> = {};
+        for (const role of roles) {
+          const node = Array.isArray(role.node) ? role.node[0] : role.node;
+          const at = String((role as { createdAt?: unknown }).createdAt ?? '');
+          if (!role.name || !node) continue;
+          if (!byName[role.name] || at > byName[role.name].at) byName[role.name] = { id: String(node), at };
+        }
+        setSpaceRoles(Object.fromEntries(Object.entries(byName).map(([name, { id }]) => [name, id])));
+      } catch (error) {
+        console.warn('SpaceStore: could not read the space’s collection and roles', error);
+      }
+    })();
+  });
+
   /**
    * Which modules this space has on.
    *
@@ -3298,6 +3390,18 @@ export function SpaceStoreProvider(props: ParentProps) {
     Injected rather than read, for the reason `provideAutoInterpretGate` is: this lives on records in
     the space, and RecordStore mounts above this one.
   */
+  /*
+    Where content lives: the space collection, for anything made on the space's own canvas and for
+    anything made with no other home. See `provideContentHomes` — injected for the reason the
+    vocabularies are, since RecordStore mounts above this one.
+  */
+  onCleanup(
+    recordStore.provideContentHomes({
+      forCanvas: (canvas) => (canvas === spaceRoles().canvas && spaceRoot() ? spaceRoot() : canvas),
+      root: () => spaceRoot(),
+    }),
+  );
+
   onCleanup(
     recordStore.provideVocabularies((vocabulary) =>
       vocabulary === 'taskState' ? offeredTaskStates().map((state) => state.slug) : undefined,
@@ -3857,6 +3961,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     decision to spend somebody's LLM budget.
   */
   const autoInterpret = createMemo<boolean>(() => currentSpace()?.autoInterpret === true);
+  const extractLooseMessages = createMemo<boolean>(() => currentSpace()?.extractLooseMessages === true);
   onCleanup(datasetStore.provideAutoInterpretGate(() => autoInterpret()));
 
   /*
@@ -4777,6 +4882,28 @@ export function SpaceStoreProvider(props: ParentProps) {
    * `setModuleEnabled`: a switch that reports success without persisting is worse than one that
    * fails visibly, because the next member to open the page sees the old decision.
    */
+  async function setExtractLooseMessages(enabled: boolean, spaceUuid?: string) {
+    const ds = targetDataset(spaceUuid);
+    const space = ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
+    if (!ds || !space) return;
+    try {
+      await Space.update(ds.handle, space.id, { extractLooseMessages: enabled });
+    } catch (error) {
+      console.error('SpaceStore: could not persist extractLooseMessages', error);
+      toastService.error('Could not save this change for the space.');
+      throw error;
+    }
+    updateSpaceInCache(ds, { extractLooseMessages: enabled } as never);
+    if (!isCurrent(ds)) return;
+    setCurrentSpace((prev) =>
+      prev
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
+            extractLooseMessages: enabled,
+          }) as Space)
+        : prev,
+    );
+  }
+
   async function setAutoInterpret(enabled: boolean, spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
     const space = ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
@@ -5363,6 +5490,10 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSpaceDefaultTheme,
     setModuleEnabled,
     autoInterpret,
+    extractLooseMessages,
+    setExtractLooseMessages,
+    root: spaceRoot,
+    roles: spaceRoles,
     autoInterpretForCall,
     setAutoInterpretForCall,
     spaceModuleSettings,

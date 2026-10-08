@@ -271,6 +271,8 @@ function main() {
     }
   });
 
+  validateSpaceStarter(seed);
+
   /*
     Content sources: the same check the build makes, so a bad entry fails here first.
 
@@ -289,6 +291,63 @@ function main() {
       }
     })
     .then(summarise);
+}
+
+/*
+  The space starter: what every new space begins with.
+
+  The same checks `starterProblems` makes in the app (packages/app-shell/src/shared/spaceStarter.ts),
+  reading the manifest from its source files rather than importing it, so this script keeps running
+  under plain node. A starter that would half-apply at a create press fails here instead.
+*/
+function validateSpaceStarter(seed) {
+  const starter = seed.spaceStarter;
+  if (!starter) return;
+  console.log('\n🌱 Checking the space starter...');
+
+  const manifestDir = path.join(WORKSPACE_ROOT, 'packages/entities/src/manifest');
+  const entityExists = (name) => fs.existsSync(path.join(manifestDir, `${name}.ts`));
+  const spaceSource = fs.readFileSync(path.join(manifestDir, 'Space.ts'), 'utf8');
+  const spaceFields = new Set(
+    [...spaceSource.matchAll(/^\s{6}(\w+): \{\s*$|^\s{6}(\w+): \{ type:/gm)].map((m) => m[1] || m[2]),
+  );
+  const identity = new Set(['uuid', 'url', 'name', 'description', 'discovery', 'avatar', 'coverImage']);
+  const templates = new Set(seed.templates || []);
+  const modules = new Set((seed.modules || []).map((m) => (typeof m === 'string' ? m : m.id)));
+  const before = errors.length;
+
+  if (!starter.id) error('spaceStarter: needs an id');
+  for (const key of Object.keys(starter.settings || {})) {
+    if (identity.has(key)) error(`spaceStarter.settings.${key} is the space's identity, not a setting`);
+    else if (!spaceFields.has(key)) error(`spaceStarter.settings.${key} is not a Space field`);
+  }
+  const template = (starter.settings || {}).defaultTemplateId;
+  if (typeof template === 'string' && !templates.has(template)) {
+    error(`spaceStarter.settings.defaultTemplateId names a template the seed does not bundle: ${template}`);
+  }
+  for (const id of (starter.settings || {}).enabledModules || []) {
+    if (!modules.has(id)) error(`spaceStarter.settings.enabledModules names a module the seed does not ship: ${id}`);
+  }
+
+  const defined = new Set(['root']);
+  (starter.records || []).forEach((record, index) => {
+    const at = `spaceStarter.records[${index}]`;
+    // A module's entity lives in its module, not the core manifest — say so rather than refuse it.
+    if (!entityExists(record.entity)) warn(`${at}.entity is not a core entity: ${record.entity}`);
+    if (record.in !== undefined && !(record.in.startsWith('$') && defined.has(record.in.slice(1)))) {
+      error(`${at}.in must name $root or an earlier record's $id: ${record.in}`);
+    }
+    if (record.$id !== undefined) {
+      if (defined.has(record.$id)) error(`${at}.$id is used twice: ${record.$id}`);
+      defined.add(record.$id);
+    }
+  });
+  for (const [name, ref] of Object.entries(starter.roles || {})) {
+    const target = typeof ref === 'string' && ref.startsWith('$') ? ref.slice(1) : null;
+    if (!target || target === 'root' || !defined.has(target))
+      error(`spaceStarter.roles.${name} must name a record's $id: ${ref}`);
+  }
+  if (errors.length === before) success(`space starter "${starter.id}" is valid`);
 }
 
 function summarise() {

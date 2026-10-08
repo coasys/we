@@ -972,6 +972,52 @@ const autoInterpretSection: SchemaNode = {
   ],
 };
 
+/*
+  The second switch, and the one most likely to be misread as the first: this does not turn
+  extraction on, it says whether the messages typed into the space between calls are a conversation
+  extraction reads at all. When it reads them is still the switch above.
+*/
+const looseMessagesSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
+  children: [
+    {
+      type: 'Row',
+      props: { width: '100%', gap: '400', ay: 'center' },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '100', flex: '1' },
+          children: [
+            { type: 'we-text', props: { variant: 'label' }, children: ['Extract from messages outside calls'] },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: [
+                {
+                  $: "space.canAdminister ? 'Messages typed straight into the space, between calls, are read for the same things calls are. Whether that happens on its own or on request follows the switch above.' : 'Messages typed straight into the space are read for the same things calls are. Changing this needs someone who administers the space.'",
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'we-switch',
+          props: {
+            size: 'sm',
+            checked: { $: 'spaceStore.extractLooseMessages' },
+            disabled: { $: '!space.canAdminister' },
+            onChange: {
+              $action: 'spaceStore.setExtractLooseMessages',
+              args: [{ $: 'event.detail' }, { $: 'space.uuid' }],
+            },
+          },
+        },
+      ],
+    },
+  ],
+};
+
 /**
  * Whether extraction shows its working to the whole space.
  *
@@ -1391,6 +1437,7 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                           }),
                           moduleSettingsSection,
                           autoInterpretSection,
+                          looseMessagesSection,
                           extractionTargetsSection,
                           threadModeSection,
                         ],

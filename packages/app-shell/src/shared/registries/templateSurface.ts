@@ -474,6 +474,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     myMentions: state('content'),
     uploadFile: action('content'),
     taskStates: state('content'),
+    // Where a space's things are and which record plays which part — read by any template that
+    // shows the space at all, so `content` for the reason the space's vocabulary is.
+    root: state('content'),
+    roles: state('content'),
     taskFlowEnabled: state('content'),
     offeredTaskStates: state('content'),
     taskStatesLoaded: state('content'),
@@ -609,6 +613,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       indicator that silently never rendered.
     */
     autoInterpret: state('space-settings'),
+    extractLooseMessages: state('space-settings'),
     /*
       `content`, not `space-settings`, and the difference is who may press it.
 
@@ -649,6 +654,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setSpaceDefaultTheme: hereOnly('space-settings', 1),
     setModuleEnabled: hereOnly('space-settings', 2),
     setAutoInterpret: hereOnly('space-settings', 1),
+    setExtractLooseMessages: hereOnly('space-settings', 1),
     setThreadMode: hereOnly('space-settings', 1),
     setAutoInterpretForCall: action('content'),
     /*
@@ -772,6 +778,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // SpaceStore fills this on the way past, with the lists a community owns — see `vocabulary` on
     // a property declaration. Wiring between two stores, never something a template names.
     provideVocabularies: WIRING,
+    provideContentHomes: WIRING,
     recordDraft: state('content'),
     recordDraftDirty: state('content'),
     recordErrors: state('content'),

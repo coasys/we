@@ -380,6 +380,9 @@ export const storeEntries: StoreEntry[] = [
         properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'defined', 'approvals', 'approverKind'],
       },
       taskStatesLoaded: { type: 'boolean' },
+      root: { type: 'string' },
+      roles: { type: 'object' },
+      extractLooseMessages: { type: 'boolean' },
       taskFlowEnabled: { type: 'boolean' },
       involvementTypes: {
         type: 'array',
@@ -1072,6 +1075,11 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "string[] — ids of the containers in this space holding something newer than this agent's marker for them, or never read. What an unread dot reads: { $: 'channel.id in spaceStore.unreadNodeIds' }. Ids rather than counts, since a count needs every child's timestamp",
         myMentions:
           '{ id, author, createdAt }[] — nodes in this space that mention this agent, newest first. createdAt is the backend’s comparable timestamp. Filtered client-side, so right for a space and wrong for an inbox across many',
+        root: "string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one",
+        roles:
+          "Record<name, id> — the records this space names by role, e.g. spaceStore.roles.canvas is the space's canvas. Written by the space's starter at creation. A role can be absent — a space can switch template and a template must never assume what another set up — so guard every read",
+        extractLooseMessages:
+          'boolean — whether the messages typed straight into this space, outside any call, are extracted at all. Whether, not when: autoInterpret still decides whether extraction runs by itself. Readable by every member; writing it is space-settings',
         autoInterpret:
           'boolean — whether this space has calls interpreted (extracted into records) as they happen. A community decision, off by default. Readable by every member; writing it is space-settings',
         spaceModuleSettings:
@@ -1159,6 +1167,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(nodeId: string, spaceUuid?): marks a node read as of now, so it leaves unreadNodeIds. Silent on failure — a lost marker is a stale dot, not an error',
         setAutoInterpret:
           '(enabled: boolean, spaceUuid?): turns automatic call interpretation on or off for a space. Omit spaceUuid for the space on screen',
+        setExtractLooseMessages:
+          '(enabled: boolean, spaceUuid?): whether the messages typed straight into the space, outside any call, are extracted at all. Omit spaceUuid for the space on screen',
         setThreadMode:
           "(mode: 'fractal' | 'flat', spaceUuid?): sets how deep conversations go here — whether a reply may itself be replied to. A decision about what may be ADDED, never about what is stored: replies are a tree either way, so switching to flat leaves existing threads drawn as they are and switching back restores the button that grows them. Read it back as spaceStore.currentSpace.threadMode; anything but 'flat' means fractal, so a space that predates the setting reads as fractal. Omit spaceUuid for the space on screen",
         autoInterpretForCall:

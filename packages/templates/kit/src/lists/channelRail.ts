@@ -58,6 +58,13 @@ const channelQuery = (anchorId?: AnchorId) => ({
   }),
 });
 
+/**
+ * The space collection — where loose channels and categories live. A space made before spaces had
+ * one answers empty, and an anchor that does not resolve is dropped, so the read widens to the whole
+ * space rather than matching nothing.
+ */
+const SPACE_ROOT: AnchorId = { $: 'spaceStore.root' };
+
 /** One channel row: name, unread dot, active highlight. */
 function channelRow(opts: ChannelRailOptions, as: string): SchemaNode {
   /** This agent's marker for this row — `readMarkers` is a list, so it is found, not indexed. */
@@ -108,7 +115,8 @@ export function channelRail(opts: ChannelRailOptions): SchemaNode {
   const flat: SchemaNode = {
     type: 'Column',
     props: { width: '100%', gap: '100' },
-    $queries: { channelRows: channelQuery() },
+    // The channels directly in the space collection: loose ones, never one inside a category.
+    $queries: { channelRows: channelQuery(SPACE_ROOT) },
     children: [
       {
         type: '$if',
@@ -119,12 +127,14 @@ export function channelRail(opts: ChannelRailOptions): SchemaNode {
             props: { items: { $: 'local.channelRows' }, as: 'channel' },
             children: [channelRow(opts, 'channel')],
           },
-          else: {
-            // Only when the rail is flat: with categories on, "no channels" is per-category and the
-            // rail as a whole may still have plenty.
-            type: '$if',
-            props: { condition: { $: 'local.channelRowsLoaded' }, then: opts.empty },
-          },
+          // "No channels" only when the rail is flat: with categories on, the loose list is often empty
+          // while the categories hold plenty, and saying so above them would be wrong.
+          ...(!opts.categories && {
+            else: {
+              type: '$if',
+              props: { condition: { $: 'local.channelRowsLoaded' }, then: opts.empty },
+            },
+          }),
         },
       },
     ],
@@ -142,32 +152,24 @@ export function channelRail(opts: ChannelRailOptions): SchemaNode {
     type: 'Column',
     props: { width: '100%', gap: '400' },
     $queries: {
-      categoryRows: { entity: 'CollectionBlock', where: { kind: 'category' }, order: { createdAt: 'asc' } },
+      categoryRows: {
+        entity: 'CollectionBlock',
+        where: { kind: 'category' },
+        order: { createdAt: 'asc' },
+        scope: { anchor: 'CollectionBlock', via: 'children', anchorId: SPACE_ROOT },
+      },
     },
     children: [
       /**
-       * The ungrouped list, shown only while no category exists.
+       * The loose channels — those directly in the space collection, outside every category.
        *
-       * It used to render unconditionally, above the groups, to stop a channel created before any
-       * category from being invisible. The trouble is that its query has no scope, so it returns
-       * *every* channel — and once a category existed, every channel in one appeared twice: once
-       * loose at the top and again under its heading. Easy to miss reading the code and impossible
-       * to miss looking at it.
-       *
-       * The honest fix is a query for "channels with no parent category", and that cannot be
-       * written: it needs a filter on the *absence* of an incoming relation, which is
-       * `relationFilters` in `AdapterCapabilities` — declared false by both adapters. So the
-       * condition here is the closest expressible thing, and it covers the case the original
-       * comment was worried about, because a channel created before any category exists is a
-       * channel in a space with no categories.
-       *
-       * What it does not cover: a loose channel in a space that also has categories stays hidden.
-       * Worth fixing when relation filters land; not worth showing every channel twice until then.
+       * This was shown only while no category existed, because its query had no scope and returned
+       * every channel, so with categories each one appeared twice. "Channels with no parent
+       * category" could not be asked. "Channels in the space collection" can, and it is the same
+       * set, so the list is always shown and a loose channel in a space with categories is no
+       * longer hidden.
        */
-      {
-        type: '$if',
-        props: { condition: { $: '!count(local.categoryRows)' }, then: flat },
-      },
+      flat,
       {
         type: '$each',
         props: { items: { $: 'local.categoryRows' }, as: 'category' },
