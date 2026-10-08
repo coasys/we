@@ -87,7 +87,7 @@ describe('the module declaration', () => {
     const panels = transcribeModule.contributes?.panels ?? [];
     const surface = storeSurface(bareStore());
 
-    expect(panels.map((p) => p.name)).toEqual(['transcript', 'extraction']);
+    expect(panels.map((p) => p.name)).toEqual(['transcript', 'extraction', 'feed']);
     for (const p of panels) {
       expect(p.icon).toBeTruthy();
       expect(surface[p.open ?? '']?.kind).toBe('state');
@@ -241,8 +241,12 @@ describe('a transcript with nothing in it', () => {
    * speaker grouping: it asks whether a line is by the same person as the one before it, and in a
    * reversed list `prev` is the line *after*.
    */
-  it('renders the live window oldest-first', () => {
-    expect(linesJson).toContain('reverse(local.utterances)');
+  it('draws the window the reader’s way round, with the replies flattened in', () => {
+    // Reversed exactly when the anchored end is the bottom — see `timelineOrder` in the schema kit.
+    expect(linesJson).toContain(
+      '? reverse(threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })) :',
+    );
+    expect(linesJson).toContain('"include":{"comments":{"include":{"comments":{"include":{"comments":true}}}}}');
   });
 
   /**
@@ -2051,8 +2055,11 @@ describe('the extraction chips say what they are', () => {
  * admits a write is happening rather than merely refusing the click.
  */
 describe('the composer', () => {
-  const button = findNode(transcriptComposer, (n) => n.type === 'we-button') as
-    { props: Record<string, unknown> } | undefined;
+  // The send button — not the reply line's Cancel above the box.
+  const button = findNode(
+    transcriptComposer,
+    (n) => n.type === 'we-button' && Array.isArray((n.props as Record<string, unknown> | undefined)?.onClick),
+  ) as { props: Record<string, unknown> } | undefined;
   const textarea = findNode(transcriptComposer, (n) => n.type === 'we-textarea') as
     { props: Record<string, unknown> } | undefined;
 
@@ -2110,11 +2117,18 @@ describe('the composer', () => {
 
   it('lowers the flag however the write ends, and keeps the words unless it succeeded', () => {
     const send = button?.props.onClick as Record<string, unknown>[];
-    const write = send.find((step) => '$action' in step) as Record<string, unknown>;
-    // `onFinally`, not `onSuccess`: a box that could never be sent again because one write failed
-    // would be a worse bug than the one this fixes.
-    expect(write.onFinally).toEqual([{ $setLocal: 'sending', value: false }]);
-    expect(write.onSuccess).toEqual([{ $setLocal: 'message', value: '' }]);
+    // A reply or a message, each lowering the flag the same way.
+    const branch = (
+      send.find((step) => '$if' in step) as { $if: { then: Record<string, unknown>; else: Record<string, unknown> } }
+    ).$if;
+    for (const write of [branch.then, branch.else]) {
+      // `onFinally`, not `onSuccess`: a box that could never be sent again because one write failed
+      // would be a worse bug than the one this fixes.
+      expect(write.onFinally).toEqual([{ $setLocal: 'sending', value: false }]);
+      expect(write.onSuccess).toEqual([{ $setLocal: 'message', value: '' }]);
+    }
+    expect(branch.then.$action).toBe('modules.transcribe.reply');
+    expect(branch.else.$action).toBe('modules.transcribe.addMessage');
     expect(send[0]).toEqual({ $setLocal: 'sending', value: true });
   });
 });

@@ -31,6 +31,7 @@ import { expr } from '@we/schema-shared';
 
 import { CARET_SIZE, codePane, extractionActivity } from './ExtractionStatus.schema';
 import { SUBJECT_EXPR as SHARED_SUBJECT_EXPR, VIEWING_LIVE_EXPR } from './subject';
+import { repliesInclude } from './thread';
 
 /**
  * Which call this panel is about — the one named in the address, or the one being recorded.
@@ -140,15 +141,6 @@ export const EXTRACTION_SUBJECT_EXPR =
  * by its settings rather than by anybody in a room, so the per-call switch gives way to the
  * space's.
  */
-/**
- * The call the panel is showing — the one somebody opened, else the live one — and never the space.
- *
- * The composer writes into a call's transcript, so it follows this rather than the extraction
- * subject: outside any call that falls back to the space collection, and a box there would write
- * a message into the space under a transcript saying there is no call to show.
- */
-const CALL_SUBJECT_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.transcribe.callId';
-
 const SUBJECT_IS_SPACE = `spaceStore.root && (${EXTRACTION_SUBJECT_EXPR}) == spaceStore.root`;
 const EXTRACTION_SUBJECT = { $: EXTRACTION_SUBJECT_EXPR };
 
@@ -3116,6 +3108,8 @@ export const transcriptLines: SchemaNode = {
         that is most of what the tab was doing.
       */
       limit: { $: 'modules.transcribe.transcriptShown' },
+      // Each line's replies, three levels down, so they are drawn inline — see `threadLines`.
+      include: repliesInclude(),
       when: { $: 'modules.transcribe.collectionId' },
       /*
         Live only while the call is.
@@ -3172,7 +3166,17 @@ export const transcriptLines: SchemaNode = {
               this line is by the same person as the one before it, and in a reversed list `prev` is
               the line *after*.
             */
-            items: { $: timelineOrder('local.utterances', TRANSCRIPT_FROM_START, TIMELINE_ORIENTATION) },
+            /*
+              The lines with their replies flattened in, in the order they were said — a reply sent
+              after three more lines belongs after them, quoting what it answers. See `threadLines`.
+            */
+            items: {
+              $: timelineOrder(
+                `threadLines({ rows: local.utterances, newestFirst: !${TRANSCRIPT_FROM_START} })`,
+                TRANSCRIPT_FROM_START,
+                TIMELINE_ORIENTATION,
+              ),
+            },
             as: 'utterance',
           },
           children: [
@@ -3490,6 +3494,32 @@ export const transcriptLines: SchemaNode = {
                           names and jargon, and whoever notices is usually not the speaker. See
                           `editUtterance` for what that costs and what is recorded about it.
                         */
+                        // Answer this line — the composer below then says so, and sends a reply.
+                        {
+                          type: 'we-tooltip',
+                          props: { content: 'Reply' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                label: 'Reply',
+                                size: 'xs',
+                                variant: 'bare',
+                                color: 'text-faint',
+                                opacity: { $: 'local.pointerOnRow ? 1 : 0' },
+                                onClick: {
+                                  $action: 'modules.transcribe.startReply',
+                                  args: [
+                                    {
+                                      $: '{ id: utterance.id, text: utterance.text, author: utterance.author }',
+                                    },
+                                  ],
+                                },
+                              },
+                              children: [{ type: 'we-icon', props: { name: 'arrow-bend-up-left' } }],
+                            },
+                          ],
+                        },
                         {
                           type: '$if',
                           props: {
@@ -3649,7 +3679,33 @@ export const transcriptLines: SchemaNode = {
                             },
                           ],
                         },
-                        else: { type: 'we-text', props: { color: 'text' }, children: [{ $: 'utterance.text' }] },
+                        else: {
+                          type: 'Column',
+                          props: { gap: '100' },
+                          children: [
+                            /*
+                              What this answers, first: its speaker's line, one line of it. A reply to a
+                              reply quotes its direct parent only, and a parent since removed says so
+                              rather than leaving a quote of nothing.
+                            */
+                            {
+                              type: '$if',
+                              props: {
+                                condition: { $: 'utterance.replyTo' },
+                                then: {
+                                  type: 'we-text',
+                                  props: { variant: 'footnote', color: 'text-muted', truncate: true },
+                                  children: [
+                                    {
+                                      $: "'↳ ' + (utterance.replyTo.text ? utterance.replyTo.text : 'original message removed')",
+                                    },
+                                  ],
+                                },
+                              },
+                            },
+                            { type: 'we-text', props: { color: 'text' }, children: [{ $: 'utterance.text' }] },
+                          ],
+                        },
                       },
                     },
                   ],
@@ -4104,17 +4160,36 @@ export const pendingUtterance: SchemaNode = {
  * `message` is still cleared on success only. A failed write keeps what was typed rather than
  * swallowing it and leaving an empty box as the only report.
  */
+/**
+ * The call a typed line goes into: the one on screen, else the call in progress — from its first
+ * second, since a message needs nobody to have spoken first. Never the space: messages typed outside
+ * a call are the Feed's, and a transcript composer writing into the space would put a line nobody
+ * here can see.
+ */
+const TRANSCRIPT_TARGET_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.transcribe.callId';
+
 const sendMessage = [
   { $setLocal: 'sending', value: true },
   {
-    $action: 'modules.transcribe.addMessage',
-    args: [{ $: CALL_SUBJECT_EXPR }, { $: 'local.message' }],
-    onSuccess: [{ $setLocal: 'message', value: '' }],
-    onFinally: [{ $setLocal: 'sending', value: false }],
+    $if: {
+      condition: { $: 'modules.transcribe.replyingTo' },
+      then: {
+        $action: 'modules.transcribe.reply',
+        args: [{ $: 'modules.transcribe.replyingTo.id' }, { $: 'local.message' }, '', { $: VIEWING_LIVE_EXPR }],
+        onSuccess: [{ $setLocal: 'message', value: '' }],
+        onFinally: [{ $setLocal: 'sending', value: false }],
+      },
+      else: {
+        $action: 'modules.transcribe.addMessage',
+        args: [{ $: TRANSCRIPT_TARGET_EXPR }, { $: 'local.message' }],
+        onSuccess: [{ $setLocal: 'message', value: '' }],
+        onFinally: [{ $setLocal: 'sending', value: false }],
+      },
+    },
   },
 ];
 
-export const transcriptComposer: SchemaNode = {
+const composerRow: SchemaNode = {
   type: '$if',
   /*
     Wherever a call's transcript is on screen, not only while one is being recorded — and nowhere
@@ -4128,7 +4203,7 @@ export const transcriptComposer: SchemaNode = {
     talking.
   */
   props: {
-    condition: { $: CALL_SUBJECT_EXPR },
+    condition: { $: TRANSCRIPT_TARGET_EXPR },
     then: {
       type: 'Row',
       /*
@@ -4240,6 +4315,40 @@ export const transcriptComposer: SchemaNode = {
       ],
     },
   },
+};
+
+/**
+ * The composer, and above it the line a reply is being written to — said, with a way to put it down,
+ * so a message meant for the conversation is never sent as a reply by accident.
+ */
+export const transcriptComposer: SchemaNode = {
+  type: 'Column',
+  props: { gap: '100', width: '100%' },
+  children: [
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'modules.transcribe.replyingTo' },
+        then: {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', width: '100%' },
+          children: [
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-muted', flex: '1', minWidth: '0', truncate: true },
+              children: [{ $: "'Replying to: ' + modules.transcribe.replyingTo.text" }],
+            },
+            {
+              type: 'we-button',
+              props: { size: 'xs', variant: 'ghost', onClick: { $action: 'modules.transcribe.cancelReply' } },
+              children: ['Cancel'],
+            },
+          ],
+        },
+      },
+    },
+    composerRow,
+  ],
 };
 
 /**

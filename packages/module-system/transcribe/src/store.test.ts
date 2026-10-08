@@ -3169,3 +3169,48 @@ describe('the transcript window', () => {
     expect(h.store.transcriptShown()).toBe(250);
   });
 });
+
+/**
+ * Writing into the space and answering a line.
+ *
+ * Both are one record each, and the only thing that can go wrong is where it lands: a message typed
+ * into the Feed belongs to the space collection, not to whichever call is running, and a reply hangs
+ * off what it answers rather than being filed beside it.
+ */
+describe('the feed and replies', () => {
+  const space = (root: string) => ({
+    find: async (entity: string) => (entity === 'Space' ? [{ id: 'space-1', root: { id: root } }] : []),
+    subscribe: () => () => {},
+  });
+
+  it('writes a message typed into the Feed into the space collection, as a typed line', async () => {
+    const h = harness([], { dataset: () => 'ds', records: space('root-1') as never });
+    await h.settle();
+    expect(h.store.feedRoot()).toBe('root-1');
+
+    await h.store.sendToFeed('see you all on Friday', '[{"start":0,"end":3,"type":"strong"}]');
+
+    expect(h.created).toEqual([
+      {
+        entity: 'TextBlock',
+        fields: { text: 'see you all on Friday', source: 'typed', marks: '[{"start":0,"end":3,"type":"strong"}]' },
+        options: { parent: { id: 'root-1', predicate: 'we://child' } },
+      },
+    ]);
+  });
+
+  it('hangs a reply off the line it answers, and puts the reply down once it is sent', async () => {
+    const h = harness();
+    h.store.startReply({ id: 'line-1', text: 'who has the venue?', author: 'did:ann' });
+    expect(h.store.replyingTo()).toEqual({ id: 'line-1', text: 'who has the venue?', author: 'did:ann' });
+
+    await h.store.reply('line-1', 'I do');
+
+    expect(h.created[0]).toMatchObject({
+      entity: 'TextBlock',
+      fields: { text: 'I do', source: 'typed' },
+      options: { parent: { id: 'line-1', predicate: 'we://comment' } },
+    });
+    expect(h.store.replyingTo()).toBeNull();
+  });
+});

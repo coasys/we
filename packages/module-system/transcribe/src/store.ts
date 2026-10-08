@@ -2,6 +2,7 @@ import { activitiesOfType } from '@we/backend-shared';
 import type { DatasetTarget, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 import { namespace } from '@we/schema-shared';
 
+import { createFeed } from './feedStore';
 import { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
 
 /**
@@ -132,6 +133,8 @@ export const CHILDREN_PREDICATE = 'we://child';
  */
 export const SPOKEN = 'spoken';
 export const TYPED = 'typed';
+/** What a reply hangs off — the reply mechanism every record in WE shares. */
+export const REPLY_PREDICATE = 'we://comment';
 export const CORRECTED = 'corrected';
 
 /**
@@ -2709,7 +2712,56 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     if (context) void stop();
   });
 
+  /**
+   * Write one typed line into a collection — a transcript, or the space itself — with its marks.
+   *
+   * The one way a typed message is written, so the transcript's composer, the Feed's and a reply
+   * cannot drift apart about what a message is: a `TextBlock` with `source: typed`, its marks as
+   * the composer gave them, under whatever holds it.
+   */
+  async function writeMessage(
+    holder: { id: string; predicate: string },
+    text: string,
+    marks?: string,
+    dataset?: string,
+  ): Promise<string | null> {
+    const words = String(text ?? '').trim();
+    if (!words || !createEntity) return null;
+    return createEntity(
+      'TextBlock',
+      { text: words, source: TYPED, ...(marks ? { marks } : {}) },
+      { parent: holder, ...(dataset ? { dataset } : {}) },
+    );
+  }
+
+  /*
+    The line a reply in the transcript is being written to — the store's rather than a local, because
+    the transcript's lines and its composer are separate parts of the panel with no scope in common.
+    Cleared when the call on screen changes: a reply belongs to the conversation it was started in.
+  */
+  const [replyingTo, setReplyingTo] = signal<{ id: string; text: string; author: string } | null>(null);
+  effect?.(() => {
+    void deps.callOnScreen?.();
+    setReplyingTo(null);
+  });
+
+  const feed = createFeed({
+    signal,
+    effect,
+    state,
+    action,
+    onDispose,
+    dataset,
+    records,
+    interpretation,
+    presence,
+    unconfirmedIds,
+    // Into the space on screen: the Feed is about the space somebody is reading.
+    write: (collection, text, marks) => writeMessage({ id: collection, predicate: CHILDREN_PREDICATE }, text, marks),
+  });
+
   return {
+    ...feed,
     // ── State ────────────────────────────────────────────────────────────────
     status: state(
       status,
@@ -3568,7 +3620,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * second, since a message does not need somebody to have spoken first and `collectionId` is
      * null until they have.
      */
-    addMessage: action(async (collection: string, text: string) => {
+    addMessage: action(async (collection: string, text: string, marks?: string) => {
       const words = String(text ?? '').trim();
       if (!words || !createEntity) return;
       const target = collection || targetCollection();
@@ -3582,11 +3634,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         the live one is running in, where the record it names does not exist.
       */
       const dataset = target === targetCollection() ? (myCall()?.datasetUri ?? undefined) : undefined;
-      await createEntity(
-        'TextBlock',
-        { text: words, source: TYPED },
-        { parent: { id: target, predicate: CHILDREN_PREDICATE }, ...(dataset ? { dataset } : {}) },
-      );
+      await writeMessage({ id: target, predicate: CHILDREN_PREDICATE }, words, marks, dataset);
       /*
         Not awaited, because the composer is waiting on this promise to say it has finished.
 
@@ -3603,7 +3651,33 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         clears the guard so the next message retries.
       */
       void recordSelfParticipation(target, dataset);
-    }, 'Writes something a person typed into a transcript, as a typed line.'),
+    }, 'Writes something a person typed into a transcript, as a typed line — with its marks, when the composer gave any.'),
+    /**
+     * Answer one line — in a transcript or the Feed — with a typed line of its own.
+     *
+     * Linked from the line it answers through `comments`, the one reply mechanism WE has, rather
+     * than contained by the conversation: a reply is about a line, and the transcript and the Feed
+     * draw it inline, after what it answers, quoting it. `inCall` writes into the call's space, for
+     * a reply made from a transcript of a call running somewhere else.
+     */
+    reply: action(async (parentId: string, text: string, marks?: string, inCall?: boolean) => {
+      if (!parentId) return;
+      const dataset = inCall ? callTarget()?.dataset : undefined;
+      await writeMessage({ id: parentId, predicate: REPLY_PREDICATE }, text, marks, dataset);
+      setReplyingTo(null);
+    }, 'Answers one line with a typed line of its own, linked from it as a reply.'),
+    replyingTo: state(replyingTo, 'The transcript line a reply is being written to — { id, text, author } — or null.'),
+    startReply: action(
+      (line: { id?: unknown; text?: unknown; author?: unknown }) =>
+        setReplyingTo(
+          typeof line?.id === 'string'
+            ? { id: line.id, text: String(line.text ?? ''), author: String(line.author ?? '') }
+            : null,
+        ),
+      'Starts a reply to one transcript line — pass { id, text, author } — which the composer then sends as a reply.',
+      { ambient: true },
+    ),
+    cancelReply: action(() => setReplyingTo(null), 'Puts a reply down without sending it.', { ambient: true }),
     /**
      * Fix the words on a line of the transcript.
      *
