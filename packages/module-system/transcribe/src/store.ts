@@ -3422,6 +3422,23 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       if (tied) return void setTiedDecision(tied);
       await keep(id);
     }, 'Keeps a suggestion, as proposed or as edited.'),
+    /**
+     * Keep every one of these that is still a suggestion — for a list placing a group of records at
+     * once, where placing them is the decision.
+     *
+     * Anything already settled is passed over, and so is anything tied to a suggestion outside the
+     * group: deciding that one would decide the other too, so it is left on its card, to be decided
+     * there with the question it needs.
+     */
+    acceptProposals: action(async (ids: string[]) => {
+      if (!interpretation) return;
+      const waiting = new Set(unconfirmedIds());
+      for (const id of Array.isArray(ids) ? ids : []) {
+        if (!waiting.has(id)) continue;
+        if (await tiesOf(id, 'accept')) continue;
+        await keep(id);
+      }
+    }, 'Keeps every one of these that is still a suggestion, passing over any tied to one outside them.'),
     /** Open one suggestion for editing, seeded with what the model proposed. */
     editProposal: action(
       (id: string) => {

@@ -74,7 +74,7 @@ const BOARD = 'first(local.board)';
   before the board is worked out rather than after, so every count, the Unplaced column and the people
   filter agree about what is on the board.
 */
-const VIEW = `arrangedBoard({ board: first(local.board), columns: local.columns, records: ${withoutHiddenSuggestions('local.pool')}, states: spaceStore.taskStates, involvements: local.involvements, kinds: spaceStore.involvementTypes, people: local.boardPeople, show: local.boardGrouped ? 'rows' : (local.boardShow == 'hide' ? 'hide' : 'dim'), awaitingMe: local.boardAwaiting, me: me.did })`;
+const VIEW = `arrangedBoard({ board: first(local.board), columns: local.columns, records: ${withoutHiddenSuggestions('local.pool')}, states: spaceStore.taskStates, involvements: local.involvements, kinds: spaceStore.involvementTypes, people: local.boardPeople, show: local.boardGrouped ? 'rows' : (local.boardShow == 'hide' ? 'hide' : 'dim'), awaitingMe: local.boardAwaiting, me: me.did, only: local.boardOnlySource ? first(local.boardOnlySource).extracted : null, onlyShow: local.boardOnlyShow })`;
 
 /**
  * Who is on each card — the `involvement` host function over the board's own involvement query.
@@ -717,6 +717,15 @@ export function moveTaskMenu(from: string, as = 'card'): SchemaNode {
 export interface TaskBoardOptions {
   /** The board's record id, as an expression. */
   boardId: SchemaProp;
+  /**
+   * Pick out what one record produced — its `extracted` relation — dimming or hiding the rest.
+   *
+   * The "this call" lens on a space's board. `record` is the producer, as an expression (empty
+   * narrows nothing); `param` is the address parameter holding the mode, `dim` or `hide`, so the
+   * lens is shared with whatever else on the page reads it and survives a link. Applied beside the
+   * people filter, each in its own mode, and a heading counts what matches both.
+   */
+  onlyFrom?: { record: Record<string, unknown>; param: string };
   /** Shown when there is no work here at all. */
   empty: SchemaNode;
   /** Whether a card was extracted from a conversation, as an expression over `card` — see {@link TaskCardOptions.extracted}. */
@@ -1686,6 +1695,8 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
       // Only the cards waiting on this agent's approval. Ephemeral: a board opened later should show
       // everything, and a shared link must not arrive filtered to somebody else's queue.
       boardAwaiting: { type: 'boolean', initial: false },
+      // The `onlyFrom` lens's mode, read from the address so every page reading the lens agrees.
+      boardOnlyShow: { type: 'string', initial: '', ...(opts.onlyFrom ? { syncParam: opts.onlyFrom.param } : {}) },
     },
     /*
       Three subscriptions for the whole board, read together through `arrangedBoard`.
@@ -1695,6 +1706,18 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
       scope, narrowed to what the board gathers from where that is a container.
     */
     $queries: {
+      /*
+        What the record behind `onlyFrom` produced — its `extracted` ids, on its one row. Asked only
+        when there is a record to ask about: an absent id would be pruned and widen the read.
+      */
+      // Declared on every board, so the one expression every list reads can always name it; a board
+      // without `onlyFrom` never asks it anything.
+      boardOnlySource: {
+        entity: 'CollectionBlock',
+        where: { id: (opts.onlyFrom?.record ?? '') as Record<string, unknown> },
+        limit: 1,
+        when: (opts.onlyFrom?.record ?? { $: 'false' }) as Record<string, unknown>,
+      },
       /*
         The board, hydrated one level. A second hop through a polymorphic relation cannot be
         hydrated — the ORM does not know what class the columns are until it has read them — which is

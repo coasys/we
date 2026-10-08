@@ -281,13 +281,20 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         return made;
       }
 
-      const space = await Space.findOne(p, { include: { board: true } });
+      const space = await Space.findOne(p, { include: { board: true, root: true } });
       if (!space) return '';
       const existing = space.board as unknown as CollectionBlock | undefined;
       if (existing?.id) return existing.id;
-      const made = await createBoard(title?.trim() || 'Everything', undefined, {
+      /*
+        Gathering from the space collection, where everything top-level in the space lives — every
+        call's finds included, since they are filed there rather than under the call. A space made
+        before spaces had a collection gathers from the space record, which a board reads as the
+        whole space, as it always did.
+      */
+      const root = (space.root as unknown as { id?: string } | undefined)?.id;
+      const made = await createBoard(title?.trim() || 'Everything', root || undefined, {
         dataset: datasetUri,
-        gathers: space.id,
+        gathers: root || space.id,
       });
       if (made) await space.setBoard({ id: made } as CollectionBlock);
       return made;

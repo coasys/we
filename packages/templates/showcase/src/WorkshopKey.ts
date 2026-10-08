@@ -1142,12 +1142,22 @@ const foldSection: SchemaNode = {
   },
 };
 
-export function keyPanel(opts: { call: Record<string, unknown>; callExpr: string; extracted: string }): SchemaNode {
+export function keyPanel(opts: {
+  /** The canvas the key is about — its placements are what the key lists. */
+  call: Record<string, unknown>;
+  callExpr: string;
+  extracted: string;
+  /**
+   * Where the canvas's records live, when not in the canvas itself — a space canvas's are the space
+   * collection's children. Defaults to the canvas.
+   */
+  members?: Record<string, unknown>;
+}): SchemaNode {
   /*
     Two things have to be true for the key to mean anything: the canvas is the page on screen, and
-    there is a call for it to be about. Said as one condition with one sentence for each, because
-    they are different absences with different ways out — one is a page away, the other needs a call
-    chosen or started.
+    there is a canvas for it to be about. Said as one condition with one sentence for each, because
+    they are different absences with different ways out — one is a page away, the other is a space
+    made without one.
   */
   const ready = `${ON_CANVAS} && (${opts.callExpr})`;
   return {
@@ -1166,9 +1176,9 @@ export function keyPanel(opts: { call: Record<string, unknown>; callExpr: string
       placements: placementsQuery(opts.call),
       onCall: {
         entity: { $: `(${opts.extracted}).filter(k, k != '${LINK_ENTITY}')` },
-        scope: anchorScope(opts.call),
+        scope: anchorScope(opts.members ?? opts.call),
         limit: 200,
-        when: opts.call,
+        when: opts.members ?? opts.call,
       },
     },
     children: [
@@ -1204,7 +1214,7 @@ export function keyPanel(opts: { call: Record<string, unknown>; callExpr: string
                 children: [
                   {
                     $:
-                      `${ON_CANVAS} ? 'Choose or start a call. The key is about what is on its canvas.'` +
+                      `${ON_CANVAS} ? 'This space has no canvas of its own. The key is about what is on one.'` +
                       ` : 'Colours are on the canvas. The board and the calendar draw every card plain.'`,
                   },
                 ],

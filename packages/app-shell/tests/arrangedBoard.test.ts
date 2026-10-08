@@ -520,6 +520,33 @@ describe('a board read by who is on the work', () => {
     expect(`${view.matchedCount} of ${view.cardCount}`).toBe('2 of 4');
   });
 
+  it('picks out one call’s cards, dimming or hiding the rest, and counts them the same way', () => {
+    // The "this call" lens: the ids are what the call produced. Dimmed, everything stays where it is.
+    const dim = arrangedBoard({ ...base, only: ['t1', 't4'], onlyShow: 'dim' });
+    expect(dim.dimmed.sort()).toEqual(['t2', 't3']);
+    expect(dim.contents.c1.matched).toBe(1);
+    expect(`${dim.matchedCount} of ${dim.cardCount}`).toBe('2 of 4');
+
+    const hide = arrangedBoard({ ...base, only: ['t1', 't4'], onlyShow: 'hide' });
+    expect([...hide.contents.c1.arranged, ...hide.contents.c1.unarranged].map((r) => r.id)).toEqual(['t1']);
+    expect(hide.unplaced.map((r) => r.id)).toEqual(['t4']);
+    expect(hide.dimmed).toEqual([]);
+  });
+
+  it('keeps each narrowing in its own mode when both are on', () => {
+    // Ana's cards are t1 and t2; the call made t1 and t3. The call hides, the people only dim.
+    const view = arrangedBoard({ ...base, people: [ANA], only: ['t1', 't3'], onlyShow: 'hide' });
+    expect([...view.contents.c1.arranged, ...view.contents.c1.unarranged].map((r) => r.id)).toEqual(['t3', 't1']);
+    expect(view.dimmed).toEqual(['t3']);
+    expect(view.contents.c1.matched).toBe(1);
+  });
+
+  it('narrows nothing without a mode, whatever ids it is handed', () => {
+    const view = arrangedBoard({ ...base, only: ['t1'], onlyShow: '' });
+    expect(view.dimmed).toEqual([]);
+    expect(view.matchedCount).toBe(view.cardCount);
+  });
+
   it('hands over the column’s whole order, so a drag among the shown cards cannot move the hidden ones', () => {
     const view = arrangedBoard({ ...base, people: [ANA], show: 'hide' });
     expect(view.contents.c1.order).toEqual(['t3', 't1', 't2']);
