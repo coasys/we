@@ -5,48 +5,24 @@
  * The SFU configuration lives on the neighbourhood's Social DNA, not on the
  * WE module settings system.  This adapter provides the read/write path that
  * the call module and Space Settings UI use to manage topology defaults.
- *
- * COMPATIBILITY: compiles against the **published** `@coasys/ad4m`, which does
- * not export SFU types yet.  Runtime capability gating ensures clear errors
- * when paired with an executor that lacks SFU support.  Once `@coasys/ad4m`
- * publishes the SFU types, the local interfaces below can become direct imports.
  */
-import type { PerspectiveProxy } from '@coasys/ad4m';
+import type { IceServer, NeighbourhoodProxy, PerspectiveProxy, SfuConfig, SfuMode } from '@coasys/ad4m';
 import type { DatasetHandle } from '@we/backend-shared';
 
-// ── Local type mirrors ──────────────────────────────────────────────────
+// ── Types ───────────────────────────────────────────────────────────────
 //
-// Mirrors of `SfuTypes.ts` from `@coasys/ad4m` feat/embedded-sfu.
-// Kept minimal — only the fields the settings UI reads and writes.
+// The SDK's own, under the names the rest of WE reads. Aliases rather than copies: a field the
+// SDK adds, renames or narrows is a type error here instead of a silent mismatch at runtime.
 
-export type CallConfigMode = 'mesh' | 'designated' | 'gateway' | 'cascaded';
+export type CallConfigMode = SfuMode;
 
-export interface CallConfigIceServer {
-  urls: string[];
-  username?: string;
-  credential?: string;
-}
+export type CallConfigIceServer = IceServer;
 
-/**
- * Per-neighbourhood call configuration.  Field-for-field mirror of `SfuConfig`
- * in `@coasys/ad4m/neighbourhood/SfuTypes`.
- */
-export interface CallConfig {
-  mode: CallConfigMode;
-  designatedPeer?: string;
-  fallback: CallConfigMode;
-  maxMeshParticipants: number;
-  sfuPeers: string[];
-  maxParticipantsPerNode?: number;
-  preferredSfuDid?: string;
-  iceServers?: CallConfigIceServer[];
-}
+/** Per-neighbourhood call configuration, stored on the neighbourhood's Social DNA. */
+export type CallConfig = SfuConfig;
 
 /** An SFU-capable executor discovered via presence in the neighbourhood. */
-export interface CallSfuNode {
-  did: string;
-  bindAddress: string;
-}
+export type CallSfuNode = Awaited<ReturnType<NeighbourhoodProxy['availableSfuNodes']>>[number];
 
 /** Default configuration — pure mesh, no SFU. */
 export const DEFAULT_CALL_CONFIG: CallConfig = {
@@ -55,14 +31,6 @@ export const DEFAULT_CALL_CONFIG: CallConfig = {
   maxMeshParticipants: 6,
   sfuPeers: [],
 };
-
-// ── Runtime capability interfaces ───────────────────────────────────────
-
-interface ConfigCapableProxy {
-  sfuConfig(neighbourhoodUrl: string): Promise<CallConfig>;
-  setSfuConfig(neighbourhoodUrl: string, config: CallConfig): Promise<boolean>;
-  availableSfuNodes(): Promise<CallSfuNode[]>;
-}
 
 // ── Adapter factory ─────────────────────────────────────────────────────
 
@@ -81,8 +49,8 @@ export function createCallConfigAccessors(getCurrentDataset: () => DatasetHandle
   getAvailableSfuNodes: () => Promise<CallSfuNode[]>;
   callConfigSupported: () => boolean;
 } {
-  /** Resolve the neighbourhood proxy and verify SFU capability. */
-  function resolveProxy(): { nhProxy: ConfigCapableProxy; neighbourhoodUrl: string } {
+  /** Resolve the neighbourhood proxy of the current shared space. */
+  function resolveProxy(): { nhProxy: NeighbourhoodProxy; neighbourhoodUrl: string } {
     const dataset = getCurrentDataset();
     if (!dataset) throw new Error('Cannot access call config — no active dataset');
 
@@ -90,12 +58,7 @@ export function createCallConfigAccessors(getCurrentDataset: () => DatasetHandle
     const neighbourhoodUrl = proxy.sharedUrl ?? '';
     if (!neighbourhoodUrl) throw new Error('Cannot access call config — not a shared space');
 
-    const nhProxy = proxy.getNeighbourhoodProxy();
-    if (!nhProxy || !('sfuConfig' in nhProxy)) {
-      throw new Error('AD4M executor does not support call configuration — requires a build from feat/embedded-sfu');
-    }
-
-    return { nhProxy: nhProxy as unknown as ConfigCapableProxy, neighbourhoodUrl };
+    return { nhProxy: proxy.getNeighbourhoodProxy(), neighbourhoodUrl };
   }
 
   return {
@@ -123,7 +86,10 @@ export function createCallConfigAccessors(getCurrentDataset: () => DatasetHandle
       }
     },
 
-    /** Synchronous probe — does the current dataset support call config at all? */
+    /**
+     * Synchronous probe — is there a shared space to configure? Whether its executor can store the
+     * config is only known by asking, which getCallConfig does, falling back to the defaults.
+     */
     callConfigSupported(): boolean {
       try {
         resolveProxy();

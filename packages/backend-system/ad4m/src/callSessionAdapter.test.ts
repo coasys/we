@@ -4,38 +4,23 @@
  * Verifies that the session factory correctly:
  * - Reads the moderator's SFU config before creating a session
  * - Passes the correct topology to `createSession`
+ * - Passes 'mesh' explicitly when the config says mesh, and an SFU mode as 'auto'
  * - Falls back to 'auto' when the config read fails
- * - Passes 'mesh' explicitly when the config says mesh
  * - Throws when no dataset exists
- * - Throws when the executor lacks session support
  */
 import { describe, expect, it, vi } from 'vitest';
 
 import { createCallSessionFactory } from './callSessionAdapter';
 
 /** Build a mock dataset that looks like a shared PerspectiveProxy. */
-function mockDataset(overrides?: {
-  sharedUrl?: string;
-  sfuConfigMode?: string;
-  hasSfuConfig?: boolean;
-  hasCreateSession?: boolean;
-}) {
-  const {
-    sharedUrl = 'neighbourhood://test-space',
-    sfuConfigMode = 'auto',
-    hasSfuConfig = true,
-    hasCreateSession = true,
-  } = overrides ?? {};
+function mockDataset(overrides?: { sharedUrl?: string; sfuConfigMode?: string }) {
+  const { sharedUrl = 'neighbourhood://test-space', sfuConfigMode = 'mesh' } = overrides ?? {};
 
   const session = { join: vi.fn(), leave: vi.fn(), destroy: vi.fn() };
-  const nhProxy: Record<string, unknown> = {};
-
-  if (hasCreateSession) {
-    nhProxy.createSession = vi.fn().mockResolvedValue(session);
-  }
-  if (hasSfuConfig) {
-    nhProxy.sfuConfig = vi.fn().mockResolvedValue({ mode: sfuConfigMode });
-  }
+  const nhProxy: Record<string, unknown> = {
+    createSession: vi.fn().mockResolvedValue(session),
+    sfuConfig: vi.fn().mockResolvedValue({ mode: sfuConfigMode }),
+  };
 
   return {
     sharedUrl,
@@ -46,7 +31,11 @@ function mockDataset(overrides?: {
 }
 
 describe('createCallSessionFactory', () => {
-  it('reads config and passes topology to createSession', async () => {
+  /*
+    The session takes mesh, sfu or auto, and resolves anything else as auto. The three SFU modes
+    were passed through as they were, which the session read as auto; passing auto says so.
+  */
+  it('reads config and passes an SFU mode as auto', async () => {
     const ds = mockDataset({ sfuConfigMode: 'designated' });
     const factory = createCallSessionFactory(
       () => null,
@@ -59,7 +48,7 @@ describe('createCallSessionFactory', () => {
     expect(ds._nhProxy.sfuConfig).toHaveBeenCalledWith('neighbourhood://test-space');
     expect(ds._nhProxy.createSession).toHaveBeenCalledWith('test-call-123', {
       neighbourhoodUrl: 'neighbourhood://test-space',
-      topology: 'designated',
+      topology: 'auto',
     });
   });
 
@@ -80,7 +69,7 @@ describe('createCallSessionFactory', () => {
   });
 
   it('falls back to auto when sfuConfig read fails', async () => {
-    const ds = mockDataset({ hasSfuConfig: true });
+    const ds = mockDataset();
     (ds._nhProxy.sfuConfig as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('config unavailable'));
     const factory = createCallSessionFactory(
       () => null,
@@ -96,23 +85,7 @@ describe('createCallSessionFactory', () => {
     });
   });
 
-  it('falls back to auto when executor lacks sfuConfig method', async () => {
-    const ds = mockDataset({ hasSfuConfig: false });
-    const factory = createCallSessionFactory(
-      () => null,
-      () => ds as never,
-      () => null,
-    );
-
-    await factory('call-3');
-
-    expect(ds._nhProxy.createSession).toHaveBeenCalledWith('call-3', {
-      neighbourhoodUrl: 'neighbourhood://test-space',
-      topology: 'auto',
-    });
-  });
-
-  it('passes cascaded topology through', async () => {
+  it('passes cascaded as auto too', async () => {
     const ds = mockDataset({ sfuConfigMode: 'cascaded' });
     const factory = createCallSessionFactory(
       () => null,
@@ -124,7 +97,7 @@ describe('createCallSessionFactory', () => {
 
     expect(ds._nhProxy.createSession).toHaveBeenCalledWith('call-4', {
       neighbourhoodUrl: 'neighbourhood://test-space',
-      topology: 'cascaded',
+      topology: 'auto',
     });
   });
 
@@ -135,15 +108,5 @@ describe('createCallSessionFactory', () => {
       () => null,
     );
     await expect(factory('call-x')).rejects.toThrow('no active dataset');
-  });
-
-  it('throws when executor lacks createSession support', async () => {
-    const ds = mockDataset({ hasCreateSession: false });
-    const factory = createCallSessionFactory(
-      () => null,
-      () => ds as never,
-      () => null,
-    );
-    await expect(factory('call-y')).rejects.toThrow('does not support Session');
   });
 });

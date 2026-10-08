@@ -7,7 +7,7 @@
  * - Writes config via `setSfuConfig(neighbourhoodUrl, config)`
  * - Discovers SFU nodes via `availableSfuNodes()`
  * - Falls back to defaults when the read fails
- * - Reports unsupported when the proxy lacks the capability
+ * - Reports unsupported where there is no shared space to configure
  */
 import { describe, expect, it, vi } from 'vitest';
 
@@ -19,22 +19,19 @@ function mockDataset(overrides?: {
   sfuConfig?: CallConfig;
   setSfuResult?: boolean;
   sfuNodes?: CallSfuNode[];
-  hasSfuSupport?: boolean;
 }) {
   const {
     sharedUrl = 'neighbourhood://test-space',
     sfuConfig = { ...DEFAULT_CALL_CONFIG },
     setSfuResult = true,
     sfuNodes = [],
-    hasSfuSupport = true,
   } = overrides ?? {};
 
-  const nhProxy: Record<string, unknown> = {};
-  if (hasSfuSupport) {
-    nhProxy.sfuConfig = vi.fn().mockResolvedValue(sfuConfig);
-    nhProxy.setSfuConfig = vi.fn().mockResolvedValue(setSfuResult);
-    nhProxy.availableSfuNodes = vi.fn().mockResolvedValue(sfuNodes);
-  }
+  const nhProxy: Record<string, unknown> = {
+    sfuConfig: vi.fn().mockResolvedValue(sfuConfig),
+    setSfuConfig: vi.fn().mockResolvedValue(setSfuResult),
+    availableSfuNodes: vi.fn().mockResolvedValue(sfuNodes),
+  };
 
   return {
     sharedUrl,
@@ -45,7 +42,7 @@ function mockDataset(overrides?: {
 }
 
 describe('callConfigSupported', () => {
-  it('returns true when the proxy has sfuConfig', () => {
+  it('returns true for a shared space', () => {
     const ds = mockDataset();
     const { callConfigSupported } = createCallConfigAccessors(() => ds as never);
     expect(callConfigSupported()).toBe(true);
@@ -53,12 +50,6 @@ describe('callConfigSupported', () => {
 
   it('returns false when no dataset exists', () => {
     const { callConfigSupported } = createCallConfigAccessors(() => null);
-    expect(callConfigSupported()).toBe(false);
-  });
-
-  it('returns false when the proxy lacks SFU support', () => {
-    const ds = mockDataset({ hasSfuSupport: false });
-    const { callConfigSupported } = createCallConfigAccessors(() => ds as never);
     expect(callConfigSupported()).toBe(false);
   });
 

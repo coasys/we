@@ -6,24 +6,21 @@
  * imports). AD4M's `Session` satisfies it structurally. This adapter provides a factory function
  * the host wires into the call module's `CallStoreDeps.createBackend` — so the module stays
  * backend-agnostic and the host does the AD4M-specific construction.
- *
- * COMPATIBILITY: this adapter compiles against the **published** `@coasys/ad4m`, which does not
- * yet export `Session` or `createSession`. Runtime capability gating ensures the adapter throws a
- * clear error when paired with an executor that lacks SFU support, rather than a cryptic type
- * mismatch. Once `@coasys/ad4m` publishes the SFU types, the local interfaces below can be
- * replaced with direct imports.
  */
-import type { PerspectiveProxy } from '@coasys/ad4m';
+import type { PerspectiveProxy, Session, SessionTopology, SfuMode } from '@coasys/ad4m';
 import type { DatasetHandle } from '@we/backend-shared';
 
 /**
- * Runtime capability interface — matches `NeighbourhoodProxy.createSession` added in the AD4M
- * `feat/embedded-sfu` branch. Defined locally so the adapter compiles against the published
- * `@coasys/ad4m` while working at runtime with an SFU-enabled executor.
+ * The topology a session is asked for, from the mode the space's moderator chose.
+ *
+ * The session takes `mesh`, `sfu` or `auto`; the space's config has four modes. `mesh` means
+ * "never use an SFU" and is passed as it is. The three SFU modes are passed as `auto`, which is
+ * what the session already made of them: anything but `mesh` or `sfu` falls through to its
+ * auto-discovery. Whether a space set to `designated` should instead insist on an SFU is a change
+ * of behaviour, not of types, so it is not made here.
  */
-interface SessionCapableProxy {
-  createSession(roomName: string, options?: { neighbourhoodUrl?: string; topology?: string }): Promise<unknown>;
-  sfuConfig?(neighbourhoodUrl: string): Promise<{ mode?: string }>;
+function topologyFor(mode: SfuMode | undefined): SessionTopology {
+  return mode === 'mesh' ? 'mesh' : 'auto';
 }
 
 /**
@@ -36,8 +33,8 @@ interface SessionCapableProxy {
  * At call time it:
  * 1. Reads the current dataset (perspective)
  * 2. Gets the `NeighbourhoodProxy` from the `PerspectiveProxy`
- * 3. Checks for `createSession` support at runtime
- * 4. Calls `createSession(callId)` to get a Session with auto topology resolution
+ * 3. Reads the moderator's topology choice
+ * 4. Calls `createSession(callId)` to get a Session
  *
  * The Session handles mesh ↔ SFU topology switching, SDP negotiation, SFU cascade failover,
  * simulcast quality preferences, and data channel relay internally.
@@ -50,44 +47,24 @@ export function createCallSessionFactory(
   _getBackendClient: () => unknown,
   getCurrentDataset: () => DatasetHandle | null,
   _getSelfId: () => string | null,
-): (callId: string) => Promise<unknown> {
+): (callId: string) => Promise<Session> {
   return async (callId: string) => {
     const dataset = getCurrentDataset();
     if (!dataset) throw new Error('Cannot create call session — no active dataset');
 
     const proxy = dataset as PerspectiveProxy;
     const neighbourhoodUrl = proxy.sharedUrl ?? '';
-
-    // Retrieve the proxy through PerspectiveProxy rather than constructing directly — avoids
-    // constructor signature differences between published and SFU-enabled @coasys/ad4m builds.
     const nhProxy = proxy.getNeighbourhoodProxy();
 
-    if (!nhProxy || !('createSession' in nhProxy)) {
-      throw new Error('AD4M executor does not support Session — requires a build from feat/embedded-sfu');
+    // An executor that predates the SFU, or a space with no config, answers with an error here;
+    // auto resolution is right for both.
+    let topology: SessionTopology = 'auto';
+    try {
+      topology = topologyFor((await nhProxy.sfuConfig(neighbourhoodUrl))?.mode);
+    } catch {
+      // Non-fatal — fall back to auto topology resolution.
     }
 
-    const capable = nhProxy as unknown as SessionCapableProxy;
-
-    // Read the moderator's topology choice from Social DNA.  Falls back to 'auto'
-    // when the config has not been set or the executor lacks support.
-    let topology = 'auto';
-    if (capable.sfuConfig) {
-      try {
-        const config = await capable.sfuConfig(neighbourhoodUrl);
-        if (config?.mode && config.mode !== 'mesh') {
-          topology = config.mode;
-        }
-        // 'mesh' in the config means "never use SFU" — pass 'mesh' explicitly
-        // so the Session resolver skips SFU discovery.
-        if (config?.mode === 'mesh') topology = 'mesh';
-      } catch {
-        // Non-fatal — fall back to auto topology resolution.
-      }
-    }
-
-    return await capable.createSession(callId, {
-      neighbourhoodUrl,
-      topology,
-    });
+    return await nhProxy.createSession(callId, { neighbourhoodUrl, topology });
   };
 }
