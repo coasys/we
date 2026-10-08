@@ -17,6 +17,7 @@
 import type { EntityStatic, IncludeExtras, IncludeOf, RecordInstance, TypedEntityQuery } from '@we/backend-shared';
 import {
   compileQuery,
+  CONTAINMENT_PREDICATE,
   type EntityManifest,
   type EntitySchema,
   executeQueryIR,
@@ -123,7 +124,11 @@ export interface EntityClassLike {
     dataset: unknown,
     query?: Q | AnyQuery,
   ): Promise<(InMemoryInstance & IncludeExtras<RecordInstance, IncludeOf<Q>>) | null>;
-  create(dataset: unknown, data?: Record<string, unknown>): Promise<InMemoryInstance>;
+  create(
+    dataset: unknown,
+    data?: Record<string, unknown>,
+    options?: { parent?: { id: string; predicate: string } },
+  ): Promise<InMemoryInstance>;
   update(dataset: unknown, id: string, data: Record<string, unknown>): Promise<InMemoryInstance | null>;
   delete(dataset: unknown, id: string): Promise<unknown>;
   count(dataset: unknown, query?: AnyQuery): Promise<number>;
@@ -161,6 +166,32 @@ export type AssertEntityClassSatisfiesContract = Satisfies<EntityClassLike, Enti
  */
 export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime): Record<string, EntityClassLike> {
   const classes: Record<string, EntityClassLike> = {};
+
+  /*
+    A new record linked under a parent named by id and predicate — `create(…, { parent })`.
+
+    AD4M writes that link with the record, which is what lets a transcript block or a space's canvas
+    be made inside its container with no window in which it is loose. This backend ignored the option,
+    so everything made that way arrived here unparented and a store tested against it never saw its
+    containment. The parent is found by id in whichever table holds it, and the relation by the
+    predicate a backend would store it under, so containment resolves the same way it does there.
+  */
+  const linkUnder = async (dataset: DatasetEntry, parent: { id: string; predicate: string }, childId: string) => {
+    for (const entityName of Object.keys(classes)) {
+      const row = tableOf(dataset, entityName).find((r) => r.id === parent.id);
+      if (!row) continue;
+      const relation = Object.entries(resolved(entityName).relations).find(
+        ([, spec]) =>
+          !spec.reverseOf && (spec.containment ? CONTAINMENT_PREDICATE : spec.predicate) === parent.predicate,
+      )?.[0];
+      if (!relation) return;
+      const parentClass = classes[entityName] as unknown as { hydrate(d: DatasetEntry, r: AnyRow): AnyRow };
+      const instance = parentClass.hydrate(dataset, row);
+      const add = instance[`add${relation.charAt(0).toUpperCase()}${relation.slice(1)}`];
+      if (typeof add === 'function') await (add as (id: string) => Promise<void>).call(instance, childId);
+      return;
+    }
+  };
 
   /**
    * Everything an entity declares, including whatever it inherits — from the core vocabulary when
@@ -385,7 +416,11 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         return found[0] ?? null;
       }
 
-      static async create(handle: unknown, data: Record<string, unknown> = {}): Promise<Entity> {
+      static async create(
+        handle: unknown,
+        data: Record<string, unknown> = {},
+        options?: { parent?: { id: string; predicate: string } },
+      ): Promise<Entity> {
         const dataset = datasetOf(handle);
         const now = new Date().toISOString();
         const row: AnyRow = {
@@ -423,6 +458,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
             if (typeof id === 'string' && id) await (add as (target: string) => Promise<void>).call(instance, id);
           }
         }
+        if (options?.parent) await linkUnder(dataset, options.parent, row.id as string);
         return instance;
       }
 
@@ -663,6 +699,13 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           if (row) row[relation.name] = next;
           notify(dataset);
         };
+      } else {
+        /*
+          A to-one relation is pointed rather than listed, and AD4M's `@HasOne` offers `set<Name>` for
+          it — `space.setBoard(board)`, `space.setRoot(collection)`. Without the same accessor here, a
+          store written against that worked on one backend and threw on the other.
+        */
+        proto[`set${suffix}`] = proto[`add${suffix}`];
       }
     }
 

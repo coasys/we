@@ -70,6 +70,7 @@ export const CONFORMANCE_CASES = [
   'schema.module-entity',
   'schema.hints-round-trip',
   'schema.containment-predicate',
+  'relations.create-under-parent',
   'relations.ordered-read',
   'relations.create-links-one',
   'relations.create-links-many',
@@ -102,7 +103,11 @@ interface LiveQuery {
 
 /** The write half: a registered entity class, as the shell's record actions resolve one. */
 interface Model {
-  create(dataset: DatasetHandle, data?: Record<string, unknown>): Promise<Instance>;
+  create(
+    dataset: DatasetHandle,
+    data?: Record<string, unknown>,
+    options?: { parent?: { id: string; predicate: string } },
+  ): Promise<Instance>;
   update(dataset: DatasetHandle, id: string, data: Record<string, unknown>): Promise<unknown>;
   setRelation(dataset: DatasetHandle, id: string, relation: string, ids: readonly string[]): Promise<void>;
 }
@@ -350,6 +355,28 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
             .find((e) => e.name === 'CollectionBlock')
             ?.properties.find((p) => p.name === 'children');
           expect(children?.predicate).toBe(CONTAINMENT_PREDICATE);
+        },
+      );
+
+      test(
+        'relations.create-under-parent',
+        'creates a record inside its container, named by id and the containment predicate',
+        async () => {
+          // How a transcript line, a space's canvas and a post in a space are all made: inside their
+          // container in one write, so there is no moment in which they are loose in the space.
+          const Collection = model('CollectionBlock');
+          const container = await Collection.create(subject.dataset, { kind: 'space' });
+          const made = await Collection.create(
+            subject.dataset,
+            { kind: 'canvas' },
+            { parent: { id: container.id, predicate: CONTAINMENT_PREDICATE } },
+          );
+
+          const [row] = await reader('CollectionBlock').findAll(subject.dataset, {
+            where: { id: container.id },
+            include: { children: true },
+          });
+          expect(((row?.children ?? []) as Row[]).map((child) => child.id)).toEqual([made.id]);
         },
       );
     });
