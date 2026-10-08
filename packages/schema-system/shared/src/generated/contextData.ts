@@ -3302,7 +3302,7 @@ export const contextData: ContextData = {
         {
           name: 'callConfig',
           kind: 'state',
-          doc: "This space's call topology defaults — { mode, designatedPeer, fallback, maxMeshParticipants, sfuPeers } — as stored on its Social DNA.",
+          doc: "This space's call topology defaults — { mode, designatedPeer, fallback, maxMeshParticipants, sfuPeers } — as its creator stored it in the neighbourhood.",
         },
         { name: 'callConfigSaving', kind: 'state', doc: 'Whether a call config write is in flight.' },
         {

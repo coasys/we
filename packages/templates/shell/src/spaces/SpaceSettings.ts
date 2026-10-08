@@ -933,12 +933,13 @@ const CALL_FALLBACK_OPTIONS = [
 /**
  * Call topology defaults — how new calls in this space connect participants.
  *
- * Stored on Social DNA (not WE module settings), so the configuration travels with the
- * neighbourhood. Only shown when the call module runs here AND the executor supports SFU
+ * Stored as a link in the neighbourhood (not WE module settings), so every member reads the
+ * same configuration. Only shown when the call module runs here AND the executor supports SFU
  * configuration (feat/embedded-sfu builds).
  *
- * Admin-gated: a moderator decides whether calls go through a relay server. Members see the
- * result (the topology indicator in the call bar) but cannot change it.
+ * Only the space's creator can change it: the executor refuses anyone else's write, and the
+ * call store shows that refusal. Members see the result (the topology indicator in the call
+ * bar).
  */
 const callSettingsSection: SchemaNode = {
   type: '$if',

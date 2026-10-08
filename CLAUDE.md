@@ -3524,7 +3524,7 @@ Needs: kernels records, presence, ephemeral, media, peerConnection; permissions 
   - arrangement — The { columns, rows } the stage is currently laid out in.
   - audioDevice — The microphone this agent has chosen, or empty for whatever the system offers.
   - availableSfuNodes — SFU-capable executor nodes found in this neighbourhood — { did, bindAddress } each.
-  - callConfig — This space's call topology defaults — { mode, designatedPeer, fallback, maxMeshParticipants, sfuPeers } — as stored on its Social DNA.
+  - callConfig — This space's call topology defaults — { mode, designatedPeer, fallback, maxMeshParticipants, sfuPeers } — as its creator stored it in the neighbourhood.
   - callConfigSaving — Whether a call config write is in flight.
   - callConfigSupported — Whether the backend can read and write call configuration. False on executors without SFU support.
   - callId — The id of the call this agent is in, or null between calls.

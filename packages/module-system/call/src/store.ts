@@ -219,7 +219,7 @@ export type CallTopology = 'mesh' | 'sfu';
 /** Topology modes a moderator can choose from. */
 export type CallConfigMode = 'mesh' | 'designated' | 'gateway' | 'cascaded';
 
-/** Per-neighbourhood call configuration — topology defaults stored on Social DNA. */
+/** Per-neighbourhood call configuration — topology defaults stored as a link in the neighbourhood. */
 export interface CallConfigState {
   mode: CallConfigMode;
   designatedPeer?: string;
@@ -387,7 +387,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
 
   // ── Call configuration (SFU topology defaults) ──────────────────────
   //
-  // Read from Social DNA via the host's `getCallConfig` port.  Loaded once
+  // Read from the neighbourhood's links via the host's `getCallConfig` port.  Loaded once
   // when the dataset changes, refreshed after writes.  The settings UI
   // binds to these signals; the adapter reads them at join time.
 
@@ -2493,7 +2493,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
 
     callConfig: state(
       callConfig,
-      "This space's call topology defaults — { mode, designatedPeer, fallback, maxMeshParticipants, sfuPeers } — as stored on its Social DNA.",
+      "This space's call topology defaults — { mode, designatedPeer, fallback, maxMeshParticipants, sfuPeers } — as its creator stored it in the neighbourhood.",
     ),
     availableSfuNodes: state(
       availableSfuNodes,

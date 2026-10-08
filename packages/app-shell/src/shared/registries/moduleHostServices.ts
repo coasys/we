@@ -97,15 +97,16 @@ export interface ModuleHostServices {
   /**
    * Read the neighbourhood's call configuration (SFU topology defaults).
    *
-   * Returns the `SfuConfig` stored on Social DNA — the space moderator's topology decisions.
+   * Returns the `SfuConfig` stored as a link in the neighbourhood — its creator's topology
+   * decisions.
    * Absent when the backend has no SFU support; the call module uses mesh defaults.
    */
   getCallConfig?: () => Promise<unknown>;
   /**
    * Write the neighbourhood's call configuration.
    *
-   * Persists to Social DNA so the config travels with the neighbourhood.
-   * Admin-gated in the UI; the adapter itself does not enforce permissions.
+   * Stored as a link in the neighbourhood, so every member's executor reads the same config.
+   * The executor accepts it only from the neighbourhood's creator and rejects anyone else.
    */
   setCallConfig?: (config: unknown) => Promise<boolean>;
   /**

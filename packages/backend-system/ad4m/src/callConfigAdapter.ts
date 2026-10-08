@@ -2,9 +2,11 @@
  * Call configuration adapter — reads and writes SFU config through the
  * AD4M `NeighbourhoodProxy` API.
  *
- * The SFU configuration lives on the neighbourhood's Social DNA, not on the
- * WE module settings system.  This adapter provides the read/write path that
- * the call module and Space Settings UI use to manage topology defaults.
+ * The SFU configuration is a link in the neighbourhood, not a WE module
+ * setting: every member's executor reads the same config, and only the
+ * neighbourhood's creator may write it. This adapter provides the read/write
+ * path that the call module and Space Settings UI use to manage topology
+ * defaults.
  */
 import type { IceServer, NeighbourhoodProxy, PerspectiveProxy, SfuConfig, SfuMode } from '@coasys/ad4m';
 import type { DatasetHandle } from '@we/backend-shared';
@@ -18,7 +20,7 @@ export type CallConfigMode = SfuMode;
 
 export type CallConfigIceServer = IceServer;
 
-/** Per-neighbourhood call configuration, stored on the neighbourhood's Social DNA. */
+/** Per-neighbourhood call configuration, stored as a link in the neighbourhood. */
 export type CallConfig = SfuConfig;
 
 /** An SFU-capable executor discovered via presence in the neighbourhood. */
