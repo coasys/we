@@ -36,8 +36,9 @@ function topologyFor(mode: SfuMode | undefined): SessionTopology {
  * 3. Reads the moderator's topology choice
  * 4. Calls `createSession(callId)` to get a Session
  *
- * The Session handles mesh ↔ SFU topology switching, SDP negotiation, SFU cascade failover,
- * simulcast quality preferences, and data channel relay internally.
+ * The Session handles mesh ↔ SFU topology switching, SDP negotiation, reconnecting to this
+ * executor after a failed connection, simulcast quality preferences, and data channel relay
+ * internally.
  *
  * @param _getBackendClient  Reactive accessor for the `Ad4mClient` — reserved for future use.
  * @param getCurrentDataset  Reactive accessor for the current dataset (perspective).

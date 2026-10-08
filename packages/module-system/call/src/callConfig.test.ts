@@ -206,6 +206,23 @@ describe('call config — store integration', () => {
     expect(store.callConfig().mode).toBe('designated');
   });
 
+  it('says why when the executor refuses a write, and keeps the old config', async () => {
+    const setCallConfig = vi
+      .fn()
+      .mockRejectedValue(new Error('Only the neighbourhood’s owner can change its rooms or call config'));
+    const notify = vi.fn();
+    const store = createCallStore({ ...baseDeps, signal, setCallConfig, notify });
+
+    await store.setCallConfigField('maxMeshParticipants', 8);
+
+    expect(notify).toHaveBeenCalledWith(
+      'error',
+      'The call settings were not saved: Only the neighbourhood’s owner can change its rooms or call config',
+    );
+    expect(store.callConfig().maxMeshParticipants).toBe(6);
+    expect(store.callConfigSaving()).toBe(false);
+  });
+
   it('tracks saving state during config writes', async () => {
     let resolveWrite: (v: boolean) => void;
     const setCallConfig = vi.fn().mockImplementation(() => new Promise<boolean>((r) => (resolveWrite = r)));

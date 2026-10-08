@@ -407,6 +407,27 @@ export function createCallStore(deps: ModuleStoreDeps) {
   const [callConfigSaving, setCallConfigSaving] = signal(false);
 
   /**
+   * Store a call config, saying so when the executor refuses it.
+   *
+   * A refusal is ordinary rather than exceptional: only the space's owner on this node may change
+   * its call config, so anyone else's edit is turned down. Logging it would leave the field
+   * showing a value that was never saved.
+   */
+  async function writeCallConfig(next: CallConfigState): Promise<void> {
+    if (!deps.setCallConfig) return;
+    setCallConfigSaving(true);
+    try {
+      if (await deps.setCallConfig(next)) setCallConfig(next);
+      else deps.notify?.('error', 'The call settings were not saved.');
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      deps.notify?.('error', `The call settings were not saved: ${reason}`);
+    } finally {
+      setCallConfigSaving(false);
+    }
+  }
+
+  /**
    * Named, because it is the one problem that can resolve itself.
    *
    * Every other message here describes something structural — no space, no transport — that stays
@@ -2484,33 +2505,12 @@ export function createCallStore(deps: ModuleStoreDeps) {
     ),
     callConfigSaving: state(callConfigSaving, 'Whether a call config write is in flight.'),
 
-    setCallConfigField: action(async (field: string, value: unknown) => {
-      const current = callConfig();
-      if (!deps.setCallConfig) return;
-      const next = { ...current, [field]: value } as CallConfigState;
-      setCallConfigSaving(true);
-      try {
-        const ok = await deps.setCallConfig(next);
-        if (ok) setCallConfig(next);
-      } catch (error) {
-        console.error('call config: could not save', error);
-      } finally {
-        setCallConfigSaving(false);
-      }
-    }, 'Write one field of the call config.'),
+    setCallConfigField: action(
+      (field: string, value: unknown) => writeCallConfig({ ...callConfig(), [field]: value } as CallConfigState),
+      'Write one field of the call config.',
+    ),
 
-    saveCallConfig: action(async (config: CallConfigState) => {
-      if (!deps.setCallConfig) return;
-      setCallConfigSaving(true);
-      try {
-        const ok = await deps.setCallConfig(config);
-        if (ok) setCallConfig(config);
-      } catch (error) {
-        console.error('call config: could not save', error);
-      } finally {
-        setCallConfigSaving(false);
-      }
-    }, 'Replace the entire call config.'),
+    saveCallConfig: action((config: CallConfigState) => writeCallConfig(config), 'Replace the entire call config.'),
 
     refreshSfuNodes: action(async () => {
       if (!deps.getAvailableSfuNodes) return;
