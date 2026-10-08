@@ -12,7 +12,7 @@ import {
   toPortableText,
   walkBlocks,
 } from './content';
-import { mentionedDids, parseMarks, serializeMarks } from './marks';
+import { mentionChanges, mentionedDids, parseMarks, serializeMarks } from './marks';
 import type { CollectionMode } from './modes';
 import { isReconcilable } from './modes';
 import { getBlockRegistration, getRegisteredBlockEntities } from './registry';
@@ -531,8 +531,7 @@ async function writeMentions(root: RecordInstance, blocks: readonly ContentBlock
   const current = Array.isArray(root.mentions) ? root.mentions : [];
   if (!wanted.length && !current.length) return;
 
-  const added = wanted.filter((did) => !current.includes(did));
-  const removed = current.filter((did) => !wanted.includes(did));
+  const { add: added, remove: removed } = mentionChanges(current, wanted);
 
   if (added.length) await root.addMentions(added, batchId);
   if (removed.length) await root.removeMentions(removed, batchId);

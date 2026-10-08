@@ -2,6 +2,7 @@ import { boardOptimism } from '@shared/boardOptimism';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
 import { involvementOptimism } from '@shared/involvementOptimism';
+import { linkNewMentions, type MentionWriter, prepareMentionUpdate } from '@shared/lineMentions';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
@@ -272,6 +273,16 @@ export default function TemplateProvider() {
           if (root) rest.parent = { id: root, predicate: PREDICATES.CHILDREN };
         }
         const created = (await createInDataset(entity, fields, perspective, rest)) as { id?: string } | undefined;
+        // A line written with marks mentions whoever they name — see `lineMentions`.
+        if (created?.id) {
+          await linkNewMentions(
+            getEntity(entity) as unknown as MentionWriter,
+            perspective,
+            entity,
+            created.id,
+            fields,
+          ).catch((error: unknown) => console.warn('module host: could not link the mentions in a new line', error));
+        }
         return created?.id ?? null;
       },
 
@@ -352,7 +363,18 @@ export default function TemplateProvider() {
       updateEntity: async (entity, id, fields, options) => {
         const p = moduleTarget(options?.dataset);
         if (!p) return;
-        await updateInDataset(entity, id, fields, p);
+        // A line's words changing carries its marks over and moves its mentions — see `lineMentions`.
+        const mentions = await prepareMentionUpdate(
+          getEntity(entity) as unknown as MentionWriter,
+          p,
+          entity,
+          id,
+          fields,
+        );
+        await updateInDataset(entity, id, mentions.fields, p);
+        await mentions
+          .after()
+          .catch((error: unknown) => console.warn('module host: could not move the mentions in an edited line', error));
       },
 
       removeEntity: async (entity, id, options) => {
