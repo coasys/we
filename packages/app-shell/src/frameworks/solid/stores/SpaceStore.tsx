@@ -766,10 +766,10 @@ export interface SpaceStore {
    * model's own docstring says the edge exists precisely so that "posts mentioning me" can be a
    * query, and no query existed. This is that query.
    *
-   * Filtered here rather than pushed down, and that is a real limit worth naming: matching on the
-   * contents of a to-many relation is a relation filter, which both adapters declare they cannot do
-   * (`AdapterCapabilities.relationFilters`). So this reads the space's nodes and filters them, which
-   * is fine for a space and wrong for an inbox spanning many. Pushdown is the fix, not pagination.
+   * Asked from the agent's end through the backend's references — one lookup, and it finds a
+   * mention in a transcript line or a Feed message as well as in a post. Newest first, the fifty
+   * most recent. A backend without references falls back to filtering the space's containers, which
+   * misses lines.
    */
   /** `createdAt` is the backend's comparable timestamp (epoch millis in the AD4M lane). */
   myMentions: Accessor<{ id: string; author: string; createdAt: number }[]>;
@@ -4369,9 +4369,36 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   const unreadNodeIds = createMemo(() => unreadContainerIds(activityRows(), readMarkers()));
 
-  /** Nodes in this space naming this agent. See the interface for why the filter is not pushed down. */
+  /*
+    Messages in this space naming this agent — posts and transcript lines alike, newest first.
+
+    Asked from the agent's end, through the backend's references (`we://mention` to this DID): one
+    lookup however many messages the space holds, and it finds a mention in a transcript line, which
+    the container read below it never could. Read again on entering the space and whenever its
+    containers' activity changes — a new line in a running call is not one of those, and is found on
+    the next. A backend that cannot answer falls back to filtering the container read, which is what
+    this was.
+  */
+  const [mentionRows, setMentionRows] = createSignal<{ id: string; author: string; createdAt: number }[] | null>(null);
+  createEffect(() => {
+    const ds = datasetStore.currentDataset();
+    const did = session.me()?.did;
+    const references = session.backendPorts()?.references;
+    void activityRows();
+    setMentionRows(null);
+    if (!ds || !did || !references) return;
+    void references
+      .referrers(ds.handle, 'we://mention', did, { limit: 50 })
+      .then((rows) => {
+        if (datasetStore.currentDataset() !== ds) return;
+        setMentionRows(rows.map((row) => ({ id: row.id, author: row.author, createdAt: Date.parse(row.at) || 0 })));
+      })
+      .catch((error: unknown) => console.warn('SpaceStore: could not read who mentions this agent', error));
+  });
   const myMentions = createMemo(() => {
     const did = session.me()?.did;
+    const found = mentionRows();
+    if (found) return found;
     return did ? mentionsOf(activityRows(), did) : [];
   });
 

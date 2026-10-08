@@ -1366,13 +1366,24 @@ export default function TemplateProvider() {
   return (
     <BlockHostProvider
       dataset={() => (datasetStore.currentDataset()?.handle as never) ?? null}
-      // Who a composer here can @mention: the members of the space on screen. The host's
-      // knowledge, provided once, so no template names a store to get it.
-      mentions={() =>
-        spaceStore
-          .members()
-          .map((m) => ({ did: m.did, name: m.name || m.handle || m.did, avatar: m.avatar || undefined }))
-      }
+      /*
+        Who a composer here can @mention: every member of the space on screen. The host's knowledge,
+        provided once, so no template names a store to get it.
+
+        Every member, not only those whose profile has arrived: `members` drops anybody without a
+        cached profile, and an agent — a bot like Data — often has none, so it could never be picked
+        and a mention of it could only ever be a name in the text. A member with no profile is offered
+        under a shortened DID until its profile lands.
+      */
+      mentions={() => {
+        const profiles = new Map(spaceStore.members().map((m) => [m.did, m]));
+        return spaceStore.memberDids().map((did) => {
+          const m = profiles.get(did);
+          return m
+            ? { did, name: m.name || m.handle || did, avatar: m.avatar || undefined }
+            : { did, name: did.length > 20 ? `${did.slice(0, 12)}…${did.slice(-4)}` : did };
+        });
+      }}
       // A live co-editing session rides the ephemeral port of the space on screen — null in a
       // personal space, where there is nobody to share with, and the composer edits alone.
       collab={(nodeId) => {
