@@ -86,9 +86,16 @@ the ad4m version is the only difference between them:
 | Required checks | Paired check | Meaning                                                                |
 | --------------- | ------------ | ---------------------------------------------------------------------- |
 | red             | green        | Waiting for the pin, not for a fix                                     |
-| red             | red          | Something is broken — the paired check's summary names the stage       |
+| red             | red          | Something is broken — the PR comment says on which side, see below     |
 | green           | red          | Fine against today's ad4m, broken against the paired change: fix first |
 | green           | green        | Works with both — see below                                            |
+
+**When the paired check fails, it says whose failure it is.** It runs WE `dev` — the commit the PR
+was merged with — through the same stages against the same ad4m. If `dev` fails too, the comment
+says so: the cause is a change in ad4m `dev` that WE has not caught up with yet, usually a migration
+in another PR, and every PR paired with an ad4m branch carrying that change fails the same way until
+it lands. If `dev` gets through, the failure is the PR's own. This costs one more WE build, and only
+on a failure.
 
 **Green on the pin as well is not always a problem, and the PR comment says so rather than claiming
 the checks are red.** It is expected when the PR depends on how ad4m _behaves_ — a bug fix, or a
