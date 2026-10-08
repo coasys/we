@@ -180,7 +180,9 @@ use "Run workflow" on the workflow's page in the Actions tab.
 
 It opens the PR as `github-actions`, which needs the repository setting "Allow GitHub Actions to
 create and approve pull requests" (Settings → Actions → General). A PR opened that way starts no
-workflows by itself, so the bot starts CI on the branch, and the checks appear on the PR as usual.
+workflows by itself, so the bot starts CI, the live tests and the pairing gate on the branch, and the
+checks appear on the PR as usual. **A workflow with a required check has to be in that list**: a
+required check that never reports blocks the bump PR for good.
 
 **A routine bump** (WE catching up, with nothing in WE needing the new version) is the bot's PR, on
 its own, so a breakage points at one cause. **A feature that needs a new ad4m** bumps inside its own

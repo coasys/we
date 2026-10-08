@@ -13,24 +13,29 @@
 # Drafts are skipped on purpose. A draft is work in progress and its boxes are a plan; the check
 # belongs at `ready_for_review`, which is also when the convention says the description is written.
 # A draft cannot merge either, so the pairing gate has nothing to stop there.
+#
+# `workflow_dispatch` is for the ad4m bump bot, and runs the pairing gate only. A PR the bot opens
+# with GITHUB_TOKEN starts no workflows, so it starts the ones whose checks are required itself —
+# and a required check that never reports blocks the merge for good.
 name: PR tasks
 
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize, ready_for_review]
+  workflow_dispatch:
 
 permissions:
   contents: read
   pull-requests: read
 
 concurrency:
-  group: pr-tasks-${{ github.event.pull_request.number }}
+  group: pr-tasks-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   unticked:
     name: Every task is ticked
-    if: ${{ !github.event.pull_request.draft }}
+    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -76,7 +81,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          BRANCH: ${{ github.ref_name }}
         run: |
+          # Dispatched, there is no PR in the event: the PR is the one open from this branch. With
+          # none there is nothing that could merge, so nothing to stop.
+          if [ -z "$PR_NUMBER" ]; then
+            PR_NUMBER="$(gh api "repos/$REPO/pulls?head=${REPO%%/*}:$BRANCH&state=open" --jq '.[0].number // empty')"
+            if [ -z "$PR_NUMBER" ]; then
+              echo "No open PR from $BRANCH, so no description to read."
+              exit 0
+            fi
+            echo "Reading the description of #$PR_NUMBER, the open PR from $BRANCH."
+          fi
+
           # The description as it is now: a re-run replays its event, description included, so the
           # event's copy would still hold a block somebody has since removed.
           PR_BODY="$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.body // ""' 2>/dev/null)" || PR_BODY="$EVENT_BODY"
