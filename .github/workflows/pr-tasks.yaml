@@ -10,9 +10,13 @@
 # after `pnpm bump:ad4m`, clears the check without needing a commit — otherwise the only way to go
 # green is to push something, and people push something.
 #
-# Drafts are skipped on purpose. A draft is work in progress and its boxes are a plan; the check
-# belongs at `ready_for_review`, which is also when the convention says the description is written.
-# A draft cannot merge either, so the pairing gate has nothing to stop there.
+# The task check skips drafts on purpose. A draft is work in progress and its boxes are a plan; the
+# check belongs at `ready_for_review`, which is also when the convention says the description is
+# written.
+#
+# The pairing gate does NOT skip them. A job skipped by its `if` counts as PASSING a required check,
+# and marking a draft ready does not change its commit — so a skipped gate on a paired draft read as
+# green from the click until the `ready_for_review` run was queued, and the merge button was live.
 #
 # `workflow_dispatch` is for the ad4m bump bot, and runs the pairing gate only. A PR the bot opens
 # with GITHUB_TOKEN starts no workflows, so it starts the ones whose checks are required itself —
@@ -66,7 +70,6 @@ jobs:
   # disagree about whether a PR is paired; a block it cannot read fails here too.
   unpaired:
     name: Not waiting on ad4m
-    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -95,8 +98,16 @@ jobs:
           fi
 
           # The description as it is now: a re-run replays its event, description included, so the
-          # event's copy would still hold a block somebody has since removed.
-          PR_BODY="$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.body // ""' 2>/dev/null)" || PR_BODY="$EVENT_BODY"
+          # event's copy would still hold a block somebody has since removed. That copy is only a
+          # fallback on a PR event; a dispatch has none, and an empty description would read as
+          # unpaired and pass, so there a failed read fails the check.
+          if ! PR_BODY="$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.body // ""')"; then
+            if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+              echo "::error::Could not read the description of #$PR_NUMBER, so cannot tell whether it is paired."
+              exit 1
+            fi
+            PR_BODY="$EVENT_BODY"
+          fi
 
           if printf '%s' "$PR_BODY" | node scripts/ad4m-pairing.mjs --require-unpaired 2>why.txt; then
             exit 0
