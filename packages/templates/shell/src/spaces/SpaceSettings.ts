@@ -1083,6 +1083,9 @@ const callSettingsSection: SchemaNode = {
               props: {
                 size: 'sm',
                 type: 'number',
+                // The executor refuses anything outside 2–32: a room's SFU capacity is four times this.
+                min: '2',
+                max: '32',
                 value: { $: 'modules.call.callConfig.maxMeshParticipants' },
                 onBlur: {
                   $action: 'modules.call.setCallConfigField',
