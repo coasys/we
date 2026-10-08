@@ -111,7 +111,24 @@ const line: SchemaNode = {
             },
           },
         },
-        { type: 'we-text', props: { color: 'text', pl: '600' }, children: [{ $: 'row.text' }] },
+        {
+          // Marks — a mention, a link, emphasis — drawn the way a post draws them; plain text as text.
+          type: '$if',
+          props: {
+            condition: { $: 'row.content' },
+            then: {
+              type: 'Column',
+              props: { width: '100%', pl: '600' },
+              children: [
+                {
+                  type: 'BlockRenderer',
+                  props: { editorState: { $: 'row.content' }, rootClass: 'we-block-content--compact' },
+                },
+              ],
+            },
+            else: { type: 'we-text', props: { color: 'text', pl: '600' }, children: [{ $: 'row.text' }] },
+          },
+        },
       ],
     },
   ],
@@ -190,10 +207,7 @@ const activity: SchemaNode = {
 const composer: SchemaNode = {
   type: 'Column',
   props: { gap: '100', width: '100%', mt: '100' },
-  $localState: {
-    message: { type: 'string', initial: '' },
-    sending: { type: 'boolean', initial: false },
-  },
+  $localState: { sending: { type: 'boolean', initial: false } },
   children: [
     {
       type: '$if',
@@ -217,20 +231,17 @@ const composer: SchemaNode = {
         },
       },
     },
+    // The block composer in its one-line mode, as the transcript's — see `compact` on its props.
     {
-      type: 'we-textarea',
+      type: 'BlockComposer',
       props: {
-        rows: 1,
-        width: '100%',
-        autoGrow: true,
-        maxRows: 6,
-        submitOnEnter: true,
+        compact: true,
+        autoFocus: false,
+        handles: false,
         placeholder: 'Write to the space…',
-        value: { $: 'local.message' },
-        onInput: { $setLocal: 'message', value: { $: 'event.detail' } },
-        'on:submit': {
+        onSubmit: {
           $if: {
-            condition: { $: 'trim(local.message) && !local.sending' },
+            condition: { $: '!local.sending' },
             then: [
               { $setLocal: 'sending', value: true },
               {
@@ -238,14 +249,17 @@ const composer: SchemaNode = {
                   condition: { $: 'local.replyingTo' },
                   then: {
                     $action: 'modules.transcribe.reply',
-                    args: [{ $: 'local.replyingTo.id' }, { $: 'local.message' }],
+                    args: [{ $: 'local.replyingTo.id' }, { $: 'event.text' }, { $: 'event.marks' }],
+                    onSuccess: [{ $setLocal: 'replyingTo', value: null }],
+                    onFinally: [{ $setLocal: 'sending', value: false }],
                   },
-                  else: { $action: 'modules.transcribe.sendToFeed', args: [{ $: 'local.message' }] },
+                  else: {
+                    $action: 'modules.transcribe.sendToFeed',
+                    args: [{ $: 'event.text' }, { $: 'event.marks' }],
+                    onFinally: [{ $setLocal: 'sending', value: false }],
+                  },
                 },
               },
-              { $setLocal: 'message', value: '' },
-              { $setLocal: 'replyingTo', value: null },
-              { $setLocal: 'sending', value: false },
             ],
           },
         },

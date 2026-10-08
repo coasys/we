@@ -28,7 +28,7 @@
  */
 import type { RecordQuery } from '@we/module-shared';
 
-import { repliesInclude, threadLines } from './thread';
+import { lineContent, repliesInclude, threadLines } from './thread';
 
 type Row = Record<string, unknown>;
 
@@ -59,6 +59,8 @@ export interface FeedLine {
   call: string;
   callTitle: string;
   replyTo: { id: string; author: string; text: string } | null;
+  /** The line as one block for a renderer, when it has marks — see `lineContent`. */
+  content: Record<string, unknown>[] | null;
 }
 
 /** One thing extracted or made, grouped — see the module comment. */
@@ -139,6 +141,7 @@ function toLine(row: Row, call: string, callTitle: string): FeedLine {
     call,
     callTitle,
     replyTo: (row.replyTo as FeedLine['replyTo']) ?? null,
+    content: lineContent(row),
   };
 }
 

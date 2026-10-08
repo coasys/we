@@ -10,7 +10,7 @@ import type { RecordQuery } from '@we/module-shared';
 import { describe, expect, it } from 'vitest';
 
 import { groupActivity, nounFor, readFeedWindow } from './feed';
-import { threadLines } from './thread';
+import { lineContent, threadLines } from './thread';
 
 const ROOT = 'root';
 const t = (minute: number) => new Date(Date.UTC(2026, 9, 8, 10, minute)).toISOString();
@@ -178,5 +178,14 @@ describe('grouping and naming', () => {
     });
     expect(flat.map((r) => r.id)).toEqual(['q', 'a', 'b']);
     expect(flat[2]).toMatchObject({ replyTo: { id: 'a' } });
+  });
+
+  it('draws a line with marks from one block, and leaves plain text as text', () => {
+    const marks = '[{"start":0,"end":4,"type":"mention","did":"did:ann"}]';
+    expect(lineContent({ text: '@Ann can you?', marks })).toEqual([
+      { _type: 'block', text: '@Ann can you?', marks: [{ start: 0, end: 4, type: 'mention', did: 'did:ann' }] },
+    ]);
+    expect(lineContent({ text: 'plain' })).toBeNull();
+    expect(lineContent({ text: 'broken', marks: '[{' })).toBeNull();
   });
 });

@@ -8,10 +8,10 @@ import { Decoration, DecorationSet } from 'prosemirror-view';
 
 import { focusedBlock, indexBlocks } from '../blockIndex';
 
-function placeholderFor(name: string, attrs: Record<string, unknown>): string {
+function placeholderFor(name: string, attrs: Record<string, unknown>, paragraph?: string): string {
   switch (name) {
     case 'paragraph':
-      return "Type or press '/' for commands...";
+      return paragraph ?? "Type or press '/' for commands...";
     case 'list_item':
       return attrs.listType === 'check' ? 'To do' : 'List item';
     case 'blockquote':
@@ -23,7 +23,8 @@ function placeholderFor(name: string, attrs: Record<string, unknown>): string {
   }
 }
 
-export function placeholdersPlugin(): Plugin {
+/** `paragraph` replaces what an empty paragraph says — a one-line composer has no `/` menu to offer. */
+export function placeholdersPlugin(paragraph?: string): Plugin {
   return new Plugin({
     props: {
       decorations(state) {
@@ -31,7 +32,7 @@ export function placeholdersPlugin(): Plugin {
         const decorations: Decoration[] = [];
         for (const { pos, node } of indexBlocks(state.doc)) {
           if (!node.type.isTextblock || node.content.size > 0) continue;
-          const text = placeholderFor(node.type.name, node.attrs);
+          const text = placeholderFor(node.type.name, node.attrs, paragraph);
           if (!text) continue;
           const isFocused = focused?.pos === pos;
           decorations.push(

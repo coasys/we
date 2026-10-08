@@ -682,6 +682,35 @@ const timelineReading = (fromStart: boolean, orientation: 'newestBottom' | 'newe
   };
 };
 
+/**
+ * The block composer in its one-line mode, sending into a local the case can read back — the
+ * transcript's and the Feed's input.
+ */
+const compactComposer = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { width: '100%', gap: '300', p: '300' },
+    $localState: { sent: { type: 'string', initial: '' }, sends: { type: 'number', initial: 0 } },
+    children: [
+      {
+        type: 'BlockComposer',
+        props: {
+          compact: true,
+          autoFocus: false,
+          handles: false,
+          onSubmit: [
+            { $setLocal: 'sent', value: { $: 'event.text' } },
+            { $setLocal: 'sends', value: { $: 'local.sends + 1' } },
+          ],
+        },
+      },
+      { type: 'we-text', props: { id: 'sent' }, children: [{ $: 'local.sent' }] },
+      { type: 'we-text', props: { id: 'sends' }, children: [{ $: "'' + local.sends" }] },
+    ],
+  },
+  tables: {},
+});
+
 const pinnedShortContent = (): Scenario => ({
   node: {
     type: 'Column',
@@ -1196,6 +1225,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:pinned-page': pinnedPage(120),
   'ds:pinned-short': pinnedPage(20),
   'ds:pinned-empty': pinnedShortContent,
+  'composer:compact': compactComposer,
   'timeline:live-newest-bottom': timelineReading(false, 'newestBottom'),
   'timeline:live-newest-top': timelineReading(false, 'newestTop'),
   'timeline:start-newest-bottom': timelineReading(true, 'newestBottom'),

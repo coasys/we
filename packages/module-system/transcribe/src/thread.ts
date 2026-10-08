@@ -24,6 +24,23 @@ export interface ReplyQuote {
 
 type Row = Record<string, unknown>;
 
+/**
+ * A line with marks, as the one block a renderer draws it from — `[{ _type: 'block', text, marks }]`
+ * — or `null` for plain text, which is most lines and is drawn as text. Marks are stored as JSON on
+ * the record; one that does not parse is drawn as plain text rather than not at all.
+ */
+export function lineContent(row: Row): Row[] | null {
+  const stored = row.marks;
+  if (typeof stored !== 'string' || !stored || stored === '[]') return null;
+  try {
+    const marks: unknown = JSON.parse(stored);
+    if (!Array.isArray(marks) || !marks.length) return null;
+    return [{ _type: 'block', text: typeof row.text === 'string' ? row.text : '', marks }];
+  } catch {
+    return null;
+  }
+}
+
 const timeOf = (row: Row): number => {
   const value = row.createdAt;
   if (typeof value === 'number') return value;
@@ -50,7 +67,8 @@ export function threadLines(options: { rows?: unknown; newestFirst?: unknown } |
           text: typeof parent.text === 'string' ? parent.text : '',
         }
       : null;
-    out.push(replyTo ? { ...row, replyTo } : row);
+    const content = lineContent(row);
+    out.push({ ...row, ...(replyTo ? { replyTo } : {}), ...(content ? { content } : {}) });
     for (const reply of Array.isArray(row.comments) ? row.comments : []) {
       if (reply && typeof reply === 'object') walk(reply as Row, row);
     }
@@ -71,7 +89,7 @@ export function repliesInclude(depth = REPLY_DEPTH): Record<string, unknown> {
 export const threadLinesFunction: ModuleFunction = {
   name: 'threadLines',
   params: ['options'],
-  doc: 'A page of lines with the replies under each flattened in, every one once, in time order — newest first when `newestFirst` is true. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it. Read the page with `include: { comments: { include: { comments: { include: { comments: true } } } } }` so the replies arrive with it. Options: rows (the page), newestFirst (boolean).',
+  doc: 'A page of lines with the replies under each flattened in, every one once, in time order — newest first when `newestFirst` is true. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, and a line with marks carries `content` — the one block a BlockRenderer draws it from. Read the page with `include: { comments: { include: { comments: { include: { comments: true } } } } }` so the replies arrive with it. Options: rows (the page), newestFirst (boolean).',
   example: 'threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })',
   fn: threadLines as (...args: never[]) => unknown,
 };

@@ -19,6 +19,7 @@ export type {
 } from './content';
 export {
   collectKeys,
+  contentToLine,
   contentHash,
   emptyContent,
   fromPortableText,

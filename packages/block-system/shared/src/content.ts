@@ -330,3 +330,29 @@ export function plainText(blocks: readonly ContentBlock[]): string {
   });
   return lines.join('\n');
 }
+
+/**
+ * A composition as one line — text and marks — for a surface whose messages are one block each: a
+ * transcript, the Feed.
+ *
+ * What the compact composer sends. A line is one record however it was typed, so a paste of several
+ * paragraphs arrives as one block with the paragraphs joined by line breaks, each block's marks
+ * moved along by everything before it. Anything that is not text — a picture pasted in — has no
+ * place in a line and is left out.
+ */
+export function contentToLine(blocks: readonly ContentBlock[]): { text: string; marks: StandoffMark[] } {
+  let text = '';
+  const marks: StandoffMark[] = [];
+  for (const block of blocks) {
+    if (block._type !== 'block') continue;
+    const piece = (block as TextContentBlock).text ?? '';
+    if (text && piece) text += '\n';
+    const offset = cpLength(text);
+    for (const mark of (block as TextContentBlock).marks ?? []) {
+      marks.push({ ...mark, start: mark.start + offset, end: mark.end + offset });
+    }
+    text += piece;
+  }
+  const trimmed = text.replace(/\s+$/u, '');
+  return { text: trimmed, marks: normalizeMarks(marks, cpLength(trimmed)) };
+}

@@ -3703,7 +3703,31 @@ export const transcriptLines: SchemaNode = {
                                 },
                               },
                             },
-                            { type: 'we-text', props: { color: 'text' }, children: [{ $: 'utterance.text' }] },
+                            {
+                              // Marks — a mention, a link, emphasis — drawn the way a post draws them; plain text as text.
+                              type: '$if',
+                              props: {
+                                condition: { $: 'utterance.content' },
+                                then: {
+                                  type: 'Column',
+                                  props: { width: '100%' },
+                                  children: [
+                                    {
+                                      type: 'BlockRenderer',
+                                      props: {
+                                        editorState: { $: 'utterance.content' },
+                                        rootClass: 'we-block-content--compact',
+                                      },
+                                    },
+                                  ],
+                                },
+                                else: {
+                                  type: 'we-text',
+                                  props: { color: 'text' },
+                                  children: [{ $: 'utterance.text' }],
+                                },
+                              },
+                            },
                           ],
                         },
                       },
@@ -4168,6 +4192,11 @@ export const pendingUtterance: SchemaNode = {
  */
 const TRANSCRIPT_TARGET_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.transcribe.callId';
 
+/**
+ * Sending a line: a reply when one is being written, a message into the call otherwise — the text
+ * and the marks the composer gave (`event`), and the in-flight flag raised for the round trip and
+ * lowered however it ends.
+ */
 const sendMessage = [
   { $setLocal: 'sending', value: true },
   {
@@ -4175,14 +4204,17 @@ const sendMessage = [
       condition: { $: 'modules.transcribe.replyingTo' },
       then: {
         $action: 'modules.transcribe.reply',
-        args: [{ $: 'modules.transcribe.replyingTo.id' }, { $: 'local.message' }, '', { $: VIEWING_LIVE_EXPR }],
-        onSuccess: [{ $setLocal: 'message', value: '' }],
+        args: [
+          { $: 'modules.transcribe.replyingTo.id' },
+          { $: 'event.text' },
+          { $: 'event.marks' },
+          { $: VIEWING_LIVE_EXPR },
+        ],
         onFinally: [{ $setLocal: 'sending', value: false }],
       },
       else: {
         $action: 'modules.transcribe.addMessage',
-        args: [{ $: TRANSCRIPT_TARGET_EXPR }, { $: 'local.message' }],
-        onSuccess: [{ $setLocal: 'message', value: '' }],
+        args: [{ $: TRANSCRIPT_TARGET_EXPR }, { $: 'event.text' }, { $: 'event.marks' }],
         onFinally: [{ $setLocal: 'sending', value: false }],
       },
     },
@@ -4192,125 +4224,39 @@ const sendMessage = [
 const composerRow: SchemaNode = {
   type: '$if',
   /*
-    Wherever a call's transcript is on screen, not only while one is being recorded — and nowhere
-    else: outside any call the panel shows no transcript, so there is nothing here to write into.
-
-    This was gated on the live call, on the reasoning that adding to a finished meeting's timeline
-    would date a remark to a conversation it was not made in. That is exactly the claim `source`
-    exists to stop it making: a typed line says it was typed and carries its own `createdAt`, so
-    nothing about it pretends to have been said at the time. And the case is a real one — watching a
-    call back is when somebody notices what is worth writing down, where during it they are busy
-    talking.
+    Wherever a call is on screen, not only while one is being recorded, and nowhere else: outside a
+    call there is no transcript here to write into. Watching a call back is when somebody notices
+    what is worth writing down. A typed line says it was typed and carries
+    its own time, so nothing about it pretends to have been said then.
   */
   props: {
     condition: { $: TRANSCRIPT_TARGET_EXPR },
     then: {
-      type: 'Row',
+      type: 'Column',
+      // Further from the transcript than the panel's own gap puts it: a fixture of the surface,
+      // not the last row of the document.
+      props: { width: '100%', mt: '100' },
       /*
-        Further from the transcript than the panel's own gap puts it.
-
-        `panelShell` spaces every child of the panel equally, and these are not equal distances: the
-        header names what is below it and wants to sit close to it, while this is a fixture of the
-        surface rather than the last row of the document — see above — and at one gap it read as one
-        more line of the timeline. Widening the panel's gap would have moved the heading off the
-        transcript to fix a boundary three children lower.
-
-        A margin rather than a wrapper, because what is being said is about this element's own
-        relationship to what precedes it, and it leaves with the element: the composer is gated on
-        there being a transcript at all, and a gap held by the container would have stayed behind on
-        a panel with nothing to write into.
+        In flight, so Enter pressed twice during a slow write is one line, not two. Plain, not
+        persisted and not in the URL: the one thing a reload must never restore is a box that thinks
+        it is still writing.
       */
-      props: { gap: '200', ay: 'end', width: '100%', mt: '100' },
-      /*
-        `sending` is plain, not persisted and not in the URL: it is an in-flight flag, and the one
-        thing a reload must never restore is a box that thinks it is still writing.
-      */
-      $localState: {
-        message: { type: 'string', initial: '' },
-        sending: { type: 'boolean', initial: false },
-      },
+      $localState: { sending: { type: 'boolean', initial: false } },
       children: [
+        /*
+          The block composer in its one-line mode — see `compact` on its props: Enter sends,
+          Shift+Enter breaks the line, and `@` names a person exactly as it does in a post, so the
+          line is written with its marks. It empties itself on sending.
+        */
         {
-          type: 'we-textarea',
+          type: 'BlockComposer',
           props: {
-            /*
-              No `size`, which is `md` — the height every other field in WE stands at.
-
-              It was `sm`, and 32px is the compact size: right for a control tucked into a dense row
-              of something else, wrong for the one thing on the panel a person is meant to type
-              into. The `fontSize` that used to be pinned here goes with it, because md's own preset
-              already reads at 300 — that override existed only to undo `sm`'s smaller type, which
-              is the trap the size presets set by carrying both.
-            */
-            rows: 1,
-            flex: '1',
-            minWidth: '0',
-            /*
-              One line to start, growing as somebody writes, capped before it eats the transcript.
-
-              `autoGrow` is also what makes this line up with the button: at rest it takes the same
-              control height `we-input` does, rather than whatever `rows` × line-height happens to
-              come to. See the prop's own note.
-            */
-            autoGrow: true,
-            maxRows: 6,
-            submitOnEnter: true,
-            // Short: a placeholder is read at a glance and the panel it sits in is already headed
-            // "Transcript", so naming the destination was the box explaining where it was.
+            compact: true,
+            autoFocus: false,
+            handles: false,
             placeholder: 'Type a message…',
-            value: { $: 'local.message' },
-            onInput: { $setLocal: 'message', value: { $: 'event.detail' } },
-            // Enter commits, and the primitive suppresses the newline that would otherwise follow —
-            // a schema can read a key event but has nothing that calls `preventDefault`.
-            /*
-              Guarded here rather than by disabling the field, which is how the button does it.
-
-              A write takes a round trip — a second against a local node, longer against a shared
-              remote one — and Enter is the fast path, so pressing it twice is the easy mistake and
-              the one that was reported. The button can simply go `disabled`; the textarea cannot,
-              because disabling the thing somebody is typing into takes the focus away mid-sentence
-              and is a worse interruption than the bug.
-
-              So the condition carries both halves of what `disabled` says on the button — there are
-              words, and no write is already going — and the two paths stay honest about being the
-              same act by running the same handler.
-            */
-            'on:submit': {
-              $if: { condition: { $: 'trim(local.message) && !local.sending' }, then: sendMessage },
-            },
+            onSubmit: { $if: { condition: { $: '!local.sending' }, then: sendMessage } },
           },
-        },
-        {
-          type: 'we-tooltip',
-          props: { content: 'Add this to the transcript' },
-          children: [
-            {
-              type: 'we-button',
-              props: {
-                label: 'Add this to the transcript',
-                // No `size` either: the pair has to agree, and md is what the field is now.
-                // `square` sizes the width from that same height, so an icon-only button is a
-                // square rather than a rounded rectangle with an icon adrift in it.
-                square: true,
-                variant: 'secondary',
-                /*
-                  Two reasons to be unpressable, and they are not the same reason.
-
-                  Empty is a precondition: there is nothing to send. In flight is a guard: there is
-                  something to send and it is already going. Both spell `disabled`, but only the
-                  second wants a spinner — which is the whole of what was missing. A write against a
-                  shared remote executor takes long enough that a composer saying nothing at all
-                  reads as a press that did not register, so the next thing somebody does is press
-                  it again, and the transcript gets the line twice. Nothing in this panel can delete
-                  a line once it is written, so the duplicate is there for good.
-                */
-                disabled: { $: '!trim(local.message) || local.sending' },
-                loading: { $: 'local.sending' },
-                onClick: sendMessage,
-              },
-              children: [{ type: 'we-icon', props: { name: 'paper-plane-tilt' } }],
-            },
-          ],
         },
       ],
     },
