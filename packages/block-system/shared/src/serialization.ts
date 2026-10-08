@@ -500,7 +500,7 @@ async function writeMentions(root: RecordInstance, blocks: readonly ContentBlock
  * Where a newly-created composition attaches, as a raw predicate link.
  *
  * A predicate rather than a relation name because the two anchors that matter mean different
- * things and live on different models: `we://children` puts a message *inside* a channel
+ * things and live on different models: `we://child` puts a message *inside* a channel
  * (composition — what a container is made of), `we://comment` hangs a reply *off* any `WeNode`
  * (discourse — what was said about it). A relation-name API would have to resolve the name against
  * the anchor's class, which the block system does not have and should not need: it is persisting a
@@ -509,7 +509,7 @@ async function writeMentions(root: RecordInstance, blocks: readonly ContentBlock
 export interface BlockAnchor {
   /** Id of the existing node the new root links from. */
   id: string;
-  /** The predicate to link through — `'we://children'`, `'we://comment'`. */
+  /** The predicate to link through — `'we://child'`, `'we://comment'`. */
   predicate: string;
 }
 
@@ -740,7 +740,7 @@ export async function childrenToBlocks(perspective: BlockDataset, collection: Re
  *
  * ## Why replies go too
  *
- * A reply is a composition hanging off `we://comment` rather than `we://children`, which is what
+ * A reply is a composition hanging off `we://comment` rather than `we://child`, which is what
  * makes threads fractal — the two relations say different things, and keeping them apart is the
  * whole design (see `commentThread`). This walk followed only `children`, so deleting a post left
  * every reply to it in the perspective: reachable by nothing, rendered by nothing, and counted by

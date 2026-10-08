@@ -230,7 +230,7 @@ describe('the call record', () => {
     expect(h.created[0].fields.text).toBe('hello');
     // Parented, not loose. A block written flat into the space is how transcripts used to end up in
     // the Cards route's Text list next to authored prose.
-    expect(h.created[0].options?.parent).toEqual({ id: RECORD, predicate: 'we://children' });
+    expect(h.created[0].options?.parent).toEqual({ id: RECORD, predicate: 'we://child' });
   });
 
   it('reuses the same record for the rest of the call', async () => {
@@ -419,7 +419,7 @@ describe('continuing a call', () => {
     await h.say('picking this back up');
 
     expect(h.created.filter((c) => c.entity === 'CollectionBlock')).toHaveLength(0);
-    expect(h.created[0].options?.parent).toEqual({ id: 'the-old-record', predicate: 'we://children' });
+    expect(h.created[0].options?.parent).toEqual({ id: 'the-old-record', predicate: 'we://child' });
   });
 
   it('announces the record it adopted, so the rest of the call converges on it too', () => {
@@ -2476,7 +2476,7 @@ describe('typing into a transcript', () => {
     expect(block?.fields).toEqual({ text: 'Sam is joining late', source: 'typed' });
     // Into the call's own record, which exists from its first second — a message does not require
     // somebody to have spoken first.
-    expect(block?.options?.parent).toEqual({ id: RECORD, predicate: 'we://children' });
+    expect(block?.options?.parent).toEqual({ id: RECORD, predicate: 'we://child' });
   });
 
   it('writes nothing for an empty message', async () => {
@@ -2503,7 +2503,7 @@ describe('typing into a transcript', () => {
     await h.store.addMessage('past-call', 'watched this back');
 
     const block = h.created.find((c) => c.entity === 'TextBlock');
-    expect(block?.options?.parent).toEqual({ id: 'past-call', predicate: 'we://children' });
+    expect(block?.options?.parent).toEqual({ id: 'past-call', predicate: 'we://child' });
     // And in the space on screen, not in whichever space a live call happens to be running in.
     expect(block?.options?.dataset).toBeUndefined();
   });

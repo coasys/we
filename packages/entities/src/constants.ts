@@ -11,7 +11,7 @@ export const FILE_STORAGE_LANGUAGE = 'QmzSYwddqhm49PrRMzSrJf3AvmmreXMKtr1u56nbTj
  */
 export const PREDICATES = {
   /** `CollectionBlock.children` — composition. What a container is made of. */
-  CHILDREN: 'we://children',
+  CHILDREN: 'we://child',
   /** `WeNode.comments` — discourse. What was said *about* a node, by anyone. */
   COMMENT: 'we://comment',
   /**
@@ -26,6 +26,7 @@ export const PREDICATES = {
    * behind whatever a single canvas decides for itself through its own children.
    */
   TYPE_STYLE: 'we://type_style',
+  SPACE_ROLE: 'we://space_role',
 } as const;
 
 /**

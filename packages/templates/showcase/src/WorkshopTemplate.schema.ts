@@ -4724,7 +4724,7 @@ const eventList: SchemaNode = {
       Parented to the call, which is the part that cannot be left out. Every surface of this
       template reads its records through `anchorScope(CALL)` — `CollectionBlock` → `children` —
       so an event created unparented is written into the space and then shows up on no screen in
-      this template, including the calendar it was just added from. `we://children` is that
+      this template, including the calendar it was just added from. `we://child` is that
       relation's predicate.
 
       The drafts are declared on the modal, so closing discards them; a draft declared on the page
@@ -4793,7 +4793,7 @@ const eventList: SchemaNode = {
             startDate: { $: "local.day + 'T' + local.draftTime" },
             description: { $: 'local.draftDescription' },
           },
-          { parent: { id: CALL, predicate: 'we://children' } },
+          { parent: { id: CALL, predicate: 'we://child' } },
         ],
       },
     }),

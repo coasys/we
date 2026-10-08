@@ -308,17 +308,21 @@ export interface SpaceRecord extends WeNodeRecord {
   enabledViews: string;
   extractionTargets: string;
   autoInterpret: boolean;
+  extractLooseMessages: boolean;
   threadMode: string;
   moduleSettings: string;
   location?: LocationBlockRecord;
   board?: CollectionBlockRecord;
   taskStates: string[];
   typeStyles: string[];
+  root?: CollectionBlockRecord;
+  roles: string[];
   setLocation(value: Pick<LocationBlockRecord, 'id'>): Promise<unknown>;
   setBoard(value: Pick<CollectionBlockRecord, 'id'>): Promise<unknown>;
   addTaskStates(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeTaskStates(value: string | { id: string }, batch?: string): Promise<unknown>;
   setTaskStates(values: (string | { id: string })[], batch?: string): Promise<unknown>;
+  setRoot(value: Pick<CollectionBlockRecord, 'id'>): Promise<unknown>;
 }
 
 export interface SpacePreferenceRecord extends WeNodeRecord {
@@ -328,6 +332,11 @@ export interface SpacePreferenceRecord extends WeNodeRecord {
   hiddenViews: string;
   templateId: string;
   themeId: string;
+}
+
+export interface SpaceRoleRecord extends RecordInstance {
+  name: string;
+  node?: string;
 }
 
 export interface SpaceTemplatePreferenceRecord extends WeNodeRecord {

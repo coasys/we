@@ -15,7 +15,7 @@ function model(rows: Record<string, unknown>[], spy?: (options: Record<string, u
 const deps = (rows: Record<string, unknown>[], spy?: (o: Record<string, unknown>) => void) => ({
   modelFor: (entity: string) => (entity === 'TextBlock' ? model(rows, spy) : undefined),
   handle: {},
-  containmentPredicate: 'we://children',
+  containmentPredicate: 'we://child',
 });
 
 describe('gatherTranscriptTurns', () => {
@@ -27,7 +27,7 @@ describe('gatherTranscriptTurns', () => {
       }),
       'call-1',
     );
-    expect(seen?.parent).toEqual({ id: 'call-1', predicate: 'we://children' });
+    expect(seen?.parent).toEqual({ id: 'call-1', predicate: 'we://child' });
   });
 
   it('returns nothing when the caller could not resolve one — a foreign space, not a bug', async () => {
@@ -94,7 +94,7 @@ describe('gatherTranscriptTurns', () => {
  */
 describe('containmentPredicate', () => {
   const nativeCollection = {
-    generateSHACL: () => ({ shape: { properties: [{ name: 'children', path: 'we://children' }] } }),
+    generateSHACL: () => ({ shape: { properties: [{ name: 'children', path: 'we://child' }] } }),
   };
 
   const foreignManifest: EntityManifestEntry[] = [
@@ -117,7 +117,7 @@ describe('containmentPredicate', () => {
   it('answers from the native model, which the manifest never carries', () => {
     // The manifest is empty here exactly as it is in a real WE space: native schemas are
     // deliberately absent from it, so this is the only source that can answer.
-    expect(containmentPredicate(() => nativeCollection, [])).toBe('we://children');
+    expect(containmentPredicate(() => nativeCollection, [])).toBe('we://child');
   });
 
   it('falls back to the manifest for a container the native registry never heard of', () => {
@@ -125,7 +125,7 @@ describe('containmentPredicate', () => {
   });
 
   it('prefers the native model when both could answer', () => {
-    expect(containmentPredicate(() => nativeCollection, foreignManifest)).toBe('we://children');
+    expect(containmentPredicate(() => nativeCollection, foreignManifest)).toBe('we://child');
   });
 
   it('gives up rather than guessing when neither knows', () => {

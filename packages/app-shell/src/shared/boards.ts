@@ -812,7 +812,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       let taskId = '';
       await runEntityTransaction(p, async (tx) => {
         const task = await Task.create(p, { title: title.trim(), ...(initial ? { status: initial } : {}) }, {
-          ...(anchorId ? { parent: { id: anchorId, predicate: 'we://children' } } : {}),
+          ...(anchorId ? { parent: { id: anchorId, predicate: 'we://child' } } : {}),
           batchId: tx.batchId,
         } as never);
         taskId = (task as { id: string }).id;

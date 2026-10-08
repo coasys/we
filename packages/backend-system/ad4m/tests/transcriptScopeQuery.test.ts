@@ -11,7 +11,7 @@ import { transcriptScopeQuery } from '@we/backend-ad4m';
 import { describe, expect, it } from 'vitest';
 
 const CALL = 'we://collection/abc-123';
-const query = () => transcriptScopeQuery(CALL, 'we://children');
+const query = () => transcriptScopeQuery(CALL, 'we://child');
 
 describe('transcriptScopeQuery', () => {
   it('binds all three variables the gather requires', () => {
@@ -35,7 +35,7 @@ describe('transcriptScopeQuery', () => {
   });
 
   it('scopes to one call, so a watch cannot read another call transcript', () => {
-    expect(query()).toContain(`<${CALL}> <we://children> ?m`);
+    expect(query()).toContain(`<${CALL}> <we://child> ?m`);
   });
 
   it('takes turns only from text blocks', () => {

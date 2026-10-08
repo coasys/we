@@ -76,6 +76,7 @@ const VOCABULARY = new Set([
   'RelationshipType',
   'Topic',
   'TypeStyle',
+  'SpaceRole',
   'Shape',
   'Template',
   'Theme',

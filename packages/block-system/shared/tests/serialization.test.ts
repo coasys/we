@@ -354,7 +354,7 @@ describe('createBlocks', () => {
   });
 
   it('passes the anchor to the root only — descendants attach to their in-tree parent', async () => {
-    const anchor = { id: 'channel-1', predicate: 'we://children' };
+    const anchor = { id: 'channel-1', predicate: 'we://child' };
     const root = (await createBlocks(perspective, [paragraph('first'), paragraph('second')], {
       kind: 'message',
       anchor,
@@ -549,7 +549,7 @@ describe('reconcileBlocks', () => {
 describe('deleteBlocks', () => {
   it('takes the conversation with the thing it was about, to any depth', async () => {
     /*
-      A reply hangs off `we://comment` rather than `we://children` — the two relations say different
+      A reply hangs off `we://comment` rather than `we://child` — the two relations say different
       things, which is what makes threads fractal. This walk followed only `children`, so deleting a
       post left every reply to it reachable by nothing and rendered by nothing. Survivable while a
       thread was one level; not now that the orphan is a subtree.

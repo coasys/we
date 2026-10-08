@@ -9,7 +9,7 @@
  * turns and the module asks for a collection by id.
  *
  * That split is also the honest one. Only the host knows how a WE collection is laid out; a module
- * that assembled turns itself would be hard-coding `we://children` and the block vocabulary, which
+ * that assembled turns itself would be hard-coding `we://child` and the block vocabulary, which
  * is precisely the backend knowledge modules are kept away from.
  *
  * Every agent transcribes only their own microphone, so a child's author *is* its speaker and no

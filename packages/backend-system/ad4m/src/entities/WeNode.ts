@@ -30,6 +30,13 @@ export class WeNode extends Ad4mModel {
   @BelongsToOne({ through: 'we://comment', polymorphic: true })
   inReplyTo?: string;
 
+  /**
+   * Where this record was extracted from — `CollectionBlock.extracted` read backwards. Provenance,
+   * not containment: see the manifest's `extractedFrom`. Read-only, as `inReplyTo` is.
+   */
+  @BelongsToOne({ through: 'we://extracted', polymorphic: true })
+  extractedFrom?: string;
+
   @HasMany(() => Signal, { through: 'we://signal' })
   signals: string[] = [];
 
@@ -60,7 +67,7 @@ export class WeNode extends Ad4mModel {
    * are different facts about the same people: reading this roster as "said they would come" would
    * tell somebody a meeting they skipped was one they attended.
    */
-  @HasMany({ through: 'we://participants' })
+  @HasMany({ through: 'we://participant' })
   participants: string[] = [];
 
   /**

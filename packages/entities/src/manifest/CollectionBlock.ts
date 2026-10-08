@@ -1,3 +1,5 @@
+import { CONTAINMENT_PREDICATE } from '@we/backend-shared';
+
 import type { CoreEntityDef } from './defs';
 
 export const CollectionBlock: CoreEntityDef = {
@@ -178,7 +180,7 @@ export const CollectionBlock: CoreEntityDef = {
        * board should take them. The cards a column *positions* are not, which is what `arranges`
        * is for.
        */
-      children: { target: '', cardinality: 'many', predicate: 'we://children', ordered: true },
+      children: { target: '', cardinality: 'many', predicate: CONTAINMENT_PREDICATE, containment: true, ordered: true },
       /**
        * Records this collection **arranges without owning** — a board column's cards, in the order
        * somebody dragged them into.

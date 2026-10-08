@@ -32,6 +32,7 @@ import {
   SignalType,
   Space,
   SpacePreference,
+  SpaceRole,
   SpaceTemplatePreference,
   TagBlock,
   TaskBlock,
@@ -650,6 +651,10 @@ export const SPACE_MODELS = [
   // And how a board draws each kind of thing — the board's own vocabulary of colour, which is
   // shared for exactly the reason its arrangement is.
   TypeStyle,
+  // Which record plays which part in this space — its canvas, say. Shared: a role is how every
+  // member's template finds the same record, so one held privately would point each member at a
+  // different canvas.
+  SpaceRole,
   // How a board draws its connections. Shared with the arrangement it is part of: a line somebody
   // routed clear of the cards is tidying everyone can see, and a board where each member's
   // connectors take a different path is the same non-board as one where the cards move per member.

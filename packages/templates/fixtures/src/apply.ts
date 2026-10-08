@@ -168,7 +168,7 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
 
     created.push({ id, kind: node.kind, ...(node.title ? { title: node.title } : {}) });
 
-    // Containment is a link, not a field: `we://children` is what a `scope` drill-down and the
+    // Containment is a link, not a field: `we://child` is what a `scope` drill-down and the
     // `$latestChild` projection both traverse.
     if (parent?.addChildren) await parent.addChildren(instance);
 

@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest';
 
 const CALL = 'we://collection/today';
 const OLDER = 'we://collection/this-morning';
-const CHILDREN = 'we://children';
+const CHILDREN = 'we://child';
 
 /** A base minted by a pass over `parent`, in the namespace the adapter derives from it. */
 const mintedUnder = (parent: string, name: string) => `we://interpreted/${encodeURIComponent(parent)}/${name}`;

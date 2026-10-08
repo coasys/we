@@ -121,7 +121,7 @@ const TRANSCRIPT_FIRST_PAGE = 50;
 const TRANSCRIPT_PAGE = 200;
 
 /** The predicate `CollectionBlock.children` is minted under — how an utterance attaches to its call. */
-export const CHILDREN_PREDICATE = 'we://children';
+export const CHILDREN_PREDICATE = 'we://child';
 
 /**
  * How a line in a transcript came to be — the three values of `TextBlock.source`.

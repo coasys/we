@@ -42,6 +42,7 @@ import { Signal } from './Signal';
 import { SignalType } from './SignalType';
 import { Space } from './Space';
 import { SpacePreference } from './SpacePreference';
+import { SpaceRole } from './SpaceRole';
 import { SpaceTemplatePreference } from './SpaceTemplatePreference';
 import { Template } from './Template';
 import { Theme } from './Theme';
@@ -84,6 +85,7 @@ export const CORE_DEFS: Record<string, CoreEntityDef> = {
   SignalType,
   Space,
   SpacePreference,
+  SpaceRole,
   SpaceTemplatePreference,
   TagBlock,
   TaskBlock,

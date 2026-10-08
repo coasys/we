@@ -94,6 +94,19 @@ export const Space: CoreEntityDef = {
        */
       autoInterpret: { type: 'boolean', predicate: 'we://auto_interpret', default: true },
       /**
+       * Whether the messages typed straight into this space — not in any call — are extracted too.
+       *
+       * Whether, not when: `autoInterpret` says whether extraction runs by itself or on request, and
+       * applies here as everywhere. With this on and that off, loose messages are extracted when
+       * somebody asks; with this off, never. It gates nothing else. Calls are extracted on their own
+       * terms either way, and what any pass finds goes into the space collection regardless (`root`),
+       * because every space-wide view reads it from there.
+       *
+       * Off by default, because the default is what a space gets when nobody chose: a space set up by
+       * a starter that wants it says so (`input: true`), and an administrator can change it later.
+       */
+      extractLooseMessages: { type: 'boolean', predicate: 'we://extract_loose_messages', default: false },
+      /**
        * How deep a conversation here may go: `fractal` (a reply may be replied to) or `flat` (only
        * the record itself may be).
        *
@@ -193,6 +206,28 @@ export const Space: CoreEntityDef = {
        * The predicate is the record's own flag value, as `we://signal` is for a node's signals.
        */
       typeStyles: { target: 'TypeStyle', cardinality: 'many', predicate: 'we://type_style' },
+      /**
+       * The space collection: the one collection everything top-level in this space hangs off.
+       *
+       * Calls, loose messages, posts, channels, extracted items and the canvas record are its
+       * children, so "what is in this space" is one containment walk rather than "every record with
+       * no parent" — which cannot tell top-level content from an orphan, and has no polymorphic read.
+       *
+       * The host makes it in every space, in `createSpace`, before anything else. It is a
+       * `CollectionBlock` (`kind: 'space'`) rather than containment on this record because the
+       * machinery extraction needs — passes, `extracted`, a board, `mode` — already lives there, and
+       * because this record is identity and settings and is copied to the discovery space, which the
+       * space's contents must never be.
+       *
+       * Its own relation rather than a role (`roles`), because it is structural rather than chosen:
+       * queries scope through it, and no starter can remove it.
+       */
+      root: { target: 'CollectionBlock', cardinality: 'one', predicate: 'we://root' },
+      /**
+       * The records this space names by role — its canvas, say. One `SpaceRole` per role. Read
+       * through `spaceStore.roles`; see `SpaceRole` for why it is shaped this way.
+       */
+      roles: { target: 'SpaceRole', cardinality: 'many', predicate: 'we://space_role' },
     },
   },
 };

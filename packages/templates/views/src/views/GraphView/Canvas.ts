@@ -16,7 +16,7 @@ import { clearOnEmptySelection, selectNode } from './NodeDetail';
  *
  * ## What a card is
  *
- * A `CollectionBlock`, parented to the canvas through `we://children` — which is to say, a post that
+ * A `CollectionBlock`, parented to the canvas through `we://child` — which is to say, a post that
  * happens to live on a canvas. That is not a shortcut: it means a card holds composed content
  * (`BlockComposer` writes it, `BlockRenderer` reads it), carries comments and signals like anything
  * else, and is found by everything that already walks a collection. Nothing here is canvas-shaped
@@ -547,7 +547,7 @@ const newCanvasModal: SchemaNode = formModal({
  * A card, composed.
  *
  * The same handshake every composed artifact in WE uses, anchored to the canvas through
- * `we://children`. It lands unplaced, which the `manual` layout parks in a grid beside what is
+ * `we://child`. It lands unplaced, which the `manual` layout parks in a grid beside what is
  * already there — and then somebody drags it where they meant it to go, which writes its position.
  * Asking for a position up front would be asking where a thing goes before it exists.
  */

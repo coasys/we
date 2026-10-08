@@ -381,7 +381,7 @@ export interface CreatePostOptions {
   /** Id of the node to attach to. Omit for a post, which sits in the space unattached. */
   parentId?: string;
   /**
-   * How it attaches. Defaults to `we://children` — containment, which is what a channel message
+   * How it attaches. Defaults to `we://child` — containment, which is what a channel message
    * wants. Pass `we://comment` for a reply, which hangs off a node rather than sitting inside it.
    */
   predicate?: string;
@@ -686,7 +686,7 @@ export interface SpaceStore {
   updatePost: (postId: string, json: unknown) => Promise<void>;
   /**
    * Move a child between two collections — a card between kanban columns. A relink of the two
-   * `we://children` edges; the child itself is untouched.
+   * `we://child` edges; the child itself is untouched.
    */
   moveChild: (childId: string, fromId: string, toId: string) => Promise<void>;
   /** Make a board — a collection whose ordered children are its columns, seeded from the vocabulary. */
@@ -2042,7 +2042,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // backfilling. See `createBlocks`.
     //
     // The anchor is what makes one action serve every composed artifact. A post has none — it sits
-    // in the space. A message names its channel through `we://children`; a reply names whatever it
+    // in the space. A message names its channel through `we://child`; a reply names whatever it
     // answers through `we://comment`. Both arrive from a schema as ids, which is all a template
     // has, and both are `$each`/route values rather than anything the store could derive.
     const { kind = 'post', parentId, predicate = PREDICATES.CHILDREN } = options;
@@ -2086,7 +2086,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * Move a child from one collection to another — a kanban card between columns, a post between
    * channels.
    *
-   * A relink, not an edit: the child is untouched and only the two `we://children` edges change.
+   * A relink, not an edit: the child is untouched and only the two `we://child` edges change.
    * That is what makes containment a usable way to express status (see the `kanbanBoard`
    * fragment) — the card carries no column field that could disagree with where it actually is.
    *

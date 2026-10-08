@@ -4,7 +4,7 @@
  * adapter builds these from the schema a dataset stores; `toNeutralManifest` projects them back
  * onto the declared form; the AI layer formats them into prompts.
  */
-import { type EntityManifest, type EntitySchema, resolvesPolymorphically } from './manifest';
+import { CONTAINMENT_PREDICATE, type EntityManifest, type EntitySchema, resolvesPolymorphically } from './manifest';
 import { namePropertyOf } from './recordName';
 
 export type EntityManifestProperty = {
@@ -118,10 +118,11 @@ export function manifestEntries(
             ...(spec.identity ? { identity: true } : {}),
           })),
         ...Object.entries(entity.relations)
-          .filter(([, spec]) => spec.predicate)
+          // Containment needs no predicate named: it has one, on every backend.
+          .filter(([, spec]) => spec.predicate || spec.containment)
           .map(([relName, spec]) => ({
             name: relName,
-            predicate: spec.predicate!,
+            predicate: spec.containment ? CONTAINMENT_PREDICATE : spec.predicate!,
             type: 'uri' as const,
             isCollection: spec.cardinality === 'many',
             required: false,
