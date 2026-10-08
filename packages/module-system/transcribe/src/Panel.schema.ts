@@ -16,7 +16,16 @@
  * rendering. The other three modules still declare their fragments inline; this is the shape they
  * should move to.
  */
-import { emptyState, foldingBody, foldingSectionLabel, panelScroll, panelShell } from '@we/schema-kit';
+import {
+  emptyState,
+  foldingBody,
+  foldingSectionLabel,
+  panelScroll,
+  panelShell,
+  timeline,
+  timelineMoreAt,
+  timelineOrder,
+} from '@we/schema-kit';
 import { type SchemaNode, type SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
@@ -85,6 +94,17 @@ const CALL_ON_SCREEN_LIVE = 'modules.transcribe.callOnScreenLive';
 
 /** Whether the transcript is anchored to its beginning rather than following the live end. */
 const TRANSCRIPT_FROM_START = 'modules.transcribe.transcriptFromStart';
+
+/**
+ * Which way round this reader draws a timeline — newest at the bottom, as a chat reads, or at the
+ * top, as a feed does. A per-viewer setting; see `timeline` in the schema kit for what it changes.
+ */
+export const TIMELINE_ORIENTATION = 'modules.transcribe.timelineOrientation';
+
+/** The words on the "more is coming" line, by which way the window grows. */
+const MORE_WORDS: { $: string } = {
+  $: `${TRANSCRIPT_FROM_START} ? 'Later in the conversation…' : 'Earlier in the conversation…'`,
+};
 
 /**
  * Whether the window may have more beyond it — a page came back full, so there is probably more
@@ -3040,7 +3060,7 @@ const noUtterances: SchemaNode = {
  * One definition used at both ends, because the two are the same sentence about opposite directions
  * and a copy each is how they come to disagree about their own spinner.
  */
-const moreComing = (end: 'start' | 'end', words: string): SchemaNode => ({
+const moreComing = (end: 'start' | 'end', words: string | { $: string }): SchemaNode => ({
   type: 'Row',
   /*
     The marker is the same fact the line is: there is more beyond this end that is not loaded. The
@@ -3129,8 +3149,11 @@ export const transcriptLines: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: `${TRANSCRIPT_HAS_MORE} && !${TRANSCRIPT_FROM_START}` },
-        then: moreComing('start', 'Earlier in the conversation…'),
+        // At the top whenever the window grows that way — see `timelineMoreAt`.
+        condition: {
+          $: `${TRANSCRIPT_HAS_MORE} && ${timelineMoreAt('start', TRANSCRIPT_FROM_START, TIMELINE_ORIENTATION)}`,
+        },
+        then: moreComing('start', MORE_WORDS),
       },
     },
     {
@@ -3149,7 +3172,7 @@ export const transcriptLines: SchemaNode = {
               this line is by the same person as the one before it, and in a reversed list `prev` is
               the line *after*.
             */
-            items: { $: 'modules.transcribe.transcriptFromStart ? local.utterances : reverse(local.utterances)' },
+            items: { $: timelineOrder('local.utterances', TRANSCRIPT_FROM_START, TIMELINE_ORIENTATION) },
             as: 'utterance',
           },
           children: [
@@ -3719,8 +3742,10 @@ export const transcriptLines: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: `${TRANSCRIPT_HAS_MORE} && ${TRANSCRIPT_FROM_START}` },
-        then: moreComing('end', 'Later in the conversation…'),
+        condition: {
+          $: `${TRANSCRIPT_HAS_MORE} && ${timelineMoreAt('end', TRANSCRIPT_FROM_START, TIMELINE_ORIENTATION)}`,
+        },
+        then: moreComing('end', MORE_WORDS),
       },
     },
   ],
@@ -4237,91 +4262,27 @@ export const transcriptComposer: SchemaNode = {
  * is resolved. So pointing this feed at another call points its rows at that call too, and there is
  * one query in the codebase rather than two that have to agree.
  */
-export const transcriptFeed: SchemaNode = panelScroll({
+export const transcriptFeed: SchemaNode = timeline({
   /*
-    Follows the tail while somebody is at the tail, and holds still while they read further up. A
-    live transcript is the case this exists for — and the case that most needs a way back down
-    again, since holding still is otherwise a decision nothing offers to undo.
+    The window and the way round it is drawn — see `timeline` in the schema kit, which turns the two
+    into which end is pinned, which edge loads more, and which corner each jump button means.
 
-    Off while the transcript is anchored to its beginning: those rows are the oldest in the
-    conversation and new ones do not belong below them, so following the end would drag a reader
-    away from what they asked to read on every line somebody says.
+    A jump re-anchors rather than scrolling: the top of what is loaded is not the beginning of
+    anything, so reaching the real beginning means asking a different question. Which end asks is
+    read off the `data-we-more` marker on the "more is coming" line, so the scroller and the rows
+    cannot disagree. A transcript that has loaded whole scrolls at both ends.
+
+    Loading is guarded by which end is anchored and not by whether there is more: the rows are a
+    local of `transcriptLines`, a part inside this scroller, and an event on the scroller reaches its
+    ancestors, never its descendants. Reaching the far edge of a fully loaded transcript asks for one
+    page that comes back unchanged — one wasted read, bounded by what exists.
   */
-  pin: { $: `${'modules.transcribe.transcriptFromStart'} ? '' : 'end'` },
-  /*
-    Both ends, and the start one does something the scroller could not do for itself.
-
-    It was `end` alone, because the scroller's own start button goes to the top of what is *loaded*
-    — which, since the window arrived, is not the beginning of the conversation. It would have said
-    "start" and delivered "as far back as we happened to fetch".
-
-    That was the right call about the *action* and it cost the affordance. So the visibility stays
-    the scroller's — it is the one that knows whether there is anywhere above to go — and the action
-    comes from here, through the `jump-start` slot below. The button is the scroller's own, in its
-    own corner, and it means what it says.
-  */
-  jump: 'both',
-  /*
-    A jump is a scroll at the end you are anchored to, and a different query at the other one.
-
-    Anchored to the newest end, pressing "down" is a trip back through lines you have already loaded
-    — worth animating, because the movement is what says which way the content went. Pressing "up"
-    is not a longer version of that: the top of what is loaded is not the beginning of anything, and
-    reaching the real beginning means asking a different question. Read from the beginning, the two
-    swap over exactly.
-
-    Which end is which is not stated here. The scroller reads it from the `data-we-more` marker on
-    the "more is coming" line, which `transcriptLines` already renders under exactly that test — so
-    the two cannot disagree, and a transcript that has loaded whole simply scrolls at both ends
-    rather than re-asking for what it already has.
-
-    The re-anchoring case needs no scrolling of its own: a mode change resets the window and flips
-    `pin`, and `scrollTop: 0` is the anchored end in both coordinate systems — the newest under
-    column-reverse, the oldest without it — so the new query lands where it should.
-  */
-  onJumpStart: { $action: 'modules.transcribe.readTranscriptFromStart' },
-  onJumpEnd: { $action: 'modules.transcribe.readTranscriptLive' },
-  /*
-    More of the conversation loads as the reader reaches the edge of what is loaded, in whichever
-    direction they are going, rather than on a button.
-
-    Both ends, because the window has two. Following the live end it grows backwards, so the edge
-    worth watching is the top. Reading the same conversation from its beginning it grows forwards,
-    and the edge is the bottom — without that pair, choosing "read from the start" walked you to the
-    end of the first page and stopped, with the rest of the conversation unreachable.
-
-    The distance is about a panel's height of runway, so a page is asked for before the reader
-    arrives at the edge rather than when they hit it. Nothing has to hold their place: the scroller
-    is anchored to its newest end, so content arriving above them does not move them.
-
-    Guarded on which end is anchored, and NOT on there being more — which is a real imprecision and
-    a deliberate one.
-
-    "May have more" is `count(local.utterances) >= transcriptShown`, and those rows are a local of
-    `transcriptLines`, which is placed as a part *inside* this scroller. An event dispatched on the
-    scroller reaches its ancestors, never its descendants, so the node that could answer is the one
-    node that cannot be asked. The alternatives were each worse than the cost: a count projection is
-    a round trip to avoid a re-run, and a count reported back from a render is a write from drawing.
-
-    What it costs: reaching the far edge of a fully-loaded transcript raises the window by a page and
-    re-runs the query, which comes back with the same rows. The list is unchanged, the "earlier" line
-    correctly disappears, and nothing is drawn wrongly — one wasted read per trip to that edge, and
-    the read is bounded by what exists rather than by the window.
-  */
-  nearStart: 400,
-  onNearStart: {
-    $if: {
-      condition: { $: `!${TRANSCRIPT_FROM_START}` },
-      then: { $action: 'modules.transcribe.showMoreTranscript' },
-    },
-  },
-  nearEnd: 400,
-  onNearEnd: {
-    $if: {
-      condition: { $: TRANSCRIPT_FROM_START },
-      then: { $action: 'modules.transcribe.showMoreTranscript' },
-    },
-  },
+  fromStart: TRANSCRIPT_FROM_START,
+  orientation: TIMELINE_ORIENTATION,
+  onLoadOlder: { $action: 'modules.transcribe.showMoreTranscript' },
+  onLoadNewer: { $action: 'modules.transcribe.showMoreTranscript' },
+  onJumpNewest: { $action: 'modules.transcribe.readTranscriptLive' },
+  onJumpOldest: { $action: 'modules.transcribe.readTranscriptFromStart' },
   children: [
     {
       type: 'Column',

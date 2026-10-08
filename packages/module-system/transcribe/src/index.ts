@@ -328,6 +328,23 @@ export const transcribeModule = defineModule({
         levels: ['deployment', 'agent', 'space', 'agent-in-space'],
         resolution: 'restrict',
       },
+      /*
+        Which way round this reader draws the transcript and the feed. Theirs alone, everywhere: how a
+        list reads is a reading preference, and one member's choice must not turn a room's chat
+        upside down for everybody else.
+      */
+      {
+        key: 'timelineOrder',
+        label: 'Newest messages',
+        description: 'Where the newest line of a transcript or the feed is drawn.',
+        type: 'enum',
+        options: [
+          { label: 'At the bottom', value: 'newestBottom' },
+          { label: 'At the top', value: 'newestTop' },
+        ],
+        default: 'newestBottom',
+        levels: ['agent'],
+      },
     ],
 
     /*

@@ -639,6 +639,10 @@ describe('which call is live', () => {
   });
 });
 
+/** The timeline's one question for this panel: whether the anchored end is the bottom one. */
+const ANCHORED_AT_BOTTOM =
+  "((modules.transcribe.transcriptFromStart) == ((modules.transcribe.timelineOrientation) == 'newestTop'))";
+
 describe('the feed', () => {
   it('keeps the unsaved line inside the scroll region, with the rows', () => {
     /*
@@ -659,7 +663,9 @@ describe('the feed', () => {
    * what they asked to read every time somebody speaks.
    */
   it('follows the live end only while the transcript is anchored to it', () => {
-    expect(feedJson).toContain('"pin":{"$":"modules.transcribe.transcriptFromStart ? \'\' : \'end\'"}');
+    // Pinned at the anchored end, which is the bottom when following the live end newest-at-bottom
+    // or reading from the start newest-at-top — see `timeline` in the schema kit.
+    expect(feedJson).toContain(`"pin":{"$":"${ANCHORED_AT_BOTTOM} ? 'end' : ''"}`);
   });
 
   /**
@@ -709,8 +715,10 @@ describe('the feed', () => {
     expect(feedJson).toContain('"nearStart":400');
     expect(feedJson).toContain('"nearEnd":400');
     expect(feedJson).toContain('modules.transcribe.showMoreTranscript');
-    // Each guarded on the anchor it belongs to, so only one of them can answer at a time.
-    expect(feedJson).toContain('!modules.transcribe.transcriptFromStart');
+    // Each edge guarded on whether it is the one away from the anchor, so only one can answer at a
+    // time — and which direction it grows decided by the anchor.
+    expect(feedJson).toContain(`"on:nearstart":{"$if":{"condition":{"$":"${ANCHORED_AT_BOTTOM}"}`);
+    expect(feedJson).toContain(`"on:nearend":{"$if":{"condition":{"$":"!${ANCHORED_AT_BOTTOM}"}`);
     expect(feedJson).toContain('"condition":{"$":"modules.transcribe.transcriptFromStart"}');
   });
 

@@ -3217,6 +3217,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * See {@link pendingIds} for why this is a union across calls rather than keyed by one.
      */
     unconfirmedIds: state(unconfirmedIds, 'Records a pass made that nobody has kept yet, by id.'),
+    timelineOrientation: state(
+      () => (settings?.().timelineOrder === 'newestTop' ? 'newestTop' : 'newestBottom'),
+      "Which way round this reader draws a timeline — 'newestBottom' or 'newestTop'. Their own setting.",
+    ),
     /**
      * An accept or discard that would decide other suggestions too, waiting on a confirmation — or
      * `null`. Drawn by the module's own overlay; see `TiedDecision`.
