@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 /**
- * pnpm bump:ad4m [version | npm tag] [--no-install | --lockfile-only] [--allow-older]
+ * pnpm bump:ad4m [version | npm tag | staging] [--no-install | --lockfile-only] [--allow-older]
  *                 [--if-newer] [--pr-body <file>]
  *
  * Moves WE's pin of @coasys/ad4m and @coasys/ad4m-connect to one published version: the root
  * `pnpm.overrides` (which decide what installs) and every exact version a workspace package
- * declares (which should say the same). Defaults to whatever npm's `dev` tag points at.
+ * declares (which should say the same). Defaults to `staging`: the newest version published from a
+ * commit on ad4m's `staging` branch, which is where ad4m publishes from. Not a tag, because no tag
+ * says that: `next` and `latest` follow whether a version is a prerelease, and either can hold a
+ * build published by hand from somewhere else.
  *
  * Refuses a version that is not published for both packages. The app's client comes from the SDK
  * copy bundled inside ad4m-connect, so a core from one ad4m commit and a connect from another is a
@@ -41,7 +44,7 @@ const lockfileOnly = args.includes('--lockfile-only');
 const allowOlder = args.includes('--allow-older');
 const ifNewer = args.includes('--if-newer');
 const prBody = option('--pr-body');
-const wanted = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--pr-body') ?? 'dev';
+const wanted = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--pr-body') ?? 'staging';
 
 function fail(message) {
   console.error(`\n✗ ${message}\n`);
@@ -67,8 +70,36 @@ async function getJson(url) {
   return response.json();
 }
 
+/** How many of the newest versions `staging` looks through for one published from that branch. */
+const STAGING_CANDIDATES = 15;
+
+/**
+ * The newest version of the SDK published from a commit on ad4m's `staging` branch: one the branch
+ * contains, by GitHub's comparison of the two. Newest by publish time, so a version re-published
+ * later does not outrank the one that followed it. Undefined when none of the newest qualifies.
+ */
+async function newestFromStaging() {
+  const pack = await getJson(`${REGISTRY}/${PACKAGES[0].replace('/', '%2f')}`);
+  const candidates = Object.keys(pack?.versions ?? {})
+    .filter((v) => pack.time?.[v] && pack.versions[v].gitHead)
+    .sort((a, b) => pack.time[b].localeCompare(pack.time[a]))
+    .slice(0, STAGING_CANDIDATES);
+  for (const v of candidates) {
+    const compare = await getJson(
+      `https://api.github.com/repos/coasys/ad4m/compare/staging...${pack.versions[v].gitHead}`,
+    );
+    if (compare && (compare.status === 'behind' || compare.status === 'identical')) return v;
+  }
+  return undefined;
+}
+
 /** The version a tag points at, or the argument itself when it is already a version. */
 async function resolveVersion(spec) {
+  if (spec === 'staging') {
+    const v = await newestFromStaging();
+    if (!v) notYet(`none of the newest ${STAGING_CANDIDATES} versions was published from ad4m's \`staging\` branch.`);
+    return v;
+  }
   const tags = await getJson(`${REGISTRY}/-/package/${encodeURIComponent(PACKAGES[0])}/dist-tags`);
   return tags?.[spec] ?? spec;
 }
@@ -120,6 +151,24 @@ const compare = from && to ? await getJson(`https://api.github.com/repos/coasys/
 if (compare && compare.ahead_by === 0 && compare.behind_by > 0 && !allowOlder) {
   notYet(
     `${version} is ${compare.behind_by} ad4m commits behind the current pin (${before[0]}), and adds none.\n` +
+      `  If that is really what you want, pass --allow-older.`,
+  );
+}
+
+// The commit check above misses a version from another branch: one carrying a handful of commits of
+// its own — a version bump, a merge — counts as adding them, however far behind it otherwise is.
+// ad4m's `staging` sat in March for months while the pin moved on through test builds, and its
+// newest version looked "5 commits ahead". Publish order catches that, whatever branch it came from.
+const publishedAt = before[0] ? (await getJson(`${REGISTRY}/${PACKAGES[0].replace('/', '%2f')}`))?.time : null;
+if (
+  publishedAt?.[version] &&
+  publishedAt?.[before[0]] &&
+  publishedAt[version] < publishedAt[before[0]] &&
+  !allowOlder
+) {
+  notYet(
+    `${version} was published ${publishedAt[version].slice(0, 10)}, before the current pin ` +
+      `(${before[0]}, ${publishedAt[before[0]].slice(0, 10)}).\n` +
       `  If that is really what you want, pass --allow-older.`,
   );
 }
