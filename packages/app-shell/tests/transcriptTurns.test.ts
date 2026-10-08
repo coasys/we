@@ -37,15 +37,15 @@ describe('gatherTranscriptTurns', () => {
 
   it('normalises the epoch milliseconds the ORM parses timestamps into', async () => {
     const turns = await gatherTranscriptTurns(
-      deps([{ text: 'hi', author: 'did:a', createdAt: 1_700_000_000_000 }]),
+      deps([{ text: 'hi', author: 'did:a', createdAt: 1_700_000_000_000, source: 'spoken' }]),
       'c',
     );
-    expect(turns).toEqual([{ speaker: 'did:a', text: 'hi', timestamp: '2023-11-14T22:13:20.000Z' }]);
+    expect(turns).toEqual([{ speaker: 'did:a', text: 'hi', timestamp: '2023-11-14T22:13:20.000Z', source: 'spoken' }]);
   });
 
   it('accepts an ISO string too, since the ORM does not always parse it', async () => {
     const turns = await gatherTranscriptTurns(
-      deps([{ text: 'hi', author: 'did:a', createdAt: '2026-08-13T10:00:00.000Z' }]),
+      deps([{ text: 'hi', author: 'did:a', createdAt: '2026-08-13T10:00:00.000Z', source: 'spoken' }]),
       'c',
     );
     expect(turns[0]?.timestamp).toBe('2026-08-13T10:00:00.000Z');
@@ -54,8 +54,8 @@ describe('gatherTranscriptTurns', () => {
   it('orders by when it was said, not by how storage returned it', async () => {
     const turns = await gatherTranscriptTurns(
       deps([
-        { text: 'second', author: 'did:b', createdAt: 2_000 },
-        { text: 'first', author: 'did:a', createdAt: 1_000 },
+        { text: 'second', author: 'did:b', createdAt: 2_000, source: 'spoken' },
+        { text: 'first', author: 'did:a', createdAt: 1_000, source: 'spoken' },
       ]),
       'c',
     );
@@ -67,11 +67,11 @@ describe('gatherTranscriptTurns', () => {
     // cursor, and passing it on spends tokens to confuse the run.
     const turns = await gatherTranscriptTurns(
       deps([
-        { text: '   ', author: 'did:a', createdAt: 1_000 },
+        { text: '   ', author: 'did:a', createdAt: 1_000, source: 'spoken' },
         { text: 'no author', createdAt: 2_000 },
-        { text: 'bad date', author: 'did:a', createdAt: 'not-a-date' },
+        { text: 'bad date', author: 'did:a', createdAt: 'not-a-date', source: 'spoken' },
         { text: 'no date', author: 'did:a' },
-        { text: 'kept', author: 'did:a', createdAt: 3_000 },
+        { text: 'kept', author: 'did:a', createdAt: 3_000, source: 'spoken' },
       ]),
       'c',
     );
@@ -79,8 +79,59 @@ describe('gatherTranscriptTurns', () => {
   });
 
   it('trims, so leading whitespace from a flush does not reach the prompt', async () => {
-    const turns = await gatherTranscriptTurns(deps([{ text: '  hello  ', author: 'did:a', createdAt: 1 }]), 'c');
+    const turns = await gatherTranscriptTurns(
+      deps([{ text: '  hello  ', author: 'did:a', createdAt: 1, source: 'spoken' }]),
+      'c',
+    );
     expect(turns[0]?.text).toBe('hello');
+  });
+
+  it('reads only what a person said or wrote', async () => {
+    // A bot writing into a call does not know the field, so its replies arrive with no source — and
+    // read back in as input, a summary that mentions three tasks is extracted into three more.
+    const turns = await gatherTranscriptTurns(
+      deps([
+        { text: 'said', author: 'did:a', createdAt: 1, source: 'spoken' },
+        { text: 'typed', author: 'did:a', createdAt: 2, source: 'typed' },
+        { text: 'mended', author: 'did:a', createdAt: 3, source: 'corrected' },
+        { text: 'a bot summary', author: 'did:bot', createdAt: 4 },
+        { text: 'an older block', author: 'did:a', createdAt: 5, source: '' },
+      ]),
+      'c',
+    );
+    expect(turns.map((t) => t.text)).toEqual(['said', 'typed', 'mended']);
+  });
+
+  it('follows replies down from each message, in one read', async () => {
+    let seen: Record<string, unknown> | undefined;
+    const turns = await gatherTranscriptTurns(
+      deps(
+        [
+          {
+            text: 'question',
+            author: 'did:a',
+            createdAt: 1,
+            source: 'typed',
+            comments: [
+              {
+                text: 'answer',
+                author: 'did:b',
+                createdAt: 3,
+                source: 'typed',
+                comments: [{ text: 'thanks', author: 'did:a', createdAt: 4, source: 'typed' }],
+              },
+              { text: 'a bot chiming in', author: 'did:bot', createdAt: 2 },
+            ],
+          },
+        ],
+        (options) => {
+          seen = options;
+        },
+      ),
+      'c',
+    );
+    expect(turns.map((t) => t.text)).toEqual(['question', 'answer', 'thanks']);
+    expect(seen?.include).toMatchObject({ comments: { include: { comments: { include: { comments: true } } } } });
   });
 });
 
@@ -146,16 +197,5 @@ describe('how a turn came to be', () => {
     );
 
     expect(turns[0].source).toBe('typed');
-  });
-
-  it('says nothing for a block written before the field existed', async () => {
-    // Absent rather than guessed at: a turn from an older block is not evidence that it was spoken,
-    // and defaulting it to `spoken` would invent the very claim the field exists to make honest.
-    const turns = await gatherTranscriptTurns(
-      deps([{ text: 'hi', author: 'did:a', createdAt: 1_700_000_000_000 }]),
-      'call-1',
-    );
-
-    expect(turns[0].source).toBeUndefined();
   });
 });

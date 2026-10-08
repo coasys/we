@@ -3979,6 +3979,46 @@ export function SpaceStoreProvider(props: ParentProps) {
     resolveSpaceExtractionTargets(shapeStore.extractionCandidates(), currentSpace()?.extractionTargets),
   );
 
+  /*
+    The space's own standing watch: the loose messages typed straight into it, outside any call.
+
+    Calls are watched by the transcribe module for as long as somebody is in them. This one belongs
+    to the space, so it is the space's settings that decide it: registered while loose messages are
+    extracted at all (`extractLooseMessages`) and extraction runs by itself (`autoInterpret`).
+    Registered by every member who enters, which is one registration — it is keyed on the
+    collection, and the engine keeps one row per key in the shared perspective. Removed when either
+    setting is switched off while somebody is here to see it change; a member arriving later to a
+    space with it off has nothing to remove.
+
+    What it reads and where it files are the same rules every pass follows: what a person wrote, and
+    the space collection — with the collection itself as the provenance, so items from the feed are
+    told apart from items from a call. Its passes batch, by the engine's defaults: a few messages, or
+    a quiet spell, or two minutes at the most.
+  */
+  let looseWatchOn: { root: string; handle: unknown } | null = null;
+  createEffect(() => {
+    const root = spaceRoot();
+    const handle = datasetStore.currentDataset()?.handle;
+    const wanted = Boolean(root && handle && extractLooseMessages() && autoInterpret());
+    // Read so a change to what this space extracts re-registers: the watch's class list is fixed at
+    // registration, and the port replaces it when the list differs.
+    void extractionTargets();
+    if (wanted) {
+      looseWatchOn = { root, handle };
+      void datasetStore.watchConversation(root, handle).catch((error: unknown) => {
+        console.info('SpaceStore: the space’s loose messages cannot be watched here', error);
+      });
+      return;
+    }
+    const was = looseWatchOn;
+    looseWatchOn = null;
+    // Only on the way from on to off, and only for the space it was on in: leaving a space is not
+    // switching its watch off.
+    if (was && was.root === root && was.handle === handle) {
+      void datasetStore.unwatchConversation(was.root, was.handle).catch(() => {});
+    }
+  });
+
   /**
    * What one call extracts, where its participants asked for something other than the default.
    *

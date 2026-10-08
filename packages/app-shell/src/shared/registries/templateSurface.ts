@@ -415,6 +415,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     clearCurrentDataset: WIRING,
     trackDataset: WIRING,
     provideAutoInterpretGate: WIRING,
+    watchConversation: WIRING,
+    unwatchConversation: WIRING,
     provideExtractionCandidates: WIRING,
     provideCallExtraction: WIRING,
     /*

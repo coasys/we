@@ -35,7 +35,7 @@ describe('transcriptScopeQuery', () => {
   });
 
   it('scopes to one call, so a watch cannot read another call transcript', () => {
-    expect(query()).toContain(`<${CALL}> <we://child> ?m`);
+    expect(query()).toContain(`<${CALL}> <we://child> ?line`);
   });
 
   it('takes turns only from text blocks', () => {
@@ -50,6 +50,18 @@ describe('transcriptScopeQuery', () => {
 
   it('uses the predicate it is given rather than assuming containment', () => {
     // A foreign container reaches its children through its own predicate; the caller resolves it.
-    expect(transcriptScopeQuery(CALL, 'flux://messages')).toContain(`<${CALL}> <flux://messages> ?m`);
+    expect(transcriptScopeQuery(CALL, 'flux://messages')).toContain(`<${CALL}> <flux://messages> ?line`);
+  });
+
+  it('follows replies down from each line', () => {
+    // A reply is linked from what it answers rather than contained by the call, so containment alone
+    // would leave every reply out of the conversation it belongs to.
+    expect(query()).toContain('?line <we://comment>* ?m');
+  });
+
+  it('reads only what a person said or wrote', () => {
+    // A bot's reply carries no source; read back in, its summary would be extracted again.
+    expect(query()).toContain('?m <we://text_source> ?source');
+    expect(query()).toContain('FILTER(?source IN ("spoken", "typed", "corrected"))');
   });
 });

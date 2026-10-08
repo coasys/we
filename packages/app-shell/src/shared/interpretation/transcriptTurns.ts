@@ -45,6 +45,31 @@ export interface GatherTurnsDeps {
 /** Entities whose instances can be a turn. Only TextBlock today; a list so a caller can widen it. */
 const DEFAULT_TURN_ENTITIES = ['TextBlock'];
 
+/**
+ * What counts as input: what a person said or wrote, by the `source` WE stamps on every message it
+ * writes — said aloud, typed, or a spoken line somebody corrected.
+ *
+ * Everything else is left out, and that is the point rather than a side effect. A bot writing into a
+ * space does not know the field, so its replies, digests and summaries arrive with none — and bot
+ * output read back in as input loops: a summary that mentions three tasks is extracted into three
+ * more, which paraphrase past exact-match de-duplication. People bring raw material in; a bot that
+ * wants to make a record writes the record.
+ */
+export const INPUT_SOURCES = ['spoken', 'typed', 'corrected'] as const;
+
+/**
+ * How far down a reply chain a gather follows — a reply, a reply to it, and one more.
+ *
+ * Replies are linked from what they answer (`we://comment`), not contained by the conversation, so
+ * they are reached by following that link down from each message. In one read, as nested includes,
+ * rather than one read per message — a long call has thousands of lines. Three levels covers a
+ * conversation's back-and-forth; deeper than that is a thread, which wants a forum, not a transcript.
+ */
+const REPLY_DEPTH = 3;
+
+const replies = (depth: number): Record<string, unknown> | true =>
+  depth <= 1 ? true : { include: { comments: replies(depth - 1) } };
+
 /** The shape statics this reads off a model class, narrowed so a caller passes an ORM class as-is. */
 interface ShapeBearing {
   generateSHACL?: () => { shape?: { properties?: { name?: string; path?: string }[] } };
@@ -120,10 +145,22 @@ export async function gatherTranscriptTurns(
 
     const rows = await model.findAll(deps.handle, {
       parent: { id: collectionId, predicate },
+      include: { comments: replies(REPLY_DEPTH) },
       ...(options.limit !== undefined ? { limit: options.limit } : {}),
     });
 
-    for (const row of rows) {
+    // Each message, then the replies under it — see `REPLY_DEPTH`. A reply that is not a text line
+    // (a post somebody wrote in answer) has no `text` and falls out below.
+    const flat: Record<string, unknown>[] = [];
+    const walk = (row: Record<string, unknown>) => {
+      flat.push(row);
+      for (const reply of Array.isArray(row.comments) ? row.comments : []) {
+        if (reply && typeof reply === 'object') walk(reply as Record<string, unknown>);
+      }
+    };
+    rows.forEach(walk);
+
+    for (const row of flat) {
       const text = typeof row.text === 'string' ? row.text.trim() : '';
       const speaker = typeof row.author === 'string' ? row.author : '';
       const timestamp = isoTimestamp(row.createdAt);
@@ -133,7 +170,9 @@ export async function gatherTranscriptTurns(
       // contributes. A consumer that renders these is asserting somebody's words; this is what lets
       // it say which of them were spoken aloud.
       const source = typeof row.source === 'string' ? row.source : '';
-      turns.push({ speaker, text, timestamp, ...(source ? { source } : {}) });
+      // Only what a person said or wrote — see `INPUT_SOURCES`.
+      if (!(INPUT_SOURCES as readonly string[]).includes(source)) continue;
+      turns.push({ speaker, text, timestamp, source });
     }
   }
 

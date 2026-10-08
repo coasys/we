@@ -734,7 +734,7 @@ describe('what the stores actually wrote', () => {
       await stores.spaces.createSpace('Structured', 'x', 'personal', 'hidden');
       const ref = (await lifecycle.list()).find((d) => d.name === 'Structured')!;
 
-      const [space] = await Space.findAll(ref.handle as never, { include: { root: true } } as never);
+      const [space] = await Space.findAll(ref.handle as never, { include: { root: true } });
       expect(space.defaultTemplateId).toBe('workshop');
       expect(space.extractLooseMessages).toBe(true);
       const root = (space as unknown as { root?: { id: string; kind: string } }).root;
