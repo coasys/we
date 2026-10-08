@@ -5350,7 +5350,10 @@ anything close (no colon, another heading or alert, lower down) fails rather tha
 > ### Paired with: coasys/ad4m#<N>
 ```
 
-`coasys/ad4m@<branch>` names an ad4m branch instead. The rules are in
+`coasys/ad4m@<branch>` names an ad4m branch instead — only for a change with no ad4m PR, since a
+branch pairing gets no link, no "ready to bump" label, and breaks once the branch is deleted. While
+paired, import the new SDK API directly; never redeclare its types or feature-check a method to
+compile against the pin. The PR cannot merge until the block is removed. The rules are in
 `docs/contributing/ad4m-and-deploys.md`.
 
 **Never commit `PR_*.md` files.** They're scratch documents for the PR description.

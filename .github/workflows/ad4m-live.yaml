@@ -75,11 +75,13 @@ jobs:
             .github/actions/ad4m-executor
           sparse-checkout-cone-mode: false
 
-      # A paired PR's own changes need an ad4m change nobody has published, so against the pin they
-      # fail for the reason the required checks do and say nothing new — `AD4M compatibility /
-      # Against the paired ad4m` is the check that answers there. Skipped only while the PR has not
-      # moved the pin: one that has is testing the version it will merge with, which is the run that
-      # matters most, whether or not its description still carries the block.
+      # A paired PR's own changes need an ad4m change the pin does not have, and it cannot merge
+      # until the pin moves (`PR tasks / Not waiting on ad4m`), so a run against the pin answers a
+      # question nobody is asking yet. Not because it would fail like the required checks: a PR that
+      # depends on how the executor behaves is green there and might well be green here, which says
+      # nothing about the executor it needs. Skipped only while the PR has not moved the pin: one
+      # that has is testing the version it will merge with, which is the run that matters most,
+      # whether or not its description still carries the block.
       - name: Is this a paired PR that has not moved the pin
         id: pairing
         if: github.event_name == 'pull_request'

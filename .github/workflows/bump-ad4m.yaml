@@ -122,10 +122,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         # And the live tests, which are the point of a bump: they run against an executor built from
-        # the version the PR moves to.
+        # the version the PR moves to. And the pairing gate, whose check is required like CI's: one
+        # that never reports would block the PR for good.
         run: |
           gh workflow run build.yaml --ref "$BRANCH"
           gh workflow run ad4m-live.yaml --ref "$BRANCH"
+          gh workflow run pr-tasks.yaml --ref "$BRANCH"
 
   # A paired PR whose ad4m change has merged and been published gets the `ready to bump ad4m`
   # label and a comment naming the version and what to run. Independent of the bump above: a

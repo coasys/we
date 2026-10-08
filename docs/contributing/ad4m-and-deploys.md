@@ -69,11 +69,16 @@ point at it. The pairing is this block, first in the WE PR description:
 | 1    | Start the WE PR description with the pairing block, below | The preview builds both ad4m packages from that ad4m PR (its merge, once merged), and a check tests WE there |
 | 2    | Review and test on the preview                            | You see the two halves working together                                                                      |
 | 3    | Merge the ad4m PR first                                   | It is published under the `dev` tag (see below), and the WE PR is marked ready to bump                       |
-| 4    | Run `pnpm bump:ad4m` in the WE PR, and remove the block   | CI now tests the real combination                                                                            |
+| 4    | Run `pnpm bump:ad4m` in the WE PR, and remove the block   | CI now tests the real combination, and the PR can merge                                                      |
 | 5    | Merge the WE PR                                           | `dev` stays on a published, tested pin                                                                       |
 
-**Until step 4 the required checks are red.** They test against the pin, which does not have the
-ad4m change yet. Whether that is the only reason is answered by
+**A paired PR cannot merge.** **`PR tasks / Not waiting on ad4m`** fails while the block is in the
+description, and passes as soon as it is removed — editing the description re-runs it, with no push
+needed. It reads the description alone, so it is the author's claim that decides, not a guess at
+what the code needs. If the PR turns out to work with the ad4m WE already pins, remove the block.
+
+**Until step 4 the required checks are usually red.** They test against the pin, which does not have
+the ad4m change yet. Whether that is the only reason is answered by
 **`AD4M compatibility / Against the paired ad4m`**, which builds the same commit against the paired
 change, then typechecks, tests and validates its schemas. Both checks build the same WE commit, so
 the ad4m version is the only difference between them:
@@ -83,10 +88,21 @@ the ad4m version is the only difference between them:
 | red             | green        | Waiting for the pin, not for a fix                                     |
 | red             | red          | Something is broken — the paired check's summary names the stage       |
 | green           | red          | Fine against today's ad4m, broken against the paired change: fix first |
+| green           | green        | Works with both — see below                                            |
+
+**Green on the pin as well is not always a problem, and the PR comment says so rather than claiming
+the checks are red.** It is expected when the PR depends on how ad4m _behaves_ — a bug fix, or a
+change to the executor only — since that compiles the same either way, and when the PR is built to
+work with both versions on purpose. Otherwise it means one of two things: the PR does not need the
+pairing, or it hides the dependency. **While paired, import the new SDK API directly.** Declaring its
+types again in WE, or checking at runtime whether a method exists, so that the PR compiles against
+the pin, turns the one signal that shows the dependency green — and the PR would then fail at runtime
+against the pinned ad4m, with nothing in CI to say so.
 
 A reviewer does not have to know any of this to read the PR. The paired check keeps **one comment**
 on it, updated in place: that the check is running, then whether the PR works against the paired
-change, stage by stage — and if the pairing cannot be read, why, with the corrected block to paste.
+change, stage by stage, and which row of the table above it is in — and if the pairing cannot be
+read, why, with the corrected block to paste.
 It also adds a **`paired with ad4m`** label, which the PR list shows beside the title. Both go away
 on the first push after the block is removed. (GitHub has no
 badge beside a PR's title or above its description, so those two are the nearest it offers. A PR
@@ -106,8 +122,13 @@ Both labels and both comments go together when the block is removed. The rules a
 The paired check tests the ad4m PR as it is now. If it changes before it is published, step 4 is
 where that shows: the required checks then test the real combination.
 
-To pair with a branch, tag or commit instead, write `coasys/ad4m@<ref>` in the block, for example
-`coasys/ad4m@dev`. Without a block, the preview uses the pin.
+**Pair with the ad4m PR whenever there is one.** Only for an ad4m change with no PR — a branch not
+opened yet, a tag, a commit — write `coasys/ad4m@<ref>` in the block, for example `coasys/ad4m@dev`.
+A branch pairing works, but it loses three things: GitHub does not turn `coasys/ad4m@<branch>` into a
+link; it never gets `ready to bump ad4m`, since a branch has no moment at which it is done; and it
+keeps fetching the branch after the change merges, which fails once the branch is deleted. When a
+paired branch has an open PR, the pairing comment names it and gives the block to paste. Without a
+block, the preview uses the pin.
 
 To try an ad4m change in WE with no WE change to go with it, open a draft WE PR with an empty commit
 (`git commit --allow-empty`) and the block. Close it when you are done.
@@ -159,7 +180,9 @@ use "Run workflow" on the workflow's page in the Actions tab.
 
 It opens the PR as `github-actions`, which needs the repository setting "Allow GitHub Actions to
 create and approve pull requests" (Settings → Actions → General). A PR opened that way starts no
-workflows by itself, so the bot starts CI on the branch, and the checks appear on the PR as usual.
+workflows by itself, so the bot starts CI, the live tests and the pairing gate on the branch, and the
+checks appear on the PR as usual. **A workflow with a required check has to be in that list**: a
+required check that never reports blocks the bump PR for good.
 
 **A routine bump** (WE catching up, with nothing in WE needing the new version) is the bot's PR, on
 its own, so a breakage points at one cause. **A feature that needs a new ad4m** bumps inside its own
@@ -221,8 +244,10 @@ pinned commit and cached, by the `.github/actions/ad4m-executor` action the desk
 a PR serves only that PR, which is why a merged bump builds on `dev`: after that, every run takes
 minutes. A push never cancels a build in progress, only the tests.
 It is not a required check: read it before merging a bump, the way you would the run here. It skips
-a paired PR until that PR moves the pin, since before then the pin cannot answer for its changes —
-the paired check above does.
+a paired PR until that PR moves the pin. A paired PR cannot merge before then, so the run that
+matters is the one after the bump — and nothing builds the paired executor, which takes the better
+part of an hour, so a PR that depends on how the executor behaves is exercised only on its preview
+until the pin moves.
 
 ### Testing an ad4m branch against WE's tests
 
@@ -236,8 +261,8 @@ and tests there. It never blocks a PR.
 - **From the Actions tab**, name an ad4m branch, and it tests the last WE commit that passed CI on
   `dev` against it — so a failure there is ad4m's difference by construction.
 
-`scripts/ad4m-pairing.mjs` reads the pairing for the preview, this workflow and the required checks
-alike, so they cannot disagree about whether a PR is paired.
+`scripts/ad4m-pairing.mjs` reads the pairing for the preview, this workflow, the required checks and
+the merge gate alike, so they cannot disagree about whether a PR is paired.
 
 The early warning that a change on ad4m `dev` breaks WE is the bump bot's PR: its CI goes red within
 the hour of the ad4m merge.
@@ -249,6 +274,7 @@ the hour of the ad4m merge.
 | Build from the pin, not from ad4m `dev`    | A build from ad4m `dev` changes when ad4m changes, with no WE commit. It cannot be reproduced, and CI never tested it.                                                                     |
 | Publish often, instead of skipping the pin | The problem was that the pin moved rarely. Moving it often fixes that and keeps every build tested.                                                                                        |
 | Required checks never build from source    | A branch in another repo must not decide whether a WE change can merge. The paired check does, and never blocks.                                                                           |
+| A paired PR cannot merge                   | Red pinned checks stopped most, but not a PR depending on how ad4m behaves, or one hiding the dependency to compile. The block is the author's own claim, so it is the gate.               |
 | Build both packages when pairing           | The app's client comes from ad4m-connect's bundled SDK. Building only the SDK leaves the running client old.                                                                               |
 | Link pairs in the PR description           | It is visible to reviewers, it is there before the first build, and several WE PRs can link one ad4m PR. Matching branch names was implicit and could link unrelated branches by accident. |
 | Bump through a PR                          | CI and a preview check every new version before it reaches `dev`.                                                                                                                          |
