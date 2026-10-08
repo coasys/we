@@ -84,6 +84,7 @@ jobs:
     outputs:
       pairing: ${{ steps.resolve.outputs.pairing }}
       ref: ${{ steps.resolve.outputs.ref }}
+      branch_pr: ${{ steps.resolve.outputs.branch_pr }}
     steps:
       # Only the parser and the action that reports it. Nothing here is built or installed.
       - uses: actions/checkout@v7
@@ -148,20 +149,35 @@ jobs:
       # required checks go red within minutes, and this is what tells a reviewer why. The job below
       # replaces it with what it found. An unpaired pull request loses the comment and label, which
       # is how they go away once the pin has moved and the block is removed.
+      #
+      # It says nothing about whether the required checks are red. Most paired PRs are, but one that
+      # depends on how ad4m behaves rather than on a new API is green on the pin, and a comment
+      # telling its reviewer to ignore red checks that are not there is wrong in the one place they
+      # look. The result comment says which it is, once the required checks have answered.
       - name: Write the pending comment
         if: github.event_name == 'pull_request' && steps.resolve.outputs.paired == 'true'
         env:
           PAIRING: ${{ steps.resolve.outputs.pairing }}
+          BRANCH_PR: ${{ steps.resolve.outputs.branch_pr }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          cat > pairing-comment.md <<EOF
-          ### :hourglass: Testing this PR against $PAIRING
-
-          The required checks build against the ad4m version WE pins, which does not have this change, so
-          they stay red until it is published and \`pnpm bump:ad4m\` moves the pin. Whether this PR works
-          against $PAIRING is answered by **AD4M compatibility / Against the paired ad4m**, which is
-          [running now]($RUN_URL) and takes about ten minutes. This comment will say what it found.
-          EOF
+          {
+            echo "### :hourglass: Testing this PR against $PAIRING"
+            echo
+            echo "The required checks build against the ad4m version WE pins, which does not have this change, so"
+            echo "they cannot say whether this PR works with it. That is answered by"
+            echo "**AD4M compatibility / Against the paired ad4m**, which is [running now]($RUN_URL) and takes"
+            echo "about ten minutes. This comment will say what it found."
+            echo
+            echo "While the block is in the description, **PR tasks / Not waiting on ad4m** keeps this PR from merging."
+            # A branch with a pull request is better paired as the pull request. The result comment
+            # says this too, so it survives the rewrite.
+            if [ -n "$BRANCH_PR" ]; then
+              echo
+              echo "> [!TIP]"
+              echo "> That branch has a pull request, coasys/ad4m#$BRANCH_PR. Pair with it instead, by changing the heading in the block to \`### Paired with: coasys/ad4m#$BRANCH_PR\`, so the pairing links to it, follows its merge commit once it lands, and this PR is told when the pin can move."
+            fi
+          } > pairing-comment.md
 
       - name: Show the pairing on the pull request
         if: github.event_name == 'pull_request' && steps.resolve.outputs.paired == 'true'
@@ -505,6 +521,42 @@ jobs:
           cat report.md >> "$GITHUB_STEP_SUMMARY"
           echo "stage=$STAGE" >> "$GITHUB_OUTPUT"
 
+      # What the required checks made of the same commit against the pin, for the comment below.
+      #
+      # A paired PR that works here is red on the pin in the common case — it calls something the
+      # pinned SDK does not have — and green on it in two others that look identical from outside:
+      # it depends on how ad4m BEHAVES (a fix, a change to the executor only), which compiles the
+      # same either way, or it declares the new API itself so that it compiles against the pin,
+      # which hides the dependency. The comment used to assume the first, so on a PR of the second
+      # kind it told reviewers to ignore red checks that were not there.
+      #
+      # Read here rather than by a workflow that runs when CI finishes: that would have to be a
+      # `workflow_run`, which only runs from the default branch's copy of a workflow and so cannot
+      # be tried on the PR that changes it. CI takes a few minutes and this job about ten, so CI
+      # has nearly always answered; if not, this waits for it, up to ten minutes more. Only after
+      # a pass — a failure here answers the question without it.
+      - name: Read the required checks
+        id: pin
+        if: success() && github.event_name == 'pull_request'
+        env:
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          RESULT=''
+          for _ in $(seq 1 20); do
+            RESULT="$(gh api "repos/$REPO/actions/workflows/build.yaml/runs?head_sha=$HEAD_SHA&event=pull_request&per_page=1" \
+              --jq '.workflow_runs[0] // empty | "\(.status) \(.conclusion // "")"' 2>/dev/null)" || RESULT=''
+            case "$RESULT" in completed*) break ;; esac
+            sleep 30
+          done
+          case "$RESULT" in
+            'completed success') PIN=green ;;
+            'completed failure' | 'completed timed_out') PIN=red ;;
+            *) PIN=unknown ;;
+          esac
+          echo "Required checks on the pin: ${RESULT:-no run found} → $PIN"
+          echo "pin=$PIN" >> "$GITHUB_OUTPUT"
+
       # The same report, as the pull request's pairing comment — replacing the "running" one the
       # resolve job wrote.
       #
@@ -516,6 +568,8 @@ jobs:
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         env:
           PAIRING: ${{ needs.resolve.outputs.pairing }}
+          BRANCH_PR: ${{ needs.resolve.outputs.branch_pr }}
+          PIN: ${{ steps.pin.outputs.pin }}
           AD4M_HASH: ${{ steps.ad4m-hash.outputs.hash }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
@@ -569,9 +623,21 @@ jobs:
             echo "$TESTED."
             echo
 
-            if [ "$JOB_STATUS" = success ]; then
+            if [ "$JOB_STATUS" = success ] && [ "$PIN" = green ]; then
+              # Not a failure, and not accused of being one: three of the four ways to get here
+              # are fine. The reader is the one who knows which.
+              echo "**The required checks pass on the pinned ad4m too.** That is expected if this PR depends on"
+              echo "how ad4m *behaves* — a fix, or a change to the executor only — or is built to work with both"
+              echo "versions. Otherwise either it does not need the pairing, and the block can go, or it reaches"
+              echo "the new API in a way the pinned build cannot see, such as SDK types declared again in WE or a"
+              echo "runtime check for a method. Import the new API directly instead, so the pinned checks show"
+              echo "the dependency."
+            elif [ "$JOB_STATUS" = success ] && [ "$PIN" = red ]; then
               echo "**The red required checks are only the ad4m pin.** They clear once $PAIRING is"
               echo "published and \`pnpm bump:ad4m\` moves the pin."
+            elif [ "$JOB_STATUS" = success ]; then
+              echo "**The required checks had not finished when this was written.** If they fail, that is only"
+              echo "the ad4m pin; if they pass, this PR works with the pinned ad4m as well."
             elif [ -n "$FAILED" ]; then
               echo "**Something is broken**, in this PR or in $PAIRING. The error below says which side."
             else
@@ -603,6 +669,12 @@ jobs:
               echo '```'
               echo
               echo '</details>'
+            fi
+
+            if [ -n "$BRANCH_PR" ]; then
+              echo
+              echo "> [!TIP]"
+              echo "> That branch has a pull request, coasys/ad4m#$BRANCH_PR. Pair with it instead, by changing the heading in the block to \`### Paired with: coasys/ad4m#$BRANCH_PR\`, so the pairing links to it, follows its merge commit once it lands, and this PR is told when the pin can move."
             fi
 
             echo
