@@ -411,6 +411,94 @@ jobs:
           set -o pipefail
           pnpm --filter @we/primitives test:browser 2>&1 | tee -a compat.log
 
+      # ---------------------------------------------------------------- whose failure is it
+
+      # A failure here has three possible sources, and the stages alone cannot tell them apart: this
+      # PR, the ad4m change it pairs with, or something ad4m's `dev` changed that WE's `dev` has not
+      # caught up with yet. The third reaches every paired PR at once, through any ad4m branch that
+      # has merged its `dev` — a removed SDK method fails all of them identically, and each comment
+      # blamed its own pair for a migration that lives in another PR.
+      #
+      # So, only after a failure: run WE `dev` — the commit this PR was merged with — through the
+      # same stages against the same ad4m, and stop at the first stage it fails. If `dev` fails at or
+      # before the stage the PR did, the failure is not this PR's. If `dev` gets through it, it is.
+      #
+      # The ad4m build is reused, so this costs one more WE install and build — on failures only. It
+      # never changes the job's result: it explains it. Pull requests only; from the Actions tab the
+      # commit tested already is one from `dev`.
+      - name: Check WE dev against the same ad4m
+        id: base
+        if: failure() && steps.we-ref.outputs.mode == 'pr' && steps.install.outcome == 'success'
+        continue-on-error: true
+        env:
+          BUILD: ${{ steps.build.outcome }}
+          TYPECHECK: ${{ steps.typecheck.outcome }}
+          TEST: ${{ steps.test.outcome }}
+          SCHEMAS: ${{ steps.schemas.outcome }}
+          BROWSER: ${{ steps.browser.outcome }}
+        run: |
+          # Records what was found and ends the step, which never fails: its result is the verdict.
+          # What `dev` ran into goes to this step's log, so a verdict can be checked: its commands
+          # write to base.log rather than the log, which would bury the PR's own output.
+          verdict() {
+            echo "verdict=$1" >> "$GITHUB_OUTPUT"
+            if [ -n "${2:-}" ]; then echo "base_stage=$2" >> "$GITHUB_OUTPUT"; fi
+            echo "Verdict: $1${2:+ (WE dev failed at $2)}"
+            LOG="$GITHUB_WORKSPACE/base.log"
+            if [ -f "$LOG" ]; then
+              echo "::group::What WE dev ran into"
+              if grep -qE 'error TS[0-9]+|ERR_PNPM|FAIL |✗ |AssertionError' "$LOG"; then
+                grep -E 'error TS[0-9]+|ERR_PNPM|FAIL |✗ |AssertionError' "$LOG" | head -25
+              else
+                tail -25 "$LOG"
+              fi
+              echo "::endgroup::"
+            fi
+            exit 0
+          }
+
+          # The stages in order, and the one the PR failed at. A failure outside them (setup, say)
+          # has nothing to compare.
+          STAGES=(Build Typecheck Test Schemas Browser)
+          OUTCOMES=("$BUILD" "$TYPECHECK" "$TEST" "$SCHEMAS" "$BROWSER")
+          LAST=-1
+          for i in "${!STAGES[@]}"; do
+            if [ "${OUTCOMES[$i]}" = failure ]; then LAST=$i; break; fi
+          done
+          [ "$LAST" -ge 0 ] || verdict unknown
+
+          # The checkout is the merge GitHub made of this PR into `dev`; its first parent is the
+          # `dev` commit in question. Read from the commit object, since a shallow clone hides
+          # parents from `HEAD^1`.
+          DEV_SHA="$(git cat-file -p HEAD | sed -n 's/^parent //p' | head -1)"
+          [ -n "$DEV_SHA" ] || verdict unknown
+          echo "dev_sha=$DEV_SHA" >> "$GITHUB_OUTPUT"
+          git fetch -q --depth 1 origin "$DEV_SHA" && git worktree add -q --detach we-dev "$DEV_SHA" || verdict unknown
+
+          cd we-dev
+          # The same override as the PR's, pointing one level up at the ad4m already built.
+          node -e "
+            const pkg = require('./package.json');
+            pkg.pnpm = pkg.pnpm || {};
+            pkg.pnpm.overrides = pkg.pnpm.overrides || {};
+            pkg.pnpm.overrides['@coasys/ad4m'] = 'file:../ad4m/core';
+            pkg.pnpm.overrides['@coasys/ad4m-connect'] = 'file:../ad4m/connect';
+            require('fs').writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          pnpm install --no-frozen-lockfile > ../base.log 2>&1 || verdict unknown
+
+          # Each stage exactly as the PR ran it, up to and including the one the PR failed at.
+          for i in $(seq 0 "$LAST"); do
+            case "${STAGES[$i]}" in
+              Build) NODE_OPTIONS='--max-old-space-size=8192' pnpm build ;;
+              Typecheck) pnpm typecheck ;;
+              Test) pnpm test ;;
+              Schemas) pnpm validate:schemas && pnpm audit:roles && pnpm audit:surfaces ;;
+              Browser) pnpm --filter @we/primitives test:browser ;;
+            esac >> ../base.log 2>&1 || verdict inherited "${STAGES[$i]}"
+          done
+          verdict own
+
       # ---------------------------------------------------------------- report
 
       # Written on success and on failure alike, to the run's summary page: "green, and here is
@@ -427,6 +515,9 @@ jobs:
           CONTROLLED: ${{ steps.we-ref.outputs.controlled }}
           MODE: ${{ steps.we-ref.outputs.mode }}
           WHY: ${{ steps.we-ref.outputs.why }}
+          VERDICT: ${{ steps.base.outputs.verdict }}
+          BASE_STAGE: ${{ steps.base.outputs.base_stage }}
+          DEV_SHA: ${{ steps.base.outputs.dev_sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -u
@@ -467,9 +558,19 @@ jobs:
               echo "| Run | [$RUN_URL]($RUN_URL) |"
               echo
 
-              if [ "$MODE" = 'pr' ]; then
-                echo "This is the pull request's own commit, built against the AD4M change it pairs with, so"
-                echo "the failure is this pair's to fix — on whichever side the error points at."
+              case "$BASE_STAGE" in Schemas) BASE_STAGE='Schemas and audits' ;; Browser) BASE_STAGE='Browser tests' ;; esac
+              if [ "$MODE" = 'pr' ] && [ "$VERDICT" = inherited ]; then
+                echo "**Not this pull request.** WE \`dev\` (\`${DEV_SHA:0:12}\`) fails at **$BASE_STAGE** against the"
+                echo "same AD4M, so this is a change in AD4M that WE has not caught up with yet. It clears once"
+                echo "WE's side is in \`dev\` and this branch is updated."
+              elif [ "$MODE" = 'pr' ] && [ "$VERDICT" = own ]; then
+                echo "**This pull request's to fix.** WE \`dev\` (\`${DEV_SHA:0:12}\`) gets through the same stages"
+                echo "against the same AD4M, so the failure comes from this pull request — its own changes, or how"
+                echo "they use the AD4M change it pairs with."
+              elif [ "$MODE" = 'pr' ]; then
+                echo "This is the pull request's own commit, built against the AD4M change it pairs with. The"
+                echo "failure can come from this pull request, from that change, or from a change in AD4M that"
+                echo "WE \`dev\` has not caught up with — WE \`dev\` could not be checked against it to tell."
               elif [ "$CONTROLLED" = 'true' ]; then
                 echo "This commit passes against the AD4M version WE pins — that is what made it"
                 echo "eligible to be tested here — so **AD4M is the difference**. Either AD4M needs a"
@@ -584,6 +685,9 @@ jobs:
           TEST: ${{ steps.test.outcome }}
           SCHEMAS: ${{ steps.schemas.outcome }}
           BROWSER: ${{ steps.browser.outcome }}
+          VERDICT: ${{ steps.base.outputs.verdict }}
+          BASE_STAGE: ${{ steps.base.outputs.base_stage }}
+          DEV_SHA: ${{ steps.base.outputs.dev_sha }}
         run: |
           # One row per stage. A stage after a failure was never run, which is not the same as
           # passing, so it says so.
@@ -608,6 +712,8 @@ jobs:
           {
             if [ "$JOB_STATUS" = success ]; then
               echo "### :white_check_mark: This PR works against $PAIRING"
+            elif [ -n "$FAILED" ] && [ "$VERDICT" = inherited ]; then
+              echo "### :warning: This PR fails against $PAIRING, and so does WE \`dev\`"
             elif [ -n "$FAILED" ]; then
               echo "### :x: This PR fails against $PAIRING"
             else
@@ -638,8 +744,22 @@ jobs:
             elif [ "$JOB_STATUS" = success ]; then
               echo "**The required checks had not finished when this was written.** If they fail, that is only"
               echo "the ad4m pin; if they pass, this PR works with the pinned ad4m as well."
+            elif [ -n "$FAILED" ] && [ "$VERDICT" = inherited ]; then
+              # The common case when ad4m's dev removes or changes something: every paired PR fails
+              # the same way, and none of them is where the fix goes.
+              case "$BASE_STAGE" in Schemas) BASE_STAGE='Schemas and audits' ;; Browser) BASE_STAGE='Browser tests' ;; esac
+              echo "**Not this PR.** WE \`dev\` at [\`${DEV_SHA:0:9}\`](https://github.com/$GITHUB_REPOSITORY/commit/$DEV_SHA) fails at"
+              echo "**$BASE_STAGE** against the same ad4m, so this is a change in ad4m that WE has not caught up"
+              echo "with yet — usually a migration in another PR. It clears once that is in \`dev\` and this"
+              echo "branch is updated."
+            elif [ -n "$FAILED" ] && [ "$VERDICT" = own ]; then
+              echo "**This PR's to fix.** WE \`dev\` at [\`${DEV_SHA:0:9}\`](https://github.com/$GITHUB_REPOSITORY/commit/$DEV_SHA) gets"
+              echo "through the same stages against the same ad4m, so the failure comes from this PR — its own"
+              echo "changes, or how they use $PAIRING. The error below says where."
             elif [ -n "$FAILED" ]; then
-              echo "**Something is broken**, in this PR or in $PAIRING. The error below says which side."
+              echo "**This PR does not build against $PAIRING.** The cause can be this PR, $PAIRING, or a change"
+              echo "in ad4m that WE \`dev\` has not caught up with; WE \`dev\` could not be checked against it to"
+              echo "tell which. The error below says where."
             else
               echo "**The check failed before it could build anything** — see [the run]($RUN_URL)."
             fi
