@@ -176,7 +176,15 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
     containment. The parent is found by id in whichever table holds it, and the relation by the
     predicate a backend would store it under, so containment resolves the same way it does there.
   */
-  const linkUnder = async (dataset: DatasetEntry, parent: { id: string; predicate: string }, childId: string) => {
+  /**
+   * The parent named by id and predicate, as the entity and relation holding it — what both a write
+   * under a parent and a read under one need. Null when no record has that id, or nothing it declares
+   * is stored under that predicate.
+   */
+  const relationUnder = (
+    dataset: DatasetEntry,
+    parent: { id: string; predicate: string },
+  ): { entity: string; relation: string; row: AnyRow } | null => {
     for (const entityName of Object.keys(classes)) {
       const row = tableOf(dataset, entityName).find((r) => r.id === parent.id);
       if (!row) continue;
@@ -184,13 +192,18 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         ([, spec]) =>
           !spec.reverseOf && (spec.containment ? CONTAINMENT_PREDICATE : spec.predicate) === parent.predicate,
       )?.[0];
-      if (!relation) return;
-      const parentClass = classes[entityName] as unknown as { hydrate(d: DatasetEntry, r: AnyRow): AnyRow };
-      const instance = parentClass.hydrate(dataset, row);
-      const add = instance[`add${relation.charAt(0).toUpperCase()}${relation.slice(1)}`];
-      if (typeof add === 'function') await (add as (id: string) => Promise<void>).call(instance, childId);
-      return;
+      return relation ? { entity: entityName, relation, row } : null;
     }
+    return null;
+  };
+
+  const linkUnder = async (dataset: DatasetEntry, parent: { id: string; predicate: string }, childId: string) => {
+    const under = relationUnder(dataset, parent);
+    if (!under) return;
+    const parentClass = classes[under.entity] as unknown as { hydrate(d: DatasetEntry, r: AnyRow): AnyRow };
+    const instance = parentClass.hydrate(dataset, under.row);
+    const add = instance[`add${under.relation.charAt(0).toUpperCase()}${under.relation.slice(1)}`];
+    if (typeof add === 'function') await (add as (id: string) => Promise<void>).call(instance, childId);
   };
 
   /**
@@ -366,9 +379,20 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
 
       static rowsFor(dataset: DatasetEntry, query: Record<string, unknown> = {}): AnyRow[] {
         // `select` is the template dialect; `properties` is the record contract's name for the same list.
-        const { where, order, limit, offset, include, select = query.properties, scope, properties, ...rest } = query;
+        const { where, order, limit, offset, include, select = query.properties, properties, parent, ...rest } = query;
         void properties;
         void rest;
+        /*
+          A parent named by id and predicate — the ORM's `parent` — read as the drill-down it is. It
+          used to fall into `rest` and be dropped, so "this call's lines" answered with every line in
+          the space. A parent nothing holds under that predicate has no children.
+        */
+        let scope = query.scope;
+        if (parent && typeof parent === 'object') {
+          const under = relationUnder(dataset, parent as { id: string; predicate: string });
+          if (!under) return [];
+          scope = { anchor: under.entity, via: under.relation, anchorId: under.row.id };
+        }
         const { ir, unsupported } = compileQuery({
           entity: name,
           ...(where ? { where: where as Record<string, unknown> } : {}),

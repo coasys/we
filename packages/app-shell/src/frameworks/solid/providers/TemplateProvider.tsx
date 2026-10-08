@@ -177,6 +177,17 @@ export default function TemplateProvider() {
     }
   }
 
+  /**
+   * A module's `within` as the ORM's `parent`: the container, by containment, which is one predicate
+   * on every backend. See `RecordQuery.within`.
+   */
+  function withinAsParent(query: unknown): Record<string, unknown> {
+    const { within, ...rest } = (query ?? {}) as { within?: unknown } & Record<string, unknown>;
+    return typeof within === 'string' && within
+      ? { ...rest, parent: { id: within, predicate: PREDICATES.CHILDREN } }
+      : rest;
+  }
+
   /** `record.create`, against a resolved handle rather than a store path. */
   function createInDataset(
     entity: string,
@@ -324,6 +335,15 @@ export default function TemplateProvider() {
         }
         await (add as (v: string) => Promise<void>).call(instance, value);
       },
+      // The counterpart, through the registered class's own removal — see `RecordsKernel.unlink`.
+      unlinkEntity: async (entity, id, relation, value, options) => {
+        const p = moduleTarget(options?.dataset);
+        if (!p) return;
+        const Model = getEntity(entity) as unknown as {
+          removeRelation: (dataset: unknown, id: string, relation: string, targetId: string) => Promise<void>;
+        };
+        await Model.removeRelation(p, id, relation, value);
+      },
 
       // The scalar counterpart of `linkEntity`, resolved the same way `createEntity` is: a module
       // names a dataset by URI, and an unresolvable name refuses rather than writing to whatever is
@@ -356,7 +376,7 @@ export default function TemplateProvider() {
         const Model = getEntity(entity) as unknown as {
           findAll: (perspective: unknown, opts: unknown) => Promise<Record<string, unknown>[]>;
         };
-        return (await Model.findAll(p, query ?? {})) ?? [];
+        return (await Model.findAll(p, withinAsParent(query))) ?? [];
       },
       subscribeEntities: (entity, query, cb, options) => {
         const p = moduleTarget(options?.dataset);
@@ -367,7 +387,7 @@ export default function TemplateProvider() {
             opts: unknown,
           ) => { subscribe: (cb: (rows: Record<string, unknown>[]) => void) => Promise<unknown>; dispose: () => void };
         };
-        const subscription = Model.query(p, query ?? {});
+        const subscription = Model.query(p, withinAsParent(query));
         void subscription.subscribe(cb).then(
           (rows) => cb(rows as Record<string, unknown>[]),
           (error: unknown) => {

@@ -71,6 +71,7 @@ export const CONFORMANCE_CASES = [
   'schema.hints-round-trip',
   'schema.containment-predicate',
   'relations.create-under-parent',
+  'relations.read-under-parent',
   'relations.ordered-read',
   'relations.create-links-one',
   'relations.create-links-many',
@@ -103,6 +104,7 @@ interface LiveQuery {
 
 /** The write half: a registered entity class, as the shell's record actions resolve one. */
 interface Model {
+  findAll(dataset: DatasetHandle, query?: Record<string, unknown>): Promise<Row[]>;
   create(
     dataset: DatasetHandle,
     data?: Record<string, unknown>,
@@ -377,6 +379,35 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
             include: { children: true },
           });
           expect(((row?.children ?? []) as Row[]).map((child) => child.id)).toEqual([made.id]);
+        },
+      );
+
+      test(
+        'relations.read-under-parent',
+        'reads only what one container holds, newest first and bounded, given its id and the predicate',
+        async () => {
+          /*
+            How one call's lines are paged: by the call's id and the containment predicate, ordered
+            and capped, so a page costs the same however long the space's history is. A backend that
+            ignored the parent answered with every line in the space — right-looking, and wrong.
+          */
+          const Collection = model('CollectionBlock');
+          const call = await Collection.create(subject.dataset, { kind: 'call' });
+          const other = await Collection.create(subject.dataset, { kind: 'call' });
+          const parent = (id: string) => ({ parent: { id, predicate: CONTAINMENT_PREDICATE } });
+          const first = await Collection.create(subject.dataset, { kind: 'line-1' }, parent(call.id));
+          await sleep(5);
+          const second = await Collection.create(subject.dataset, { kind: 'line-2' }, parent(call.id));
+          await Collection.create(subject.dataset, { kind: 'elsewhere' }, parent(other.id));
+
+          const page = await Collection.findAll(subject.dataset, {
+            ...parent(call.id),
+            order: { createdAt: 'DESC' },
+            limit: 1,
+          });
+          expect(page.map((row) => row.id)).toEqual([second.id]);
+          const all = await Collection.findAll(subject.dataset, parent(call.id));
+          expect(all.map((row) => row.id).sort()).toEqual([first.id, second.id].sort());
         },
       );
     });
