@@ -81,11 +81,17 @@ A board's **candidate cards** and a column's **membership** are different questi
 them was a real bug: every board showed the whole space, so a hiring pipeline and a content calendar
 were one card set with different column headings.
 
-| Board                              | `gathers`        | Its cards                                        |
-| ---------------------------------- | ---------------- | ------------------------------------------------ |
-| **Everything**                     | the Space record | all work in the space — the catch-all            |
-| **A container's board** (a call's) | that container   | that container's work, so extraction lands on it |
-| **One somebody made**              | nothing          | only what somebody put on it                     |
+| Board                   | `gathers`                           | Its cards                                       |
+| ----------------------- | ----------------------------------- | ----------------------------------------------- |
+| **Everything**          | the space collection (`Space.root`) | all top-level work in the space — the catch-all |
+| **A container's board** | that container                      | that container's own work                       |
+| **One somebody made**   | nothing                             | only what somebody put on it                    |
+
+Extraction files what every call finds into the space collection, with the call as its provenance
+(`extractedFrom`), so a call's finds are on **Everything** and a call needs no board of its own. A
+view that wants one call's work picks it out of Everything by provenance rather than by board. A space
+made before spaces had a collection keeps an Everything that gathers from the `Space` record, which a
+board reads as the whole space.
 
 `gathers` is **on the board**, and it used to be inferred. Which board was canonical for a container
 was a fact the container held (`Space.board`, `CollectionBlock.board`), and every surface that
