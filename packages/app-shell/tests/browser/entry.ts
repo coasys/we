@@ -510,6 +510,23 @@ function editorProbeCover(on: boolean): void {
   probeDisposers.push(() => cover.remove());
 }
 
+/**
+ * Records where one element's top edge is on every frame for `ms`, into `globalThis[key]` — for a
+ * case about motion, which a measurement after the fact cannot see. Returns at once, so the case can
+ * start the gesture that causes the motion while the frames are being counted.
+ */
+function sampleTop(selector: string, key: string, ms: number): void {
+  const bag = globalThis as unknown as Record<string, number[]>;
+  const samples: number[] = (bag[key] = []);
+  const until = performance.now() + ms;
+  const frame = () => {
+    const el = document.querySelector(selector);
+    if (el) samples.push(Math.round(el.getBoundingClientRect().top));
+    if (performance.now() < until) requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
+
 const probeDisposers: (() => void)[] = [];
 function editorProbeDispose(): void {
   for (const dispose of probeDisposers.splice(0)) dispose();
@@ -520,6 +537,7 @@ injectDSInteropStyles();
   editorProbe,
   editorProbeCover,
   editorProbeDispose,
+  sampleTop,
   mount,
   profile,
   resizeMount,
