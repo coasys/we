@@ -303,6 +303,16 @@ export interface OwnersPort {
    * references; `all` forks the whole thing. Null for a part nobody publishes.
    */
   openPart: (placement: SchemaNode, depth: 'one' | 'all') => SchemaNode | null;
+  /**
+   * A placed part opened only as far as one node inside it: each placement on `chain` (outermost
+   * first, starting with `placement`) opened a level, every part beside the path left a reference.
+   * Ids are kept, so `target` is found in the result; `parts` names what was opened, outermost first.
+   */
+  openPath?: (
+    placement: SchemaNode,
+    chain: string[],
+    target: string,
+  ) => { node: SchemaNode; target: SchemaNode; parts: string[] } | null;
   panel: (dockId: string) => OwnedPanel | null;
   /** The module's own composition of a panel — what arranging it copies into the template. */
   panelNode: (dockId: string) => SchemaNode | null;

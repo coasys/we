@@ -546,7 +546,9 @@ export function InspectorPanel() {
 
       {/* Properties for selected node — or, for a region somebody else provides, who and what next */}
       <Column flex="1" overflow="hidden" pb="500">
-        <Show when={!visualEditor.selectedOwner()} fallback={<OwnerCard owner={visualEditor.selectedOwner()!} />}>
+        {/* The owner from the condition, never read again: selecting a node clears it before this swaps. */}
+        <Show when={visualEditor.selectedOwner()}>{(owner) => <OwnerCard owner={owner()} />}</Show>
+        <Show when={!visualEditor.selectedOwner()}>
           <Show
             when={selectedNode()}
             fallback={

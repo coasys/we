@@ -26,6 +26,7 @@ import {
   copyWithNewIds,
   ensureNodeIds,
   findNodeById,
+  forEachNode,
   type SchemaNode,
   type TemplatePanel,
   type TemplateSchema,
@@ -252,9 +253,114 @@ export function PartCard(props: { node: SchemaNode }) {
 
 export function OwnerCard(props: { owner: OwnerRef }) {
   return (
-    <Show when={props.owner.kind === 'panel'} fallback={<ViewCard id={props.owner.id} />}>
-      <PanelCard dockId={props.owner.id} />
+    <Show
+      when={props.owner.kind !== 'part-node'}
+      fallback={
+        <PartNodeCard
+          id={props.owner.id}
+          name={props.owner.name}
+          chain={props.owner.chain ?? []}
+          parts={props.owner.parts ?? []}
+        />
+      }
+    >
+      <Show when={props.owner.kind === 'panel'} fallback={<ViewCard id={props.owner.id} />}>
+        <PanelCard dockId={props.owner.id} />
+      </Show>
     </Show>
+  );
+}
+
+// -----------------------------------------------------------------------
+// One node inside a part the template placed
+// -----------------------------------------------------------------------
+
+/** Marks the node somebody chose while the path to it is copied, so it can be found in the copy. */
+const PICKED = '__weEditorPicked';
+
+/**
+ * A node somebody reached by going into a placed part — the avatar beside a message, inside the lines,
+ * inside the feed.
+ *
+ * It is the module's, and the only way to change it is to own it. What that costs is the point of
+ * the card: making it yours opens just the parts on the way to it, a level each, so everything beside
+ * that path stays the module's and keeps its fixes. Owning the one part that holds it whole is still
+ * a copy of that part — which is why the card names the parts it opens rather than saying "a copy".
+ */
+function PartNodeCard(props: { id: string; name: string; chain: string[]; parts: string[] }) {
+  const host = useEditorHost();
+  const visualEditor = useVisualEditor();
+  const write = useTemplateWriter();
+  const readOnly = () => host.session.isReadOnly();
+
+  const infos = createMemo(() => props.parts.map((id) => host.owners?.part(id)).filter((p): p is OwnedPart => !!p));
+  const within = () => infos().at(-1);
+  const moduleName = () => within()?.moduleName ?? 'its module';
+  /** The parts the copy opens: every one on the path, less the last when the node is itself a placement. */
+  const opened = () => infos().slice(0, props.chain.at(-1) === props.id ? -1 : undefined);
+  const list = (names: string[]) =>
+    names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+
+  const makeOwn = () => {
+    let picked: string | undefined;
+    write((template) => {
+      const found = findNodeById(template, props.chain[0] ?? '');
+      const path = found && host.owners?.openPath?.(found.node, props.chain, props.id);
+      if (!found || !path) return false;
+      (path.target as unknown as Record<string, unknown>)[PICKED] = true;
+      const replacement = copyWithNewIds(path.node);
+      forEachNode(replacement, (node) => {
+        const record = node as unknown as Record<string, unknown>;
+        if (!record[PICKED]) return;
+        picked = node.id;
+        delete record[PICKED];
+      });
+      // In place, as opening a whole part does, so whatever holds the part holds what replaced it.
+      for (const key of Object.keys(found.node)) delete (found.node as Record<string, unknown>)[key];
+      Object.assign(found.node, replacement);
+      return true;
+    });
+    if (picked) visualEditor.onSelect(picked);
+  };
+
+  return (
+    <Column gap="200" pb="300">
+      <Heading
+        icon="puzzle-piece"
+        title={props.name}
+        subtitle={within() ? `Inside ${within()!.label}, a part of ${moduleName()}` : 'Inside a module’s part'}
+      >
+        <Show when={infos().length > 1}>
+          <we-text variant="footnote" color="text-muted">
+            {infos()
+              .map((part) => part.label)
+              .join(' › ')}
+          </we-text>
+        </Show>
+        <we-text variant="footnote">
+          This is {moduleName()}’s, drawn the way it draws it, so it changes when {moduleName()} does.
+        </we-text>
+      </Heading>
+      <Column px="400" gap="100">
+        <we-text {...SECTION_LABEL_PROPS}>Change it</we-text>
+        <Show when={!readOnly()} fallback={<ReadOnlyNote />}>
+          <Show when={host.owners?.openPath}>
+            <Route
+              title="Make it your own"
+              detail={`Opens ${list(opened().map((part) => part.label))} into this template, so this is yours to change. Those stop receiving ${moduleName()}’s changes; everything else in them stays ${moduleName()}’s.`}
+              action="Copy"
+              onPress={makeOwn}
+            />
+          </Show>
+          <Route
+            title={`Select ${infos()[0]?.label ?? 'the part'}`}
+            detail="Go back to the part this template placed, to open, copy or remove all of it."
+            action="Select"
+            onPress={() => visualEditor.onSelect(props.chain[0] ?? null)}
+          />
+        </Show>
+      </Column>
+    </Column>
   );
 }
 

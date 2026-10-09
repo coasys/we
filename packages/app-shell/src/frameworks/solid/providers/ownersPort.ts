@@ -9,7 +9,7 @@ import type { OwnedPart, OwnersPort } from '@we/editor/runtime';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 
 import { describeMissing, fixFor, whyMissing } from '../../../shared/partAvailability';
-import { openPart } from '../../../shared/registries/moduleParts';
+import { openPart, openPartPath } from '../../../shared/registries/moduleParts';
 import { moduleRegistry, type RegisteredPart } from '../../../shared/registries/moduleRegistry';
 import { viewRegistry } from '../../../shared/registries/viewRegistry';
 import type { DatasetStore } from '../stores/DatasetStore';
@@ -81,6 +81,8 @@ export function createOwnersPort(deps: {
         .sort((a, b) => a.moduleName.localeCompare(b.moduleName) || a.label.localeCompare(b.label)),
 
     openPart: (placement, depth) => openPart(placement, depth),
+
+    openPath: (placement, chain, target) => openPartPath(placement, chain, target),
 
     panel: (dockId) => {
       const found = panelOf(dockId);

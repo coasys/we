@@ -204,7 +204,9 @@ function templateElementAt(x: number, y: number): Element | null {
  */
 type Boundary =
   | { kind: 'node'; id: string; part?: { id: string; el: HTMLElement } }
-  | { kind: 'owner'; owner: OwnerRef; el: HTMLElement };
+  | { kind: 'owner'; owner: OwnerRef; el: HTMLElement }
+  /** A node inside a part the selection has gone into, with the placements it sits in. */
+  | { kind: 'deep'; id: string; el: HTMLElement; chain: string[]; parts: string[] };
 
 function ownerAt(el: Element): OwnerRef | null {
   const viewId = el.getAttribute(VIEW_BOUNDARY_ATTR);
@@ -217,28 +219,53 @@ function ownerAt(el: Element): OwnerRef | null {
   return null;
 }
 
-function findBoundary(el: Element | null): Boundary | null {
+/**
+ * What a press at `el` selects.
+ *
+ * `entered` is the placement whose part the selection is already inside — the part itself is
+ * selected, or a node within it is. A press inside that part reaches the node under the pointer
+ * rather than the part again, which is how somebody walks down to the avatar inside a message inside
+ * a feed: the first press selects the feed, the next goes in. The same two steps a list takes.
+ */
+function findBoundary(el: Element | null, entered: string | null = null): Boundary | null {
   if (!el) return null;
   const surface = surfaceOf(el);
-  let nearest: string | null = null;
+  let nearest: { id: string; el: HTMLElement } | null = null;
   let outer: Boundary | null = null;
+  /** The part frames on the way up, innermost first: the placement each was drawn for, and its part. */
+  const frames: { at: string; part: string }[] = [];
   for (let at: Element | null = el; at; at = at.parentElement) {
     const owner = ownerAt(at);
     if (owner) outer = { kind: 'owner', owner, el: at as HTMLElement };
     else if (at.hasAttribute(PART_ATTR) && at.getAttribute(PART_NODE_ATTR)) {
-      outer = {
-        kind: 'node',
-        id: at.getAttribute(PART_NODE_ATTR)!,
-        part: { id: at.getAttribute(PART_ATTR)!, el: at as HTMLElement },
-      };
-    } else if (nearest === null && at.hasAttribute('data-we-node-id')) nearest = at.getAttribute('data-we-node-id');
+      const placement = at.getAttribute(PART_NODE_ATTR)!;
+      frames.push({ at: placement, part: at.getAttribute(PART_ATTR)! });
+      outer = { kind: 'node', id: placement, part: { id: at.getAttribute(PART_ATTR)!, el: at as HTMLElement } };
+    } else if (nearest === null && at.hasAttribute('data-we-node-id')) {
+      nearest = { id: at.getAttribute('data-we-node-id')!, el: at as HTMLElement };
+    }
     if (at === surface) break;
   }
-  return outer ?? (nearest ? { kind: 'node', id: nearest } : null);
+  if (outer?.kind === 'node' && outer.part && entered === outer.id && nearest && nearest.id !== outer.id) {
+    // Only the frames between the template's placement and the press, outermost first. A frame met
+    // after the outermost is impossible — the outermost is the last pushed — so this is all of them.
+    const chain = frames.map((frame) => frame.at).reverse();
+    const parts = frames.map((frame) => frame.part).reverse();
+    return { kind: 'deep', id: nearest.id, el: nearest.el, chain, parts };
+  }
+  return outer ?? (nearest ? { kind: 'node', id: nearest.id } : null);
 }
 
 /** The element marking an owned region — inside its surface, so it is what visibility is judged by. */
 function ownerMarker(owner: OwnerRef): Element | null {
+  if (owner.kind === 'part-node') {
+    // The instance pressed, while it is still on the page: one of a list's rows shares its id with
+    // every other row, and the ring belongs round the one somebody chose.
+    if (pressedPartNode?.isConnected && pressedPartNode.getAttribute('data-we-node-id') === owner.id) {
+      return pressedPartNode;
+    }
+    return document.querySelector(`[data-we-node-id="${CSS.escape(owner.id)}"]`);
+  }
   return owner.kind === 'view'
     ? document.querySelector(`[${VIEW_BOUNDARY_ATTR}="${CSS.escape(owner.id)}"]`)
     : document.querySelector(`[${OWNER_ATTR}="panel:${CSS.escape(owner.id)}"]`);
@@ -250,8 +277,22 @@ function ownerMarker(owner: OwnerRef): Element | null {
  */
 function ownerElement(owner: OwnerRef): Element | null {
   const marked = ownerMarker(owner);
+  if (owner.kind === 'part-node') return marked?.firstElementChild ?? marked;
   return marked?.closest('[data-we-dock-content]') ?? marked;
 }
+
+/** What a node is called in a sentence: its component, without the design system's prefix. */
+function nodeName(node: SchemaNode): string {
+  const words = (node.type ?? '')
+    .replace(/^we-|^\$/, '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/-/g, ' ')
+    .toLowerCase();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'A piece';
+}
+
+/** The element of the node inside a part that was last pressed — see `ownerMarker`. */
+let pressedPartNode: Element | null = null;
 
 /**
  * Where an element is on screen, including one that generates no box.
@@ -444,8 +485,12 @@ function VisualEditorLayer() {
   /** How much of the hovered and selected boxes can be seen, so their rings stop where sight does. */
   const [hoverVisible, setHoverVisible] = createSignal<VisibleBox | null>(null);
   const [selectVisible, setSelectVisible] = createSignal<VisibleBox | null>(null);
-  /** The part under the pointer, by its id — what the hover ring names. */
-  const [hoveredPart, setHoveredPart] = createSignal<string | null>(null);
+  /** What the hover ring says it is, for a part or a node inside one; nothing for the template's own. */
+  const [hoverLabel, setHoverLabel] = createSignal<RingLabel | undefined>(undefined);
+  /** The hovered node is a module's, inside a part — ringed in the colour of somebody else's. */
+  const [hoverOwned, setHoverOwned] = createSignal(false);
+  /** How much of a selected node inside a part can be seen. */
+  const [ownerVisible, setOwnerVisible] = createSignal<VisibleBox | null>(null);
   /** The section under the pointer, when the pointer is over another template rather than this one. */
   const [viewRegion, setViewRegion] = createSignal<{ owner: OwnerRef; rect: DOMRect } | null>(null);
   /** Where the selected owned region is, tracked a frame at a time as nodes are. */
@@ -504,6 +549,13 @@ function VisualEditorLayer() {
 
   const isEachParentSelected = createMemo(() => selectedInfo()?.node.type === '$each');
 
+  /** The template's placement whose part the selection is inside: the part, or a node within it. */
+  const enteredPart = () => {
+    const owner = visualEditor.selectedOwner();
+    if (owner?.kind === 'part-node') return owner.chain?.[0] ?? null;
+    return selectedInfo()?.node.type === '$part' ? visualEditor.selectedId() : null;
+  };
+
   const canDeleteSelected = createMemo(() => {
     const info = selectedInfo();
     if (!info || !info.parent) return false;
@@ -561,6 +613,7 @@ function VisualEditorLayer() {
     const owner = visualEditor.selectedOwner();
     if (!owner) {
       setOwnerRect(null);
+      setOwnerVisible(null);
       return;
     }
     let rafId: number;
@@ -568,7 +621,10 @@ function VisualEditorLayer() {
       const marker = ownerMarker(owner);
       const el = ownerElement(owner);
       const rect = el ? boxOf(el) : null;
-      setOwnerRect(marker && rect && seenAt(marker, rect) ? rect : null);
+      const visible = el && rect ? visibleBox(el, rect) : null;
+      const seen = !!marker && !!rect && seenAt(marker, visible?.rect ?? rect);
+      setOwnerRect(seen ? rect : null);
+      setOwnerVisible(seen ? visible : null);
       rafId = requestAnimationFrame(update);
     };
     rafId = requestAnimationFrame(update);
@@ -615,7 +671,29 @@ function VisualEditorLayer() {
     const from = part?.moduleName ? `from ${part.moduleName}` : 'a module’s part';
     return { name, note: selected ? from : `${from} — select it for options` };
   };
-  const hoverLabel = createMemo(() => partLabel(hoveredPart(), false));
+  /** The part-node selection's ring, and what it says. */
+  const ownerRingRect = createMemo(() => toRelative(ownerVisible()?.rect ?? null));
+  const partNames = (parts: string[] | undefined) => (parts ?? []).map((id) => owners?.part(id)?.label ?? id);
+  const deepLabel = (name: string, parts: string[] | undefined, selected: boolean): RingLabel => {
+    const within = partNames(parts).at(-1);
+    const where = within ? `in ${within}` : 'in a module’s part';
+    return { name, note: selected ? where : `${where} — select it for options` };
+  };
+
+  /**
+   * What a node inside a part is called, worked out by opening the path to it — once per node, since
+   * opening copies the part and the pointer asks on every move.
+   */
+  const deepNames = new Map<string, string>();
+  const deepName = (chain: string[], target: string): string => {
+    const known = deepNames.get(target);
+    if (known) return known;
+    const placement = findNodeById(templateStore.currentTemplate, chain[0] ?? '')?.node;
+    const node = placement && owners?.openPath?.(placement, chain, target)?.target;
+    const name = node ? nodeName(node) : 'A piece';
+    deepNames.set(target, name);
+    return name;
+  };
   const selectLabel = createMemo(() => {
     const node = selectedInfo()?.node;
     return node?.type === '$part' ? partLabel(node.props?.id as string | undefined, true) : undefined;
@@ -1238,7 +1316,7 @@ function VisualEditorLayer() {
     const under = hit;
     hoveredElement = under;
 
-    const boundary = findBoundary(under);
+    const boundary = findBoundary(under, enteredPart());
 
     /*
       A view answers for itself and stops there.
@@ -1253,16 +1331,36 @@ function VisualEditorLayer() {
       visualEditor.onHover(null);
       lastHoveredId = null;
       setHoverVisible(null);
-      setHoveredPart(null);
+      setHoverLabel(undefined);
+      setHoverOwned(false);
       setHoveredType(undefined);
       return;
     }
     setViewRegion(null);
 
+    // Inside a part the selection has gone into: the module's node under the pointer, named. Not a
+    // hover of the template's — the node is not in it — so the template's own hover is cleared.
+    if (boundary?.kind === 'deep') {
+      visualEditor.onHover(null);
+      lastHoveredId = null;
+      setHoveredType(undefined);
+      const selected = visualEditor.selectedOwner();
+      if (selected?.kind === 'part-node' && selected.id === boundary.id) {
+        setHoverVisible(null);
+        return;
+      }
+      const boundsEl = (boundary.el.firstElementChild as HTMLElement | null) ?? boundary.el;
+      setHoverVisible(visibleBox(boundsEl, boxOf(boundsEl)));
+      setHoverLabel(deepLabel(deepName(boundary.chain, boundary.id), boundary.parts, false));
+      setHoverOwned(true);
+      return;
+    }
+    setHoverOwned(false);
+
     const nodeId = boundary?.id ?? null;
     visualEditor.onHover(nodeId);
     const part = boundary?.kind === 'node' ? boundary.part : undefined;
-    setHoveredPart(part?.id ?? null);
+    setHoverLabel(partLabel(part?.id, false));
 
     if (nodeId && under) {
       // A part is measured by its frame — all of it — not by whichever of the module's nodes the
@@ -1280,7 +1378,7 @@ function VisualEditorLayer() {
     } else {
       lastHoveredId = null;
       setHoverVisible(null);
-      setHoveredPart(null);
+      setHoverLabel(undefined);
       setHoveredType(undefined);
     }
   }
@@ -1296,12 +1394,27 @@ function VisualEditorLayer() {
     e.stopPropagation();
     hoveredElement = hit;
 
-    const clicked = findBoundary(hoveredElement);
+    const clicked = findBoundary(hoveredElement, enteredPart());
 
     // A region somebody else provides is selected as a whole — a section, or a module's own panel —
     // never the shell node behind it, which is what made a section look broken.
     if (clicked?.kind === 'owner') {
       visualEditor.onSelectOwner(clicked.owner);
+      setEnteredEachParentId(null);
+      return;
+    }
+
+    // A node inside a part already selected: the module's, so selected as somebody else's region,
+    // with the placements it sits in — which is what lets the inspector copy only the path to it.
+    if (clicked?.kind === 'deep') {
+      pressedPartNode = clicked.el;
+      visualEditor.onSelectOwner({
+        kind: 'part-node',
+        id: clicked.id,
+        name: deepName(clicked.chain, clicked.id),
+        chain: clicked.chain,
+        parts: clicked.parts,
+      });
       setEnteredEachParentId(null);
       return;
     }
@@ -1361,7 +1474,8 @@ function VisualEditorLayer() {
     if (isResizing() || isDragging()) return;
     visualEditor.onHover(null);
     setHoverVisible(null);
-    setHoveredPart(null);
+    setHoverLabel(undefined);
+    setHoverOwned(false);
     setHoveredType(undefined);
     setViewRegion(null);
     hoveredElement = null;
@@ -1473,10 +1587,28 @@ function VisualEditorLayer() {
           when={(() => {
             const rect = ownerRelRect();
             const owner = visualEditor.selectedOwner();
-            return rect && owner ? { rect, owner } : null;
+            return rect && owner && owner.kind !== 'part-node' ? { rect, owner } : null;
           })()}
         >
           {(shown) => <OwnerBoundary rect={shown().rect} owner={shown().owner} selected />}
+        </Show>
+        {/* A node inside a part: ringed as the module's, drawn to what can be seen, and named. */}
+        <Show
+          when={(() => {
+            const rect = ownerRingRect();
+            const owner = visualEditor.selectedOwner();
+            return rect && owner?.kind === 'part-node' ? { rect, owner } : null;
+          })()}
+        >
+          {(shown) => (
+            <NodeHighlight
+              rect={shown().rect}
+              clipped={ownerVisible()?.clipped}
+              label={deepLabel(shown().owner.name, shown().owner.parts, true)}
+              style="owned"
+              selected
+            />
+          )}
         </Show>
 
         {/* Hover highlight — skip when same as selected */}
@@ -1485,7 +1617,7 @@ function VisualEditorLayer() {
             rect={hoverRingRect()!}
             clipped={hoverVisible()?.clipped}
             label={hoverLabel()}
-            style={isLogicType(hoveredType()) ? 'logic' : 'visual'}
+            style={hoverOwned() ? 'owned' : isLogicType(hoveredType()) ? 'logic' : 'visual'}
             selected={false}
           />
         </Show>
@@ -1818,7 +1950,8 @@ interface HighlightRect {
   height: string;
 }
 
-type HighlightStyle = 'visual' | 'logic' | 'each-parent' | 'each-instance';
+/** `owned` is a module's node inside a part: somebody else's, so the colour of somebody else's. */
+type HighlightStyle = 'visual' | 'logic' | 'each-parent' | 'each-instance' | 'owned';
 
 /**
  * A region somebody else provides: a section that is a template of its own, or a panel a module
@@ -1905,6 +2038,8 @@ function NodeHighlight(props: {
         return ANNOTATION.eachParent;
       case 'each-instance':
         return ANNOTATION.node;
+      case 'owned':
+        return ANNOTATION.boundary;
       default:
         return ANNOTATION.node;
     }

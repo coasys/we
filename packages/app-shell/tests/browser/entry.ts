@@ -583,7 +583,7 @@ function editorProbe(): void {
  * the template it handed `updateTemplate`, so a case can read what taking a region over did.
  */
 function ownerCardProbe(
-  kind: 'part' | 'panel' | 'palette' | 'view' | 'view-blocked' | 'arranged' | 'arranged-placed',
+  kind: 'part' | 'panel' | 'palette' | 'view' | 'view-blocked' | 'arranged' | 'arranged-placed' | 'part-node',
 ): void {
   const record = (key: string, value: unknown) => {
     const bag = globalThis as unknown as Record<string, unknown[]>;
@@ -631,6 +631,20 @@ function ownerCardProbe(
           missing: '',
         },
       ],
+      // The path to a node inside the part: the part opened a level, the node somebody pressed in it,
+      // and a piece beside the path that stays the module's.
+      openPath: () => {
+        const target = { id: 'cccccccccc', type: 'we-avatar' };
+        return {
+          node: {
+            type: 'Column',
+            forkedFrom: 'part:demo.box',
+            children: [target, { type: '$part', props: { id: 'demo.inner' } }],
+          },
+          target,
+          parts: ['demo.box'],
+        };
+      },
       openPart: (_placement: unknown, depth: 'one' | 'all') =>
         depth === 'one'
           ? { type: 'Column', children: [{ type: '$part', props: { id: 'demo.inner' } }] }
@@ -683,6 +697,16 @@ function ownerCardProbe(
               if (kind === 'palette') return createComponent(PartsPalette, { node: template as never });
               if (kind === 'arranged' || kind === 'arranged-placed')
                 return createComponent(SuppliedPanelNote, { nodeId: 'bbbbbbbbbb' });
+              if (kind === 'part-node')
+                return createComponent(OwnerCard, {
+                  owner: {
+                    kind: 'part-node',
+                    id: 'cccccccccc',
+                    name: 'Avatar',
+                    chain: ['aaaaaaaaaa'],
+                    parts: ['demo.box'],
+                  },
+                });
               if (kind === 'view' || kind === 'view-blocked')
                 return createComponent(OwnerCard, { owner: { kind: 'view', id: 'about', name: 'About' } });
               return kind === 'part'

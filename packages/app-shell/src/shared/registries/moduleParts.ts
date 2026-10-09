@@ -23,7 +23,7 @@
  * isolation — `{ $: 'part.id' }` names nothing the validator can resolve, so the module's own
  * fragment would stop being checkable. This way the part stays the module's working node.
  */
-import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import { derivedNodeId, deriveNodeIds, findNodeById, type SchemaNode, type SchemaProp } from '@we/schema-shared';
 
 import { moduleRegistry } from './moduleRegistry';
 
@@ -96,6 +96,42 @@ function bindInputs(node: SchemaNode, inputs: unknown): SchemaNode {
 }
 
 /**
+ * A placement's part as a tree: pointed at the placement's subject, bound to its inputs, and — when
+ * the placement has an id — every node given an id worked out from it.
+ *
+ * The ids are what let the editor reach inside a part. A module's nodes carry none, so the renderer
+ * had nothing to stamp on them and a press anywhere inside a part could only select the part. Worked
+ * out the way a built-in's are (`deriveNodeIds`), seeded by the placement, so the same node of the
+ * same placement has the same id when it is drawn and when the editor opens it to copy — which is
+ * how a node somebody pressed is found again in the copy. A part placed twice has two seeds, and a
+ * part placed inside another is seeded by its own derived id, so nothing collides.
+ *
+ * Cached, since a template re-resolves on every change and a part can be large. What comes out is
+ * shared, so callers that write it into a template clone it first.
+ */
+const instances = new WeakMap<object, Map<string, SchemaNode>>();
+
+function instantiate(placement: SchemaNode, part: { node: SchemaNode; subject?: string }): SchemaNode {
+  const props = (placement.props ?? {}) as { subject?: unknown; inputs?: unknown };
+  const key = `${placement.id ?? ''}\u0000${JSON.stringify([props.subject ?? null, props.inputs ?? null])}`;
+  let byKey = instances.get(part.node);
+  if (!byKey) instances.set(part.node, (byKey = new Map()));
+  const cached = byKey.get(key);
+  if (cached) return cached;
+
+  const wanted = subjectExpression(props.subject);
+  const resolved = part.subject && wanted ? substitute(part.node, part.subject, wanted) : part.node;
+  let tree = bindInputs(resolved, props.inputs);
+  if (placement.id) {
+    const seed = `part:${placement.id}`;
+    tree = deriveNodeIds(structuredClone(tree), seed);
+    tree.id ??= derivedNodeId(`${seed}|`);
+  }
+  byKey.set(key, tree);
+  return tree;
+}
+
+/**
  * Expand every `$part` in a tree.
  *
  * An unknown part renders nothing **and says so**. Silence is this codebase's recurring failure —
@@ -137,10 +173,8 @@ export function resolveParts(node: SchemaNode): SchemaNode | SchemaNode[] {
       return frame([]);
     }
 
-    const wanted = subjectExpression(props.subject);
-    const resolved = part.subject && wanted ? substitute(part.node, part.subject, wanted) : part.node;
     // Recursive: a part may itself be composed of parts, which is how a module's own panel is built.
-    const expanded = resolveParts(bindInputs(resolved, props.inputs));
+    const expanded = resolveParts(instantiate(node, part));
     return frame(Array.isArray(expanded) ? expanded : [expanded]);
   }
 
@@ -183,10 +217,47 @@ export function openPart(placement: SchemaNode, depth: 'one' | 'all'): SchemaNod
   const part = typeof props.id === 'string' ? moduleRegistry.parts()[props.id] : undefined;
   if (!part) return null;
 
-  const wanted = subjectExpression(props.subject);
-  const node = structuredClone(part.subject && wanted ? substitute(part.node, part.subject, wanted) : part.node);
-  const bound = bindInputs(node, props.inputs);
+  const bound = structuredClone(instantiate(placement, part));
   return depth === 'all' ? inlineParts(bound) : bound;
+}
+
+/**
+ * A placed part opened only as far as one node inside it — what "make it your own" writes for a node
+ * somebody selected deep inside a part.
+ *
+ * `chain` is the placements the node sits in, outermost first, as the editor read them off the page:
+ * the template's own `$part`, then each part placed inside the one before. Every one of them is
+ * opened a level, and nothing else — a part beside the path stays a reference, so it still receives
+ * its module's changes. Opened in place, each keeps the ids it was drawn with, so `target` is found in
+ * the result. When the target is itself a placement at the end of the chain, it is left a placement.
+ *
+ * Null when a step cannot be found or opened — a module changed its part since the page was drawn.
+ */
+export function openPartPath(
+  placement: SchemaNode,
+  chain: string[],
+  target: string,
+): { node: SchemaNode; target: SchemaNode; parts: string[] } | null {
+  if (chain[0] !== placement.id) return null;
+  const parts: string[] = [];
+  let root: SchemaNode | null = null;
+  for (let i = 0; i < chain.length; i++) {
+    // The last placement on the chain is the target itself when a nested part was what was pressed.
+    if (chain[i] === target && i > 0) break;
+    const at = i === 0 ? placement : root && findNodeById(root, chain[i])?.node;
+    if (!at || at.type !== '$part') return null;
+    const opened = openPart(at, 'one');
+    if (!opened) return null;
+    parts.push(String((at.props as { id?: unknown } | undefined)?.id ?? ''));
+    opened.forkedFrom = `part:${parts[parts.length - 1]}`;
+    if (i === 0) root = opened;
+    else {
+      for (const key of Object.keys(at)) delete (at as Record<string, unknown>)[key];
+      Object.assign(at, opened);
+    }
+  }
+  const found = root && (root.id === target ? root : findNodeById(root, target)?.node);
+  return root && found ? { node: root, target: found, parts } : null;
 }
 
 /** Every `$part` below a node replaced by what it is, all the way down. One nobody publishes stays. */

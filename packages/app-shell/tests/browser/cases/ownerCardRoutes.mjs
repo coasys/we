@@ -41,6 +41,25 @@ export async function check({ call, recorded }) {
     await call('editorProbeDispose');
   }
 
+  // A node somebody went into a part to reach: copying opens the path to it, and selects it in the copy.
+  await call('ownerCardProbe', 'part-node');
+  try {
+    if (!(await call('pressButton', 'Copy'))) problems.push('a node inside a part offers no way to make it your own');
+    const [written] = (await recorded('__probeTemplates')).slice(-1);
+    const node = written?.children?.[0];
+    const avatar = node?.children?.[0];
+    if (node?.type !== 'Column') problems.push(`copying the path wrote ${node?.type ?? 'nothing'} in the part’s place`);
+    if (node?.children?.[1]?.type !== '$part') problems.push('copying the path took the piece beside it too');
+    if (avatar?.type !== 'we-avatar' || !isNodeId(avatar?.id) || avatar?.id === 'cccccccccc')
+      problems.push(`the node copied has the id ${avatar?.id}`);
+    if (JSON.stringify(written).includes('__weEditorPicked')) problems.push('the copy kept the editor’s marker');
+    const [selected] = (await recorded('__probeSelected')).slice(-1);
+    if (!avatar?.id || selected !== avatar.id)
+      problems.push(`after copying, ${selected} was selected, not the node copied`);
+  } finally {
+    await call('editorProbeDispose');
+  }
+
   await call('ownerCardProbe', 'panel');
   try {
     if (!(await call('pressButton', 'Arrange'))) problems.push('the panel card offers no Arrange');

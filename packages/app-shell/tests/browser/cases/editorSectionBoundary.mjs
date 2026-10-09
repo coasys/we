@@ -40,6 +40,18 @@ export async function check({ call, clickAt, count, recorded }) {
     if (selected.at(-1) !== 'n-part')
       problems.push(`a press inside a placed part selected ${selected.at(-1) ?? 'nothing'}`);
 
+    // A second press inside the selected part goes in: the module's node under the pointer, with the
+    // placement it sits in, selected as the module's rather than as one of the template's nodes.
+    await clickAt('#probe-n-part-inner');
+    owner = await recorded('__probeOwner');
+    if (owner.at(-1) !== 'part-node:n-part-inner')
+      problems.push(`a second press inside a selected part selected ${owner.at(-1) ?? 'nothing'}`);
+    if (!(await count('[data-we-ring="selected"]'))) problems.push('a node selected inside a part has no ring');
+    // And a press elsewhere comes back out: the part is not entered from outside it.
+    await clickAt('#probe-n-content');
+    selected = await recorded('__probeSelected');
+    if (selected.at(-1) !== 'n-content') problems.push('a press outside the part did not leave it');
+
     const pressed = await recorded('__probePressed');
     for (const id of ['n-view-inner', 'n-owned-inner', 'n-part-inner'])
       if (pressed.includes(id)) problems.push(`${id}'s own control fired while editing`);
