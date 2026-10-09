@@ -719,13 +719,15 @@ describe('what the stores actually wrote', () => {
     provideSeed({
       name: 'test',
       modules: [],
-      spaceStarter: {
-        id: 'test',
-        settings: { defaultTemplateId: 'workshop' },
-        records: [{ $id: 'canvas', entity: 'CollectionBlock', fields: { kind: 'canvas' } }],
-        roles: { canvas: '$canvas' },
-        input: true,
-      },
+      spaceStarters: [
+        {
+          id: 'test',
+          settings: { defaultTemplateId: 'workshop' },
+          records: [{ $id: 'canvas', entity: 'CollectionBlock', fields: { kind: 'canvas' } }],
+          roles: { canvas: '$canvas' },
+          input: true,
+        },
+      ],
     } as never);
     try {
       const stores = mountShell();

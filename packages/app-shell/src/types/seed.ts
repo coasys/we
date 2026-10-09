@@ -255,11 +255,12 @@ export interface WeSeedFile {
   globalSpaceUrl?: string;
 
   /**
-   * What every new space starts with, beyond the structure the host always makes — settings
-   * defaults, a few records, the roles templates find them by, and the opinionated switches. See
-   * `shared/spaceStarter.ts`. Absent, a space starts with its structure and nothing else.
+   * What a new space can start with, beyond the structure the host always makes — settings defaults,
+   * the records it begins with, the roles templates find them by, and the opinionated switches. See
+   * `shared/spaceStarter.ts`. A new space gets the first; the others are there for a create dialog
+   * to offer. Absent, a space starts with its structure and nothing else.
    */
-  spaceStarter?: SpaceStarter;
+  spaceStarters?: SpaceStarter[];
 
   /**
    * The neighbourhood URL of the module marketplace.

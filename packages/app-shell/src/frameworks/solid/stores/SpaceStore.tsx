@@ -55,7 +55,13 @@ import {
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
-import { applyStarterRecords, SPACE_COLLECTION_KIND, type SpaceStarter, starterSettings } from '@shared/spaceStarter';
+import {
+  applyStarterRecords,
+  defaultSpaceStarter,
+  SPACE_COLLECTION_KIND,
+  type SpaceStarter,
+  starterSettings,
+} from '@shared/spaceStarter';
 import {
   isSpaceSelf,
   type LocationData,
@@ -96,6 +102,7 @@ import {
   deleteBlocks,
   isContentDocument,
   reconcileBlocks,
+  refreshComposition,
 } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { saveFile, type SaveOutcome } from '@we/design-utils';
@@ -1678,16 +1685,19 @@ export function SpaceStoreProvider(props: ParentProps) {
     const root = await CollectionBlock.create(dataset, { kind: SPACE_COLLECTION_KIND, type: 'collection', title: '' });
     await space.setRoot({ id: root.id } as CollectionBlock);
 
-    await applyStarterRecords(starter, root.id, {
+    const target = {
+      rootId: root.id,
+      spaceId: space.id,
+      space: { name: space.name ?? '', description: space.description ?? '' },
+    };
+    await applyStarterRecords(starter, target, {
       create: async (entity, fields, parentId) => {
         const Model = getEntityForDataset(entity, dataset);
         if (!Model) throw new Error(`no ${entity} in this space's schema`);
         const made = await Model.create(
           dataset,
           fields as never,
-          {
-            parent: { id: parentId, predicate: PREDICATES.CHILDREN },
-          } as never,
+          (parentId ? { parent: { id: parentId, predicate: PREDICATES.CHILDREN } } : {}) as never,
         );
         return (made as { id: string }).id;
       },
@@ -1695,6 +1705,24 @@ export function SpaceStoreProvider(props: ParentProps) {
         // An untyped to-one is written as a one-element list at creation — see `createBoard`.
         const role = await SpaceRole.create(dataset, { name, node: [nodeId] } as never);
         await Space.addRelation(dataset, space.id, 'roles', role.id);
+      },
+      linkSpace: async (relations) => {
+        // A list is written in order, which is what an ordered relation (the space's task states)
+        // keeps; a single id is the same thing with one entry.
+        for (const [relation, value] of Object.entries(relations)) {
+          for (const id of Array.isArray(value) ? value : [value]) {
+            await Space.addRelation(dataset, space.id, relation, id);
+          }
+        }
+      },
+      /*
+        A composition — a `CollectionBlock` of `type: 'root'`, which is what the block writer marks
+        one as — is seeded as the blocks inside it, and its stored document is derived from those
+        here, unless the starter wrote one itself. Anything else has nothing to derive.
+      */
+      compose: async (id, entity, fields) => {
+        if (entity !== 'CollectionBlock' || fields.type !== 'root' || fields.editorState) return;
+        await refreshComposition(dataset, id);
       },
     });
   }
@@ -1745,7 +1773,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       const coverImageData = coverImageFile ? await compressImageToFileData(coverImageFile, 'space-cover') : undefined;
 
       // Assemble Space + optional location data — used for both own and parent datasets
-      const starter = getSeed()?.spaceStarter;
+      const starter = defaultSpaceStarter(getSeed()?.spaceStarters);
       const spaceData = {
         uuid: spaceRef.id,
         url: publishedSharedId,
@@ -1839,7 +1867,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       avatarData = dataURIToFileData(avatarValue, 'space-avatar');
     }
 
-    const starter = getSeed()?.spaceStarter;
+    const starter = defaultSpaceStarter(getSeed()?.spaceStarters);
     const spaceData: SpaceInput = {
       uuid: ds.id,
       url: ds.sharedId,
