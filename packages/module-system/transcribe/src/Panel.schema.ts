@@ -120,6 +120,15 @@ export const EXTRACTION_SUBJECT_EXPR =
  * by its settings rather than by anybody in a room, so the per-call switch gives way to the
  * space's.
  */
+/**
+ * The call the panel is showing — the one somebody opened, else the live one — and never the space.
+ *
+ * The composer writes into a call's transcript, so it follows this rather than the extraction
+ * subject: outside any call that falls back to the space collection, and a box there would write
+ * a message into the space under a transcript saying there is no call to show.
+ */
+const CALL_SUBJECT_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.transcribe.callId';
+
 const SUBJECT_IS_SPACE = `spaceStore.root && (${EXTRACTION_SUBJECT_EXPR}) == spaceStore.root`;
 const EXTRACTION_SUBJECT = { $: EXTRACTION_SUBJECT_EXPR };
 
@@ -4074,7 +4083,7 @@ const sendMessage = [
   { $setLocal: 'sending', value: true },
   {
     $action: 'modules.transcribe.addMessage',
-    args: [{ $: EXTRACTION_SUBJECT_EXPR }, { $: 'local.message' }],
+    args: [{ $: CALL_SUBJECT_EXPR }, { $: 'local.message' }],
     onSuccess: [{ $setLocal: 'message', value: '' }],
     onFinally: [{ $setLocal: 'sending', value: false }],
   },
@@ -4083,7 +4092,8 @@ const sendMessage = [
 export const transcriptComposer: SchemaNode = {
   type: '$if',
   /*
-    Wherever a transcript is on screen, not only while one is being recorded.
+    Wherever a call's transcript is on screen, not only while one is being recorded — and nowhere
+    else: outside any call the panel shows no transcript, so there is nothing here to write into.
 
     This was gated on the live call, on the reasoning that adding to a finished meeting's timeline
     would date a remark to a conversation it was not made in. That is exactly the claim `source`
@@ -4093,7 +4103,7 @@ export const transcriptComposer: SchemaNode = {
     talking.
   */
   props: {
-    condition: EXTRACTION_SUBJECT,
+    condition: { $: CALL_SUBJECT_EXPR },
     then: {
       type: 'Row',
       /*

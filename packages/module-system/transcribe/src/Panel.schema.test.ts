@@ -2048,6 +2048,21 @@ describe('the composer', () => {
   const textarea = findNode(transcriptComposer, (n) => n.type === 'we-textarea') as
     { props: Record<string, unknown> } | undefined;
 
+  it('appears only with a call on screen, and writes into that call — never the space', () => {
+    /*
+      The extraction subject falls back to the space collection outside any call, so the extraction
+      panel can show loose messages. The composer used to share it, which put a box under "start or
+      join a call" that wrote whatever was typed into the space.
+    */
+    const condition = (transcriptComposer.props as { condition: { $: string } }).condition.$;
+    expect(condition).toContain('routeStore.params.call');
+    expect(condition).toContain('modules.transcribe.callId');
+    expect(condition).not.toContain('spaceStore.root');
+    const send = button?.props.onClick as { $action?: string; args?: { $: string }[] }[] | undefined;
+    const write = send?.find((step) => step.$action === 'modules.transcribe.addMessage');
+    expect(write?.args?.[0]?.$).toBe(condition);
+  });
+
   it('declares the in-flight flag beside the draft, and keeps it out of the URL', () => {
     /*
       A plain field on purpose. `syncParam` would put "a write is happening" in a link, and `persist`
