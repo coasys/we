@@ -202,7 +202,9 @@ function templateElementAt(x: number, y: number): Element | null {
  * whatever that happens to carry: the shell does not own a node of a section just because the node
  * has an id, and a part a module composes inside its own panel is still the module's panel.
  */
-type Boundary = { kind: 'node'; id: string } | { kind: 'owner'; owner: OwnerRef; el: HTMLElement };
+type Boundary =
+  | { kind: 'node'; id: string; part?: { id: string; el: HTMLElement } }
+  | { kind: 'owner'; owner: OwnerRef; el: HTMLElement };
 
 function ownerAt(el: Element): OwnerRef | null {
   const viewId = el.getAttribute(VIEW_BOUNDARY_ATTR);
@@ -224,7 +226,11 @@ function findBoundary(el: Element | null): Boundary | null {
     const owner = ownerAt(at);
     if (owner) outer = { kind: 'owner', owner, el: at as HTMLElement };
     else if (at.hasAttribute(PART_ATTR) && at.getAttribute(PART_NODE_ATTR)) {
-      outer = { kind: 'node', id: at.getAttribute(PART_NODE_ATTR)! };
+      outer = {
+        kind: 'node',
+        id: at.getAttribute(PART_NODE_ATTR)!,
+        part: { id: at.getAttribute(PART_ATTR)!, el: at as HTMLElement },
+      };
     } else if (nearest === null && at.hasAttribute('data-we-node-id')) nearest = at.getAttribute('data-we-node-id');
     if (at === surface) break;
   }
@@ -269,6 +275,67 @@ function boxOf(el: Element): DOMRect {
     bottom = Math.max(bottom, r.bottom);
   }
   return left === Infinity ? new DOMRect() : new DOMRect(left, top, right - left, bottom - top);
+}
+
+/** Which edges of a ring are cut off by something scrolling or clipping it. */
+type ClippedSides = { top: boolean; right: boolean; bottom: boolean; left: boolean };
+
+/** The part of a box that can be seen, and which of its edges run on out of sight. */
+type VisibleBox = { rect: DOMRect; clipped: ClippedSides };
+
+/**
+ * The element that holds this one on screen, across shadow boundaries: a slotted child is held by
+ * its slot, so a `we-scroll-area`'s scroller — which lives in its shadow root — is found on the way up.
+ */
+function heldBy(el: Element): Element | null {
+  if (el.assignedSlot) return el.assignedSlot;
+  if (el.parentElement) return el.parentElement;
+  const root = el.getRootNode();
+  return root instanceof ShadowRoot ? root.host : null;
+}
+
+/**
+ * How much of a box can be seen, given every scroller and clipping box holding it.
+ *
+ * A ring round a node drawn at its full size runs out past the scroller it sits in, over whatever is
+ * beside it — a transcript's feed, scrolled to its end, ringed up across the panel above and the
+ * titlebar, which read as those being selected too. Drawn to what can be seen instead, with the
+ * edges that run on out of sight marked, it says the same thing without claiming anything else.
+ */
+function visibleBox(el: Element, rect: DOMRect): VisibleBox | null {
+  let left = rect.left;
+  let top = rect.top;
+  let right = rect.right;
+  let bottom = rect.bottom;
+  for (let at = heldBy(el); at; at = heldBy(at)) {
+    const style = getComputedStyle(at);
+    const clipsX = style.overflowX !== 'visible';
+    const clipsY = style.overflowY !== 'visible';
+    if (!clipsX && !clipsY) continue;
+    const box = at.getBoundingClientRect();
+    if (clipsX) {
+      left = Math.max(left, box.left);
+      right = Math.min(right, box.right);
+    }
+    if (clipsY) {
+      top = Math.max(top, box.top);
+      bottom = Math.min(bottom, box.bottom);
+    }
+  }
+  left = Math.max(left, 0);
+  top = Math.max(top, 0);
+  right = Math.min(right, window.innerWidth);
+  bottom = Math.min(bottom, window.innerHeight);
+  if (right - left < 1 || bottom - top < 1) return null;
+  return {
+    rect: new DOMRect(left, top, right - left, bottom - top),
+    clipped: {
+      top: rect.top < top - 0.5,
+      right: rect.right > right + 0.5,
+      bottom: rect.bottom > bottom + 0.5,
+      left: rect.left < left - 0.5,
+    },
+  };
 }
 
 // Walk DOM ancestors to find the nearest schema node that is a direct child of a $each.
@@ -372,9 +439,13 @@ function VisualEditorLayer() {
     return (wrapper.firstElementChild as HTMLElement) ?? wrapper;
   }
 
-  const [hoverRect, setHoverRect] = createSignal<DOMRect | null>(null);
   const [selectRect, setSelectRect] = createSignal<DOMRect | null>(null);
   const [hoveredType, setHoveredType] = createSignal<string | undefined>(undefined);
+  /** How much of the hovered and selected boxes can be seen, so their rings stop where sight does. */
+  const [hoverVisible, setHoverVisible] = createSignal<VisibleBox | null>(null);
+  const [selectVisible, setSelectVisible] = createSignal<VisibleBox | null>(null);
+  /** The part under the pointer, by its id — what the hover ring names. */
+  const [hoveredPart, setHoveredPart] = createSignal<string | null>(null);
   /** The section under the pointer, when the pointer is over another template rather than this one. */
   const [viewRegion, setViewRegion] = createSignal<{ owner: OwnerRef; rect: DOMRect } | null>(null);
   /** Where the selected owned region is, tracked a frame at a time as nodes are. */
@@ -465,6 +536,7 @@ function VisualEditorLayer() {
     const id = visualEditor.selectedId();
     if (!id) {
       setSelectRect(null);
+      setSelectVisible(null);
       return;
     }
     let rafId: number;
@@ -472,7 +544,12 @@ function VisualEditorLayer() {
       const el = getNodeBoundsElement(id);
       if (el) {
         const rect = boxOf(el);
-        setSelectRect(seenAt(el, rect) ? rect : null);
+        // Judged at the middle of what can be seen, not of the whole box: a tall node scrolled half
+        // out of view has its middle out of sight, and asking there dropped its ring altogether.
+        const visible = visibleBox(el, rect);
+        const seen = !!visible && seenAt(el, visible.rect);
+        setSelectRect(seen ? rect : null);
+        setSelectVisible(seen ? visible : null);
       }
       rafId = requestAnimationFrame(update);
     };
@@ -518,10 +595,31 @@ function VisualEditorLayer() {
     return toRelativeRect(rect, overlayRef.getBoundingClientRect());
   }
 
-  const hoverRelRect = createMemo(() => toRelative(hoverRect()));
   const viewRegionRelRect = createMemo(() => toRelative(viewRegion()?.rect ?? null));
   const ownerRelRect = createMemo(() => toRelative(ownerRect()));
   const selectRelRect = createMemo(() => toRelative(selectRect()));
+  /** The rings themselves: drawn to what can be seen, where the handles keep the node's full box. */
+  const hoverRingRect = createMemo(() => toRelative(hoverVisible()?.rect ?? null));
+  const selectRingRect = createMemo(() => toRelative(selectVisible()?.rect ?? null));
+
+  /*
+    What a ring round a placed part says it is. A part's ring is the template's colour, because the
+    placement is the template's; without a name it looked exactly like any other node, and a press
+    inside it selecting the whole thing read as the editor failing to reach in.
+  */
+  const owners = useEditorHost().owners;
+  const partLabel = (id: string | null | undefined, selected: boolean): RingLabel | undefined => {
+    if (!id) return undefined;
+    const part = owners?.part(id);
+    const name = part?.label ?? id;
+    const from = part?.moduleName ? `from ${part.moduleName}` : 'a module’s part';
+    return { name, note: selected ? from : `${from} — select it for options` };
+  };
+  const hoverLabel = createMemo(() => partLabel(hoveredPart(), false));
+  const selectLabel = createMemo(() => {
+    const node = selectedInfo()?.node;
+    return node?.type === '$part' ? partLabel(node.props?.id as string | undefined, true) : undefined;
+  });
   const instanceRelRects = createMemo(() =>
     instanceRects()
       .map(toRelative)
@@ -1154,7 +1252,8 @@ function VisualEditorLayer() {
       setViewRegion({ owner: boundary.owner, rect: boxOf(el) });
       visualEditor.onHover(null);
       lastHoveredId = null;
-      setHoverRect(null);
+      setHoverVisible(null);
+      setHoveredPart(null);
       setHoveredType(undefined);
       return;
     }
@@ -1162,12 +1261,17 @@ function VisualEditorLayer() {
 
     const nodeId = boundary?.id ?? null;
     visualEditor.onHover(nodeId);
+    const part = boundary?.kind === 'node' ? boundary.part : undefined;
+    setHoveredPart(part?.id ?? null);
 
     if (nodeId && under) {
-      const wrapper = (under as HTMLElement).closest('[data-we-node-id]') as HTMLElement | null;
-      if (wrapper) {
-        const boundsEl = (wrapper.firstElementChild as HTMLElement) ?? wrapper;
-        setHoverRect(boxOf(boundsEl));
+      // A part is measured by its frame — all of it — not by whichever of the module's nodes the
+      // pointer happens to be over, which would ring one message as though it were the feed.
+      const wrapper = part ? null : ((under as HTMLElement).closest('[data-we-node-id]') as HTMLElement | null);
+      const boundsEl = part?.el ?? (wrapper ? ((wrapper.firstElementChild as HTMLElement) ?? wrapper) : null);
+      if (boundsEl) {
+        const rect = boxOf(boundsEl);
+        setHoverVisible(visibleBox(boundsEl, rect));
         if (nodeId !== lastHoveredId) {
           lastHoveredId = nodeId;
           setHoveredType(findNodeById(templateStore.currentTemplate, nodeId)?.node.type);
@@ -1175,7 +1279,8 @@ function VisualEditorLayer() {
       }
     } else {
       lastHoveredId = null;
-      setHoverRect(null);
+      setHoverVisible(null);
+      setHoveredPart(null);
       setHoveredType(undefined);
     }
   }
@@ -1255,7 +1360,8 @@ function VisualEditorLayer() {
   function handlePointerLeave() {
     if (isResizing() || isDragging()) return;
     visualEditor.onHover(null);
-    setHoverRect(null);
+    setHoverVisible(null);
+    setHoveredPart(null);
     setHoveredType(undefined);
     setViewRegion(null);
     hoveredElement = null;
@@ -1374,9 +1480,11 @@ function VisualEditorLayer() {
         </Show>
 
         {/* Hover highlight — skip when same as selected */}
-        <Show when={hoverRelRect() && !isHoverSameAsSelect()}>
+        <Show when={hoverRingRect() && !isHoverSameAsSelect()}>
           <NodeHighlight
-            rect={hoverRelRect()!}
+            rect={hoverRingRect()!}
+            clipped={hoverVisible()?.clipped}
+            label={hoverLabel()}
             style={isLogicType(hoveredType()) ? 'logic' : 'visual'}
             selected={false}
           />
@@ -1398,9 +1506,11 @@ function VisualEditorLayer() {
         </Show>
 
         {/* Normal single-node selection (no $each context) — hidden during drag */}
-        <Show when={selectRelRect() && !isEachParentSelected() && instanceRelRects().length === 0 && !isDragging()}>
+        <Show when={selectRingRect() && !isEachParentSelected() && instanceRelRects().length === 0 && !isDragging()}>
           <NodeHighlight
-            rect={selectRelRect()!}
+            rect={selectRingRect()!}
+            clipped={selectVisible()?.clipped}
+            label={selectLabel()}
             style={isLogicType(selectedInfo()?.node.type) ? 'logic' : 'visual'}
             selected
           />
@@ -1770,7 +1880,23 @@ function OwnerBoundary(props: { rect: HighlightRect; owner: OwnerRef; selected?:
   );
 }
 
-function NodeHighlight(props: { rect: HighlightRect; style: HighlightStyle; selected: boolean }) {
+/** The name a ring carries, and what it says about it. */
+type RingLabel = { name: string; note: string };
+
+/**
+ * A ring round a node, hovered or selected.
+ *
+ * Drawn to what can be seen of it: an edge that runs on out of sight — past the scroller holding it —
+ * is dashed rather than drawn over whatever is beside it, so a long feed scrolled to its end says it
+ * continues upward without ringing the panel above it.
+ */
+function NodeHighlight(props: {
+  rect: HighlightRect;
+  style: HighlightStyle;
+  selected: boolean;
+  clipped?: ClippedSides;
+  label?: RingLabel;
+}) {
   const color = () => {
     switch (props.style) {
       case 'logic':
@@ -1786,21 +1912,58 @@ function NodeHighlight(props: { rect: HighlightRect; style: HighlightStyle; sele
   const borderStyle = () =>
     props.style === 'logic' || props.style === 'each-parent' || props.style === 'each-instance' ? 'dashed' : 'solid';
   const width = () => (props.selected ? '2px' : '1px');
+  const edge = (side: keyof ClippedSides) =>
+    `${width()} ${props.clipped?.[side] ? 'dashed' : borderStyle()} ${color()}`;
 
   return (
     <div
+      data-we-ring={props.selected ? 'selected' : 'hover'}
+      data-we-ring-clipped={
+        props.clipped
+          ? (['top', 'right', 'bottom', 'left'] as const).filter((side) => props.clipped![side]).join(' ')
+          : ''
+      }
       style={{
         position: 'absolute',
         top: props.rect.top,
         left: props.rect.left,
         width: props.rect.width,
         height: props.rect.height,
-        outline: `${width()} ${borderStyle()} ${color()}`,
-        'outline-offset': '-1px',
+        'border-top': edge('top'),
+        'border-right': edge('right'),
+        'border-bottom': edge('bottom'),
+        'border-left': edge('left'),
         'pointer-events': 'none',
         'box-sizing': 'border-box',
         'border-radius': '2px',
       }}
-    />
+    >
+      <Show when={props.label}>
+        {(label) => (
+          <div
+            style={{
+              position: 'absolute',
+              top: '4px',
+              left: '4px',
+              display: 'flex',
+              gap: '6px',
+              'align-items': 'baseline',
+              padding: '2px 8px',
+              'border-radius': '4px',
+              background: ANNOTATION.boundaryChip,
+              color: ANNOTATION.boundaryChipText,
+              font: '500 11px/1.4 system-ui, sans-serif',
+              'white-space': 'nowrap',
+              'max-width': 'calc(100% - 8px)',
+              overflow: 'hidden',
+              'text-overflow': 'ellipsis',
+            }}
+          >
+            <span>{label().name}</span>
+            <span style={{ color: ANNOTATION.boundary, 'font-weight': '400' }}>{label().note}</span>
+          </div>
+        )}
+      </Show>
+    </div>
   );
 }

@@ -481,7 +481,28 @@ function editorProbe(): void {
   body.append(node('n-panel', 'panel'));
   panel.append(titlebar, body);
 
-  document.body.append(content, panel);
+  /*
+    A tall node in a scroller, scrolled to its end — a transcript feed. The scroller lives in a shadow
+    root, as `we-scroll-area`'s does, so what clips the node is only found by following its slot.
+  */
+  const scrolled = document.createElement('div');
+  scrolled.setAttribute(EDIT_SURFACE_ATTR, '');
+  scrolled.style.cssText = 'position: fixed; left: 210px; top: 460px; width: 100px; height: 100px; z-index: 1;';
+  const scrollHost = document.createElement('div');
+  scrollHost.id = 'probe-scroll-host';
+  scrollHost.style.cssText = 'display: block; width: 100px; height: 100px;';
+  const shadow = scrollHost.attachShadow({ mode: 'open' });
+  const scroller = document.createElement('div');
+  scroller.style.cssText = 'overflow: auto; height: 100%;';
+  scroller.append(document.createElement('slot'));
+  shadow.append(scroller);
+  const long = node('n-long', 'long');
+  Object.assign((long.firstElementChild as HTMLElement).style, { height: '400px', width: '80px' });
+  scrollHost.append(long);
+  scrolled.append(scrollHost);
+
+  document.body.append(content, panel, scrolled);
+  scroller.scrollTop = 300;
   // The scenario mounted beside this one autofocuses a field, and a key typed there is typing — which
   // the editor rightly ignores. Nothing here should have focus to begin with.
   (document.activeElement as HTMLElement | null)?.blur();
@@ -494,6 +515,7 @@ function editorProbe(): void {
       { id: 'n-content', type: 'we-button' },
       { id: 'n-panel', type: 'we-button' },
       { id: 'n-part', type: '$part', props: { id: 'call.tile' } },
+      { id: 'n-long', type: 'we-button' },
     ],
   };
   const [selected, setSelected] = createSignal<string | null>(null);
@@ -523,6 +545,8 @@ function editorProbe(): void {
   const host = {
     session: { contentMode: () => 'visual', isStreaming: () => false, pushSnapshot() {}, commitEdit: async () => {} },
     template: { currentTemplate: template, updateTemplate: () => record('__probeUpdated', true) },
+    // Only what a ring asks about a part: what it is called and whose it is.
+    owners: { part: (id: string) => ({ id, label: 'Tile', moduleName: 'Calls' }) },
   };
 
   const root = document.createElement('div');
@@ -530,6 +554,7 @@ function editorProbe(): void {
   // Taken down by `editorProbeDispose`, so the next case on this page meets none of it.
   probeDisposers.push(() => {
     content.remove();
+    scrolled.remove();
     owned.remove();
     panel.remove();
     root.remove();
