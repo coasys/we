@@ -11,7 +11,7 @@ export const name = 'a press inside somebody else’s region selects the region'
 export const scenario = 'security:self-firing-events';
 export const widths = [320];
 
-export async function check({ call, clickAt, recorded }) {
+export async function check({ call, clickAt, count, recorded }) {
   await call('editorProbe');
   try {
     const problems = [];
@@ -31,6 +31,9 @@ export async function check({ call, clickAt, recorded }) {
       problems.push('a press inside a module’s panel selected a node of the module’s');
     if (owner.at(-1) !== 'panel:call:stage')
       problems.push(`a press inside a module’s panel selected ${owner.at(-1) ?? 'nothing'} as its owner`);
+    // Selected is not enough: the region has to look selected, or the inspector changes and the page
+    // does not, which reads as nothing having happened.
+    if (!(await count('[data-we-owner-outline="selected"]'))) problems.push('a selected module’s panel has no outline');
 
     await clickAt('#probe-n-part-inner');
     selected = await recorded('__probeSelected');

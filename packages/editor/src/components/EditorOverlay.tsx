@@ -231,12 +231,19 @@ function findBoundary(el: Element | null): Boundary | null {
   return outer ?? (nearest ? { kind: 'node', id: nearest } : null);
 }
 
-/** The element an owned region is drawn round — a module's panel by its whole body. */
+/** The element marking an owned region — inside its surface, so it is what visibility is judged by. */
+function ownerMarker(owner: OwnerRef): Element | null {
+  return owner.kind === 'view'
+    ? document.querySelector(`[${VIEW_BOUNDARY_ATTR}="${CSS.escape(owner.id)}"]`)
+    : document.querySelector(`[${OWNER_ATTR}="panel:${CSS.escape(owner.id)}"]`);
+}
+
+/**
+ * The element an owned region is drawn round — a module's panel by its whole body. That body holds
+ * the panel's surface rather than sitting in it, so ask `seenAt` about the marker, not this.
+ */
 function ownerElement(owner: OwnerRef): Element | null {
-  const marked =
-    owner.kind === 'view'
-      ? document.querySelector(`[${VIEW_BOUNDARY_ATTR}="${CSS.escape(owner.id)}"]`)
-      : document.querySelector(`[${OWNER_ATTR}="panel:${CSS.escape(owner.id)}"]`);
+  const marked = ownerMarker(owner);
   return marked?.closest('[data-we-dock-content]') ?? marked;
 }
 
@@ -481,9 +488,10 @@ function VisualEditorLayer() {
     }
     let rafId: number;
     const update = () => {
+      const marker = ownerMarker(owner);
       const el = ownerElement(owner);
       const rect = el ? boxOf(el) : null;
-      setOwnerRect(el && rect && seenAt(el, rect) ? rect : null);
+      setOwnerRect(marker && rect && seenAt(marker, rect) ? rect : null);
       rafId = requestAnimationFrame(update);
     };
     rafId = requestAnimationFrame(update);
@@ -1703,6 +1711,7 @@ function OwnerBoundary(props: { rect: HighlightRect; owner: OwnerRef; selected?:
   const kind = () => (props.owner.kind === 'view' ? 'a section of this space' : "a module's panel");
   return (
     <div
+      data-we-owner-outline={props.selected ? 'selected' : 'hover'}
       style={{
         position: 'absolute',
         top: props.rect.top,

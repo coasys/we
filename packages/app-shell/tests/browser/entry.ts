@@ -454,8 +454,10 @@ function editorProbe(): void {
   placed.append(frame);
   content.append(placed);
 
-  // A panel a module draws itself: an edit surface the editor can reach, owned by the module.
+  // A panel a module draws itself: an edit surface the editor can reach, owned by the module, inside
+  // the dock's content box — which holds the surface rather than sitting in one, as the real dock's does.
   const owned = document.createElement('div');
+  owned.setAttribute('data-we-dock-content', '');
   owned.style.cssText = 'position: fixed; left: 0; top: 460px; width: 200px; height: 80px; z-index: 1;';
   const ownedBody = document.createElement('div');
   ownedBody.setAttribute(EDIT_SURFACE_ATTR, '');
