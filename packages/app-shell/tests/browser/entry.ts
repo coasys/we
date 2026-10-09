@@ -576,7 +576,6 @@ function ownerCardProbe(
       isReadOnly: () => false,
       pushSnapshot() {},
       commitEdit: async () => {},
-      enterThemeEditing: () => record('__probeTheme', true),
       startFork() {},
     },
     template: {

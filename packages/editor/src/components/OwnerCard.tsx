@@ -6,13 +6,15 @@
  * sit there inert with nothing said. Selected, it names its owner and offers what can be done, the
  * cheapest first:
  *
- * 1. **Restyle it.** Colour, spacing and shape are the theme's, and a theme reaches a module's panel
- *    and a section like anything else. Nothing is taken over, so nothing stops being updated.
- * 2. **Arrange its pieces** (a panel) or **open it** (a part). The arrangement becomes the template's
+ * 1. **Arrange its pieces** (a panel) or **open it** (a part). The arrangement becomes the template's
  *    and the pieces stay the module's, so a fix to one still lands in it.
- * 3. **Make it your own.** A copy of all of it, which no longer receives the owner's changes. Said
+ * 2. **Make it your own.** A copy of all of it, which no longer receives the owner's changes. Said
  *    in so many words, because that is the cost and it is easy not to notice.
- * 4. **Replace** or **remove** it.
+ * 3. **Replace** or **remove** it.
+ *
+ * No "restyle" route, though restyling is the cheapest of all: a region already follows the theme,
+ * so a route here could only open the global theme editor, which says nothing about this region.
+ * It belongs back when a region can carry a theme of its own.
  *
  * Every route that writes the template goes through one path, which records an undo step and saves
  * the edit the way the inspector's own edits are saved. A built-in template is read-only, so those
@@ -211,12 +213,6 @@ export function PartCard(props: { node: SchemaNode }) {
             </Show>
 
             <we-text {...SECTION_LABEL_PROPS}>Change it</we-text>
-            <Route
-              title="Restyle it"
-              detail={`Colours, spacing and shape come from the theme. It stays ${part().moduleName}'s, so its updates keep arriving.`}
-              action="Theme"
-              onPress={() => host.session.enterThemeEditing()}
-            />
             <Show
               when={readOnly()}
               fallback={
@@ -320,12 +316,6 @@ function PanelCard(props: { dockId: string }) {
           <Heading icon="squares-four" title={panel().title} subtitle={`A panel from ${panel().moduleName}`} />
           <Column px="400" gap="100">
             <we-text {...SECTION_LABEL_PROPS}>Change it</we-text>
-            <Route
-              title="Restyle it"
-              detail={`Colours, spacing and shape come from the theme. It stays ${panel().moduleName}'s, so its updates keep arriving.`}
-              action="Theme"
-              onPress={() => host.session.enterThemeEditing()}
-            />
             <Show
               when={readOnly()}
               fallback={
@@ -386,14 +376,8 @@ function ViewCard(props: { id: string }) {
             </we-text>
           </Heading>
           <Column px="400" gap="100">
-            <we-text {...SECTION_LABEL_PROPS}>Change it</we-text>
-            <Route
-              title="Restyle it"
-              detail="Colours, spacing and shape come from the theme, so it stays the section it is and keeps its updates."
-              action="Theme"
-              onPress={() => host.session.enterThemeEditing()}
-            />
             <Show when={host.owners?.forkView}>
+              <we-text {...SECTION_LABEL_PROPS}>Change it</we-text>
               <Show
                 when={!made()}
                 fallback={

@@ -30,15 +30,6 @@ export async function check({ call, recorded }) {
     await call('editorProbeDispose');
   }
 
-  // Restyling has to open something: the theme panel only shows inside a theme-editing session.
-  await call('ownerCardProbe', 'part');
-  try {
-    await call('pressButton', 'Theme');
-    if (!(await recorded('__probeTheme')).length) problems.push('“Restyle it” opened no theme-editing session');
-  } finally {
-    await call('editorProbeDispose');
-  }
-
   await call('ownerCardProbe', 'part');
   try {
     await call('pressButton', 'Copy');
