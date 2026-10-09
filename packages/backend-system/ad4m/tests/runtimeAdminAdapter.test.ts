@@ -37,6 +37,8 @@ describe('what a connection is allowed to administer', () => {
     expect(port.languages).toBeDefined();
     expect(port.aiModels).toBeDefined();
     expect(port.authorizedApps).toBeDefined();
+    expect(port.onConsentRequest).toBeDefined();
+    expect(port.approve).toBeDefined();
   });
 
   it('does not offer a network restart the executor does not perform', () => {
@@ -60,9 +62,12 @@ describe('what a connection is allowed to administer', () => {
     expect(port.restartNetwork).toBeUndefined();
     expect(port.languages).toBeUndefined();
 
-    // Consent is raised at *this* session, so it survives being a guest.
-    expect(port.onConsentRequest).toBeDefined();
-    expect(port.approve).toBeDefined();
+    // Answering consent changes the node: granting an app needs AGENT PERMIT, and the trusted-agent
+    // list is the node's. The executor refuses both to a user session, so a prompt here would offer
+    // a guest buttons that cannot work.
+    expect(port.onConsentRequest).toBeUndefined();
+    expect(port.approve).toBeUndefined();
+    expect(port.deny).toBeUndefined();
   });
 
   it('withholds the app list from a guest, because it is not theirs to see', () => {

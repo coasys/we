@@ -1,4 +1,4 @@
-import type { Ad4mClient, AIModel } from '@coasys/ad4m';
+import { type Ad4mClient, type AIModel, RpcError } from '@coasys/ad4m';
 import type {
   ConversationReply,
   ConversationRequest,
@@ -146,10 +146,11 @@ async function defaultModelStatus(client: Ad4mClient): Promise<LanguageModelStat
     }
     return { state: 'ready', name, model: id, detail: '' };
   } catch (err) {
-    // Discovery needs the AI CREATE grant. A guest without it has asked a question it may not ask,
-    // which says nothing about the model — so that is unchecked, not broken.
-    if (/capabilit|forbidden|unauthori/i.test(messageOf(err)))
-      return { state: 'unchecked', name, model: id, detail: '' };
+    // The executor refused the call itself (403): a guest without the AI CREATE grant, or a user
+    // session on a multi-user node, which may never call `ai.discoverModels`. That says nothing
+    // about the model — so it is unchecked, not broken. Read from the status, not the wording: the
+    // two refusals word themselves differently, and an endpoint's own "Unauthorized" is an error.
+    if (err instanceof RpcError && err.status === 403) return { state: 'unchecked', name, model: id, detail: '' };
     return { state: 'error', name, model: id, detail: messageOf(err) };
   }
 }
