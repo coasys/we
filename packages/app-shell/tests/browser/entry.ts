@@ -19,7 +19,7 @@ import { hostSourceBag } from '@shared/sources';
 import { injectDSInteropStyles } from '@solid/dsInterop';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import { createInMemoryBackend } from '@we/backend-inmemory';
-import { EditorHostProvider, EditorOverlay, OwnerCard, PartCard, PartsPalette } from '@we/editor';
+import { EditorHostProvider, EditorOverlay, OwnerCard, PartCard, PartsPalette, SuppliedPanelNote } from '@we/editor';
 import {
   EDIT_SURFACE_ATTR,
   installGestureTracking,
@@ -551,7 +551,9 @@ function editorProbe(): void {
  * answers for one part and one module panel. What each route writes lands in `__probeTemplates`, as
  * the template it handed `updateTemplate`, so a case can read what taking a region over did.
  */
-function ownerCardProbe(kind: 'part' | 'panel' | 'palette' | 'view' | 'view-blocked'): void {
+function ownerCardProbe(
+  kind: 'part' | 'panel' | 'palette' | 'view' | 'view-blocked' | 'arranged' | 'arranged-placed',
+): void {
   const record = (key: string, value: unknown) => {
     const bag = globalThis as unknown as Record<string, unknown[]>;
     (bag[key] ??= []).push(value);
@@ -562,12 +564,19 @@ function ownerCardProbe(kind: 'part' | 'panel' | 'palette' | 'view' | 'view-bloc
     meta: { name: 'Probe', description: '', icon: '', panels: [{ id: 'stage', module: 'call', snap: 'right' }] },
     children: [{ id: 'aaaaaaaaaa', type: '$part', props: { id: 'demo.box', subject: { $: 'local.chosen' } } }],
   };
+  // A module's panel this template has arranged: by arranging alone, or on an entry that also places it.
+  if (kind === 'arranged' || kind === 'arranged-placed') {
+    const arranged = { id: 'call-stage', module: 'call', dock: 'stage', node: { id: 'bbbbbbbbbb', type: 'Column' } };
+    (template.meta as Record<string, unknown>).panels = [
+      kind === 'arranged' ? arranged : { ...arranged, snap: 'right' },
+    ];
+  }
   const host = {
     session: {
       isReadOnly: () => false,
       pushSnapshot() {},
       commitEdit: async () => {},
-      openThemePanel: () => record('__probeTheme', true),
+      enterThemeEditing: () => record('__probeTheme', true),
       startFork() {},
     },
     template: {
@@ -642,6 +651,8 @@ function ownerCardProbe(kind: 'part' | 'panel' | 'palette' | 'view' | 'view-bloc
             value: visual as never,
             get children() {
               if (kind === 'palette') return createComponent(PartsPalette, { node: template as never });
+              if (kind === 'arranged' || kind === 'arranged-placed')
+                return createComponent(SuppliedPanelNote, { nodeId: 'bbbbbbbbbb' });
               if (kind === 'view' || kind === 'view-blocked')
                 return createComponent(OwnerCard, { owner: { kind: 'view', id: 'about', name: 'About' } });
               return kind === 'part'

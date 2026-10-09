@@ -30,6 +30,15 @@ export async function check({ call, recorded }) {
     await call('editorProbeDispose');
   }
 
+  // Restyling has to open something: the theme panel only shows inside a theme-editing session.
+  await call('ownerCardProbe', 'part');
+  try {
+    await call('pressButton', 'Theme');
+    if (!(await recorded('__probeTheme')).length) problems.push('“Restyle it” opened no theme-editing session');
+  } finally {
+    await call('editorProbeDispose');
+  }
+
   await call('ownerCardProbe', 'part');
   try {
     await call('pressButton', 'Copy');
@@ -92,6 +101,30 @@ export async function check({ call, recorded }) {
   try {
     if (await call('pressButton', 'Copy'))
       problems.push('a section can be copied by somebody who does not run the space');
+  } finally {
+    await call('editorProbeDispose');
+  }
+
+  /*
+    The way back from arranging a panel. An entry arranging made is removed whole, which is the
+    template as it was; one that also places the panel keeps its placement and loses only the contents.
+  */
+  await call('ownerCardProbe', 'arranged');
+  try {
+    if (!(await call('pressButton', 'Give it back'))) problems.push('an arranged panel offers no way back');
+    const [after] = (await recorded('__probeTemplates')).slice(-1);
+    if ((after?.meta?.panels ?? []).length) problems.push('giving back a panel arranging made left its entry behind');
+  } finally {
+    await call('editorProbeDispose');
+  }
+
+  await call('ownerCardProbe', 'arranged-placed');
+  try {
+    await call('pressButton', 'Give it back');
+    const [after] = (await recorded('__probeTemplates')).slice(-1);
+    const entry = after?.meta?.panels?.[0];
+    if (entry?.snap !== 'right') problems.push('giving back a panel lost where the template placed it');
+    if (entry?.node) problems.push('giving back a panel kept the template’s arrangement');
   } finally {
     await call('editorProbeDispose');
   }

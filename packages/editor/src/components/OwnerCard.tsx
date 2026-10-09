@@ -215,7 +215,7 @@ export function PartCard(props: { node: SchemaNode }) {
               title="Restyle it"
               detail={`Colours, spacing and shape come from the theme. It stays ${part().moduleName}'s, so its updates keep arriving.`}
               action="Theme"
-              onPress={() => host.session.openThemePanel()}
+              onPress={() => host.session.enterThemeEditing()}
             />
             <Show
               when={readOnly()}
@@ -324,7 +324,7 @@ function PanelCard(props: { dockId: string }) {
               title="Restyle it"
               detail={`Colours, spacing and shape come from the theme. It stays ${panel().moduleName}'s, so its updates keep arriving.`}
               action="Theme"
-              onPress={() => host.session.openThemePanel()}
+              onPress={() => host.session.enterThemeEditing()}
             />
             <Show
               when={readOnly()}
@@ -391,7 +391,7 @@ function ViewCard(props: { id: string }) {
               title="Restyle it"
               detail="Colours, spacing and shape come from the theme, so it stays the section it is and keeps its updates."
               action="Theme"
-              onPress={() => host.session.openThemePanel()}
+              onPress={() => host.session.enterThemeEditing()}
             />
             <Show when={host.owners?.forkView}>
               <Show
@@ -445,6 +445,77 @@ function ViewCard(props: { id: string }) {
           </Column>
         </Column>
       )}
+    </Show>
+  );
+}
+
+// -----------------------------------------------------------------------
+// A module's panel the template has arranged
+// -----------------------------------------------------------------------
+
+/** The `meta.panels` entry whose supplied contents hold this node, when it is a module's panel. */
+function suppliedEntryHolding(template: SchemaNode, nodeId: string): TemplatePanel | undefined {
+  const panels = ((template as TemplateSchema).meta?.panels ?? []) as TemplatePanel[];
+  return panels.find((entry) => entry.module && entry.node && findNodeById(entry.node as SchemaNode, nodeId));
+}
+
+/** Keys an entry carries when arranging a panel made it, and nothing a template placed it with. */
+const MADE_BY_ARRANGING = new Set(['id', 'module', 'dock', 'node']);
+
+/**
+ * The way back from "arrange its pieces": the panel goes back to how its module draws it.
+ *
+ * Shown above a node inside a module's panel the template supplies, since once arranged the panel's
+ * contents are ordinary nodes of the template and nothing else would say whose panel they fill. Undo
+ * reaches back only as far as this editing session, so without this an arrangement was permanent.
+ *
+ * Takes the template's contents out of the entry rather than deleting it, so a panel the template
+ * also places — its edge, its size — stays placed. An entry arranging created, carrying nothing
+ * else, is removed whole, which is exactly the template as it was before.
+ */
+export function SuppliedPanelNote(props: { nodeId: string }) {
+  const host = useEditorHost();
+  const visualEditor = useVisualEditor();
+  const write = useTemplateWriter();
+
+  const entry = createMemo(() => suppliedEntryHolding(host.template.currentTemplate as SchemaNode, props.nodeId));
+  const moduleName = () => {
+    const found = entry();
+    if (!found?.module) return '';
+    return (found.dock && host.owners?.panel(`${found.module}:${found.dock}`)?.moduleName) || found.module;
+  };
+
+  const giveBack = () => {
+    const id = entry()?.id;
+    const written = write((template) => {
+      const meta = (template as TemplateSchema).meta;
+      const panels = (meta?.panels ?? []) as TemplatePanel[];
+      const index = panels.findIndex((candidate) => candidate.id === id);
+      if (index < 0) return false;
+      const target = panels[index];
+      if (Object.keys(target).every((key) => MADE_BY_ARRANGING.has(key))) panels.splice(index, 1);
+      else delete (target as { node?: unknown }).node;
+      return true;
+    });
+    if (written) visualEditor.onSelect(null);
+  };
+
+  return (
+    <Show when={entry()}>
+      <Column gap="200" mx="400" mt="300" p="300" r="surface" bg="surface-sunken">
+        <Row ay="center" gap="200">
+          <we-icon name="squares-four" size="sm" color="text-muted" />
+          <we-text variant="label">{moduleName()}’s panel, arranged by this template</we-text>
+        </Row>
+        <we-text variant="footnote" color="text-muted">
+          Giving it back throws this arrangement away, and the panel is drawn the way {moduleName()} draws it again.
+        </we-text>
+        <Row>
+          <we-button size="xs" variant="secondary" disabled={host.session.isReadOnly()} onClick={giveBack}>
+            Give it back
+          </we-button>
+        </Row>
+      </Column>
     </Show>
   );
 }
