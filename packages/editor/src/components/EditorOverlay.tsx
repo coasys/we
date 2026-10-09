@@ -226,8 +226,11 @@ function ownerAt(el: Element): OwnerRef | null {
  * selected, or a node within it is. A press inside that part reaches the node under the pointer
  * rather than the part again, which is how somebody walks down to the avatar inside a message inside
  * a feed: the first press selects the feed, the next goes in. The same two steps a list takes.
+ *
+ * `reach` is the shortcut past both steps — the modifier held (see `reaches`) — straight to the
+ * deepest node under the pointer, however many parts it is inside.
  */
-function findBoundary(el: Element | null, entered: string | null = null): Boundary | null {
+function findBoundary(el: Element | null, entered: string | null = null, reach = false): Boundary | null {
   if (!el) return null;
   const surface = surfaceOf(el);
   let nearest: { id: string; el: HTMLElement } | null = null;
@@ -246,7 +249,7 @@ function findBoundary(el: Element | null, entered: string | null = null): Bounda
     }
     if (at === surface) break;
   }
-  if (outer?.kind === 'node' && outer.part && entered === outer.id && nearest && nearest.id !== outer.id) {
+  if (outer?.kind === 'node' && outer.part && (reach || entered === outer.id) && nearest && nearest.id !== outer.id) {
     // Only the frames between the template's placement and the press, outermost first. A frame met
     // after the outermost is impossible — the outermost is the last pushed — so this is all of them.
     const chain = frames.map((frame) => frame.at).reverse();
@@ -279,6 +282,15 @@ function ownerElement(owner: OwnerRef): Element | null {
   const marked = ownerMarker(owner);
   if (owner.kind === 'part-node') return marked?.firstElementChild ?? marked;
   return marked?.closest('[data-we-dock-content]') ?? marked;
+}
+
+/**
+ * Whether a pointer event asks to reach straight past the parts and lists in the way: ⌘ on a Mac,
+ * Ctrl elsewhere — the deep-select key people already know from design tools. Either is accepted on
+ * either platform, so a person moving between machines is not caught out.
+ */
+function reaches(e: { metaKey: boolean; ctrlKey: boolean }): boolean {
+  return e.metaKey || e.ctrlKey;
 }
 
 /** What a node is called in a sentence: its component, without the design system's prefix. */
@@ -669,7 +681,9 @@ function VisualEditorLayer() {
     const part = owners?.part(id);
     const name = part?.label ?? id;
     const from = part?.moduleName ? `from ${part.moduleName}` : 'a module’s part';
-    return { name, note: selected ? from : `${from} — select it for options` };
+    // Selected, it says how to go further: nothing else does, and a second press doing something new
+    // is not a thing anybody guesses.
+    return { name, note: selected ? `${from} — press inside to reach its pieces` : `${from} — select it for options` };
   };
   /** The part-node selection's ring, and what it says. */
   const ownerRingRect = createMemo(() => toRelative(ownerVisible()?.rect ?? null));
@@ -1307,8 +1321,33 @@ function VisualEditorLayer() {
       }
     }
 
+    lastPointer = { x: e.clientX, y: e.clientY };
+    hoverAt(e.clientX, e.clientY, reaches(e));
+  }
+
+  /** Where the pointer last was over the page, so the modifier can redraw the hover without a move. */
+  let lastPointer: { x: number; y: number } | null = null;
+
+  /*
+    Holding or letting go of the modifier changes what the pointer would select, so the hover is
+    redrawn on the key itself. Waiting for the pointer to move would show the old answer under a
+    pointer that is resting exactly where somebody is about to press.
+  */
+  function handleReachKey(e: KeyboardEvent) {
+    if (e.key !== 'Meta' && e.key !== 'Control') return;
+    if (!lastPointer || isDragging() || isResizing()) return;
+    hoverAt(lastPointer.x, lastPointer.y, reaches(e));
+  }
+  window.addEventListener('keydown', handleReachKey);
+  window.addEventListener('keyup', handleReachKey);
+  onCleanup(() => {
+    window.removeEventListener('keydown', handleReachKey);
+    window.removeEventListener('keyup', handleReachKey);
+  });
+
+  function hoverAt(x: number, y: number, reach: boolean) {
     // Normal hover — over the template's own surfaces only. Anywhere else is the app's, and clears it.
-    const hit = templateElementAt(e.clientX, e.clientY);
+    const hit = templateElementAt(x, y);
     if (!surfaceOf(hit)) {
       handlePointerLeave();
       return;
@@ -1316,7 +1355,7 @@ function VisualEditorLayer() {
     const under = hit;
     hoveredElement = under;
 
-    const boundary = findBoundary(under, enteredPart());
+    const boundary = findBoundary(under, enteredPart(), reach);
 
     /*
       A view answers for itself and stops there.
@@ -1394,7 +1433,8 @@ function VisualEditorLayer() {
     e.stopPropagation();
     hoveredElement = hit;
 
-    const clicked = findBoundary(hoveredElement, enteredPart());
+    const reach = reaches(e);
+    const clicked = findBoundary(hoveredElement, enteredPart(), reach);
 
     // A region somebody else provides is selected as a whole — a section, or a module's own panel —
     // never the shell node behind it, which is what made a section look broken.
@@ -1430,6 +1470,13 @@ function VisualEditorLayer() {
     const eachCtx = findEachContextFromElement(hoveredElement, templateStore.currentTemplate);
     const currentEnteredId = enteredEachParentId();
     const currentSelectedId = visualEditor.selectedId();
+
+    // The modifier skips the list's first step as it skips a part's: straight to the row's own node.
+    if (reach && eachCtx) {
+      setEnteredEachParentId(eachCtx.eachId);
+      visualEditor.onSelect(clickedNodeId);
+      return;
+    }
 
     if (eachCtx && eachCtx.eachId === currentSelectedId && !currentEnteredId) {
       setEnteredEachParentId(eachCtx.eachId);
@@ -1962,9 +2009,8 @@ type HighlightStyle = 'visual' | 'logic' | 'each-parent' | 'each-instance' | 'ow
  * would read as a fault, where "Transcript — a module's panel" reads as a boundary and says whose.
  * Selected, it goes solid, and the inspector says what can be done about it.
  *
- * The label sits inside the top-left corner rather than above it, because a section commonly starts
- * at the very top of the content area and a chip hung above the edge would be clipped by the
- * viewport on the one view most likely to be clicked first.
+ * The label sits above the top edge where there is room for it, and inside it where there is not —
+ * see `RingChip`.
  */
 function OwnerBoundary(props: { rect: HighlightRect; owner: OwnerRef; selected?: boolean }) {
   const kind = () => (props.owner.kind === 'view' ? 'a section of this space' : "a module's panel");
@@ -1984,31 +2030,11 @@ function OwnerBoundary(props: { rect: HighlightRect; owner: OwnerRef; selected?:
         'border-radius': '2px',
       }}
     >
-      <div
-        style={{
-          position: 'absolute',
-          top: '4px',
-          left: '4px',
-          display: 'flex',
-          gap: '6px',
-          'align-items': 'baseline',
-          padding: '2px 8px',
-          'border-radius': '4px',
-          background: ANNOTATION.boundaryChip,
-          color: ANNOTATION.boundaryChipText,
-          font: '500 11px/1.4 system-ui, sans-serif',
-          'white-space': 'nowrap',
-          'max-width': 'calc(100% - 8px)',
-          overflow: 'hidden',
-          'text-overflow': 'ellipsis',
-        }}
-      >
-        <span>{props.owner.name}</span>
-        <span style={{ color: ANNOTATION.boundary, 'font-weight': '400' }}>
-          {kind()}
-          {props.selected ? '' : ' — select it for options'}
-        </span>
-      </div>
+      <RingChip
+        rect={props.rect}
+        name={props.owner.name}
+        note={`${kind()}${props.selected ? '' : ' — select it for options'}`}
+      />
     </div>
   );
 }
@@ -2075,30 +2101,52 @@ function NodeHighlight(props: {
     >
       <Show when={props.label}>
         {(label) => (
-          <div
-            style={{
-              position: 'absolute',
-              top: '4px',
-              left: '4px',
-              display: 'flex',
-              gap: '6px',
-              'align-items': 'baseline',
-              padding: '2px 8px',
-              'border-radius': '4px',
-              background: ANNOTATION.boundaryChip,
-              color: ANNOTATION.boundaryChipText,
-              font: '500 11px/1.4 system-ui, sans-serif',
-              'white-space': 'nowrap',
-              'max-width': 'calc(100% - 8px)',
-              overflow: 'hidden',
-              'text-overflow': 'ellipsis',
-            }}
-          >
-            <span>{label().name}</span>
-            <span style={{ color: ANNOTATION.boundary, 'font-weight': '400' }}>{label().note}</span>
-          </div>
+          <RingChip rect={props.rect} clippedTop={props.clipped?.top} name={label().name} note={label().note} />
         )}
       </Show>
+    </div>
+  );
+}
+
+/** How tall a ring's chip is, with the gap it keeps from the edge — what "room above" has to hold. */
+const CHIP_ROOM = 22;
+
+/**
+ * The name a ring carries.
+ *
+ * Above the ring's top edge, outside it, so it never covers what it names — inside, a chip over a
+ * 24px avatar hid the avatar and was itself cut to the avatar's width. Inside the top edge instead
+ * where there is no room above: a ring at the very top of the window (a section commonly starts
+ * there), or one whose top runs on out of sight, where the room above belongs to whatever the
+ * scroller sits under.
+ *
+ * As wide as its words, and stopped only by the window's right edge, never the ring's.
+ */
+function RingChip(props: { rect: HighlightRect; name: string; note: string; clippedTop?: boolean }) {
+  const inside = () => !!props.clippedTop || parseFloat(String(props.rect.top)) < CHIP_ROOM;
+  return (
+    <div
+      data-we-ring-chip={inside() ? 'inside' : 'above'}
+      style={{
+        position: 'absolute',
+        left: inside() ? '4px' : '-1px',
+        ...(inside() ? { top: '4px' } : { bottom: '100%', 'margin-bottom': '3px' }),
+        display: 'flex',
+        gap: '6px',
+        'align-items': 'baseline',
+        padding: '2px 8px',
+        'border-radius': '4px',
+        background: ANNOTATION.boundaryChip,
+        color: ANNOTATION.boundaryChipText,
+        font: '500 11px/1.4 system-ui, sans-serif',
+        'white-space': 'nowrap',
+        'max-width': `max(120px, calc(100vw - ${parseFloat(String(props.rect.left))}px - 12px))`,
+        overflow: 'hidden',
+        'text-overflow': 'ellipsis',
+      }}
+    >
+      <span>{props.name}</span>
+      <span style={{ color: ANNOTATION.boundary, 'font-weight': '400' }}>{props.note}</span>
     </div>
   );
 }

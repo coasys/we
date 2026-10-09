@@ -453,6 +453,8 @@ function editorProbe(): void {
   frame.append(node('n-part-inner', 'part'));
   placed.append(frame);
   content.append(placed);
+  // A row of a list: the template's node, inside a `$each`, so a first press selects the list.
+  content.append(node('n-row', 'row'));
 
   // A panel a module draws itself: an edit surface the editor can reach, owned by the module, inside
   // the dock's content box — which holds the surface rather than sitting in one, as the real dock's does.
@@ -516,6 +518,7 @@ function editorProbe(): void {
       { id: 'n-panel', type: 'we-button' },
       { id: 'n-part', type: '$part', props: { id: 'call.tile' } },
       { id: 'n-long', type: 'we-button' },
+      { id: 'n-list', type: '$each', props: { items: [1] }, children: [{ id: 'n-row', type: 'we-button' }] },
     ],
   };
   const [selected, setSelected] = createSignal<string | null>(null);

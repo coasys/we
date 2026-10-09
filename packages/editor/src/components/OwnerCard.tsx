@@ -167,6 +167,11 @@ export function PartCard(props: { node: SchemaNode }) {
             <Show when={part().description}>
               <we-text variant="footnote">{part().description}</we-text>
             </Show>
+            <Show when={!part().missing}>
+              <we-text variant="footnote" color="text-muted">
+                Press inside it to reach one of its pieces, or hold ⌘ or Ctrl to reach one directly.
+              </we-text>
+            </Show>
           </Heading>
 
           <Column px="400" gap="100">
