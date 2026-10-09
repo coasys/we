@@ -287,10 +287,10 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
   /**
    * What belongs to this session rather than to the node, and so survives being a guest.
    *
-   * Only consent now. Authorized apps used to live here on the reasoning that `agent.getApps()`
-   * "answers for whoever is authenticated" — it does not. The executor keeps them in a
-   * process-global map persisted to one `apps_data.json`, not scoped per user, so on a shared node
-   * the list is either empty or somebody else's. They have moved to the node-scoped group below.
+   * Authorized apps used to live here on the reasoning that `agent.getApps()` "answers for whoever
+   * is authenticated" — it does not. The executor keeps them in a process-global map persisted to
+   * one `apps_data.json`, not scoped per user, so on a shared node the list is either empty or
+   * somebody else's. They have moved to the node-scoped group below, and consent has followed them.
    */
   const agentScoped: RuntimeAdminPort = {
     /*
@@ -306,8 +306,18 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
     */
     unsupported: () => missingExecutorMethods().map(({ method, firstSeen }) => ({ name: method, firstSeen })),
     onUnsupported: (handler) => onMissingMethod(handler),
+  };
 
-    // ── Consent ───────────────────────────────────────────────────────────────
+  /**
+   * Answering consent requests: granting an app its capabilities, and trusting a peer.
+   *
+   * Node-scoped, because both answers change the node. A capability grant needs `AGENT PERMIT`,
+   * which only the node's operator holds, and the trusted-agent list is one list for the whole
+   * node — the executor refuses `runtime.addTrustedAgents` and `runtime.deleteTrustedAgents` to a
+   * user session. A guest offered these prompts saw an "untrusted agent" request (the executor
+   * still raises those to every session) whose Trust and Decline both failed.
+   */
+  const consent: RuntimeAdminPort = {
     /**
      * One executor subscription, demultiplexed into the contract's two request kinds. AD4M raises
      * these as `exception` events carrying the request in `addon` — a JSON blob for capability
@@ -598,7 +608,7 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
     ...agentScoped,
     ...(canRead(CAP_DOMAIN.ai) ? aiRead : {}),
     ...(canWrite(CAP_DOMAIN.ai, CAP_VERB.create) ? aiWrite : {}),
-    ...(administersNode ? nodeScoped : {}),
+    ...(administersNode ? { ...nodeScoped, ...consent } : {}),
   };
 }
 
