@@ -5,7 +5,19 @@
     "description": "Pure WE application built with design system and schema renderer",
     "author": "James Weir"
   },
-  "modules": ["call", "transcribe", "live", "pocket", "notes", "globe", "graph", { "id": "polls", "enabled": false }],
+  "modules": [
+    "call",
+    "transcribe",
+    "live",
+    "pocket",
+    "notes",
+    "globe",
+    "graph",
+    {
+      "id": "polls",
+      "enabled": false
+    }
+  ],
   "templates": ["default", "workshop", "discord", "twitter", "instagram", "youtube", "kanban", "events", "scrapbook"],
   "views": ["about", "cards", "graph", "globe", "boards", "calendar"],
   "spaceStarters": [
@@ -17,7 +29,8 @@
         "defaultTemplateId": "workshop",
         "defaultThemeId": "dark",
         "autoInterpret": true,
-        "extractionTargets": ["TaskBlock", "EventBlock", "Relationship"]
+        "extractionTargets": ["TaskBlock", "EventBlock", "Relationship"],
+        "taskStates": ["$todo", "$doing", "$done"]
       },
       "records": [
         {
@@ -37,13 +50,113 @@
           "in": null
         },
         {
+          "$id": "todo",
+          "entity": "TaskState",
+          "fields": {
+            "name": "To do",
+            "slug": "todo",
+            "semantic": "open"
+          },
+          "in": null
+        },
+        {
+          "$id": "doing",
+          "entity": "TaskState",
+          "fields": {
+            "name": "Doing",
+            "slug": "doing",
+            "semantic": "active"
+          },
+          "in": null
+        },
+        {
+          "$id": "done",
+          "entity": "TaskState",
+          "fields": {
+            "name": "Done",
+            "slug": "done",
+            "semantic": "done"
+          },
+          "in": null
+        },
+        {
+          "$id": "involvement-assignee",
+          "entity": "InvolvementType",
+          "fields": {
+            "name": "Assigned",
+            "slug": "assignee",
+            "semantic": "responsible",
+            "reflexive": false,
+            "appliesTo": "TaskBlock",
+            "icon": "user-circle-check"
+          },
+          "in": null
+        },
+        {
+          "$id": "involvement-reviewer",
+          "entity": "InvolvementType",
+          "fields": {
+            "name": "Reviewing",
+            "slug": "reviewer",
+            "semantic": "reviewing",
+            "reflexive": false,
+            "appliesTo": "TaskBlock",
+            "icon": "eye"
+          },
+          "in": null
+        },
+        {
+          "$id": "involvement-going",
+          "entity": "InvolvementType",
+          "fields": {
+            "name": "Going",
+            "slug": "going",
+            "semantic": "committed",
+            "reflexive": true,
+            "appliesTo": "EventBlock",
+            "icon": "check-circle"
+          },
+          "in": null
+        },
+        {
+          "$id": "involvement-maybe",
+          "entity": "InvolvementType",
+          "fields": {
+            "name": "Maybe",
+            "slug": "maybe",
+            "semantic": "interested",
+            "reflexive": true,
+            "appliesTo": "EventBlock",
+            "icon": "question"
+          },
+          "in": null
+        },
+        {
+          "$id": "involvement-not-going",
+          "entity": "InvolvementType",
+          "fields": {
+            "name": "Not going",
+            "slug": "not-going",
+            "semantic": "declined",
+            "reflexive": true,
+            "appliesTo": "EventBlock",
+            "icon": "x-circle"
+          },
+          "in": null
+        },
+        {
           "$id": "canvas",
           "entity": "CollectionBlock",
-          "fields": { "kind": "canvas", "title": "Canvas" },
+          "fields": {
+            "kind": "canvas",
+            "title": "Canvas"
+          },
           "in": "$root"
         }
       ],
-      "roles": { "canvas": "$canvas" },
+      "roles": {
+        "canvas": "$canvas"
+      },
       "input": true
     }
   ],

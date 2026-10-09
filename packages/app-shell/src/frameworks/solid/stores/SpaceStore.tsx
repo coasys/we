@@ -92,7 +92,7 @@ import {
   routableSections,
   viewSettings,
 } from '@shared/viewResolution';
-import type { AgentProfileSummary, DatasetRef, FlowSnapshot, NewRecord } from '@we/backend-shared';
+import type { AgentProfileSummary, DatasetRef, FlowSnapshot } from '@we/backend-shared';
 import { displayName, trace } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
@@ -113,7 +113,6 @@ import {
   compressImageToFileData,
   type DatasetProxy,
   dataURIToFileData,
-  DEFAULT_TASK_STATES,
   type FileData,
   FOLLOW_SPACE,
   getEntityForDataset,
@@ -343,15 +342,8 @@ export interface ModuleSetting {
   active: boolean;
 }
 
-/**
- * A state this space's work can be in, as a screen reads it.
- *
- * `defined` is the one field with no counterpart on the record: false means this is a default the
- * space has never written down — a virtual state, which becomes a record the first time somebody
- * reorders it, withdraws it, or names a state with its slug. See `adoptTaskState`.
- */
+/** A state this space's work can be in, as a screen reads it — one `TaskState` record. */
 export interface TaskStateView {
-  /** Empty for a default the space has not written down. */
   id: string;
   name: string;
   /** What `TaskBlock.status` holds. */
@@ -362,7 +354,6 @@ export interface TaskStateView {
   /** The community's own icon, empty where it has not chosen one. */
   icon: string;
   retired: boolean;
-  defined: boolean;
   /** How many distinct people must agree before a task enters this state. 1 is a plain drop. */
   approvals: number;
   /** The involvement kind whose holders' agreement counts, or empty for any member's. */
@@ -561,8 +552,8 @@ export interface SpaceStore {
    *  spaces that predate the setting keep the chrome they had. */
   enabledModules: Accessor<string[]>;
   /**
-   * The states this community's work moves through — its own if it has defined any, otherwise the
-   * defaults. Ordered open, then active, then done. Includes withdrawn states, so a task sitting in
+   * The states this community's work moves through: its `TaskState` records, which a new space's
+   * starter writes. Ordered by the community's own order, else open, then active, then done. Includes withdrawn states, so a task sitting in
    * one still resolves; use `offeredTaskStates` for anything a person picks from.
    */
   taskStates: Accessor<TaskStateView[]>;
@@ -571,8 +562,8 @@ export interface SpaceStore {
   /** The space has been asked for its states. An empty list is otherwise "not fetched yet". */
   taskStatesLoaded: Accessor<boolean>;
   /**
-   * The kinds of part a person can have in a record — assigned, reviewing, going, maybe — the
-   * space's own where it has named any, otherwise the defaults. Includes withdrawn kinds, so an
+   * The kinds of part a person can have in a record — assigned, reviewing, going, maybe: the space's
+   * `InvolvementType` records, which a new space's starter writes. Includes withdrawn kinds, so an
    * involvement somebody still holds resolves; offer `offeredInvolvementTypes` instead.
    */
   involvementTypes: Accessor<InvolvementTypeView[]>;
@@ -906,8 +897,8 @@ export interface SpaceStore {
   /** Withdraw a signal type from use, or bring it back. Never removes the signals given with it. */
   setSignalTypeRetired: (signalTypeId: string, retired: boolean) => Promise<void>;
   /**
-   * Name a state this community's work moves through. The defaults stay virtual beside it; one with
-   * a default's slug adopts that default. The space's own board gains a column for it.
+   * Name a state this community's work moves through. Refused for a slug the space already has.
+   * The space's own board gains a column for it.
    */
   createTaskState: (config: {
     name: string;
@@ -918,7 +909,7 @@ export interface SpaceStore {
   /**
    * Change what a state is called, how it is drawn, or what it counts as — for everyone in the
    * space. By slug, which is the one thing it cannot change: tasks store it. An empty string clears
-   * a field, so a colour or an icon can be taken back off. A default is adopted by editing it.
+   * a field, so a colour or an icon can be taken back off.
    */
   updateTaskState: (
     slug: string,
@@ -942,14 +933,14 @@ export interface SpaceStore {
   /** Take back this agent's own vote on the move a task is waiting on. Never touches anybody else's. */
   withdrawTaskMove: (taskId: string) => Promise<void>;
   /**
-   * Withdraw a state from use, or bring it back. Never touches the work sitting in it. By slug: a
-   * default has no record until this, or a reorder, adopts it.
+   * Withdraw a state from use, or bring it back. Never touches the work sitting in it. By slug, which
+   * is what a task and a screen both hold.
    */
   setTaskStateRetired: (slug: string, retired: boolean) => Promise<void>;
   /**
    * Set the order this community reads its states in — the order of a board's columns. An ordered
    * relation, so two people reordering at once converge rather than one write discarding the other.
-   * By slug, since a default has no id until it is placed in an order, which adopts it.
+   * By slug, which is what a task and a screen both hold.
    */
   reorderTaskStates: (orderedSlugs: string[]) => Promise<void>;
   /**
@@ -960,7 +951,7 @@ export interface SpaceStore {
   setInvolvement: (nodeId: string, agent: string, kind: string, on: boolean) => Promise<void>;
   /** This agent's own answer to a record — going, maybe, not going — replacing any other; `''` withdraws it. */
   respondTo: (nodeId: string, kind: string) => Promise<void>;
-  /** Name a kind of part people can have. One with a default's slug adopts that default. */
+  /** Name a kind of part people can have. Refused for a slug the space already has. */
   createInvolvementType: (config: {
     name: string;
     semantic?: InvolvementSemantic;
@@ -3021,22 +3012,15 @@ export function SpaceStoreProvider(props: ParentProps) {
   /*
     ── Task states ──────────────────────────────────────────────────────────────────────────────
 
-    The states this community's work moves through, resolved the way `enabledModules` resolves: a
-    space that has defined none gets the defaults, because "unset" means *not decided* rather than
-    *none*. Reading an empty list as "no states" would empty every board in every space that existed
-    before the vocabulary did.
+    The states this community's work moves through: its `TaskState` records, and nothing else.
 
-    The defaults are **virtual**. They are never written down as a set: a default becomes a record of
-    the community's own only when somebody does something to it that needs a record — reorders it,
-    withdraws it, or names a state with its slug. Materialising all three on the first create was the
-    alternative, and it had the race this branch treats as decisive everywhere else: two members
-    naming their first state on two nodes each wrote the three defaults, and the slug check read a
-    local memo that could not see the other node. Adopting one state at a time, on demand, makes the
-    race one duplicate at worst — and duplicates collapse on read, by slug, so even that is harmless.
+    A new space's starter writes the first ones, once, at the create press — so they are the
+    community's own from the start, and editing "To do" is an edit like any other. There are no
+    defaults standing in for records: a space with no states has none, and its boards have no
+    columns, which is what a starter that seeds none asked for.
 
-    Loaded per space rather than queried in a template — unlike signal types, which templates resolve
-    by slug through a hoisted `$query`. The difference is the fallback: a template can filter a list
-    it was handed, and cannot substitute a list it was not.
+    Loaded per space rather than queried in a template, because every board, picker and key reads the
+    same ordered list, and the order is the community's (`Space.taskStates`).
   */
   const [ownTaskStates, setOwnTaskStates] = createSignal<TaskStateView[]>([]);
   const [taskStatesLoaded, setTaskStatesLoaded] = createSignal(false);
@@ -3045,9 +3029,9 @@ export function SpaceStoreProvider(props: ParentProps) {
   /**
    * One record per slug, the earliest written winning.
    *
-   * Two nodes adopting the same default at the same moment produce two records with one slug, and a
-   * task names its state by slug — so to every task they are one state, and the list should say so
-   * too. The earliest is kept because it is the one most peers already hold; the later one is
+   * Two members naming the same state at the same moment on two nodes produce two records with one
+   * slug, and a task names its state by slug — so to every task they are one state, and the list
+   * should say so too. The earliest is kept because it is the one most peers already hold; the later one is
    * inert, never offered and never listed, and costs nothing.
    */
   function dedupeBySlug(records: TaskState[]): TaskState[] {
@@ -3095,7 +3079,6 @@ export function SpaceStoreProvider(props: ParentProps) {
           color: r.color || '',
           icon: r.icon || '',
           retired: Boolean(r.retired),
-          defined: true,
           // A record written before these existed has neither: one approval, from anybody.
           approvals: approvalsOf({ slug: '', approvals: r.approvals }),
           approverKind: r.approverKind || '',
@@ -3191,18 +3174,13 @@ export function SpaceStoreProvider(props: ParentProps) {
     a.color === b.color &&
     a.icon === b.icon &&
     a.retired === b.retired &&
-    a.defined === b.defined &&
     a.approvals === b.approvals &&
     a.approverKind === b.approverKind;
 
   /**
-   * The states this space uses — its own records, and beneath them every default nobody has
-   * overridden.
+   * The states this space uses, as screens read them.
    *
-   * A record with a default's slug *is* that default, adopted: it replaces the virtual one, and
-   * whatever the community wrote on it — a name, an icon, a colour, `retired` — is what the state now
-   * is. So "To do" renamed to "Backlog" is one state with one slug, and every task holding `todo`
-   * follows it.
+   * "To do" renamed to "Backlog" is one state with one slug, and every task holding `todo` follows it.
    *
    * Ordered by the community's own arrangement where it has one, and otherwise by semantic — what is
    * coming, what is happening, what is stuck, what is finished, what was dropped. That is the only
@@ -3210,26 +3188,13 @@ export function SpaceStoreProvider(props: ParentProps) {
    * scalar two people editing at once break — see the note on `TaskState`.
    */
   const taskStates = createMemo<TaskStateView[]>(() => {
-    const own = ownTaskStates();
-    const overridden = new Set(own.map((state) => state.slug));
-    const virtual: TaskStateView[] = DEFAULT_TASK_STATES.filter((d) => !overridden.has(d.slug)).map((d) => ({
-      ...d,
-      icon: '',
-      id: '',
-      semantic: d.semantic as TaskStateView['semantic'],
-      retired: false,
-      defined: false,
-      approvals: 1,
-      approverKind: '',
-    }));
-    const states = [...own, ...virtual];
+    const states = [...ownTaskStates()];
     /*
       The community's own order where it has one, and what a state *counts as* where it has not.
 
       Position hints over a membership, one more time: a state the order does not mention is not
       dropped, it follows the ones it does — which is what lets a newly named state appear at all
-      without anybody having to arrange the columns first. A virtual default has no id and so no
-      position; reordering adopts it.
+      without anybody having to arrange the columns first.
     */
     const chosen = taskStateOrder();
     // Reading order for a state nobody has positioned: what is coming, what is happening, what is
@@ -3237,7 +3202,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // outstanding work, which is where something nobody can read belongs.
     const rank: Record<string, number> = { open: 0, active: 1, blocked: 2, done: 3, cancelled: 4 };
     const at = (state: TaskStateView) => {
-      const i = state.id ? chosen.indexOf(state.id) : -1;
+      const i = chosen.indexOf(state.id);
       return i === -1 ? Number.POSITIVE_INFINITY : i;
     };
     const sorted = states.sort((a, b) => {
@@ -3494,37 +3459,17 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
-  /**
-   * The record for a state, making one from the default where the community has never written it.
-   *
-   * The one place a default becomes a record. Called by whatever needs a record to act on — a
-   * withdrawal, a reorder — so the act that adopts a default is always one a person took on that
-   * state, and never a side effect of naming a different one. Answers null for a slug that is
-   * neither a record nor a default.
-   */
-  // `NewRecord`, because a caller wants a record to *act on* — rename it, withdraw it, put it in an
-  // order — and one of the two ways this answers is a create, which carries no relations. Nothing
-  // here reads one; `save` and `delete` survive, being the record's own and not a relation's.
-  async function adoptTaskState(p: DatasetProxy, slug: string): Promise<NewRecord<TaskState> | null> {
+  /** The record behind a state, by the slug a task and a screen both hold — or null when there is none. */
+  async function taskStateRecord(p: DatasetProxy, slug: string): Promise<TaskState | null> {
     const existing = await TaskState.findAll(p, { where: { slug } }).catch(() => [] as TaskState[]);
-    if (existing.length) return dedupeBySlug(existing)[0] ?? null;
-    const fallback = DEFAULT_TASK_STATES.find((d) => d.slug === slug);
-    if (!fallback) return null;
-    return await TaskState.create(p, {
-      name: fallback.name,
-      slug: fallback.slug,
-      semantic: fallback.semantic,
-      color: fallback.color,
-    });
+    return dedupeBySlug(existing)[0] ?? null;
   }
 
   /**
    * Name a state this community's work moves through.
    *
-   * Nothing else is written. The defaults stay virtual, and a state whose slug matches one — "To do"
-   * given an icon, say — *is* that default adopted, replacing it in the list rather than sitting
-   * beside it. A slug matching a state the community already wrote is refused, since two records
-   * with one slug are one state to every task holding it.
+   * A slug matching a state the community already has is refused, since two records with one slug
+   * are one state to every task holding it.
    *
    * The space's own board — Everything, the catch-all — gains a column for the new state in the same
    * act, so the one board whose job is to show all the work never lags the vocabulary. Boards people
@@ -3566,8 +3511,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * Change a state the community already has — its name, its colour, its glyph, or what it counts as.
    *
    * The counterpart `createTaskState` had no pair for: a state could be named and withdrawn and
-   * nothing else, so a colour was settable exactly once, at creation, and the three defaults — which
-   * ship with none — could never have one at all. Everything a key or a board draws a state with was
+   * nothing else, so a colour was settable exactly once, at creation. Everything a key or a board draws a state with was
    * therefore whichever fallback the rendering surface happened to hold.
    *
    * **The slug is not in the update.** It is what every task stores, so changing it would leave the
@@ -3584,7 +3528,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * **An empty string clears**, rather than being skipped — see `clearOnEmpty` in the AD4M adapter.
    * That is what makes a reset back to the template's default possible without deleting the state.
    *
-   * By slug, like its two neighbours: editing a default is the act that adopts it.
+   * By slug, like its two neighbours: it is what a task and a screen both hold.
    */
   async function updateTaskState(
     slug: string,
@@ -3600,7 +3544,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const p = datasetStore.currentDataset()?.handle;
     if (!p || !slug || !updates) return;
     try {
-      const record = await adoptTaskState(p, slug);
+      const record = await taskStateRecord(p, slug);
       if (!record) return;
       // Only what was passed: an absent key leaves the field alone, where `''` is a deliberate clear.
       if (updates.name !== undefined && updates.name.trim()) record.name = updates.name.trim();
@@ -3633,9 +3577,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * discards the first. It is the same reason a card's position lives on the board rather than on
    * the task, and the capability the model layer gained for exactly this.
    *
-   * Takes slugs, because a default has no id until somebody does this to it: putting a default in an
-   * order is the act that adopts it, so every state the order names becomes a record here, and the
-   * relation is then written over their ids.
+   * Takes slugs, which is what a screen holds; the relation is written over the records' ids.
    */
   async function reorderTaskStates(orderedSlugs: string[]): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
@@ -3647,7 +3589,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     try {
       const ids: string[] = [];
       for (const slug of slugs) {
-        const record = await adoptTaskState(p, slug);
+        const record = await taskStateRecord(p, slug);
         if (record?.id) ids.push(record.id);
       }
       const record = await Space.findOne(p, { where: { id: space.id } });
@@ -3671,14 +3613,13 @@ export function SpaceStoreProvider(props: ParentProps) {
    * defines. Retiring stops it being offered and leaves everything readable, and un-retiring puts
    * it back exactly as it was.
    *
-   * Takes a slug rather than an id, because withdrawing a default is the act that adopts it — it has
-   * no record until it does.
+   * Takes a slug rather than an id, which is what a task and a screen both hold.
    */
   async function setTaskStateRetired(slug: string, retired: boolean): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
     if (!p || !slug) return;
     try {
-      const record = await adoptTaskState(p, slug);
+      const record = await taskStateRecord(p, slug);
       if (!record) return;
       record.retired = retired;
       await record.save();
@@ -3693,8 +3634,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   /*
     ── Involvements ─────────────────────────────────────────────────────────────────────────────
 
-    Who is on what. The vocabulary is loaded here, virtual defaults and all, for the reason task
-    states are: a template can filter a list it was handed and cannot substitute one it was not. The
+    Who is on what. The vocabulary is loaded here, for the reason task states are: a template can filter a list it was handed and cannot substitute one it was not. The
     involvements themselves are not — they change with every click anybody makes, so a template holds
     them in a live query and reads them through the `involvement` host function. What a write *means*
     lives in `involvements.ts`.
@@ -3732,7 +3672,6 @@ export function SpaceStoreProvider(props: ParentProps) {
             icon: r.icon || '',
             color: r.color || '',
             retired: Boolean(r.retired),
-            defined: true,
           })),
       );
     } catch (error) {
@@ -3767,24 +3706,10 @@ export function SpaceStoreProvider(props: ParentProps) {
     ...involvementOptimism.ports,
   });
 
-  /**
-   * The record behind a kind, writing a default down first if that is all it is — `adoptTaskState`'s
-   * rule: editing or withdrawing a default is the act that makes it the community's own.
-   */
-  async function adoptInvolvementType(p: DatasetProxy, slug: string): Promise<InvolvementType | null> {
+  /** The record behind a kind, by slug — or null when there is none. See `taskStateRecord`. */
+  async function involvementTypeRecord(p: DatasetProxy, slug: string): Promise<InvolvementType | null> {
     const existing = (await InvolvementType.findAll(p, { where: { slug } }).catch(() => [])) as InvolvementType[];
-    if (existing.length) return existing[0];
-    const fallback = involvementTypes().find((kind) => kind.slug === slug && !kind.defined);
-    if (!fallback) return null;
-    return (await InvolvementType.create(p, {
-      name: fallback.name,
-      slug: fallback.slug,
-      semantic: fallback.semantic,
-      reflexive: fallback.reflexive,
-      appliesTo: fallback.appliesTo.join(','),
-      icon: fallback.icon,
-      color: fallback.color,
-    })) as InvolvementType;
+    return existing[0] ?? null;
   }
 
   /**
@@ -3837,7 +3762,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const p = datasetStore.currentDataset()?.handle;
     if (!p || !slug || !updates) return;
     try {
-      const record = await adoptInvolvementType(p, slug);
+      const record = await involvementTypeRecord(p, slug);
       if (!record) return;
       if (updates.name !== undefined && updates.name.trim()) record.name = updates.name.trim();
       if (updates.icon !== undefined) record.icon = updates.icon;
@@ -3859,7 +3784,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const p = datasetStore.currentDataset()?.handle;
     if (!p || !slug) return;
     try {
-      const record = await adoptInvolvementType(p, slug);
+      const record = await involvementTypeRecord(p, slug);
       if (!record) return;
       record.retired = retired;
       await record.save();

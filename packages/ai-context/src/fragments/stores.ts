@@ -373,11 +373,11 @@ export const storeEntries: StoreEntry[] = [
       },
       taskStates: {
         type: 'array',
-        properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'defined', 'approvals', 'approverKind'],
+        properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'approvals', 'approverKind'],
       },
       offeredTaskStates: {
         type: 'array',
-        properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'defined', 'approvals', 'approverKind'],
+        properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'approvals', 'approverKind'],
       },
       taskStatesLoaded: { type: 'boolean' },
       root: { type: 'string' },
@@ -386,11 +386,11 @@ export const storeEntries: StoreEntry[] = [
       taskFlowEnabled: { type: 'boolean' },
       involvementTypes: {
         type: 'array',
-        properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired', 'defined'],
+        properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired'],
       },
       offeredInvolvementTypes: {
         type: 'array',
-        properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired', 'defined'],
+        properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired'],
       },
       involvementTypesLoaded: { type: 'boolean' },
       unreadNodeIds: { type: 'array' },
@@ -1122,17 +1122,17 @@ export function generateStoresText(entries: StoreEntry[]): string {
         installedModules:
           'string[] — ids of the feature modules THIS AGENT wants available anywhere. Personal, held in the root dataset; unset means "not decided" and falls back to every registered module',
         taskStates:
-          '{ id, name, slug, semantic, color, retired, defined, approvals, approverKind }[] — the states this community\u2019s work moves through, its own if it has defined any and otherwise the defaults ("unset" means not decided, never none). Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community\u2019s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `defined` is false for a default the space has never written down — a virtual state, which becomes a record the first time somebody reorders it, withdraws it, or names a state with its slug. `approvals` is how many distinct people must agree before a task enters the state (1 is a plain drop) and `approverKind` the involvement kind whose holders\u2019 agreement counts (empty: anybody\u2019s) — see taskFlowEnabled',
+          '{ id, name, slug, semantic, color, retired, approvals, approverKind }[] — the states this community\u2019s work moves through: its TaskState records, which a new space\u2019s starter writes. A space with none has none. Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community\u2019s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `approvals` is how many distinct people must agree before a task enters the state (1 is a plain drop) and `approverKind` the involvement kind whose holders\u2019 agreement counts (empty: anybody\u2019s) — see taskFlowEnabled',
         offeredTaskStates:
-          '{ id, name, slug, semantic, color, retired, defined, approvals, approverKind }[] — the same list without the withdrawn ones. What a state picker or a new board column should offer',
+          '{ id, name, slug, semantic, color, retired, approvals, approverKind }[] — the same list without the withdrawn ones. What a state picker or a new board column should offer',
         taskStatesLoaded:
           'boolean — the space has been asked for its states. An empty list is otherwise indistinguishable from "not fetched yet"; gate an empty state on it',
         taskFlowEnabled:
           'boolean — this space\u2019s task states ask for agreement: some state needs more than one approval, or names whose approval counts. Where true, a card dragged into such a state waits instead of moving, and arrangedBoard(…).flow[card.id] describes what it is waiting on. Gate an explanation of the waiting on it; the board needs nothing else',
         involvementTypes:
-          '{ id, name, slug, semantic, reflexive, appliesTo, icon, color, retired, defined }[] — the kinds of part a person can have in a record: "Assigned" and "Reviewing" on a task, "Going", "Maybe" and "Not going" on an event, plus whatever this community has named. Its own if it has named any, otherwise those defaults. `slug` is what Involvement.kind holds. `semantic` is the closed meaning underneath the name — responsible, reviewing, committed, interested, declined — so a board still finds the assignee after "Assigned" is renamed. `reflexive` kinds are an agent\u2019s own answer, which nobody else may give, and an agent holds one per record. `appliesTo` is the entity names the kind is offered on, empty for all — filter with `\'TaskBlock\' in kind.appliesTo || !count(kind.appliesTo)`. Includes withdrawn kinds; offer offeredInvolvementTypes. Read who holds them through the `involvement` host function',
+          '{ id, name, slug, semantic, reflexive, appliesTo, icon, color, retired }[] — the kinds of part a person can have in a record: "Assigned" and "Reviewing" on a task, "Going", "Maybe" and "Not going" on an event, plus whatever this community has named: its InvolvementType records, which a new space\u2019s starter writes. `slug` is what Involvement.kind holds. `semantic` is the closed meaning underneath the name — responsible, reviewing, committed, interested, declined — so a board still finds the assignee after "Assigned" is renamed. `reflexive` kinds are an agent\u2019s own answer, which nobody else may give, and an agent holds one per record. `appliesTo` is the entity names the kind is offered on, empty for all — filter with `\'TaskBlock\' in kind.appliesTo || !count(kind.appliesTo)`. Includes withdrawn kinds; offer offeredInvolvementTypes. Read who holds them through the `involvement` host function',
         offeredInvolvementTypes:
-          '{ id, name, slug, semantic, reflexive, appliesTo, icon, color, retired, defined }[] — the same list without the withdrawn ones. What an assign menu or an RSVP control should offer',
+          '{ id, name, slug, semantic, reflexive, appliesTo, icon, color, retired }[] — the same list without the withdrawn ones. What an assign menu or an RSVP control should offer',
         involvementTypesLoaded: 'boolean — the space has been asked for its kinds of involvement',
         templateOverrideOptions:
           '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
@@ -1231,11 +1231,11 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setSignalTypeRetired:
           '(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given and re-creating one with the same slug does not restore them. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves',
         createTaskState:
-          '(config: { name, semantic?, color?, icon? }): names a state this community\u2019s work moves through — "Blocked", "In review". The counterpart to createSignalType one concept along. The defaults stay virtual beside it; a name whose slug matches a default adopts that default rather than sitting beside it. The space\u2019s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards',
+          '(config: { name, semantic?, color?, icon? }): names a state this community\u2019s work moves through — "Blocked", "In review". The counterpart to createSignalType one concept along. A slug the space already has is refused. The space\u2019s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards',
         updateTaskState:
-          '(slug: string, updates: { name?, icon?, color?, semantic?, approvals?, approverKind? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made: the three defaults ship without one. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. `approvals` (a whole number, 1–20) and `approverKind` (an involvement kind\u2019s slug, or empty) set what agreement the state asks for — the first state that asks for any turns the space\u2019s states into a flow, see taskFlowEnabled. By slug, so editing a default adopts it',
+          '(slug: string, updates: { name?, icon?, color?, semantic?, approvals?, approverKind? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. `approvals` (a whole number, 1–20) and `approverKind` (an involvement kind\u2019s slug, or empty) set what agreement the state asks for — the first state that asks for any turns the space\u2019s states into a flow, see taskFlowEnabled. By slug, which is what a task and a screen both hold',
         setTaskStateRetired:
-          '(slug: string, retired: boolean): withdraws a state from use, or brings it back. Never touches the work sitting in it — a task names its state by slug, so deleting the state would leave the work holding a word nothing defines. The same decision setSignalTypeRetired makes. By slug, so a default can be withdrawn: doing so writes its record, which is the moment a default becomes the community\u2019s own',
+          '(slug: string, retired: boolean): withdraws a state from use, or brings it back. Never touches the work sitting in it — a task names its state by slug, so deleting the state would leave the work holding a word nothing defines. The same decision setSignalTypeRetired makes. By slug, which is what a task and a screen both hold',
         approveTaskMove:
           '(taskId: string): agrees with the move a task is waiting on — the same as dragging the card there yourself, so it counts toward the state\u2019s approvals when the agent is one whose approval counts. Offer it where arrangedBoard(…).flow[card.id].canApprove',
         withdrawTaskMove:
@@ -1245,13 +1245,13 @@ export function generateStoresText(entries: StoreEntry[]): string {
         respondTo:
           '(nodeId: string, kind: string): gives this agent\u2019s own answer to a record — "going", "maybe", "not-going" — replacing any other answer it held there, in one transaction. Pass an empty kind to withdraw the answer. Refuses a kind that is not reflexive. Shown on the click, before the write lands',
         createInvolvementType:
-          '(config: { name, semantic?, reflexive?, appliesTo?, icon?, color? }): names a kind of part a person can have — "Shepherd", "Second pair of eyes". `appliesTo` is entity names joined with commas. `reflexive` is fixed once made. A name whose slug matches a default adopts it',
+          '(config: { name, semantic?, reflexive?, appliesTo?, icon?, color? }): names a kind of part a person can have — "Shepherd", "Second pair of eyes". `appliesTo` is entity names joined with commas. `reflexive` is fixed once made. A slug the space already has is refused',
         updateInvolvementType:
-          '(slug: string, updates: { name?, icon?, color?, semantic?, appliesTo? }): changes a kind the community already has. The slug and `reflexive` are absent — every involvement stores the one, and changing the other would rewrite who said what. An empty string clears a field. By slug, so editing a default adopts it',
+          '(slug: string, updates: { name?, icon?, color?, semantic?, appliesTo? }): changes a kind the community already has. The slug and `reflexive` are absent — every involvement stores the one, and changing the other would rewrite who said what. An empty string clears a field',
         setInvolvementTypeRetired:
           '(slug: string, retired: boolean): withdraws a kind from use, or brings it back, without touching anybody who holds it',
         reorderTaskStates:
-          '(orderedSlugs: string[]): sets the order this community reads its states in — which is the order of a board\u2019s columns. An ordered relation rather than a number on each state, so two people reordering at once converge instead of one write discarding the other. A state the order does not mention still appears, after the ones it does. Slugs, because a default has no id until it is placed in an order, which adopts it. Key the rows by slug and pair with we-sortable\u2019s onReorder, passing { $: "arg.detail" }',
+          '(orderedSlugs: string[]): sets the order this community reads its states in — which is the order of a board\u2019s columns. An ordered relation rather than a number on each state, so two people reordering at once converge instead of one write discarding the other. A state the order does not mention still appears, after the ones it does. Slugs, which is what a screen holds. Key the rows by slug and pair with we-sortable\u2019s onReorder, passing { $: "arg.detail" }',
         unreadNodeIds:
           'string[] — ids of containers in this space holding something newer than your read marker. The read side of `ReadMarker`: use it for unread dots with `{ "$": "channel.id in spaceStore.unreadNodeIds" }` rather than recomputing a `$latestChild` projection and a comparison per row',
         myMentions:

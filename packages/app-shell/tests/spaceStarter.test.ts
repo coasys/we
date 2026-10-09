@@ -243,4 +243,31 @@ describe('checking a starter', () => {
     const like = defaultSpaceStarter(seed.spaceStarters)?.records?.find((r) => r.entity === 'SignalType');
     expect(like?.fields).toMatchObject({ slug: DEFAULT_SIGNAL_TYPE.slug, name: DEFAULT_SIGNAL_TYPE.name });
   });
+
+  /*
+    The states a new space starts with. Small, but what is pinned here is what lets everything
+    outside a board reason about work whose states a community has renamed.
+  */
+  describe('the task states a new space starts with', () => {
+    const states = (defaultSpaceStarter(seed.spaceStarters)?.records ?? [])
+      .filter((r) => r.entity === 'TaskState')
+      .map((r) => r.fields as { slug: string; semantic: string });
+
+    it('covers open, active and done, so "is this outstanding" is always answerable', () => {
+      expect(states.map((s) => s.semantic).sort()).toEqual(['active', 'done', 'open']);
+    });
+
+    it('has exactly one done state, since that is the one anything outside a board reads', () => {
+      expect(states.filter((s) => s.semantic === 'done')).toHaveLength(1);
+    });
+
+    it('has unique slugs, which are what a task stores and a column binds to', () => {
+      expect(new Set(states.map((s) => s.slug)).size).toBe(states.length);
+    });
+
+    it('names the states the extraction hint offers a model, so what it extracts lands in a column', () => {
+      const status = CORE_MANIFEST.entities.TaskBlock.properties.status as { options?: string[] };
+      expect(states.map((s) => s.slug).sort()).toEqual([...(status.options ?? [])].sort());
+    });
+  });
 });
