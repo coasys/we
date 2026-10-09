@@ -7,17 +7,16 @@
  * the host wires into the call module's `CallStoreDeps.createBackend` — so the module stays
  * backend-agnostic and the host does the AD4M-specific construction.
  */
-import type { PerspectiveProxy, Session, SessionTopology, SfuMode } from '@coasys/ad4m';
+import type { PerspectiveProxy, Session, SessionTopology, SfuConfig, SfuMode } from '@coasys/ad4m';
 import type { DatasetHandle } from '@we/backend-shared';
 
 /**
  * The topology a session is asked for, from the mode the space's moderator chose.
  *
  * The session takes `mesh`, `sfu` or `auto`; the space's config has four modes. `mesh` means
- * "never use an SFU" and is passed as it is. The three SFU modes are passed as `auto`, which is
- * what the session already made of them: anything but `mesh` or `sfu` falls through to its
- * auto-discovery. Whether a space set to `designated` should instead insist on an SFU is a change
- * of behaviour, not of types, so it is not made here.
+ * "never use an SFU" and is passed as it is. The three SFU modes are passed as `auto` together with
+ * the config itself: the session's auto resolution then follows the config's mode and uses the SFU,
+ * while a space with no config still auto-discovers.
  */
 function topologyFor(mode: SfuMode | undefined): SessionTopology {
   return mode === 'mesh' ? 'mesh' : 'auto';
@@ -57,15 +56,19 @@ export function createCallSessionFactory(
     const neighbourhoodUrl = proxy.sharedUrl ?? '';
     const nhProxy = proxy.getNeighbourhoodProxy();
 
-    // An executor that predates the SFU, or a space with no config, answers with an error here;
-    // auto resolution is right for both.
-    let topology: SessionTopology = 'auto';
+    // An executor that predates the SFU answers with an error here; auto resolution is right then.
+    // With a config, the session's auto resolution follows its mode: any SFU mode uses the SFU.
+    let sfuConfig: SfuConfig | undefined;
     try {
-      topology = topologyFor((await nhProxy.sfuConfig(neighbourhoodUrl))?.mode);
+      sfuConfig = await nhProxy.sfuConfig(neighbourhoodUrl);
     } catch {
       // Non-fatal — fall back to auto topology resolution.
     }
 
-    return await nhProxy.createSession(callId, { neighbourhoodUrl, topology });
+    return await nhProxy.createSession(callId, {
+      neighbourhoodUrl,
+      topology: topologyFor(sfuConfig?.mode),
+      ...(sfuConfig ? { sfuConfig } : {}),
+    });
   };
 }

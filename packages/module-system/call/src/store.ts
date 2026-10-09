@@ -610,6 +610,9 @@ export function createCallStore(deps: ModuleStoreDeps) {
 
   let mesh: CallMesh | null = null;
   let backend: CallBackend | null = null;
+  /** The backend has joined. Before that its tracks come from the stream `join` is given, and a
+   *  track change has no session to replace into. */
+  let backendJoined = false;
   let controller: MediaController | null = null;
   let remoteStreams = new Map<string, MediaStream>();
   let peerStates = new Map<string, RTCPeerConnectionState>();
@@ -970,6 +973,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     if (backend) {
       backend.destroy().catch((err) => console.error('call: backend destroy', err));
       backend = null;
+      backendJoined = false;
     }
     mesh?.close();
     mesh = null;
@@ -1255,8 +1259,9 @@ export function createCallStore(deps: ModuleStoreDeps) {
           }
         : undefined,
       onTrackChanged: (kind, track) => {
-        if (backend) void backend.replaceTrack(kind, track);
-        else void mesh?.setOutboundTrack(kind, track);
+        if (backend) {
+          if (backendJoined) void backend.replaceTrack(kind, track);
+        } else void mesh?.setOutboundTrack(kind, track);
       },
       onStateChanged: (state) => {
         setMedia({ ...state });
@@ -1381,6 +1386,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
       if (controller !== started) return;
       const localStream = started.displayStream() ?? started.localStream() ?? new MediaStream();
       await backend.join(localStream);
+      backendJoined = true;
 
       // Seed remote streams from anyone already in the room.
       remoteStreams = new Map(backend.participants.map((p) => [p.agentDid, p.stream]));

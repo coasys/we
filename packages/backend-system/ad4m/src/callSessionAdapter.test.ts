@@ -32,10 +32,10 @@ function mockDataset(overrides?: { sharedUrl?: string; sfuConfigMode?: string })
 
 describe('createCallSessionFactory', () => {
   /*
-    The session takes mesh, sfu or auto, and resolves anything else as auto. The three SFU modes
-    were passed through as they were, which the session read as auto; passing auto says so.
+    The session takes mesh, sfu or auto. An SFU mode goes as auto with the config beside it: the
+    session's auto resolution follows the config, so the space's choice decides the topology.
   */
-  it('reads config and passes an SFU mode as auto', async () => {
+  it('reads config and passes an SFU mode as auto, with the config', async () => {
     const ds = mockDataset({ sfuConfigMode: 'designated' });
     const factory = createCallSessionFactory(
       () => null,
@@ -49,6 +49,7 @@ describe('createCallSessionFactory', () => {
     expect(ds._nhProxy.createSession).toHaveBeenCalledWith('test-call-123', {
       neighbourhoodUrl: 'neighbourhood://test-space',
       topology: 'auto',
+      sfuConfig: { mode: 'designated' },
     });
   });
 
@@ -65,6 +66,7 @@ describe('createCallSessionFactory', () => {
     expect(ds._nhProxy.createSession).toHaveBeenCalledWith('call-1', {
       neighbourhoodUrl: 'neighbourhood://test-space',
       topology: 'mesh',
+      sfuConfig: { mode: 'mesh' },
     });
   });
 
@@ -98,6 +100,7 @@ describe('createCallSessionFactory', () => {
     expect(ds._nhProxy.createSession).toHaveBeenCalledWith('call-4', {
       neighbourhoodUrl: 'neighbourhood://test-space',
       topology: 'auto',
+      sfuConfig: { mode: 'cascaded' },
     });
   });
 
