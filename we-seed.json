@@ -13,7 +13,8 @@
     "settings": {
       "defaultTemplateId": "workshop",
       "defaultThemeId": "dark",
-      "autoInterpret": true
+      "autoInterpret": true,
+      "extractionTargets": ["TaskBlock", "EventBlock", "Relationship"]
     },
     "records": [
       {
