@@ -346,10 +346,22 @@ export function railItem(opts: RailItemOptions): SchemaNode {
   const live = opts.live;
   const tone = live?.tone ?? 'success';
 
+  /*
+    The face never gives up width; the label does, since it truncates.
+
+    While the rail opens, a long label's reveal asks for more room than the row has yet, and the
+    deficit came out of the avatar's box — which shrank around a disc that stayed its own size and
+    centred in it, so face and name slid left together and back as the rail finished. The avatar's
+    own `flex: '0 0 auto'` default was not holding on its host, so the row says it outright.
+  */
+  const unshrinking = (node: SchemaNode): SchemaNode => ({ ...node, props: { ...node.props, flexShrink: '0' } });
+
   const avatar = opts.avatar;
-  const face: SchemaNode = avatar
-    ? badgedAvatar({ avatar: { src: avatar.src, name: avatar.name, hash: avatar.hash }, size: 'sm' })
-    : { type: 'we-icon', props: { name: opts.icon ?? '' } };
+  const face: SchemaNode = unshrinking(
+    avatar
+      ? badgedAvatar({ avatar: { src: avatar.src, name: avatar.name, hash: avatar.hash }, size: 'sm' })
+      : { type: 'we-icon', props: { name: opts.icon ?? '' } },
+  );
 
   /*
     The live mark: the same face, ringed and badged.
@@ -368,12 +380,14 @@ export function railItem(opts: RailItemOptions): SchemaNode {
           type: '$if',
           props: {
             condition: live.when,
-            then: badgedAvatar({
-              avatar: { src: avatar.src, name: avatar.name, hash: avatar.hash },
-              size: 'sm',
-              ring: tone,
-              badge: { icon: live.icon, tone },
-            }),
+            then: unshrinking(
+              badgedAvatar({
+                avatar: { src: avatar.src, name: avatar.name, hash: avatar.hash },
+                size: 'sm',
+                ring: tone,
+                badge: { icon: live.icon, tone },
+              }),
+            ),
             else: face,
           },
         }
