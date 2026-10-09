@@ -850,6 +850,8 @@ describe('extraction', () => {
     const watches: string[] = [];
     /** Collections a repair sweep was asked for. */
     const reconciled: string[] = [];
+    /** The dataset each entry in `watches` named, in the same order — `''` for none. */
+    const targetsSeen: string[] = [];
     /**
      * What each call extracts, as the host resolves it.
      *
@@ -864,6 +866,7 @@ describe('extraction', () => {
     return {
       calls,
       watches,
+      targetsSeen,
       reconciled,
       /** What the watch would currently be registered for — the module hands the host a collection. */
       watchTargetsOf: (collection: string) => forCall(collection),
@@ -891,11 +894,13 @@ describe('extraction', () => {
           if (result instanceof Error) throw result;
           return result;
         },
-        watchCollection: async (collectionId: string) => {
+        watchCollection: async (collectionId: string, target?: { dataset?: string }) => {
           watches.push(collectionId);
+          targetsSeen.push(target?.dataset ?? '');
         },
-        unwatchCollection: async (collectionId: string) => {
+        unwatchCollection: async (collectionId: string, target?: { dataset?: string }) => {
           watches.push(`-${collectionId}`);
+          targetsSeen.push(target?.dataset ?? '');
         },
         reconcileCollection: async (collectionId: string) => {
           reconciled.push(collectionId);
@@ -992,6 +997,69 @@ describe('extraction', () => {
 
       // Left running it would keep spending an LLM call on a conversation that is over.
       expect(i.watches).toEqual([collection, `-${collection}`]);
+    });
+
+    it('leaves the watch running when somebody else is still in the call', async () => {
+      /*
+        The reported bug: the first recorder to leave stopped extraction for everyone. The watch is one
+        registration the call shares, and the people still talking never re-registered it, because
+        nothing about their own call had changed.
+      */
+      const i = interpreter();
+      const them = peer(THEM, { type: 'call', id: CALL, record: RECORD });
+      const h = harness([...inCall, them], { interpretation: i.port });
+      await h.say('something worth writing down');
+
+      h.setPeers([them]);
+      await Promise.resolve();
+
+      expect(i.watches).toEqual([RECORD]);
+    });
+
+    it('stops the watch when the last one out never spoke', async () => {
+      /*
+        A record is adopted on the first flush, so somebody who stayed silent never adopted it — and
+        when they are the last to leave, nobody is left who did. Removing a watch nobody registered is
+        a no-op, so the check runs for every leaver.
+      */
+      const i = interpreter();
+      const h = harness(inCall, { interpretation: i.port });
+      await h.settle();
+
+      h.setPeers([]);
+      await Promise.resolve();
+
+      expect(i.watches).toEqual([`-${RECORD}`]);
+    });
+
+    it('registers and removes the watch in the call’s own space, wherever the reader is', async () => {
+      /*
+        Both ends used to resolve "the current dataset". A call survives navigation, so somebody
+        leaving while reading another space removed the watch from that space — a no-op — and left
+        the real one being polled by every peer for as long as the call's space exists.
+      */
+      const i = interpreter();
+      const anchored = [peer(ME, { type: 'call', id: CALL, record: RECORD, anchor: { datasetUri: 'space-a' } })];
+      const h = harness(anchored, { interpretation: i.port });
+      await h.say('something worth writing down');
+
+      h.setPeers([]);
+      await Promise.resolve();
+
+      expect(i.watches).toEqual([RECORD, `-${RECORD}`]);
+      expect(i.targetsSeen).toEqual(['space-a', 'space-a']);
+    });
+
+    it('stops the watch when the module is disposed with nobody else in the call', async () => {
+      const i = interpreter();
+      const disposers: Array<() => void> = [];
+      const h = harness(inCall, { interpretation: i.port, onDispose: (fn: () => void) => disposers.push(fn) });
+      await h.say('something worth writing down');
+
+      for (const dispose of disposers.reverse()) dispose();
+      await Promise.resolve();
+
+      expect(i.watches).toEqual([RECORD, `-${RECORD}`]);
     });
 
     it('tells the host a pass may have settled when it adopts a collection', async () => {
