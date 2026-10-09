@@ -46,8 +46,7 @@
             "semantic": "approval",
             "rangeMin": 0,
             "rangeMax": 1
-          },
-          "in": null
+          }
         },
         {
           "$id": "todo",
@@ -56,8 +55,7 @@
             "name": "To do",
             "slug": "todo",
             "semantic": "open"
-          },
-          "in": null
+          }
         },
         {
           "$id": "doing",
@@ -66,8 +64,7 @@
             "name": "Doing",
             "slug": "doing",
             "semantic": "active"
-          },
-          "in": null
+          }
         },
         {
           "$id": "done",
@@ -76,8 +73,7 @@
             "name": "Done",
             "slug": "done",
             "semantic": "done"
-          },
-          "in": null
+          }
         },
         {
           "$id": "involvement-assignee",
@@ -89,8 +85,7 @@
             "reflexive": false,
             "appliesTo": "TaskBlock",
             "icon": "user-circle-check"
-          },
-          "in": null
+          }
         },
         {
           "$id": "involvement-reviewer",
@@ -102,8 +97,7 @@
             "reflexive": false,
             "appliesTo": "TaskBlock",
             "icon": "eye"
-          },
-          "in": null
+          }
         },
         {
           "$id": "involvement-going",
@@ -115,8 +109,7 @@
             "reflexive": true,
             "appliesTo": "EventBlock",
             "icon": "check-circle"
-          },
-          "in": null
+          }
         },
         {
           "$id": "involvement-maybe",
@@ -128,8 +121,7 @@
             "reflexive": true,
             "appliesTo": "EventBlock",
             "icon": "question"
-          },
-          "in": null
+          }
         },
         {
           "$id": "involvement-not-going",
@@ -141,8 +133,7 @@
             "reflexive": true,
             "appliesTo": "EventBlock",
             "icon": "x-circle"
-          },
-          "in": null
+          }
         },
         {
           "$id": "canvas",

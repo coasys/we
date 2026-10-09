@@ -51,13 +51,13 @@ const STARTER: SpaceStarter = {
     taskStates: ['$todo', '$done'],
   },
   records: [
-    { $id: 'like', entity: 'SignalType', fields: { slug: 'like' }, in: null },
-    { $id: 'todo', entity: 'TaskState', fields: { slug: 'todo' }, in: null },
-    { $id: 'done', entity: 'TaskState', fields: { slug: 'done' }, in: null },
+    { $id: 'like', entity: 'SignalType', fields: { slug: 'like' } },
+    { $id: 'todo', entity: 'TaskState', fields: { slug: 'todo' } },
+    { $id: 'done', entity: 'TaskState', fields: { slug: 'done' } },
     { $id: 'canvas', entity: 'CollectionBlock', fields: { kind: 'canvas' }, in: '$root' },
-    { $id: 'board', entity: 'CollectionBlock', fields: { kind: 'board', gathers: ['$root'] } },
+    { $id: 'board', entity: 'CollectionBlock', fields: { kind: 'board', gathers: ['$root'] }, in: '$root' },
     { entity: 'CollectionBlock', fields: { kind: 'column', slug: 'todo' }, in: '$board' },
-    { $id: 'post', entity: 'CollectionBlock', fields: { type: 'root', kind: 'post' } },
+    { $id: 'post', entity: 'CollectionBlock', fields: { type: 'root', kind: 'post' }, in: '$root' },
     {
       entity: 'TextBlock',
       fields: { text: 'Welcome to {{space.name}}, $5 well spent', marks: '[{"type":"strong","start":0,"end":7}]' },
@@ -87,7 +87,7 @@ describe('starter settings', () => {
 });
 
 describe('applying a starter', () => {
-  it('writes each record under its container, in order — or under nothing', async () => {
+  it('writes each record under the container it names, in order — and one that names none under nothing', async () => {
     const { created, writer } = recorder();
     await applyStarterRecords(STARTER, TARGET, writer);
 
@@ -204,7 +204,7 @@ describe('checking a starter', () => {
           { $id: 'a', entity: 'CollectionBlock' },
           { entity: 'CollectionBlock', in: '$space' },
           { entity: 'CollectionBlock', fields: { kind: 'column', slug: 'blocked' } },
-          { $id: 'after', entity: 'CollectionBlock', in: null },
+          { $id: 'after', entity: 'CollectionBlock', in: null as unknown as string },
         ],
         roles: { canvas: '$missing', home: '$root' },
       },
@@ -216,12 +216,13 @@ describe('checking a starter', () => {
       'settings.defaultTemplateId names a template this deployment does not bundle: nowhere',
       'settings.enabledModules names an unknown module: ghost',
       'records[0].entity is not in the manifest: NoSuchThing',
-      "records[1].in must name $root, an earlier record's $id or null: $later",
+      "records[1].in must name $root or an earlier record's $id: $later",
       'records[2].fields.gathers refers to $after, which no earlier record defines',
       'records[2].fields.title has an unknown placeholder: {{space.owner}}',
       'records[3].$id is used twice: a',
-      "records[4].in must name $root, an earlier record's $id or null: $space",
+      "records[4].in must name $root or an earlier record's $id: $space",
       'records[5] is a column for a task state the starter does not define: blocked',
+      'records[6].in is null — leave it out for a record nothing contains',
       'settings.taskStates refers to $nowhere, which no record defines',
       "roles.canvas must name a record's $id: $missing",
       "roles.home must name a record's $id: $root",

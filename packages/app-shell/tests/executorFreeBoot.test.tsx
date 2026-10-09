@@ -723,7 +723,7 @@ describe('what the stores actually wrote', () => {
         {
           id: 'test',
           settings: { defaultTemplateId: 'workshop' },
-          records: [{ $id: 'canvas', entity: 'CollectionBlock', fields: { kind: 'canvas' } }],
+          records: [{ $id: 'canvas', entity: 'CollectionBlock', fields: { kind: 'canvas' }, in: '$root' }],
           roles: { canvas: '$canvas' },
           input: true,
         },

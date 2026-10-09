@@ -362,10 +362,12 @@ function validateSpaceStarter(seed) {
       const at = `${p}.records[${index}]`;
       // A module's entity lives in its module, not the core manifest — say so rather than refuse it.
       if (!entityExists(record.entity)) warn(`${at}.entity is not a core entity: ${record.entity}`);
-      if (record.in !== undefined && record.in !== null) {
+      if (record.in === null) {
+        error(`${at}.in is null — leave it out for a record nothing contains`);
+      } else if (record.in !== undefined) {
         const container = refOf(record.in);
         if (!container || container === 'space' || !defined.has(container)) {
-          error(`${at}.in must name $root, an earlier record's $id or null: ${record.in}`);
+          error(`${at}.in must name $root or an earlier record's $id: ${record.in}`);
         }
       }
       for (const [name, value] of Object.entries(record.fields || {})) {
@@ -403,6 +405,17 @@ function validateSpaceStarter(seed) {
         error(`${p}.roles.${name} must name a record's $id: ${ref}`);
     }
     if (errors.length === before) success(`space starter "${starter.id}" is valid`);
+    /*
+      What nothing contains, by entity. Right for vocabulary — found by type — and a forgotten `in`
+      everywhere else: a post or a channel written without one exists and no view lists it. Printed
+      rather than refused, so the format stays free of entity knowledge and a mistake still shows.
+    */
+    const uncontained = {};
+    for (const record of starter.records || []) {
+      if (record.in === undefined) uncontained[record.entity] = (uncontained[record.entity] || 0) + 1;
+    }
+    const counts = Object.entries(uncontained).map(([entity, n]) => `${n} ${entity}`);
+    if (counts.length) console.log(`   uncontained in "${starter.id}": ${counts.join(', ')}`);
   });
 }
 

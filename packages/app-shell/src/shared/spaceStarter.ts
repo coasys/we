@@ -21,8 +21,10 @@
  * its columns, the community's task states, a channel inside a category, ten welcome posts with a
  * paragraph and a picture each — all of it is `{ entity, fields, in }`, written in order:
  *
- * - **`in`** is containment: `$root` (the default), an earlier record's `$id`, or `null` for a record
- *   nothing contains — vocabulary, which is found by its type rather than by where it sits.
+ * - **`in`** is containment: `$root` or an earlier record's `$id`. Without one, nothing contains the
+ *   record — right for vocabulary, which is found by its type rather than by where it sits. Every
+ *   link is written out, containment included, so a record says what it is inside or is inside
+ *   nothing; `validate:seed` lists the uncontained ones, so a forgotten `in` shows.
  * - **A reference** is a string that is exactly `$<name>`: an earlier record's `$id`, `$root`, or
  *   `$space` (the `Space` record). It may be a field's value, or an element of a list, which is how
  *   a relation is written. A reference inside a JSON value — a block's `marks` — is left as text.
@@ -59,11 +61,8 @@ export interface SpaceStarterRecord {
    * to an earlier record, `$root` or `$space`, and a list of them is a to-many relation.
    */
   fields?: Record<string, unknown>;
-  /**
-   * What contains it: `$root` (the space collection, also the default), an earlier record's `$id`, or
-   * `null` for a record nothing contains.
-   */
-  in?: string | null;
+  /** What contains it: `$root` (the space collection) or an earlier record's `$id`. Absent, nothing does. */
+  in?: string;
 }
 
 export interface SpaceStarter {
@@ -212,8 +211,8 @@ export async function applyStarterRecords(
   const written: { id: string; entity: string; fields: Record<string, unknown> }[] = [];
   records: for (const record of starter?.records ?? []) {
     let parentId: string | null = null;
-    if (record.in !== null) {
-      const container = referenceName(record.in ?? ROOT_REF);
+    if (record.in !== undefined) {
+      const container = referenceName(record.in);
       parentId = container ? (ids.get(container) ?? null) : null;
       if (!parentId) {
         report(`space starter: ${record.entity} names a container that was not written (${record.in})`);
@@ -333,10 +332,12 @@ export function starterProblems(starter: SpaceStarter, vocabulary: StarterVocabu
   (starter.records ?? []).forEach((record, index) => {
     const at = `records[${index}]`;
     if (!vocabulary.entities.has(record.entity)) problems.push(`${at}.entity is not in the manifest: ${record.entity}`);
-    if (record.in !== undefined && record.in !== null) {
+    if (record.in === null) {
+      problems.push(`${at}.in is null — leave it out for a record nothing contains`);
+    } else if (record.in !== undefined) {
       const container = referenceName(record.in);
       if (!container || container === referenceName(SPACE_REF) || !defined.has(container)) {
-        problems.push(`${at}.in must name ${ROOT_REF}, an earlier record's $id or null: ${record.in}`);
+        problems.push(`${at}.in must name ${ROOT_REF} or an earlier record's $id: ${record.in}`);
       }
     }
     for (const [name, value] of Object.entries(record.fields ?? {})) {

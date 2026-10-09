@@ -153,8 +153,10 @@ A starter has four parts:
 
 - **`settings`:** the `Space` record's own fields (template, theme, `extractionTargets`, …).
 - **`records`:** written in order, each `{ "$id", "entity", "fields", "in" }`:
-  - **`in`** is the record's container: `"$root"` (the space collection, the default), an earlier
-    record's `$id`, or `null` for vocabulary (task states, signal types) that nothing contains.
+  - **`in`** is the record's container: `"$root"` (the space collection) or an earlier record's
+    `$id`. Leave it out for a record nothing contains, such as vocabulary (task states, signal
+    types). Every link is written out, so `validate:seed` lists the uncontained records per starter,
+    and a forgotten `in` on a post or a channel shows up there.
   - **A field value that is exactly `"$name"`** refers to an earlier record, `$root` or `$space`.
     A list of them is a to-many relation.
 - **`roles`:** how templates find what the starter made, e.g. `"canvas": "$canvas"`.
