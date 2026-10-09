@@ -60,6 +60,7 @@ import {
   loadBlocks,
   reconcileBlocks,
   recordToTextBlock,
+  refreshComposition,
   textBlockToRecord,
 } from '../src/serialization';
 import { decodeEditorState, encodeBase64Utf8 } from '../src/utils';
@@ -272,6 +273,52 @@ describe('extractMentions', () => {
       },
     ];
     expect(extractMentions(blocks)).toEqual(['did:key:a', 'did:key:b']);
+  });
+});
+
+// ── refreshComposition ──────────────────────────────────────────────────────
+
+describe('refreshComposition', () => {
+  /*
+    A composition written record by record — a root, then the blocks inside it — the way a space
+    starter writes one, rather than through `createBlocks`. The renderer draws from the stored
+    document alone, so until this runs the post is blank however many blocks it holds.
+  */
+  async function writtenByHand() {
+    const root = (await FakeCollection.create(perspective, { type: 'root', kind: 'post' })) as FakeCollection;
+    const heading = await FakeText.create(perspective, { style: 'h2', text: 'Welcome' });
+    const body = await FakeText.create(perspective, {
+      style: 'normal',
+      text: 'Say hello to Ann',
+      marks: JSON.stringify([{ start: 13, end: 16, type: 'mention', did: 'did:ann' }]),
+    });
+    await root.addChildren(heading.id);
+    await root.addChildren(body.id);
+    return { root, heading, body };
+  }
+
+  it('writes the stored document, its text and its mentions from the blocks inside', async () => {
+    const { root, heading, body } = await writtenByHand();
+    expect(root.editorState).toBeUndefined();
+
+    expect(await refreshComposition(perspective, root.id)).toBe(true);
+
+    expect(blobOf(root).map((b) => b._key)).toEqual([heading.id, body.id]);
+    expect(blobOf(root).map((b) => (b as TextContentBlock).text)).toEqual(['Welcome', 'Say hello to Ann']);
+    expect(root.textContent).toBe('Welcome Say hello to Ann');
+    expect(root.mentions).toEqual(['did:ann']);
+  });
+
+  it('stores what createBlocks would have stored for the same document', async () => {
+    const { root } = await writtenByHand();
+    await refreshComposition(perspective, root.id);
+    const composed = (await createBlocks(perspective, blobOf(root), { kind: 'post' })) as unknown as FakeCollection;
+    expect(composed.textContent).toBe(root.textContent);
+    expect(composed.mentions).toEqual(root.mentions);
+  });
+
+  it('answers false for something that is not a composition', async () => {
+    expect(await refreshComposition(perspective, 'no-such-id')).toBe(false);
   });
 });
 

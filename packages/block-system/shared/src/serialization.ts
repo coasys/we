@@ -480,6 +480,50 @@ function hasMentions(model: unknown): model is RecordInstance & NodeWithMentions
  * for the mentions it kept — each removed link is a network write, and an unchanged edge should
  * cost nothing.
  */
+/**
+ * Write what a composition's root stores about its document: the encoded document a renderer draws
+ * from, its plain text, and a mention link per person it names.
+ *
+ * All three are projections of the blocks, so every path that changes the blocks ends here — a
+ * composer's create, an edit's reconcile, and a composition written record by record
+ * (`refreshComposition`). One place, so they cannot come to disagree about what a document stores.
+ * The mention links after the save: `addMentions` writes links, a separate operation from the
+ * property write, with nothing to add to that round trip.
+ */
+async function writeCompositionState(
+  root: RecordInstance,
+  blocks: readonly ContentBlock[],
+  batchId?: string,
+): Promise<void> {
+  const record = root as RecordInstance & Record<string, unknown>;
+  if ('editorState' in record) {
+    record.editorState = asFileField(encodeEditorState(blocks));
+    record.textContent = extractTextContent(blocks);
+  }
+  await root.save(batchId);
+  await writeMentions(root, blocks, batchId);
+}
+
+/**
+ * Derive a composition's stored document from the blocks already inside it.
+ *
+ * For a composition written record by record rather than through `createBlocks` — a space
+ * starter's posts, say, which arrive as a `CollectionBlock` and the blocks it contains. Until this
+ * runs the root stores no document, and a renderer, which draws from the stored document alone for
+ * speed, shows it empty. Answers whether there was a composition to write.
+ */
+export async function refreshComposition(
+  perspective: BlockDataset,
+  rootUri: string,
+  options: { batchId?: string } = {},
+): Promise<boolean> {
+  const resolved = await resolveBlockInstance(perspective, rootUri);
+  if (!resolved) return false;
+  const blocks = await childrenToBlocks(perspective, resolved.model);
+  await writeCompositionState(resolved.model, blocks, options.batchId);
+  return true;
+}
+
 async function writeMentions(root: RecordInstance, blocks: readonly ContentBlock[], batchId?: string): Promise<void> {
   if (!hasMentions(root)) return;
 
@@ -602,15 +646,7 @@ export async function createBlocks(
         if (value && name in root) root[name] = value;
       }
 
-      if ('editorState' in root) {
-        root.editorState = asFileField(encodeEditorState(uploaded));
-        root.textContent = extractTextContent(uploaded);
-      }
-      await root.save(tx.batchId);
-
-      // After the save: `addMentions` writes links, which is a separate operation from the property
-      // write above and has nothing to add to that round trip.
-      await writeMentions(root, uploaded, tx.batchId);
+      await writeCompositionState(root, uploaded, tx.batchId);
       return root;
     },
     { batchId },
@@ -961,16 +997,9 @@ export async function reconcileBlocks(
       if (!claimed.has(id) && base.has(id)) await resolved.model.delete(tx.batchId);
     }
 
-    const blobBlocks = withFinalChildren(uploaded, existingRoot);
-    const rootRecord = existingRoot as BlockWithChildren & Record<string, unknown>;
-    rootRecord.editorState = asFileField(encodeEditorState(blobBlocks));
-    rootRecord.textContent = extractTextContent(blobBlocks);
-    await existingRoot.save(tx.batchId);
-
-    // Edits add and remove mentions like any other content, so the edge set is reconciled here for
-    // the same reason `textContent` is rewritten: both are projections of the document that just
-    // changed.
-    await writeMentions(existingRoot, blobBlocks, tx.batchId);
+    // Edits add and remove mentions like any other content, so the edge set is reconciled with the
+    // stored document and its text: all three are projections of the document that just changed.
+    await writeCompositionState(existingRoot, withFinalChildren(uploaded, existingRoot), tx.batchId);
     return existingRoot;
 
     /** The blocks a parent ends up with, kept additions included, recursively. */
