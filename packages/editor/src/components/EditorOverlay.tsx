@@ -1349,12 +1349,28 @@ function VisualEditorLayer() {
           overflow: 'hidden',
         }}
       >
-        {/* Another template's territory — outlined and named, never selectable. */}
-        <Show when={viewRegionRelRect() && viewRegion()!.owner.id !== visualEditor.selectedOwner()?.id}>
-          <OwnerBoundary rect={viewRegionRelRect()!} owner={viewRegion()!.owner} />
+        {/* Another template's territory — outlined and named, never selectable. Each outline takes
+            what it draws from its own condition rather than reading it again: selecting a node clears
+            the owner before the outline unmounts, and a second read finds nothing. */}
+        <Show
+          when={(() => {
+            const rect = viewRegionRelRect();
+            const region = viewRegion();
+            return rect && region && region.owner.id !== visualEditor.selectedOwner()?.id
+              ? { rect, owner: region.owner }
+              : null;
+          })()}
+        >
+          {(shown) => <OwnerBoundary rect={shown().rect} owner={shown().owner} />}
         </Show>
-        <Show when={ownerRelRect()}>
-          <OwnerBoundary rect={ownerRelRect()!} owner={visualEditor.selectedOwner()!} selected />
+        <Show
+          when={(() => {
+            const rect = ownerRelRect();
+            const owner = visualEditor.selectedOwner();
+            return rect && owner ? { rect, owner } : null;
+          })()}
+        >
+          {(shown) => <OwnerBoundary rect={shown().rect} owner={shown().owner} selected />}
         </Show>
 
         {/* Hover highlight — skip when same as selected */}

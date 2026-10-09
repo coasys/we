@@ -504,13 +504,17 @@ function editorProbe(): void {
     hoveredId: hovered,
     selectedId: selected,
     onHover: setHovered,
+    // One selection at a time, as the app's provider keeps it: selecting a node clears the owner, and
+    // the overlay has to survive that happening under an outline that is still drawn.
     onSelect: (id: string | null) => {
       setSelected(id);
+      if (id) setOwner(null);
       record('__probeSelected', id);
     },
     selectedOwner: owner,
     onSelectOwner: (next: { kind: string; id: string } | null) => {
       setOwner(next as never);
+      if (next) setSelected(null);
       record('__probeOwner', next ? `${next.kind}:${next.id}` : null);
     },
     registerNode: () => () => {},
