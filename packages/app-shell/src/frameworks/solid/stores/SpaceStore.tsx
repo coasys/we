@@ -128,6 +128,7 @@ import {
   SignalType,
   Space,
   SpacePreference,
+  SpaceRole,
   TaskState,
 } from '@we/entities';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
@@ -2987,12 +2988,34 @@ export function SpaceStoreProvider(props: ParentProps) {
       console.warn('SpaceStore: could not read the space’s collection and roles', error);
     }
   }
+  /*
+    Read on entering the space, then follow its roles.
+
+    Read once, a role written after entering never arrived: a space entered while its starter was
+    still writing showed "make a board" beside the board the starter had just made, and a board a
+    peer made reached nobody until they switched space. Task states are followed for the same reason.
+  */
   createEffect(() => {
-    void datasetStore.currentDataset()?.id;
-    void datasetStore.isWeSpace();
+    const dataset = datasetStore.currentDataset()?.handle;
+    const weSpace = datasetStore.isWeSpace();
+    let stopped = false;
+    let watch: { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+    onCleanup(() => {
+      stopped = true;
+      watch?.dispose();
+    });
     setSpaceRoot('');
     setSpaceRoles({});
-    void untrack(reloadSpaceStructure);
+    void untrack(reloadSpaceStructure).then(() => {
+      if (stopped || !dataset || !weSpace) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      watch = (SpaceRole as any).query(dataset, {}) as typeof watch;
+      watch
+        ?.subscribe(() => void (!stopped && reloadSpaceStructure()))
+        .catch((error: unknown) => {
+          console.warn('SpaceStore: could not watch the space’s roles', error);
+        });
+    });
   });
 
   /**

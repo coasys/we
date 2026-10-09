@@ -113,6 +113,7 @@ import { ShapeStoreProvider } from '../src/frameworks/solid/stores/ShapeStore';
 import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
 import { type SpaceStore, SpaceStoreProvider, useSpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
 import { provideSeed } from '../src/shared/seedRegistry';
+import { writeSpaceRole } from '../src/shared/spaceRoles';
 
 provideSeed({ name: 'test', modules: [] } as never);
 
@@ -759,6 +760,27 @@ describe('what the stores actually wrote', () => {
     } finally {
       provideSeed({ name: 'test', modules: [] } as never);
     }
+  }, 10000);
+
+  it('hears a role written after the space was entered', async () => {
+    /*
+      Roles were read once, on entering. A space entered while its starter was still writing — or
+      one whose board a peer made afterwards — showed "make a board" beside a board that existed.
+    */
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.spaces.createSpace('Late Roles', 'x', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Late Roles')!;
+    await stores.datasets.switchDataset(ref.id);
+    await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
+    expect(stores.spaces.roles().board).toBeUndefined();
+
+    const [space] = await Space.findAll(ref.handle as never);
+    const board = await CollectionBlock.create(ref.handle as never, { kind: 'board', title: 'Board' } as never);
+    await writeSpaceRole(ref.handle as never, space.id, 'board', board.id);
+
+    await vi.waitFor(() => expect(stores.spaces.roles().board).toBe(board.id));
   }, 10000);
 
   it('persists sidebar order as settings, not just as store state', async () => {
