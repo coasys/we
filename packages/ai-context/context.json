@@ -4963,12 +4963,6 @@
           "target": "LocationBlock"
         },
         {
-          "name": "board",
-          "kind": "HasOne",
-          "predicate": "we://board",
-          "target": "CollectionBlock"
-        },
-        {
           "name": "taskStates",
           "kind": "HasMany",
           "predicate": "we://task_state_order",
@@ -7139,44 +7133,22 @@
         },
         "taskStates": {
           "type": "array",
-          "properties": ["id", "name", "slug", "semantic", "color", "retired", "defined", "approvals", "approverKind"]
+          "properties": ["id", "name", "slug", "semantic", "color", "retired", "approvals", "approverKind"]
         },
         "offeredTaskStates": {
           "type": "array",
-          "properties": ["id", "name", "slug", "semantic", "color", "retired", "defined", "approvals", "approverKind"]
+          "properties": ["id", "name", "slug", "semantic", "color", "retired", "approvals", "approverKind"]
         },
         "taskStatesLoaded": {
           "type": "boolean"
         },
         "involvementTypes": {
           "type": "array",
-          "properties": [
-            "id",
-            "name",
-            "slug",
-            "semantic",
-            "reflexive",
-            "appliesTo",
-            "icon",
-            "color",
-            "retired",
-            "defined"
-          ]
+          "properties": ["id", "name", "slug", "semantic", "reflexive", "appliesTo", "icon", "color", "retired"]
         },
         "offeredInvolvementTypes": {
           "type": "array",
-          "properties": [
-            "id",
-            "name",
-            "slug",
-            "semantic",
-            "reflexive",
-            "appliesTo",
-            "icon",
-            "color",
-            "retired",
-            "defined"
-          ]
+          "properties": ["id", "name", "slug", "semantic", "reflexive", "appliesTo", "icon", "color", "retired"]
         },
         "involvementTypesLoaded": {
           "type": "boolean"
