@@ -14,7 +14,7 @@ import { markAction, markState } from '@we/module-shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { dockRegistry } from '../src/shared/registries/dockRegistry';
-import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
+import { createModuleStoreDeps, provideModuleHostServices } from '../src/shared/registries/moduleHostServices';
 import { resolveParts } from '../src/shared/registries/moduleParts';
 import {
   isCommunityDecided,
@@ -161,6 +161,34 @@ describe('moduleRegistry — registration', () => {
     expect(moduleStores.notes).toBeDefined();
     moduleRegistry.unregister('notes');
     expect(moduleStores.notes).toBeUndefined();
+  });
+
+  it('hands a store host services bound after it registered', async () => {
+    // Module stores mount before the AD4M stores bind the call ports. A store that read them at
+    // registration would see `undefined` for good — the call never got a session backend.
+    let deps: ModuleStoreDeps | undefined;
+    moduleRegistry.register(
+      mod('call', {
+        createStore: (d) => {
+          deps = d;
+          return {};
+        },
+      }),
+      host,
+      storeDeps,
+    );
+    expect((deps as { createBackend?: unknown }).createBackend).toBeUndefined();
+
+    const createCallBackend = vi.fn(async () => ({}));
+    const unbind = provideModuleHostServices({ createCallBackend, callConfigSupported: () => true });
+    try {
+      const late = deps as { createBackend?: (id: string) => Promise<unknown>; callConfigSupported?: () => boolean };
+      await late.createBackend?.('room');
+      expect(createCallBackend).toHaveBeenCalledWith('room');
+      expect(late.callConfigSupported?.()).toBe(true);
+    } finally {
+      unbind();
+    }
   });
 
   it('removes every contribution on unregister, panels included', () => {

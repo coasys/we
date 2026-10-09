@@ -201,6 +201,8 @@ export default [
       // link it via pnpm.overrides.  ESLint must not walk into that
       // checkout — it's not WE source, and walking it OOMs the linter.
       'ad4m/**',
+      // Wind tunnel test infrastructure — copied from coasys/ad4m-wind-tunnel.
+      'tests/sfu-wind-tunnel/**',
     ],
   },
   {

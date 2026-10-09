@@ -478,14 +478,19 @@ function depsFor(
     };
   }
 
-  return {
-    ...storeDeps,
-    onDispose: (fn) => disposers.push(fn),
-    state: markState,
-    action: markAction,
-    settings: () => publicSettings(definition) as Record<string, boolean | string | number>,
-    kernels,
-  };
+  // Copy the bag's property descriptors, not its values: some fields are getters over services the
+  // host binds after modules register (`createBackend`, `getCallConfig`, ...). A spread would read
+  // each getter once, now, and hand the store `undefined` for good.
+  return Object.defineProperties(Object.defineProperties({}, Object.getOwnPropertyDescriptors(storeDeps)), {
+    onDispose: { value: (fn: () => void) => disposers.push(fn), enumerable: true },
+    state: { value: markState, enumerable: true },
+    action: { value: markAction, enumerable: true },
+    settings: {
+      value: () => publicSettings(definition) as Record<string, boolean | string | number>,
+      enumerable: true,
+    },
+    kernels: { value: kernels, enumerable: true },
+  }) as ModuleStoreDeps;
 }
 
 export const moduleRegistry = {

@@ -3523,6 +3523,10 @@ Needs: kernels records, presence, ephemeral, media, peerConnection; permissions 
   - active — Whether this agent is in a call right now.
   - arrangement — The { columns, rows } the stage is currently laid out in.
   - audioDevice — The microphone this agent has chosen, or empty for whatever the system offers.
+  - availableSfuNodes — SFU-capable executor nodes found in this neighbourhood — { did, bindAddress } each.
+  - callConfig — This space's call topology defaults — { mode, designatedPeer, fallback, maxMeshParticipants, sfuPeers } — as its creator stored it in the neighbourhood.
+  - callConfigSaving — Whether a call config write is in flight.
+  - callConfigSupported — Whether the backend can read and write call configuration. False on executors without SFU support.
   - callId — The id of the call this agent is in, or null between calls.
   - callRecordId — The id of the call record this agent's call writes into — what a transcript, a board or a call's page follows — or empty between calls.
   - callSpace — The space the call is in as { uri, name, avatar } — name and avatar empty until the host knows them — or null between calls.
@@ -3534,20 +3538,24 @@ Needs: kernels records, presence, ephemeral, media, peerConnection; permissions 
   - devicesProbed — Whether this machine has been asked for a device yet. Until it has, an empty device list means "not allowed to look", not "none here".
   - elsewhere — Whether the call this agent is in belongs to a space other than the one on screen.
   - focusedId — Whose tile the stage is giving most of its room to, or null for an even grid.
+  - hasSessionBackend — Whether this call uses a Session backend.
   - liveCalls — Every call running in the space on screen, whichever this agent is in — { id, recordId, anchorNodeId, peers, faces, count, mine, label } per call.
   - media — This agent's own { audioEnabled, videoEnabled, screenShareEnabled } — what the mute, camera and share toggles reflect.
   - microphoneOptions — The microphones as picker options, "System default" first — ready for a we-select.
   - microphones — The microphones this machine has — { deviceId, label, groupId } each. A label is empty until capture has been allowed once.
   - ongoing — Everyone in any call in the space on screen, as avatar faces { image, hash, initials, did }, whether or not this agent has joined.
   - problem — Why the call could not start or a device could not be reached, as a sentence to show, or null.
+  - qualityPreference — The SFU quality layer this agent prefers.
   - solo — Whether the spotlight has the stage to itself, with everyone else hidden.
   - tiles — One entry per participant in the call — { id, did, stream, isSelf } — changing only when somebody joins, leaves or their stream changes.
   - tileStates — Each participant's volatile flags by id — muted, camera, screen, connection, focused, hasPicture, plus retrying, attempts and transport for how the connection is faring — looked up with find() so a tile never remounts.
+  - topology — Whether this call runs through the SFU relay ('sfu') or the peer-to-peer mesh ('mesh').
   - videoDevice — The camera this agent has chosen, or empty for whatever the system offers.
 - Actions (`{ "$action": "modules.call.<name>" }`):
   - attachAnchor — Make the running call about the record whose id is given, without rejoining it.
   - closeDeviceSettings — Close the camera and microphone chooser.
   - continueCall — Pick a past call back up by its record id, joining anyone already in it and writing no new record.
+  - cycleQuality — Cycle through quality presets: high, medium, low.
   - dismissProblem — Dismiss the problem message.
   - focusTile — Give the participant with this id the spotlight, or take it back if they already have it.
   - goToCall — Go to the call: join the one running here, pick up the one on screen, or start one; in a call already, bring it up.
@@ -3558,9 +3566,13 @@ Needs: kernels records, presence, ephemeral, media, peerConnection; permissions 
   - openDeviceSettings — Open the camera and microphone chooser.
   - reconnectPeer — Build one peer's connection again from scratch, without leaving the call.
   - refreshDevices — Re-read which microphones and cameras this machine has.
+  - refreshSfuNodes — Re-scan the neighbourhood for SFU-capable executor nodes.
   - returnToCall — Go back to the space the call is in; does nothing outside a call.
+  - saveCallConfig — Replace the entire call config.
   - setArrangement — Report the { columns, rows } a stage grid settled on, so fit-to-content can solve for it.
+  - setCallConfigField — Write one field of the call config.
   - setDevice — Use a different microphone or camera; an empty id means whatever the system offers.
+  - setQualityPreference — Set the SFU quality layer preference.
   - startCall — Start a new call in the space on screen, optionally about the record whose id is given; resolves once joined.
   - toggleAudio — Mute or unmute this agent’s microphone.
   - toggleScreenShare — Start or stop sharing this agent’s screen; sharing replaces the camera until it stops.
