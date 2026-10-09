@@ -4439,22 +4439,19 @@ const kanbanRoute: RouteSchema = {
 
             This was the call's own board, behind a "start or choose a call" gate. Every call files what
             it finds into the space collection now, so the work a call commits to is the space's work,
-            and the board for it is the space's — `Space.board`, the "Everything" board, gathering from
-            the space collection. What one call produced is a lens over it rather than a board of its
+            and the board for it is the space's — the one playing its `board` role, gathering from the
+            space collection. What one call produced is a lens over it rather than a board of its
             own: see `FROM_PARAM`.
 
             `flex: '1'` and no `ROUTE_BAND`, so the "no board yet" gate centres in this box. The band
             goes on the branches that draw from the top — the board and its spinner.
           */
           props: { width: '100%', flex: '1' },
-          $queries: {
-            spaceRow: { entity: 'Space', include: { board: true }, limit: 1 },
-          },
           children: [
             {
               type: '$if',
               props: {
-                condition: { $: 'first(local.spaceRow).board.id' },
+                condition: { $: 'spaceStore.roles.board' },
                 then: {
                   type: 'Column',
                   props: { width: '100%', ...ROUTE_BAND },
@@ -4462,7 +4459,7 @@ const kanbanRoute: RouteSchema = {
                     taskBoard({
                       // The space's own board, which gathers from the space collection — a fact the
                       // board carries, so nothing here has to say so.
-                      boardId: { $: 'first(local.spaceRow).board.id' },
+                      boardId: { $: 'spaceStore.roles.board' },
                       // The "this call" lens — see `FROM_PARAM`.
                       onlyFrom: { record: CALL, param: FROM_PARAM },
                       /*
@@ -4547,13 +4544,14 @@ const kanbanRoute: RouteSchema = {
                   ],
                 },
                 /*
-                  "No board yet" is an answer, and it is only given once the space record has answered.
-                  Before that the same spinner the board itself shows holds the place.
+                  "No board yet" is an answer, and it is only given once the space's roles have been
+                  read — which `spaceStore.root` says, being set in the same read. Before that the same
+                  spinner the board itself shows holds the place.
                 */
                 else: {
                   type: '$if',
                   props: {
-                    condition: { $: 'local.spaceRowLoaded' },
+                    condition: { $: 'spaceStore.root' },
                     then: callGate(
                       'kanban',
                       'This space has no board yet. Making one arranges the work in it — it never moves anything.',

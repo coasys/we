@@ -312,13 +312,11 @@ export interface SpaceRecord extends WeNodeRecord {
   threadMode: string;
   moduleSettings: string;
   location?: LocationBlockRecord;
-  board?: CollectionBlockRecord;
   taskStates: string[];
   typeStyles: string[];
   root?: CollectionBlockRecord;
   roles: string[];
   setLocation(value: Pick<LocationBlockRecord, 'id'>): Promise<unknown>;
-  setBoard(value: Pick<CollectionBlockRecord, 'id'>): Promise<unknown>;
   addTaskStates(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeTaskStates(value: string | { id: string }, batch?: string): Promise<unknown>;
   setTaskStates(values: (string | { id: string })[], batch?: string): Promise<unknown>;

@@ -94,7 +94,7 @@ made before spaces had a collection keeps an Everything that gathers from the `S
 board reads as the whole space.
 
 `gathers` is **on the board**, and it used to be inferred. Which board was canonical for a container
-was a fact the container held (`Space.board`, `CollectionBlock.board`), and every surface that
+was a fact the container held (the space's `board` role, `CollectionBlock.board`), and every surface that
 rendered a board compared the open board against that link to decide whether it gathered: the Boards
 view computed it, the Workshop passed a literal, and a third surface — an agent, a record page, a
 mobile view — would have had to learn the rule or silently show everything or nothing. The two facts
@@ -350,15 +350,17 @@ through the flow is the natural next step.
 
 ## Boards a person does not create
 
-- **Everything** — the space's own board, gathering from the Space record and pointed at by
-  `Space.board`. Made the first time somebody opens it.
+- **Everything** — the space's own board, gathering from the space collection and named by the
+  space's `board` role. A new space's starter writes it, with a column per state the starter seeds;
+  in a space whose starter made none, it is made the first time somebody presses "make a board".
 - **A call's board** — gathering from the call, parented to it so an anchored Boards view lists it,
   and pointed at by the call's `board`. Made by **the first extraction pass that leaves the call
   holding a task** — not when somebody opens the route.
 
 Neither is created on a route mounting. Writing records into a space everybody shares as a side
 effect of navigating would have every member who opened the tab racing to create the same board; a
-pass runs on exactly one node, and Everything is made by a deliberate click.
+pass runs on exactly one node, and Everything is made once, by the person creating the space or by a
+deliberate click.
 
 The rule for a call's board is "once it holds a task" rather than "once a pass produced anything", so
 an events-only call does not get an empty kanban nobody can explain. `InterpretationResult` carries
@@ -367,8 +369,8 @@ ids and no types, so one query decides it — after an LLM round trip, where its
 else like every other member of that surface.
 
 Two people clicking at the same moment on two nodes still create two records — there is no
-coordination point — but only one is ever _the_ board, because `Space.board` and
-`CollectionBlock.board` are single-valued and converge. The loser is indistinguishable from a board
+coordination point — but only one is ever _the_ board, because `CollectionBlock.board` is
+single-valued and converges, and two `board` roles resolve to the newest. The loser is indistinguishable from a board
 somebody made, which is a harmless outcome rather than one needing a rule nobody would remember.
 
 ## Rules that are easy to break

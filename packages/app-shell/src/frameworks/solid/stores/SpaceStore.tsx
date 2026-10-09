@@ -55,6 +55,7 @@ import {
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
+import { readSpaceRoles, writeSpaceRole } from '@shared/spaceRoles';
 import {
   applyStarterRecords,
   defaultSpaceStarter,
@@ -127,7 +128,6 @@ import {
   SignalType,
   Space,
   SpacePreference,
-  SpaceRole,
   TaskState,
 } from '@we/entities';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
@@ -1692,11 +1692,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         );
         return (made as { id: string }).id;
       },
-      role: async (name, nodeId) => {
-        // An untyped to-one is written as a one-element list at creation — see `createBoard`.
-        const role = await SpaceRole.create(dataset, { name, node: [nodeId] } as never);
-        await Space.addRelation(dataset, space.id, 'roles', role.id);
-      },
+      role: (name, nodeId) => writeSpaceRole(dataset, space.id, name, nodeId),
       linkSpace: async (relations) => {
         // A list is written in order, which is what an ordered relation (the space's task states)
         // keeps; a single id is the same thing with one entry.
@@ -2220,6 +2216,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     ...boardOptimism.ports,
     offeredStates: () => offeredTaskStates(),
     notify: (message) => toastService.error(message),
+    rolesChanged: () => void reloadSpaceStructure(),
     // Wrapped for `offeredStates`' reason: the flow is worked out from the states, further down.
     flow: {
       enabled: () => taskFlow.enabled(),
@@ -2973,31 +2970,29 @@ export function SpaceStoreProvider(props: ParentProps) {
   */
   const [spaceRoot, setSpaceRoot] = createSignal('');
   const [spaceRoles, setSpaceRoles] = createSignal<Record<string, string>>({});
-  createEffect(() => {
+  /** Read the space collection and the roles again — after an action made a record the space's. */
+  async function reloadSpaceStructure(): Promise<void> {
     const dataset = datasetStore.currentDataset()?.handle;
     const uuid = datasetStore.currentDataset()?.id;
-    const weSpace = datasetStore.isWeSpace();
+    if (!dataset || !datasetStore.isWeSpace()) return;
+    try {
+      const space = await Space.findOne(dataset, { include: { root: true } });
+      const roles = await readSpaceRoles(dataset);
+      if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
+      // Roles first: `root` is what says the read has answered, so a template asking "is there a
+      // board?" never hears "no" in the frame between the two.
+      setSpaceRoles(roles);
+      setSpaceRoot(space?.root?.id ?? '');
+    } catch (error) {
+      console.warn('SpaceStore: could not read the space’s collection and roles', error);
+    }
+  }
+  createEffect(() => {
+    void datasetStore.currentDataset()?.id;
+    void datasetStore.isWeSpace();
     setSpaceRoot('');
     setSpaceRoles({});
-    if (!dataset || !weSpace) return;
-    void (async () => {
-      try {
-        const space = await Space.findOne(dataset, { include: { root: true } });
-        const roles = await SpaceRole.findAll(dataset);
-        if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
-        setSpaceRoot(space?.root?.id ?? '');
-        const byName: Record<string, { id: string; at: string }> = {};
-        for (const role of roles) {
-          const node = Array.isArray(role.node) ? role.node[0] : role.node;
-          const at = String((role as { createdAt?: unknown }).createdAt ?? '');
-          if (!role.name || !node) continue;
-          if (!byName[role.name] || at > byName[role.name].at) byName[role.name] = { id: String(node), at };
-        }
-        setSpaceRoles(Object.fromEntries(Object.entries(byName).map(([name, { id }]) => [name, id])));
-      } catch (error) {
-        console.warn('SpaceStore: could not read the space’s collection and roles', error);
-      }
-    })();
+    void untrack(reloadSpaceStructure);
   });
 
   /**

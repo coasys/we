@@ -166,14 +166,6 @@ export const Space: CoreEntityDef = {
     relations: {
       location: { target: 'LocationBlock', cardinality: 'one', predicate: 'we://location' },
       /**
-       * This space's own board — "Everything", the one that gathers all of the community's work.
-       *
-       * The counterpart of `CollectionBlock.board` one level up, and the same reasoning: which board
-       * is *the* space's is a fact about the space. It is also what makes curating every other board
-       * safe, since this is the catch-all nothing can hide from — see `docs/architecture/boards.md`.
-       */
-      board: { target: 'CollectionBlock', cardinality: 'one', predicate: 'we://board' },
-      /**
        * The order this community reads its task states in — and only the order.
        *
        * Position hints over a membership defined elsewhere, the same shape a board's `children` have

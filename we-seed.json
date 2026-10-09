@@ -152,10 +152,56 @@
             "title": "Canvas"
           },
           "in": "$root"
+        },
+        {
+          "$id": "board",
+          "entity": "CollectionBlock",
+          "fields": {
+            "kind": "board",
+            "mode": "feed",
+            "title": "Everything",
+            "type": "",
+            "gathers": ["$root"]
+          },
+          "in": "$root"
+        },
+        {
+          "entity": "CollectionBlock",
+          "fields": {
+            "kind": "column",
+            "mode": "feed",
+            "title": "",
+            "type": "",
+            "slug": "todo"
+          },
+          "in": "$board"
+        },
+        {
+          "entity": "CollectionBlock",
+          "fields": {
+            "kind": "column",
+            "mode": "feed",
+            "title": "",
+            "type": "",
+            "slug": "doing"
+          },
+          "in": "$board"
+        },
+        {
+          "entity": "CollectionBlock",
+          "fields": {
+            "kind": "column",
+            "mode": "feed",
+            "title": "",
+            "type": "",
+            "slug": "done"
+          },
+          "in": "$board"
         }
       ],
       "roles": {
-        "canvas": "$canvas"
+        "canvas": "$canvas",
+        "board": "$board"
       },
       "input": true
     }

@@ -46,8 +46,8 @@ export const CollectionBlock: CoreEntityDef = {
        * Semantic values do not belong here; that is `kind`. Boards briefly marked which one was
        * canonical with `type: 'space'` and `type: 'anchor'`, which is the mistake this field's own
        * documentation names (see `kind`, and the transcribe module writing `tag: 'transcript'` into
-       * `TextBlock.style`). It is a relation now — `CollectionBlock.board` and `Space.board` — which
-       * also converges where a marker could not.
+       * `TextBlock.style`). It is a relation now — `CollectionBlock.board`, and the space's `board`
+       * role — which also converges where a marker could not.
        */
       type: { type: 'string', predicate: 'we://type', default: '' },
       /**
@@ -212,13 +212,13 @@ export const CollectionBlock: CoreEntityDef = {
        *
        * On the board rather than inferred from which container points at it, because that inference
        * was made by every surface that rendered a board and had to be made correctly each time — a
-       * view compared the open board against `Space.board` and the anchor's `board`, a template
+       * view compared the open board against the space's and the anchor's board, a template
        * passed a literal, and a third surface would have had to learn the rule or silently shown
        * everything or nothing. A board that knows what it gathers can be rendered by anything that
        * has its id.
        *
-       * Distinct from `CollectionBlock.board` / `Space.board`, which say which board is the
-       * container's **canonical** one. Those stay single-valued links because two boards claiming
+       * Distinct from `CollectionBlock.board` and the space's `board` role, which say which board is
+       * the container's **canonical** one. Those stay single-valued because two boards claiming
        * to be *the* one is a race that has to converge; two boards both gathering from the same
        * container is merely two boards showing the same work, which is harmless and occasionally
        * wanted. Untyped, since the two things it can name are a Space and a CollectionBlock.
