@@ -102,6 +102,9 @@ const TEMPLATE_ONLY = ['id', 'meta', 'author', 'templateVersion', 'schemaVersion
  * The name rides along beside the id so a reader of the DOM needs no second lookup — and, more to
  * the point, so `@we/editor` can say which section it is without taking a dependency on the view
  * registry to find out.
+ *
+ * A view's nodes carry ids of their own now — derived, for a built-in — so the editor no longer
+ * stops at the nearest id. The outermost boundary between a press and its surface answers.
  */
 export const VIEW_BOUNDARY_ATTR = 'data-we-view';
 export const VIEW_BOUNDARY_NAME_ATTR = 'data-we-view-name';
@@ -116,6 +119,24 @@ export const VIEW_BOUNDARY_NAME_ATTR = 'data-we-view-name';
  * app's own: the sidebar, a panel's titlebar, the editor's own panels.
  */
 export const EDIT_SURFACE_ATTR = 'data-we-edit-surface';
+
+/**
+ * Marks a region somebody other than the template provides, inside a surface the editor can reach:
+ * a panel a module draws itself. Its value is `panel:<dockId>`, with `OWNER_NAME_ATTR` beside it.
+ *
+ * A section is the same kind of region and keeps its own marker above, which predates this one. The
+ * editor treats both alike: the outermost such region between a press and its surface is what is
+ * selected, as a whole, and named — never a node inside it, which belongs to somebody else.
+ */
+export const OWNER_ATTR = 'data-we-owner';
+export const OWNER_NAME_ATTR = 'data-we-owner-name';
+
+/**
+ * Marks where a template placed a module's part, carrying the `$part` node's own id. A press inside
+ * selects that node — the template's — and never a node of the part, which is the module's.
+ */
+export const PART_ATTR = 'data-we-part';
+export const PART_NODE_ATTR = 'data-we-part-node';
 
 /**
  * Put the boundary where the DOM will actually show it.

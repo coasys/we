@@ -10,6 +10,8 @@
  * or misleading but not worth taking the module out of the app over.
  */
 import { validateManifest } from '@we/backend-shared';
+import type { SchemaNode } from '@we/schema-shared';
+import { freeNames } from '@we/schema-shared';
 
 import type { ModuleDefinition } from './module';
 import { modulePredicatePrefix, modulePredicateViolations } from './module';
@@ -184,6 +186,7 @@ export function lintModule(
   }
 
   if (manifest?.id) crossModuleReferences(manifest.id, definition, problems, warnings);
+  partInputs(definition, warnings);
 
   return { problems, warnings };
 }
@@ -225,6 +228,43 @@ export function lintModule(
  * renders nothing — and templates already have the answer, which is `meta.requires.modules` plus a
  * bare-read gate. So this says which, rather than refusing a shape that is correct in a template.
  */
+/**
+ * A part that reads something from its parents without saying so.
+ *
+ * A part is placed by people who did not write it — in another panel, in a template's own page, one
+ * level deep inside an arrangement somebody opened. Wherever it lands, the names it reads must be
+ * bound by something around it, and the only way a placer can know what to provide is for the part
+ * to say. An undeclared read is a part that works in its home and renders empty everywhere else.
+ *
+ * A warning rather than a refusal: the walk that finds these reads expressions as data, and a false
+ * positive taking a module out of the app would be the larger failure. Bundled modules are tested to
+ * have none, which is what makes it a gate.
+ */
+function partInputs(definition: ModuleDefinition, warnings: string[]): void {
+  for (const [name, raw] of Object.entries(definition.contributes?.parts ?? {})) {
+    const part = 'node' in raw && !('type' in raw) ? raw : { node: raw as SchemaNode };
+    const declared = new Set(Object.keys((part as { inputs?: object }).inputs ?? {}));
+    const free = freeNames(part.node);
+    for (const read of free.names) {
+      if (declared.has(read)) continue;
+      warnings.push(
+        `part "${name}" reads "${read}", which nothing inside it binds. Declare it in the part's inputs so a placement can provide it.`,
+      );
+    }
+    // A local cannot be an input: a placement binds a name, and nothing outside a part can declare
+    // the state inside it. So a local a part reads is either its own or the module's.
+    for (const local of free.locals) {
+      warnings.push(
+        `part "${name}" reads local "${local}", which nothing inside it declares. Declare the $localState in the part, or move the state to the module's store.`,
+      );
+    }
+    for (const input of declared) {
+      if (free.names.includes(input)) continue;
+      warnings.push(`part "${name}" declares the input "${input}" and never reads it.`);
+    }
+  }
+}
+
 function crossModuleReferences(id: string, definition: ModuleDefinition, problems: string[], warnings: string[]): void {
   const { contributes } = definition;
 

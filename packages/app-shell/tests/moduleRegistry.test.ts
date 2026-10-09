@@ -309,8 +309,8 @@ describe('moduleRegistry — parts', () => {
     moduleRegistry.register(mod('b', { contributes: { parts: { panel: { type: 'Row' } } } }), host);
 
     expect(moduleRegistry.parts()).toEqual({
-      'a.panel': { node: { type: 'Column' } },
-      'b.panel': { node: { type: 'Row' } },
+      'a.panel': { node: { type: 'Column' }, id: 'a.panel', name: 'panel', moduleId: 'a', moduleName: 'a' },
+      'b.panel': { node: { type: 'Row' }, id: 'b.panel', name: 'panel', moduleId: 'b', moduleName: 'b' },
     });
   });
 
@@ -319,7 +319,10 @@ describe('moduleRegistry — parts', () => {
       mod('a', { contributes: { parts: { feed: { node: { type: 'Column' }, subject: 'modules.a.collectionId' } } } }),
       host,
     );
-    expect(moduleRegistry.parts()['a.feed']).toEqual({ node: { type: 'Column' }, subject: 'modules.a.collectionId' });
+    expect(moduleRegistry.parts()['a.feed']).toMatchObject({
+      node: { type: 'Column' },
+      subject: 'modules.a.collectionId',
+    });
   });
 });
 

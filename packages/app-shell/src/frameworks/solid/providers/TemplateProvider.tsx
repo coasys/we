@@ -54,7 +54,7 @@ import type { DocumentAccess } from '@we/module-shared';
 import { holdTopLayer, installTopLayerGuard } from '@we/primitives/top-layer';
 import type { TemplateSchema } from '@we/schema-shared';
 import { expandViewRoutes, hasViewsMarker, installGestureTracking, SPACE_ROUTE_PATH } from '@we/schema-shared';
-import type { VisualEditorContextValue } from '@we/schema-solid';
+import type { OwnerRef, VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
 import { CHROME_RAIL_WIDTH } from '@we/template-shell';
 import { RECORD_ROUTE_PATH, recordPage } from '@we/template-views';
@@ -1275,12 +1275,14 @@ export default function TemplateProvider() {
   // reactive scope rather than as JSX components with their own Solid owner boundary.
   const [hoveredNodeId, setHoveredNodeId] = createSignal<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = createSignal<string | null>(null);
+  const [selectedOwner, setSelectedOwner] = createSignal<OwnerRef | null>(null);
   const nodeRegistry = new Map<string, HTMLElement>();
   const isVisualMode = () => editorStore.contentMode() === 'visual' && editorStore.isEditingTemplate();
 
   createEffect(() => {
     if (!isVisualMode()) {
       setSelectedNodeId(null);
+      setSelectedOwner(null);
       setHoveredNodeId(null);
     }
   });
@@ -1292,7 +1294,16 @@ export default function TemplateProvider() {
     hoveredId: hoveredNodeId,
     selectedId: selectedNodeId,
     onHover: setHoveredNodeId,
-    onSelect: setSelectedNodeId,
+    // One selection at a time: a node of the template, or a region somebody else provides.
+    onSelect: (id) => {
+      setSelectedNodeId(id);
+      if (id) setSelectedOwner(null);
+    },
+    selectedOwner,
+    onSelectOwner: (owner) => {
+      setSelectedOwner(owner);
+      if (owner) setSelectedNodeId(null);
+    },
     registerNode: (id, el) => {
       nodeRegistry.set(id, el);
       return () => nodeRegistry.delete(id);

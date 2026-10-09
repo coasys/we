@@ -251,7 +251,74 @@ export interface EditorImagePort {
   upload: (file: File) => Promise<string>;
 }
 
+/**
+ * What the editor is told about the regions of a page somebody else provides — a module's part, a
+ * module's own panel, a section — so it can name the owner and offer the routes to taking one over.
+ *
+ * A port because ownership is the host's knowledge: which modules exist, which are on here, what a
+ * part is called and what it needs. The editor decides what to offer; the host says what is true.
+ */
+export interface OwnedPart {
+  /** `<moduleId>.<name>` — what a `$part` names. */
+  id: string;
+  label: string;
+  description?: string;
+  moduleId: string;
+  moduleName: string;
+  /** Names the part needs from where it is placed, with what each is. */
+  inputs: { name: string; description: string }[];
+  /** Why it cannot draw here, as a sentence — empty when it can. */
+  missing: string;
+  /** Where turning its module back on lives, when the person looking can. */
+  fix?: { label: string; go: () => void };
+}
+
+export interface OwnedPanel {
+  /** `<moduleId>:<name>`. */
+  dockId: string;
+  moduleId: string;
+  moduleName: string;
+  /** The module's own name for the panel — the dock's `dock` in a `meta.panels` entry. */
+  dock: string;
+  title: string;
+  /** Built from the module's own parts, so arranging it keeps the pieces the module's. */
+  composed: boolean;
+}
+
+export interface OwnedView {
+  id: string;
+  name: string;
+  /** Where it comes from, as a phrase: "built into WE", "from Polls", "this space's own". */
+  source: string;
+  /** Why a copy cannot be made in its place here, as a sentence — empty when it can. */
+  forkBlocked: string;
+}
+
+export interface OwnersPort {
+  part: (id: string) => OwnedPart | null;
+  /** Every part a template can place here — the parts palette. */
+  parts: () => OwnedPart[];
+  /**
+   * A placed part as nodes the template owns: `one` opens a level and keeps the pieces below it as
+   * references; `all` forks the whole thing. Null for a part nobody publishes.
+   */
+  openPart: (placement: SchemaNode, depth: 'one' | 'all') => SchemaNode | null;
+  panel: (dockId: string) => OwnedPanel | null;
+  /** The module's own composition of a panel — what arranging it copies into the template. */
+  panelNode: (dockId: string) => SchemaNode | null;
+  view: (id: string) => OwnedView | null;
+  /**
+   * Copy a section into the space and put the copy in its place for everyone there. Resolves to the
+   * copy's id, or null when it could not be made.
+   */
+  forkView?: (id: string) => Promise<string | null>;
+  /** Open a template on its own, to edit it — how a section of a space is edited. */
+  openTemplate?: (id: string) => void;
+}
+
 export interface EditorHost {
+  /** What the host knows about regions somebody else provides. Without it the editor names none. */
+  owners?: OwnersPort;
   template: TemplatePort;
   theme: ThemePort;
   session: SessionPort;

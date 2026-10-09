@@ -71,6 +71,7 @@ export type {
   ModuleLauncher,
   ModuleManifest,
   ModulePart,
+  PartInput,
   ModulePermission,
   ModuleRequirements,
   ModuleScope,

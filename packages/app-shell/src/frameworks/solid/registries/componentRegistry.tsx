@@ -80,6 +80,12 @@ const TemplatePanelBodyOnDemand = lazy(() => import('../components/TemplatePanel
 */
 const PanelLaneOnDemand = lazy(() => import('../components/PanelLane'));
 
+/*
+  Where a module's part is placed — the part, or what stands in for it when its module is not here.
+  `resolveParts` wraps every `$part` in one; see `PartFrame.tsx`.
+*/
+const PartFrameOnDemand = lazy(() => import('../components/PartFrame'));
+
 /** One decorative component, and `three` behind it. */
 const WeCubeOnDemand = lazy(() => import('../components/3d/WeCube'));
 
@@ -155,6 +161,8 @@ export const componentRegistry: ComponentRegistry = {
   CredentialField,
   // Host-only for the same reason: a template writes `$panels`, never this.
   PanelLane: PanelLaneOnDemand,
+  // Host-only: a template writes `$part`, never this.
+  PartFrame: PartFrameOnDemand,
   SignalControl,
   CountMark,
 

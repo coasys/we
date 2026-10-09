@@ -89,9 +89,9 @@ describe('expandViewRoutes', () => {
   });
 
   it('marks where the shell stops and the view begins', () => {
-    // The visual editor resolves a click to the nearest `data-we-node-id` and looks it up in the
-    // template being edited. A view's nodes have no such id, so without this the click walked past
-    // the whole section and selected a shell node above it — a section read as a hole.
+    // The visual editor answers a press with the outermost boundary between it and its surface. A
+    // view's nodes carry ids of their own that the template being edited does not contain, so
+    // without this the press selected one of them, or a shell node above the section.
     const out = expandViewRoutes([marker], [view('about', 'about')]);
     const props = (out[0] as RouteSchema & { props?: Record<string, unknown> }).props ?? {};
 

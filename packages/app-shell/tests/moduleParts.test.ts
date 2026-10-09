@@ -8,7 +8,7 @@
  * it at a record the module has never heard of, which is the difference between a reusable fragment
  * and one welded to whatever state its module happens to hold.
  */
-import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
+import { openPart, resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import type { ModuleDefinition } from '@we/module-shared';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
@@ -55,11 +55,46 @@ const place = (props: Record<string, SchemaProp>): SchemaNode => ({
 afterEach(() => vi.restoreAllMocks());
 
 describe('placing a module part', () => {
-  it('expands the module’s own node where the marker was', () => {
+  it('expands the module’s own node where the marker was, inside a frame naming the part', () => {
     withModule(() => {
       const resolved = resolveParts(place({ id: 'demo.plain' })) as SchemaNode;
+      const frame = (resolved.children as SchemaNode[])[0];
 
-      expect((resolved.children as SchemaNode[])[0].type).toBe('we-badge');
+      expect(frame.type).toBe('PartFrame');
+      expect(frame.props).toEqual({ part: 'demo.plain' });
+      expect((frame.children as SchemaNode[])[0].type).toBe('we-badge');
+    });
+  });
+
+  /*
+    The frame carries the placement's own id — the template's node — so the visual editor selects
+    the `$part` rather than a node of the module's, and the inspector finds it in the template.
+  */
+  it('keeps the placement’s id on the frame', () => {
+    withModule(() => {
+      const resolved = resolveParts({
+        type: 'Column',
+        children: [{ id: 'k3j9x0q2pd', type: '$part', props: { id: 'demo.plain' } }],
+      }) as SchemaNode;
+      const frame = (resolved.children as SchemaNode[])[0];
+
+      expect(frame.id).toBe('k3j9x0q2pd');
+      expect((frame.props as { at?: string }).at).toBe('k3j9x0q2pd');
+    });
+  });
+
+  /*
+    A part reading a name its parents bind declares it, and a placement where nothing binds it says
+    what it is. The binding is a one-row `$each` — the one node that binds a value to a name.
+  */
+  it('binds the inputs a placement provides around the part', () => {
+    withModule(() => {
+      const resolved = resolveParts(place({ id: 'demo.plain', inputs: { tile: { $: 'local.chosen' } } })) as SchemaNode;
+      const bound = ((resolved.children as SchemaNode[])[0].children as SchemaNode[])[0];
+
+      expect(bound.type).toBe('$each');
+      expect(bound.props).toEqual({ items: { $: '[local.chosen]' }, as: 'tile' });
+      expect((bound.children as SchemaNode[])[0].type).toBe('we-badge');
     });
   });
 
@@ -107,15 +142,16 @@ describe('placing a module part', () => {
     }
   });
 
-  it('renders nothing for a part nobody publishes, and says so', () => {
+  it('leaves an empty frame for a part nobody publishes, and says so', () => {
     // The ordinary case is a module that is not installed, so this is a warning rather than a throw
-    // — but it is *reported*, because a part that silently renders nothing is indistinguishable
-    // from one that rendered an empty list.
+    // — but it is *reported*, and the frame stays, so what stands in its place can say what is missing.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
     const resolved = resolveParts(place({ id: 'nobody.feed' })) as SchemaNode;
+    const frame = (resolved.children as SchemaNode[])[0];
 
-    expect(resolved.children).toEqual([]);
+    expect(frame.type).toBe('PartFrame');
+    expect(frame.children).toEqual([]);
     expect(warn).toHaveBeenCalledOnce();
   });
 });
@@ -186,5 +222,60 @@ describe('placing a part outside a panel', () => {
     const routes = [{ path: '/board', type: 'Column', children: [{ type: 'we-text' }] }];
 
     expect(resolvePartsInRoutes(routes)).toBe(routes);
+  });
+});
+
+/*
+  What the editor writes in a part's place when somebody takes it over. Opening one level keeps the
+  pieces below it as references, which is what lets a module fix still land in them; forking follows
+  every reference down.
+*/
+describe('opening a placed part', () => {
+  const nested: ModuleDefinition = {
+    manifest: { id: 'deep', name: 'Deep' },
+    contributes: {
+      parts: {
+        leaf: { type: 'we-badge', children: ['leaf'] },
+        branch: { type: 'Column', children: [{ type: '$part', props: { id: 'deep.leaf' } }] },
+      },
+    },
+  };
+
+  function withNested<T>(run: () => T): T {
+    moduleRegistry.register(nested, host);
+    try {
+      return run();
+    } finally {
+      moduleRegistry.unregister('deep');
+    }
+  }
+
+  it('opens one level and leaves the pieces below it as references', () => {
+    withNested(() => {
+      const opened = openPart({ type: '$part', props: { id: 'deep.branch' } }, 'one')!;
+      expect(opened.type).toBe('Column');
+      expect((opened.children as SchemaNode[])[0]).toEqual({ type: '$part', props: { id: 'deep.leaf' } });
+    });
+  });
+
+  it('follows every reference down for a fork, and draws no frames into the template', () => {
+    withNested(() => {
+      const forked = openPart({ type: '$part', props: { id: 'deep.branch' } }, 'all')!;
+      expect(JSON.stringify(forked)).not.toContain('$part');
+      expect(JSON.stringify(forked)).not.toContain('PartFrame');
+      expect((forked.children as SchemaNode[])[0]).toEqual({ type: 'we-badge', children: ['leaf'] });
+    });
+  });
+
+  it('answers nothing for a part nobody publishes', () => {
+    expect(openPart({ type: '$part', props: { id: 'nobody.thing' } }, 'one')).toBeNull();
+  });
+
+  it('never hands back the registry’s own node', () => {
+    withNested(() => {
+      const opened = openPart({ type: '$part', props: { id: 'deep.leaf' } }, 'one')!;
+      opened.children = ['changed'];
+      expect((moduleRegistry.parts()['deep.leaf'].node as SchemaNode).children).toEqual(['leaf']);
+    });
   });
 });

@@ -38,7 +38,10 @@ interface DefinitionLike {
   };
   contributes?: {
     entities?: { manifest: ManifestLike; predicates?: Record<string, string> };
-    parts?: Record<string, { node?: unknown; subject?: string } | { type?: string }>;
+    parts?: Record<
+      string,
+      { node?: unknown; subject?: string; inputs?: Record<string, { description: string }> } | { type?: string }
+    >;
     panels?: { name: string; title: string; icon?: string; open?: string }[];
     launchers?: { key?: string; label: string }[];
     settings?: { key: string; label: string; description?: string; type: string; levels: readonly string[] }[];
@@ -129,8 +132,17 @@ export function catalogueModule(
     capabilities: helpers.moduleCapabilities(definition),
     members,
     parts: Object.entries(contributes?.parts ?? {}).map(([name, part]) => {
-      const subject = 'node' in part ? (part as { subject?: string }).subject : undefined;
-      return subject ? { name, subject } : { name };
+      const declared =
+        'node' in part ? (part as { subject?: string; inputs?: Record<string, { description: string }> }) : {};
+      const inputs = Object.entries(declared.inputs ?? {}).map(([input, { description }]) => ({
+        name: input,
+        description,
+      }));
+      return {
+        name,
+        ...(declared.subject ? { subject: declared.subject } : {}),
+        ...(inputs.length ? { inputs } : {}),
+      };
     }),
     panels: (contributes?.panels ?? []).map((panel) => ({
       name: panel.name,

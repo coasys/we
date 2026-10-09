@@ -21,6 +21,7 @@ import { paintedRoles } from '../paintedRoles';
 import { deepClone } from '../utils';
 import { ConditionEditor } from './ConditionEditor';
 import { ContentEditor } from './ContentEditor';
+import { acceptsParts, OwnerCard, PartCard, PartsPalette } from './OwnerCard';
 import { ValueEditor } from './ValueEditor';
 
 // -----------------------------------------------------------------------
@@ -543,28 +544,32 @@ export function InspectorPanel() {
         }}
       />
 
-      {/* Properties for selected node */}
+      {/* Properties for selected node — or, for a region somebody else provides, who and what next */}
       <Column flex="1" overflow="hidden" pb="500">
-        <Show
-          when={selectedNode()}
-          fallback={
-            <Column flex="1" ax="center" ay="center" gap="200" p="500" textAlign="center">
-              <we-icon name="cursor-click" size="lg" color="text-faint" />
-              <we-text fontSize="200" color="text-faint">
-                Click a node to inspect it
-              </we-text>
-            </Column>
-          }
-        >
-          {(node) => (
-            <NodeProperties
-              node={node()}
-              onPropChange={handlePropChange}
-              onContentChange={handleContentChange}
-              onContentTokenChange={handleContentTokenChange}
-              onChildrenChange={(children) => setChildren(children.length === 0 ? null : children)}
-            />
-          )}
+        <Show when={!visualEditor.selectedOwner()} fallback={<OwnerCard owner={visualEditor.selectedOwner()!} />}>
+          <Show
+            when={selectedNode()}
+            fallback={
+              <Column flex="1" ax="center" ay="center" gap="200" p="500" textAlign="center">
+                <we-icon name="cursor-click" size="lg" color="text-faint" />
+                <we-text fontSize="200" color="text-faint">
+                  Click a node to inspect it
+                </we-text>
+              </Column>
+            }
+          >
+            {(node) => (
+              <Show when={node().type !== '$part'} fallback={<PartCard node={node()} />}>
+                <NodeProperties
+                  node={node()}
+                  onPropChange={handlePropChange}
+                  onContentChange={handleContentChange}
+                  onContentTokenChange={handleContentTokenChange}
+                  onChildrenChange={(children) => setChildren(children.length === 0 ? null : children)}
+                />
+              </Show>
+            )}
+          </Show>
         </Show>
       </Column>
     </Column>
@@ -919,6 +924,10 @@ function NodeProperties(props: {
               )}
             </For>
           </Column>
+        </Show>
+
+        <Show when={acceptsParts(props.node)}>
+          <PartsPalette node={props.node} />
         </Show>
       </we-scroll-area>
     </>

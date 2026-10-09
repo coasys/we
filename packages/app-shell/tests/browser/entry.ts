@@ -19,8 +19,17 @@ import { hostSourceBag } from '@shared/sources';
 import { injectDSInteropStyles } from '@solid/dsInterop';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import { createInMemoryBackend } from '@we/backend-inmemory';
-import { EditorHostProvider, EditorOverlay } from '@we/editor';
-import { EDIT_SURFACE_ATTR, installGestureTracking } from '@we/schema-shared';
+import { EditorHostProvider, EditorOverlay, OwnerCard, PartCard, PartsPalette } from '@we/editor';
+import {
+  EDIT_SURFACE_ATTR,
+  installGestureTracking,
+  OWNER_ATTR,
+  OWNER_NAME_ATTR,
+  PART_ATTR,
+  PART_NODE_ATTR,
+  VIEW_BOUNDARY_ATTR,
+  VIEW_BOUNDARY_NAME_ATTR,
+} from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { VisualEditorProvider } from '@we/schema-solid';
 import { createComponent, createSignal } from 'solid-js';
@@ -421,6 +430,40 @@ function editorProbe(): void {
   content.setAttribute(EDIT_SURFACE_ATTR, '');
   content.style.cssText = 'position: fixed; left: 0; top: 0; width: 400px; height: 400px; z-index: 1;';
   content.append(node('n-content', 'content'));
+  /*
+    A section, as the shell's `$views` mounts one: a boundary naming the view, and inside it the
+    view's own nodes — which carry ids of their own, derived for a built-in, that the template being
+    edited does not contain.
+  */
+  const section = document.createElement('div');
+  section.setAttribute(VIEW_BOUNDARY_ATTR, 'about');
+  section.setAttribute(VIEW_BOUNDARY_NAME_ATTR, 'About');
+  section.append(node('n-view-inner', 'section'));
+  content.append(section);
+  /*
+    A part the template placed: the placement is the template's node, and inside it the part's own
+    nodes, which are the module's — one of them stamped with an id of its own.
+  */
+  const placed = document.createElement('div');
+  placed.setAttribute('data-we-node-id', 'n-part');
+  const frame = document.createElement('div');
+  frame.style.display = 'contents';
+  frame.setAttribute(PART_ATTR, 'call.tile');
+  frame.setAttribute(PART_NODE_ATTR, 'n-part');
+  frame.append(node('n-part-inner', 'part'));
+  placed.append(frame);
+  content.append(placed);
+
+  // A panel a module draws itself: an edit surface the editor can reach, owned by the module.
+  const owned = document.createElement('div');
+  owned.style.cssText = 'position: fixed; left: 0; top: 460px; width: 200px; height: 80px; z-index: 1;';
+  const ownedBody = document.createElement('div');
+  ownedBody.setAttribute(EDIT_SURFACE_ATTR, '');
+  ownedBody.setAttribute(OWNER_ATTR, 'panel:call:stage');
+  ownedBody.setAttribute(OWNER_NAME_ATTR, 'Call');
+  ownedBody.append(node('n-owned-inner', 'owned'));
+  owned.append(ownedBody);
+  document.body.append(owned);
 
   // A panel, painted where the dock registry paints them: above the content's whole context.
   const panel = document.createElement('div');
@@ -448,10 +491,12 @@ function editorProbe(): void {
     children: [
       { id: 'n-content', type: 'we-button' },
       { id: 'n-panel', type: 'we-button' },
+      { id: 'n-part', type: '$part', props: { id: 'call.tile' } },
     ],
   };
   const [selected, setSelected] = createSignal<string | null>(null);
   const [hovered, setHovered] = createSignal<string | null>(null);
+  const [owner, setOwner] = createSignal<{ kind: string; id: string; name: string } | null>(null);
   const visual = {
     enabled: true,
     hoveredId: hovered,
@@ -460,6 +505,11 @@ function editorProbe(): void {
     onSelect: (id: string | null) => {
       setSelected(id);
       record('__probeSelected', id);
+    },
+    selectedOwner: owner,
+    onSelectOwner: (next: { kind: string; id: string } | null) => {
+      setOwner(next as never);
+      record('__probeOwner', next ? `${next.kind}:${next.id}` : null);
     },
     registerNode: () => () => {},
     getNodeElement: (id: string) => document.querySelector(`[data-we-node-id="${id}"]`) as HTMLElement | null,
@@ -474,6 +524,7 @@ function editorProbe(): void {
   // Taken down by `editorProbeDispose`, so the next case on this page meets none of it.
   probeDisposers.push(() => {
     content.remove();
+    owned.remove();
     panel.remove();
     root.remove();
   });
@@ -493,6 +544,128 @@ function editorProbe(): void {
     root,
   );
   probeDisposers.unshift(dispose);
+}
+
+/**
+ * The inspector's card for a region somebody else provides, mounted against a host whose owners port
+ * answers for one part and one module panel. What each route writes lands in `__probeTemplates`, as
+ * the template it handed `updateTemplate`, so a case can read what taking a region over did.
+ */
+function ownerCardProbe(kind: 'part' | 'panel' | 'palette' | 'view' | 'view-blocked'): void {
+  const record = (key: string, value: unknown) => {
+    const bag = globalThis as unknown as Record<string, unknown[]>;
+    (bag[key] ??= []).push(value);
+  };
+  let template: Record<string, unknown> = {
+    id: 'probe',
+    type: 'Column',
+    meta: { name: 'Probe', description: '', icon: '', panels: [{ id: 'stage', module: 'call', snap: 'right' }] },
+    children: [{ id: 'aaaaaaaaaa', type: '$part', props: { id: 'demo.box', subject: { $: 'local.chosen' } } }],
+  };
+  const host = {
+    session: {
+      isReadOnly: () => false,
+      pushSnapshot() {},
+      commitEdit: async () => {},
+      openThemePanel: () => record('__probeTheme', true),
+      startFork() {},
+    },
+    template: {
+      get currentTemplate() {
+        return template;
+      },
+      updateTemplate: (next: Record<string, unknown>) => {
+        template = next;
+        record('__probeTemplates', JSON.parse(JSON.stringify(next)));
+      },
+    },
+    owners: {
+      part: () => ({ id: 'demo.box', label: 'Box', moduleId: 'demo', moduleName: 'Demo', inputs: [], missing: '' }),
+      parts: () => [
+        {
+          id: 'demo.box',
+          label: 'Box',
+          description: 'A box.',
+          moduleId: 'demo',
+          moduleName: 'Demo',
+          inputs: [],
+          missing: '',
+        },
+      ],
+      openPart: (_placement: unknown, depth: 'one' | 'all') =>
+        depth === 'one'
+          ? { type: 'Column', children: [{ type: '$part', props: { id: 'demo.inner' } }] }
+          : { type: 'Column', children: [{ type: 'we-text', children: ['inner'] }] },
+      panel: () => ({
+        dockId: 'call:stage',
+        moduleId: 'call',
+        moduleName: 'Calls',
+        dock: 'stage',
+        title: 'Call',
+        composed: true,
+      }),
+      panelNode: () => ({ type: 'Column', children: [{ type: '$part', props: { id: 'call.tile' } }] }),
+      view: () => ({
+        id: 'about',
+        name: 'About',
+        source: 'built into WE',
+        forkBlocked: kind === 'view-blocked' ? 'Only whoever runs this space can replace its sections.' : '',
+      }),
+      forkView: async (id: string) => {
+        record('__probeForked', id);
+        return 'about-yours';
+      },
+      openTemplate: (id: string) => record('__probeOpened', id),
+    },
+  };
+  const visual = {
+    enabled: true,
+    selectedId: () => null,
+    hoveredId: () => null,
+    onHover() {},
+    onSelect: (id: string | null) => record('__probeSelected', id),
+    selectedOwner: () => null,
+    onSelectOwner() {},
+    registerNode: () => () => {},
+    getNodeElement: () => null,
+  };
+  const root = document.createElement('div');
+  root.style.cssText = 'position: fixed; left: 0; top: 0; width: 320px;';
+  document.body.append(root);
+  probeDisposers.push(() => root.remove());
+  const dispose = render(
+    () =>
+      createComponent(EditorHostProvider, {
+        value: host as never,
+        get children() {
+          return createComponent(VisualEditorProvider, {
+            value: visual as never,
+            get children() {
+              if (kind === 'palette') return createComponent(PartsPalette, { node: template as never });
+              if (kind === 'view' || kind === 'view-blocked')
+                return createComponent(OwnerCard, { owner: { kind: 'view', id: 'about', name: 'About' } });
+              return kind === 'part'
+                ? createComponent(PartCard, { node: (template.children as Record<string, unknown>[])[0] as never })
+                : createComponent(OwnerCard, { owner: { kind: 'panel', id: 'call:stage', name: 'Call' } });
+            },
+          });
+        },
+      }),
+    root,
+  );
+  probeDisposers.unshift(dispose);
+}
+
+/**
+ * Press the button in the probe whose words are these — what a route's button says. Answers whether
+ * there was one to press, and a disabled one counts as none: it would not have done anything either.
+ */
+function pressButton(words: string): boolean {
+  const button = [...document.querySelectorAll('we-button')].find((b) => b.textContent?.trim() === words) as
+    (HTMLElement & { disabled?: boolean }) | undefined;
+  if (!button || button.disabled) return false;
+  button.click();
+  return true;
 }
 
 /**
@@ -519,6 +692,8 @@ injectDSInteropStyles();
 (window as unknown as Record<string, unknown>).__harness = {
   editorProbe,
   editorProbeCover,
+  ownerCardProbe,
+  pressButton,
   editorProbeDispose,
   mount,
   profile,

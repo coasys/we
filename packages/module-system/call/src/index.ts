@@ -1998,7 +1998,35 @@ export const callModule = defineModule({
   // ── What it puts in front of a person ────────────────────────────────────
   contributes: {
     // Named fragments an interface places. Public API — see the note on `ModuleContributions.parts`.
-    parts: { anchoredCallButton, continueCallButton, deviceSettings, startCallButton, tile },
+    parts: {
+      anchoredCallButton: {
+        node: anchoredCallButton,
+        label: 'Call about this',
+        description: 'Joins the call about the record it sits beside, or starts one.',
+        inputs: { node: { description: 'the record the call is about — anything with an id' } },
+      },
+      continueCallButton: {
+        node: continueCallButton,
+        label: 'Continue call',
+        description: 'Picks a past call on screen back up, joining anyone already in it.',
+      },
+      deviceSettings: {
+        node: deviceSettings,
+        label: 'Camera and microphone',
+        description: 'Chooses which camera and microphone the call uses.',
+      },
+      startCallButton: {
+        node: startCallButton,
+        label: 'Start call',
+        description: 'Starts a call in the space on screen, or goes to the one running.',
+      },
+      tile: {
+        node: tile,
+        label: 'Participant tile',
+        description: 'One person in the call: their video, or their face when it is off.',
+        inputs: { tile: { description: 'the participant to show — one of modules.call.tiles' } },
+      },
+    },
 
     // Opens the control bar to other modules. Declared so the registry can report chrome aimed at an
     // anchor nobody provides, which otherwise renders nowhere and looks like a module switched off.
