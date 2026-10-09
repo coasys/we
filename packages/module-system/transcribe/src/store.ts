@@ -1,5 +1,5 @@
 import { activitiesOfType } from '@we/backend-shared';
-import type { ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
+import type { DatasetTarget, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 import { namespace } from '@we/schema-shared';
 
 import { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
@@ -2140,6 +2140,16 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   let watched: string | null = null;
 
   /**
+   * The dataset {@link watched} was registered in — the call's, captured at registration.
+   *
+   * Kept rather than re-read at teardown, because teardown is usually *leaving the call*, and by then
+   * the call's own activity, which is where its dataset is published, is already gone from the roster.
+   * Re-reading it then answered "the space on screen", which removed the watch from a perspective
+   * that never held it and left the real one polling forever.
+   */
+  let watchedTarget: DatasetTarget | undefined;
+
+  /**
    * Tell the host a pass has settled on this collection, so it can do whatever follows.
    *
    * Two moments make a pass known to this client and they cover opposite orderings, so both call
@@ -2167,11 +2177,11 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * three separate paths, and an effect that missed any of them would leave a watch pointed at a
    * call that is over. Pairing the two here makes that structural rather than remembered.
    */
-  function useCollection(next: string | null): void {
+  function useCollection(next: string | null, options?: { keepWatch?: boolean }): void {
     // Nothing to reset: what a call extracts is recorded beside the call, so a different
     // conversation reads its own list — or the space's, when nobody has touched it.
     setCollectionId(next);
-    void syncWatch(next);
+    void syncWatch(next, options);
     // Tell the host a pass may have settled here while nobody was watching — see `passSettled`.
     // Adopting a collection is the moment somebody is about to look at it.
     if (next && typeof interpretation?.passSettled === 'function') {
@@ -2220,7 +2230,11 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   const autoEnabled = (collection?: string): boolean =>
     typeof interpretation?.autoEnabled === 'function' ? interpretation.autoEnabled(collection) : true;
 
-  async function syncWatch(next: string | null): Promise<void> {
+  /**
+   * `keepWatch` lets go of the watch without removing it — for leaving a call somebody else is still
+   * in. See the leave effect below.
+   */
+  async function syncWatch(next: string | null, options?: { keepWatch?: boolean }): Promise<void> {
     // Keyed on what this call currently extracts, so a group changing it mid-call moves the watch.
     // The host owns the list; this only has to notice when the answer changed.
     const key = next
@@ -2244,9 +2258,11 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       is the only way to change what a running watch looks for.
     */
     const reregistering = previous !== null && previous === next;
+    const previousTarget = watchedTarget;
     watched = next;
     watchedClasses = next ? key : '';
     watchedAuto = auto;
+    watchedTarget = next ? callTarget() : undefined;
 
     /*
       Two independent attempts, and that separation is the whole point.
@@ -2260,9 +2276,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       Feature-tested per method rather than per object: the host publishes a forwarding wrapper that
       is always present, so `interpretation?.` only answers "is there a wrapper".
     */
-    if (previous && typeof interpretation?.unwatchCollection === 'function') {
+    if (previous && !options?.keepWatch && typeof interpretation?.unwatchCollection === 'function') {
       try {
-        await interpretation.unwatchCollection(previous);
+        await interpretation.unwatchCollection(previous, previousTarget);
       } catch (error) {
         // A watch left running keeps interpreting a call that is over, which costs an LLM call per
         // pass — worth a warning, and worth not letting it block what comes next.
@@ -2307,7 +2323,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
 
     if (next && key && typeof interpretation?.watchCollection === 'function') {
       try {
-        await interpretation.watchCollection(next);
+        await interpretation.watchCollection(next, watchedTarget);
         setWatchProblem('');
         // `debug` is filtered out of most consoles by default, so this said nothing to the person
         // it was for. Watching is worth one line: it is the moment auto-extraction starts.
@@ -2412,12 +2428,52 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     announce(call.id, enabled(), call.recordId);
   });
 
+  /**
+   * Leaving a call: let go of its record, and stop its watch only if nobody else is left in it.
+   *
+   * ## Why not always
+   *
+   * The watch is one registration the whole call shares, keyed on the record. Every agent in the call
+   * converges on it, so removing it is a decision about everyone's extraction, not this agent's. It
+   * used to be removed by whoever left *first*: everyone else's `syncWatch` saw nothing change and
+   * never re-registered, so one person stepping out stopped extraction for the rest of the meeting.
+   *
+   * So the watch lives as long as the call has anybody in it, and the last one out removes it.
+   * Counted over everyone in the call rather than over the recorders: somebody who stays without
+   * recording is still in the conversation, and may start again.
+   *
+   * ## Why every leaver checks, not only the ones that adopted the record
+   *
+   * A record is adopted on the first flush, so an agent who never spoke never adopted it — and if
+   * that agent is the last one out, nobody else is left to remove the watch. So the call is
+   * remembered while this agent is in it, record and dataset included, and the check runs on the way
+   * out whether or not anything was adopted. Removing a watch that was never registered is a no-op.
+   *
+   * Two agents leaving in the same moment can each see the other still there, and leave the watch
+   * behind. Nothing on this side can settle that race; the engine's own expiry is the backstop.
+   */
+  let lastCall: { id: string; recordId: string | null; datasetUri: string | null } | null = null;
   effect?.(() => {
-    const current = myCall()?.id ?? null;
-    if (!collectionCallId || current === collectionCallId) return;
-    presence?.clearActivity(TRANSCRIBE_ACTIVITY);
-    useCollection(null);
-    collectionCallId = null;
+    const call = myCall();
+    const left = lastCall && lastCall.id !== call?.id ? lastCall : null;
+    lastCall = call ? { id: call.id, recordId: call.recordId, datasetUri: call.datasetUri } : null;
+    if (!left) return;
+
+    const me = selfId?.() ?? null;
+    const othersRemain = agentsInCall(left.id).some((agent) => agent !== me);
+
+    if (collectionCallId === left.id) {
+      presence?.clearActivity(TRANSCRIBE_ACTIVITY);
+      useCollection(null, { keepWatch: othersRemain });
+      collectionCallId = null;
+      return;
+    }
+    if (!othersRemain && left.recordId && typeof interpretation?.unwatchCollection === 'function') {
+      const target = left.datasetUri ? { dataset: left.datasetUri } : undefined;
+      void interpretation.unwatchCollection(left.recordId, target).catch((error: unknown) => {
+        console.warn('[transcribe] could not stop the watch on the call this agent left', error);
+      });
+    }
   });
 
   /**
@@ -2546,6 +2602,19 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * and a backend transcription stream, with nothing able to close them.
    */
   onDispose?.(() => {
+    /*
+      Stop the watch too, on the same rule as leaving: only when nobody else is in the call.
+
+      Without this a module unregistered mid-call left its watch behind with nobody to remove it, and
+      an orphaned watch is polled by every peer for as long as the space exists. Best-effort — a
+      teardown cannot wait on the round trip, and app close never reaches here at all.
+    */
+    const live = watched;
+    if (live && typeof interpretation?.unwatchCollection === 'function') {
+      const me = selfId?.() ?? null;
+      const othersRemain = lastCall ? agentsInCall(lastCall.id).some((agent) => agent !== me) : false;
+      if (!othersRemain) void interpretation.unwatchCollection(live, watchedTarget).catch(() => {});
+    }
     setEnabled(false);
     setAutoJoined(false);
     if (modelPoll) clearTimeout(modelPoll);

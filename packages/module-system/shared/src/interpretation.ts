@@ -70,10 +70,17 @@ export interface InterpretationKernel {
    * Keep interpreting a collection as it grows. A module names a collection and holds nothing: the
    * watch id, the dataset and the lifetime are the host's. Registering twice is one registration.
    * Rejects on a backend that cannot coordinate a shared watch.
+   *
+   * `target` names the dataset the collection lives in — absent means the space on screen. A call
+   * outlives the space on screen, so a watch about a call should always name the call's own.
    */
-  watchCollection: (collectionId: string) => Promise<void>;
-  /** Stop the watch on a collection. Safe to call when none was registered. */
-  unwatchCollection: (collectionId: string) => Promise<void>;
+  watchCollection: (collectionId: string, target?: DatasetTarget) => Promise<void>;
+  /**
+   * Stop the watch on a collection. Safe to call when none was registered. `target` as for
+   * {@link watchCollection}: the watch is a row in one dataset, and removing it from another is a no-op
+   * that leaves the real one running.
+   */
+  unwatchCollection: (collectionId: string, target?: DatasetTarget) => Promise<void>;
   /**
    * Attach anything a standing pass produced but did not attach, and report how many. Returns 0 where
    * there was nothing to repair.

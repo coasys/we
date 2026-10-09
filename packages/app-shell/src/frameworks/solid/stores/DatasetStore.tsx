@@ -556,7 +556,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         than two. The engine reads its processors out of the perspective graph, so this is idempotent
         in the place it matters: whichever peer registers first wins and the rest write the same row.
       */
-      watchCollection: async (collectionId) => {
+      watchCollection: async (collectionId, target) => {
         const port = session.backendPorts()?.interpretation;
         if (!port?.watch) throw new Error('interpretation: this backend cannot run a standing watch');
         // The community's decision, read through a gate SpaceStore supplies — this store sits below
@@ -573,10 +573,15 @@ export function DatasetStoreProvider(props: ParentProps) {
         */
         const auto = callExtraction.get()?.autoForCall(collectionId) ?? autoInterpretGate.get()?.();
         if (!auto) throw new Error('interpretation: automatic extraction is off for this call');
-        const dataset = currentDataset();
-        if (!dataset) throw new Error('interpretation: no dataset to interpret into');
+        /*
+          The caller's dataset, not `currentDataset()`: a call outlives the space on screen, and a watch
+          registered wherever the reader had wandered to interprets the call into a perspective that
+          does not hold it — and is then removed from the wrong one too, so it never stops.
+        */
+        const handle = target ?? currentDataset()?.handle;
+        if (!handle) throw new Error('interpretation: no dataset to interpret into');
 
-        const modelFor = (entity: string) => getEntityForDataset(entity, dataset.handle);
+        const modelFor = (entity: string) => getEntityForDataset(entity, handle);
         const predicate = containmentPredicate(modelFor, currentDatasetEntities());
         if (!predicate)
           throw new Error('interpretation: this space has no collection schema to read a transcript from');
@@ -586,7 +591,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         // "this space has marked nothing for extraction" is a sentence worth saying in its own words.
         if (!classes.length) throw new Error('interpretation: nothing in this space is marked for AI extraction');
 
-        await port.watch(dataset.handle, {
+        await port.watch(handle, {
           watchId: watchIdFor(collectionId),
           classes,
           parent: { id: collectionId, predicate },
@@ -616,13 +621,14 @@ export function DatasetStoreProvider(props: ParentProps) {
         });
       },
 
-      unwatchCollection: async (collectionId) => {
+      unwatchCollection: async (collectionId, target) => {
         const port = session.backendPorts()?.interpretation;
-        const dataset = currentDataset();
+        // The caller's dataset, for the reason `watchCollection` gives.
+        const handle = target ?? currentDataset()?.handle;
         // Silent rather than thrown: this runs while tearing a call down, and a host that never
         // registered anything is not a failure worth interrupting that with.
-        if (!port?.unwatch || !dataset) return;
-        await port.unwatch(dataset.handle, watchIdFor(collectionId));
+        if (!port?.unwatch || !handle) return;
+        await port.unwatch(handle, watchIdFor(collectionId));
       },
     }),
   );
