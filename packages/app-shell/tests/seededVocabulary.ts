@@ -16,7 +16,7 @@ export const SEEDED_INVOLVEMENT_TYPES: InvolvementTypeView[] = resolveInvolvemen
     .map((record) => {
       const f = record.fields as Record<string, unknown>;
       return {
-        id: String(record.$id),
+        id: String(record.fields?.slug),
         name: String(f.name),
         slug: String(f.slug),
         semantic: f.semantic as InvolvementTypeView['semantic'],

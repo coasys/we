@@ -17,6 +17,7 @@ import {
   starterProblems,
   starterSettings,
   type StarterWriter,
+  unreferencedIds,
 } from '../src/shared/spaceStarter';
 import type { WeSeedFile } from '../src/types/seed';
 
@@ -227,6 +228,29 @@ describe('checking a starter', () => {
       "roles.canvas must name a record's $id: $missing",
       "roles.home must name a record's $id: $root",
     ]);
+  });
+
+  it('names the $ids nothing refers to, through any of in, fields, settings or roles', () => {
+    expect(
+      unreferencedIds({
+        id: 'ids',
+        settings: { taskStates: ['$todo'] },
+        records: [
+          { $id: 'todo', entity: 'TaskState' },
+          { $id: 'board', entity: 'CollectionBlock', in: '$root' },
+          { entity: 'CollectionBlock', in: '$board' },
+          { $id: 'canvas', entity: 'CollectionBlock', in: '$root' },
+          { $id: 'gathered', entity: 'CollectionBlock', in: '$root' },
+          { entity: 'CollectionBlock', fields: { gathers: ['$gathered'] }, in: '$root' },
+          { $id: 'lonely', entity: 'SignalType' },
+        ],
+        roles: { canvas: '$canvas' },
+      }),
+    ).toEqual(['lonely']);
+  });
+
+  it('ships starters whose every $id is referred to', () => {
+    for (const starter of seed.spaceStarters ?? []) expect(unreferencedIds(starter)).toEqual([]);
   });
 
   it('passes every starter the deployment ships', () => {

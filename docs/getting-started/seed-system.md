@@ -153,6 +153,8 @@ A starter has four parts:
 
 - **`settings`:** the `Space` record's own fields (template, theme, `extractionTargets`, …).
 - **`records`:** written in order, each `{ "$id", "entity", "fields", "in" }`:
+  - **`$id`** names the record so the rest of the starter can refer to it before it has a real id.
+    Give one only to a record something refers to; `validate:seed` warns about an `$id` nothing uses.
   - **`in`** is the record's container: `"$root"` (the space collection) or an earlier record's
     `$id`. Leave it out for a record nothing contains, such as vocabulary (task states, signal
     types). Every link is written out, so `validate:seed` lists the uncontained records per starter,

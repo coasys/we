@@ -34,7 +34,6 @@
       },
       "records": [
         {
-          "$id": "like",
           "entity": "SignalType",
           "fields": {
             "name": "Like",
@@ -76,7 +75,6 @@
           }
         },
         {
-          "$id": "involvement-assignee",
           "entity": "InvolvementType",
           "fields": {
             "name": "Assigned",
@@ -88,7 +86,6 @@
           }
         },
         {
-          "$id": "involvement-reviewer",
           "entity": "InvolvementType",
           "fields": {
             "name": "Reviewing",
@@ -100,7 +97,6 @@
           }
         },
         {
-          "$id": "involvement-going",
           "entity": "InvolvementType",
           "fields": {
             "name": "Going",
@@ -112,7 +108,6 @@
           }
         },
         {
-          "$id": "involvement-maybe",
           "entity": "InvolvementType",
           "fields": {
             "name": "Maybe",
@@ -124,7 +119,6 @@
           }
         },
         {
-          "$id": "involvement-not-going",
           "entity": "InvolvementType",
           "fields": {
             "name": "Not going",

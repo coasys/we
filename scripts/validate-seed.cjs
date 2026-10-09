@@ -410,6 +410,23 @@ function validateSpaceStarter(seed) {
       everywhere else: a post or a channel written without one exists and no view lists it. Printed
       rather than refused, so the format stays free of entity knowledge and a mistake still shows.
     */
+    /*
+      An `$id` exists so something can refer to the record; one nothing refers to suggests a
+      connection that is not there. Harmless at a create press, so a warning rather than an error.
+    */
+    const referred = new Set();
+    for (const record of starter.records || []) {
+      refsIn(record.in).forEach((r) => referred.add(r));
+      Object.values(record.fields || {}).forEach((v) => refsIn(v).forEach((r) => referred.add(r)));
+    }
+    Object.values(starter.settings || {}).forEach((v) => refsIn(v).forEach((r) => referred.add(r)));
+    Object.values(starter.roles || {}).forEach((v) => refsIn(v).forEach((r) => referred.add(r)));
+    (starter.records || []).forEach((record, index) => {
+      if (record.$id && !referred.has(record.$id)) {
+        warn(`${p}.records[${index}].$id "${record.$id}" is never referred to — leave it out`);
+      }
+    });
+
     const uncontained = {};
     for (const record of starter.records || []) {
       if (record.in === undefined) uncontained[record.entity] = (uncontained[record.entity] || 0) + 1;

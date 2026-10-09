@@ -279,6 +279,30 @@ export async function applyStarterRecords(
   return roles;
 }
 
+/**
+ * The `$id`s nothing in the starter refers to — no record's `in`, no field, no setting, no role.
+ *
+ * An `$id` exists so something can refer to a record before it has a real id; one nothing refers
+ * to suggests a connection that is not there. Not a problem a create press would hit, so
+ * `validate:seed` warns about these rather than failing.
+ */
+export function unreferencedIds(starter: SpaceStarter): string[] {
+  const referred = new Set<string>();
+  const collect = (value: unknown) => {
+    for (const v of Array.isArray(value) ? value : [value]) {
+      const name = referenceName(v);
+      if (name !== null) referred.add(name);
+    }
+  };
+  for (const record of starter.records ?? []) {
+    collect(record.in);
+    for (const value of Object.values(record.fields ?? {})) collect(value);
+  }
+  for (const value of Object.values(starter.settings ?? {})) collect(value);
+  for (const ref of Object.values(starter.roles ?? {})) collect(ref);
+  return (starter.records ?? []).map((record) => record.$id).filter((id): id is string => !!id && !referred.has(id));
+}
+
 /** What a starter may name, for checking one before it ships. */
 export interface StarterVocabulary {
   /** Entity names the space's schema declares. */
