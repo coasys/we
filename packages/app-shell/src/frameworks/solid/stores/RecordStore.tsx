@@ -286,6 +286,18 @@ export interface RecordStore {
    * the declaration's own `options`, which is what they all did before this existed.
    */
   provideVocabularies: (resolve: (vocabulary: string) => string[] | undefined) => () => void;
+  /**
+   * Where content lives — injected by the store that knows the space's structure.
+   *
+   * A canvas holds its cards by containment, so a card made on a canvas used to be made *inside* it.
+   * A space canvas cannot work that way: what it shows is everything top-level in the space, read
+   * from the space collection, and a card hidden inside the canvas record would be on no feed, no
+   * board and no other canvas. So `forCanvas` answers where content made on a canvas goes (the space
+   * collection, for the space's canvas; the canvas itself otherwise), and `root` where content with
+   * no other home goes. Unset, a canvas holds its own cards and loose content has no parent, which
+   * is what everything did before spaces had a collection.
+   */
+  provideContentHomes: (homes: { forCanvas: (canvas: string) => string; root: () => string }) => () => void;
   /** Validation errors from the last save attempt. */
   recordErrors: Accessor<string[]>;
   savingRecord: Accessor<boolean>;
@@ -874,6 +886,10 @@ export function RecordStoreProvider(props: ParentProps) {
   });
 
   const vocabularies = hostSlot<(vocabulary: string) => string[] | undefined>();
+  const contentHomes = hostSlot<{ forCanvas: (canvas: string) => string; root: () => string }>();
+  /** Where content made on `canvas` lives — or, with no canvas, content with no other home. See `provideContentHomes`. */
+  const contentHome = (canvas?: string): string | undefined =>
+    canvas ? (contentHomes.get()?.forCanvas(canvas) ?? canvas) : contentHomes.get()?.root() || undefined;
 
   const displays = createMemo<Record<string, RecordDisplay>>(() => {
     const out: Record<string, RecordDisplay> = {};
@@ -1375,12 +1391,14 @@ export function RecordStoreProvider(props: ParentProps) {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !options.canvas) return;
     const parent = { id: options.canvas, predicate: PREDICATES.CHILDREN };
+    // The card lives wherever this canvas's content lives; its placement is the canvas's own.
+    const home = { id: contentHome(options.canvas) ?? options.canvas, predicate: PREDICATES.CHILDREN };
 
     try {
       await runEntityTransaction(dataset.handle, async (tx) => {
         const root = (await createBlocks(dataset.handle as never, editorState as never, {
           kind: 'card',
-          anchor: parent,
+          anchor: home,
           batchId: tx.batchId,
         })) as { id?: string } | undefined;
 
@@ -2603,14 +2621,19 @@ export function RecordStoreProvider(props: ParentProps) {
           },
           copyable: (handle, editorState, only) => copyableContent(handle, editorState, only),
           write: async (blocks, fields) => {
-            const root = await createBlocks(here.handle, blocks as ContentInput, { kind: 'post', fields });
+            const home = contentHome();
+            const root = await createBlocks(here.handle, blocks as ContentInput, {
+              kind: 'post',
+              fields,
+              ...(home ? { anchor: { id: home, predicate: PREDICATES.CHILDREN } } : {}),
+            });
             return root?.id ? { id: root.id } : null;
           },
           // Owned by the canvas, as a card composed on it is — deleting the canvas takes it.
           writeBlock: into.canvas
             ? async (block) =>
                 (await createBlock(here.handle, block, {
-                  anchor: { id: into.canvas!, predicate: PREDICATES.CHILDREN },
+                  anchor: { id: contentHome(into.canvas) ?? into.canvas!, predicate: PREDICATES.CHILDREN },
                 })) ?? null
             : undefined,
         },
@@ -2998,10 +3021,13 @@ export function RecordStoreProvider(props: ParentProps) {
         space rather than the canvas, which is exactly the shape of that bug from the outside.
       */
       const canvas = pendingBoard();
+      // A space canvas's content lives in the space collection, as does anything made with no canvas
+      // at all — see `provideContentHomes`.
+      const home = contentHome(canvas || undefined);
       const created = (await Model.create(
         dataset.handle,
         fields,
-        canvas ? { parent: { id: canvas, predicate: PREDICATES.CHILDREN } } : undefined,
+        home ? { parent: { id: home, predicate: PREDICATES.CHILDREN } } : undefined,
       )) as {
         id?: string;
         setSource?: (value: string) => Promise<unknown>;
@@ -3065,6 +3091,7 @@ export function RecordStoreProvider(props: ParentProps) {
     recordDraftDirty,
     displays,
     provideVocabularies: vocabularies.provide,
+    provideContentHomes: contentHomes.provide,
     recordErrors,
     savingRecord,
     lastCreatedId,

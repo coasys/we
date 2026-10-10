@@ -975,7 +975,8 @@ export function createCallStore(deps: ModuleStoreDeps) {
         // Feed mode: every participant's transcriber appends to this one record, so it has no single
         // authoring agent and must never be reconciled.
         { kind: CALL_KIND, type: 'collection', mode: 'feed' },
-        anchorNodeId ? { parent: { id: anchorNodeId, predicate: CALL_PREDICATE } } : undefined,
+        // A call about a record hangs off that record; any other call is the space's own.
+        anchorNodeId ? { parent: { id: anchorNodeId, predicate: CALL_PREDICATE } } : { topLevel: true },
       );
     } catch (cause) {
       console.error('call: could not create the call record', cause);

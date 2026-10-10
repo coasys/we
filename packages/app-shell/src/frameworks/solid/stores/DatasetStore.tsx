@@ -22,7 +22,7 @@ import { provideModuleHostServices } from '@shared/registries/moduleHostServices
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
 import { isSystemDataset, SYSTEM_DATASET_NAMES, SYSTEM_DATASETS } from '@shared/systemDatasets';
-import { datasetKey, type DatasetRef, type EntityManifestEntry, trace } from '@we/backend-shared';
+import { type DatasetHandle, datasetKey, type DatasetRef, type EntityManifestEntry, trace } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { AgentSettings, type DatasetProxy, ExtractionPass, getEntityForDataset } from '@we/entities';
 import { Accessor, batch, createContext, createMemo, createSignal, onCleanup, ParentProps, useContext } from 'solid-js';
@@ -195,6 +195,14 @@ export interface DatasetStore {
   }) => Promise<void>;
   /** SpaceStore supplies "does this space want calls interpreted automatically". Unset reads off. */
   provideAutoInterpretGate: (gate: () => boolean) => () => void;
+  /**
+   * Keep a standing extraction watch on one conversation, filing what it finds into the space
+   * collection. What a module's `watchCollection` reaches; also the space's own, for its loose
+   * messages. Rejects where the watch cannot be registered, with the reason.
+   */
+  watchConversation: (collectionId: string, dataset?: DatasetHandle) => Promise<void>;
+  /** Stop it. Safe when none was registered. */
+  unwatchConversation: (collectionId: string, dataset?: DatasetHandle) => Promise<void>;
   /**
    * ShapeStore supplies "which entities *could* be extracted here" — core vocabulary that declares
    * itself extractable, plus this space's adopted shapes. Unset reads as none.
@@ -479,7 +487,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         try {
           const result = await port.interpret(dataset.handle, turns, {
             classes,
-            parent: { id: collectionId, predicate },
+            parent: await filedUnder(dataset.handle, collectionId, predicate),
             provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
           });
           await recordPass(dataset.handle, collectionId, {
@@ -539,7 +547,11 @@ export function DatasetStoreProvider(props: ParentProps) {
         // Unscoped rather than empty when containment cannot be named here: too many suggestions is
         // a nuisance, none is a review surface that looks broken.
         if (!predicate) return port.proposals(dataset);
-        return port.proposals(dataset, { parent: { id: collectionId, predicate } });
+        return port.proposals(dataset, {
+          parent: await filedUnder(dataset, collectionId, predicate),
+          // The conversation, which is what narrows once every call files into one collection.
+          provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
+        });
       },
 
       /*
@@ -556,48 +568,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         than two. The engine reads its processors out of the perspective graph, so this is idempotent
         in the place it matters: whichever peer registers first wins and the rest write the same row.
       */
-      watchCollection: async (collectionId, target) => {
-        const port = session.backendPorts()?.interpretation;
-        if (!port?.watch) throw new Error('interpretation: this backend cannot run a standing watch');
-        // The community's decision, read through a gate SpaceStore supplies — this store sits below
-        // it and cannot reach a Space. Absent (no gate provided yet, or no space) reads as off, which
-        // is the right way round for something that spends somebody's LLM budget.
-        /*
-          Asked about *this call*, not about the space.
-
-          The space's switch is still the answer for a call whose participants have not decided —
-          `autoForCall` resolves that — but a call that has been turned off has to stay off, and a
-          gate that could only see the space would re-register the watch on the next tick. Falls back
-          to the space-wide gate where the call layer has not been wired, which keeps a host that
-          predates it behaving as it did.
-        */
-        const auto = callExtraction.get()?.autoForCall(collectionId) ?? autoInterpretGate.get()?.();
-        if (!auto) throw new Error('interpretation: automatic extraction is off for this call');
-        /*
-          The caller's dataset, not `currentDataset()`: a call outlives the space on screen, and a watch
-          registered wherever the reader had wandered to interprets the call into a perspective that
-          does not hold it — and is then removed from the wrong one too, so it never stops.
-        */
-        const handle = target ?? currentDataset()?.handle;
-        if (!handle) throw new Error('interpretation: no dataset to interpret into');
-
-        const modelFor = (entity: string) => getEntityForDataset(entity, handle);
-        const predicate = containmentPredicate(modelFor, currentDatasetEntities());
-        if (!predicate)
-          throw new Error('interpretation: this space has no collection schema to read a transcript from');
-
-        const classes = targetsForCollection(collectionId);
-        // Refused rather than registered empty: the executor rejects a processor with no classes, and
-        // "this space has marked nothing for extraction" is a sentence worth saying in its own words.
-        if (!classes.length) throw new Error('interpretation: nothing in this space is marked for AI extraction');
-
-        await port.watch(handle, {
-          watchId: watchIdFor(collectionId),
-          classes,
-          parent: { id: collectionId, predicate },
-          provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
-        });
-      },
+      watchCollection: watchConversation,
 
       /*
         Repair anything a standing pass minted without an edge.
@@ -617,21 +588,106 @@ export function DatasetStoreProvider(props: ParentProps) {
 
         return port.reconcile(dataset.handle, {
           classes: targetsForCollection(collectionId),
-          parent: { id: collectionId, predicate },
+          parent: await filedUnder(dataset.handle, collectionId, predicate),
+          provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
         });
       },
 
-      unwatchCollection: async (collectionId, target) => {
-        const port = session.backendPorts()?.interpretation;
-        // The caller's dataset, for the reason `watchCollection` gives.
-        const handle = target ?? currentDataset()?.handle;
-        // Silent rather than thrown: this runs while tearing a call down, and a host that never
-        // registered anything is not a failure worth interrupting that with.
-        if (!port?.unwatch || !handle) return;
-        await port.unwatch(handle, watchIdFor(collectionId));
-      },
+      unwatchCollection: unwatchConversation,
     }),
   );
+
+  /*
+    A standing watch over one conversation — a call, or the space collection's loose messages.
+
+    Named functions rather than members of the module services above, because the space itself
+    registers one too: the watch over its loose messages belongs to the space, not to any module.
+  */
+  async function watchConversation(collectionId: string, target?: DatasetHandle): Promise<void> {
+    const port = session.backendPorts()?.interpretation;
+    if (!port?.watch) throw new Error('interpretation: this backend cannot run a standing watch');
+    // The community's decision, read through a gate SpaceStore supplies — this store sits below
+    // it and cannot reach a Space. Absent (no gate provided yet, or no space) reads as off, which
+    // is the right way round for something that spends somebody's LLM budget.
+    /*
+      Asked about *this call*, not about the space.
+
+      The space's switch is still the answer for a call whose participants have not decided —
+      `autoForCall` resolves that — but a call that has been turned off has to stay off, and a
+      gate that could only see the space would re-register the watch on the next tick. Falls back
+      to the space-wide gate where the call layer has not been wired, which keeps a host that
+      predates it behaving as it did.
+    */
+    const auto = callExtraction.get()?.autoForCall(collectionId) ?? autoInterpretGate.get()?.();
+    if (!auto) throw new Error('interpretation: automatic extraction is off for this call');
+    /*
+      The caller's dataset, not `currentDataset()`: a call outlives the space on screen, and a watch
+      registered wherever the reader had wandered to interprets the call into a perspective that
+      does not hold it — and is then removed from the wrong one too, so it never stops.
+    */
+    const handle = target ?? currentDataset()?.handle;
+    if (!handle) throw new Error('interpretation: no dataset to interpret into');
+
+    const modelFor = (entity: string) => getEntityForDataset(entity, handle);
+    const predicate = containmentPredicate(modelFor, currentDatasetEntities());
+    if (!predicate) throw new Error('interpretation: this space has no collection schema to read a transcript from');
+
+    const classes = targetsForCollection(collectionId);
+    // Refused rather than registered empty: the executor rejects a processor with no classes, and
+    // "this space has marked nothing for extraction" is a sentence worth saying in its own words.
+    if (!classes.length) throw new Error('interpretation: nothing in this space is marked for AI extraction');
+
+    await port.watch(handle, {
+      watchId: watchIdFor(collectionId),
+      classes,
+      parent: await filedUnder(handle, collectionId, predicate),
+      provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
+    });
+  }
+
+  async function unwatchConversation(collectionId: string, target?: DatasetHandle): Promise<void> {
+    const port = session.backendPorts()?.interpretation;
+    // The caller's dataset, for the reason `watchCollection` gives.
+    const handle = target ?? currentDataset()?.handle;
+    // Silent rather than thrown: this runs while tearing a call down, and a host that never
+    // registered anything is not a failure worth interrupting that with.
+    if (!port?.unwatch || !handle) return;
+    await port.unwatch(handle, watchIdFor(collectionId));
+  }
+
+  /*
+    Where a pass files what it finds: the space collection, whatever conversation it read.
+
+    Extracted items are the space's top-level content, so they live where everything top-level does
+    — in the collection the space's feed, canvas and boards all read — and a call is only where they
+    came from (the provenance link, written beside this one). Filed under the call, every
+    space-wide view would have had to gather from every call; filed here, deleting a call leaves
+    what it found in place.
+
+    A dataset with no space collection — one made before spaces had one — files under the
+    conversation itself, which is what every pass did before. Read once per dataset and kept: the
+    collection is written at creation and never changes.
+  */
+  const spaceRoots = new WeakMap<object, string>();
+  async function filedUnder(
+    handle: unknown,
+    conversation: string,
+    predicate: string,
+  ): Promise<{ id: string; predicate: string }> {
+    let root = spaceRoots.get(handle as object);
+    if (root === undefined) {
+      try {
+        const SpaceModel = getEntityForDataset('Space', handle) as
+          { findOne(h: unknown, q: unknown): Promise<{ root?: { id?: string } } | null> } | undefined;
+        const space = await SpaceModel?.findOne(handle, { include: { root: true } });
+        root = space?.root?.id ?? '';
+      } catch {
+        root = '';
+      }
+      if (root) spaceRoots.set(handle as object, root);
+    }
+    return { id: root || conversation, predicate };
+  }
 
   /*
   One collection, one watch.
@@ -1216,6 +1272,8 @@ export function DatasetStoreProvider(props: ParentProps) {
       });
     },
     provideAutoInterpretGate: autoInterpretGate.provide,
+    watchConversation,
+    unwatchConversation,
     provideExtractionCandidates: extractionCandidatesGate.provide,
     provideCallExtraction: callExtraction.provide,
   };

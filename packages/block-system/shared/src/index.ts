@@ -72,6 +72,7 @@ export {
   extractTextContent,
   loadBlocks,
   reconcileBlocks,
+  refreshComposition,
   recordToTextBlock,
   resolveExpressionAddresses,
   textBlockToRecord,

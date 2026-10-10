@@ -30,7 +30,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const { CORE_DEFS } = await import(resolve(here, '../../../entities/src/manifest/index.ts'));
 // Imported rather than reimplemented: the default for an untyped relation is stated once, so a
 // generated class and a compiled one cannot disagree about which relations are polymorphic.
-const { resolvesPolymorphically } = await import(resolve(here, '../../shared/src/manifest.ts'));
+const { CONTAINMENT_PREDICATE, resolvesPolymorphically } = await import(resolve(here, '../../shared/src/manifest.ts'));
 
 const ENTITY_DIR = resolve(here, '../src/entities');
 const MANIFEST_DIR = resolve(here, '../../../entities/src/manifest');
@@ -71,7 +71,8 @@ const TS_TYPE = {
 };
 
 function propertyDecorator(spec) {
-  const opts = [`through: ${q(spec.predicate)}`];
+  // Containment is one predicate on every backend — see `RelationSchema.containment`.
+  const opts = [`through: ${q(spec.containment ? CONTAINMENT_PREDICATE : spec.predicate)}`];
   if (spec.required) opts.push('required: true');
   if (spec.identity) opts.push('identity: true');
   if (spec.format === 'file') opts.push('resolveLanguage: FILE_STORAGE_LANGUAGE');

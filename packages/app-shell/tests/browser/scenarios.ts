@@ -1079,6 +1079,32 @@ const sliderMarks = (): Scenario => ({
   tables: {},
 });
 
+/**
+ * A section folded and unfolded in place by `$animate` with a reveal — how a rail group's rows
+ * open — with a line under it whose position says how open the section is.
+ */
+const foldingSection = (): Scenario => ({
+  node: {
+    type: 'Column',
+    $localState: { open: { type: 'boolean', initial: true } },
+    props: { width: '100%', gap: '200' },
+    children: [
+      { type: 'we-button', props: { id: 'fold-toggle', onClick: { $toggleLocal: 'open' } }, children: ['Toggle'] },
+      {
+        type: '$animate',
+        props: {
+          condition: { $: 'local.open' },
+          enterTransition: [{ type: 'reveal', duration: 300, easing: 'ease-in-out' }],
+          exitTransition: [{ type: 'reveal', duration: 300, easing: 'ease-in-out' }],
+        },
+        children: [{ type: 'Column', props: { height: '200px', bg: 'surface-sunken' } }],
+      },
+      { type: 'we-text', props: { id: 'below-fold' }, children: ['Below'] },
+    ],
+  },
+  tables: {},
+});
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:slider-marks': sliderMarks,
   'security:self-firing-events': selfFiringEvents,
@@ -1103,4 +1129,5 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'panel:sections': panelSections,
   'cards:collapse': collapsingCard,
   'ds:unshrinkable-box': unshrinkableBox,
+  'ds:folding-section': foldingSection,
 };

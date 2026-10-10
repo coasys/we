@@ -16,7 +16,10 @@ const json = JSON.stringify(board);
 describe('the task board', () => {
   it('declares the three subscriptions the host function reads, and does not cap the pool', () => {
     const queries = (board as { $queries?: Record<string, Record<string, unknown>> }).$queries ?? {};
-    expect(Object.keys(queries).sort()).toEqual(['board', 'columns', 'involvements', 'pool']);
+    expect(Object.keys(queries).sort()).toEqual(['board', 'boardOnlySource', 'columns', 'involvements', 'pool']);
+    // The `onlyFrom` lens's source, declared on every board so the shared expression can name it, and
+    // never asked on one that does not narrow.
+    expect(queries.boardOnlySource.when).toEqual({ $: 'false' });
     // Declared so every list can name it. On a board that does not read people it is asked only where
     // the space's states ask for agreement, since whose approval counts can be read off it.
     expect(queries.involvements.when).toEqual({ $: 'spaceStore.taskFlowEnabled' });

@@ -36,6 +36,7 @@ export * from './Signal';
 export * from './SignalType';
 export * from './Space';
 export * from './SpacePreference';
+export * from './SpaceRole';
 export * from './SpaceTemplatePreference';
 export * from './TagBlock';
 export * from './TaskBlock';

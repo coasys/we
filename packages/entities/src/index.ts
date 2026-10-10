@@ -68,6 +68,8 @@ export type Template = M.TemplateRecord;
 export const Template = defineEntity('Template') as unknown as EntityStatic<M.TemplateRecord>;
 export type Theme = M.ThemeRecord;
 export const Theme = defineEntity('Theme') as unknown as EntityStatic<M.ThemeRecord>;
+export type SpaceRole = M.SpaceRoleRecord;
+export const SpaceRole = defineEntity('SpaceRole') as unknown as EntityStatic<M.SpaceRoleRecord>;
 export type TypeStyle = M.TypeStyleRecord;
 export const TypeStyle = defineEntity('TypeStyle') as unknown as EntityStatic<M.TypeStyleRecord>;
 export { modelToThemeData } from './utils/themeData';
@@ -105,7 +107,7 @@ export type TextBlock = M.TextBlockRecord;
 export const TextBlock = defineEntity('TextBlock') as unknown as EntityStatic<M.TextBlockRecord>;
 export type VideoBlock = M.VideoBlockRecord;
 export const VideoBlock = defineEntity('VideoBlock') as unknown as EntityStatic<M.VideoBlockRecord>;
-export { DEFAULT_INVOLVEMENT_TYPES, DEFAULT_TASK_STATES, FILE_STORAGE_LANGUAGE, PREDICATES } from './constants';
+export { FILE_STORAGE_LANGUAGE, PREDICATES } from './constants';
 export {
   asFileField,
   dataURItoBlob,

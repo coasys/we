@@ -32,7 +32,7 @@ const manifest: EntityManifest = {
         unbound: { type: 'string' },
       },
       relations: {
-        children: { target: '', cardinality: 'many', predicate: 'we://children' },
+        children: { target: '', cardinality: 'many', predicate: 'we://child' },
         cover: { target: 'Image', cardinality: 'one', predicate: 'we://cover' },
       },
     },
@@ -48,7 +48,7 @@ describe('manifestEntries', () => {
     // The whole point. `scope` reads only the predicate, so a heterogeneous edge resolves fine —
     // it is `include` that needs a target class, because hydration must know what to hydrate into.
     expect(prop('Collection', 'children')).toMatchObject({
-      predicate: 'we://children',
+      predicate: 'we://child',
       type: 'uri',
       isCollection: true,
     });

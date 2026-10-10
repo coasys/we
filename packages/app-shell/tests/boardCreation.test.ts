@@ -21,6 +21,7 @@ interface Row {
 }
 
 const committed = new Map<string, Row>();
+const roles: { id: string; name: string; node: string[] }[] = [];
 const batches = new Map<string, { staged: Row[]; ops: Array<() => void> }>();
 let nextId = 0;
 
@@ -68,7 +69,18 @@ vi.mock('@we/entities', () => {
   };
   return {
     CollectionBlock,
-    Space: { findOne: async () => null },
+    Space: {
+      findOne: async () => ({ id: 'space', root: { id: 'root' } }),
+      addRelation: async () => {},
+    },
+    SpaceRole: {
+      findAll: async () => roles,
+      create: async (_p: unknown, data: { name: string; node: string[] }) => {
+        const role = { ...data, id: `role-${nextId++}` };
+        roles.push(role);
+        return role;
+      },
+    },
     getEntityForDataset: () => ({ findAll: async () => [{ id: 'task' }] }),
     runEntityTransaction: async (_p: unknown, fn: (tx: { batchId: string }) => Promise<unknown>) => {
       const batchId = `batch-${nextId++}`;
@@ -101,6 +113,8 @@ beforeEach(() => {
   batches.clear();
   nextId = 0;
   committed.set('call', { id: 'call', kind: 'call', title: 'Standup', children: ['task'] });
+  committed.set('root', { id: 'root', kind: 'space', children: [] });
+  roles.length = 0;
 });
 
 describe('making a board', () => {
@@ -116,5 +130,27 @@ describe('making a board', () => {
 
     expect(committed.get('call')?.board).toBe(boardId);
     expect(columnSlugs(boardId)).toEqual(['todo', 'doing', 'done']);
+  });
+
+  it('makes the space’s own board once, gathering from the space collection, and names it by role', async () => {
+    const rolesChanged = vi.fn();
+    const space = createBoardActions({
+      dataset: () => ({}) as never,
+      offeredStates: () => STATES,
+      notify: () => {},
+      rolesChanged,
+    });
+
+    const boardId = await space.openBoardFor();
+
+    expect(committed.get(boardId)?.gathers).toEqual(['root']);
+    expect(committed.get('root')?.children).toContain(boardId);
+    expect(columnSlugs(boardId)).toEqual(['todo', 'doing', 'done']);
+    expect(roles).toEqual([expect.objectContaining({ name: 'board', node: [boardId] })]);
+    expect(rolesChanged).toHaveBeenCalledTimes(1);
+
+    // Pressed again, it is the same board — the role names it — and nothing more is written.
+    expect(await space.openBoardFor()).toBe(boardId);
+    expect(roles).toHaveLength(1);
   });
 });

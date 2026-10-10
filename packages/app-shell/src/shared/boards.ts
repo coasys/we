@@ -24,6 +24,7 @@
 import { CollectionBlock, type DatasetProxy, getEntityForDataset, runEntityTransaction, Space } from '@we/entities';
 
 import { spliceSubsetOrder } from './shapes/subsetOrder';
+import { readSpaceRoles, writeSpaceRole } from './spaceRoles';
 import type { TaskMoveOutcome } from './taskFlow';
 
 /** What the board actions need from the app around them. */
@@ -40,6 +41,8 @@ export interface BoardDeps {
   offeredStates: () => { name: string; slug: string }[];
   /** How a failure reaches the person who caused it. */
   notify: (message: string) => void;
+  /** The space's roles changed — a board was made the space's — so whatever holds them reads again. */
+  rolesChanged?: () => void;
   /**
    * Drop a staged suggestion for one property of one record, if extraction left one there.
    *
@@ -281,15 +284,29 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         return made;
       }
 
-      const space = await Space.findOne(p, { include: { board: true } });
+      /*
+        The space's own board is the record playing its `board` role — a new space's starter makes
+        one; this makes it for a space whose starter did not.
+      */
+      const existing = (await readSpaceRoles(p)).board;
+      if (existing) return existing;
+      const space = await Space.findOne(p, { include: { root: true } });
       if (!space) return '';
-      const existing = space.board as unknown as CollectionBlock | undefined;
-      if (existing?.id) return existing.id;
-      const made = await createBoard(title?.trim() || 'Everything', undefined, {
+      /*
+        Gathering from the space collection, where everything top-level in the space lives — every
+        call's finds included, since they are filed there rather than under the call. A space made
+        before spaces had a collection gathers from the space record, which a board reads as the
+        whole space, as it always did.
+      */
+      const root = (space.root as unknown as { id?: string } | undefined)?.id;
+      const made = await createBoard(title?.trim() || 'Everything', root || undefined, {
         dataset: datasetUri,
-        gathers: space.id,
+        gathers: root || space.id,
       });
-      if (made) await space.setBoard({ id: made } as CollectionBlock);
+      if (made) {
+        await writeSpaceRole(p, space.id, 'board', made);
+        deps.rolesChanged?.();
+      }
       return made;
     } catch (error) {
       console.error('SpaceStore: could not open that board', error);
@@ -392,8 +409,8 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
     const p = dataset();
     if (!p || !slug) return;
     try {
-      const space = await Space.findOne(p, { include: { board: true } });
-      const board = space?.board as unknown as CollectionBlock | undefined;
+      const boardId = (await readSpaceRoles(p)).board;
+      const board = boardId ? await CollectionBlock.findOne(p, { where: { id: boardId } }) : undefined;
       if (!board?.id) return;
       // The board's columns cannot be hydrated through `findOne` (see `ensureBoardFor`), so ask the
       // other way round: which columns bound to this slug exist, and is one of them the board's.
@@ -812,7 +829,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       let taskId = '';
       await runEntityTransaction(p, async (tx) => {
         const task = await Task.create(p, { title: title.trim(), ...(initial ? { status: initial } : {}) }, {
-          ...(anchorId ? { parent: { id: anchorId, predicate: 'we://children' } } : {}),
+          ...(anchorId ? { parent: { id: anchorId, predicate: 'we://child' } } : {}),
           batchId: tx.batchId,
         } as never);
         taskId = (task as { id: string }).id;

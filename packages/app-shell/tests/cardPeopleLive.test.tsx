@@ -8,7 +8,6 @@
  * so this mounts the pieces.
  */
 import { involvementOptimism } from '@shared/involvementOptimism';
-import { resolveInvolvementTypes } from '@shared/involvements';
 import { hostSourceBag } from '@shared/sources';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import {
@@ -22,6 +21,8 @@ import { RenderSchema, resetSubscriptionPool, subscriptionPoolConfig } from '@we
 import { taskBoard } from '@we/template-kit';
 import { render } from 'solid-js/web';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { SEEDED_INVOLVEMENT_TYPES } from './seededVocabulary';
 
 // jsdom has no constructable stylesheets, and the primitives adopt one as they connect.
 vi.hoisted(() => {
@@ -127,9 +128,9 @@ async function mountBoard() {
   };
   const tasks = live([{ id: 't1', title: 'A task', status: 'todo', createdAt: '2026-09-01' }]);
   const involvements = live([]);
-  const types = resolveInvolvementTypes([]);
+  const types = SEEDED_INVOLVEMENT_TYPES;
   const sources = hostSourceBag();
-  const state = [{ id: '', slug: 'todo', name: 'To do', semantic: 'open', defined: false }];
+  const state = [{ id: 'todo', slug: 'todo', name: 'To do', semantic: 'open' }];
   const stores = {
     $getEntity: (name: string) =>
       name === 'Involvement' ? involvements.model : name === 'TaskBlock' ? tasks.model : boards,

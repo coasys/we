@@ -154,6 +154,23 @@ export interface RelationSchema {
   predicate?: string;
 
   /**
+   * The targets are this record's **parts** — a post's blocks, a call's utterances, a board's columns
+   * — rather than things it merely points at.
+   *
+   * A fact about the data, and the one a reader outside WE most needs: an agent asked about an
+   * utterance finds its context by walking up containment, and a backend that stores a space finds
+   * the space's shape by it. So containment is stored under one predicate on every backend,
+   * {@link CONTAINMENT_PREDICATE}: a backend stores a containment relation under it whatever the
+   * relation's own `predicate` says, and {@link validateManifest} refuses a manifest that names a
+   * different one, so a WE space has the same graph shape whatever holds it.
+   *
+   * Replies are deliberately *not* containment in this sense, though an agent reading context treats
+   * both alike. A node's parts and the replies to it render, count, query and delete differently, and
+   * one predicate cannot hold both without losing that. They keep their own (`we://comment`).
+   */
+  containment?: boolean;
+
+  /**
    * The members of this collection are in an order somebody chose, and that order is part of the
    * data rather than an artefact of when each member was written.
    *
@@ -211,6 +228,13 @@ export interface RelationSchema {
  * An untyped relation defaults to polymorphic because the alternative is not a cheaper read but a
  * failed one: with no target there is no shape to hydrate against.
  */
+/**
+ * The one predicate containment is stored under, on every backend — see `RelationSchema.containment`.
+ *
+ * Singular, as every relation predicate is: a link names one member.
+ */
+export const CONTAINMENT_PREDICATE = 'we://child';
+
 export function resolvesPolymorphically(rel: RelationSchema): boolean {
   return rel.polymorphic ?? rel.target === '';
 }
@@ -429,6 +453,7 @@ const relationSchema = z.object({
   cardinality,
   reverseOf: z.string().optional(),
   predicate: z.string().optional(),
+  containment: z.boolean().optional(),
   ordered: z.boolean().optional(),
   polymorphic: z.boolean().optional(),
 });
@@ -554,6 +579,12 @@ export function validateManifest(
         errors.push({
           path: `${base}.ordered`,
           message: `"${relName}" holds one ${rel.target || 'record'}, so it has no order to declare`,
+        });
+      }
+      if (rel.containment && rel.predicate !== undefined && rel.predicate !== CONTAINMENT_PREDICATE) {
+        errors.push({
+          path: `${base}.predicate`,
+          message: `"${relName}" is containment, so it is stored as ${CONTAINMENT_PREDICATE} on every backend`,
         });
       }
       // An empty target is an untyped reference, not a broken one.
