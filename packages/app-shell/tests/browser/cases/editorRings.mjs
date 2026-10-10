@@ -10,7 +10,7 @@ export const name = 'a ring names a part, and stops at its scroller';
 export const scenario = 'security:self-firing-events';
 export const widths = [320];
 
-export async function check({ call, clickAt, moveTo, keyDown, keyUp, count, measure, prop, recorded }) {
+export async function check({ call, clickAt, moveTo, keyDown, keyUp, key, count, measure, prop, recorded }) {
   await call('editorProbe');
   try {
     const problems = [];
@@ -44,6 +44,14 @@ export async function check({ call, clickAt, moveTo, keyDown, keyUp, count, meas
     if ((await recorded('__probeOwner')).at(-1) !== 'part-node:n-part-inner')
       problems.push('a press with the modifier held does not select the piece inside the part');
 
+    // Escape is the way back up: from the piece to the part, and from the part out.
+    await key('Escape');
+    if ((await recorded('__probeSelected')).at(-1) !== 'n-part')
+      problems.push('Escape from a piece inside a part did not select the part');
+    await key('Escape');
+    if ((await recorded('__probeSelected')).at(-1) !== null)
+      problems.push('Escape from a part placed at the top of the template did not leave it');
+
     // And past a list's first step: the row, not the list.
     await clickAt('#probe-n-content');
     await clickAt('#probe-n-row');
@@ -53,6 +61,9 @@ export async function check({ call, clickAt, moveTo, keyDown, keyUp, count, meas
     await clickAt('#probe-n-row', { hold: 'Control' });
     if ((await recorded('__probeSelected')).at(-1) !== 'n-row')
       problems.push('a press on a row with the modifier held did not select the row');
+    await key('Escape');
+    if ((await recorded('__probeSelected')).at(-1) !== 'n-list')
+      problems.push('Escape from a row did not select its list');
 
     const host = await measure('#probe-scroll-host');
     await moveTo('#probe-scroll-host');

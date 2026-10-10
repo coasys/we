@@ -30,6 +30,7 @@ import {
 } from '../helpers';
 import { useEditorHost } from '../host';
 import { deepClone } from '../utils';
+import { levelsAbove, selectLevel } from './partLevels';
 
 /**
  * The colours this overlay annotates with.
@@ -1288,6 +1289,58 @@ function VisualEditorLayer() {
 
   document.addEventListener('keydown', handleGlobalKeyDown);
   onCleanup(() => document.removeEventListener('keydown', handleGlobalKeyDown));
+
+  /*
+    Escape goes up a level: from a node inside a part to the part it sits in, from a part to the
+    node of the template holding it, from any node to its parent — the way back from a press that
+    went straight in with the modifier, and the key design tools use for it.
+
+    In capture, and marked handled only when it moved the selection, so it answers before the
+    shell's own Escape (which leaves a maximised panel, and stands aside for a handled event): with
+    something selected Escape walks up, and once nothing is, it does what it did before. Not from a
+    field, where Escape belongs to the typing, nor from inside a modal or a popover, which close on it.
+  */
+  function handleEscape(e: KeyboardEvent) {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    if (isDragging() || isResizing()) return;
+    const path = e.composedPath();
+    const typing = path[0] as HTMLElement | undefined;
+    if (typing && (typing.tagName === 'INPUT' || typing.tagName === 'TEXTAREA' || typing.isContentEditable)) return;
+    if (path.some((el) => el instanceof HTMLElement && /^WE-(MODAL|DRAWER|POPOVER)$/.test(el.tagName))) return;
+    if (goUp()) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }
+  window.addEventListener('keydown', handleEscape, true);
+  onCleanup(() => window.removeEventListener('keydown', handleEscape, true));
+
+  /** Select the level above what is selected. Answers whether there was one. */
+  function goUp(): boolean {
+    const owner = visualEditor.selectedOwner();
+    if (owner?.kind === 'part-node') {
+      const levels = levelsAbove(owner);
+      selectLevel(visualEditor, owner, levels.length - 1, (part) => owners?.part(part)?.label ?? part);
+      return levels.length > 0;
+    }
+    if (owner) {
+      visualEditor.onSelectOwner(null);
+      return true;
+    }
+    const info = selectedInfo();
+    if (!info) return false;
+    const parent = info.parent;
+    // The template's root is the page itself, and selecting it rings everything: up from a child of
+    // the root is out, to nothing selected.
+    if (!parent || parent === templateStore.currentTemplate || !parent.id) {
+      visualEditor.onSelect(null);
+      setEnteredEachParentId(null);
+      return true;
+    }
+    if (parent.type === '$each') setEnteredEachParentId(null);
+    visualEditor.onSelect(parent.id);
+    return true;
+  }
 
   // ---- Pointer event handlers for selection/hover ----
 

@@ -41,6 +41,17 @@ export async function check({ call, recorded }) {
     await call('editorProbeDispose');
   }
 
+  // The path in its heading goes back up: the part the template placed is a step of it, not a route.
+  await call('ownerCardProbe', 'part-node');
+  try {
+    if (await call('pressButton', 'Select')) problems.push('a node inside a part still offers going up as a route');
+    if (!(await call('pressButton', 'Box'))) problems.push('a node inside a part has no path back to its part');
+    const [up] = (await recorded('__probeSelected')).slice(-1);
+    if (up !== 'aaaaaaaaaa') problems.push(`the path back selected ${up}, not the part the template placed`);
+  } finally {
+    await call('editorProbeDispose');
+  }
+
   // A node somebody went into a part to reach: copying opens the path to it, and selects it in the copy.
   await call('ownerCardProbe', 'part-node');
   try {

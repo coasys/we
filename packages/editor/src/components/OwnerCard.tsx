@@ -36,6 +36,7 @@ import { createMemo, createSignal, For, type JSX, Show } from 'solid-js';
 
 import { type OwnedPart, useEditorHost } from '../host';
 import { deepClone } from '../utils';
+import { levelsAbove, selectLevel } from './partLevels';
 
 /** One route out of an owned region: what it does, what it costs, and the button. */
 function Route(props: { title: string; detail: string; action: string; onPress: () => void; disabled?: boolean }) {
@@ -258,17 +259,7 @@ export function PartCard(props: { node: SchemaNode }) {
 
 export function OwnerCard(props: { owner: OwnerRef }) {
   return (
-    <Show
-      when={props.owner.kind !== 'part-node'}
-      fallback={
-        <PartNodeCard
-          id={props.owner.id}
-          name={props.owner.name}
-          chain={props.owner.chain ?? []}
-          parts={props.owner.parts ?? []}
-        />
-      }
-    >
+    <Show when={props.owner.kind !== 'part-node'} fallback={<PartNodeCard owner={props.owner} />}>
       <Show when={props.owner.kind === 'panel'} fallback={<ViewCard id={props.owner.id} />}>
         <PanelCard dockId={props.owner.id} />
       </Show>
@@ -292,25 +283,31 @@ const PICKED = '__weEditorPicked';
  * that path stays the module's and keeps its fixes. Owning the one part that holds it whole is still
  * a copy of that part — which is why the card names the parts it opens rather than saying "a copy".
  */
-function PartNodeCard(props: { id: string; name: string; chain: string[]; parts: string[] }) {
+function PartNodeCard(props: { owner: OwnerRef }) {
   const host = useEditorHost();
   const visualEditor = useVisualEditor();
   const write = useTemplateWriter();
   const readOnly = () => host.session.isReadOnly();
 
-  const infos = createMemo(() => props.parts.map((id) => host.owners?.part(id)).filter((p): p is OwnedPart => !!p));
+  const chain = () => props.owner.chain ?? [];
+  const infos = createMemo(() =>
+    (props.owner.parts ?? []).map((id) => host.owners?.part(id)).filter((p): p is OwnedPart => !!p),
+  );
+  const labelOf = (part: string) => host.owners?.part(part)?.label ?? part;
+  /** The levels above this node, outermost first, each one a step of the path in the heading. */
+  const above = createMemo(() => levelsAbove(props.owner));
   const within = () => infos().at(-1);
   const moduleName = () => within()?.moduleName ?? 'its module';
   /** The parts the copy opens: every one on the path, less the last when the node is itself a placement. */
-  const opened = () => infos().slice(0, props.chain.at(-1) === props.id ? -1 : undefined);
+  const opened = () => infos().slice(0, chain().at(-1) === props.owner.id ? -1 : undefined);
   const list = (names: string[]) =>
     names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 
   const makeOwn = () => {
     let picked: string | undefined;
     write((template) => {
-      const found = findNodeById(template, props.chain[0] ?? '');
-      const path = found && host.owners?.openPath?.(found.node, props.chain, props.id);
+      const found = findNodeById(template, chain()[0] ?? '');
+      const path = found && host.owners?.openPath?.(found.node, chain(), props.owner.id);
       if (!found || !path) return false;
       (path.target as unknown as Record<string, unknown>)[PICKED] = true;
       const replacement = copyWithNewIds(path.node);
@@ -332,16 +329,29 @@ function PartNodeCard(props: { id: string; name: string; chain: string[]; parts:
     <Column gap="200" pb="300">
       <Heading
         icon="puzzle-piece"
-        title={props.name}
+        title={props.owner.name}
         subtitle={within() ? `Inside ${within()!.label}, a part of ${moduleName()}` : 'Inside a module’s part'}
       >
-        <Show when={infos().length > 1}>
-          <we-text variant="footnote" color="text-muted">
-            {infos()
-              .map((part) => part.label)
-              .join(' › ')}
-          </we-text>
-        </Show>
+        {/* Where it is, from the part the template placed down to it. Every level above it can be
+            selected from here, as Escape selects the next one up — the way back from a press that
+            went straight in. */}
+        <Row gap="100" ay="center" wrap>
+          <For each={above()}>
+            {(level, i) => (
+              <>
+                <we-button
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => selectLevel(visualEditor, props.owner, i(), labelOf)}
+                >
+                  {labelOf(level.part)}
+                </we-button>
+                <we-icon name="caret-right" size="xs" color="text-faint" />
+              </>
+            )}
+          </For>
+          <we-text variant="footnote">{props.owner.name}</we-text>
+        </Row>
         <we-text variant="footnote">
           This is {moduleName()}’s, drawn the way it draws it, so it changes when {moduleName()} does.
         </we-text>
@@ -357,12 +367,6 @@ function PartNodeCard(props: { id: string; name: string; chain: string[]; parts:
               onPress={makeOwn}
             />
           </Show>
-          <Route
-            title={`Select ${infos()[0]?.label ?? 'the part'}`}
-            detail="Go back to the part this template placed, to open, copy or remove all of it."
-            action="Select"
-            onPress={() => visualEditor.onSelect(props.chain[0] ?? null)}
-          />
         </Show>
       </Column>
     </Column>
