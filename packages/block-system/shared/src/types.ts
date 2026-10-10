@@ -77,6 +77,23 @@ export type BlockComposerProps = Omit<DesignSystemProps, 'direction'> & {
    * here is a composition like any other and opens in a full composer with its handles intact.
    */
   handles?: boolean;
+  /**
+   * A line rather than a document — a transcript's input, the Feed's.
+   *
+   * One paragraph of text with its marks, growing as somebody writes: Enter sends, Shift+Enter breaks
+   * the line inside it, and nothing turns it into anything else — no `/` menu, no list or heading
+   * shorthand, no toolbar, no gutter. The `@` typeahead, links and formatting shortcuts work exactly
+   * as they do in a post, which is the reason this is a mode of the composer rather than a second
+   * input with its own idea of a mention.
+   *
+   * What it sends is `onSubmit`'s `{ text, marks }` — one block's worth, marks serialised as a record
+   * stores them — after which it empties itself.
+   */
+  compact?: boolean;
+  /** Sent on Enter in `compact` mode: the line's text and its marks, serialised. Nothing is sent for an empty line. */
+  onSubmit?: (line: { text: string; marks: string }) => void;
+  /** What an empty compact composer says. */
+  placeholder?: string;
 };
 
 /**

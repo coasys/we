@@ -6,7 +6,7 @@
  * the assertions live beside the cases, so one scenario can be measured several ways.
  */
 import { transcriptLines } from '@we/module-transcribe';
-import { cardShell, panelScroll } from '@we/schema-kit';
+import { cardShell, panelScroll, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 import { discussionSection, foldingSectionLabel, signalDisplay } from '@we/template-kit';
 import { CALL_CHROME_BAND, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
@@ -612,6 +612,105 @@ const pinnedPage = (rows: number) => (): Scenario => ({
   tables: {},
 });
 
+/**
+ * A timeline, in one of its four readings — anchored at the newest or the oldest end, drawn with the
+ * newest at the bottom or the top. The rows are what a query would answer: newest-first while
+ * following the live end, oldest-first from the start. The first of them is the row nearest the
+ * anchor, and is findable; so are the "more is coming" markers, at whichever edge they land.
+ */
+/** The same node, findable by the case. */
+const withId = (node: SchemaNode, id: string): SchemaNode => ({ ...node, props: { ...(node.props ?? {}), id } });
+
+const timelineReading = (fromStart: boolean, orientation: 'newestBottom' | 'newestTop') => (): Scenario => {
+  const rows = Array.from({ length: 80 }, (_, i) => ({
+    id: `row-${i}`,
+    text: `Line ${i} — something somebody said that runs on for long enough to wrap`,
+  }));
+  const queried = fromStart ? rows : [...rows].reverse();
+  const marker = (end: 'start' | 'end'): SchemaNode => ({
+    type: '$if',
+    props: {
+      condition: { $: timelineMoreAt(end, 'local.fromStart', 'local.orientation') },
+      then: { type: 'Row', props: { id: `more-${end}`, 'data-we-more': end, py: '200' }, children: ['more…'] },
+    },
+  });
+  const feed = timeline({
+    fromStart: 'local.fromStart',
+    orientation: 'local.orientation',
+    onLoadOlder: { $setLocal: 'fromStart', value: { $: 'local.fromStart' } },
+    onLoadNewer: { $setLocal: 'fromStart', value: { $: 'local.fromStart' } },
+    onJumpNewest: { $setLocal: 'fromStart', value: false },
+    onJumpOldest: { $setLocal: 'fromStart', value: true },
+    children: [
+      {
+        type: 'Column',
+        props: { gap: '300', p: '300' },
+        children: [
+          marker('start'),
+          {
+            type: '$each',
+            props: { items: { $: timelineOrder('local.rows', 'local.fromStart', 'local.orientation') }, as: 'row' },
+            children: [
+              {
+                type: 'we-text',
+                props: {
+                  variant: 'body',
+                  // The row nearest the anchor — the first the query answered with.
+                  id: { $: `row.id == '${queried[0].id}' ? 'anchor-row' : ''` },
+                },
+                children: [{ $: 'row.text' }],
+              },
+            ],
+          },
+          marker('end'),
+        ],
+      },
+    ],
+  });
+  return {
+    node: {
+      type: 'Column',
+      props: { height: '320px', width: '100%' },
+      $localState: {
+        fromStart: { type: 'boolean', initial: fromStart },
+        orientation: { type: 'string', initial: orientation },
+        rows: { type: 'array', initial: queried },
+      },
+      children: [withId(feed, 'feed')],
+    },
+    tables: {},
+  };
+};
+
+/**
+ * The block composer in its one-line mode, sending into a local the case can read back — the
+ * transcript's and the Feed's input.
+ */
+const compactComposer = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { width: '100%', gap: '300', p: '300' },
+    $localState: { sent: { type: 'string', initial: '' }, sends: { type: 'number', initial: 0 } },
+    children: [
+      {
+        type: 'BlockComposer',
+        props: {
+          compact: true,
+          autoFocus: false,
+          handles: false,
+          onSubmit: [
+            { $setLocal: 'sent', value: { $: 'event.text' } },
+            { $setLocal: 'sends', value: { $: 'local.sends + 1' } },
+          ],
+        },
+      },
+      { type: 'we-text', props: { id: 'sent' }, children: [{ $: 'local.sent' }] },
+      { type: 'we-text', props: { id: 'sends' }, children: [{ $: "'' + local.sends" }] },
+    ],
+  },
+  tables: {},
+});
+
 const pinnedShortContent = (): Scenario => ({
   node: {
     type: 'Column',
@@ -1126,6 +1225,11 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:pinned-page': pinnedPage(120),
   'ds:pinned-short': pinnedPage(20),
   'ds:pinned-empty': pinnedShortContent,
+  'composer:compact': compactComposer,
+  'timeline:live-newest-bottom': timelineReading(false, 'newestBottom'),
+  'timeline:live-newest-top': timelineReading(false, 'newestTop'),
+  'timeline:start-newest-bottom': timelineReading(true, 'newestBottom'),
+  'timeline:start-newest-top': timelineReading(true, 'newestTop'),
   'panel:sections': panelSections,
   'cards:collapse': collapsingCard,
   'ds:unshrinkable-box': unshrinkableBox,

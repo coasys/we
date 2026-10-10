@@ -789,6 +789,9 @@ export const contextData: ContextData = {
         { name: 'collaborate', type: 'string', optional: true },
         { name: 'autoFocus', type: 'boolean', optional: true },
         { name: 'handles', type: 'boolean', optional: true },
+        { name: 'compact', type: 'boolean', optional: true },
+        { name: 'onSubmit', type: '((line: { text: string; marks: string; }) => void)', optional: true },
+        { name: 'placeholder', type: 'string', optional: true },
       ],
       source: 'components',
     },
@@ -3527,7 +3530,7 @@ export const contextData: ContextData = {
         {
           name: 'addMessage',
           kind: 'action',
-          doc: 'Writes something a person typed into a transcript, as a typed line.',
+          doc: 'Writes something a person typed into a transcript, as a typed line — with its marks, when the composer gave any.',
         },
         { name: 'applyChange', kind: 'action', doc: 'Applies one suggested change to an agreed record.' },
         {
@@ -3558,6 +3561,7 @@ export const contextData: ContextData = {
           doc: 'Closes the open draft, discarding what was typed.',
           ambient: true,
         },
+        { name: 'cancelReply', kind: 'action', doc: 'Puts a reply down without sending it.', ambient: true },
         {
           name: 'cancelTiedDecision',
           kind: 'action',
@@ -3572,6 +3576,7 @@ export const contextData: ContextData = {
         },
         { name: 'changedIds', kind: 'state', doc: 'Agreed records carrying a suggested change, by id.' },
         { name: 'closeExtractionPanel', kind: 'action', doc: 'Closes the extraction panel.', ambient: true },
+        { name: 'closeFeed', kind: 'action', doc: 'Closes the Feed panel.', ambient: true },
         { name: 'closePanel', kind: 'action', doc: 'Closes the transcript panel.', ambient: true },
         {
           name: 'collectionId',
@@ -3621,6 +3626,24 @@ export const contextData: ContextData = {
           doc: 'How the last one-shot extraction pass went — idle, running, done or error.',
         },
         { name: 'extractTurns', kind: 'state', doc: 'How many transcript turns the last pass read.' },
+        {
+          name: 'feedFromStart',
+          kind: 'state',
+          doc: 'Whether the Feed is read from the beginning rather than the live end.',
+        },
+        { name: 'feedHasMore', kind: 'state', doc: 'Whether there is more of the space beyond the Feed’s window.' },
+        { name: 'feedLoaded', kind: 'state', doc: 'Whether the Feed has answered for this space yet.' },
+        { name: 'feedOpen', kind: 'state', doc: 'Whether the Feed panel is open.' },
+        {
+          name: 'feedRoot',
+          kind: 'state',
+          doc: 'The space collection the Feed reads, and writes typed messages into.',
+        },
+        {
+          name: 'feedRows',
+          kind: 'state',
+          doc: "The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.",
+        },
         {
           name: 'flushNow',
           kind: 'action',
@@ -3679,6 +3702,7 @@ export const contextData: ContextData = {
         { name: 'modelMissing', kind: 'state', doc: 'No transcription model is installed on this node, as last read.' },
         { name: 'open', kind: 'state', doc: 'Whether the transcript panel is open.' },
         { name: 'openExtractionPanel', kind: 'action', doc: 'Opens the extraction panel.', ambient: true },
+        { name: 'openFeed', kind: 'action', doc: 'Opens the Feed panel.', ambient: true },
         { name: 'openPanel', kind: 'action', doc: 'Opens the transcript panel.', ambient: true },
         { name: 'partialCoverage', kind: 'state', doc: 'Someone in this call is not being transcribed.' },
         {
@@ -3717,6 +3741,13 @@ export const contextData: ContextData = {
           doc: 'Suggestions staged on one conversation, by record id — read as proposalsFor[id].',
         },
         {
+          name: 'readFeedFromStart',
+          kind: 'action',
+          doc: 'Re-anchors the Feed at the beginning of the space.',
+          ambient: true,
+        },
+        { name: 'readFeedLive', kind: 'action', doc: 'Re-anchors the Feed at the newest message.', ambient: true },
+        {
           name: 'readTranscriptFromStart',
           kind: 'action',
           doc: 'Shows the beginning of the transcript, to be read forwards.',
@@ -3741,11 +3772,27 @@ export const contextData: ContextData = {
         },
         { name: 'rejectProposal', kind: 'action', doc: 'Drops a suggestion.' },
         {
+          name: 'reply',
+          kind: 'action',
+          doc: 'Answers one line with a typed line of its own, linked from it as a reply.',
+        },
+        {
+          name: 'replyingTo',
+          kind: 'state',
+          doc: 'The transcript line a reply is being written to — { id, text, author } — or null.',
+        },
+        {
+          name: 'sendToFeed',
+          kind: 'action',
+          doc: 'Writes a message straight into the space, outside any call — with its marks, when the composer gave any.',
+        },
+        {
           name: 'setProposalField',
           kind: 'action',
           doc: 'Sets one field of the open draft, by property name.',
           ambient: true,
         },
+        { name: 'showMoreFeed', kind: 'action', doc: 'Grows the Feed’s window by a page.', ambient: true },
         {
           name: 'showMoreTranscript',
           kind: 'action',
@@ -3753,6 +3800,12 @@ export const contextData: ContextData = {
           ambient: true,
         },
         { name: 'speaking', kind: 'state', doc: 'Whether the microphone level currently counts as speech.' },
+        {
+          name: 'startReply',
+          kind: 'action',
+          doc: 'Starts a reply to one transcript line — pass { id, text, author } — which the composer then sends as a reply.',
+          ambient: true,
+        },
         {
           name: 'status',
           kind: 'state',
@@ -3768,6 +3821,11 @@ export const contextData: ContextData = {
           name: 'tiedDecision',
           kind: 'state',
           doc: 'A decision waiting on confirmation because it decides others too — { kind, title, body, detail, confirmLabel } — or null.',
+        },
+        {
+          name: 'timelineOrientation',
+          kind: 'state',
+          doc: "Which way round this reader draws a timeline — 'newestBottom' or 'newestTop'. Their own setting.",
         },
         {
           name: 'toggle',
@@ -3823,6 +3881,7 @@ export const contextData: ContextData = {
       panels: [
         { name: 'transcript', title: 'Transcript', icon: 'waveform', hostOwned: false },
         { name: 'extraction', title: 'Extraction', icon: 'sparkle', hostOwned: false },
+        { name: 'feed', title: 'Feed', icon: 'chats-circle', hostOwned: false },
       ],
       launchers: [],
       settings: [
@@ -3834,10 +3893,24 @@ export const contextData: ContextData = {
           type: 'boolean',
           levels: ['deployment', 'agent', 'space', 'agent-in-space'],
         },
+        {
+          key: 'timelineOrder',
+          label: 'Newest messages',
+          description: 'Where the newest line of a transcript or the feed is drawn.',
+          type: 'enum',
+          levels: ['agent'],
+        },
       ],
       activities: { transcribe: { id: 'string', recording: 'boolean', anchor: 'object', collection: 'string' } },
       components: [],
-      functions: [],
+      functions: [
+        {
+          name: 'threadLines',
+          params: ['options'],
+          doc: 'A page of lines with the replies under each flattened in, every one once, in time order — newest first when `newestFirst` is true. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, and a line with marks carries `content` — the one block a BlockRenderer draws it from. Read the page with `include: { comments: { include: { comments: { include: { comments: true } } } } }` so the replies arrive with it. Options: rows (the page), newestFirst (boolean).',
+          example: 'threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })',
+        },
+      ],
       views: [],
       blocks: [],
       entities: [],

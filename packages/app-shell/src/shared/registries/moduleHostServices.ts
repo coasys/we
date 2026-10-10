@@ -130,6 +130,13 @@ export interface ModuleHostServices {
     options?: CreateEntityOptions,
   ) => Promise<string | null>;
   linkEntity?: (entity: string, id: string, relation: string, value: string, options?: DatasetTarget) => Promise<void>;
+  unlinkEntity?: (
+    entity: string,
+    id: string,
+    relation: string,
+    value: string,
+    options?: DatasetTarget,
+  ) => Promise<void>;
   updateEntity?: (
     entity: string,
     id: string,
@@ -342,6 +349,9 @@ export function createModuleStoreDeps(framework: {
       create: async (entity, fields, options) => (await services.createEntity?.(entity, fields, options)) ?? null,
       link: async (entity, id, relation, value, target) => {
         await services.linkEntity?.(entity, id, relation, value, target);
+      },
+      unlink: async (entity, id, relation, value, target) => {
+        await services.unlinkEntity?.(entity, id, relation, value, target);
       },
       update: async (entity, id, fields, target) => {
         await services.updateEntity?.(entity, id, fields, target);

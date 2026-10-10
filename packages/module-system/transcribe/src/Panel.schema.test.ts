@@ -87,7 +87,7 @@ describe('the module declaration', () => {
     const panels = transcribeModule.contributes?.panels ?? [];
     const surface = storeSurface(bareStore());
 
-    expect(panels.map((p) => p.name)).toEqual(['transcript', 'extraction']);
+    expect(panels.map((p) => p.name)).toEqual(['transcript', 'extraction', 'feed']);
     for (const p of panels) {
       expect(p.icon).toBeTruthy();
       expect(surface[p.open ?? '']?.kind).toBe('state');
@@ -241,8 +241,12 @@ describe('a transcript with nothing in it', () => {
    * speaker grouping: it asks whether a line is by the same person as the one before it, and in a
    * reversed list `prev` is the line *after*.
    */
-  it('renders the live window oldest-first', () => {
-    expect(linesJson).toContain('reverse(local.utterances)');
+  it('draws the window the reader’s way round, with the replies flattened in', () => {
+    // Reversed exactly when the anchored end is the bottom — see `timelineOrder` in the schema kit.
+    expect(linesJson).toContain(
+      '? reverse(threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })) :',
+    );
+    expect(linesJson).toContain('"include":{"comments":{"include":{"comments":{"include":{"comments":true}}}}}');
   });
 
   /**
@@ -639,6 +643,10 @@ describe('which call is live', () => {
   });
 });
 
+/** The timeline's one question for this panel: whether the anchored end is the bottom one. */
+const ANCHORED_AT_BOTTOM =
+  "((modules.transcribe.transcriptFromStart) == ((modules.transcribe.timelineOrientation) == 'newestTop'))";
+
 describe('the feed', () => {
   it('keeps the unsaved line inside the scroll region, with the rows', () => {
     /*
@@ -659,7 +667,9 @@ describe('the feed', () => {
    * what they asked to read every time somebody speaks.
    */
   it('follows the live end only while the transcript is anchored to it', () => {
-    expect(feedJson).toContain('"pin":{"$":"modules.transcribe.transcriptFromStart ? \'\' : \'end\'"}');
+    // Pinned at the anchored end, which is the bottom when following the live end newest-at-bottom
+    // or reading from the start newest-at-top — see `timeline` in the schema kit.
+    expect(feedJson).toContain(`"pin":{"$":"${ANCHORED_AT_BOTTOM} ? 'end' : ''"}`);
   });
 
   /**
@@ -709,8 +719,10 @@ describe('the feed', () => {
     expect(feedJson).toContain('"nearStart":400');
     expect(feedJson).toContain('"nearEnd":400');
     expect(feedJson).toContain('modules.transcribe.showMoreTranscript');
-    // Each guarded on the anchor it belongs to, so only one of them can answer at a time.
-    expect(feedJson).toContain('!modules.transcribe.transcriptFromStart');
+    // Each edge guarded on whether it is the one away from the anchor, so only one can answer at a
+    // time — and which direction it grows decided by the anchor.
+    expect(feedJson).toContain(`"on:nearstart":{"$if":{"condition":{"$":"${ANCHORED_AT_BOTTOM}"}`);
+    expect(feedJson).toContain(`"on:nearend":{"$if":{"condition":{"$":"!${ANCHORED_AT_BOTTOM}"}`);
     expect(feedJson).toContain('"condition":{"$":"modules.transcribe.transcriptFromStart"}');
   });
 
@@ -2043,70 +2055,67 @@ describe('the extraction chips say what they are', () => {
  * admits a write is happening rather than merely refusing the click.
  */
 describe('the composer', () => {
-  const button = findNode(transcriptComposer, (n) => n.type === 'we-button') as
+  const composer = findNode(transcriptComposer, (n) => n.type === 'BlockComposer') as
     { props: Record<string, unknown> } | undefined;
-  const textarea = findNode(transcriptComposer, (n) => n.type === 'we-textarea') as
-    { props: Record<string, unknown> } | undefined;
+  const holder = findNode(transcriptComposer, (n) => Boolean((n.$localState as Record<string, unknown>)?.sending));
 
   it('appears only with a call on screen, and writes into that call — never the space', () => {
     /*
       The extraction subject falls back to the space collection outside any call, so the extraction
       panel can show loose messages. The composer used to share it, which put a box under "start or
-      join a call" that wrote whatever was typed into the space.
+      join a call" that wrote whatever was typed into the space. Messages typed outside a call are
+      the Feed's.
     */
-    const condition = (transcriptComposer.props as { condition: { $: string } }).condition.$;
+    const gate = findNode(
+      transcriptComposer,
+      (n) => n.type === '$if' && String((n.props as { condition?: { $?: string } })?.condition?.$).includes('callId'),
+    ) as { props: { condition: { $: string } } } | undefined;
+    const condition = gate?.props.condition.$ ?? '';
     expect(condition).toContain('routeStore.params.call');
     expect(condition).toContain('modules.transcribe.callId');
     expect(condition).not.toContain('spaceStore.root');
-    const send = button?.props.onClick as { $action?: string; args?: { $: string }[] }[] | undefined;
-    const write = send?.find((step) => step.$action === 'modules.transcribe.addMessage');
-    expect(write?.args?.[0]?.$).toBe(condition);
+    const send = (composer?.props.onSubmit as { $if: { then: Record<string, unknown>[] } }).$if.then;
+    const branch = (send.find((step) => '$if' in step) as { $if: { else: { args: { $: string }[] } } }).$if;
+    expect(branch.else.args[0].$).toBe(condition);
   });
 
-  it('declares the in-flight flag beside the draft, and keeps it out of the URL', () => {
-    /*
-      A plain field on purpose. `syncParam` would put "a write is happening" in a link, and `persist`
-      would restore, on the next launch, a composer that believes it is still writing — with no
-      write to finish and so nothing to ever bring it back down.
-    */
-    const holder = findNode(transcriptComposer, (n) => Boolean((n.$localState as Record<string, unknown>)?.sending));
+  it('is the block composer in its one-line mode, so a line is written with its marks', () => {
+    // The `@` typeahead, links and formatting come with it, rather than a second input with its own
+    // idea of a mention. Enter sends; it is not a document, so no gutter and no focus on mount.
+    expect(composer?.props).toMatchObject({ compact: true, autoFocus: false, handles: false });
+  });
+
+  it('declares the in-flight flag, and keeps it out of the URL', () => {
     const declared = (holder?.$localState as Record<string, Record<string, unknown>> | undefined)?.sending;
     expect(declared).toEqual({ type: 'boolean', initial: false });
-    expect((holder?.$localState as Record<string, unknown>)?.message).toBeDefined();
   });
 
-  it('runs the very same handler from the button and from Enter, so the guard cannot cover one only', () => {
-    // Identity, not equality: two copies that happen to match today are two copies, and the next
-    // edit changes one of them. This is what stops the flag being raised on one path and not the other.
-    const enter = textarea?.props['on:submit'] as { $if?: { then?: unknown } } | undefined;
-    expect(enter?.$if?.then).toBe(button?.props.onClick);
+  it('refuses a second send while one is going', () => {
+    // Enter twice during a slow write is the easy mistake, and nothing here can delete a line once
+    // it is written.
+    const submit = composer?.props.onSubmit as { $if?: { condition?: unknown; then?: unknown } } | undefined;
+    expect(submit?.$if?.condition).toEqual({ $: '!local.sending' });
   });
 
-  it('refuses a second send while one is going, on both paths', () => {
-    expect(button?.props.disabled).toEqual({ $: '!trim(local.message) || local.sending' });
-    /*
-      The field is guarded by a condition rather than by `disabled`, and that asymmetry is
-      deliberate: disabling what somebody is typing into takes the focus away mid-sentence, which is
-      a worse interruption than the bug. So the condition has to restate both halves of what
-      `disabled` says on the button — there are words, and nothing is already in flight.
-    */
-    const enter = textarea?.props['on:submit'] as { $if?: { condition?: unknown } } | undefined;
-    expect(enter?.$if?.condition).toEqual({ $: 'trim(local.message) && !local.sending' });
-  });
-
-  it('says a write is happening rather than only refusing the click', () => {
-    // The half that answers the actual report. `disabled` alone stops the duplicate and still leaves
-    // a composer that looks broken for a second, which is what produced the second press.
-    expect(button?.props.loading).toEqual({ $: 'local.sending' });
-  });
-
-  it('lowers the flag however the write ends, and keeps the words unless it succeeded', () => {
-    const send = button?.props.onClick as Record<string, unknown>[];
-    const write = send.find((step) => '$action' in step) as Record<string, unknown>;
-    // `onFinally`, not `onSuccess`: a box that could never be sent again because one write failed
-    // would be a worse bug than the one this fixes.
-    expect(write.onFinally).toEqual([{ $setLocal: 'sending', value: false }]);
-    expect(write.onSuccess).toEqual([{ $setLocal: 'message', value: '' }]);
+  it('sends a reply or a line, with the text and marks the composer gave, and lowers the flag however it ends', () => {
+    const send = (composer?.props.onSubmit as { $if: { then: Record<string, unknown>[] } }).$if.then;
     expect(send[0]).toEqual({ $setLocal: 'sending', value: true });
+    const branch = (
+      send.find((step) => '$if' in step) as {
+        $if: { then: Record<string, unknown>; else: Record<string, unknown> };
+      }
+    ).$if;
+    expect(branch.then.$action).toBe('modules.transcribe.reply');
+    expect(branch.else.$action).toBe('modules.transcribe.addMessage');
+    expect(branch.else.args).toEqual([
+      { $: 'routeStore.params.call ? routeStore.params.call : modules.transcribe.callId' },
+      { $: 'event.text' },
+      { $: 'event.marks' },
+    ]);
+    for (const write of [branch.then, branch.else]) {
+      // `onFinally`, not `onSuccess`: a box that could never be sent again because one write failed
+      // would be a worse bug than the one this fixes.
+      expect(write.onFinally).toEqual([{ $setLocal: 'sending', value: false }]);
+    }
   });
 });

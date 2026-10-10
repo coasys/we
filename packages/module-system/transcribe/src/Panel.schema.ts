@@ -16,12 +16,22 @@
  * rendering. The other three modules still declare their fragments inline; this is the shape they
  * should move to.
  */
-import { emptyState, foldingBody, foldingSectionLabel, panelScroll, panelShell } from '@we/schema-kit';
+import {
+  emptyState,
+  foldingBody,
+  foldingSectionLabel,
+  panelScroll,
+  panelShell,
+  timeline,
+  timelineMoreAt,
+  timelineOrder,
+} from '@we/schema-kit';
 import { type SchemaNode, type SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
 import { CARET_SIZE, codePane, extractionActivity } from './ExtractionStatus.schema';
 import { SUBJECT_EXPR as SHARED_SUBJECT_EXPR, VIEWING_LIVE_EXPR } from './subject';
+import { repliesInclude } from './thread';
 
 /**
  * Which call this panel is about — the one named in the address, or the one being recorded.
@@ -87,6 +97,17 @@ const CALL_ON_SCREEN_LIVE = 'modules.transcribe.callOnScreenLive';
 const TRANSCRIPT_FROM_START = 'modules.transcribe.transcriptFromStart';
 
 /**
+ * Which way round this reader draws a timeline — newest at the bottom, as a chat reads, or at the
+ * top, as a feed does. A per-viewer setting; see `timeline` in the schema kit for what it changes.
+ */
+export const TIMELINE_ORIENTATION = 'modules.transcribe.timelineOrientation';
+
+/** The words on the "more is coming" line, by which way the window grows. */
+const MORE_WORDS: { $: string } = {
+  $: `${TRANSCRIPT_FROM_START} ? 'Later in the conversation…' : 'Earlier in the conversation…'`,
+};
+
+/**
  * Whether the window may have more beyond it — a page came back full, so there is probably more
  * behind it.
  *
@@ -120,15 +141,6 @@ export const EXTRACTION_SUBJECT_EXPR =
  * by its settings rather than by anybody in a room, so the per-call switch gives way to the
  * space's.
  */
-/**
- * The call the panel is showing — the one somebody opened, else the live one — and never the space.
- *
- * The composer writes into a call's transcript, so it follows this rather than the extraction
- * subject: outside any call that falls back to the space collection, and a box there would write
- * a message into the space under a transcript saying there is no call to show.
- */
-const CALL_SUBJECT_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.transcribe.callId';
-
 const SUBJECT_IS_SPACE = `spaceStore.root && (${EXTRACTION_SUBJECT_EXPR}) == spaceStore.root`;
 const EXTRACTION_SUBJECT = { $: EXTRACTION_SUBJECT_EXPR };
 
@@ -3040,7 +3052,7 @@ const noUtterances: SchemaNode = {
  * One definition used at both ends, because the two are the same sentence about opposite directions
  * and a copy each is how they come to disagree about their own spinner.
  */
-const moreComing = (end: 'start' | 'end', words: string): SchemaNode => ({
+const moreComing = (end: 'start' | 'end', words: string | { $: string }): SchemaNode => ({
   type: 'Row',
   /*
     The marker is the same fact the line is: there is more beyond this end that is not loaded. The
@@ -3096,6 +3108,8 @@ export const transcriptLines: SchemaNode = {
         that is most of what the tab was doing.
       */
       limit: { $: 'modules.transcribe.transcriptShown' },
+      // Each line's replies, three levels down, so they are drawn inline — see `threadLines`.
+      include: repliesInclude(),
       when: { $: 'modules.transcribe.collectionId' },
       /*
         Live only while the call is.
@@ -3129,8 +3143,11 @@ export const transcriptLines: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: `${TRANSCRIPT_HAS_MORE} && !${TRANSCRIPT_FROM_START}` },
-        then: moreComing('start', 'Earlier in the conversation…'),
+        // At the top whenever the window grows that way — see `timelineMoreAt`.
+        condition: {
+          $: `${TRANSCRIPT_HAS_MORE} && ${timelineMoreAt('start', TRANSCRIPT_FROM_START, TIMELINE_ORIENTATION)}`,
+        },
+        then: moreComing('start', MORE_WORDS),
       },
     },
     {
@@ -3149,7 +3166,17 @@ export const transcriptLines: SchemaNode = {
               this line is by the same person as the one before it, and in a reversed list `prev` is
               the line *after*.
             */
-            items: { $: 'modules.transcribe.transcriptFromStart ? local.utterances : reverse(local.utterances)' },
+            /*
+              The lines with their replies flattened in, in the order they were said — a reply sent
+              after three more lines belongs after them, quoting what it answers. See `threadLines`.
+            */
+            items: {
+              $: timelineOrder(
+                `threadLines({ rows: local.utterances, newestFirst: !${TRANSCRIPT_FROM_START} })`,
+                TRANSCRIPT_FROM_START,
+                TIMELINE_ORIENTATION,
+              ),
+            },
             as: 'utterance',
           },
           children: [
@@ -3467,6 +3494,32 @@ export const transcriptLines: SchemaNode = {
                           names and jargon, and whoever notices is usually not the speaker. See
                           `editUtterance` for what that costs and what is recorded about it.
                         */
+                        // Answer this line — the composer below then says so, and sends a reply.
+                        {
+                          type: 'we-tooltip',
+                          props: { content: 'Reply' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                label: 'Reply',
+                                size: 'xs',
+                                variant: 'bare',
+                                color: 'text-faint',
+                                opacity: { $: 'local.pointerOnRow ? 1 : 0' },
+                                onClick: {
+                                  $action: 'modules.transcribe.startReply',
+                                  args: [
+                                    {
+                                      $: '{ id: utterance.id, text: utterance.text, author: utterance.author }',
+                                    },
+                                  ],
+                                },
+                              },
+                              children: [{ type: 'we-icon', props: { name: 'arrow-bend-up-left' } }],
+                            },
+                          ],
+                        },
                         {
                           type: '$if',
                           props: {
@@ -3626,7 +3679,57 @@ export const transcriptLines: SchemaNode = {
                             },
                           ],
                         },
-                        else: { type: 'we-text', props: { color: 'text' }, children: [{ $: 'utterance.text' }] },
+                        else: {
+                          type: 'Column',
+                          props: { gap: '100' },
+                          children: [
+                            /*
+                              What this answers, first: its speaker's line, one line of it. A reply to a
+                              reply quotes its direct parent only, and a parent since removed says so
+                              rather than leaving a quote of nothing.
+                            */
+                            {
+                              type: '$if',
+                              props: {
+                                condition: { $: 'utterance.replyTo' },
+                                then: {
+                                  type: 'we-text',
+                                  props: { variant: 'footnote', color: 'text-muted', truncate: true },
+                                  children: [
+                                    {
+                                      $: "'↳ ' + (utterance.replyTo.text ? utterance.replyTo.text : 'original message removed')",
+                                    },
+                                  ],
+                                },
+                              },
+                            },
+                            {
+                              // Marks — a mention, a link, emphasis — drawn the way a post draws them; plain text as text.
+                              type: '$if',
+                              props: {
+                                condition: { $: 'utterance.content' },
+                                then: {
+                                  type: 'Column',
+                                  props: { width: '100%' },
+                                  children: [
+                                    {
+                                      type: 'BlockRenderer',
+                                      props: {
+                                        editorState: { $: 'utterance.content' },
+                                        rootClass: 'we-block-content--compact',
+                                      },
+                                    },
+                                  ],
+                                },
+                                else: {
+                                  type: 'we-text',
+                                  props: { color: 'text' },
+                                  children: [{ $: 'utterance.text' }],
+                                },
+                              },
+                            },
+                          ],
+                        },
                       },
                     },
                   ],
@@ -3719,8 +3822,10 @@ export const transcriptLines: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: `${TRANSCRIPT_HAS_MORE} && ${TRANSCRIPT_FROM_START}` },
-        then: moreComing('end', 'Later in the conversation…'),
+        condition: {
+          $: `${TRANSCRIPT_HAS_MORE} && ${timelineMoreAt('end', TRANSCRIPT_FROM_START, TIMELINE_ORIENTATION)}`,
+        },
+        then: moreComing('end', MORE_WORDS),
       },
     },
   ],
@@ -4079,142 +4184,117 @@ export const pendingUtterance: SchemaNode = {
  * `message` is still cleared on success only. A failed write keeps what was typed rather than
  * swallowing it and leaving an empty box as the only report.
  */
+/**
+ * The call a typed line goes into: the one on screen, else the call in progress — from its first
+ * second, since a message needs nobody to have spoken first. Never the space: messages typed outside
+ * a call are the Feed's, and a transcript composer writing into the space would put a line nobody
+ * here can see.
+ */
+const TRANSCRIPT_TARGET_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.transcribe.callId';
+
+/**
+ * Sending a line: a reply when one is being written, a message into the call otherwise — the text
+ * and the marks the composer gave (`event`), and the in-flight flag raised for the round trip and
+ * lowered however it ends.
+ */
 const sendMessage = [
   { $setLocal: 'sending', value: true },
   {
-    $action: 'modules.transcribe.addMessage',
-    args: [{ $: CALL_SUBJECT_EXPR }, { $: 'local.message' }],
-    onSuccess: [{ $setLocal: 'message', value: '' }],
-    onFinally: [{ $setLocal: 'sending', value: false }],
+    $if: {
+      condition: { $: 'modules.transcribe.replyingTo' },
+      then: {
+        $action: 'modules.transcribe.reply',
+        args: [
+          { $: 'modules.transcribe.replyingTo.id' },
+          { $: 'event.text' },
+          { $: 'event.marks' },
+          { $: VIEWING_LIVE_EXPR },
+        ],
+        onFinally: [{ $setLocal: 'sending', value: false }],
+      },
+      else: {
+        $action: 'modules.transcribe.addMessage',
+        args: [{ $: TRANSCRIPT_TARGET_EXPR }, { $: 'event.text' }, { $: 'event.marks' }],
+        onFinally: [{ $setLocal: 'sending', value: false }],
+      },
+    },
   },
 ];
 
-export const transcriptComposer: SchemaNode = {
+const composerRow: SchemaNode = {
   type: '$if',
   /*
-    Wherever a call's transcript is on screen, not only while one is being recorded — and nowhere
-    else: outside any call the panel shows no transcript, so there is nothing here to write into.
-
-    This was gated on the live call, on the reasoning that adding to a finished meeting's timeline
-    would date a remark to a conversation it was not made in. That is exactly the claim `source`
-    exists to stop it making: a typed line says it was typed and carries its own `createdAt`, so
-    nothing about it pretends to have been said at the time. And the case is a real one — watching a
-    call back is when somebody notices what is worth writing down, where during it they are busy
-    talking.
+    Wherever a call is on screen, not only while one is being recorded, and nowhere else: outside a
+    call there is no transcript here to write into. Watching a call back is when somebody notices
+    what is worth writing down. A typed line says it was typed and carries
+    its own time, so nothing about it pretends to have been said then.
   */
   props: {
-    condition: { $: CALL_SUBJECT_EXPR },
+    condition: { $: TRANSCRIPT_TARGET_EXPR },
     then: {
-      type: 'Row',
+      type: 'Column',
+      // Further from the transcript than the panel's own gap puts it: a fixture of the surface,
+      // not the last row of the document.
+      props: { width: '100%', mt: '100' },
       /*
-        Further from the transcript than the panel's own gap puts it.
-
-        `panelShell` spaces every child of the panel equally, and these are not equal distances: the
-        header names what is below it and wants to sit close to it, while this is a fixture of the
-        surface rather than the last row of the document — see above — and at one gap it read as one
-        more line of the timeline. Widening the panel's gap would have moved the heading off the
-        transcript to fix a boundary three children lower.
-
-        A margin rather than a wrapper, because what is being said is about this element's own
-        relationship to what precedes it, and it leaves with the element: the composer is gated on
-        there being a transcript at all, and a gap held by the container would have stayed behind on
-        a panel with nothing to write into.
+        In flight, so Enter pressed twice during a slow write is one line, not two. Plain, not
+        persisted and not in the URL: the one thing a reload must never restore is a box that thinks
+        it is still writing.
       */
-      props: { gap: '200', ay: 'end', width: '100%', mt: '100' },
-      /*
-        `sending` is plain, not persisted and not in the URL: it is an in-flight flag, and the one
-        thing a reload must never restore is a box that thinks it is still writing.
-      */
-      $localState: {
-        message: { type: 'string', initial: '' },
-        sending: { type: 'boolean', initial: false },
-      },
+      $localState: { sending: { type: 'boolean', initial: false } },
       children: [
+        /*
+          The block composer in its one-line mode — see `compact` on its props: Enter sends,
+          Shift+Enter breaks the line, and `@` names a person exactly as it does in a post, so the
+          line is written with its marks. It empties itself on sending.
+        */
         {
-          type: 'we-textarea',
+          type: 'BlockComposer',
           props: {
-            /*
-              No `size`, which is `md` — the height every other field in WE stands at.
-
-              It was `sm`, and 32px is the compact size: right for a control tucked into a dense row
-              of something else, wrong for the one thing on the panel a person is meant to type
-              into. The `fontSize` that used to be pinned here goes with it, because md's own preset
-              already reads at 300 — that override existed only to undo `sm`'s smaller type, which
-              is the trap the size presets set by carrying both.
-            */
-            rows: 1,
-            flex: '1',
-            minWidth: '0',
-            /*
-              One line to start, growing as somebody writes, capped before it eats the transcript.
-
-              `autoGrow` is also what makes this line up with the button: at rest it takes the same
-              control height `we-input` does, rather than whatever `rows` × line-height happens to
-              come to. See the prop's own note.
-            */
-            autoGrow: true,
-            maxRows: 6,
-            submitOnEnter: true,
-            // Short: a placeholder is read at a glance and the panel it sits in is already headed
-            // "Transcript", so naming the destination was the box explaining where it was.
+            compact: true,
+            autoFocus: false,
+            handles: false,
             placeholder: 'Type a message…',
-            value: { $: 'local.message' },
-            onInput: { $setLocal: 'message', value: { $: 'event.detail' } },
-            // Enter commits, and the primitive suppresses the newline that would otherwise follow —
-            // a schema can read a key event but has nothing that calls `preventDefault`.
-            /*
-              Guarded here rather than by disabling the field, which is how the button does it.
-
-              A write takes a round trip — a second against a local node, longer against a shared
-              remote one — and Enter is the fast path, so pressing it twice is the easy mistake and
-              the one that was reported. The button can simply go `disabled`; the textarea cannot,
-              because disabling the thing somebody is typing into takes the focus away mid-sentence
-              and is a worse interruption than the bug.
-
-              So the condition carries both halves of what `disabled` says on the button — there are
-              words, and no write is already going — and the two paths stay honest about being the
-              same act by running the same handler.
-            */
-            'on:submit': {
-              $if: { condition: { $: 'trim(local.message) && !local.sending' }, then: sendMessage },
-            },
+            onSubmit: { $if: { condition: { $: '!local.sending' }, then: sendMessage } },
           },
-        },
-        {
-          type: 'we-tooltip',
-          props: { content: 'Add this to the transcript' },
-          children: [
-            {
-              type: 'we-button',
-              props: {
-                label: 'Add this to the transcript',
-                // No `size` either: the pair has to agree, and md is what the field is now.
-                // `square` sizes the width from that same height, so an icon-only button is a
-                // square rather than a rounded rectangle with an icon adrift in it.
-                square: true,
-                variant: 'secondary',
-                /*
-                  Two reasons to be unpressable, and they are not the same reason.
-
-                  Empty is a precondition: there is nothing to send. In flight is a guard: there is
-                  something to send and it is already going. Both spell `disabled`, but only the
-                  second wants a spinner — which is the whole of what was missing. A write against a
-                  shared remote executor takes long enough that a composer saying nothing at all
-                  reads as a press that did not register, so the next thing somebody does is press
-                  it again, and the transcript gets the line twice. Nothing in this panel can delete
-                  a line once it is written, so the duplicate is there for good.
-                */
-                disabled: { $: '!trim(local.message) || local.sending' },
-                loading: { $: 'local.sending' },
-                onClick: sendMessage,
-              },
-              children: [{ type: 'we-icon', props: { name: 'paper-plane-tilt' } }],
-            },
-          ],
         },
       ],
     },
   },
+};
+
+/**
+ * The composer, and above it the line a reply is being written to — said, with a way to put it down,
+ * so a message meant for the conversation is never sent as a reply by accident.
+ */
+export const transcriptComposer: SchemaNode = {
+  type: 'Column',
+  props: { gap: '100', width: '100%' },
+  children: [
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'modules.transcribe.replyingTo' },
+        then: {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', width: '100%' },
+          children: [
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-muted', flex: '1', minWidth: '0', truncate: true },
+              children: [{ $: "'Replying to: ' + modules.transcribe.replyingTo.text" }],
+            },
+            {
+              type: 'we-button',
+              props: { size: 'xs', variant: 'ghost', onClick: { $action: 'modules.transcribe.cancelReply' } },
+              children: ['Cancel'],
+            },
+          ],
+        },
+      },
+    },
+    composerRow,
+  ],
 };
 
 /**
@@ -4237,91 +4317,27 @@ export const transcriptComposer: SchemaNode = {
  * is resolved. So pointing this feed at another call points its rows at that call too, and there is
  * one query in the codebase rather than two that have to agree.
  */
-export const transcriptFeed: SchemaNode = panelScroll({
+export const transcriptFeed: SchemaNode = timeline({
   /*
-    Follows the tail while somebody is at the tail, and holds still while they read further up. A
-    live transcript is the case this exists for — and the case that most needs a way back down
-    again, since holding still is otherwise a decision nothing offers to undo.
+    The window and the way round it is drawn — see `timeline` in the schema kit, which turns the two
+    into which end is pinned, which edge loads more, and which corner each jump button means.
 
-    Off while the transcript is anchored to its beginning: those rows are the oldest in the
-    conversation and new ones do not belong below them, so following the end would drag a reader
-    away from what they asked to read on every line somebody says.
+    A jump re-anchors rather than scrolling: the top of what is loaded is not the beginning of
+    anything, so reaching the real beginning means asking a different question. Which end asks is
+    read off the `data-we-more` marker on the "more is coming" line, so the scroller and the rows
+    cannot disagree. A transcript that has loaded whole scrolls at both ends.
+
+    Loading is guarded by which end is anchored and not by whether there is more: the rows are a
+    local of `transcriptLines`, a part inside this scroller, and an event on the scroller reaches its
+    ancestors, never its descendants. Reaching the far edge of a fully loaded transcript asks for one
+    page that comes back unchanged — one wasted read, bounded by what exists.
   */
-  pin: { $: `${'modules.transcribe.transcriptFromStart'} ? '' : 'end'` },
-  /*
-    Both ends, and the start one does something the scroller could not do for itself.
-
-    It was `end` alone, because the scroller's own start button goes to the top of what is *loaded*
-    — which, since the window arrived, is not the beginning of the conversation. It would have said
-    "start" and delivered "as far back as we happened to fetch".
-
-    That was the right call about the *action* and it cost the affordance. So the visibility stays
-    the scroller's — it is the one that knows whether there is anywhere above to go — and the action
-    comes from here, through the `jump-start` slot below. The button is the scroller's own, in its
-    own corner, and it means what it says.
-  */
-  jump: 'both',
-  /*
-    A jump is a scroll at the end you are anchored to, and a different query at the other one.
-
-    Anchored to the newest end, pressing "down" is a trip back through lines you have already loaded
-    — worth animating, because the movement is what says which way the content went. Pressing "up"
-    is not a longer version of that: the top of what is loaded is not the beginning of anything, and
-    reaching the real beginning means asking a different question. Read from the beginning, the two
-    swap over exactly.
-
-    Which end is which is not stated here. The scroller reads it from the `data-we-more` marker on
-    the "more is coming" line, which `transcriptLines` already renders under exactly that test — so
-    the two cannot disagree, and a transcript that has loaded whole simply scrolls at both ends
-    rather than re-asking for what it already has.
-
-    The re-anchoring case needs no scrolling of its own: a mode change resets the window and flips
-    `pin`, and `scrollTop: 0` is the anchored end in both coordinate systems — the newest under
-    column-reverse, the oldest without it — so the new query lands where it should.
-  */
-  onJumpStart: { $action: 'modules.transcribe.readTranscriptFromStart' },
-  onJumpEnd: { $action: 'modules.transcribe.readTranscriptLive' },
-  /*
-    More of the conversation loads as the reader reaches the edge of what is loaded, in whichever
-    direction they are going, rather than on a button.
-
-    Both ends, because the window has two. Following the live end it grows backwards, so the edge
-    worth watching is the top. Reading the same conversation from its beginning it grows forwards,
-    and the edge is the bottom — without that pair, choosing "read from the start" walked you to the
-    end of the first page and stopped, with the rest of the conversation unreachable.
-
-    The distance is about a panel's height of runway, so a page is asked for before the reader
-    arrives at the edge rather than when they hit it. Nothing has to hold their place: the scroller
-    is anchored to its newest end, so content arriving above them does not move them.
-
-    Guarded on which end is anchored, and NOT on there being more — which is a real imprecision and
-    a deliberate one.
-
-    "May have more" is `count(local.utterances) >= transcriptShown`, and those rows are a local of
-    `transcriptLines`, which is placed as a part *inside* this scroller. An event dispatched on the
-    scroller reaches its ancestors, never its descendants, so the node that could answer is the one
-    node that cannot be asked. The alternatives were each worse than the cost: a count projection is
-    a round trip to avoid a re-run, and a count reported back from a render is a write from drawing.
-
-    What it costs: reaching the far edge of a fully-loaded transcript raises the window by a page and
-    re-runs the query, which comes back with the same rows. The list is unchanged, the "earlier" line
-    correctly disappears, and nothing is drawn wrongly — one wasted read per trip to that edge, and
-    the read is bounded by what exists rather than by the window.
-  */
-  nearStart: 400,
-  onNearStart: {
-    $if: {
-      condition: { $: `!${TRANSCRIPT_FROM_START}` },
-      then: { $action: 'modules.transcribe.showMoreTranscript' },
-    },
-  },
-  nearEnd: 400,
-  onNearEnd: {
-    $if: {
-      condition: { $: TRANSCRIPT_FROM_START },
-      then: { $action: 'modules.transcribe.showMoreTranscript' },
-    },
-  },
+  fromStart: TRANSCRIPT_FROM_START,
+  orientation: TIMELINE_ORIENTATION,
+  onLoadOlder: { $action: 'modules.transcribe.showMoreTranscript' },
+  onLoadNewer: { $action: 'modules.transcribe.showMoreTranscript' },
+  onJumpNewest: { $action: 'modules.transcribe.readTranscriptLive' },
+  onJumpOldest: { $action: 'modules.transcribe.readTranscriptFromStart' },
   children: [
     {
       type: 'Column',

@@ -68,6 +68,7 @@
 import { defineModule, type ModuleHost, type ModuleStoreDeps } from '@we/module-shared';
 
 import { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
+import { feedPanel } from './Feed.schema';
 import {
   captureMeter,
   captureStatus,
@@ -82,6 +83,7 @@ import {
   transcriptLines,
 } from './Panel.schema';
 import { createTranscribeStore, TRANSCRIBE_ACTIVITY } from './store';
+import { threadLinesFunction } from './thread';
 import { tiedDecisionModals } from './TiedDecision.schema';
 
 export { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
@@ -300,7 +302,26 @@ export const transcribeModule = defineModule({
         close: 'closeExtractionPanel',
         order: 91,
       },
+      /*
+        Everything said in the space, in one stream — every call, what was typed outside calls, bot
+        replies — with what was found in it. Its own panel because it is about the space rather than
+        one conversation: no record button, no extraction controls. See `Feed.schema.ts`.
+      */
+      {
+        name: 'feed',
+        title: 'Feed',
+        icon: 'chats-circle',
+        node: feedPanel,
+        bid: { edge: 'right', size: 'md' },
+        open: 'feedOpen',
+        show: 'openFeed',
+        close: 'closeFeed',
+        order: 92,
+      },
     ],
+
+    // Lines with their replies flattened in, for any template drawing a conversation — see `thread.ts`.
+    functions: [threadLinesFunction],
 
     /**
      * What a space, and an agent, may decide about recording.
@@ -327,6 +348,23 @@ export const transcribeModule = defineModule({
         default: true,
         levels: ['deployment', 'agent', 'space', 'agent-in-space'],
         resolution: 'restrict',
+      },
+      /*
+        Which way round this reader draws the transcript and the feed. Theirs alone, everywhere: how a
+        list reads is a reading preference, and one member's choice must not turn a room's chat
+        upside down for everybody else.
+      */
+      {
+        key: 'timelineOrder',
+        label: 'Newest messages',
+        description: 'Where the newest line of a transcript or the feed is drawn.',
+        type: 'enum',
+        options: [
+          { label: 'At the bottom', value: 'newestBottom' },
+          { label: 'At the top', value: 'newestTop' },
+        ],
+        default: 'newestBottom',
+        levels: ['agent'],
       },
     ],
 

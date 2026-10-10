@@ -1074,7 +1074,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         unreadNodeIds:
           "string[] — ids of the containers in this space holding something newer than this agent's marker for them, or never read. What an unread dot reads: { $: 'channel.id in spaceStore.unreadNodeIds' }. Ids rather than counts, since a count needs every child's timestamp",
         myMentions:
-          '{ id, author, createdAt }[] — nodes in this space that mention this agent, newest first. createdAt is the backend’s comparable timestamp. Filtered client-side, so right for a space and wrong for an inbox across many',
+          '{ id, author, createdAt }[] — messages in this space that mention this agent — posts and transcript or Feed lines alike — newest first, the fifty most recent. createdAt is the backend’s comparable timestamp. Asked from the agent’s end through the backend’s references, one lookup per space',
         root: "string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one",
         roles:
           "Record<name, id> — the records this space names by role, e.g. spaceStore.roles.canvas is the space's canvas. Written by the space's starter at creation. A role can be absent — a space can switch template and a template must never assume what another set up — so guard every read",

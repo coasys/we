@@ -71,6 +71,7 @@ export const CONFORMANCE_CASES = [
   'schema.hints-round-trip',
   'schema.containment-predicate',
   'relations.create-under-parent',
+  'relations.read-under-parent',
   'relations.ordered-read',
   'relations.create-links-one',
   'relations.create-links-many',
@@ -81,6 +82,7 @@ export const CONFORMANCE_CASES = [
   'live.included-child-edit',
   'live.identical-queries-independent',
   'ephemeral.no-echo',
+  'references.referrers',
 ] as const;
 
 /** Every case a harness can name in `knownGaps` — the per-case ones above and the template queries. */
@@ -103,6 +105,7 @@ interface LiveQuery {
 
 /** The write half: a registered entity class, as the shell's record actions resolve one. */
 interface Model {
+  findAll(dataset: DatasetHandle, query?: Record<string, unknown>): Promise<Row[]>;
   create(
     dataset: DatasetHandle,
     data?: Record<string, unknown>,
@@ -110,6 +113,7 @@ interface Model {
   ): Promise<Instance>;
   update(dataset: DatasetHandle, id: string, data: Record<string, unknown>): Promise<unknown>;
   setRelation(dataset: DatasetHandle, id: string, relation: string, ids: readonly string[]): Promise<void>;
+  addRelation(dataset: DatasetHandle, id: string, relation: string, targetId: string): Promise<void>;
 }
 
 /** The read half: what `$getEntity` hands a template. */
@@ -377,6 +381,64 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
             include: { children: true },
           });
           expect(((row?.children ?? []) as Row[]).map((child) => child.id)).toEqual([made.id]);
+        },
+      );
+
+      test(
+        'relations.read-under-parent',
+        'reads only what one container holds, newest first and bounded, given its id and the predicate',
+        async () => {
+          /*
+            How one call's lines are paged: by the call's id and the containment predicate, ordered
+            and capped, so a page costs the same however long the space's history is. A backend that
+            ignored the parent answered with every line in the space — right-looking, and wrong.
+          */
+          const Collection = model('CollectionBlock');
+          const call = await Collection.create(subject.dataset, { kind: 'call' });
+          const other = await Collection.create(subject.dataset, { kind: 'call' });
+          const parent = (id: string) => ({ parent: { id, predicate: CONTAINMENT_PREDICATE } });
+          const first = await Collection.create(subject.dataset, { kind: 'line-1' }, parent(call.id));
+          await sleep(5);
+          const second = await Collection.create(subject.dataset, { kind: 'line-2' }, parent(call.id));
+          await Collection.create(subject.dataset, { kind: 'elsewhere' }, parent(other.id));
+
+          const page = await Collection.findAll(subject.dataset, {
+            ...parent(call.id),
+            order: { createdAt: 'DESC' },
+            limit: 1,
+          });
+          expect(page.map((row) => row.id)).toEqual([second.id]);
+          const all = await Collection.findAll(subject.dataset, parent(call.id));
+          expect(all.map((row) => row.id).sort()).toEqual([first.id, second.id].sort());
+        },
+      );
+    });
+
+    describe('references', () => {
+      test(
+        'references.referrers',
+        'answers who links to a value through one predicate, newest first, across kinds of record',
+        async () => {
+          /*
+            How "messages that mention me" is asked: from the agent's end, through the mention relation,
+            whatever kind of message holds it — a post or one line of a transcript. A query cannot ask it,
+            because the relation's target is a DID rather than a record.
+          */
+          const references = subject.ports.references;
+          expect(references, 'the backend answers references').toBeDefined();
+          const did = 'did:key:mentioned';
+          const post = await model('CollectionBlock').create(subject.dataset, { kind: 'post' });
+          await model('CollectionBlock').addRelation(subject.dataset, post.id, 'mentions', did);
+          await sleep(5);
+          const line = await model('TextBlock').create(subject.dataset, { text: '@Ann can you?' });
+          await model('TextBlock').addRelation(subject.dataset, line.id, 'mentions', did);
+          await model('TextBlock').addRelation(subject.dataset, line.id, 'mentions', 'did:key:somebody-else');
+
+          const found = await references!.referrers(subject.dataset, 'we://mention', did);
+          expect(found.map((row) => row.id)).toEqual([line.id, post.id]);
+          expect(
+            (await references!.referrers(subject.dataset, 'we://mention', did, { limit: 1 })).map((r) => r.id),
+          ).toEqual([line.id]);
         },
       );
     });

@@ -2,6 +2,7 @@ import { boardOptimism } from '@shared/boardOptimism';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
 import { involvementOptimism } from '@shared/involvementOptimism';
+import { linkNewMentions, type MentionWriter, prepareMentionUpdate } from '@shared/lineMentions';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
@@ -177,6 +178,17 @@ export default function TemplateProvider() {
     }
   }
 
+  /**
+   * A module's `within` as the ORM's `parent`: the container, by containment, which is one predicate
+   * on every backend. See `RecordQuery.within`.
+   */
+  function withinAsParent(query: unknown): Record<string, unknown> {
+    const { within, ...rest } = (query ?? {}) as { within?: unknown } & Record<string, unknown>;
+    return typeof within === 'string' && within
+      ? { ...rest, parent: { id: within, predicate: PREDICATES.CHILDREN } }
+      : rest;
+  }
+
   /** `record.create`, against a resolved handle rather than a store path. */
   function createInDataset(
     entity: string,
@@ -261,6 +273,16 @@ export default function TemplateProvider() {
           if (root) rest.parent = { id: root, predicate: PREDICATES.CHILDREN };
         }
         const created = (await createInDataset(entity, fields, perspective, rest)) as { id?: string } | undefined;
+        // A line written with marks mentions whoever they name — see `lineMentions`.
+        if (created?.id) {
+          await linkNewMentions(
+            getEntity(entity) as unknown as MentionWriter,
+            perspective,
+            entity,
+            created.id,
+            fields,
+          ).catch((error: unknown) => console.warn('module host: could not link the mentions in a new line', error));
+        }
         return created?.id ?? null;
       },
 
@@ -324,6 +346,15 @@ export default function TemplateProvider() {
         }
         await (add as (v: string) => Promise<void>).call(instance, value);
       },
+      // The counterpart, through the registered class's own removal — see `RecordsKernel.unlink`.
+      unlinkEntity: async (entity, id, relation, value, options) => {
+        const p = moduleTarget(options?.dataset);
+        if (!p) return;
+        const Model = getEntity(entity) as unknown as {
+          removeRelation: (dataset: unknown, id: string, relation: string, targetId: string) => Promise<void>;
+        };
+        await Model.removeRelation(p, id, relation, value);
+      },
 
       // The scalar counterpart of `linkEntity`, resolved the same way `createEntity` is: a module
       // names a dataset by URI, and an unresolvable name refuses rather than writing to whatever is
@@ -332,7 +363,18 @@ export default function TemplateProvider() {
       updateEntity: async (entity, id, fields, options) => {
         const p = moduleTarget(options?.dataset);
         if (!p) return;
-        await updateInDataset(entity, id, fields, p);
+        // A line's words changing carries its marks over and moves its mentions — see `lineMentions`.
+        const mentions = await prepareMentionUpdate(
+          getEntity(entity) as unknown as MentionWriter,
+          p,
+          entity,
+          id,
+          fields,
+        );
+        await updateInDataset(entity, id, mentions.fields, p);
+        await mentions
+          .after()
+          .catch((error: unknown) => console.warn('module host: could not move the mentions in an edited line', error));
       },
 
       removeEntity: async (entity, id, options) => {
@@ -356,7 +398,7 @@ export default function TemplateProvider() {
         const Model = getEntity(entity) as unknown as {
           findAll: (perspective: unknown, opts: unknown) => Promise<Record<string, unknown>[]>;
         };
-        return (await Model.findAll(p, query ?? {})) ?? [];
+        return (await Model.findAll(p, withinAsParent(query))) ?? [];
       },
       subscribeEntities: (entity, query, cb, options) => {
         const p = moduleTarget(options?.dataset);
@@ -367,7 +409,7 @@ export default function TemplateProvider() {
             opts: unknown,
           ) => { subscribe: (cb: (rows: Record<string, unknown>[]) => void) => Promise<unknown>; dispose: () => void };
         };
-        const subscription = Model.query(p, query ?? {});
+        const subscription = Model.query(p, withinAsParent(query));
         void subscription.subscribe(cb).then(
           (rows) => cb(rows as Record<string, unknown>[]),
           (error: unknown) => {
@@ -1324,13 +1366,24 @@ export default function TemplateProvider() {
   return (
     <BlockHostProvider
       dataset={() => (datasetStore.currentDataset()?.handle as never) ?? null}
-      // Who a composer here can @mention: the members of the space on screen. The host's
-      // knowledge, provided once, so no template names a store to get it.
-      mentions={() =>
-        spaceStore
-          .members()
-          .map((m) => ({ did: m.did, name: m.name || m.handle || m.did, avatar: m.avatar || undefined }))
-      }
+      /*
+        Who a composer here can @mention: every member of the space on screen. The host's knowledge,
+        provided once, so no template names a store to get it.
+
+        Every member, not only those whose profile has arrived: `members` drops anybody without a
+        cached profile, and an agent — a bot like Data — often has none, so it could never be picked
+        and a mention of it could only ever be a name in the text. A member with no profile is offered
+        under a shortened DID until its profile lands.
+      */
+      mentions={() => {
+        const profiles = new Map(spaceStore.members().map((m) => [m.did, m]));
+        return spaceStore.memberDids().map((did) => {
+          const m = profiles.get(did);
+          return m
+            ? { did, name: m.name || m.handle || did, avatar: m.avatar || undefined }
+            : { did, name: did.length > 20 ? `${did.slice(0, 12)}…${did.slice(-4)}` : did };
+        });
+      }}
       // A live co-editing session rides the ephemeral port of the space on screen — null in a
       // personal space, where there is nobody to share with, and the composer edits alone.
       collab={(nodeId) => {
