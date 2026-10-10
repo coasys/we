@@ -1500,7 +1500,7 @@ const bar: SchemaNode = {
                     label: 'Start another call',
                     variant: 'ghost',
                     size: 'sm',
-                    onClick: { $action: 'modules.call.startCall' },
+                    onClick: { $action: 'modules.call.startCall', args: [''] },
                   },
                   children: [{ type: 'we-icon', props: { name: 'plus' } }],
                 },
@@ -1969,7 +1969,7 @@ const continueCallButton: SchemaNode = {
 /** A bare "start a call here" trigger, for templates that want one in their own chrome. */
 const startCallButton: SchemaNode = {
   type: 'we-button',
-  props: { variant: 'ghost', size: 'sm', onClick: { $action: 'modules.call.startCall' } },
+  props: { variant: 'ghost', size: 'sm', onClick: { $action: 'modules.call.startCall', args: [''] } },
   children: [{ type: 'we-icon', props: { name: 'phone-call' } }],
 };
 
