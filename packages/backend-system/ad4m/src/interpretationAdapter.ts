@@ -318,6 +318,41 @@ function decode(value: unknown): unknown {
 }
 
 /**
+ * A suggested change to an agreed record, less the values the record already holds.
+ *
+ * The executor stages an `update` overlay whenever a pass proposes values for a record it no longer
+ * owns, and snapshots every proposed value into it, changed or not. A pass that re-reads a call and
+ * recognises an event somebody accepted therefore stages a "change" equal to the event: the card is
+ * marked as changed and the review shows nothing to apply or dismiss. Comparing here, once, means
+ * the marker, the review list and the canvas all agree on what is actually different.
+ *
+ * Compared as text, because a model may write a boolean as `"false"` where the record holds `false`,
+ * and that is not a change anybody would be asked about either. A read that fails keeps the value:
+ * a real change shown is better than one silently dropped.
+ */
+async function withoutUnchanged(
+  perspective: PerspectiveProxy,
+  base: string,
+  inferred: [string, unknown][],
+): Promise<[string, unknown][]> {
+  const kept: [string, unknown][] = [];
+  for (const [predicate, value] of inferred) {
+    let current: unknown[] = [];
+    try {
+      current = (await perspective.get(new LinkQuery({ source: base, predicate }))).map((l) =>
+        unwrapped(l.data.target),
+      );
+    } catch {
+      kept.push([predicate, value]);
+      continue;
+    }
+    const proposed = String(unwrapped(value) ?? '');
+    if (!current.some((c) => String(c ?? '') === proposed)) kept.push([predicate, value]);
+  }
+  return kept;
+}
+
+/**
  * What kind of suggestion an overlay is, as the two words it means.
  *
  * ## Why this has to decode at all
@@ -339,15 +374,20 @@ function decode(value: unknown): unknown {
  * executor that already decodes it, too: a bare word passes through untouched.
  */
 export function overlayKind(raw: unknown): 'create' | 'update' {
+  return unwrapped(raw) === 'update' ? 'update' : 'create';
+}
+
+/** A link target as the value it holds: decoded, and out of an expression envelope if it is in one. */
+function unwrapped(raw: unknown): unknown {
   let value = raw;
   for (let depth = 0; depth < 3; depth++) {
     const decoded = decode(value);
-    const unwrapped =
+    const inner =
       decoded && typeof decoded === 'object' && 'data' in decoded ? (decoded as { data: unknown }).data : decoded;
-    if (unwrapped === value) break;
-    value = unwrapped;
+    if (inner === value) break;
+    value = inner;
   }
-  return value === 'update' ? 'update' : 'create';
+  return value;
 }
 
 /**
@@ -1081,18 +1121,26 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
           staged.map((o) => o.base),
         ),
       ]);
-      return staged.map((o) => {
-        const entity = entities.get(o.base);
-        // The model's own names where the model is known, the dataset-wide table where it is not.
-        // See `NameTables` for why the difference matters more than it looks.
-        const table = (entity && names.byEntity.get(entity)) || names.flat;
-        const values: Record<string, unknown> = {};
-        for (const [predicate, value] of o.inferred ?? []) {
-          const name = table.get(predicate) ?? names.flat.get(predicate);
-          if (name) values[name] = decode(value);
-        }
-        return { id: o.base, kind: overlayKind(o.kind), ...(entity ? { entity } : {}), values };
-      });
+      const proposals = await Promise.all(
+        staged.map(async (o): Promise<InterpretationProposal | null> => {
+          const entity = entities.get(o.base);
+          const kind = overlayKind(o.kind);
+          // The model's own names where the model is known, the dataset-wide table where it is not.
+          // See `NameTables` for why the difference matters more than it looks.
+          const table = (entity && names.byEntity.get(entity)) || names.flat;
+          const inferred =
+            kind === 'update' ? await withoutUnchanged(perspective, o.base, o.inferred ?? []) : o.inferred;
+          // A change that changes nothing is not a decision anybody can be asked to make.
+          if (kind === 'update' && !inferred?.length) return null;
+          const values: Record<string, unknown> = {};
+          for (const [predicate, value] of inferred ?? []) {
+            const name = table.get(predicate) ?? names.flat.get(predicate);
+            if (name) values[name] = decode(value);
+          }
+          return { id: o.base, kind, ...(entity ? { entity } : {}), values };
+        }),
+      );
+      return proposals.filter((p): p is InterpretationProposal => p !== null);
     },
 
     async accept(dataset: DatasetHandle, id: string, property?: string): Promise<boolean> {

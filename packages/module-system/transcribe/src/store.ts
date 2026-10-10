@@ -1145,9 +1145,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   /**
    * Take one resolved field off a suggestion, and the suggestion with it once nothing is left.
    *
-   * Locally rather than by re-reading, for `forgetProposal`'s reason. Fields a surface never showed
-   * — a proposed value equal to what the record already holds — stay on the row, so the record keeps
-   * its marker until the whole suggestion is applied or dismissed; see `applyAllChanges`.
+   * Locally rather than by re-reading, for `forgetProposal`'s reason. A proposed value equal to what
+   * the record already holds never reaches this list: the backend adapter leaves it off, and leaves
+   * off a change that has nothing else in it.
    */
   function forgetField(id: string, field: string): void {
     const next: Record<string, ProposalView[]> = {};

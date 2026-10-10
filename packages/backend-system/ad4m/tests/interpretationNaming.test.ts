@@ -53,6 +53,8 @@ function perspectiveWith(
   classes: Record<string, string[]> | Error,
   shapes: () => typeof SHAPES = () => SHAPES,
   registry: () => string[] = () => Object.keys(shapes()),
+  /** What each record holds now, by base and predicate — what a staged change is compared against. */
+  committed: Record<string, Record<string, string[]>> = {},
 ) {
   const reads = { names: 0, sparql: 0 };
   const decided: (string | undefined)[] = [];
@@ -74,7 +76,8 @@ function perspectiveWith(
         })),
       );
     },
-    get: async () => [],
+    get: async (query: { source?: string; predicate?: string }) =>
+      (committed[query.source ?? '']?.[query.predicate ?? ''] ?? []).map((target) => ({ data: { target } })),
     subjectClassesOf: async () => {
       if (classes instanceof Error) throw classes;
       return classes;
@@ -154,7 +157,7 @@ describe('naming a staged suggestion', () => {
   it('leaves the model absent for a base no registered class matched', async () => {
     // `subjectClassesOf` omits a URI rather than returning an empty list, because "no class matched"
     // and "not a subject instance" are not distinguishable from there.
-    const p = perspectiveWith([{ base: 'we://mystery/1', kind: 'update', inferred: [] }], {});
+    const p = perspectiveWith([{ base: 'we://mystery/1', kind: 'create', inferred: [] }], {});
 
     const [proposal] = await port.proposals(p.handle);
 
@@ -209,5 +212,73 @@ describe("reading the dataset's own shapes", () => {
 
     expect(p.decided).toEqual([TITLE]);
     expect(p.reads).toEqual({ names: 1, sparql: 1 });
+  });
+});
+
+describe('a suggested change to an agreed record', () => {
+  /*
+    The executor stages an update for every value a pass proposes for a record it no longer owns,
+    changed or not. A pass that re-read a call and recognised an accepted event staged a change equal
+    to the event, so the card was marked as changed and the review offered nothing to decide.
+  */
+  const port = createAd4mInterpretationPort();
+  const ALL_DAY = 'we://all_day';
+  const envelope = (data: unknown) => `literal:json:${encodeURIComponent(JSON.stringify({ author: 'did:a', data }))}`;
+
+  it('is not offered at all when every value is one the record already holds', async () => {
+    const p = perspectiveWith(
+      [
+        {
+          base: 'we://task/1',
+          kind: 'update',
+          inferred: [
+            [TITLE, literal('Workshop')],
+            // A model writing a boolean as text is not a change either.
+            [ALL_DAY, literal('false')],
+          ],
+        },
+      ],
+      { 'we://task/1': ['TaskBlock'] },
+      undefined,
+      undefined,
+      { 'we://task/1': { [TITLE]: [envelope('Workshop')], [ALL_DAY]: ['literal:boolean:false'] } },
+    );
+
+    expect(await port.proposals(p.handle)).toEqual([]);
+  });
+
+  it('offers only the values that differ', async () => {
+    const p = perspectiveWith(
+      [
+        {
+          base: 'we://task/1',
+          kind: 'update',
+          inferred: [
+            [TITLE, literal('Ship the docs')],
+            [STATUS, literal('doing')],
+          ],
+        },
+      ],
+      { 'we://task/1': ['TaskBlock'] },
+      undefined,
+      undefined,
+      { 'we://task/1': { [TITLE]: [literal('Ship the docs')], [STATUS]: [literal('todo')] } },
+    );
+
+    const [proposal] = await port.proposals(p.handle);
+    expect(proposal.values).toEqual({ status: 'doing' });
+  });
+
+  it('leaves a record a pass made alone, since everything in it is the suggestion', async () => {
+    const p = perspectiveWith(
+      [{ base: 'we://task/1', kind: 'create', inferred: [[TITLE, literal('Ship the docs')]] }],
+      { 'we://task/1': ['TaskBlock'] },
+      undefined,
+      undefined,
+      { 'we://task/1': { [TITLE]: [literal('Ship the docs')] } },
+    );
+
+    const [proposal] = await port.proposals(p.handle);
+    expect(proposal.values).toEqual({ title: 'Ship the docs' });
   });
 });
