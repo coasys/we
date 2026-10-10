@@ -6400,7 +6400,6 @@
         "cancelRecordForm",
         "saveRecord",
         "placeOnCanvas",
-        "placeGroupOnCanvas",
         "dragOnCanvas",
         "dropOnCanvas",
         "bringIn",

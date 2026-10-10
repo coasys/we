@@ -1329,8 +1329,6 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setRelationshipKind: '(id): sets which named kind the pending connection is; an empty value clears it',
         placeOnCanvas:
           '(canvas: string, nodeId: string, nodeType: string, x: number, y: number): puts a record at a position on a canvas, or moves one already there. An upsert, so dragging twice leaves one coordinate. Prefer dragOnCanvas for the graph’s onNodeDragEnd, which also carries what a folded card is holding',
-        placeGroupOnCanvas:
-          "(canvas: string, items: { id, type }[]): places several records on a canvas together, as one cluster to the right of everything already placed — a list's 'place all'. One undo entry",
         dragOnCanvas:
           "(canvas: string, payload): writes where a drag left a card, and where everything a FOLDED card carried with it now sits. Takes the graph's onNodeDragEnd payload as it arrives. This rather than placeOnCanvas wherever the canvas can fold: the carried cards are a list, $action calls a method once, and a schema cannot loop — so without it, carrying a fold into a corner and unfolding it scatters its contents back where they were",
         removeFromCanvas:

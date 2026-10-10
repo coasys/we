@@ -793,7 +793,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     createOnCanvas: ambient('content'),
     createCardOnCanvas: action('content'),
     placeOnCanvas: action('content'),
-    placeGroupOnCanvas: action('content'),
     dragOnCanvas: action('content'),
     removeFromCanvas: action('content'),
     /*

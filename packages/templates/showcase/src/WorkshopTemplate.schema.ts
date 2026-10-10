@@ -96,7 +96,6 @@ import {
   newNoteModal,
   newThingChooser,
 } from './WorkshopCards.ts';
-import { inboxPanel } from './WorkshopInbox.ts';
 import {
   CANVAS_FILL,
   FOLD_FROM_GRAPH,
@@ -3411,7 +3410,7 @@ const canvas: SchemaNode = {
         canvas: SPACE_CANVAS,
         members: { id: { $: 'spaceStore.root' }, via: 'children' },
         contains: EXTRACTABLE,
-        // Where each card came from, for the live call's outline, the Inbox and the "this call" lens.
+        // Where each card came from, for the "this call" lens.
         origin: 'extractedFrom',
         // The lens, hiding: only what the call on screen produced. See `FROM_PARAM`.
         onlyFrom: { $: `(${FROM_HIDE}) ? (${CALL_EXPR}) : ''` },
@@ -3557,20 +3556,6 @@ const canvas: SchemaNode = {
         rather than the accent, which is what a *selected* card wears: the two would be one outline.
       */
       { when: { 'data.changed': true }, style: { borderColor: 'warning-text', borderWidth: 2 } },
-      /*
-        What the call in progress is finding, outlined as it arrives.
-
-        One canvas holds every call's finds now, so a card turning up during a meeting has to say it
-        came from this one — that is the experience a canvas beside a live call exists for. The
-        outline is the colour the calls panel draws people in a call with; calls have no colours of
-        their own to borrow. Only the live call, and only while it runs: looking back is the lens's
-        job.
-      */
-      {
-        $:
-          "modules.call.callRecordId ? [{ when: { 'data.origin': modules.call.callRecordId }, " +
-          "style: { borderColor: 'success', borderWidth: 3 } }] : []",
-      },
       // The "this call" lens, dimming: everything the call on screen did not produce. See `FROM_PARAM`.
       { $: `(${FROM_DIM}) ? [{ when: { 'data.origin': { not: (${CALL_EXPR}) } }, style: { opacity: 0.2 } }] : []` },
     ],
@@ -3824,20 +3809,7 @@ const canvas: SchemaNode = {
       A placement is the canvas's membership, so the store's one action is enough — and it refuses
       a record from another space, which this canvas could not draw, with a sentence saying so.
     */
-    onDrop: [
-      { $action: 'recordStore.dropOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
-      /*
-        Placing a suggestion keeps it. A card dragged in from the Inbox is a decision about it, and a
-        canvas full of placed-but-undecided cards is the half-accepted state nobody wants to read.
-        Discarding stays on the card.
-      */
-      {
-        $if: {
-          condition: { $: `event.id in ${UNCONFIRMED}` },
-          then: { $action: 'modules.transcribe.acceptProposal', args: [{ $: 'event.id' }] },
-        },
-      },
-    ],
+    onDrop: { $action: 'recordStore.dropOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
     /*
       A line is a record here too, so clicking one inspects it.
 
@@ -5718,24 +5690,6 @@ export const workshopTemplate: TemplateSchema = {
         displace: true,
         band: 0,
         order: 1,
-        size: 'sm',
-        grow: 1,
-      },
-      /*
-        What earlier calls found and nobody has placed, grouped by call — see `WorkshopInbox`.
-
-        Below the calls in the same column, because the two are read together: a call in the list
-        above, its finds waiting here. The live call's finds are not in it — they arrive on the
-        canvas, outlined, while the call runs.
-      */
-      {
-        id: 'inbox',
-        node: inboxPanel({ canvas: SPACE_CANVAS, kinds: EXTRACTABLE }),
-        title: 'Inbox',
-        snap: 'right',
-        displace: true,
-        band: 0,
-        order: 2,
         size: 'sm',
         grow: 1,
       },

@@ -418,11 +418,6 @@ export interface RecordStore {
    */
   placeOnCanvas: (canvas: string, nodeId: string, nodeType: string, x: number, y: number) => Promise<void>;
   /**
-   * Place several records on a canvas together, as one cluster beside what is already there — the
-   * Inbox's "place all". One history entry, so one press undoes it.
-   */
-  placeGroupOnCanvas: (canvas: string, items: { id: string; type: string }[]) => Promise<void>;
-  /**
    * Write where a drag left a card — and everything a **folded** card carried with it.
    *
    * Takes the graph's `onNodeDragEnd` payload whole, the way `resizeOnCanvas` takes `onNodeResize`'s,
@@ -720,10 +715,6 @@ export interface RecordStore {
 }
 
 const RecordStoreContext = createContext<RecordStore>();
-
-/** How far right of a canvas's cards a placed group starts, and the grid it is laid out on. */
-const GROUP_GAP = 320;
-const GROUP_PITCH = { x: 220, y: 180 };
 
 export function RecordStoreProvider(props: ParentProps) {
   const datasetStore = useDatasetStore();
@@ -1495,39 +1486,6 @@ export function RecordStoreProvider(props: ParentProps) {
   async function placeOnCanvas(canvas: string, nodeId: string, nodeType: string, x: number, y: number): Promise<void> {
     const moved = await writePlacement(canvas, nodeId, nodeType, x, y);
     if (moved) rememberMoves(canvas, [{ recordId: nodeId, recordType: nodeType, ...moved }]);
-  }
-
-  /**
-   * A group placed together, as a block to the right of everything already on the canvas.
-   *
-   * Together because they came from one conversation, and a group dropped in one by one wherever
-   * there was room scatters what belonged together. To the right of the placed cards rather than
-   * near the reader's view, because the list asking for this is a panel beside the canvas and has no
-   * view to be near; beside the existing arrangement is the one place guaranteed clear of it.
-   *
-   * Sequential, for `dragOnCanvas`'s reason: each write reads the canvas's placements first.
-   */
-  async function placeGroupOnCanvas(canvas: string, items: { id: string; type: string }[]): Promise<void> {
-    const dataset = datasetStore.currentDataset();
-    const cards = (items ?? []).filter((item) => item?.id && item.type);
-    if (!dataset || !canvas || !cards.length) return;
-    const placed = (await Placement.findAll(dataset.handle, {
-      parent: { id: canvas, predicate: PREDICATES.CHILDREN },
-    } as Record<string, unknown>).catch(() => [])) as unknown as { x?: number; y?: number }[];
-    const xs = placed.map((row) => Number(row.x)).filter(Number.isFinite);
-    const ys = placed.map((row) => Number(row.y)).filter(Number.isFinite);
-    const left = xs.length ? Math.max(...xs) + GROUP_GAP : 0;
-    const top = ys.length ? Math.min(...ys) : 0;
-    const columns = Math.ceil(Math.sqrt(cards.length));
-
-    const moves: CardMove[] = [];
-    for (const [index, card] of cards.entries()) {
-      const x = left + (index % columns) * GROUP_PITCH.x;
-      const y = top + Math.floor(index / columns) * GROUP_PITCH.y;
-      const moved = await writePlacement(canvas, card.id, card.type, x, y);
-      if (moved) moves.push({ recordId: card.id, recordType: card.type, ...moved });
-    }
-    if (moves.length) rememberMoves(canvas, moves);
   }
 
   /**
@@ -3144,7 +3102,6 @@ export function RecordStoreProvider(props: ParentProps) {
     createOnCanvas,
     createCardOnCanvas,
     placeOnCanvas,
-    placeGroupOnCanvas,
     dragOnCanvas,
     removeFromCanvas,
     deleteRecords,

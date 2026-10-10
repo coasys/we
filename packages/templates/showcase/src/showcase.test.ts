@@ -1029,7 +1029,7 @@ describe('the workshop’s right-hand column', () => {
     expect(right.every((panel) => panel.displace && panel.band === 0)).toBe(true);
   });
 
-  it('is the inspector over the calls list and the inbox, a third each, and nothing else', () => {
+  it('is the inspector over the calls list, half each, and nothing else', () => {
     /*
       The pattern of the left-hand lane, mirrored. Anything else snapped here joins the column and
       takes a share of both — the key and the call window both did — so the membership is asserted
@@ -1038,11 +1038,9 @@ describe('the workshop’s right-hand column', () => {
     expect([...right].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((panel) => panel.id)).toEqual([
       'inspector',
       'calls',
-      // What earlier calls found and nobody has placed, read beside the list of calls it came from.
-      'inbox',
     ]);
     expect(new Set(right.map((panel) => panel.size)).size).toBe(1);
-    expect(right.map((panel) => panel.grow)).toEqual([1, 1, 1]);
+    expect(right.map((panel) => panel.grow)).toEqual([1, 1]);
   });
 });
 
@@ -1565,7 +1563,7 @@ describe('the workshop’s canvas', () => {
   it('takes a drop from the Pocket, through the store’s own refusals', () => {
     // The graph hands the template a world point; the store refuses another space's record.
     expect(canvas).toContain(
-      `"onDrop":[{"$action":"recordStore.dropOnCanvas","args":[{"$":"${SPACE_CANVAS_EXPR}"},{"$":"event"}]}`,
+      `"onDrop":{"$action":"recordStore.dropOnCanvas","args":[{"$":"${SPACE_CANVAS_EXPR}"},{"$":"event"}]}`,
     );
   });
 
@@ -2322,7 +2320,6 @@ describe('the workshop’s tree', () => {
 describe('the workshop’s space-wide views', () => {
   const workshop = showcase.workshopTemplate as Schema & { meta?: { panels?: TemplatePanel[] } };
   const route = (path: string) => JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === path));
-  const panel = (id: string) => JSON.stringify(workshop.meta?.panels?.find((entry) => entry.id === id));
   const DIM = `(${CALL_EXPR}) && routeStore.params.from == 'dim'`;
   const HIDE = `(${CALL_EXPR}) && routeStore.params.from == 'hide'`;
 
@@ -2350,33 +2347,5 @@ describe('the workshop’s space-wide views', () => {
     const calendar = route('/calendar');
     expect(calendar).toContain('"calendarFrom":{"entity":"CollectionBlock"');
     expect(calendar).toContain('(e.id in first(local.calendarFrom).extracted)');
-  });
-
-  it('outlines what the call in progress finds as it arrives', () => {
-    expect(route('/canvas')).toContain(
-      "modules.call.callRecordId ? [{ when: { 'data.origin': modules.call.callRecordId }, style: { borderColor: 'success', borderWidth: 3 } }] : []",
-    );
-  });
-
-  it('keeps a suggestion that is placed, by a drop or by placing a group', () => {
-    expect(route('/canvas')).toContain(
-      '"then":{"$action":"modules.transcribe.acceptProposal","args":[{"$":"event.id"}]}',
-    );
-    const inbox = panel('inbox');
-    expect(inbox).toContain('"$action":"recordStore.placeGroupOnCanvas"');
-    expect(inbox).toContain('"$action":"modules.transcribe.acceptProposals"');
-  });
-
-  it('lists in the inbox what earlier calls found, never the live call’s, grouped by call', () => {
-    const inbox = panel('inbox');
-    // The live call's finds arrive on the canvas while it runs, outlined.
-    expect(inbox).toContain('!= modules.call.callRecordId');
-    // The same two questions the canvas asks: what is placed on the space's canvas, and what is in
-    // the space collection.
-    expect(inbox).toContain(
-      `"inboxPlacements":{"entity":"Placement","scope":{"anchor":"CollectionBlock","via":"children","anchorId":{"$":"${SPACE_CANVAS_EXPR}"}}`,
-    );
-    expect(inbox).toContain('"include":{"extractedFrom":true}');
-    expect(inbox).toContain("'From the feed'");
   });
 });

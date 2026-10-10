@@ -2450,7 +2450,6 @@ export const contextData: ContextData = {
         'cancelRecordForm',
         'saveRecord',
         'placeOnCanvas',
-        'placeGroupOnCanvas',
         'dragOnCanvas',
         'dropOnCanvas',
         'bringIn',
