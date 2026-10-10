@@ -1560,7 +1560,7 @@ when `relative` is enabled.
 - AudioDisplay
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | undefined, duration: number | undefined, albumArt: string | undefined
 - BlockComposer (DesignSystemElement)
-  Props: editorState?: EditorStateInput, dataset?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string, autoFocus?: boolean, handles?: boolean
+  Props: editorState?: EditorStateInput, dataset?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string, autoFocus?: boolean, handles?: boolean, compact?: boolean, onSubmit?: ((line: { text: string; marks: string; }) => void), placeholder?: string
 - BlockRenderer (DesignSystemElement)
   Props: editorState?: EditorStateInput, dataset?: unknown, blockDrag?: BlockDragSource, rootClass?: string
 - CalloutDisplay
@@ -3335,7 +3335,7 @@ SpaceStore:
   - mutedAgents: MutedAgent[] — the full mute records (did, description), for a settings list that wants the note as well as the DID
   - readMarkers: { nodeId, lastReadAt }[] — when this agent last read each node. No row means never read, so everything is unread. Read with find(spaceStore.readMarkers, { nodeId: item.id }); a keyed map would not be indexable by a row
   - unreadNodeIds: string[] — ids of the containers in this space holding something newer than this agent's marker for them, or never read. What an unread dot reads: { $: 'channel.id in spaceStore.unreadNodeIds' }. Ids rather than counts, since a count needs every child's timestamp
-  - myMentions: { id, author, createdAt }[] — nodes in this space that mention this agent, newest first. createdAt is the backend’s comparable timestamp. Filtered client-side, so right for a space and wrong for an inbox across many
+  - myMentions: { id, author, createdAt }[] — messages in this space that mention this agent — posts and transcript or Feed lines alike — newest first, the fifty most recent. createdAt is the backend’s comparable timestamp. Asked from the agent’s end through the backend’s references, one lookup per space
   - spaceModuleSettings: SettingRow[] — what each capability that declares settings is set to FOR THIS COMMUNITY, as rows a screen renders directly: { group, groupLabel, key, label, description, type, options, value, source, set, locked, lockedBy }. `value` is already resolved across every level that had an opinion; `source` names the level that decided it ('default' when nobody did); `set` says whether THIS level holds an opinion, so a reset has something to undo; `locked` says a level that BINDS this one has forced it and the control must be disabled rather than springing back — a member's private refusal does not bind the community, so it never locks this list. Built from what modules declare, so a module that adds a setting gets a control with nothing to register
   - myModuleSettings: SettingRow[] — the same rows, for what THIS AGENT has decided in THIS space. Private, held in the root dataset. The most specific of the four levels
   - agentModuleSettings: SettingRow[] — the same rows, for what THIS AGENT has decided everywhere. Private. Render it in global settings, where the question is what you want in every space
@@ -3610,6 +3610,12 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - extractionOpen — Whether the extraction panel is open.
   - extractStatus — How the last one-shot extraction pass went — idle, running, done or error.
   - extractTurns — How many transcript turns the last pass read.
+  - feedFromStart — Whether the Feed is read from the beginning rather than the live end.
+  - feedHasMore — Whether there is more of the space beyond the Feed’s window.
+  - feedLoaded — Whether the Feed has answered for this space yet.
+  - feedOpen — Whether the Feed panel is open.
+  - feedRoot — The space collection the Feed reads, and writes typed messages into.
+  - feedRows — The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.
   - heard — Something has been said that the record does not hold yet — buffered, being written or still with the model.
   - inCall — Whether this agent is in a call right now.
   - installError — Why the last model install failed; empty otherwise.
@@ -3634,11 +3640,13 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - proposals — Suggestions staged on the live call — prefer proposalsFor with the call named.
   - proposalsFor — Suggestions staged on one conversation, by record id — read as proposalsFor[id].
   - reconnecting — The link to the speech model dropped and is being re-established; what is said meanwhile is held.
+  - replyingTo — The transcript line a reply is being written to — { id, text, author } — or null.
   - speaking — Whether the microphone level currently counts as speech.
   - status — What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error.
   - thresholdPercent — The speech-onset threshold as a CSS width, to mark on the same meter.
   - tiedBusy — Whether a confirmed tied decision is still being written.
   - tiedDecision — A decision waiting on confirmation because it decides others too — { kind, title, body, detail, confirmLabel } — or null.
+  - timelineOrientation — Which way round this reader draws a timeline — 'newestBottom' or 'newestTop'. Their own setting.
   - transcribers — Everyone recording this call, this agent included — the numerator of coverage.
   - transcribing — Speech has gone to the model and its text has not come back yet.
   - transcriptFromStart — Whether the transcript is being read from its beginning rather than following the live end.
@@ -3647,11 +3655,13 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - watchProblem — Why the standing extraction watch is not running here; empty when it is.
 - Actions (`{ "$action": "modules.transcribe.<name>" }`):
   - acceptProposal — Keeps a suggestion, as proposed or as edited.
-  - addMessage — Writes something a person typed into a transcript, as a typed line.
+  - addMessage — Writes something a person typed into a transcript, as a typed line — with its marks, when the composer gave any.
   - applyChange — Applies one suggested change to an agreed record.
   - cancelProposalEdit — Closes the open draft, discarding what was typed.
+  - cancelReply — Puts a reply down without sending it.
   - cancelTiedDecision — Puts the decision waiting in tiedDecision down without making it.
   - closeExtractionPanel — Closes the extraction panel.
+  - closeFeed — Closes the Feed panel.
   - closePanel — Closes the transcript panel.
   - confirmTiedDecision — Carries out the decision waiting in tiedDecision, with everything tied to it.
   - dismissChange — Dismisses one suggested change, leaving the record as it was.
@@ -3662,20 +3672,29 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - flushNow — Writes what has been heard so far without waiting for the buffer to fill.
   - installModel — Installs the model the backend offers and resumes recording that was waiting on one.
   - openExtractionPanel — Opens the extraction panel.
+  - openFeed — Opens the Feed panel.
   - openPanel — Opens the transcript panel.
+  - readFeedFromStart — Re-anchors the Feed at the beginning of the space.
+  - readFeedLive — Re-anchors the Feed at the newest message.
   - readTranscriptFromStart — Shows the beginning of the transcript, to be read forwards.
   - readTranscriptLive — Goes back to following the end of the transcript.
   - refreshProposals — Re-reads what is staged on a call, or on the live one.
   - rejectProposal — Drops a suggestion.
+  - reply — Answers one line with a typed line of its own, linked from it as a reply.
+  - sendToFeed — Writes a message straight into the space, outside any call — with its marks, when the composer gave any.
   - setProposalField — Sets one field of the open draft, by property name.
+  - showMoreFeed — Grows the Feed’s window by a page.
   - showMoreTranscript — Loads one more page of the transcript, in whichever direction it is being read.
+  - startReply — Starts a reply to one transcript line — pass { id, text, author } — which the composer then sends as a reply.
   - toggle — Starts or stops recording this agent’s microphone into the call, and opens the transcript when starting.
   - toggleAutoExtract — Turns automatic extraction on or off for this call, for everyone in it.
   - toggleExtractionTarget — Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call.
 - Parts: `transcribe.transcriptFeed` (subject: routeStore.params.call ? routeStore.params.call : modules.transcribe.collectionId), `transcribe.transcriptLines` (subject: modules.transcribe.collectionId), `transcribe.transcriptComposer`, `transcribe.captureMeter`, `transcribe.captureStatus`, `transcribe.coverage`, `transcribe.extractionTargets`, `transcribe.pendingUtterance`
-- Panels (`meta.panels[].dock`): `transcript` "Transcript" (module-owned openness), `extraction` "Extraction" (module-owned openness)
-- Settings: `recordCalls` (boolean; deployment, agent, space, agent-in-space) — Record calls automatically
+- Panels (`meta.panels[].dock`): `transcript` "Transcript" (module-owned openness), `extraction` "Extraction" (module-owned openness), `feed` "Feed" (module-owned openness)
+- Settings: `recordCalls` (boolean; deployment, agent, space, agent-in-space) — Record calls automatically; `timelineOrder` (enum; agent) — Newest messages
 - Presence activities: `transcribe` { id: string, recording: boolean, anchor: object, collection: string }
+- Functions:
+  - threadLines(options) — A page of lines with the replies under each flattened in, every one once, in time order — newest first when `newestFirst` is true. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, and a line with marks carries `content` — the one block a BlockRenderer draws it from. Read the page with `include: { comments: { include: { comments: { include: { comments: true } } } } }` so the replies arrive with it. Options: rows (the page), newestFirst (boolean).  e.g. threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })
 
 ### Live presence (`live`)
 See each other’s cursors, and follow one person’s screen.
