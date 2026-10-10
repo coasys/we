@@ -1893,14 +1893,31 @@ describe('staged suggestions', () => {
     const i = interpreterWith([
       { id: 'task-old', kind: 'update', entity: 'TaskBlock', values: { dueDate: '2026-09-15', assignee: 'Ana' } },
     ]);
+    // What is still staged, as the backend would answer once a field is settled.
+    const settled = new Set<string>();
     const port = {
       ...i.port,
-      accept: async (id: string, property?: string) => (calls.push(['accept', id, property]), true),
-      reject: async (id: string, property?: string) => (calls.push(['reject', id, property]), true),
+      proposals: async () => {
+        const values = { dueDate: '2026-09-15', assignee: 'Ana' } as Record<string, string>;
+        for (const name of settled) delete values[name];
+        return Object.keys(values).length ? [{ id: 'task-old', kind: 'update', entity: 'TaskBlock', values }] : [];
+      },
+      accept: async (id: string, property?: string) => (
+        calls.push(['accept', id, property]),
+        settled.add(property!),
+        true
+      ),
+      reject: async (id: string, property?: string) => (
+        calls.push(['reject', id, property]),
+        settled.add(property!),
+        true
+      ),
     };
     const h = harness(inCall, { interpretation: port });
     await h.say('hello');
     await h.store.extract();
+    h.store.changedIds();
+    await h.settle();
 
     await h.store.applyChange('task-old', 'dueDate');
     expect(h.store.proposals()[0].fields.map((f) => f.name)).toEqual(['assignee']);
@@ -1958,6 +1975,32 @@ describe('staged suggestions', () => {
 
     expect(h.store.pendingProposals().map((p) => p.id)).toEqual(['task-1']);
     expect(h.store.pendingProposals()[0].summary).toBe('title: One');
+  });
+
+  it('marks a suggestion from a call nobody has asked about, by asking about the space', async () => {
+    /*
+      A space canvas draws every call's finds. After a reload nothing had asked about any call but
+      the one on screen, so a card from another call drew as agreed until its call was opened.
+    */
+    const asked: (string | undefined)[] = [];
+    const port = {
+      available: () => true,
+      runOnCollection: async () => ({ turns: 0, ids: [], proposed: [] }),
+      proposals: async (_target: unknown, collection?: string) => {
+        asked.push(collection);
+        return collection ? [] : [{ id: 'task-elsewhere', kind: 'create', entity: 'TaskBlock', values: {} }];
+      },
+      accept: async () => true,
+      reject: async () => true,
+    };
+    const h = harness(inCall, { interpretation: port });
+
+    h.store.unconfirmedIds();
+    await h.settle();
+
+    expect(asked).toContain(undefined);
+    expect(h.store.unconfirmedIds()).toEqual(['task-elsewhere']);
+    expect(h.store.pendingIds()).toEqual(['task-elsewhere']);
   });
 
   it('refuses to offer editing where nothing could write the result back', async () => {

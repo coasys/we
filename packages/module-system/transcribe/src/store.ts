@@ -620,6 +620,15 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   /** Keys already asked about, so a read in a render loop is one fetch and not one per frame. */
   const proposalsRequested = new Set<string>();
   /**
+   * The key the space on screen's suggestions are kept under, beside the per-call ones.
+   *
+   * Whether a record is still a suggestion is a fact about the record, and a space-wide surface — a
+   * canvas holding every call's finds — draws records from calls nobody has asked about. Marking
+   * them from the per-call lists alone left every card from a call not yet opened looking agreed
+   * after a reload. Never a record id, so no reader can ask for it as a call.
+   */
+  const SPACE_KEY = '\u0000space';
+  /**
    * Which suggestion is being edited, and what has been typed into it.
    *
    * ## Why the draft lives here and not in the panel's `$localState`
@@ -1052,7 +1061,11 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       // The call's space, for the same reason the writes use it: a call outlives the space on
       // screen, so "proposals here" was answering about wherever the reader had wandered to. The
       // collection narrows it from that space to one conversation.
-      const staged = await interpretation.proposals(callTarget(), key);
+      // The space-wide key asks the host about the space on screen, with no conversation named.
+      const staged =
+        key === SPACE_KEY
+          ? await interpretation.proposals(undefined, undefined)
+          : await interpretation.proposals(callTarget(), key);
       const rows = staged.map((p) => {
         const fields = fieldsOf(p.values);
         return { id: p.id, kind: p.kind, entity: p.entity ?? '', fields, summary: summarise(fields) };
@@ -1103,7 +1116,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * Only ever loses an entry when it is genuinely resolved, so nothing here can un-mark a card that
    * is still waiting.
    */
-  const pendingIds = (): string[] => allProposals().map((p) => p.id);
+  const pendingIds = (): string[] => markedProposals().map((p) => p.id);
 
   /**
    * Records a pass **made** that nobody has kept yet — `create` proposals, by id.
@@ -1113,7 +1126,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * should look provisional, or be shown at all, is this question.
    */
   const unconfirmedIds = (): string[] =>
-    allProposals()
+    markedProposals()
       .filter((p) => p.kind === 'create')
       .map((p) => p.id);
 
@@ -1125,7 +1138,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * fading them, and a "hide suggestions" never hides one.
    */
   const changedIds = (): string[] =>
-    allProposals()
+    markedProposals()
       .filter((p) => p.kind === 'update')
       .map((p) => p.id);
 
@@ -1163,7 +1176,22 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * What `acceptProposal` looks an id up in: the id arrives from a card, and which key that card was
    * rendered under is not something the action is told.
    */
-  const allProposals = (): ProposalView[] => Object.values(proposalsByCall()).flat();
+  const allProposals = (): ProposalView[] => {
+    // A suggestion is listed under its call and under the space, so once each.
+    const seen = new Set<string>();
+    return Object.values(proposalsByCall())
+      .flat()
+      .filter((p) => !seen.has(p.id) && Boolean(seen.add(p.id)));
+  };
+
+  /**
+   * The suggestions a card's marker is answered from: everything known, with the space on screen
+   * asked about on first read — see `SPACE_KEY`.
+   */
+  function markedProposals(): ProposalView[] {
+    if (interpretation && !proposalsRequested.has(SPACE_KEY)) void loadProposals(SPACE_KEY);
+    return allProposals();
+  }
 
   /**
    * The predicate `CollectionBlock.amendments` is written under. See `ExtractionAmendment`.
