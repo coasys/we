@@ -96,12 +96,11 @@ export const TaskBlock: CoreEntityDef = {
         was written to stop a model producing.
       */
       /**
-       * The slug of a {@link TaskState} — the space's own vocabulary if it has one, otherwise
-       * `DEFAULT_TASK_STATES`.
+       * The slug of one of the space's {@link TaskState} records.
        *
-       * `options` and the hint name the defaults, which is deliberately *not* the same list a space
-       * may have defined. They steer an LLM, and a model cannot be asked to guess a vocabulary it
-       * has never been shown — so the three default states are the floor, and a space that wants
+       * `options` and the hint name the three states a new space starts with, which is deliberately
+       * *not* the same list a space may have defined. They steer an LLM, and a model cannot be asked
+       * to guess a vocabulary it has never been shown — so those three are the floor, and a space that wants
        * extraction to know its own states says so through the per-space hint (see
        * `interpretationHints.ts`, where the executor reads prompts from the stored shape rather than
        * from this declaration).

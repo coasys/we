@@ -74,12 +74,11 @@ export class Involvement extends Ad4mModel {
   agent: string = '';
 
   /**
-   * The slug of an {@link InvolvementType} — the space's own vocabulary where it has one,
-   * otherwise `DEFAULT_INVOLVEMENT_TYPES`.
+   * The slug of one of the space's {@link InvolvementType} records.
    *
-   * The slug rather than the record id, for `TaskState`'s reason: the defaults are virtual, so a
-   * kind nobody has written down has no id to hold, and a slug stays legible in raw links. The
-   * cost is the same too — renaming a slug orphans what holds it, so `name` is what gets edited.
+   * The slug rather than the record id, for `TaskState`'s reason: a slug stays legible in raw
+   * links and survives a kind being withdrawn and re-made. The cost is the same too — renaming a
+   * slug orphans what holds it, so `name` is what gets edited.
    *
    * An unrecognised slug is not an error. It reads as a kind with its own slug for a name and an
    * outstanding semantic, so somebody's part in the work is shown oddly rather than hidden.

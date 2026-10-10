@@ -914,7 +914,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
                         {
                           $action: 'spaceStore.createPost',
                           // The tree first: `createPost(json, options)`. `we://comment` rather than
-                          // `we://children` — a reply answers the thing rather than becoming part
+                          // `we://child` — a reply answers the thing rather than becoming part
                           // of it, which is what lets a reply be a composition with children.
                           args: [
                             { $: 'arg' },
@@ -1000,7 +1000,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
         saveLabel: 'Reply',
         saveAction: {
           $action: 'spaceStore.createPost',
-          // The tree first: `createPost(json, options)`. `we://comment` rather than `we://children`
+          // The tree first: `createPost(json, options)`. `we://comment` rather than `we://child`
           // — a reply answers the thing rather than becoming part of it, which is what lets a reply
           // be a full composition with children of its own.
           args: [

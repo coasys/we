@@ -56,6 +56,8 @@ import {
 
 /** The workshop's own name for the call on screen — see `CALL_EXPR` in its schema. */
 const CALL_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.call.callRecordId';
+/** The space's canvas, by role — what the workshop's canvas, its actions and its key are about. */
+const SPACE_CANVAS_EXPR = "spaceStore.roles.canvas ? spaceStore.roles.canvas : ''";
 
 type QueryNode = { $queries?: Record<string, unknown> };
 type GateNode = { type?: string; props?: { condition?: { $?: string }; else?: unknown } };
@@ -313,9 +315,11 @@ describe('the workshop template’s call selection', () => {
     // The corner still names the call, which is all it is for now.
     expect(corner).toContain('local.callRecord');
 
+    // The board and the calendar are the space's now, and draw whether or not a call is on screen,
+    // so neither asks for one. The canvas still offers a call from its empty state — see below.
     for (const path of ['/kanban', '/calendar']) {
       const route = JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === path));
-      expect(route, path).toContain('modules.call.startCall');
+      expect(route, path).not.toContain('Start or choose a call');
     }
 
     // And the panel's own stays: picking up a call that has finished is the one state no page gate
@@ -342,12 +346,14 @@ describe('the workshop template’s call selection', () => {
     const action = (graph?.slots as Record<string, GateNode> | undefined)?.emptyAction;
 
     expect(action?.type).toBe('$if');
-    expect(action?.props?.condition?.$).toBe(`!(${CALL_EXPR})`);
+    // Offered when the space has its canvas and nobody is in a call — the canvas is the space's now,
+    // so an empty one is an invitation to start a conversation rather than to choose one.
+    expect(action?.props?.condition?.$).toBe(`(${SPACE_CANVAS_EXPR}) && !(${CALL_EXPR})`);
     expect(JSON.stringify(action)).toContain('modules.call.startCall');
 
-    // The sentence above it tests the same call, parenthesised: `CALL_EXPR` is a ternary, and pasted
-    // in bare a chosen call's id became the whole expression — the canvas "said" `ad4m://obj/…`.
-    expect((graph?.props?.empty as { $: string }).$.startsWith(`(${CALL_EXPR}) ? `)).toBe(true);
+    // The sentence above it asks whether there is a canvas at all, parenthesised: the expression is a
+    // ternary, and pasted in bare an id became the whole expression — the canvas "said" `ad4m://obj/…`.
+    expect((graph?.props?.empty as { $: string }).$.startsWith(`(${SPACE_CANVAS_EXPR}) ? `)).toBe(true);
   });
 
   it('starts a call rather than reopening the one selected in the list', () => {
@@ -398,11 +404,8 @@ describe('the workshop template’s call selection', () => {
     expect(calls).toContain('"condition":{"$":"count(modules.call.liveCalls)"}');
     expect(calls).toContain("'Leave your call and start a new one'");
 
-    // The same pair on the page, which is where somebody with no call is actually looking.
-    for (const path of ['/kanban', '/calendar']) {
-      const route = JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === path));
-      expect(route, path).toContain("'Leave your call and start a new one'");
-    }
+    // The pages no longer gate on a call, so the pair is the panel's alone — and the canvas's empty
+    // state, which offers a call whenever nobody is in one.
   });
 
   it('asks about this space, not about wherever your call is', () => {
@@ -487,7 +490,7 @@ describe('the workshop template’s call selection', () => {
     expect(scoped).toEqual([]);
   });
 
-  it('asks for no events until a call is chosen, and says why it is empty-handed', () => {
+  it('asks for no events until the space has a collection to read them from', () => {
     /*
       A scope whose anchor does not resolve is DROPPED rather than refused, and pruning WIDENS — so
       with nothing selected the calendar asked for every `EventBlock` in the space and drew them
@@ -505,11 +508,13 @@ describe('the workshop template’s call selection', () => {
     ) as GateNode | undefined;
 
     expect(gate).toBeDefined();
-    expect(gate?.props?.condition?.$).toBe(CALL_EXPR);
-    expect(JSON.stringify(gate?.props?.else)).toContain('Start or choose a call');
+    // The month is the space's now, read from the space collection — and an anchor that does not
+    // resolve widens the read, so the gate is on the collection being there.
+    expect(gate?.props?.condition?.$).toBe('spaceStore.root');
+    expect(JSON.stringify(gate?.props?.else)).toContain('made before spaces kept their contents together');
   });
 
-  it('names the call, not the space, when there is nothing on the calendar', () => {
+  it('names the space, not a call, when there is nothing on the calendar', () => {
     /*
       `emptyState`'s own sentence is "This space doesn't have any events.", which is about the wrong
       subject twice: the list is scoped to one call, and this branch is also what a day with nothing
@@ -520,7 +525,7 @@ describe('the workshop template’s call selection', () => {
 
     expect(events).not.toContain("This space doesn't have any events");
     expect(events).toContain('Nothing on this day.');
-    expect(events).toContain('Nothing from this call yet.');
+    expect(events).toContain('Nothing in this space yet.');
   });
 
   it('carries the call from page to page in the switcher', () => {
@@ -642,7 +647,7 @@ describe('the workshop template’s call selection', () => {
     */
     expect(json).toContain(`{ type: 'manual', options: { size: { width: 180, height: 135 }`);
     expect(json).toContain(
-      `"$action":"recordStore.placeOnCanvas","args":[{"$":"${CALL_EXPR}"},{"$":"event.recordId"},{"$":"event.recordType"},{"$":"event.x"},{"$":"event.y"}]`,
+      `"$action":"recordStore.placeOnCanvas","args":[{"$":"${SPACE_CANVAS_EXPR}"},{"$":"event.recordId"},{"$":"event.recordType"},{"$":"event.x"},{"$":"event.y"}]`,
     );
     // The calendar reads its events through the same filter the board does.
     expect(json).toContain(
@@ -664,7 +669,10 @@ describe('the workshop template’s call selection', () => {
     */
     const json = JSON.stringify(workshop);
 
-    expect(json).toContain(`modules.transcribe.extractionFor[${CALL_EXPR}].targets.map(t, t.entity)`);
+    // Every kind the space could extract, whether or not a call has it ticked now — the canvas is the
+    // space's, and over the space collection rather than inside the canvas record.
+    expect(json).toContain('"contains":{"$":"shapeStore.extractionCandidates"}');
+    expect(json).toContain('"members":{"id":{"$":"spaceStore.root"},"via":"children"}');
     expect(json).not.toContain('"TaskBlock","EventBlock"');
   });
 
@@ -1096,18 +1104,19 @@ describe('the workshop template’s three placeholders', () => {
         number this replaced.
       */
       /*
-        The kanban asks one more question before it has content: whether the call has a board. Its
-        "no board yet" gate centres in the call branch, so that branch must be unpadded and take the
-        height too, and the band moves down onto the board and the spinner.
+        The kanban asks one question before it has content: whether the space has a board. Its "no
+        board yet" gate centres in the box around it, so that box must be unpadded and take the height
+        too, and the band moves down onto the board and the spinner. It is the space's board, so there
+        is no call gate above it — the box is the measure's first child.
       */
       let banded = content;
       if (path === '/kanban') {
-        const props = (content?.props ?? {}) as Record<string, unknown>;
+        const props = (gate.props ?? {}) as Record<string, unknown>;
         for (const key of ['p', 'py', 'pt', 'pb']) {
-          expect(props[key], `${path} call branch.${key}`).toBeUndefined();
+          expect(props[key], `${path} board box.${key}`).toBeUndefined();
         }
-        expect(props.flex, `${path} call branch.flex`).toBe('1');
-        const hasBoard = (content?.children as SchemaNode[])[0].props as { then?: SchemaNode; else?: SchemaNode };
+        expect(props.flex, `${path} board box.flex`).toBe('1');
+        const hasBoard = (gate.children as SchemaNode[])[0].props as { then?: SchemaNode; else?: SchemaNode };
         const loaded = hasBoard.else?.props as { else?: SchemaNode };
         expect((loaded.else?.props as Record<string, unknown>)?.pt, `${path} spinner band`).toBeDefined();
         banded = hasBoard.then;
@@ -1366,7 +1375,7 @@ describe('the workshop’s key', () => {
     */
     const key = panel('key');
 
-    expect(key).toContain(`targets.map(t, t.entity)).filter(k, k != '${LINK_ENTITY}')"`);
+    expect(key).toContain(`(shapeStore.extractionCandidates).filter(k, k != '${LINK_ENTITY}')"`);
     expect(key).toContain(`local.placements.map(p, p.nodeType)).filter(k, k != '${LINK_ENTITY}')`);
   });
 
@@ -1379,8 +1388,8 @@ describe('the workshop’s key', () => {
     */
     const key = panel('key');
 
-    expect(key).toContain(`${CALL_EXPR}`);
-    expect(key).toContain('Choose or start a call.');
+    expect(key).toContain(`${SPACE_CANVAS_EXPR}`);
+    expect(key).toContain('This space has no canvas of its own.');
     expect(key).toContain('Colours are on the canvas.');
   });
 
@@ -1482,7 +1491,7 @@ describe('the workshop’s key', () => {
     expect(canvas).toContain('"id":"cardShape","control":"shape"');
     expect(canvas).toContain('"id":"contentScale","control":"scale"');
     expect(canvas).toContain(
-      `"$action":"recordStore.setCardStyle","args":[{"$":"${CALL_EXPR}"},{"$":"event.recordId"},{"$":"event.action"},{"$":"event.value"}]`,
+      `"$action":"recordStore.setCardStyle","args":[{"$":"${SPACE_CANVAS_EXPR}"},{"$":"event.recordId"},{"$":"event.action"},{"$":"event.value"}]`,
     );
     expect(canvas).toContain('"$action":"recordStore.previewCardStyle"');
     // Not on a suggestion, which offers the decision and nothing else.
@@ -1514,7 +1523,7 @@ describe('the workshop’s canvas', () => {
     // Only with a call on screen: every choice writes against it, so without one the chooser offered
     // a list of things that could only fail.
     expect(canvas).toContain(
-      `"onCanvasDoubleClick":{"$if":{"condition":{"$":"${CALL_EXPR}"},"then":[{"$setLocal":"newAt","value":{"$":"event"}},{"$setLocal":"chooserOpen","value":true}]}}`,
+      `"onCanvasDoubleClick":{"$if":{"condition":{"$":"${SPACE_CANVAS_EXPR}"},"then":[{"$setLocal":"newAt","value":{"$":"event"}},{"$setLocal":"chooserOpen","value":true}]}}`,
     );
     // One searchable grid over the one list — the note, this space's types, then blocks led by tasks
     // and events (see `typePicker`). A composed kind opens the composer, anything else the form.
@@ -1537,7 +1546,7 @@ describe('the workshop’s canvas', () => {
     // A collection is called a note here; its description says it is a document of blocks.
     expect(canvas).toContain("(kind.via == 'composer' ? 'Note' : kind.label)");
     expect(canvas).toContain(
-      `"$action":"recordStore.createOnCanvas","args":[{"$":"${CALL_EXPR}"},{"$":"local.newAt.x"},{"$":"local.newAt.y"}]`,
+      `"$action":"recordStore.createOnCanvas","args":[{"$":"${SPACE_CANVAS_EXPR}"},{"$":"local.newAt.x"},{"$":"local.newAt.y"}]`,
     );
     expect(canvas).toContain('"$action":"recordStore.setRecordEntity","args":[{"$":"kind.value"}]');
     expect(canvas).toContain('"$action":"recordStore.createCardOnCanvas"');
@@ -1554,7 +1563,7 @@ describe('the workshop’s canvas', () => {
   it('takes a drop from the Pocket, through the store’s own refusals', () => {
     // The graph hands the template a world point; the store refuses another space's record.
     expect(canvas).toContain(
-      `"onDrop":{"$action":"recordStore.dropOnCanvas","args":[{"$":"${CALL_EXPR}"},{"$":"event"}]}`,
+      `"onDrop":{"$action":"recordStore.dropOnCanvas","args":[{"$":"${SPACE_CANVAS_EXPR}"},{"$":"event"}]}`,
     );
   });
 
@@ -1643,10 +1652,9 @@ describe('the workshop’s canvas', () => {
     */
     const key = panel('key');
 
-    expect(key).not.toContain('shapeStore.extractionCandidates');
     expect(key).not.toContain('"found":{"entity":{"$":"kind"}');
     expect(key).not.toContain('placement.nodeType != prev.nodeType');
-    expect(key).toContain('"onCall":{"entity":{"$":"(modules.transcribe.extractionFor[');
+    expect(key).toContain('"onCall":{"entity":{"$":"(shapeStore.extractionCandidates)');
     expect(key).toContain('distinct(local.onCall.map(r, r.__subjectClass), local.placements.map(p, p.nodeType))');
     expect(key).toContain("'CollectionBlock' ? 'Note'");
     expect(KIND_DEFAULTS.CollectionBlock).toBe('#ffea9f');
@@ -1679,7 +1687,8 @@ describe('the workshop’s people', () => {
     expect(kanban).toContain('"syncParam":"who"');
     expect(kanban).toContain('Group by person');
     // Where a card came from is a mark and a hovercard line, never the author's name on its face.
-    expect(kanban).toContain('card.id in first(local.callRow).extracted');
+    // Each card says where it came from itself, whichever call that was — the board is the space's.
+    expect(kanban).toContain('card.extractedFrom');
     // Pressing a card opens it in the inspector through the same parameters the canvas writes.
     expect(kanban).toContain('"$action":"routeStore.setParam","args":["card",{"$":"card.id"}]');
     expect(kanban).toContain('Extracted from the conversation');
@@ -2297,5 +2306,55 @@ describe('the workshop’s tree', () => {
     expect(canvas).toContain('"placeholder":"Any connection"');
     expect(canvas).toContain('"$setLocal":"spine","value":""');
     expect(canvas).toContain('local.relationshipKinds.map(k, { label: k.name, value: k.id, icon: k.icon })');
+  });
+});
+
+/**
+ * The space's views, and the lens that picks one call out of them.
+ *
+ * Every call files what it finds into the space collection, so the canvas, the board and the calendar
+ * are the space's and show the space whatever is on screen. Two quiet ways that goes wrong: a view
+ * that narrows itself to the call somebody opened — per-call scoping back by the back door — and a
+ * lens offered with no call to pick out, which narrows to nothing.
+ */
+describe('the workshop’s space-wide views', () => {
+  const workshop = showcase.workshopTemplate as Schema & { meta?: { panels?: TemplatePanel[] } };
+  const route = (path: string) => JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === path));
+  const DIM = `(${CALL_EXPR}) && routeStore.params.from == 'dim'`;
+  const HIDE = `(${CALL_EXPR}) && routeStore.params.from == 'hide'`;
+
+  it('narrows nothing until somebody turns the lens on, and only while a call is on screen', () => {
+    const canvas = route('/canvas');
+    // Hiding leaves off what the call did not produce; with the lens off it asks for nobody's cards.
+    expect(canvas).toContain(`"onlyFrom":{"$":"(${HIDE}) ? (${CALL_EXPR}) : ''"}`);
+    // Dimming fades everything else — a card with no origin is not from this call either. Under
+    // "only" too, so the cards stay faded while the canvas reloads without them rather than flashing
+    // back to full strength.
+    expect(canvas).toContain(
+      `((${DIM}) || (${HIDE})) ? [{ when: { 'data.origin': { not: (${CALL_EXPR}) } }, style: { opacity: 0.1 } }] : []`,
+    );
+    expect(canvas).toContain('"origin":"extractedFrom"');
+  });
+
+  it('keeps the lens in the address, beside the colour lens, so a link shows the same view', () => {
+    expect(JSON.stringify(workshop)).toContain("routeStore.params.from ? '&from=' + routeStore.params.from : ''");
+    // A menu naming all three, rather than a button stepping through them, which read as a toggle.
+    expect(JSON.stringify(workshop)).toContain(`"args":["from",{"$":"arg.id == 'all' ? '' : arg.id"}]`);
+  });
+
+  it('puts the lens beside each page’s own controls, not in the page switcher', () => {
+    const lens = '"triggerTitle":"Pick out what this call produced"';
+    for (const path of ['/canvas', '/kanban', '/calendar']) expect(route(path), path).toContain(lens);
+    const routes = JSON.stringify(workshop.routes);
+    expect(JSON.stringify(workshop).split(lens).length - 1).toBe(routes.split(lens).length - 1);
+  });
+
+  it('applies the same lens to the board and the calendar', () => {
+    const kanban = route('/kanban');
+    expect(kanban).toContain('"syncParam":"from"');
+    expect(kanban).toContain('only: local.boardOnlySource ? first(local.boardOnlySource).extracted : null');
+    const calendar = route('/calendar');
+    expect(calendar).toContain('"calendarFrom":{"entity":"CollectionBlock"');
+    expect(calendar).toContain('(e.id in first(local.calendarFrom).extracted)');
   });
 });

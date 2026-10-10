@@ -523,6 +523,14 @@ export interface DatasetTarget {
 export interface CreateEntityOptions extends DatasetTarget {
   /** The record to link this one under, by id and predicate. Creating it parented leaves no window where a crash orphans it. */
   parent?: { id: string; predicate: string };
+  /**
+   * File the record at the space's top level — inside its space collection, where everything
+   * top-level in a space lives. For a record that belongs to the space rather than to anything in
+   * it: a call nobody started from a record, say. Ignored when `parent` is given, and where the
+   * dataset has no space collection the record is simply made unparented, as it was before spaces
+   * had one.
+   */
+  topLevel?: boolean;
 }
 
 /** The slice of the host's identity directory a module may read. */

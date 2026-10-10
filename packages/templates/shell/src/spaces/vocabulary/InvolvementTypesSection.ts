@@ -249,17 +249,6 @@ const kindRow: SchemaNode = {
                 then: { type: 'we-badge', props: { size: 'xs' }, children: ['withdrawn'] },
               },
             },
-            {
-              type: '$if',
-              props: {
-                condition: { $: '!kind.defined' },
-                then: {
-                  type: 'we-text',
-                  props: { variant: 'footnote', color: 'text-faint' },
-                  children: ['default'],
-                },
-              },
-            },
           ],
         },
         {

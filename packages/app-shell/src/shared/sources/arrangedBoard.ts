@@ -115,6 +115,13 @@ export interface ArrangedBoardOptions {
   people?: string[] | null;
   /** How cards nobody chosen is on are drawn — `dim` (the default), `hide`, or `rows`. See above. */
   show?: string | null;
+  /**
+   * A second narrowing, beside the people: only these records — what one call produced, say. Null
+   * or absent narrows nothing. ANDed with the people filter, each drawn in its own mode.
+   */
+  only?: string[] | null;
+  /** How the cards outside `only` are drawn — `dim` or `hide`. Anything else narrows nothing. */
+  onlyShow?: string | null;
   /** The viewer's DID, so `involved` can lead with them. */
   me?: string | null;
   /** Involvements written and not yet seen — see `involvementOptimism`. Supplied by the host. */
@@ -447,14 +454,26 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
   });
   const on = everyoneOn.byNode;
   const peopleOn = (record: CardRow) => on[record.id]?.dids ?? [];
-  const matches = (record: CardRow) => !filtering || peopleOn(record).some((did) => chosen.has(did));
-  const hiding = filtering && show !== 'dim';
+  const byPeople = (record: CardRow) => !filtering || peopleOn(record).some((did) => chosen.has(did));
+  /*
+    And `only`, the second narrowing. Each keeps its own mode: a card the people filter dims and
+    `only` hides is hidden, one only dimmed by either is dimmed. `matches` is both, which is what a
+    heading's "3/12" counts.
+  */
+  const onlyMode = options?.onlyShow === 'hide' ? 'hide' : options?.onlyShow === 'dim' ? 'dim' : null;
+  const onlyIds = options?.only && onlyMode ? new Set(asRows<string>(options.only)) : null;
+  const byOnly = (record: CardRow) => !onlyIds || onlyIds.has(record.id);
+  const narrowing = filtering || onlyIds !== null;
+  const matches = (record: CardRow) => byPeople(record) && byOnly(record);
+  const keep = (record: CardRow) =>
+    (!(filtering && show !== 'dim') || byPeople(record)) && (!(onlyIds && onlyMode === 'hide') || byOnly(record));
+  const hiding = (filtering && show !== 'dim') || (onlyIds !== null && onlyMode === 'hide');
 
   const onBoard = new Map<string, CardRow>();
   for (const column of columns) {
     const cell = contents[column.id];
     cell.order = [...cell.arranged, ...cell.unarranged].map((r) => r.id);
-    cell.matched = filtering ? [...cell.arranged, ...cell.unarranged].filter(matches).length : cell.count;
+    cell.matched = narrowing ? [...cell.arranged, ...cell.unarranged].filter(matches).length : cell.count;
     for (const record of [...cell.arranged, ...cell.unarranged]) onBoard.set(record.id, record);
   }
   for (const record of unplacedAll) onBoard.set(record.id, record);
@@ -519,8 +538,8 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
   if (hiding) {
     for (const column of columns) {
       const cell = contents[column.id];
-      cell.arranged = cell.arranged.filter(matches);
-      cell.unarranged = cell.unarranged.filter(matches);
+      cell.arranged = cell.arranged.filter(keep);
+      cell.unarranged = cell.unarranged.filter(keep);
     }
   }
   // "Waiting on me" hides like the people filter does: counts stay true, `shown` says what is drawn.
@@ -543,7 +562,7 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
     const cell = contents[column.id];
     cell.shown = cell.arranged.length + cell.unarranged.length;
   }
-  const unplaced = (hiding ? unplacedAll.filter(matches) : unplacedAll).filter(awaited);
+  const unplaced = (hiding ? unplacedAll.filter(keep) : unplacedAll).filter(awaited);
   const seen = new Set<string>();
   const unplacedStates: { slug: string; name: string }[] = [];
   for (const record of unplacedAll) {
@@ -570,12 +589,12 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
     involved: everyoneOn.dids.filter((did) => onThisBoard.has(did)),
     filtering,
     show,
-    dimmed:
-      filtering && show === 'dim'
-        ? [...onBoard.values()].filter((record) => !matches(record)).map((record) => record.id)
-        : [],
+    // What is drawn but does not match — kept by every hiding filter, failed by a dimming one.
+    dimmed: narrowing
+      ? [...onBoard.values()].filter((record) => keep(record) && !matches(record)).map((record) => record.id)
+      : [],
     cardCount: onBoard.size,
-    matchedCount: filtering ? [...onBoard.values()].filter(matches).length : onBoard.size,
+    matchedCount: narrowing ? [...onBoard.values()].filter(matches).length : onBoard.size,
     unplacedTotal: unplacedAll.length,
     rows,
     cells,

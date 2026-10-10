@@ -17,7 +17,7 @@
  * ## Arrangement is a relation, not containment
  *
  * A column *arranges* its cards through `we://arranges` rather than owning them through
- * `we://children`. The cards are loose in the space; a column positions them. Deleting a column
+ * `we://child`. The cards are loose in the space; a column positions them. Deleting a column
  * therefore cannot delete a card, and two people dragging in the same column at once converge,
  * because an ordered relation is a conflict-free sequence in the backend.
  */

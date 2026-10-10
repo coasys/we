@@ -14,7 +14,7 @@ import { render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
 import { createBlocks, registerCoreBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
-import { AgentSettings, CollectionBlock, getEntity, Space } from '@we/entities';
+import { AgentSettings, CollectionBlock, getEntity, Space, SpaceRole } from '@we/entities';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
@@ -113,6 +113,7 @@ import { ShapeStoreProvider } from '../src/frameworks/solid/stores/ShapeStore';
 import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
 import { type SpaceStore, SpaceStoreProvider, useSpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
 import { provideSeed } from '../src/shared/seedRegistry';
+import { writeSpaceRole } from '../src/shared/spaceRoles';
 
 provideSeed({ name: 'test', modules: [] } as never);
 
@@ -708,6 +709,78 @@ describe('what the stores actually wrote', () => {
     expect(spaces[0].name).toBe('Readable');
     expect(spaces[0].description).toBe('written by the store');
     expect(spaces[0].author).toBe('did:test:james');
+  }, 10000);
+
+  it('gives a new space its collection, and writes the starter under it', async () => {
+    /*
+      The space collection is the host's and is made whatever the starter says; the canvas, its role
+      and the settings are the starter's. Both halves are written at the create press, and nothing on
+      screen says when either is missing — a space simply arrives without its canvas.
+    */
+    provideSeed({
+      name: 'test',
+      modules: [],
+      spaceStarters: [
+        {
+          id: 'test',
+          settings: { defaultTemplateId: 'workshop' },
+          records: [{ $id: 'canvas', entity: 'CollectionBlock', fields: { kind: 'canvas' }, in: '$root' }],
+          roles: { canvas: '$canvas' },
+          input: true,
+        },
+      ],
+    } as never);
+    try {
+      const stores = mountShell();
+      await ready(stores);
+
+      await stores.spaces.createSpace('Structured', 'x', 'personal', 'hidden');
+      const ref = (await lifecycle.list()).find((d) => d.name === 'Structured')!;
+
+      const [space] = await Space.findAll(ref.handle as never, { include: { root: true } });
+      expect(space.defaultTemplateId).toBe('workshop');
+      expect(space.extractLooseMessages).toBe(true);
+      const root = (space as unknown as { root?: { id: string; kind: string } }).root;
+      expect(root?.kind).toBe('space');
+
+      const holder = await CollectionBlock.findOne(
+        ref.handle as never,
+        {
+          where: { id: root!.id },
+          include: { children: true },
+        } as never,
+      );
+      const contained = (holder as unknown as { children?: { id: string; kind: string }[] })?.children ?? [];
+      expect(contained.map((c) => c.kind)).toEqual(['canvas']);
+
+      const roles = await SpaceRole.findAll(ref.handle as never);
+      expect(roles.map((r) => [r.name, Array.isArray(r.node) ? r.node[0] : r.node])).toEqual([
+        ['canvas', contained[0].id],
+      ]);
+    } finally {
+      provideSeed({ name: 'test', modules: [] } as never);
+    }
+  }, 10000);
+
+  it('hears a role written after the space was entered', async () => {
+    /*
+      Roles were read once, on entering. A space entered while its starter was still writing — or
+      one whose board a peer made afterwards — showed "make a board" beside a board that existed.
+    */
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.spaces.createSpace('Late Roles', 'x', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Late Roles')!;
+    await stores.datasets.switchDataset(ref.id);
+    await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
+    expect(stores.spaces.roles().board).toBeUndefined();
+
+    const [space] = await Space.findAll(ref.handle as never);
+    const board = await CollectionBlock.create(ref.handle as never, { kind: 'board', title: 'Board' } as never);
+    await writeSpaceRole(ref.handle as never, space.id, 'board', board.id);
+
+    await vi.waitFor(() => expect(stores.spaces.roles().board).toBe(board.id));
   }, 10000);
 
   it('persists sidebar order as settings, not just as store state', async () => {

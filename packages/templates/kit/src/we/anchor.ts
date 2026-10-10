@@ -132,7 +132,7 @@ export function anchorBanner(opts: AnchorBannerOptions): SchemaNode {
 /**
  * The predicate a `CollectionBlock`'s children hang off. The one place a schema needs to name it.
  */
-const CHILDREN_PREDICATE = 'we://children';
+const CHILDREN_PREDICATE = 'we://child';
 
 /**
  * The options a `record.create` needs to put what it makes *inside* the anchored container.

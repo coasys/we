@@ -143,6 +143,38 @@ template queries through the neutral QueryIR before they reach the backend.
 Safe to flip in dev (the seed is a watched import); a production build bakes
 the seed in.
 
+### `spaceStarters`
+
+What a new space begins with, beyond the structure every space gets. It's a list: a new space gets
+the first entry, and the others are there for a create dialog to offer. The format is in
+`packages/app-shell/src/shared/spaceStarter.ts`, and `pnpm validate:seed` checks every starter.
+
+A starter has four parts:
+
+- **`settings`:** the `Space` record's own fields (template, theme, `extractionTargets`, …).
+- **`records`:** written in order, each `{ "$id", "entity", "fields", "in" }`:
+  - **`$id`** names the record so the rest of the starter can refer to it before it has a real id.
+    Give one only to a record something refers to; `validate:seed` warns about an `$id` nothing uses.
+  - **`in`** is the record's container: `"$root"` (the space collection) or an earlier record's
+    `$id`. Leave it out for a record nothing contains, such as vocabulary (task states, signal
+    types). Every link is written out, so `validate:seed` lists the uncontained records per starter,
+    and a forgotten `in` on a post or a channel shows up there.
+  - **A field value that is exactly `"$name"`** refers to an earlier record, `$root` or `$space`.
+    A list of them is a to-many relation.
+- **`roles`:** how templates find what the starter made, e.g. `"canvas": "$canvas"`.
+- **`input`:** whether messages typed straight into the space are extracted.
+
+Two further rules:
+
+- **A setting whose value is a reference** is a relation on the space, written once the records
+  exist. For example, `"taskStates": ["$todo", "$doing", "$done"]` sets the community's order.
+- **`{{space.name}}` and `{{space.description}}`** in any string are filled in from the create form.
+
+Everything a space starts with is records: its vocabulary, its canvas, its board and columns, and
+its first posts. A post is a `CollectionBlock` with `"type": "root"` and the blocks inside it; the
+stored document it renders from is derived from those blocks. Templates must find starter records
+by role and cope with a role being absent, since a space can switch template.
+
 ### `host`
 
 Optional shell white-labeling: `host.theme` (color/font overrides) and

@@ -243,6 +243,9 @@ export function InterpretationStoreProvider(props: ParentProps) {
     // Back to optimistic, not to the previous space's answer: a personal space and a hosted one can
     // sit behind different executors, so the last node's capabilities say nothing about this one's.
     setCapable(true);
+    // The suggestions on screen are a different set in a different space, so say so: a surface that
+    // asked about the space on screen asks again rather than marking this one's cards from the last.
+    setProposalsRevision((n) => n + 1);
 
     if (!handle || !ports?.interpretation) return;
 

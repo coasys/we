@@ -952,7 +952,15 @@ describe('the extraction panel', () => {
     // A meeting somebody opened from a link is not happening. Everything else here follows the call
     // on screen; this one cannot.
     const live = '{"$":"!routeStore.params.call || routeStore.params.call == modules.transcribe.callId"}';
-    expect(json.indexOf(live)).toBeLessThan(json.indexOf('Auto extract: on'));
+    expect(json.indexOf(live)).toBeLessThan(json.indexOf("modules.transcribe.autoExtract ? 'Auto extract: on'"));
+  });
+
+  it('offers the space’s own switch, not a call’s, for the messages outside any call', () => {
+    // Outside a call the panel shows the space's loose messages, whose watch runs on the space's
+    // settings — so the press writes the space's setting, and only an administrator may make it.
+    expect(json).toContain("spaceStore.extractLooseMessages ? spaceStore.root : ''");
+    expect(json).toContain('"spaceStore.setAutoInterpret"');
+    expect(json).toContain('"!spaceStore.canAdministerCurrentSpace"');
   });
 
   it('says what the two header controls do, and for whom', () => {
@@ -2039,6 +2047,21 @@ describe('the composer', () => {
     { props: Record<string, unknown> } | undefined;
   const textarea = findNode(transcriptComposer, (n) => n.type === 'we-textarea') as
     { props: Record<string, unknown> } | undefined;
+
+  it('appears only with a call on screen, and writes into that call — never the space', () => {
+    /*
+      The extraction subject falls back to the space collection outside any call, so the extraction
+      panel can show loose messages. The composer used to share it, which put a box under "start or
+      join a call" that wrote whatever was typed into the space.
+    */
+    const condition = (transcriptComposer.props as { condition: { $: string } }).condition.$;
+    expect(condition).toContain('routeStore.params.call');
+    expect(condition).toContain('modules.transcribe.callId');
+    expect(condition).not.toContain('spaceStore.root');
+    const send = button?.props.onClick as { $action?: string; args?: { $: string }[] }[] | undefined;
+    const write = send?.find((step) => step.$action === 'modules.transcribe.addMessage');
+    expect(write?.args?.[0]?.$).toBe(condition);
+  });
 
   it('declares the in-flight flag beside the draft, and keeps it out of the URL', () => {
     /*

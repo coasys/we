@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest';
 
 const CALL = 'we://collection/today';
 const OLDER = 'we://collection/this-morning';
-const CHILDREN = 'we://children';
+const CHILDREN = 'we://child';
 
 /** A base minted by a pass over `parent`, in the namespace the adapter derives from it. */
 const mintedUnder = (parent: string, name: string) => `we://interpreted/${encodeURIComponent(parent)}/${name}`;
@@ -58,8 +58,8 @@ describe('proposals, scoped to one conversation', () => {
   it('keeps what this call contains and drops what another call does', async () => {
     const p = perspectiveWith(
       [
-        { base: 'we://task/mine', kind: 'update' },
-        { base: 'we://task/theirs', kind: 'update' },
+        { base: 'we://task/mine', kind: 'create' },
+        { base: 'we://task/theirs', kind: 'create' },
       ],
       ['we://task/mine'],
     );
@@ -89,10 +89,36 @@ describe('proposals, scoped to one conversation', () => {
     expect(scoped).toEqual([mintedUnder(CALL, 'task-1')]);
   });
 
+  it('narrows by the conversation when every call files into one shared collection', async () => {
+    // A space files every call's items into its own collection, so containment there admits every
+    // call's suggestions at once. Named as provenance, the call is what narrows — by the link it
+    // writes to what it produced, and by the namespace it minted under.
+    const SPACE = 'we://collection/space';
+    const EXTRACTED = 'we://extracted';
+    const p = perspectiveWith(
+      [
+        { base: 'we://task/from-this-call', kind: 'create' },
+        { base: mintedUnder(CALL, 'task-2'), kind: 'create' },
+        { base: mintedUnder(OLDER, 'task-9'), kind: 'create' },
+      ],
+      ['we://task/from-this-call'],
+    );
+
+    const scoped = await idsOf(
+      port.proposals(p.handle, {
+        parent: { id: SPACE, predicate: CHILDREN },
+        provenance: { id: CALL, predicate: EXTRACTED },
+      }),
+    );
+
+    expect(scoped).toEqual(['we://task/from-this-call', mintedUnder(CALL, 'task-2')]);
+    expect(p.queried).toEqual([{ source: CALL, predicate: EXTRACTED }]);
+  });
+
   it('answers for the whole dataset when no scope is given', async () => {
     // The surface that is about a space rather than a call still has its question, and it is this
     // one. Unasked, nothing is read to narrow with either.
-    const p = perspectiveWith([{ base: 'we://task/anywhere', kind: 'update' }], []);
+    const p = perspectiveWith([{ base: 'we://task/anywhere', kind: 'create' }], []);
 
     expect(await idsOf(port.proposals(p.handle))).toEqual(['we://task/anywhere']);
     expect(p.queried).toEqual([]);
@@ -101,7 +127,7 @@ describe('proposals, scoped to one conversation', () => {
   it('falls open when the links cannot be read', async () => {
     // A review list that silently empties because one read failed looks exactly like a call that
     // found nothing, and sends somebody looking for a bug in extraction.
-    const p = perspectiveWith([{ base: 'we://task/mine', kind: 'update' }], [], { linksFail: true });
+    const p = perspectiveWith([{ base: 'we://task/mine', kind: 'create' }], [], { linksFail: true });
 
     const scoped = await idsOf(port.proposals(p.handle, { parent: { id: CALL, predicate: CHILDREN } }));
 
