@@ -659,6 +659,7 @@ function ownerCardProbe(
         dock: 'stage',
         title: 'Call',
         composed: true,
+        placed: ['Tile'],
       }),
       panelNode: () => ({ type: 'Column', children: [{ type: '$part', props: { id: 'call.tile' } }] }),
       view: () => ({

@@ -173,6 +173,13 @@ reads. A local cannot be an input: nothing outside a part can declare the state 
 two parts share belongs in your store, or in a part that holds both. Bundled modules are tested to
 have no warnings.
 
+**Place your own parts; do not paste them.** Your panel, and any part built of others, should place a
+part with `{ type: '$part', props: { id: '<module>.<part>' } }` rather than naming the constant it
+publishes. The two draw the same, so nothing on screen tells them apart until somebody arranges the
+panel or opens the part: a placed piece comes across as a reference that keeps receiving your fixes, a
+pasted one as a copy that never will. `lintModule` warns about a part's node found pasted into a panel
+or into another part.
+
 ## The store, and what a template may reach
 
 ```ts

@@ -19,8 +19,22 @@ import type { TemplateStore } from '../stores/TemplateStore';
 
 const humanise = (name: string) => name.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
 
-/** Whether a tree places any part — what makes "arrange its pieces" keep the pieces the module's. */
-const placesParts = (node: unknown): boolean => JSON.stringify(node ?? null).includes('"$part"');
+/**
+ * The parts a tree places, by id, in order and once each — the pieces "arrange its pieces" keeps the
+ * module's. Read off the tree rather than inferred, so a panel that pasted a piece in rather than
+ * placing it is not credited with keeping it.
+ */
+function partsPlaced(node: unknown, out: string[] = []): string[] {
+  if (Array.isArray(node)) node.forEach((entry) => partsPlaced(entry, out));
+  else if (node && typeof node === 'object') {
+    const record = node as Record<string, unknown>;
+    const id = record.type === '$part' ? (record.props as { id?: unknown } | undefined)?.id : undefined;
+    if (typeof id === 'string') {
+      if (!out.includes(id)) out.push(id);
+    } else Object.values(record).forEach((entry) => partsPlaced(entry, out));
+  }
+  return out;
+}
 
 export function createOwnersPort(deps: {
   space: SpaceStore;
@@ -93,7 +107,8 @@ export function createOwnersPort(deps: {
         moduleName: found.registered.definition.manifest.name,
         dock: found.dock,
         title: found.panel.title ?? humanise(found.dock),
-        composed: placesParts(found.panel.node),
+        composed: partsPlaced(found.panel.node).length > 0,
+        placed: partsPlaced(found.panel.node).map((id) => describe(id, moduleRegistry.parts()[id]).label),
       };
     },
 

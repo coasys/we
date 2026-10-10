@@ -283,6 +283,11 @@ export interface OwnedPanel {
   title: string;
   /** Built from the module's own parts, so arranging it keeps the pieces the module's. */
   composed: boolean;
+  /**
+   * What those parts are called, in the order the panel places them — the pieces arranging keeps the
+   * module's. Everything else in the panel is layout, and arranging makes that the template's.
+   */
+  placed: string[];
 }
 
 export interface OwnedView {

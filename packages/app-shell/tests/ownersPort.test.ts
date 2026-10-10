@@ -70,3 +70,48 @@ describe('copying a section in its place', () => {
     expect(setup({ inSpace: false }).port.view('cards')?.forkBlocked).toMatch(/Open a space/);
   });
 });
+
+/*
+  What arranging a module's panel keeps the module's is read off the panel: the parts it places, by
+  name. A panel that pasted a piece in rather than placing it is not credited with keeping it.
+*/
+describe('what arranging a module’s panel keeps', () => {
+  it('names the parts a panel places, in order, and only those', async () => {
+    const { moduleRegistry } = await import('../src/shared/registries/moduleRegistry');
+    moduleRegistry.register(
+      {
+        manifest: { id: 'kept', name: 'Kept' },
+        contributes: {
+          parts: {
+            meter: { node: { type: 'we-badge' }, label: 'Meter' },
+            feed: { node: { type: 'Column' }, label: 'Feed' },
+          },
+          panels: [
+            {
+              name: 'main',
+              title: 'Main',
+              node: {
+                type: 'Column',
+                children: [
+                  { type: '$part', props: { id: 'kept.feed' } },
+                  { type: 'we-text', children: ['pasted'] },
+                  { type: '$part', props: { id: 'kept.meter' } },
+                  { type: '$part', props: { id: 'kept.feed' } },
+                ],
+              },
+            },
+            { name: 'flat', title: 'Flat', node: { type: 'Column', children: [{ type: 'we-badge' }] } },
+          ],
+        },
+      },
+      { backend: 'ad4m', framework: 'solid' },
+    );
+    try {
+      const { port } = setup();
+      expect(port.panel('kept:main')).toMatchObject({ composed: true, placed: ['Feed', 'Meter'] });
+      expect(port.panel('kept:flat')).toMatchObject({ composed: false, placed: [] });
+    } finally {
+      moduleRegistry.unregister('kept');
+    }
+  });
+});

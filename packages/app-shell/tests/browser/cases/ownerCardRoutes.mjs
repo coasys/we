@@ -13,7 +13,7 @@ export const widths = [320];
 
 const isNodeId = (id) => typeof id === 'string' && /^[a-z][a-z0-9]{9}$/.test(id);
 
-export async function check({ call, recorded }) {
+export async function check({ call, count, recorded }) {
   const problems = [];
 
   await call('ownerCardProbe', 'part');
@@ -73,6 +73,9 @@ export async function check({ call, recorded }) {
 
   await call('ownerCardProbe', 'panel');
   try {
+    // It names what stays the module's, rather than claiming everything does.
+    if (!(await count('we-text:has-text("Tile stay Calls\'s")')))
+      problems.push('the panel card does not name the pieces arranging keeps the module’s');
     if (!(await call('pressButton', 'Arrange'))) problems.push('the panel card offers no Arrange');
     const [arranged] = (await recorded('__probeTemplates')).slice(-1);
     const panels = arranged?.meta?.panels ?? [];

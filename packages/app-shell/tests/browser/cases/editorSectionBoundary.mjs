@@ -11,7 +11,7 @@ export const name = 'a press inside somebody else’s region selects the region'
 export const scenario = 'security:self-firing-events';
 export const widths = [320];
 
-export async function check({ call, clickAt, count, recorded }) {
+export async function check({ call, clickAt, moveTo, keyUp, count, recorded }) {
   await call('editorProbe');
   try {
     const problems = [];
@@ -23,6 +23,13 @@ export async function check({ call, clickAt, count, recorded }) {
       problems.push('a press inside a section selected one of the section’s own nodes');
     if (owner.at(-1) !== 'view:about')
       problems.push(`a press inside a section selected ${owner.at(-1) ?? 'nothing'} as its owner`);
+
+    // The modifier over a module's own panel has nothing to reach — the template places nothing in
+    // it yet — and says how to get there rather than doing nothing.
+    await moveTo('#probe-n-owned-inner', { hold: 'Control' });
+    if (!(await count('[data-we-owner-outline="hover"]:has-text("arrange its pieces to reach inside")')))
+      problems.push('the modifier over a module’s panel does not say how to reach inside it');
+    await keyUp('Control');
 
     await clickAt('#probe-n-owned-inner');
     selected = await recorded('__probeSelected');

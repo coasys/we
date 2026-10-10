@@ -952,7 +952,15 @@ const stage: SchemaNode = {
             // The box itself, for the one decision the grid cannot make: which edge the strip runs along.
             onMeasure: { $action: 'modules.call.setStageBox' },
           },
-          children: [{ type: '$each', props: { items: { $: 'modules.call.tiles' }, as: 'tile' }, children: [tile] }],
+          // Placed rather than pasted, so a template that arranges the stage keeps the tile the
+          // module's. The row binds `tile`, which is the name the part declares it needs.
+          children: [
+            {
+              type: '$each',
+              props: { items: { $: 'modules.call.tiles' }, as: 'tile' },
+              children: [{ type: '$part', props: { id: 'call.tile' } }],
+            },
+          ],
         },
       ],
     },

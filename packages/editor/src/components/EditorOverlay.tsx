@@ -505,7 +505,7 @@ function VisualEditorLayer() {
   /** How much of a selected node inside a part can be seen. */
   const [ownerVisible, setOwnerVisible] = createSignal<VisibleBox | null>(null);
   /** The section under the pointer, when the pointer is over another template rather than this one. */
-  const [viewRegion, setViewRegion] = createSignal<{ owner: OwnerRef; rect: DOMRect } | null>(null);
+  const [viewRegion, setViewRegion] = createSignal<{ owner: OwnerRef; rect: DOMRect; reaching?: boolean } | null>(null);
   /** Where the selected owned region is, tracked a frame at a time as nodes are. */
   const [ownerRect, setOwnerRect] = createSignal<DOMRect | null>(null);
   const [instanceRects, setInstanceRects] = createSignal<DOMRect[]>([]);
@@ -1419,7 +1419,7 @@ function VisualEditorLayer() {
     */
     if (boundary?.kind === 'owner') {
       const el = ownerElement(boundary.owner) ?? boundary.el;
-      setViewRegion({ owner: boundary.owner, rect: boxOf(el) });
+      setViewRegion({ owner: boundary.owner, rect: boxOf(el), reaching: reach });
       visualEditor.onHover(null);
       lastHoveredId = null;
       setHoverVisible(null);
@@ -1677,11 +1677,11 @@ function VisualEditorLayer() {
             const rect = viewRegionRelRect();
             const region = viewRegion();
             return rect && region && region.owner.id !== visualEditor.selectedOwner()?.id
-              ? { rect, owner: region.owner }
+              ? { rect, owner: region.owner, reaching: region.reaching }
               : null;
           })()}
         >
-          {(shown) => <OwnerBoundary rect={shown().rect} owner={shown().owner} />}
+          {(shown) => <OwnerBoundary rect={shown().rect} owner={shown().owner} reaching={shown().reaching} />}
         </Show>
         <Show
           when={(() => {
@@ -2065,8 +2065,22 @@ type HighlightStyle = 'visual' | 'logic' | 'each-parent' | 'each-instance' | 'ow
  * The label sits above the top edge where there is room for it, and inside it where there is not —
  * see `RingChip`.
  */
-function OwnerBoundary(props: { rect: HighlightRect; owner: OwnerRef; selected?: boolean }) {
+function OwnerBoundary(props: { rect: HighlightRect; owner: OwnerRef; selected?: boolean; reaching?: boolean }) {
   const kind = () => (props.owner.kind === 'view' ? 'a section of this space' : "a module's panel");
+  /*
+    With the modifier held there is nothing to reach: the template places nothing inside a region it
+    has not taken over, so the key that goes past a part finds no part here. Said, rather than left
+    looking like the key does nothing.
+  */
+  const note = () => {
+    if (props.selected) return kind();
+    if (props.reaching) {
+      return props.owner.kind === 'view'
+        ? `${kind()} — copy it to reach inside`
+        : `${kind()} — arrange its pieces to reach inside`;
+    }
+    return `${kind()} — select it for options`;
+  };
   return (
     <div
       data-we-owner-outline={props.selected ? 'selected' : 'hover'}
@@ -2083,11 +2097,7 @@ function OwnerBoundary(props: { rect: HighlightRect; owner: OwnerRef; selected?:
         'border-radius': '2px',
       }}
     >
-      <RingChip
-        rect={props.rect}
-        name={props.owner.name}
-        note={`${kind()}${props.selected ? '' : ' — select it for options'}`}
-      />
+      <RingChip rect={props.rect} name={props.owner.name} note={note()} />
     </div>
   );
 }

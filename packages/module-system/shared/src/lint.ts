@@ -187,6 +187,7 @@ export function lintModule(
 
   if (manifest?.id) crossModuleReferences(manifest.id, definition, problems, warnings);
   partInputs(definition, warnings);
+  panelsPasteParts(definition, warnings);
 
   return { problems, warnings };
 }
@@ -263,6 +264,49 @@ function partInputs(definition: ModuleDefinition, warnings: string[]): void {
       warnings.push(`part "${name}" declares the input "${input}" and never reads it.`);
     }
   }
+}
+
+/**
+ * A panel that pastes in a node the module also publishes as a part, rather than placing the part.
+ *
+ * The two draw the same thing, so nothing on screen says which was written — until somebody arranges
+ * the panel. Arranging copies the panel's tree into their template, and what was placed comes across
+ * as a reference that keeps receiving the module's fixes, where what was pasted comes across as a
+ * copy that never will. The transcript panel pasted its feed, meter and composer, so arranging it
+ * froze them while its card promised the pieces stayed the module's.
+ *
+ * A part that pastes in another part has the same flaw one level down: opening it copies the pasted
+ * one as well, where a placed one would stay a reference.
+ *
+ * Found by identity, which is exact: a part's node and the panel's are the same object exactly when
+ * the panel was written by naming the constant the part publishes.
+ */
+function panelsPasteParts(definition: ModuleDefinition, warnings: string[]): void {
+  const published = new Map<object, string>();
+  for (const [name, raw] of Object.entries(definition.contributes?.parts ?? {})) {
+    const node = 'node' in raw && !('type' in raw) ? raw.node : (raw as SchemaNode);
+    if (node && typeof node === 'object') published.set(node, name);
+  }
+  if (!published.size) return;
+  const moduleId = definition.manifest?.id ?? '<module>';
+  const check = (where: string, root: unknown, taking: string) => {
+    const walk = (value: unknown) => {
+      if (Array.isArray(value)) return value.forEach(walk);
+      if (!value || typeof value !== 'object') return;
+      const part = value !== root ? published.get(value) : undefined;
+      if (part) {
+        warnings.push(
+          `${where} pastes in the node part "${part}" publishes. Place it — { type: '$part', props: { id: '${moduleId}.${part}' } } — so ${taking} keeps it the module's.`,
+        );
+        return;
+      }
+      for (const entry of Object.values(value)) walk(entry);
+    };
+    walk(root);
+  };
+  for (const panel of definition.contributes?.panels ?? [])
+    check(`panel "${panel.name}"`, panel.node, 'arranging the panel');
+  for (const [node, name] of published) check(`part "${name}"`, node, 'opening it');
 }
 
 function crossModuleReferences(id: string, definition: ModuleDefinition, problems: string[], warnings: string[]): void {

@@ -38,6 +38,10 @@ import { type OwnedPart, useEditorHost } from '../host';
 import { deepClone } from '../utils';
 import { levelsAbove, selectLevel } from './partLevels';
 
+/** Names in a sentence: "A", "A and B", "A, B and C". */
+const listed = (names: string[]) =>
+  names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+
 /** One route out of an owned region: what it does, what it costs, and the button. */
 function Route(props: { title: string; detail: string; action: string; onPress: () => void; disabled?: boolean }) {
   return (
@@ -300,8 +304,6 @@ function PartNodeCard(props: { owner: OwnerRef }) {
   const moduleName = () => within()?.moduleName ?? 'its module';
   /** The parts the copy opens: every one on the path, less the last when the node is itself a placement. */
   const opened = () => infos().slice(0, chain().at(-1) === props.owner.id ? -1 : undefined);
-  const list = (names: string[]) =>
-    names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 
   const makeOwn = () => {
     let picked: string | undefined;
@@ -362,7 +364,7 @@ function PartNodeCard(props: { owner: OwnerRef }) {
           <Show when={host.owners?.openPath}>
             <Route
               title="Make it your own"
-              detail={`Opens ${list(opened().map((part) => part.label))} into this template, so this is yours to change. Those stop receiving ${moduleName()}’s changes; everything else in them stays ${moduleName()}’s.`}
+              detail={`Opens ${listed(opened().map((part) => part.label))} into this template, so this is yours to change. Those stop receiving ${moduleName()}’s changes; everything else in them stays ${moduleName()}’s.`}
               action="Copy"
               onPress={makeOwn}
             />
@@ -439,7 +441,7 @@ function PanelCard(props: { dockId: string }) {
                     title="Arrange its pieces"
                     detail={
                       panel().composed
-                        ? `Lay out what is in it yourself. The pieces stay ${panel().moduleName}'s, so its fixes still reach them, and it still decides when the panel opens.`
+                        ? `Lay out what is in it yourself. ${listed(panel().placed)} stay ${panel().moduleName}'s, so its fixes still reach them; the layout around them becomes yours. ${panel().moduleName} still decides when the panel opens.`
                         : `Copy its layout into this template to change it. It will no longer receive ${panel().moduleName}'s changes to the layout.`
                     }
                     action="Arrange"
