@@ -2327,17 +2327,26 @@ describe('the workshop’s space-wide views', () => {
     const canvas = route('/canvas');
     // Hiding leaves off what the call did not produce; with the lens off it asks for nobody's cards.
     expect(canvas).toContain(`"onlyFrom":{"$":"(${HIDE}) ? (${CALL_EXPR}) : ''"}`);
-    // Dimming fades everything else — a card with no origin is not from this call either.
+    // Dimming fades everything else — a card with no origin is not from this call either. Under
+    // "only" too, so the cards stay faded while the canvas reloads without them rather than flashing
+    // back to full strength.
     expect(canvas).toContain(
-      `(${DIM}) ? [{ when: { 'data.origin': { not: (${CALL_EXPR}) } }, style: { opacity: 0.2 } }] : []`,
+      `((${DIM}) || (${HIDE})) ? [{ when: { 'data.origin': { not: (${CALL_EXPR}) } }, style: { opacity: 0.1 } }] : []`,
     );
     expect(canvas).toContain('"origin":"extractedFrom"');
   });
 
   it('keeps the lens in the address, beside the colour lens, so a link shows the same view', () => {
     expect(JSON.stringify(workshop)).toContain("routeStore.params.from ? '&from=' + routeStore.params.from : ''");
-    // Offered only with a call to pick out, and stepping off → dim → hide → off.
-    expect(JSON.stringify(workshop)).toContain(`"args":["from",{"$":"(${DIM}) ? 'hide' : (${HIDE}) ? '' : 'dim'"}]`);
+    // A menu naming all three, rather than a button stepping through them, which read as a toggle.
+    expect(JSON.stringify(workshop)).toContain(`"args":["from",{"$":"arg.id == 'all' ? '' : arg.id"}]`);
+  });
+
+  it('puts the lens beside each page’s own controls, not in the page switcher', () => {
+    const lens = '"triggerTitle":"Pick out what this call produced"';
+    for (const path of ['/canvas', '/kanban', '/calendar']) expect(route(path), path).toContain(lens);
+    const routes = JSON.stringify(workshop.routes);
+    expect(JSON.stringify(workshop).split(lens).length - 1).toBe(routes.split(lens).length - 1);
   });
 
   it('applies the same lens to the board and the calendar', () => {

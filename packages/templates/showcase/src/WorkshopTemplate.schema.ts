@@ -596,50 +596,40 @@ const callPill: SchemaNode = {
 };
 
 /*
-  The "this call" lens, at the end of the switcher — see `FROM_PARAM`.
+  The "this call" lens — see `FROM_PARAM`.
 
-  In the switcher because it applies to all three of its pages at once, and is in the address they
-  share. One button stepping off → dim → hide → off rather than three, since it is a setting most
-  people never touch and a reader who does wants the next state, not a picker. Only while a call is
-  on screen: with none there is nothing to pick out.
+  Beside each page's own controls rather than in the switcher: it changes how the page shows what is
+  on it, not which page is on screen. The same control on all three, writing the one parameter they
+  share, so the choice holds as somebody moves between them.
+
+  A menu naming all three states rather than a button stepping through them. Stepping read as a
+  toggle — a second press was expected to put everything back, and hid everything else instead.
+  Only while a call is on screen: with none there is nothing to pick out.
 */
 const fromLensControl: SchemaNode = {
   type: '$if',
   props: {
     condition: CALL,
     then: {
-      type: 'we-tooltip',
+      type: 'DropdownMenu',
       props: {
-        placement: 'bottom',
-        content: {
+        triggerIcon: 'funnel',
+        triggerLabel: {
+          $: `(${FROM_DIM}) ? 'Other calls dimmed' : (${FROM_HIDE}) ? 'Only this call' : 'All calls'`,
+        },
+        triggerTitle: 'Pick out what this call produced',
+        triggerVariant: { $: `(${FROM_ON}) ? 'secondary' : 'ghost'` },
+        items: {
           $:
-            `(${FROM_DIM}) ? 'Hide what this call did not produce' : ` +
-            `(${FROM_HIDE}) ? 'Show everything again' : 'Pick out what this call produced'`,
+            `[{ id: 'all', label: 'All calls', icon: 'squares-four', selected: !(${FROM_ON}) }, ` +
+            `{ id: 'dim', label: 'Dim other calls', icon: 'circle-half', selected: ${FROM_DIM} }, ` +
+            `{ id: 'hide', label: 'Only this call', icon: 'funnel', selected: ${FROM_HIDE} }]`,
+        },
+        onSelect: {
+          $action: 'routeStore.setParam',
+          args: [FROM_PARAM, { $: "arg.id == 'all' ? '' : arg.id" }],
         },
       },
-      children: [
-        {
-          type: 'we-button',
-          props: {
-            r: 'control',
-            gap: '200',
-            variant: { $: `(${FROM_ON}) ? 'secondary' : 'ghost'` },
-            onClick: {
-              $action: 'routeStore.setParam',
-              args: [FROM_PARAM, { $: `(${FROM_DIM}) ? 'hide' : (${FROM_HIDE}) ? '' : 'dim'` }],
-            },
-          },
-          children: [
-            { type: 'we-icon', props: { name: 'funnel' } },
-            {
-              type: 'we-text',
-              children: [
-                { $: `(${FROM_DIM}) ? 'This call: dimmed' : (${FROM_HIDE}) ? 'This call: only' : 'This call'` },
-              ],
-            },
-          ],
-        },
-      ],
     },
   },
 };
@@ -711,7 +701,6 @@ const switcher: SchemaNode = {
         },
       ],
     },
-    fromLensControl,
   ],
 };
 
@@ -3556,8 +3545,14 @@ const canvas: SchemaNode = {
         rather than the accent, which is what a *selected* card wears: the two would be one outline.
       */
       { when: { 'data.changed': true }, style: { borderColor: 'warning-text', borderWidth: 2 } },
-      // The "this call" lens, dimming: everything the call on screen did not produce. See `FROM_PARAM`.
-      { $: `(${FROM_DIM}) ? [{ when: { 'data.origin': { not: (${CALL_EXPR}) } }, style: { opacity: 0.2 } }] : []` },
+      /*
+        The "this call" lens, dimming: everything the call on screen did not produce. See `FROM_PARAM`.
+
+        Under "only" as well as "dimmed". Hiding reloads the canvas without those cards, which takes a
+        moment, and with the fade switched off at the press they flashed back to full strength in
+        between. Dimmer than a suggestion (0.5), so the two read as different things.
+      */
+      { $: `(${FROM_ON}) ? [{ when: { 'data.origin': { not: (${CALL_EXPR}) } }, style: { opacity: 0.1 } }] : []` },
     ],
     /*
       No ARMED `connect-nodes`. Connecting is a handle on the card, not a mode.
@@ -4217,7 +4212,7 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     canvas,
     // How the canvas is read: the mode, and what the tree is made of. Over the canvas's own corner
     // rather than in a panel, because a panel can be closed and this is the only way out of the mode.
-    treeStrip({ below: CALL_CHROME_BAND.bottom }),
+    treeStrip({ below: CALL_CHROME_BAND.bottom, controls: [fromLensControl] }),
     /*
       Where a connection is actually written down.
 
@@ -4434,6 +4429,8 @@ const kanbanRoute: RouteSchema = {
                       boardId: { $: 'spaceStore.roles.board' },
                       // The "this call" lens — see `FROM_PARAM`.
                       onlyFrom: { record: CALL, param: FROM_PARAM },
+                      // Its control, beside the board's own filters.
+                      controls: [fromLensControl],
                       /*
                             No `bg`, so a card is `surface` — and the key's lenses stop at the canvas.
 
@@ -5309,6 +5306,7 @@ const calendarRoute: RouteSchema = {
                       noun: 'event',
                     }),
                     suggestionsToggle({ count: `count(local.events.filter(e, ${UNCONFIRMED_EVENT('e')}))` }),
+                    fromLensControl,
                   ],
                 },
 

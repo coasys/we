@@ -726,6 +726,11 @@ export interface TaskBoardOptions {
    * people filter, each in its own mode, and a heading counts what matches both.
    */
   onlyFrom?: { record: Record<string, unknown>; param: string };
+  /**
+   * More controls for the board's header row, after the people filter and the suggestions switch —
+   * a template's own view controls, such as the control for `onlyFrom`.
+   */
+  controls?: SchemaNode[];
   /** Shown when there is no work here at all. */
   empty: SchemaNode;
   /** Whether a card was extracted from a conversation, as an expression over `card` — see {@link TaskCardOptions.extracted}. */
@@ -1784,7 +1789,7 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
         room and drops under it when there is not.
       */
       awaitingToggle(),
-      ...(opts.people || opts.suggestions
+      ...(opts.people || opts.suggestions || opts.controls?.length
         ? [
             {
               type: 'Row',
@@ -1806,6 +1811,7 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
                 ...(opts.suggestions
                   ? [suggestionsToggle({ count: `count(local.pool.filter(r, r.id in ${UNCONFIRMED}))` })]
                   : []),
+                ...(opts.controls ?? []),
               ],
             } as SchemaNode,
           ]
