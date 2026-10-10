@@ -5797,7 +5797,7 @@ const space = await Space.create(perspective, { uuid: crypto.randomUUID(), name:
 ### Watching the graph from `@we/backend-ad4m`
 
 To hear that something changed in a perspective, subscribe on the executor with `subscribeQuery`
-rather than `addListener('link-added' | 'link-removed')`. A link listener receives every link of a
+rather than `perspective.on('link-added' | 'link-removed')`. A link listener receives every link of a
 peer-sync burst in JS and filters there. The executor re-runs a subscription only for a diff that
 touches one of its predicates, and pushes only when the result changes.
 

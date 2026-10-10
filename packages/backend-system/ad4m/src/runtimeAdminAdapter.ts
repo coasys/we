@@ -312,17 +312,9 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
      * One executor subscription, demultiplexed into the contract's two request kinds. AD4M raises
      * these as `exception` events carrying the request in `addon` — a JSON blob for capability
      * requests, a bare DID for trust — which the shell relays back untouched on approve/deny.
-     *
-     * `addExceptionCallback` has no documented unsubscribe, so the returned function flips a local
-     * flag instead: after it runs, later events are dropped rather than delivered to a handler the
-     * caller has discarded.
      */
     onConsentRequest(handler) {
-      let live = true;
-
-      client.runtime.addExceptionCallback((info) => {
-        if (!live) return null;
-
+      return client.on('exception-occurred', ({ exception: info }) => {
         if (info.type === ExceptionType.CapabilityRequested && info.addon) {
           try {
             const auth = JSON.parse(info.addon).auth;
@@ -357,13 +349,7 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
             payload: info.addon,
           });
         }
-
-        return null;
       });
-
-      return () => {
-        live = false;
-      };
     },
 
     async approve(request) {
