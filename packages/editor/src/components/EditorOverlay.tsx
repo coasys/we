@@ -262,14 +262,8 @@ function findBoundary(el: Element | null, entered: string | null = null, reach =
 
 /** The element marking an owned region — inside its surface, so it is what visibility is judged by. */
 function ownerMarker(owner: OwnerRef): Element | null {
-  if (owner.kind === 'part-node') {
-    // The instance pressed, while it is still on the page: one of a list's rows shares its id with
-    // every other row, and the ring belongs round the one somebody chose.
-    if (pressedPartNode?.isConnected && pressedPartNode.getAttribute('data-we-node-id') === owner.id) {
-      return pressedPartNode;
-    }
-    return document.querySelector(`[data-we-node-id="${CSS.escape(owner.id)}"]`);
-  }
+  // The instance pressed: one of a list's rows shares its id with every other row.
+  if (owner.kind === 'part-node') return chosenInstance(owner.id);
   return owner.kind === 'view'
     ? document.querySelector(`[${VIEW_BOUNDARY_ATTR}="${CSS.escape(owner.id)}"]`)
     : document.querySelector(`[${OWNER_ATTR}="panel:${CSS.escape(owner.id)}"]`);
@@ -304,8 +298,46 @@ function nodeName(node: SchemaNode): string {
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'A piece';
 }
 
-/** The element of the node inside a part that was last pressed — see `ownerMarker`. */
-let pressedPartNode: Element | null = null;
+/**
+ * The instance last pressed, and where it stood among the elements drawing its node.
+ *
+ * One node draws many times inside a list — every comment's avatar is the same node — and every
+ * instance carries the same id. Asking for "the element with this id" answered with whichever was
+ * drawn last, so selecting the avatar of the third comment ringed the avatar of the last one.
+ */
+let pressed: { id: string; el: Element; index: number; count: number } | null = null;
+
+function instancesOf(id: string): Element[] {
+  return [...document.querySelectorAll(`[data-we-node-id="${CSS.escape(id)}"]`)];
+}
+
+/** Remember which instance of `id` a press landed in, from the element it landed on. */
+function notePress(at: Element | null, id: string | null): void {
+  const el = id && at ? at.closest(`[data-we-node-id="${CSS.escape(id)}"]`) : null;
+  if (!id || !el) {
+    pressed = null;
+    return;
+  }
+  const all = instancesOf(id);
+  pressed = { id, el, index: all.indexOf(el), count: all.length };
+}
+
+/**
+ * Which instance of a node the selection means.
+ *
+ * The one pressed, while it is still on the page. Otherwise — a selection made for somebody, as
+ * copying a node inside a part selects the copy, or one made by going up a level — the instance at
+ * the same position as the press, when the node draws as many times as the pressed one did: a copy
+ * draws the same rows, and the parent of a row's avatar is in that row. Failing both, the first.
+ */
+function chosenInstance(id: string, all: Element[] = instancesOf(id)): Element | null {
+  if (pressed?.id === id && pressed.el.isConnected) return pressed.el;
+  if (pressed && pressed.count === all.length && all[pressed.index]) return all[pressed.index];
+  return all[0] ?? null;
+}
+
+/** The box a node's instance is drawn as: its first child, the wrapper being box-less. */
+const boundsOf = (el: Element): Element => el.firstElementChild ?? el;
 
 /**
  * Where an element is on screen, including one that generates no box.
@@ -509,6 +541,12 @@ function VisualEditorLayer() {
   /** Where the selected owned region is, tracked a frame at a time as nodes are. */
   const [ownerRect, setOwnerRect] = createSignal<DOMRect | null>(null);
   const [instanceRects, setInstanceRects] = createSignal<DOMRect[]>([]);
+  /**
+   * The other instances of the selected node — every other comment's avatar when one is selected.
+   * They change with it, so they are outlined too, dashed, the way a list's rows are.
+   */
+  const [selectSiblings, setSelectSiblings] = createSignal<VisibleBox[]>([]);
+  const [ownerSiblings, setOwnerSiblings] = createSignal<VisibleBox[]>([]);
   const [enteredEachParentId, setEnteredEachParentId] = createSignal<string | null>(null);
 
   // Resize state
@@ -583,30 +621,40 @@ function VisualEditorLayer() {
     return rect.width < 120 || rect.height < 120;
   });
 
+  /** The rows a selected `$each` draws: its template child, every time it is drawn. */
   const templateChildIdForInstances = createMemo<string | null>(() => {
     const info = selectedInfo();
-    if (!info) return null;
-    if (info.node.type === '$each') {
-      const firstChild = info.node.children?.[0];
-      if (typeof firstChild === 'object' && firstChild !== null) {
-        return (firstChild as SchemaNode).id ?? null;
-      }
-      return null;
-    }
-    if (enteredEachParentId()) return info.node.id ?? null;
-    return null;
+    if (info?.node.type !== '$each') return null;
+    const firstChild = info.node.children?.[0];
+    return typeof firstChild === 'object' && firstChild !== null ? ((firstChild as SchemaNode).id ?? null) : null;
   });
+
+  /** Every instance but the chosen one, as much of each as can be seen. */
+  function othersOf(all: Element[], chosen: Element | null): VisibleBox[] {
+    if (all.length < 2) return [];
+    return all
+      .filter((el) => el !== chosen)
+      .map((el) => {
+        const bounds = boundsOf(el);
+        return visibleBox(bounds, boxOf(bounds));
+      })
+      .filter((box): box is VisibleBox => !!box);
+  }
 
   createEffect(() => {
     const id = visualEditor.selectedId();
     if (!id) {
       setSelectRect(null);
       setSelectVisible(null);
+      setSelectSiblings([]);
       return;
     }
     let rafId: number;
     const update = () => {
-      const el = getNodeBoundsElement(id);
+      const all = instancesOf(id);
+      const chosen = chosenInstance(id, all);
+      setSelectSiblings(othersOf(all, chosen));
+      const el = chosen ? (boundsOf(chosen) as HTMLElement) : getNodeBoundsElement(id);
       if (el) {
         const rect = boxOf(el);
         // Judged at the middle of what can be seen, not of the whole box: a tall node scrolled half
@@ -627,10 +675,15 @@ function VisualEditorLayer() {
     if (!owner) {
       setOwnerRect(null);
       setOwnerVisible(null);
+      setOwnerSiblings([]);
       return;
     }
     let rafId: number;
     const update = () => {
+      if (owner.kind === 'part-node') {
+        const all = instancesOf(owner.id);
+        setOwnerSiblings(othersOf(all, chosenInstance(owner.id, all)));
+      }
       const marker = ownerMarker(owner);
       const el = ownerElement(owner);
       const rect = el ? boxOf(el) : null;
@@ -1500,7 +1553,7 @@ function VisualEditorLayer() {
     // A node inside a part already selected: the module's, so selected as somebody else's region,
     // with the placements it sits in — which is what lets the inspector copy only the path to it.
     if (clicked?.kind === 'deep') {
-      pressedPartNode = clicked.el;
+      notePress(clicked.el, clicked.id);
       visualEditor.onSelectOwner({
         kind: 'part-node',
         id: clicked.id,
@@ -1513,6 +1566,8 @@ function VisualEditorLayer() {
     }
 
     const clickedNodeId = clicked?.id ?? null;
+    // Which of the node's instances this press landed in, before anything selects it.
+    notePress(hoveredElement, clickedNodeId);
 
     if (!clickedNodeId) {
       visualEditor.onSelect(null);
@@ -1733,12 +1788,20 @@ function VisualEditorLayer() {
         </Show>
 
         {/* In entered-template mode: highlight all instances in blue */}
-        <Show when={!isEachParentSelected() && instanceRelRects().length > 0}>
-          <For each={instanceRelRects()}>{(rect) => <NodeHighlight rect={rect} style="visual" selected />}</For>
+        {/* The other instances of what is selected — every other row's copy of it — dashed. */}
+        <Show when={!isEachParentSelected() && !isDragging()}>
+          <For each={[...selectSiblings(), ...ownerSiblings()]}>
+            {(box) => {
+              const rect = toRelative(box.rect);
+              return rect ? (
+                <NodeHighlight rect={rect} clipped={box.clipped} style="each-instance" selected={false} />
+              ) : null;
+            }}
+          </For>
         </Show>
 
         {/* Normal single-node selection (no $each context) — hidden during drag */}
-        <Show when={selectRingRect() && !isEachParentSelected() && instanceRelRects().length === 0 && !isDragging()}>
+        <Show when={selectRingRect() && !isEachParentSelected() && !isDragging()}>
           <NodeHighlight
             rect={selectRingRect()!}
             clipped={selectVisible()?.clipped}
@@ -2141,7 +2204,7 @@ function NodeHighlight(props: {
 
   return (
     <div
-      data-we-ring={props.selected ? 'selected' : 'hover'}
+      data-we-ring={props.selected ? 'selected' : props.style === 'each-instance' ? 'instance' : 'hover'}
       data-we-ring-clipped={
         props.clipped
           ? (['top', 'right', 'bottom', 'left'] as const).filter((side) => props.clipped![side]).join(' ')

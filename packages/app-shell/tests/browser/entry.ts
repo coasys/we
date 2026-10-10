@@ -503,7 +503,28 @@ function editorProbe(): void {
   scrollHost.append(long);
   scrolled.append(scrollHost);
 
-  document.body.append(content, panel, scrolled);
+  /*
+    A list drawing one node three times — every comment's avatar is one node — and a copy of it, a
+    second node drawn as many times, as copying a node inside a part leaves behind.
+  */
+  const list = document.createElement('div');
+  list.setAttribute(EDIT_SURFACE_ATTR, '');
+  list.style.cssText =
+    'position: fixed; left: 0; top: 570px; width: 400px; height: 100px; z-index: 1; display: flex; gap: 8px;';
+  const instance = (id: string, i: number) => {
+    const wrapper = document.createElement('div');
+    wrapper.setAttribute('data-we-node-id', id);
+    const button = document.createElement('button');
+    button.id = `probe-${id}-${i}`;
+    button.textContent = `${id} ${i}`;
+    button.style.cssText = 'width: 60px; height: 40px';
+    wrapper.append(button);
+    return wrapper;
+  };
+  for (let i = 0; i < 3; i++) list.append(instance('n-item', i));
+  for (let i = 0; i < 3; i++) list.append(instance('n-copy', i));
+
+  document.body.append(content, panel, scrolled, list);
   scroller.scrollTop = 300;
   // The scenario mounted beside this one autofocuses a field, and a key typed there is typing — which
   // the editor rightly ignores. Nothing here should have focus to begin with.
@@ -519,6 +540,8 @@ function editorProbe(): void {
       { id: 'n-part', type: '$part', props: { id: 'call.tile' } },
       { id: 'n-long', type: 'we-button' },
       { id: 'n-list', type: '$each', props: { items: [1] }, children: [{ id: 'n-row', type: 'we-button' }] },
+      { id: 'n-items', type: '$each', props: { items: [1, 2, 3] }, children: [{ id: 'n-item', type: 'we-button' }] },
+      { id: 'n-copies', type: '$each', props: { items: [1, 2, 3] }, children: [{ id: 'n-copy', type: 'we-button' }] },
     ],
   };
   const [selected, setSelected] = createSignal<string | null>(null);
@@ -545,6 +568,8 @@ function editorProbe(): void {
     registerNode: () => () => {},
     getNodeElement: (id: string) => document.querySelector(`[data-we-node-id="${id}"]`) as HTMLElement | null,
   };
+  // A selection made for somebody rather than by a press — what copying a node inside a part does.
+  probeSelect = (id: string | null) => visual.onSelect(id);
   const host = {
     session: { contentMode: () => 'visual', isStreaming: () => false, pushSnapshot() {}, commitEdit: async () => {} },
     template: { currentTemplate: template, updateTemplate: () => record('__probeUpdated', true) },
@@ -558,6 +583,7 @@ function editorProbe(): void {
   probeDisposers.push(() => {
     content.remove();
     scrolled.remove();
+    list.remove();
     owned.remove();
     panel.remove();
     root.remove();
@@ -753,6 +779,10 @@ function editorProbeCover(on: boolean): void {
 }
 
 const probeDisposers: (() => void)[] = [];
+let probeSelect: (id: string | null) => void = () => {};
+function editorProbeSelect(id: string | null): void {
+  probeSelect(id);
+}
 function editorProbeDispose(): void {
   for (const dispose of probeDisposers.splice(0)) dispose();
 }
@@ -764,6 +794,7 @@ injectDSInteropStyles();
   ownerCardProbe,
   pressButton,
   editorProbeDispose,
+  editorProbeSelect,
   mount,
   profile,
   resizeMount,
