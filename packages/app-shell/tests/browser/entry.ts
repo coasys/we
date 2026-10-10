@@ -16,6 +16,7 @@ import '@we/primitives';
 
 import { buildTemplateBag, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
+import { PresentPart } from '@solid/components/PartFrame';
 import { injectDSInteropStyles } from '@solid/dsInterop';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import { createInMemoryBackend } from '@we/backend-inmemory';
@@ -779,6 +780,49 @@ function editorProbeCover(on: boolean): void {
 }
 
 const probeDisposers: (() => void)[] = [];
+
+/**
+ * A placed part that draws nothing right now — a microphone meter outside a call — mounted in the
+ * real frame, with whether the template is being edited and whether the part draws anything driven
+ * from the case.
+ */
+let setPartEditing: (on: boolean) => void = () => {};
+let setPartDraws: (on: boolean) => void = () => {};
+function emptyPartProbe(): void {
+  const [editing, setEditing] = createSignal(true);
+  const [draws, setDraws] = createSignal(false);
+  setPartEditing = setEditing;
+  setPartDraws = setDraws;
+  const root = document.createElement('div');
+  root.style.cssText = 'position: fixed; left: 0; top: 0; width: 320px;';
+  document.body.append(root);
+  probeDisposers.push(() => root.remove());
+  const dispose = render(
+    () =>
+      createComponent(PresentPart, {
+        part: 'transcribe.captureMeter',
+        at: 'pppppppppp',
+        get editing() {
+          return editing();
+        },
+        get children() {
+          const content = document.createElement('div');
+          content.id = 'probe-part-content';
+          content.style.height = '20px';
+          content.style.display = draws() ? 'block' : 'none';
+          return content;
+        },
+      }),
+    root,
+  );
+  probeDisposers.unshift(dispose);
+}
+function emptyPartEditing(on: boolean): void {
+  setPartEditing(on);
+}
+function emptyPartDraws(on: boolean): void {
+  setPartDraws(on);
+}
 let probeSelect: (id: string | null) => void = () => {};
 function editorProbeSelect(id: string | null): void {
   probeSelect(id);
@@ -795,6 +839,9 @@ injectDSInteropStyles();
   pressButton,
   editorProbeDispose,
   editorProbeSelect,
+  emptyPartProbe,
+  emptyPartEditing,
+  emptyPartDraws,
   mount,
   profile,
   resizeMount,

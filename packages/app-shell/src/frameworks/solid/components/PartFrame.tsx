@@ -21,7 +21,7 @@ import { describeMissing, fixFor, type MissingPart as MissingPartReason, whyMiss
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { Column, Row } from '@we/components/solid';
 import { findNodeById, PART_ATTR, PART_NODE_ATTR, type SchemaNode, type TemplateSchema } from '@we/schema-shared';
-import { createMemo, type JSX, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, type JSX, onCleanup, Show } from 'solid-js';
 
 import { useDatasetStore } from '../stores/DatasetStore';
 import { useEditorStore } from '../stores/EditorStore';
@@ -34,6 +34,7 @@ const humanise = (name: string) => name.replace(/([a-z])([A-Z])/g, '$1 $2').repl
 export function PartFrame(props: { part: string; at?: string; children?: JSX.Element }) {
   const spaceStore = useSpaceStore();
   const datasetStore = useDatasetStore();
+  const editorStore = useEditorStore();
 
   const moduleId = () => props.part.split('.')[0] ?? '';
 
@@ -52,9 +53,9 @@ export function PartFrame(props: { part: string; at?: string; children?: JSX.Ele
     <Show
       when={missing()}
       fallback={
-        <div style={{ display: 'contents' }} {...frameAttrs(props)}>
+        <PresentPart part={props.part} at={props.at} editing={editorStore.contentMode() === 'visual'}>
           {props.children}
-        </div>
+        </PresentPart>
       }
     >
       {(why) => (
@@ -63,6 +64,67 @@ export function PartFrame(props: { part: string; at?: string; children?: JSX.Ele
         </div>
       )}
     </Show>
+  );
+}
+
+/** Marks the stand-in an empty part draws while edited, so measuring what the part drew skips it. */
+const EMPTY_ATTR = 'data-we-part-empty';
+
+/** Whether an element, or anything a box-less one holds, takes up room on the page. */
+function hasBox(el: Element): boolean {
+  if (el.hasAttribute(EMPTY_ATTR)) return false;
+  if (getComputedStyle(el).display === 'contents') return [...el.children].some(hasBox);
+  const rect = el.getBoundingClientRect();
+  return rect.width > 0 || rect.height > 0;
+}
+
+/**
+ * A part whose module is here, drawing whatever it draws — which can be nothing.
+ *
+ * Many parts draw only when there is something to say: a microphone meter outside a call, a
+ * status note with nothing to report. Placed from the palette in a quiet moment, such a part had no
+ * box, so it could not be ringed or pressed and looked as though adding it had done nothing. While the
+ * template is edited, an empty part draws a slim stand-in naming itself, which is selectable through
+ * the frame like the part. Only then: outside editing it draws nothing, as its module meant.
+ */
+export function PresentPart(props: { part: string; at?: string; editing: boolean; children?: JSX.Element }) {
+  let frame: HTMLDivElement | undefined;
+  const [empty, setEmpty] = createSignal(false);
+  const label = () => moduleRegistry.parts()[props.part]?.label ?? humanise(props.part.split('.')[1] ?? props.part);
+
+  createEffect(() => {
+    if (!props.editing || !frame) {
+      setEmpty(false);
+      return;
+    }
+    const el = frame;
+    // Whether anything the part drew has a box, judged after the frame it changed in has laid out.
+    let pending = 0;
+    const check = () => {
+      cancelAnimationFrame(pending);
+      pending = requestAnimationFrame(() => setEmpty(![...el.children].some(hasBox)));
+    };
+    const observer = new MutationObserver(check);
+    observer.observe(el, { childList: true, subtree: true });
+    check();
+    onCleanup(() => {
+      observer.disconnect();
+      cancelAnimationFrame(pending);
+    });
+  });
+
+  return (
+    <div ref={frame} style={{ display: 'contents' }} {...frameAttrs(props)}>
+      {props.children}
+      <Show when={props.editing && empty()}>
+        <div style={{ display: 'contents' }} {...{ [EMPTY_ATTR]: '' }}>
+          <Row ay="center" gap="200" px="300" py="100" r="control" border="1px dashed border" color="text-muted">
+            <we-icon name="puzzle-piece" size="xs" />
+            <we-text variant="footnote">{label()} · nothing to show right now</we-text>
+          </Row>
+        </div>
+      </Show>
+    </div>
   );
 }
 
