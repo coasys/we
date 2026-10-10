@@ -556,7 +556,7 @@ export const TREE_EDGE_RULES: SchemaProp = {
  * that is present and inert is worse than one that is absent: it invites a press and answers with
  * nothing. The mode button is always there, which is the other half of the same rule.
  */
-export function treeStrip(opts: { below?: string } = {}): SchemaNode {
+export function treeStrip(opts: { below?: string; controls?: SchemaNode[] } = {}): SchemaNode {
   /*
     Where the strip's top edge goes.
 
@@ -640,6 +640,8 @@ export function treeStrip(opts: { below?: string } = {}): SchemaNode {
           },
         ],
       },
+      // The page's other view controls — the workshop's "this call" lens — beside the mode.
+      ...(opts.controls ?? []),
       {
         type: '$if',
         props: {

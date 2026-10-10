@@ -1249,3 +1249,93 @@ describe('canvas seed — what a card carries for ordering', () => {
     expect(nodes[0].data?.createdAt).toBe('2026-03-04T10:00:00Z');
   });
 });
+
+/**
+ * A canvas whose members live somewhere else — a space's canvas, over everything top-level in it.
+ *
+ * Two things can quietly go wrong. Placements read from the members' record would mix the canvas's
+ * arrangement into the space's feed, and members read from the canvas would find nothing at all,
+ * since nothing is contained by a space canvas. And the list of unplaced cards beside the canvas
+ * must be the canvas's own answer, or the two can disagree about what is waiting to be placed.
+ */
+describe('a canvas over another record’s members', () => {
+  const shapes: EntityShape[] = [
+    ...SHAPES.filter((shape) => shape.name !== 'TaskBlock'),
+    {
+      name: 'TaskBlock',
+      identityProperty: 'title',
+      properties: [{ name: 'title', type: 'string' }],
+      relations: [{ name: 'extractedFrom', target: '', cardinality: 'one' }],
+    },
+  ];
+
+  function spaceContext() {
+    const asked: { entity: string; anchor?: string; via?: string; include?: unknown }[] = [];
+    const ctx = {
+      query: async (request: ExpanderQuery) => {
+        asked.push({
+          entity: request.entity,
+          anchor: request.scope?.anchorId,
+          via: request.scope?.via,
+          include: request.include,
+        });
+        const where = request.where as { id?: string[] } | undefined;
+        if (request.entity === 'Placement' && request.scope?.anchorId === 'canvas-1') {
+          return [{ id: 'p1', node: 't1', nodeType: 'TaskBlock', x: 5, y: 6 }];
+        }
+        if (request.entity === 'TaskBlock' && where?.id) {
+          return [{ id: 't1', title: 'Placed', extractedFrom: 'call-2' }];
+        }
+        if (request.entity === 'TaskBlock' && request.scope?.anchorId === 'root' && request.scope.via === 'children') {
+          return [
+            { id: 't1', title: 'Placed', extractedFrom: 'call-2' },
+            { id: 't2', title: 'Loose', extractedFrom: { id: 'call-1' } },
+          ];
+        }
+        return [];
+      },
+      defaultDataset: () => 'ds',
+      models: () => shapes,
+      warn: () => {},
+    } as ExpanderContext;
+    return { asked, ctx };
+  }
+
+  const options = {
+    canvas: 'canvas-1',
+    members: { id: 'root', via: 'children' },
+    contains: ['TaskBlock'],
+    origin: 'extractedFrom',
+  };
+
+  it('reads the members from the record named, and the placements from the canvas itself', async () => {
+    const { asked, ctx } = spaceContext();
+    const { nodes } = await canvasSeed().seed(options, ctx);
+
+    expect(nodes.map((n) => [n.label, n.data?.x, n.data?.origin])).toEqual([
+      ['Placed', 5, 'call-2'],
+      ['Loose', undefined, 'call-1'],
+    ]);
+    expect(asked.filter((a) => a.entity === 'Placement').map((a) => a.anchor)).toEqual(['canvas-1']);
+    // Where each came from rides in the read the canvas makes anyway.
+    expect(asked.find((a) => a.anchor === 'root')?.include).toMatchObject({ extractedFrom: true });
+  });
+
+  it('says which cards are waiting to be placed, and where each came from', async () => {
+    const { ctx } = spaceContext();
+    const seed = canvasSeed();
+    const fragment = await seed.seed(options, ctx);
+    const { summary } = seed.derive!(fragment, options);
+
+    expect(summary).toEqual({
+      unplaced: [{ id: 't2', type: 'TaskBlock', label: 'Loose', origin: 'call-1', pending: false }],
+    });
+  });
+
+  it('keeps only one conversation’s cards when asked, and nothing that came from nowhere', async () => {
+    const { ctx } = spaceContext();
+    const { nodes } = await canvasSeed().seed({ ...options, onlyFrom: 'call-1' }, ctx);
+
+    expect(nodes.map((n) => n.label)).toEqual(['Loose']);
+  });
+});

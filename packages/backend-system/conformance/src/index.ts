@@ -20,8 +20,15 @@
  * backend that gets it wrong every time; what it cannot do is say when the gap closes, so the reason
  * should name where the fix is being tracked.
  */
-import { type BackendPorts, type DatasetHandle, RECORD_TYPE_KEY, type RendererDataBindings } from '@we/backend-shared';
+import {
+  type BackendPorts,
+  CONTAINMENT_PREDICATE,
+  type DatasetHandle,
+  RECORD_TYPE_KEY,
+  type RendererDataBindings,
+} from '@we/backend-shared';
 import { getEntity } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { describeTemplateQueries, TEMPLATE_QUERY_CASES, type TemplateQueryCase } from './templateQueries';
@@ -62,6 +69,8 @@ export const CONFORMANCE_CASES = [
   'records.not-excludes-absent',
   'schema.module-entity',
   'schema.hints-round-trip',
+  'schema.containment-predicate',
+  'relations.create-under-parent',
   'relations.ordered-read',
   'relations.create-links-one',
   'relations.create-links-many',
@@ -94,7 +103,11 @@ interface LiveQuery {
 
 /** The write half: a registered entity class, as the shell's record actions resolve one. */
 interface Model {
-  create(dataset: DatasetHandle, data?: Record<string, unknown>): Promise<Instance>;
+  create(
+    dataset: DatasetHandle,
+    data?: Record<string, unknown>,
+    options?: { parent?: { id: string; predicate: string } },
+  ): Promise<Instance>;
   update(dataset: DatasetHandle, id: string, data: Record<string, unknown>): Promise<unknown>;
   setRelation(dataset: DatasetHandle, id: string, relation: string, ids: readonly string[]): Promise<void>;
 }
@@ -309,6 +322,63 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
         await subject.ports.schemas.resetInterpretationHints(subject.dataset, NOTE);
         expect(await hints()).toMatchObject({ classHint: 'A note somebody wrote', customized: false });
       });
+    });
+
+    describe('containment', () => {
+      /*
+        Containment is the one relation every backend stores under the same predicate, so a space has
+        one graph shape whatever holds it, and anything walking up from a record finds its context.
+        A backend that minted its own would still pass every relation case above — reads by name do
+        not care what the link is called — and would quietly hand a space a different shape.
+      */
+      test(
+        'schema.containment-predicate',
+        'stores containment under the one containment predicate, for the core schema and a module alike',
+        async () => {
+          const declared = {
+            version: '1',
+            entities: {
+              ConformanceFolder: {
+                properties: {},
+                relations: { items: { target: '', cardinality: 'many', containment: true } },
+              },
+            },
+          } as unknown as Parameters<BackendPorts['schemas']['entries']>[0];
+          const moduleEntries = subject.ports.schemas.entries(declared, { moduleId: 'conformance' });
+          const items = moduleEntries
+            .find((e) => e.name === 'ConformanceFolder')
+            ?.properties.find((p) => p.name === 'items');
+          expect(items?.predicate).toBe(CONTAINMENT_PREDICATE);
+
+          const coreEntries = subject.ports.schemas.entries(CORE_MANIFEST, { moduleId: 'conformance' });
+          const children = coreEntries
+            .find((e) => e.name === 'CollectionBlock')
+            ?.properties.find((p) => p.name === 'children');
+          expect(children?.predicate).toBe(CONTAINMENT_PREDICATE);
+        },
+      );
+
+      test(
+        'relations.create-under-parent',
+        'creates a record inside its container, named by id and the containment predicate',
+        async () => {
+          // How a transcript line, a space's canvas and a post in a space are all made: inside their
+          // container in one write, so there is no moment in which they are loose in the space.
+          const Collection = model('CollectionBlock');
+          const container = await Collection.create(subject.dataset, { kind: 'space' });
+          const made = await Collection.create(
+            subject.dataset,
+            { kind: 'canvas' },
+            { parent: { id: container.id, predicate: CONTAINMENT_PREDICATE } },
+          );
+
+          const [row] = await reader('CollectionBlock').findAll(subject.dataset, {
+            where: { id: container.id },
+            include: { children: true },
+          });
+          expect(((row?.children ?? []) as Row[]).map((child) => child.id)).toEqual([made.id]);
+        },
+      );
     });
 
     describe('relations', () => {

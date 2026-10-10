@@ -114,7 +114,19 @@ export function AnimateRenderer({ node, stores, context, renderNode }: AnimateRe
     // Snap to hidden state (in case called after animateOut)
     setOpacity(hiddenOpacity(config));
     setTransform(hiddenTransform(config));
-    if (revealEffect(config)) setOpen(false);
+    if (revealEffect(config)) {
+      setOpen(false);
+      /*
+        Back into the layout, still closed, before the frame that opens it.
+
+        A settled closed section is `display: none` (see the wrapper style below), and a transition
+        has no start value to leave from out of `display: none` — so `open` and `animating` turning
+        on together put it straight at full size, and only closing animated. Holding `animating` now
+        lays it out as a `0fr` grid for the one frame the wait below already exists to paint.
+      */
+      clearTimeout(settleTimer);
+      setAnimating(true);
+    }
     requestAnimationFrame(() => {
       const firstEffect = Array.isArray(config) ? config[0] : config;
       setTimeout(() => {

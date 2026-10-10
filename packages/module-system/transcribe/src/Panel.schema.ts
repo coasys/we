@@ -108,7 +108,28 @@ const TRANSCRIPT_HAS_MORE = `count(local.utterances) >= ${'modules.transcribe.tr
  * that: choosing what a meeting will look for, before the meeting, is exactly when somebody wants
  * to, and the call's own record exists from its first second. `callId` is that record.
  */
-export const EXTRACTION_SUBJECT_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.transcribe.callId';
+export const EXTRACTION_SUBJECT_EXPR =
+  'routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : ' +
+  "(spaceStore.extractLooseMessages ? spaceStore.root : ''))";
+
+/**
+ * Whether the panel is showing the space's loose messages rather than a call.
+ *
+ * Outside any call the panel follows the conversation that is still there: the messages typed
+ * straight into the space, when the space extracts them at all. Their watch is the space's, decided
+ * by its settings rather than by anybody in a room, so the per-call switch gives way to the
+ * space's.
+ */
+/**
+ * The call the panel is showing — the one somebody opened, else the live one — and never the space.
+ *
+ * The composer writes into a call's transcript, so it follows this rather than the extraction
+ * subject: outside any call that falls back to the space collection, and a box there would write
+ * a message into the space under a transcript saying there is no call to show.
+ */
+const CALL_SUBJECT_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.transcribe.callId';
+
+const SUBJECT_IS_SPACE = `spaceStore.root && (${EXTRACTION_SUBJECT_EXPR}) == spaceStore.root`;
 const EXTRACTION_SUBJECT = { $: EXTRACTION_SUBJECT_EXPR };
 
 /**
@@ -2427,6 +2448,42 @@ const amendmentRows: SchemaNode = {
   above it, which is where it now sits. Extract now went to the header, where the transcript panel
   keeps its own verb, so the two are no longer read as a matched pair.
 */
+/*
+  The space's own switch, for the space's own conversation.
+
+  The loose-message watch runs on the space's settings, so this is `autoInterpret` itself — the
+  same switch space settings has, offered where somebody is looking at what it decides, and only to
+  somebody who administers the space.
+*/
+const spaceAutoExtractControl: SchemaNode = {
+  type: 'we-tooltip',
+  props: {
+    placement: 'bottom',
+    content: {
+      $:
+        "!spaceStore.canAdministerCurrentSpace ? 'Set in space settings by whoever administers this space' : " +
+        "spaceStore.autoInterpret ? 'Stop extracting messages as they arrive, for this space' : " +
+        "'Extract messages as they arrive, for this space'",
+    },
+  },
+  children: [
+    {
+      type: 'we-button',
+      props: {
+        size: 'sm',
+        gap: '100',
+        variant: { $: "spaceStore.autoInterpret ? 'primary' : 'ghost'" },
+        disabled: { $: '!spaceStore.canAdministerCurrentSpace' },
+        onClick: { $action: 'spaceStore.setAutoInterpret', args: [{ $: '!spaceStore.autoInterpret' }] },
+      },
+      children: [
+        { type: 'we-icon', props: { name: 'lightning' } },
+        { $: "spaceStore.autoInterpret ? 'Auto extract: on' : 'Auto extract: off'" },
+      ],
+    },
+  ],
+};
+
 const autoExtractControl: SchemaNode = {
   type: '$if',
   props: {
@@ -4026,7 +4083,7 @@ const sendMessage = [
   { $setLocal: 'sending', value: true },
   {
     $action: 'modules.transcribe.addMessage',
-    args: [{ $: EXTRACTION_SUBJECT_EXPR }, { $: 'local.message' }],
+    args: [{ $: CALL_SUBJECT_EXPR }, { $: 'local.message' }],
     onSuccess: [{ $setLocal: 'message', value: '' }],
     onFinally: [{ $setLocal: 'sending', value: false }],
   },
@@ -4035,7 +4092,8 @@ const sendMessage = [
 export const transcriptComposer: SchemaNode = {
   type: '$if',
   /*
-    Wherever a transcript is on screen, not only while one is being recorded.
+    Wherever a call's transcript is on screen, not only while one is being recorded — and nowhere
+    else: outside any call the panel shows no transcript, so there is nothing here to write into.
 
     This was gated on the live call, on the reasoning that adding to a finished meeting's timeline
     would date a remark to a conversation it was not made in. That is exactly the claim `source`
@@ -4045,7 +4103,7 @@ export const transcriptComposer: SchemaNode = {
     talking.
   */
   props: {
-    condition: EXTRACTION_SUBJECT,
+    condition: { $: CALL_SUBJECT_EXPR },
     then: {
       type: 'Row',
       /*
@@ -4342,7 +4400,10 @@ export const extractionPanel: SchemaNode = {
       type: '$if',
       props: {
         condition: { $: `modules.transcribe.extractable && (${EXTRACTION_SUBJECT_EXPR})` },
-        then: autoExtractControl,
+        then: {
+          type: '$if',
+          props: { condition: { $: SUBJECT_IS_SPACE }, then: spaceAutoExtractControl, else: autoExtractControl },
+        },
       },
     },
     /*

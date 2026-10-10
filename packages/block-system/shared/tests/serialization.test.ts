@@ -60,6 +60,7 @@ import {
   loadBlocks,
   reconcileBlocks,
   recordToTextBlock,
+  refreshComposition,
   textBlockToRecord,
 } from '../src/serialization';
 import { decodeEditorState, encodeBase64Utf8 } from '../src/utils';
@@ -275,6 +276,52 @@ describe('extractMentions', () => {
   });
 });
 
+// ── refreshComposition ──────────────────────────────────────────────────────
+
+describe('refreshComposition', () => {
+  /*
+    A composition written record by record — a root, then the blocks inside it — the way a space
+    starter writes one, rather than through `createBlocks`. The renderer draws from the stored
+    document alone, so until this runs the post is blank however many blocks it holds.
+  */
+  async function writtenByHand() {
+    const root = (await FakeCollection.create(perspective, { type: 'root', kind: 'post' })) as FakeCollection;
+    const heading = await FakeText.create(perspective, { style: 'h2', text: 'Welcome' });
+    const body = await FakeText.create(perspective, {
+      style: 'normal',
+      text: 'Say hello to Ann',
+      marks: JSON.stringify([{ start: 13, end: 16, type: 'mention', did: 'did:ann' }]),
+    });
+    await root.addChildren(heading.id);
+    await root.addChildren(body.id);
+    return { root, heading, body };
+  }
+
+  it('writes the stored document, its text and its mentions from the blocks inside', async () => {
+    const { root, heading, body } = await writtenByHand();
+    expect(root.editorState).toBeUndefined();
+
+    expect(await refreshComposition(perspective, root.id)).toBe(true);
+
+    expect(blobOf(root).map((b) => b._key)).toEqual([heading.id, body.id]);
+    expect(blobOf(root).map((b) => (b as TextContentBlock).text)).toEqual(['Welcome', 'Say hello to Ann']);
+    expect(root.textContent).toBe('Welcome Say hello to Ann');
+    expect(root.mentions).toEqual(['did:ann']);
+  });
+
+  it('stores what createBlocks would have stored for the same document', async () => {
+    const { root } = await writtenByHand();
+    await refreshComposition(perspective, root.id);
+    const composed = (await createBlocks(perspective, blobOf(root), { kind: 'post' })) as unknown as FakeCollection;
+    expect(composed.textContent).toBe(root.textContent);
+    expect(composed.mentions).toEqual(root.mentions);
+  });
+
+  it('answers false for something that is not a composition', async () => {
+    expect(await refreshComposition(perspective, 'no-such-id')).toBe(false);
+  });
+});
+
 // ── createBlocks ────────────────────────────────────────────────────────────
 
 describe('createBlocks', () => {
@@ -354,7 +401,7 @@ describe('createBlocks', () => {
   });
 
   it('passes the anchor to the root only — descendants attach to their in-tree parent', async () => {
-    const anchor = { id: 'channel-1', predicate: 'we://children' };
+    const anchor = { id: 'channel-1', predicate: 'we://child' };
     const root = (await createBlocks(perspective, [paragraph('first'), paragraph('second')], {
       kind: 'message',
       anchor,
@@ -549,7 +596,7 @@ describe('reconcileBlocks', () => {
 describe('deleteBlocks', () => {
   it('takes the conversation with the thing it was about, to any depth', async () => {
     /*
-      A reply hangs off `we://comment` rather than `we://children` — the two relations say different
+      A reply hangs off `we://comment` rather than `we://child` — the two relations say different
       things, which is what makes threads fractal. This walk followed only `children`, so deleting a
       post left every reply to it reachable by nothing and rendered by nothing. Survivable while a
       thread was one level; not now that the orphan is a subtree.

@@ -50,8 +50,23 @@ export const WE_NODE_RELATIONS: EntitySchema['relations'] = {
    * case this relation is special in.
    */
   inReplyTo: { target: '', cardinality: 'one', predicate: 'we://comment', reverseOf: 'comments' },
+  /**
+   * Where this record was extracted from — the call (or the space collection, for loose messages)
+   * whose `extracted` links to it. `CollectionBlock.extracted` read backwards, exactly as
+   * `inReplyTo` reads `comments`.
+   *
+   * Provenance, not containment: an extracted item lives in the space collection and records where
+   * it came from separately, so moving it or deleting the call changes neither link. What it gives
+   * a template is the source without a second query — the Inbox grouping unplaced items by call, a
+   * card saying it came from Monday's call, the "this call" lens. Empty on anything made by hand.
+   *
+   * Untyped like `inReplyTo`, and for the generated class's sake: the source is always a collection,
+   * but a typed reverse on the base every collection extends would be a class importing its own
+   * subclass.
+   */
+  extractedFrom: { target: '', cardinality: 'one', predicate: 'we://extracted', reverseOf: 'extracted' },
   signals: { target: 'Signal', cardinality: 'many', predicate: 'we://signal' },
-  participants: { target: '', cardinality: 'many', predicate: 'we://participants', polymorphic: false },
+  participants: { target: '', cardinality: 'many', predicate: 'we://participant', polymorphic: false },
   calls: { target: '', cardinality: 'many', predicate: 'we://call' },
   mentions: { target: '', cardinality: 'many', predicate: 'we://mention', polymorphic: false },
 };
