@@ -3647,7 +3647,6 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - watchProblem — Why the standing extraction watch is not running here; empty when it is.
 - Actions (`{ "$action": "modules.transcribe.<name>" }`):
   - acceptProposal — Keeps a suggestion, as proposed or as edited.
-  - acceptProposals — Keeps every one of these that is still a suggestion, passing over any tied to one outside them.
   - addMessage — Writes something a person typed into a transcript, as a typed line.
   - applyChange — Applies one suggested change to an agreed record.
   - cancelProposalEdit — Closes the open draft, discarding what was typed.

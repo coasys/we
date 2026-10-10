@@ -3525,11 +3525,6 @@ export const contextData: ContextData = {
       members: [
         { name: 'acceptProposal', kind: 'action', doc: 'Keeps a suggestion, as proposed or as edited.' },
         {
-          name: 'acceptProposals',
-          kind: 'action',
-          doc: 'Keeps every one of these that is still a suggestion, passing over any tied to one outside them.',
-        },
-        {
           name: 'addMessage',
           kind: 'action',
           doc: 'Writes something a person typed into a transcript, as a typed line.',
