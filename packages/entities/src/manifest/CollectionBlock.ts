@@ -38,7 +38,8 @@ export const CollectionBlock: CoreEntityDef = {
     // Made in the composer — see `composed` on the manifest type.
     composed: true,
     properties: {
-      editorState: { type: 'string', predicate: 'we://editor_state', format: 'file', default: null },
+      // ── What it is ────────────────────────────────────────────────────────────────────
+      // Read by everything that handles a collection: what it is for, who owns its parts, and its name.
       /**
        * What this collection *is* — `'post'`, `'call'`, `'space'`, `'board'`, `'column'`. A free label,
        * invented by whichever surface needs it and registered nowhere.
@@ -105,6 +106,7 @@ export const CollectionBlock: CoreEntityDef = {
        * that never get named carry no storage, and no migration was needed to add these.
        */
       title: { type: 'string', predicate: 'we://title', default: '' },
+      description: { type: 'string', predicate: 'we://description', default: '' },
       /**
        * The vocabulary term this collection stands *for*, where it stands for one.
        *
@@ -121,9 +123,14 @@ export const CollectionBlock: CoreEntityDef = {
        * a state is retired, and a task whose state nothing recognises can still be found and moved.
        */
       slug: { type: 'string', predicate: 'we://slug', default: '' },
-      description: { type: 'string', predicate: 'we://description', default: '' },
-      version: { type: 'number', predicate: 'we://version', default: 0 },
+      // ── Content ───────────────────────────────────────────────────────────────────────
+      // A composed document — a post, a note. A feed (a call, a channel) has no stored document;
+      // its content is its children.
+      editorState: { type: 'string', predicate: 'we://editor_state', format: 'file', default: null },
       textContent: { type: 'string', predicate: 'we://text_content', default: '' },
+      version: { type: 'number', predicate: 'we://version', default: 0 },
+      // ── Provenance ────────────────────────────────────────────────────────────────────
+      // A post brought in from another space.
       /**
        * Where this was posted before it was posted here — a reference to the original, and its space
        * by name.
@@ -141,6 +148,9 @@ export const CollectionBlock: CoreEntityDef = {
        */
       sourceRef: { type: 'string', predicate: 'we://source_ref', default: '' },
       sourceName: { type: 'string', predicate: 'we://source_name', default: '' },
+      // ── Extraction ────────────────────────────────────────────────────────────────────
+      // A collection a model reads as it grows — a call, a channel, the space collection. Copied from
+      // the space's defaults when it is made; unset on anything nobody extracts.
       /**
        * Whether this collection is extracted as it grows — a call as it happens, a channel as
        * messages arrive — rather than only when somebody presses Extract.
@@ -181,6 +191,8 @@ export const CollectionBlock: CoreEntityDef = {
       extractionTargets: { type: 'string', predicate: 'we://extraction_targets', default: '' },
     },
     relations: {
+      // ── Membership ────────────────────────────────────────────────────────────────────
+      // What is in it and what it arranges — every collection.
       /**
        * What is in this collection, in the order somebody put it there.
        *
@@ -259,6 +271,8 @@ export const CollectionBlock: CoreEntityDef = {
        * gathers the call's work rather than only holding what somebody put there.
        */
       board: { target: 'CollectionBlock', cardinality: 'one', predicate: 'we://board' },
+      // ── Extraction ────────────────────────────────────────────────────────────────────
+      // What reading this collection produced — a collection somebody has extracted from.
       /**
        * Every time a model was asked to read this collection — see {@link ExtractionPass}.
        *

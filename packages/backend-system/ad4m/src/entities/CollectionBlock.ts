@@ -16,9 +16,6 @@ export class CollectionBlock extends WeNode {
   @Flag({ through: 'we://flag', value: 'we://collection_block' })
   flag: string = '';
 
-  @Property({ through: 'we://editor_state', resolveLanguage: FILE_STORAGE_LANGUAGE })
-  editorState: string | null = null;
-
   /**
    * What this collection *is* — `'post'`, `'call'`, `'space'`, `'board'`, `'column'`. A free label,
    * invented by whichever surface needs it and registered nowhere.
@@ -91,6 +88,9 @@ export class CollectionBlock extends WeNode {
   @Property({ through: 'we://title' })
   title: string = '';
 
+  @Property({ through: 'we://description' })
+  description: string = '';
+
   /**
    * The vocabulary term this collection stands *for*, where it stands for one.
    *
@@ -109,14 +109,14 @@ export class CollectionBlock extends WeNode {
   @Property({ through: 'we://slug' })
   slug: string = '';
 
-  @Property({ through: 'we://description' })
-  description: string = '';
-
-  @Property({ through: 'we://version' })
-  version: number = 0;
+  @Property({ through: 'we://editor_state', resolveLanguage: FILE_STORAGE_LANGUAGE })
+  editorState: string | null = null;
 
   @Property({ through: 'we://text_content' })
   textContent: string = '';
+
+  @Property({ through: 'we://version' })
+  version: number = 0;
 
   /**
    * Where this was posted before it was posted here — a reference to the original, and its space

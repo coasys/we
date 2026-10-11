@@ -88,14 +88,14 @@ export interface CodeBlockRecord extends WeNodeRecord {
 }
 
 export interface CollectionBlockRecord extends WeNodeRecord {
-  editorState: string | null;
   kind: string;
   mode: string;
   title: string;
-  slug: string;
   description: string;
-  version: number;
+  slug: string;
+  editorState: string | null;
   textContent: string;
+  version: number;
   sourceRef: string;
   sourceName: string;
   autoExtract?: boolean;
