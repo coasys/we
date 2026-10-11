@@ -72,6 +72,7 @@ export const CONFORMANCE_CASES = [
   'schema.containment-predicate',
   'relations.create-under-parent',
   'relations.read-under-parent',
+  'relations.delete-takes-links-to-it',
   'relations.ordered-read',
   'relations.create-links-one',
   'relations.create-links-many',
@@ -410,6 +411,39 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           expect(page.map((row) => row.id)).toEqual([second.id]);
           const all = await Collection.findAll(subject.dataset, parent(call.id));
           expect(all.map((row) => row.id).sort()).toEqual([first.id, second.id].sort());
+        },
+      );
+
+      test(
+        'relations.delete-takes-links-to-it',
+        'a deleted record leaves no link to it behind, in its container or in a thread',
+        async () => {
+          /*
+            A post's replies live in its channel and in its thread. Deleting one has to take the
+            links to it as well as the record, or the channel goes on naming a child that is gone
+            and a thread goes on counting a reply nobody can read.
+          */
+          const Collection = model('CollectionBlock');
+          const channel = await Collection.create(subject.dataset, { kind: 'channel', mode: 'feed' });
+          const post = await Collection.create(subject.dataset, { kind: 'post' });
+          const reply = await Collection.create(
+            subject.dataset,
+            { kind: 'reply' },
+            { parent: { id: channel.id, predicate: CONTAINMENT_PREDICATE } },
+          );
+          await Collection.addRelation(subject.dataset, post.id, 'thread', reply.id);
+          const kept = await Collection.create(
+            subject.dataset,
+            { kind: 'reply' },
+            { parent: { id: channel.id, predicate: CONTAINMENT_PREDICATE } },
+          );
+
+          await reply.delete();
+
+          const [holder] = await Collection.findAll(subject.dataset, { where: { id: channel.id } });
+          expect(holder?.children).toEqual([kept.id]);
+          const [subjectRow] = await Collection.findAll(subject.dataset, { where: { id: post.id } });
+          expect(subjectRow?.thread ?? []).toEqual([]);
         },
       );
     });

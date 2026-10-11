@@ -287,6 +287,31 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
     }
   };
 
+  /*
+    A deleted record takes every link to it with it, as it does on AD4M — `Ad4mModel.delete` removes
+    the incoming links as well as its own, so a parent's `children` never names a record that is
+    gone. Here a link is a relation field on a row (a forward list, or a to-one under its own or its
+    reverse name), so forgetting one is taking the id out of every relation field that holds it.
+    Relation fields only: a property that happens to hold the id as text (`ReadMarker.nodeId`) is a
+    value, not a link, and AD4M leaves it too.
+  */
+  const relationNames = new Map<string, string[]>();
+  for (const name of Object.keys(manifest.entities)) {
+    relationNames.set(name, Object.keys(resolved(name).relations));
+  }
+  const forgetLinksTo = (dataset: DatasetEntry, id: string) => {
+    for (const [entity, rows] of Object.entries(dataset.tables)) {
+      const names = relationNames.get(entity) ?? [];
+      for (const row of rows as AnyRow[]) {
+        for (const key of names) {
+          const value = row[key];
+          if (Array.isArray(value) && value.includes(id)) row[key] = value.filter((v) => v !== id);
+          else if (value === id) delete row[key];
+        }
+      }
+    }
+  };
+
   const datasetOf = (handle: unknown): DatasetEntry => {
     const entry = handle as DatasetEntry | undefined;
     if (!entry || typeof entry !== 'object' || !('tables' in entry)) {
@@ -344,6 +369,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         const rows = tableOf(dataset, name);
         const index = rows.findIndex((r) => r.id === (this as unknown as AnyRow).id);
         if (index >= 0) rows.splice(index, 1);
+        forgetLinksTo(dataset, (this as unknown as AnyRow).id as string);
         notify(dataset);
       }
 
@@ -570,6 +596,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         const rows = tableOf(dataset, name);
         const index = rows.findIndex((r) => r.id === id);
         if (index >= 0) rows.splice(index, 1);
+        forgetLinksTo(dataset, id);
         notify(dataset);
       }
 
