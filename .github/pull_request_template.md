@@ -2,9 +2,10 @@
 
 <!--
 Needs an unpublished ad4m change? Delete the two lines that comment out the block below, and set
-the number — or write coasys/ad4m@<branch> for a branch, tag or commit. The preview then builds
-against it, and a check typechecks and tests this PR there. Anything but this exact block, first in
-the description, is an error. Remove it once the pin is bumped, before merging.
+the ad4m PR's number — or, only for a change with no PR, write coasys/ad4m@<branch> for a branch, tag
+or commit. The preview then builds against it, and a check typechecks and tests this PR there.
+Anything but this exact block, first in the description, is an error. The PR cannot merge while the
+block is there: remove it once the pin is bumped.
 See docs/contributing/ad4m-and-deploys.md.
 -->
 <!--

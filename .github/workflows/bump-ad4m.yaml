@@ -1,7 +1,7 @@
 name: Bump ad4m
 
-# Keeps one open pull request that moves WE's ad4m pin to the newest version published under npm's
-# `dev` tag (docs/contributing/ad4m-and-deploys.md, "Keeping the pin current").
+# Keeps one open pull request that moves WE's ad4m pin to the newest version published from ad4m's
+# `staging` branch (docs/contributing/ad4m-and-deploys.md, "Keeping the pin current").
 #
 # Every run starts from `dev`, runs `pnpm bump:ad4m`, and force-pushes the result to one branch, so
 # there is at most one bump PR at a time and it always names the newest version. Merging it ends
@@ -104,7 +104,7 @@ jobs:
             echo
             echo "---"
             echo
-            echo "Opened by the [Bump ad4m]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/bump-ad4m.yaml) workflow, which updates this PR whenever a newer ad4m \`dev\` version is published. CI runs on each update."
+            echo "Opened by the [Bump ad4m]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/bump-ad4m.yaml) workflow, which updates this PR whenever ad4m publishes a newer version from \`staging\`. CI runs on each update."
           } > "$RUNNER_TEMP/pr.md"
           TITLE="chore(deps): bump ad4m to $VERSION"
 
@@ -122,10 +122,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         # And the live tests, which are the point of a bump: they run against an executor built from
-        # the version the PR moves to.
+        # the version the PR moves to. And the pairing gate, whose check is required like CI's: one
+        # that never reports would block the PR for good.
         run: |
           gh workflow run build.yaml --ref "$BRANCH"
           gh workflow run ad4m-live.yaml --ref "$BRANCH"
+          gh workflow run pr-tasks.yaml --ref "$BRANCH"
 
   # A paired PR whose ad4m change has merged and been published gets the `ready to bump ad4m`
   # label and a comment naming the version and what to run. Independent of the bump above: a

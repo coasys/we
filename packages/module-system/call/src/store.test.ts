@@ -470,7 +470,8 @@ describe('transport and device lifetime', () => {
     await store.startCall({ type: 'click', detail: 1 });
 
     expect(createdWith).toHaveLength(1);
-    expect(createdWith[0][2]).toBeUndefined();
+    // The space's own call, hanging off nothing — not a call about a record the click stood in for.
+    expect(createdWith[0][2]).toEqual({ topLevel: true });
     expect(store.problem()).toBeNull();
   });
 

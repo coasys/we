@@ -163,20 +163,44 @@ const CALL_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.cal
 const CALL = { $: CALL_EXPR };
 
 /**
- * What extraction is allowed to make from a transcript — asked, rather than restated.
+ * The space's canvas — one per space, found by role.
  *
- * This was `['TaskBlock', 'EventBlock']`, a copy of the two classes the module used to compile in,
- * with a comment admitting that the canvas would silently stop showing a new kind if that list ever
- * grew. It grew: what a space extracts is a community decision now, and the extraction panel offers
- * it as chips somebody can change mid-call. So the constant went from a maintenance note to a bug
- * one click away — turn on `Sighting`, extract, and the records land in the collection while the
- * canvas shows nothing and says nothing.
- *
- * The call's own list, not the space's: those differ the moment somebody narrows a call, and it is
- * the call that this canvas is about. Every entity in it, whether or not it is currently ticked — a
- * model switched off half way through a meeting must not take what it already found off the canvas.
+ * Every call files what it finds into the space collection, so there is one canvas for all of it
+ * rather than one per call: the space's starter makes it and names it `canvas`, and this template
+ * finds it by that name. Found rather than assumed, since a space can switch template and arrive
+ * here without one — an empty string then, which the canvas reads as "nothing to load".
  */
-const EXTRACTED = { $: `modules.transcribe.extractionFor[${CALL_EXPR}].targets.map(t, t.entity)` };
+const SPACE_CANVAS_EXPR = "spaceStore.roles.canvas ? spaceStore.roles.canvas : ''";
+const SPACE_CANVAS = { $: SPACE_CANVAS_EXPR };
+
+/**
+ * Everything that could be extracted here — every type, whether or not any call has it ticked now.
+ *
+ * The space's canvas, board and key show what the space holds. A kind a call has since switched off
+ * must not take what that call already found off them, and neither should a kind only one call
+ * ever looked for.
+ */
+const EXTRACTABLE = { $: 'shapeStore.extractionCandidates' };
+
+/**
+ * The "this call" lens: the space's views picking out what came from the call on screen.
+ *
+ * Off unless somebody turns it on — opening a call must never quietly narrow the space's views, or
+ * per-call scoping comes back by the back door and the canvas changes with whichever panel is open.
+ * `dim` fades everything else, `hide` puts it away. In the address, like the colour lenses, so a
+ * link shows the same view; and only while a call is on screen, since without one there is nothing
+ * to pick out.
+ *
+ * Matched on where each record came from (`extractedFrom`). Something made by hand, or from the
+ * messages typed outside any call, has no call to have come from, so it is "not from this call".
+ */
+const FROM_PARAM = 'from';
+const FROM_MODE = `routeStore.params.${FROM_PARAM}`;
+const FROM_DIM = `(${CALL_EXPR}) && ${FROM_MODE} == 'dim'`;
+const FROM_HIDE = `(${CALL_EXPR}) && ${FROM_MODE} == 'hide'`;
+const FROM_ON = `(${FROM_DIM}) || (${FROM_HIDE})`;
+/** The lens parameter, carried between pages the way `LENS_QUERY` carries the colour lens. */
+const FROM_QUERY = `\${routeStore.params.${FROM_PARAM} ? '&${FROM_PARAM}=' + routeStore.params.${FROM_PARAM} : ''}`;
 
 /**
  * The page on screen, as a segment — or the canvas, before the redirect has landed on one.
@@ -244,7 +268,7 @@ const openLiveCall: SchemaProp = pageWithCall("''");
  *
  * They were `canvas`, `tasks` and `events` — one named for its form and two for a content type,
  * which reads as three different subjects when it is three readings of one. What a call produces is
- * not a fixed pair either: `EXTRACTED` asks the call what it is extracting, so a community that
+ * not a fixed pair either: `EXTRACTABLE` asks the space what it could extract, so a community that
  * defines a `Sighting` gets Sightings on the canvas, and two tabs named after two members of an open
  * set stop describing it the moment somebody adds a third. A form-name stays true — a calendar is
  * still a calendar, and a record with no date is self-evidently not on it.
@@ -290,7 +314,7 @@ const NAV = [
  * switch that spelt its query without it would silently put the colours back to the default.
  */
 const navPath = {
-  $: `\`\${spaceStore.spacePath}/\${nav.segment}?call=\${routeStore.params.call ?? ''}${LENS_QUERY}${FOLD_QUERY}\``,
+  $: `\`\${spaceStore.spacePath}/\${nav.segment}?call=\${routeStore.params.call ?? ''}${LENS_QUERY}${FOLD_QUERY}${FROM_QUERY}\``,
 };
 
 /**
@@ -567,6 +591,45 @@ const callPill: SchemaNode = {
           },
         }),
       ],
+    },
+  },
+};
+
+/*
+  The "this call" lens — see `FROM_PARAM`.
+
+  Beside each page's own controls rather than in the switcher: it changes how the page shows what is
+  on it, not which page is on screen. The same control on all three, writing the one parameter they
+  share, so the choice holds as somebody moves between them.
+
+  A menu naming all three states rather than a button stepping through them. Stepping read as a
+  toggle — a second press was expected to put everything back, and hid everything else instead.
+  Only while a call is on screen: with none there is nothing to pick out.
+*/
+const fromLensControl: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: CALL,
+    then: {
+      type: 'DropdownMenu',
+      props: {
+        triggerIcon: 'funnel',
+        triggerLabel: {
+          $: `(${FROM_DIM}) ? 'Other calls dimmed' : (${FROM_HIDE}) ? 'Only this call' : 'All calls'`,
+        },
+        triggerTitle: 'Pick out what this call produced',
+        triggerVariant: { $: `(${FROM_ON}) ? 'secondary' : 'ghost'` },
+        items: {
+          $:
+            `[{ id: 'all', label: 'All calls', icon: 'squares-four', selected: !(${FROM_ON}) }, ` +
+            `{ id: 'dim', label: 'Dim other calls', icon: 'circle-half', selected: ${FROM_DIM} }, ` +
+            `{ id: 'hide', label: 'Only this call', icon: 'funnel', selected: ${FROM_HIDE} }]`,
+        },
+        onSelect: {
+          $action: 'routeStore.setParam',
+          args: [FROM_PARAM, { $: "arg.id == 'all' ? '' : arg.id" }],
+        },
+      },
     },
   },
 };
@@ -1021,7 +1084,7 @@ const historyPill: SchemaNode = {
                 square: true,
                 label: 'Undo',
                 disabled: { $: '!recordStore.canvasHistory.canUndo' },
-                onClick: { $action: 'recordStore.undoCanvas', args: [CALL] },
+                onClick: { $action: 'recordStore.undoCanvas', args: [SPACE_CANVAS] },
               },
               children: [{ type: 'we-icon', props: { name: 'arrow-u-up-left' } }],
             },
@@ -1043,7 +1106,7 @@ const historyPill: SchemaNode = {
                 square: true,
                 label: 'Redo',
                 disabled: { $: '!recordStore.canvasHistory.canRedo' },
-                onClick: { $action: 'recordStore.redoCanvas', args: [CALL] },
+                onClick: { $action: 'recordStore.redoCanvas', args: [SPACE_CANVAS] },
               },
               children: [{ type: 'we-icon', props: { name: 'arrow-u-up-right' } }],
             },
@@ -3326,8 +3389,20 @@ const canvas: SchemaNode = {
         the ids over is the whole of the connection.
       */
       options: {
-        canvas: CALL,
-        contains: EXTRACTED,
+        /*
+          The space's canvas, over everything in the space.
+
+          The placements are the canvas's own; the cards are the space collection's children, so a
+          record anybody files into the space — a call's finds, a note made here, a channel — can be
+          placed without being moved anywhere. See `members` on the seed.
+        */
+        canvas: SPACE_CANVAS,
+        members: { id: { $: 'spaceStore.root' }, via: 'children' },
+        contains: EXTRACTABLE,
+        // Where each card came from, for the "this call" lens.
+        origin: 'extractedFrom',
+        // The lens, hiding: only what the call on screen produced. See `FROM_PARAM`.
+        onlyFrom: { $: `(${FROM_HIDE}) ? (${CALL_EXPR}) : ''` },
         connections: 'Relationship',
         // How this canvas draws those connections: which side of a card each line attaches to, and
         // any points somebody bent it through. Per canvas, like a placement — the same claim shown
@@ -3470,6 +3545,14 @@ const canvas: SchemaNode = {
         rather than the accent, which is what a *selected* card wears: the two would be one outline.
       */
       { when: { 'data.changed': true }, style: { borderColor: 'warning-text', borderWidth: 2 } },
+      /*
+        The "this call" lens, dimming: everything the call on screen did not produce. See `FROM_PARAM`.
+
+        Under "only" as well as "dimmed". Hiding reloads the canvas without those cards, which takes a
+        moment, and with the fade switched off at the press they flashed back to full strength in
+        between. Dimmer than a suggestion (0.5), so the two read as different things.
+      */
+      { $: `(${FROM_ON}) ? [{ when: { 'data.origin': { not: (${CALL_EXPR}) } }, style: { opacity: 0.1 } }] : []` },
     ],
     /*
       No ARMED `connect-nodes`. Connecting is a handle on the card, not a mode.
@@ -3548,7 +3631,7 @@ const canvas: SchemaNode = {
       whose conversation is over, where "as the conversation produces them" is only half the answer.
     */
     empty: {
-      $: `(${CALL_EXPR}) ? 'Nothing on this canvas yet. Double-click anywhere to add a card, or give extraction a moment — what the conversation commits to appears here on its own.' : 'Start or choose a call. What it produces appears here as cards you can move and join up.'`,
+      $: `(${SPACE_CANVAS_EXPR}) ? 'Nothing on this canvas yet. Double-click anywhere to add a card, or start a call — what a conversation commits to appears here on its own.' : 'This space has no canvas of its own. Spaces made with one show everything extracted here.'`,
     },
     /*
       And drawn as an invitation, which is what both of those sentences are — the same gradient the
@@ -3645,7 +3728,7 @@ const canvas: SchemaNode = {
       into a corner would scatter everything back where it was the moment you unfolded, which makes
       a fold a way of hiding things rather than of tidying them.
     */
-    onNodeDragEnd: { $action: 'recordStore.dragOnCanvas', args: [CALL, { $: 'event' }] },
+    onNodeDragEnd: { $action: 'recordStore.dragOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
     /*
       The same gesture in the tree, where what a drag means is different.
 
@@ -3659,10 +3742,10 @@ const canvas: SchemaNode = {
       The spine goes with it, and has to: what makes a parent a parent is this community's own
       vocabulary and this reader's current choice, neither of which a store can know.
     */
-    onNodeArrange: { $action: 'recordStore.arrangeOnTree', args: [CALL, { $: 'local.spine' }, { $: 'event' }] },
+    onNodeArrange: { $action: 'recordStore.arrangeOnTree', args: [SPACE_CANVAS, { $: 'local.spine' }, { $: 'event' }] },
     // Who answered with the reaction the tree is weighed by, for the strip's list of voices.
     onSeedSummary: TREE_VOICE_SUMMARY,
-    onNodeResize: { $action: 'recordStore.resizeOnCanvas', args: [CALL, { $: 'event' }] },
+    onNodeResize: { $action: 'recordStore.resizeOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
     // Not in the tree, which gives every card one box: a resize there would change nothing on screen, and
     // its handles would sit over the card's reaction badge on the same edge.
     resizable: { $: `!${TREE_ON}` },
@@ -3675,8 +3758,8 @@ const canvas: SchemaNode = {
       `EdgeRoute` parented to this canvas rather than on the `Relationship` — how a claim is *drawn*
       is a fact about a view, and the same claim on another canvas is untouched.
     */
-    onEdgeAnchor: { $action: 'recordStore.anchorOnCanvas', args: [CALL, { $: 'event' }] },
-    onEdgeReroute: { $action: 'recordStore.rerouteOnCanvas', args: [CALL, { $: 'event' }] },
+    onEdgeAnchor: { $action: 'recordStore.anchorOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
+    onEdgeReroute: { $action: 'recordStore.rerouteOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
     /*
       And the same handle dropped on a *different* card, which re-attaches the connection.
 
@@ -3685,7 +3768,7 @@ const canvas: SchemaNode = {
       relationship is shown. That end's anchor is cleared with it, a side pinned against the card
       that used to be there deciding nothing about the one that arrived.
     */
-    onEdgeRetarget: { $action: 'recordStore.retargetOnCanvas', args: [CALL, { $: 'event' }] },
+    onEdgeRetarget: { $action: 'recordStore.retargetOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
     /*
       What is selected, in the address — because the inspector is a *panel*.
 
@@ -3714,14 +3797,14 @@ const canvas: SchemaNode = {
       },
     },
     // Double-click empty canvas to make something there — see `newThingChooser`.
-    onCanvasDoubleClick: askWhatGoesHere(CALL),
+    onCanvasDoubleClick: askWhatGoesHere(SPACE_CANVAS),
     /*
       Something dragged in from the Pocket, or from anywhere else, lands where it was dropped.
 
       A placement is the canvas's membership, so the store's one action is enough — and it refuses
       a record from another space, which this canvas could not draw, with a sentence saying so.
     */
-    onDrop: { $action: 'recordStore.dropOnCanvas', args: [CALL, { $: 'event' }] },
+    onDrop: { $action: 'recordStore.dropOnCanvas', args: [SPACE_CANVAS, { $: 'event' }] },
     /*
       A line is a record here too, so clicking one inspects it.
 
@@ -3792,8 +3875,8 @@ const canvas: SchemaNode = {
       Scoped to the call this canvas is about, so walking to another call's canvas does not leave a
       press that would move cards on a canvas nobody is looking at.
     */
-    onUndo: { $action: 'recordStore.undoCanvas', args: [CALL] },
-    onRedo: { $action: 'recordStore.redoCanvas', args: [CALL] },
+    onUndo: { $action: 'recordStore.undoCanvas', args: [SPACE_CANVAS] },
+    onRedo: { $action: 'recordStore.redoCanvas', args: [SPACE_CANVAS] },
     /*
       Cards can be carried off this canvas — into the Pocket, and from there into any other space.
 
@@ -3842,7 +3925,7 @@ const canvas: SchemaNode = {
           condition: { $: "event.action == 'color' && !event.preview" },
           then: {
             $action: 'recordStore.setCardStyle',
-            args: [CALL, { $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],
+            args: [SPACE_CANVAS, { $: 'event.records.map(r, r.recordId)' }, 'color', { $: 'event.value' }],
           },
         },
       },
@@ -3965,7 +4048,13 @@ const canvas: SchemaNode = {
             { $action: 'modules.transcribe.acceptProposal', args: [{ $: 'event.recordId' }] },
             {
               $action: 'recordStore.placeOnCanvas',
-              args: [CALL, { $: 'event.recordId' }, { $: 'event.recordType' }, { $: 'event.x' }, { $: 'event.y' }],
+              args: [
+                SPACE_CANVAS,
+                { $: 'event.recordId' },
+                { $: 'event.recordType' },
+                { $: 'event.x' },
+                { $: 'event.y' },
+              ],
             },
           ],
         },
@@ -4001,7 +4090,7 @@ const canvas: SchemaNode = {
           condition: { $: "event.action in ['color', 'cardShape', 'contentScale'] && !event.preview" },
           then: {
             $action: 'recordStore.setCardStyle',
-            args: [CALL, { $: 'event.recordId' }, { $: 'event.action' }, { $: 'event.value' }],
+            args: [SPACE_CANVAS, { $: 'event.recordId' }, { $: 'event.action' }, { $: 'event.value' }],
           },
         },
       },
@@ -4042,7 +4131,7 @@ const canvas: SchemaNode = {
   slots: {
     emptyAction: {
       type: '$if',
-      props: { condition: { $: `!(${CALL_EXPR})` }, then: startCallButton('md') },
+      props: { condition: { $: `(${SPACE_CANVAS_EXPR}) && !(${CALL_EXPR})` }, then: startCallButton('md') },
     },
   },
 };
@@ -4123,7 +4212,7 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     canvas,
     // How the canvas is read: the mode, and what the tree is made of. Over the canvas's own corner
     // rather than in a panel, because a panel can be closed and this is the only way out of the mode.
-    treeStrip({ below: CALL_CHROME_BAND.bottom }),
+    treeStrip({ below: CALL_CHROME_BAND.bottom, controls: [fromLensControl] }),
     /*
       Where a connection is actually written down.
 
@@ -4146,8 +4235,8 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     // kind's colour, as the chooser's card did — `kindFill` reads the route's `typeStyles`.
     recordFormModal({ back: BACK_TO_CHOOSER, entityPicker: false, iconColor: kindFill }),
     // What goes here, a new note, and the selected note opened — see `WorkshopCards`.
-    newThingChooser(CALL),
-    newNoteModal(CALL),
+    newThingChooser(SPACE_CANVAS),
+    newNoteModal(SPACE_CANVAS),
     editNoteModal,
   ],
 };
@@ -4311,59 +4400,38 @@ const kanbanRoute: RouteSchema = {
       props: { width: '100%', flex: '1', gap: '400' },
       children: [
         {
-          type: '$if',
-          props: {
-            /*
-              Nothing is asked about a call until there is one, and that gate is load-bearing.
+          type: 'Column',
+          /*
+            The space's board, whether or not a call is on screen.
 
-              `pruneUnresolvedWhere` drops a `where` operand that is `undefined`, and
-              `modules.call.callRecordId` deliberately answers `''` rather than undefined so that every
-              surface reading it gets a string. So an ungated `where: { id: '' }` survived pruning and
-              was sent, and the backend built its `VALUES` clause with that one id dropped for not
-              being an IRI — leaving the clause empty, which is not parseable SPARQL: *Query is not
-              valid read-only SPARQL … expected UNDEF*.
+            This was the call's own board, behind a "start or choose a call" gate. Every call files what
+            it finds into the space collection now, so the work a call commits to is the space's work,
+            and the board for it is the space's — the one playing its `board` role, gathering from the
+            space collection. What one call produced is a lens over it rather than a board of its
+            own: see `FROM_PARAM`.
 
-              Teaching the pruner to drop `''` would have silenced that and been the wrong repair. An
-              absent operand means "do not narrow", so the query would have answered with an
-              *arbitrary* collection and this route would have drawn some other call's board with
-              nothing on screen saying so — the same hazard the Boards view guards its `anchorRow`
-              against. `scopeIsAnchored` can read `''` as absent precisely because widening a scope is
-              what an unanchored view wants; widening an identity is never what anybody wants.
-            */
-            condition: CALL,
-            then: {
-              type: 'Column',
-              /*
-                `flex: '1'` and no `ROUTE_BAND`, for the same reason as the route above: the "no board
-                yet" gate below centres in this box, and it should land exactly where the "no call"
-                gate does. The band goes on the branches that draw from the top — the board and its
-                spinner.
-              */
-              props: { width: '100%', flex: '1' },
-              /*
-                Which board this call calls its own, if any — its `board` relation rather than "the
-                first board parented to it". A call may hold several; one of them is the one
-                extraction lands on, and only the call can say which. Its own query rather than the
-                fragment's, because the choice between "open it" and "make one" is made out here,
-                before there is an id to render.
-              */
-              $queries: {
-                callRow: { entity: 'CollectionBlock', where: { id: CALL }, include: { board: true }, limit: 1 },
-              },
-              children: [
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: 'first(local.callRow).board.id' },
-                    then: {
-                      type: 'Column',
-                      props: { width: '100%', ...ROUTE_BAND },
-                      children: [
-                        taskBoard({
-                          // The call's own board, which gathers from the call — a fact the board carries,
-                          // so nothing here has to say so.
-                          boardId: { $: 'first(local.callRow).board.id' },
-                          /*
+            `flex: '1'` and no `ROUTE_BAND`, so the "no board yet" gate centres in this box. The band
+            goes on the branches that draw from the top — the board and its spinner.
+          */
+          props: { width: '100%', flex: '1' },
+          children: [
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'spaceStore.roles.board' },
+                then: {
+                  type: 'Column',
+                  props: { width: '100%', ...ROUTE_BAND },
+                  children: [
+                    taskBoard({
+                      // The space's own board, which gathers from the space collection — a fact the
+                      // board carries, so nothing here has to say so.
+                      boardId: { $: 'spaceStore.roles.board' },
+                      // The "this call" lens — see `FROM_PARAM`.
+                      onlyFrom: { record: CALL, param: FROM_PARAM },
+                      // Its control, beside the board's own filters.
+                      controls: [fromLensControl],
+                      /*
                             No `bg`, so a card is `surface` — and the key's lenses stop at the canvas.
 
                             This route used to pass `recordFill`, on the argument that three pages about
@@ -4389,31 +4457,31 @@ const kanbanRoute: RouteSchema = {
                             reached the canvas has no placement and no way to be given one. That is the
                             work, not this expression.
                           */
-                          /*
-                        Which cards a model proposed from the conversation — the provenance question
-                        this template is built around. A mark on the card and a line in its people
-                        hovercard, rather than the author's name in heading type: on an extracted task
-                        the author is whichever member's node ran the pass, not who proposed the work.
-                        The call's own `extracted` relation says which, and arrives as ids on the row.
+                      /*
+                        Which cards a model proposed from a conversation — the provenance question this
+                        template is built around. A mark on the card and a line in its people hovercard,
+                        rather than the author's name in heading type: on an extracted task the author is
+                        whichever member's node ran the pass, not who proposed the work. Each card says
+                        where it came from itself (`extractedFrom`), whichever call that was.
                       */
-                          extracted: 'card.id in first(local.callRow).extracted',
-                          /*
+                      extracted: 'card.extractedFrom',
+                      /*
                             And who is doing it — the other half of the same question. A call commits
                             people to things as often as it commits to things, and a board that could
                             only say what was agreed and not by whom was half an answer. The filter above
                             it rides in `?who=` beside `?call=`, so a link to this page can be "what Ana
                             took on in this call".
                           */
-                          people: true,
-                          /*
+                      people: true,
+                      /*
                             And what people have made of each card — reactions and replies, as
                             counts. The inspector is where either is given; a card says only that
                             there is something to open, which is what a preview owes a reader.
                           */
-                          social: true,
-                          // Put away what extraction made and nobody has kept — shared with the canvas and calendar.
-                          suggestions: true,
-                          /*
+                      social: true,
+                      // Put away what extraction made and nobody has kept — shared with the canvas and calendar.
+                      suggestions: true,
+                      /*
                             Pressing a card selects it, the way pressing one on the canvas does: the
                             same two parameters, so the inspector opens it and the canvas focuses it if
                             you go there. Editing is the inspector's — its pencil unlocks the fields —
@@ -4427,59 +4495,51 @@ const kanbanRoute: RouteSchema = {
                             The type first, and only then the card, so the inspector's query never asks
                             about a card under the wrong type for the instant between the two writes.
                           */
-                          select: {
-                            selected: 'routeStore.params.card',
-                            onSelect: [
-                              { $setLocal: 'pressedCard', value: true },
-                              { $action: 'routeStore.setParam', args: ['cardType', 'TaskBlock'] },
-                              { $action: 'routeStore.setParam', args: ['card', { $: 'card.id' }] },
-                            ],
-                          },
-                          empty: emptyState({
-                            icon: 'check-square',
-                            label: 'work',
-                            message:
-                              'Nothing from this call yet. Cards appear here as the conversation commits to things — or add one to a column.',
-                          }),
-                        }),
-                      ],
-                    },
-                    /*
-                      "No board yet" is an answer, and it is only given once the call record has
-                      answered. Before that the same spinner the board itself shows holds the place,
-                      so the route reads as one wait rather than a claim that turns out to be false.
-                    */
-                    else: {
-                      type: '$if',
-                      props: {
-                        condition: { $: 'local.callRowLoaded' },
-                        then: callGate(
-                          'kanban',
-                          'This call has no board yet. Making one arranges the work it produced — it never moves anything.',
-                          // Dressed like `startCallButton('md')`, the control the other gate carries.
-                          {
-                            type: 'we-button',
-                            props: {
-                              gap: '200',
-                              mt: '400',
-                              onClick: { $action: 'spaceStore.openBoardFor', args: [CALL, 'This call'] },
-                            },
-                            children: [{ type: 'we-icon', props: { name: 'kanban' } }, 'Make a board for this call'],
-                          },
-                        ),
-                        else: { type: 'Column', props: { width: '100%', ...ROUTE_BAND }, children: [taskBoardLoading] },
+                      select: {
+                        selected: 'routeStore.params.card',
+                        onSelect: [
+                          { $setLocal: 'pressedCard', value: true },
+                          { $action: 'routeStore.setParam', args: ['cardType', 'TaskBlock'] },
+                          { $action: 'routeStore.setParam', args: ['card', { $: 'card.id' }] },
+                        ],
                       },
-                    },
+                      empty: emptyState({
+                        icon: 'check-square',
+                        label: 'work',
+                        message:
+                          'No work in this space yet. Cards appear here as conversations commit to things — or add one to a column.',
+                      }),
+                    }),
+                  ],
+                },
+                /*
+                  "No board yet" is an answer, and it is only given once the space's roles have been
+                  read — which `spaceStore.root` says, being set in the same read. Before that the same
+                  spinner the board itself shows holds the place.
+                */
+                else: {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'spaceStore.root' },
+                    then: callGate(
+                      'kanban',
+                      'This space has no board yet. Making one arranges the work in it — it never moves anything.',
+                      {
+                        type: 'we-button',
+                        props: {
+                          gap: '200',
+                          mt: '400',
+                          onClick: { $action: 'spaceStore.openBoardFor', args: ['', 'Everything'] },
+                        },
+                        children: [{ type: 'we-icon', props: { name: 'kanban' } }, 'Make a board for this space'],
+                      },
+                    ),
+                    else: { type: 'Column', props: { width: '100%', ...ROUTE_BAND }, children: [taskBoardLoading] },
                   },
                 },
-              ],
+              },
             },
-            else: callGate(
-              'kanban',
-              'Start or choose a call. The work it commits to appears here as cards on a board.',
-              startCallButton('md'),
-            ),
-          },
+          ],
         },
       ],
     },
@@ -4506,7 +4566,13 @@ const FILTERING = 'count(local.calendarPeople)';
  * cannot disagree about what is on a day. Dimming leaves the list whole and fades rows instead, which
  * is what keeps a busy week looking busy.
  */
-const VISIBLE_EVENTS = `(${FILTERING} && local.calendarShow == 'hide') ? ${withoutHiddenSuggestions('local.events')}.filter(e, ${MATCHES('e')}) : ${withoutHiddenSuggestions('local.events')}`;
+/** Whether an event is one the call on screen produced — the "this call" lens. See `FROM_PARAM`. */
+const FROM_CALL_EVENT = (as: string) => `(${as}.id in first(local.calendarFrom).extracted)`;
+
+const VISIBLE_EVENTS =
+  `${withoutHiddenSuggestions('local.events')}` +
+  `.filter(e, !(${FILTERING} && local.calendarShow == 'hide') || ${MATCHES('e')})` +
+  `.filter(e, !(${FROM_HIDE}) || ${FROM_CALL_EVENT('e')})`;
 
 /** An event a pass made that nobody has kept — drawn provisional, and put away with the board's switch. */
 const UNCONFIRMED_EVENT = (as: string) => `${as}.id in ${UNCONFIRMED}`;
@@ -4515,7 +4581,8 @@ const UNCONFIRMED_EVENT = (as: string) => `${as}.id in ${UNCONFIRMED}`;
 const SELECTED_EVENT = "event.id == routeStore.params.card && routeStore.params.cardType == 'EventBlock'";
 
 /** Faded, for an event nobody chosen is on while the filter dims. */
-const DIMMED = (as: string) => `${FILTERING} && local.calendarShow == 'dim' && !(${MATCHES(as)})`;
+const DIMMED = (as: string) =>
+  `(${FILTERING} && local.calendarShow == 'dim' && !(${MATCHES(as)})) || ((${FROM_DIM}) && !${FROM_CALL_EVENT(as)})`;
 
 /**
  * The answers somebody can give to an event — going, maybe, not going, and whatever this community
@@ -4721,11 +4788,10 @@ const eventList: SchemaNode = {
       here give: an event is a title, a time and a line of context, so putting it through a block
       editor would ask for a document nobody wants to write.
 
-      Parented to the call, which is the part that cannot be left out. Every surface of this
-      template reads its records through `anchorScope(CALL)` — `CollectionBlock` → `children` —
-      so an event created unparented is written into the space and then shows up on no screen in
-      this template, including the calendar it was just added from. `we://children` is that
-      relation's predicate.
+      Filed in the space collection, which is the part that cannot be left out. The month reads its
+      events through `anchorScope` on that collection — `CollectionBlock` → `children` — so an event
+      created unparented is written into the space and then shows up on no screen in this template,
+      including the calendar it was just added from. `we://child` is that relation's predicate.
 
       The drafts are declared on the modal, so closing discards them; a draft declared on the page
       would have to be cleared by hand on every exit, and the one somebody forgets is the one that
@@ -4793,7 +4859,7 @@ const eventList: SchemaNode = {
             startDate: { $: "local.day + 'T' + local.draftTime" },
             description: { $: 'local.draftDescription' },
           },
-          { parent: { id: CALL, predicate: 'we://children' } },
+          { parent: { id: { $: 'spaceStore.root' }, predicate: 'we://child' } },
         ],
       },
     }),
@@ -4999,7 +5065,7 @@ const eventList: SchemaNode = {
             Tuesday. Two situations, so two sentences.
           */
           message: {
-            $: `(${FILTERING} && count(local.events)) ? 'Nobody chosen is going to anything here.' : local.day ? 'Nothing on this day.' : 'Nothing from this call yet. Events appear here as the conversation settles on dates.'`,
+            $: `(${FILTERING} && count(local.events)) ? 'Nobody chosen is going to anything here.' : local.day ? 'Nothing on this day.' : 'Nothing in this space yet. Events appear here as conversations settle on dates.'`,
           },
         }),
       },
@@ -5091,7 +5157,13 @@ const calendarRoute: RouteSchema = {
               rather than asked and discarded. The space-wide reading is not lost: it is the Calendar
               section, a click away and unscoped, exactly as the space-wide board is.
             */
-            condition: CALL,
+            /*
+              Gated on the space having a collection, which is what the month reads from: every
+              call files its events there, and so does the composer below. Without one the anchor
+              would not resolve and the read would quietly widen — see above. A space made before
+              spaces had a collection is the only one without, and it has nothing filed there to show.
+            */
+            condition: { $: 'spaceStore.root' },
             then: {
               type: 'Column',
               props: { width: '100%', gap: '400', ...ROUTE_BAND },
@@ -5141,7 +5213,8 @@ const calendarRoute: RouteSchema = {
                 */
                 events: {
                   entity: 'EventBlock',
-                  scope: anchorScope(CALL),
+                  // The space's, whichever call settled on them — see the gate above.
+                  scope: anchorScope({ $: 'spaceStore.root' }),
                   order: { startDate: 'asc' },
                   limit: 200,
                   // The place, and the reactions the row's counts read. `comments` needs no include —
@@ -5153,6 +5226,8 @@ const calendarRoute: RouteSchema = {
                 // Who said they are coming to what. Space-wide, for the board's reason: an answer is
                 // not a child of anything, and there are as many as people have given.
                 involvements: { entity: 'Involvement' },
+                // What the call on screen produced, for the "this call" lens. See `FROM_PARAM`.
+                calendarFrom: { entity: 'CollectionBlock', where: { id: CALL }, limit: 1, when: CALL },
               },
               children: [
                 // ── The month, with the way through them either side ──────────────────
@@ -5231,6 +5306,7 @@ const calendarRoute: RouteSchema = {
                       noun: 'event',
                     }),
                     suggestionsToggle({ count: `count(local.events.filter(e, ${UNCONFIRMED_EVENT('e')}))` }),
+                    fromLensControl,
                   ],
                 },
 
@@ -5404,8 +5480,7 @@ const calendarRoute: RouteSchema = {
             },
             else: callGate(
               'calendar',
-              'Start or choose a call. The dates it settles on appear here as a month.',
-              startCallButton('md'),
+              'This space was made before spaces kept their contents together, so there is nothing here to put on a month.',
             ),
           },
         },
@@ -5635,7 +5710,13 @@ export const workshopTemplate: TemplateSchema = {
       */
       {
         id: 'key',
-        node: keyPanel({ call: CALL, callExpr: CALL_EXPR, extracted: EXTRACTED.$ }),
+        // The space's canvas, over the space collection, and every kind the space could extract.
+        node: keyPanel({
+          call: SPACE_CANVAS,
+          callExpr: SPACE_CANVAS_EXPR,
+          members: { $: 'spaceStore.root' },
+          extracted: EXTRACTABLE.$,
+        }),
         title: 'Key',
         snap: 'top-right',
         box: { width: 252, height: 545 },

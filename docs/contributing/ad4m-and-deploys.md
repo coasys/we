@@ -68,12 +68,17 @@ point at it. The pairing is this block, first in the WE PR description:
 | ---- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | 1    | Start the WE PR description with the pairing block, below | The preview builds both ad4m packages from that ad4m PR (its merge, once merged), and a check tests WE there |
 | 2    | Review and test on the preview                            | You see the two halves working together                                                                      |
-| 3    | Merge the ad4m PR first                                   | It is published under the `dev` tag (see below), and the WE PR is marked ready to bump                       |
-| 4    | Run `pnpm bump:ad4m` in the WE PR, and remove the block   | CI now tests the real combination                                                                            |
+| 3    | Merge the ad4m PR first                                   | It is published once ad4m `dev` reaches `staging` (see below), and the WE PR is marked ready to bump         |
+| 4    | Run `pnpm bump:ad4m` in the WE PR, and remove the block   | CI now tests the real combination, and the PR can merge                                                      |
 | 5    | Merge the WE PR                                           | `dev` stays on a published, tested pin                                                                       |
 
-**Until step 4 the required checks are red.** They test against the pin, which does not have the
-ad4m change yet. Whether that is the only reason is answered by
+**A paired PR cannot merge.** **`PR tasks / Not waiting on ad4m`** fails while the block is in the
+description, and passes as soon as it is removed — editing the description re-runs it, with no push
+needed. It reads the description alone, so it is the author's claim that decides, not a guess at
+what the code needs. If the PR turns out to work with the ad4m WE already pins, remove the block.
+
+**Until step 4 the required checks are usually red.** They test against the pin, which does not have
+the ad4m change yet. Whether that is the only reason is answered by
 **`AD4M compatibility / Against the paired ad4m`**, which builds the same commit against the paired
 change, then typechecks, tests and validates its schemas. Both checks build the same WE commit, so
 the ad4m version is the only difference between them:
@@ -81,12 +86,30 @@ the ad4m version is the only difference between them:
 | Required checks | Paired check | Meaning                                                                |
 | --------------- | ------------ | ---------------------------------------------------------------------- |
 | red             | green        | Waiting for the pin, not for a fix                                     |
-| red             | red          | Something is broken — the paired check's summary names the stage       |
+| red             | red          | Something is broken — the PR comment says on which side, see below     |
 | green           | red          | Fine against today's ad4m, broken against the paired change: fix first |
+| green           | green        | Works with both — see below                                            |
+
+**When the paired check fails, it says whose failure it is.** It runs WE `dev` — the commit the PR
+was merged with — through the same stages against the same ad4m. If `dev` fails too, the comment
+says so: the cause is a change in ad4m `dev` that WE has not caught up with yet, usually a migration
+in another PR, and every PR paired with an ad4m branch carrying that change fails the same way until
+it lands. If `dev` gets through, the failure is the PR's own. This costs one more WE build, and only
+on a failure.
+
+**Green on the pin as well is not always a problem, and the PR comment says so rather than claiming
+the checks are red.** It is expected when the PR depends on how ad4m _behaves_ — a bug fix, or a
+change to the executor only — since that compiles the same either way, and when the PR is built to
+work with both versions on purpose. Otherwise it means one of two things: the PR does not need the
+pairing, or it hides the dependency. **While paired, import the new SDK API directly.** Declaring its
+types again in WE, or checking at runtime whether a method exists, so that the PR compiles against
+the pin, turns the one signal that shows the dependency green — and the PR would then fail at runtime
+against the pinned ad4m, with nothing in CI to say so.
 
 A reviewer does not have to know any of this to read the PR. The paired check keeps **one comment**
 on it, updated in place: that the check is running, then whether the PR works against the paired
-change, stage by stage — and if the pairing cannot be read, why, with the corrected block to paste.
+change, stage by stage, and which row of the table above it is in — and if the pairing cannot be
+read, why, with the corrected block to paste.
 It also adds a **`paired with ad4m`** label, which the PR list shows beside the title. Both go away
 on the first push after the block is removed. (GitHub has no
 badge beside a PR's title or above its description, so those two are the nearest it offers. A PR
@@ -106,8 +129,13 @@ Both labels and both comments go together when the block is removed. The rules a
 The paired check tests the ad4m PR as it is now. If it changes before it is published, step 4 is
 where that shows: the required checks then test the real combination.
 
-To pair with a branch, tag or commit instead, write `coasys/ad4m@<ref>` in the block, for example
-`coasys/ad4m@dev`. Without a block, the preview uses the pin.
+**Pair with the ad4m PR whenever there is one.** Only for an ad4m change with no PR — a branch not
+opened yet, a tag, a commit — write `coasys/ad4m@<ref>` in the block, for example `coasys/ad4m@dev`.
+A branch pairing works, but it loses three things: GitHub does not turn `coasys/ad4m@<branch>` into a
+link; it never gets `ready to bump ad4m`, since a branch has no moment at which it is done; and it
+keeps fetching the branch after the change merges, which fails once the branch is deleted. When a
+paired branch has an open PR, the pairing comment names it and gives the block to paste. Without a
+block, the preview uses the pin.
 
 To try an ad4m change in WE with no WE change to go with it, open a draft WE PR with an empty commit
 (`git commit --allow-empty`) and the block. Close it when you are done.
@@ -133,7 +161,7 @@ it is now, so a re-run picks up the edit.
 | When                                                     | What happens                                                                |
 | -------------------------------------------------------- | --------------------------------------------------------------------------- |
 | You open an ad4m PR and a WE PR that needs it            | The WE PR description links the ad4m PR, and its preview runs both together |
-| The ad4m PR merges                                       | ad4m CI publishes a new version under the `dev` tag                         |
+| The ad4m PR merges, and `dev` reaches ad4m `staging`     | ad4m CI publishes a new version from `staging`                              |
 | You run `pnpm bump:ad4m` in your WE PR                   | Both pins move to that version, and it prints the ad4m changes for the PR   |
 | You run `pnpm verify:ad4m`, check the preview, and merge | The dev site has the ad4m change on its next deploy                         |
 
@@ -141,14 +169,21 @@ it is now, so a re-run picks up the edit.
 
 | Step | Who            | What                                                                                                  |
 | ---- | -------------- | ----------------------------------------------------------------------------------------------------- |
-| 1    | ad4m CI        | On every merge to ad4m `dev`, publish the npm packages at one new version, under the npm tag `dev`    |
+| 1    | ad4m CI        | On every merge of ad4m `dev` into `staging`, publish the npm packages at one new version              |
 | 2    | WE's bump bot  | Within the hour, open a PR moving the pin to that version, listing the ad4m changes since the old pin |
 | 3    | CI and preview | Build and test WE against the new version                                                             |
 | 4    | A person       | Run `pnpm verify:ad4m`, check the preview, and merge                                                  |
 
-Step 1 is proposed in coasys/ad4m#1216. Until it merges, the versions WE pins are published by hand,
-and anyone with npm publish rights can publish one under the `dev` tag, from one commit for all the
-packages.
+Step 1 is coasys/ad4m#1355, with `dev` merged into `staging` about daily during active work, and a
+version bump on each merge so each one publishes. Publishing is from `staging` rather than from every
+merge to `dev`, so a change reaches WE's pin about a day after it merges, not within the hour. Until
+it lands, the versions WE pins are published by hand, from one commit for all the packages.
+
+**Which version is newest is decided by branch, not by npm tag.** The staging job tags a prerelease
+`next` and a release `latest`, and either tag can also hold a build somebody published by hand from a
+feature branch, so following one would move WE to whatever was published last. `pnpm bump:ad4m`
+instead takes the newest version, by publish time, whose recorded commit (`gitHead`) is on ad4m's
+`staging`.
 
 **The bump bot** is `.github/workflows/bump-ad4m.yaml`. Every hour it runs `pnpm bump:ad4m` from
 `dev`, and when there is a newer version it pushes the result to the branch `bot/bump-ad4m`. So there
@@ -159,18 +194,21 @@ use "Run workflow" on the workflow's page in the Actions tab.
 
 It opens the PR as `github-actions`, which needs the repository setting "Allow GitHub Actions to
 create and approve pull requests" (Settings → Actions → General). A PR opened that way starts no
-workflows by itself, so the bot starts CI on the branch, and the checks appear on the PR as usual.
+workflows by itself, so the bot starts CI, the live tests and the pairing gate on the branch, and the
+checks appear on the PR as usual. **A workflow with a required check has to be in that list**: a
+required check that never reports blocks the bump PR for good.
 
 **A routine bump** (WE catching up, with nothing in WE needing the new version) is the bot's PR, on
 its own, so a breakage points at one cause. **A feature that needs a new ad4m** bumps inside its own
 PR instead, as step 4 of pairing says: the feature and the version it depends on are one change.
 
-`npm install` only picks up the `latest` tag, so nobody installs a `dev` version by accident.
+`npm install` only picks up the `latest` tag, so nobody installs a prerelease by accident.
 
 ### What `pnpm bump:ad4m` does
 
-`pnpm bump:ad4m` moves to whatever npm's `dev` tag points at; `pnpm bump:ad4m <version>` moves to a
-particular version. It updates the root `pnpm.overrides` and every exact version a workspace package
+`pnpm bump:ad4m` moves to the newest version published from ad4m's `staging` (above);
+`pnpm bump:ad4m <version>` moves to a particular version, and `pnpm bump:ad4m <tag>` to the one an npm
+tag points at. It updates the root `pnpm.overrides` and every exact version a workspace package
 declares, runs `pnpm install`, and prints the ad4m commits since the old pin for the PR description.
 The bot runs it with `--if-newer` (a version it cannot move to yet ends the run quietly),
 `--lockfile-only` (updates `pnpm-lock.yaml` without installing) and `--pr-body <file>`.
@@ -180,7 +218,9 @@ It refuses:
 - a version not published for **both** packages, or published for them from different commits. The
   app's client is the SDK inside ad4m-connect, so an SDK from one commit and a connect from another
   is a pairing nobody tested.
-- a version older than the current pin, unless given `--allow-older`. A tag can lag behind.
+- a version older than the current pin, unless given `--allow-older`: one whose commit adds nothing
+  to the pin's, or one published before the pin was. The second catches a version from another
+  branch, which carries a few commits of its own and so looks newer by commit however old it is.
 
 ### What `pnpm verify:ad4m` checks
 
@@ -221,8 +261,10 @@ pinned commit and cached, by the `.github/actions/ad4m-executor` action the desk
 a PR serves only that PR, which is why a merged bump builds on `dev`: after that, every run takes
 minutes. A push never cancels a build in progress, only the tests.
 It is not a required check: read it before merging a bump, the way you would the run here. It skips
-a paired PR until that PR moves the pin, since before then the pin cannot answer for its changes —
-the paired check above does.
+a paired PR until that PR moves the pin. A paired PR cannot merge before then, so the run that
+matters is the one after the bump — and nothing builds the paired executor, which takes the better
+part of an hour, so a PR that depends on how the executor behaves is exercised only on its preview
+until the pin moves.
 
 ### Testing an ad4m branch against WE's tests
 
@@ -236,8 +278,8 @@ and tests there. It never blocks a PR.
 - **From the Actions tab**, name an ad4m branch, and it tests the last WE commit that passed CI on
   `dev` against it — so a failure there is ad4m's difference by construction.
 
-`scripts/ad4m-pairing.mjs` reads the pairing for the preview, this workflow and the required checks
-alike, so they cannot disagree about whether a PR is paired.
+`scripts/ad4m-pairing.mjs` reads the pairing for the preview, this workflow, the required checks and
+the merge gate alike, so they cannot disagree about whether a PR is paired.
 
 The early warning that a change on ad4m `dev` breaks WE is the bump bot's PR: its CI goes red within
 the hour of the ad4m merge.
@@ -249,6 +291,7 @@ the hour of the ad4m merge.
 | Build from the pin, not from ad4m `dev`    | A build from ad4m `dev` changes when ad4m changes, with no WE commit. It cannot be reproduced, and CI never tested it.                                                                     |
 | Publish often, instead of skipping the pin | The problem was that the pin moved rarely. Moving it often fixes that and keeps every build tested.                                                                                        |
 | Required checks never build from source    | A branch in another repo must not decide whether a WE change can merge. The paired check does, and never blocks.                                                                           |
+| A paired PR cannot merge                   | Red pinned checks stopped most, but not a PR depending on how ad4m behaves, or one hiding the dependency to compile. The block is the author's own claim, so it is the gate.               |
 | Build both packages when pairing           | The app's client comes from ad4m-connect's bundled SDK. Building only the SDK leaves the running client old.                                                                               |
 | Link pairs in the PR description           | It is visible to reviewers, it is there before the first build, and several WE PRs can link one ad4m PR. Matching branch names was implicit and could link unrelated branches by accident. |
 | Bump through a PR                          | CI and a preview check every new version before it reaches `dev`.                                                                                                                          |
@@ -261,6 +304,6 @@ the hour of the ad4m merge.
 
 | What                                                                                                                                           | Who              |
 | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| A publish job on merges to ad4m `dev` (most of it exists in `publish.yml`)                                                                     | ad4m maintainers |
+| The staging publish job (coasys/ad4m#1355), a version bump on each merge of `dev` into `staging`, and that merge about daily                   | ad4m maintainers |
 | Point npm's `latest` tag at a real release. It points at `0.13.0-test-interpretation-2` today, so `npm install @coasys/ad4m` gets a test build | ad4m maintainers |
 | Make the executor build on macOS again: `ort-sys` downloads an ONNX Runtime that is no longer published for macOS                              | ad4m maintainers |

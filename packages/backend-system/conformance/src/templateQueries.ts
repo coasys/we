@@ -42,7 +42,6 @@ export const TEMPLATE_QUERY_CASES = [
   'queries.columns-of-a-board',
   'queries.tasks-in-a-channel',
   'queries.canvases',
-  'queries.space-board',
 ] as const;
 
 export type TemplateQueryCase = (typeof TEMPLATE_QUERY_CASES)[number];
@@ -92,8 +91,7 @@ type Key =
   | 'canvas'
   | 'alpha'
   | 'beta'
-  | 'gamma'
-  | 'space';
+  | 'gamma';
 
 const model = (name: string) => getEntity(name) as unknown as Model;
 
@@ -149,11 +147,6 @@ async function seed(dataset: DatasetHandle): Promise<Record<Key, string>> {
 
   await make('canvas', 'CollectionBlock', { kind: 'canvas', title: 'Map' });
   for (const key of ['beta', 'alpha', 'gamma'] as const) await make(key, 'RelationshipType', { name: key });
-  // A to-one relation set on the record and saved — the way both backends document. Passing it in
-  // `create`'s data is not the same thing everywhere, which is a separate question from this query.
-  const space = await make('space', 'Space', { name: 'The space', description: 'For the queries' });
-  (space as unknown as { board: string }).board = board.id;
-  await (space as unknown as { save(): Promise<void> }).save();
 
   return Object.fromEntries(Object.entries(made).map(([key, instance]) => [key, instance.id])) as Record<Key, string>;
 }
@@ -293,11 +286,6 @@ const CASES: Record<TemplateQueryCase, QueryCase> = {
     from: 'templates/views/src/views/GraphView/index.ts',
     query: () => ({ entity: 'CollectionBlock', where: { kind: 'canvas' }, order: { createdAt: 'asc' } }),
     expect: { order: ['canvas'] },
-  },
-  'queries.space-board': {
-    from: 'templates/views/src/views/BoardsView/index.ts',
-    query: () => ({ entity: 'Space', include: { board: true }, limit: 1 }),
-    expect: { relation: 'board', points: { space: 'board' } },
   },
 };
 

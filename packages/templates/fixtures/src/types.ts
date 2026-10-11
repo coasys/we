@@ -89,7 +89,7 @@ export interface FixtureNode {
   images?: { src: string; alt?: string; width?: number; height?: number }[];
   /** Reactions, by signal-type slug, listing who reacted. */
   signals?: { slug: string; by: string[] }[];
-  /** What this node owns, written as `we://children`. */
+  /** What this node owns, written as `we://child`. */
   children?: FixtureNode[];
   /**
    * The vocabulary term this node stands for — a board column bound to a task state. Omit for a

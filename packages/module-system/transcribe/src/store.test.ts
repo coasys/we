@@ -230,7 +230,7 @@ describe('the call record', () => {
     expect(h.created[0].fields.text).toBe('hello');
     // Parented, not loose. A block written flat into the space is how transcripts used to end up in
     // the Cards route's Text list next to authored prose.
-    expect(h.created[0].options?.parent).toEqual({ id: RECORD, predicate: 'we://children' });
+    expect(h.created[0].options?.parent).toEqual({ id: RECORD, predicate: 'we://child' });
   });
 
   it('reuses the same record for the rest of the call', async () => {
@@ -419,7 +419,7 @@ describe('continuing a call', () => {
     await h.say('picking this back up');
 
     expect(h.created.filter((c) => c.entity === 'CollectionBlock')).toHaveLength(0);
-    expect(h.created[0].options?.parent).toEqual({ id: 'the-old-record', predicate: 'we://children' });
+    expect(h.created[0].options?.parent).toEqual({ id: 'the-old-record', predicate: 'we://child' });
   });
 
   it('announces the record it adopted, so the rest of the call converges on it too', () => {
@@ -850,6 +850,8 @@ describe('extraction', () => {
     const watches: string[] = [];
     /** Collections a repair sweep was asked for. */
     const reconciled: string[] = [];
+    /** The dataset each entry in `watches` named, in the same order — `''` for none. */
+    const targetsSeen: string[] = [];
     /**
      * What each call extracts, as the host resolves it.
      *
@@ -864,6 +866,7 @@ describe('extraction', () => {
     return {
       calls,
       watches,
+      targetsSeen,
       reconciled,
       /** What the watch would currently be registered for — the module hands the host a collection. */
       watchTargetsOf: (collection: string) => forCall(collection),
@@ -891,11 +894,13 @@ describe('extraction', () => {
           if (result instanceof Error) throw result;
           return result;
         },
-        watchCollection: async (collectionId: string) => {
+        watchCollection: async (collectionId: string, target?: { dataset?: string }) => {
           watches.push(collectionId);
+          targetsSeen.push(target?.dataset ?? '');
         },
-        unwatchCollection: async (collectionId: string) => {
+        unwatchCollection: async (collectionId: string, target?: { dataset?: string }) => {
           watches.push(`-${collectionId}`);
+          targetsSeen.push(target?.dataset ?? '');
         },
         reconcileCollection: async (collectionId: string) => {
           reconciled.push(collectionId);
@@ -992,6 +997,69 @@ describe('extraction', () => {
 
       // Left running it would keep spending an LLM call on a conversation that is over.
       expect(i.watches).toEqual([collection, `-${collection}`]);
+    });
+
+    it('leaves the watch running when somebody else is still in the call', async () => {
+      /*
+        The reported bug: the first recorder to leave stopped extraction for everyone. The watch is one
+        registration the call shares, and the people still talking never re-registered it, because
+        nothing about their own call had changed.
+      */
+      const i = interpreter();
+      const them = peer(THEM, { type: 'call', id: CALL, record: RECORD });
+      const h = harness([...inCall, them], { interpretation: i.port });
+      await h.say('something worth writing down');
+
+      h.setPeers([them]);
+      await Promise.resolve();
+
+      expect(i.watches).toEqual([RECORD]);
+    });
+
+    it('stops the watch when the last one out never spoke', async () => {
+      /*
+        A record is adopted on the first flush, so somebody who stayed silent never adopted it — and
+        when they are the last to leave, nobody is left who did. Removing a watch nobody registered is
+        a no-op, so the check runs for every leaver.
+      */
+      const i = interpreter();
+      const h = harness(inCall, { interpretation: i.port });
+      await h.settle();
+
+      h.setPeers([]);
+      await Promise.resolve();
+
+      expect(i.watches).toEqual([`-${RECORD}`]);
+    });
+
+    it('registers and removes the watch in the call’s own space, wherever the reader is', async () => {
+      /*
+        Both ends used to resolve "the current dataset". A call survives navigation, so somebody
+        leaving while reading another space removed the watch from that space — a no-op — and left
+        the real one being polled by every peer for as long as the call's space exists.
+      */
+      const i = interpreter();
+      const anchored = [peer(ME, { type: 'call', id: CALL, record: RECORD, anchor: { datasetUri: 'space-a' } })];
+      const h = harness(anchored, { interpretation: i.port });
+      await h.say('something worth writing down');
+
+      h.setPeers([]);
+      await Promise.resolve();
+
+      expect(i.watches).toEqual([RECORD, `-${RECORD}`]);
+      expect(i.targetsSeen).toEqual(['space-a', 'space-a']);
+    });
+
+    it('stops the watch when the module is disposed with nobody else in the call', async () => {
+      const i = interpreter();
+      const disposers: Array<() => void> = [];
+      const h = harness(inCall, { interpretation: i.port, onDispose: (fn: () => void) => disposers.push(fn) });
+      await h.say('something worth writing down');
+
+      for (const dispose of disposers.reverse()) dispose();
+      await Promise.resolve();
+
+      expect(i.watches).toEqual([RECORD, `-${RECORD}`]);
     });
 
     it('tells the host a pass may have settled when it adopts a collection', async () => {
@@ -1825,14 +1893,31 @@ describe('staged suggestions', () => {
     const i = interpreterWith([
       { id: 'task-old', kind: 'update', entity: 'TaskBlock', values: { dueDate: '2026-09-15', assignee: 'Ana' } },
     ]);
+    // What is still staged, as the backend would answer once a field is settled.
+    const settled = new Set<string>();
     const port = {
       ...i.port,
-      accept: async (id: string, property?: string) => (calls.push(['accept', id, property]), true),
-      reject: async (id: string, property?: string) => (calls.push(['reject', id, property]), true),
+      proposals: async () => {
+        const values = { dueDate: '2026-09-15', assignee: 'Ana' } as Record<string, string>;
+        for (const name of settled) delete values[name];
+        return Object.keys(values).length ? [{ id: 'task-old', kind: 'update', entity: 'TaskBlock', values }] : [];
+      },
+      accept: async (id: string, property?: string) => (
+        calls.push(['accept', id, property]),
+        settled.add(property!),
+        true
+      ),
+      reject: async (id: string, property?: string) => (
+        calls.push(['reject', id, property]),
+        settled.add(property!),
+        true
+      ),
     };
     const h = harness(inCall, { interpretation: port });
     await h.say('hello');
     await h.store.extract();
+    h.store.changedIds();
+    await h.settle();
 
     await h.store.applyChange('task-old', 'dueDate');
     expect(h.store.proposals()[0].fields.map((f) => f.name)).toEqual(['assignee']);
@@ -1890,6 +1975,32 @@ describe('staged suggestions', () => {
 
     expect(h.store.pendingProposals().map((p) => p.id)).toEqual(['task-1']);
     expect(h.store.pendingProposals()[0].summary).toBe('title: One');
+  });
+
+  it('marks a suggestion from a call nobody has asked about, by asking about the space', async () => {
+    /*
+      A space canvas draws every call's finds. After a reload nothing had asked about any call but
+      the one on screen, so a card from another call drew as agreed until its call was opened.
+    */
+    const asked: (string | undefined)[] = [];
+    const port = {
+      available: () => true,
+      runOnCollection: async () => ({ turns: 0, ids: [], proposed: [] }),
+      proposals: async (_target: unknown, collection?: string) => {
+        asked.push(collection);
+        return collection ? [] : [{ id: 'task-elsewhere', kind: 'create', entity: 'TaskBlock', values: {} }];
+      },
+      accept: async () => true,
+      reject: async () => true,
+    };
+    const h = harness(inCall, { interpretation: port });
+
+    h.store.unconfirmedIds();
+    await h.settle();
+
+    expect(asked).toContain(undefined);
+    expect(h.store.unconfirmedIds()).toEqual(['task-elsewhere']);
+    expect(h.store.pendingIds()).toEqual(['task-elsewhere']);
   });
 
   it('refuses to offer editing where nothing could write the result back', async () => {
@@ -2408,7 +2519,7 @@ describe('typing into a transcript', () => {
     expect(block?.fields).toEqual({ text: 'Sam is joining late', source: 'typed' });
     // Into the call's own record, which exists from its first second — a message does not require
     // somebody to have spoken first.
-    expect(block?.options?.parent).toEqual({ id: RECORD, predicate: 'we://children' });
+    expect(block?.options?.parent).toEqual({ id: RECORD, predicate: 'we://child' });
   });
 
   it('writes nothing for an empty message', async () => {
@@ -2435,7 +2546,7 @@ describe('typing into a transcript', () => {
     await h.store.addMessage('past-call', 'watched this back');
 
     const block = h.created.find((c) => c.entity === 'TextBlock');
-    expect(block?.options?.parent).toEqual({ id: 'past-call', predicate: 'we://children' });
+    expect(block?.options?.parent).toEqual({ id: 'past-call', predicate: 'we://child' });
     // And in the space on screen, not in whichever space a live call happens to be running in.
     expect(block?.options?.dataset).toBeUndefined();
   });

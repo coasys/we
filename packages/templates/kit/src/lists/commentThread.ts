@@ -6,7 +6,7 @@
  * A post's `children` slot is already occupied — by the post's own content, the blocks it is made
  * of. So a reply cannot go there, and it does not need to: `WeNode.comments` (`we://comment`) has
  * existed since the beginning with no consumers, and it is exactly the right edge. The two say
- * different things — `we://children` is what a thing is *made of*, `we://comment` is what others
+ * different things — `we://child` is what a thing is *made of*, `we://comment` is what others
  * *said about it* — and keeping them apart is what lets a reply be a full composition (with its own
  * children, its own blocks) rather than a string.
  *

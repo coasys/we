@@ -101,8 +101,9 @@ export interface ModuleHostServices {
   /** What one call extracts and what else it could. Absent reads as an empty list. */
   extractionTargets?: (collectionId: string) => { entity: string; selected: boolean }[];
   setExtractionTarget?: (collectionId: string, entity: string, on: boolean) => Promise<void>;
-  watchCollection?: (collectionId: string) => Promise<void>;
-  unwatchCollection?: (collectionId: string) => Promise<void>;
+  /** `dataset` absent means the space on screen. */
+  watchCollection?: (collectionId: string, dataset?: DatasetHandle) => Promise<void>;
+  unwatchCollection?: (collectionId: string, dataset?: DatasetHandle) => Promise<void>;
   reconcileCollection?: (collectionId: string) => Promise<number>;
   /**
    * What follows a pass, on the host's side: today, once a collection holds a task, give it a board
@@ -536,13 +537,20 @@ export function createModuleStoreDeps(framework: {
         if (!run) throw new Error('interpretation: this backend cannot interpret');
         return run(collectionId);
       },
-      watchCollection: async (collectionId) => {
+      // A named dataset that cannot be resolved refuses, as every targeted write does: registering the
+      // watch in whichever space is on screen would interpret a call into a perspective that does not
+      // hold it.
+      watchCollection: async (collectionId, target) => {
         const start = services.watchCollection;
         if (!start) throw new Error('interpretation: this backend cannot run a standing watch');
-        return start(collectionId);
+        const dataset = targeted(target);
+        if (!dataset) throw new Error('interpretation: the call’s space is not open on this node');
+        return start(collectionId, dataset);
       },
-      unwatchCollection: async (collectionId) => {
-        await services.unwatchCollection?.(collectionId);
+      unwatchCollection: async (collectionId, target) => {
+        const dataset = targeted(target);
+        if (!dataset) return;
+        await services.unwatchCollection?.(collectionId, dataset);
       },
       reconcileCollection: async (collectionId) => (await services.reconcileCollection?.(collectionId)) ?? 0,
       // What follows a pass, in order: attach what it left unattached, then whatever host policy

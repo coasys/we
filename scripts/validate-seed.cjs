@@ -271,6 +271,8 @@ function main() {
     }
   });
 
+  validateSpaceStarter(seed);
+
   /*
     Content sources: the same check the build makes, so a bad entry fails here first.
 
@@ -289,6 +291,149 @@ function main() {
       }
     })
     .then(summarise);
+}
+
+/*
+  The space starter: what every new space begins with.
+
+  The same checks `starterProblems` makes in the app (packages/app-shell/src/shared/spaceStarter.ts),
+  reading the manifest from its source files rather than importing it, so this script keeps running
+  under plain node. A starter that would half-apply at a create press fails here instead.
+*/
+function validateSpaceStarter(seed) {
+  const starters = seed.spaceStarters;
+  if (!starters) return;
+  console.log('\n🌱 Checking the space starters...');
+  if (!Array.isArray(starters)) {
+    error('spaceStarters: must be a list, the first being what a new space gets');
+    return;
+  }
+
+  const manifestDir = path.join(WORKSPACE_ROOT, 'packages/entities/src/manifest');
+  const entityExists = (name) => fs.existsSync(path.join(manifestDir, `${name}.ts`));
+  const spaceSource = fs.readFileSync(path.join(manifestDir, 'Space.ts'), 'utf8');
+  const spaceFields = new Set(
+    [...spaceSource.matchAll(/^\s{6}(\w+): \{\s*$|^\s{6}(\w+): \{ type:|^\s{6}(\w+): \{ target:/gm)].map(
+      (m) => m[1] || m[2] || m[3],
+    ),
+  );
+  const identity = new Set(['uuid', 'url', 'name', 'description', 'discovery', 'avatar', 'coverImage']);
+  const templates = new Set(seed.templates || []);
+  const modules = new Set((seed.modules || []).map((m) => (typeof m === 'string' ? m : m.id)));
+  // A string that is exactly `$<name>` is a reference; see packages/app-shell/src/shared/spaceStarter.ts.
+  const refOf = (v) => (typeof v === 'string' ? (/^\$([A-Za-z_][\w-]*)$/.exec(v) || [])[1] || null : null);
+  const refsIn = (v) => (Array.isArray(v) ? v : [v]).map(refOf).filter(Boolean);
+  const isRefValue = (v) => refOf(v) !== null || (Array.isArray(v) && v.length > 0 && v.every((x) => refOf(x)));
+  const placeholdersIn = (v) =>
+    typeof v === 'string'
+      ? [...v.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)].map((m) => m[1])
+      : Array.isArray(v)
+        ? v.flatMap(placeholdersIn)
+        : v && typeof v === 'object'
+          ? Object.values(v).flatMap(placeholdersIn)
+          : [];
+  const knownPlaceholders = new Set(['space.name', 'space.description']);
+  const ids = new Set();
+
+  starters.forEach((starter, n) => {
+    const p = `spaceStarters[${n}]`;
+    const before = errors.length;
+    if (!starter.id) error(`${p}: needs an id`);
+    else if (ids.has(starter.id)) error(`${p}.id is used twice: ${starter.id}`);
+    ids.add(starter.id);
+
+    for (const key of Object.keys(starter.settings || {})) {
+      if (identity.has(key)) error(`${p}.settings.${key} is the space's identity, not a setting`);
+      else if (!spaceFields.has(key)) error(`${p}.settings.${key} is not a Space field`);
+    }
+    const template = (starter.settings || {}).defaultTemplateId;
+    if (typeof template === 'string' && !templates.has(template)) {
+      error(`${p}.settings.defaultTemplateId names a template the seed does not bundle: ${template}`);
+    }
+    for (const id of (starter.settings || {}).enabledModules || []) {
+      if (!modules.has(id)) error(`${p}.settings.enabledModules names a module the seed does not ship: ${id}`);
+    }
+
+    const defined = new Set(['root', 'space']);
+    const stateSlugs = new Set(
+      (starter.records || []).filter((r) => r.entity === 'TaskState').map((r) => String((r.fields || {}).slug || '')),
+    );
+    (starter.records || []).forEach((record, index) => {
+      const at = `${p}.records[${index}]`;
+      // A module's entity lives in its module, not the core manifest — say so rather than refuse it.
+      if (!entityExists(record.entity)) warn(`${at}.entity is not a core entity: ${record.entity}`);
+      if (record.in === null) {
+        error(`${at}.in is null — leave it out for a record nothing contains`);
+      } else if (record.in !== undefined) {
+        const container = refOf(record.in);
+        if (!container || container === 'space' || !defined.has(container)) {
+          error(`${at}.in must name $root or an earlier record's $id: ${record.in}`);
+        }
+      }
+      for (const [name, value] of Object.entries(record.fields || {})) {
+        for (const ref of refsIn(value)) {
+          if (!defined.has(ref)) error(`${at}.fields.${name} refers to $${ref}, which no earlier record defines`);
+        }
+        for (const key of placeholdersIn(value)) {
+          if (!knownPlaceholders.has(key)) error(`${at}.fields.${name} has an unknown placeholder: {{${key}}}`);
+        }
+      }
+      const fields = record.fields || {};
+      if (
+        record.entity === 'CollectionBlock' &&
+        fields.kind === 'column' &&
+        typeof fields.slug === 'string' &&
+        fields.slug
+      ) {
+        if (!stateSlugs.has(fields.slug))
+          error(`${at} is a column for a task state the starter does not define: ${fields.slug}`);
+      }
+      if (record.$id !== undefined) {
+        if (defined.has(record.$id)) error(`${at}.$id is used twice: ${record.$id}`);
+        defined.add(record.$id);
+      }
+    });
+    for (const [name, value] of Object.entries(starter.settings || {})) {
+      if (!isRefValue(value)) continue;
+      for (const ref of refsIn(value)) {
+        if (!defined.has(ref)) error(`${p}.settings.${name} refers to $${ref}, which no record defines`);
+      }
+    }
+    for (const [name, ref] of Object.entries(starter.roles || {})) {
+      const target = refOf(ref);
+      if (!target || target === 'root' || target === 'space' || !defined.has(target))
+        error(`${p}.roles.${name} must name a record's $id: ${ref}`);
+    }
+    if (errors.length === before) success(`space starter "${starter.id}" is valid`);
+    /*
+      What nothing contains, by entity. Right for vocabulary — found by type — and a forgotten `in`
+      everywhere else: a post or a channel written without one exists and no view lists it. Printed
+      rather than refused, so the format stays free of entity knowledge and a mistake still shows.
+    */
+    /*
+      An `$id` exists so something can refer to the record; one nothing refers to suggests a
+      connection that is not there. Harmless at a create press, so a warning rather than an error.
+    */
+    const referred = new Set();
+    for (const record of starter.records || []) {
+      refsIn(record.in).forEach((r) => referred.add(r));
+      Object.values(record.fields || {}).forEach((v) => refsIn(v).forEach((r) => referred.add(r)));
+    }
+    Object.values(starter.settings || {}).forEach((v) => refsIn(v).forEach((r) => referred.add(r)));
+    Object.values(starter.roles || {}).forEach((v) => refsIn(v).forEach((r) => referred.add(r)));
+    (starter.records || []).forEach((record, index) => {
+      if (record.$id && !referred.has(record.$id)) {
+        warn(`${p}.records[${index}].$id "${record.$id}" is never referred to — leave it out`);
+      }
+    });
+
+    const uncontained = {};
+    for (const record of starter.records || []) {
+      if (record.in === undefined) uncontained[record.entity] = (uncontained[record.entity] || 0) + 1;
+    }
+    const counts = Object.entries(uncontained).map(([entity, n]) => `${n} ${entity}`);
+    if (counts.length) console.log(`   uncontained in "${starter.id}": ${counts.join(', ')}`);
+  });
 }
 
 function summarise() {

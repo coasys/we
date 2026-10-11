@@ -56,6 +56,33 @@ export interface CanvasSeedOptions {
   dataset?: string;
   /** Relation holding the canvas's contents and its placements. */
   via?: string;
+  /**
+   * Where this canvas's members come from, when they are not its own contents.
+   *
+   * By default a canvas holds what it shows: its cards are its children, beside its placements. A
+   * canvas over a space shows everything top-level in the space, which lives in another record — and
+   * that record's children must not have the canvas's placements mixed into them, since they are
+   * everything a feed reads. So the placements stay the canvas's own (`canvas`, `via`) and the
+   * members are read from here: any record and any relation, so the same seed can draw a space
+   * (`{ id: <space collection>, via: 'children' }`) or one call's finds (`{ id: <call>, via:
+   * 'extracted' }`).
+   */
+  members?: { id: string; via: string };
+  /**
+   * The relation saying where each record came from, read onto its card as `origin` — WE passes
+   * `extractedFrom`, so a card knows which conversation produced it.
+   *
+   * For whatever draws or groups by source: a badge in the colour of the call a card came from, a
+   * lens picking out one call's finds, a list of unplaced cards grouped by call. Read in the same query
+   * as the card, and only for types that declare the relation.
+   */
+  origin?: string;
+  /**
+   * Keep only the records whose `origin` is this — every other card left off, with its lines, as
+   * `hidden` leaves them. A reader asking "what came out of Monday's call" and putting the rest
+   * away. Needs `origin`; a record with no origin is not from anywhere, so it goes too.
+   */
+  onlyFrom?: string;
   /** Entity holding coordinates. */
   placementEntity?: string;
   /**
@@ -364,7 +391,7 @@ export function canvasSeed(): SeedSource {
       hidden type is never asked for, so putting a kind away really does change which records the
       canvas is made of.
     */
-    refreshOptions: ['pending', 'changed', 'hidden', 'weigh'],
+    refreshOptions: ['pending', 'changed', 'hidden', 'weigh', 'onlyFrom'],
     /*
       Applied to answers already on the cards — see `derive` below. A reader re-weighing voices with a
       slider changes these many times a second, and none of it needs a read.
@@ -378,7 +405,23 @@ export function canvasSeed(): SeedSource {
     derive(fragment, rawOptions) {
       const options = (rawOptions ?? {}) as CanvasSeedOptions;
       const weigh = options.weigh;
-      if (!weigh?.signalTypeId) return fragment;
+      /*
+        The cards nobody has placed yet — the tray — with the type and origin each was read with.
+
+        Reported from here because the canvas is the one that decides what is unplaced: it read the
+        placements and knows which cards it parked. A list beside the canvas that asked again would
+        be a second query that could disagree with the first.
+      */
+      const unplaced = fragment.nodes
+        .filter((node) => node.kind === 'entity' && typeof node.data?.x !== 'number')
+        .map((node) => ({
+          id: parseAddress(node.id)?.id ?? node.id,
+          type: node.type ?? '',
+          label: node.label ?? '',
+          origin: typeof node.data?.origin === 'string' ? node.data.origin : '',
+          pending: node.data?.pending === true,
+        }));
+      if (!weigh?.signalTypeId) return { ...fragment, summary: { unplaced } };
       const pretend = options.simulate?.people?.length ? options.simulate : undefined;
       const settings = { ...weigh, weights: options.weights, me: pretend?.actingAs || weigh.me };
       const everyone: Vote[][] = [];
@@ -394,7 +437,11 @@ export function canvasSeed(): SeedSource {
       return {
         nodes,
         edges: fragment.edges,
-        summary: { type: weigh.signalTypeId, voices: voicesOf(everyone, weigh.excludeAuthors ?? [], pretend) },
+        summary: {
+          type: weigh.signalTypeId,
+          voices: voicesOf(everyone, weigh.excludeAuthors ?? [], pretend),
+          unplaced,
+        },
       };
     },
     async seed(rawOptions, context, signal) {
@@ -409,8 +456,17 @@ export function canvasSeed(): SeedSource {
       const placementEntity = options.placementEntity ?? 'Placement';
       const limit = options.limit ?? 200;
       const scope = { anchor: 'CollectionBlock', via, anchorId: options.canvas };
+      // The members' own source where one is named — see `members`. Placements never move with it.
+      const membersScope = options.members?.id
+        ? { anchor: 'CollectionBlock', via: options.members.via, anchorId: options.members.id }
+        : scope;
 
-      const read = (entity: string, where?: Record<string, unknown>, include?: Record<string, unknown>) =>
+      const read = (
+        entity: string,
+        where?: Record<string, unknown>,
+        include?: Record<string, unknown>,
+        from: typeof scope = scope,
+      ) =>
         context
           .query({
             entity,
@@ -418,7 +474,7 @@ export function canvasSeed(): SeedSource {
             limit,
             signal,
             ...(include ? { include } : {}),
-            ...(where ? { where } : { scope }),
+            ...(where ? { where } : { scope: from }),
           })
           .catch((error: unknown) => {
             context.warn(`canvas: cannot read ${entity}: ${error instanceof Error ? error.message : String(error)}`);
@@ -661,7 +717,26 @@ export function canvasSeed(): SeedSource {
         return data;
       };
 
-      const results = await Promise.all(wanted.map((pass) => read(pass.entity, pass.where, countsFor(pass.entity))));
+      /** What a read of one type asks for beyond its fields: the counts, and where it came from. */
+      const includeFor = (entity: string): Record<string, unknown> | undefined => {
+        const counted = countsFor(entity);
+        const relations = new Set((shapes.find((s) => s.name === entity)?.relations ?? []).map((r) => r.name));
+        const origin = options.origin && relations.has(options.origin) ? { [options.origin]: true } : undefined;
+        return counted || origin ? { ...counted, ...origin } : undefined;
+      };
+
+      // A placed pass asks by id; an owned one asks the members' source — see `members`.
+      const results = await Promise.all(
+        wanted.map((pass) => read(pass.entity, pass.where, includeFor(pass.entity), membersScope)),
+      );
+
+      /** Where a row came from, as an id — an included record or a bare reference, either way. */
+      const originOf = (row: Record<string, unknown>): string | undefined => {
+        if (!options.origin) return undefined;
+        const value = row[options.origin];
+        const id = typeof value === 'string' ? value : (value as { id?: unknown } | null | undefined)?.id;
+        return typeof id === 'string' && id ? id : undefined;
+      };
 
       /*
         Rows a row-to-node could make nothing of, counted rather than passed over in silence.
@@ -687,6 +762,8 @@ export function canvasSeed(): SeedSource {
           if (seen.has(node.id)) continue;
           seen.add(node.id);
           if (typeof row.id === 'string' && hidden.has(row.id)) continue;
+          // Seen first, so a record answering both passes is still left off by the first.
+          if (options.onlyFrom && originOf(row) !== options.onlyFrom) continue;
           const at = typeof row.id === 'string' ? positions.get(row.id) : undefined;
           /*
             Coordinates land in `data`, where the `manual` layout reads them.
@@ -713,6 +790,7 @@ export function canvasSeed(): SeedSource {
             // a value a rule could accidentally match on.
             ...(typeof row.id === 'string' && pending.has(row.id) ? { pending: true } : {}),
             ...(typeof row.id === 'string' && changed.has(row.id) ? { changed: true } : {}),
+            ...(originOf(row) ? { origin: originOf(row)! } : {}),
             ...(at ? { ...at.style, x: at.x, y: at.y } : {}),
           };
           nodes.push({ ...node, data });

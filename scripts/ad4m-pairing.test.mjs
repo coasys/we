@@ -15,7 +15,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { parsePairing } from './ad4m-pairing.mjs';
+import { parsePairing, pullRequestForBranch } from './ad4m-pairing.mjs';
 
 const ALERT = '> [!IMPORTANT]';
 const paired = (target) => `${ALERT}\n> ### Paired with: coasys/ad4m${target}\n\n## What\n\nA change.`;
@@ -79,5 +79,29 @@ describe('a near miss is refused, not ignored', () => {
   it('hands back what the author meant, so the error can show the block to paste', () => {
     assert.equal(parsePairing('ad4m: coasys/ad4m#1193').target, '#1193');
     assert.equal(parsePairing('ad4m: coasys/ad4m@dev').target, '@dev');
+  });
+});
+
+describe('a branch pairing whose branch has a pull request', () => {
+  /*
+    The comment suggests pairing with the pull request instead. The lookup is a nicety, so the cases
+    worth pinning are the ones where it must stay quiet rather than fail the pairing.
+  */
+  it('names the open pull request from that branch in coasys/ad4m', async () => {
+    let asked;
+    const get = async (path) => ((asked = path), [{ number: 712 }]);
+    assert.equal(await pullRequestForBranch('feat/embedded-sfu', get), '712');
+    assert.match(asked, /^repos\/coasys\/ad4m\/pulls\?head=coasys:feat%2Fembedded-sfu&state=open/);
+  });
+
+  it('is nothing when the branch has none', async () => {
+    assert.equal(await pullRequestForBranch('dev', async () => []), undefined);
+  });
+
+  it('is nothing when the API cannot answer', async () => {
+    const get = async () => {
+      throw new Error('GitHub API: 403 Forbidden');
+    };
+    assert.equal(await pullRequestForBranch('feat/x', get), undefined);
   });
 });

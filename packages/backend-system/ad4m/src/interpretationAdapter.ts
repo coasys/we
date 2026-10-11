@@ -75,6 +75,26 @@ const DEFAULT_BASE_PREFIX = 'we://interpreted/';
 /** Where a turn's words live, and what marks a child as one rather than any other block. */
 const TEXT_PREDICATE = 'we://text';
 const TEXT_BLOCK_FLAG = { predicate: 'we://flag', value: 'we://text_block' } as const;
+/** Where a text line records how it came to be — see {@link transcriptScopeQuery}. */
+const TEXT_SOURCE_PREDICATE = 'we://text_source';
+/** What a person said or wrote, by that field. Anything else is not read as input. */
+const INPUT_SOURCES = ['spoken', 'typed', 'corrected'] as const;
+/** A reply hangs off what it answers through this — followed down from each line. */
+const REPLY_PREDICATE = 'we://comment';
+
+/**
+ * The conversation a request is about: its provenance where it names one, else its parent.
+ *
+ * The two coincide when a pass files what it finds into what it read, and part when every
+ * conversation files into one shared collection — see `provenance` on the port. Everything that
+ * makes a pass *this conversation's* keys on this: the namespace it mints under, what a watch reads,
+ * and which pass history it is recorded in.
+ */
+const conversationOf = (request: { parent?: { id: string }; provenance?: { id: string } }) =>
+  request.provenance?.id ?? request.parent?.id;
+
+/** The namespace a conversation's instances are minted under. */
+const prefixFor = (conversation: string) => `${DEFAULT_BASE_PREFIX}${encodeURIComponent(conversation)}/`;
 
 /**
  * How a watch paces itself, where the caller says nothing.
@@ -298,6 +318,41 @@ function decode(value: unknown): unknown {
 }
 
 /**
+ * A suggested change to an agreed record, less the values the record already holds.
+ *
+ * The executor stages an `update` overlay whenever a pass proposes values for a record it no longer
+ * owns, and snapshots every proposed value into it, changed or not. A pass that re-reads a call and
+ * recognises an event somebody accepted therefore stages a "change" equal to the event: the card is
+ * marked as changed and the review shows nothing to apply or dismiss. Comparing here, once, means
+ * the marker, the review list and the canvas all agree on what is actually different.
+ *
+ * Compared as text, because a model may write a boolean as `"false"` where the record holds `false`,
+ * and that is not a change anybody would be asked about either. A read that fails keeps the value:
+ * a real change shown is better than one silently dropped.
+ */
+async function withoutUnchanged(
+  perspective: PerspectiveProxy,
+  base: string,
+  inferred: [string, unknown][],
+): Promise<[string, unknown][]> {
+  const kept: [string, unknown][] = [];
+  for (const [predicate, value] of inferred) {
+    let current: unknown[] = [];
+    try {
+      current = (await perspective.get(new LinkQuery({ source: base, predicate }))).map((l) =>
+        unwrapped(l.data.target),
+      );
+    } catch {
+      kept.push([predicate, value]);
+      continue;
+    }
+    const proposed = String(unwrapped(value) ?? '');
+    if (!current.some((c) => String(c ?? '') === proposed)) kept.push([predicate, value]);
+  }
+  return kept;
+}
+
+/**
  * What kind of suggestion an overlay is, as the two words it means.
  *
  * ## Why this has to decode at all
@@ -319,15 +374,20 @@ function decode(value: unknown): unknown {
  * executor that already decodes it, too: a bare word passes through untouched.
  */
 export function overlayKind(raw: unknown): 'create' | 'update' {
+  return unwrapped(raw) === 'update' ? 'update' : 'create';
+}
+
+/** A link target as the value it holds: decoded, and out of an expression envelope if it is in one. */
+function unwrapped(raw: unknown): unknown {
   let value = raw;
   for (let depth = 0; depth < 3; depth++) {
     const decoded = decode(value);
-    const unwrapped =
+    const inner =
       decoded && typeof decoded === 'object' && 'data' in decoded ? (decoded as { data: unknown }).data : decoded;
-    if (unwrapped === value) break;
-    value = unwrapped;
+    if (inner === value) break;
+    value = inner;
   }
-  return value === 'update' ? 'update' : 'create';
+  return value;
 }
 
 /**
@@ -420,10 +480,17 @@ async function scopeFilter(
   perspective: PerspectiveProxy,
   scope: InterpretationScope,
 ): Promise<(base: string) => boolean> {
-  const prefix = `${DEFAULT_BASE_PREFIX}${encodeURIComponent(scope.parent.id)}/`;
+  /*
+    By the conversation where the caller names one. When every conversation files into one shared
+    collection, containment admits every call's suggestions at once, so the narrowing has to come
+    from the provenance link instead — and from the namespace minted under the conversation, for the
+    same window the containment case covers.
+  */
+  const by = scope.provenance ?? scope.parent;
+  const prefix = prefixFor(by.id);
   let contained: Set<string>;
   try {
-    const links = await perspective.get(new LinkQuery({ source: scope.parent.id, predicate: scope.parent.predicate }));
+    const links = await perspective.get(new LinkQuery({ source: by.id, predicate: by.predicate }));
     contained = new Set(links.map((link) => link.data.target));
   } catch {
     return () => true;
@@ -641,7 +708,9 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
     const oneShot = oneShotParents.get(processorId);
     if (oneShot) return { collection: oneShot, trigger: 'manual' };
     const watched = watchParents.get(processorId);
-    return watched ? { collection: watched.id, trigger: 'auto' } : {};
+    // The conversation the watch reads, which is where its history belongs — not the shared
+    // collection it files into.
+    return watched ? { collection: watched.provenance?.id ?? watched.id, trigger: 'auto' } : {};
   };
 
   /*
@@ -927,9 +996,8 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
 
       // Confine what this pass mints to the node it belongs to, so two calls on one post do not
       // share a URI space and a later reader can tell where an instance came from.
-      const basePrefix =
-        request.basePrefix ??
-        (request.parent ? `${DEFAULT_BASE_PREFIX}${encodeURIComponent(request.parent.id)}/` : DEFAULT_BASE_PREFIX);
+      const conversation = conversationOf(request);
+      const basePrefix = request.basePrefix ?? (conversation ? prefixFor(conversation) : DEFAULT_BASE_PREFIX);
 
       /*
         Report the pass while it runs, not only when it returns.
@@ -949,7 +1017,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       // What this pass is reading, for as long as it reads it — see `oneShotParents`. A press with
       // no parent has no call to be about, which is a caller doing something other than reading a
       // conversation, and it writes no history.
-      if (request.parent) oneShotParents.set(passId, request.parent.id);
+      if (conversation) oneShotParents.set(passId, conversation);
 
       /*
         Forget this pass however it ends.
@@ -1053,18 +1121,26 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
           staged.map((o) => o.base),
         ),
       ]);
-      return staged.map((o) => {
-        const entity = entities.get(o.base);
-        // The model's own names where the model is known, the dataset-wide table where it is not.
-        // See `NameTables` for why the difference matters more than it looks.
-        const table = (entity && names.byEntity.get(entity)) || names.flat;
-        const values: Record<string, unknown> = {};
-        for (const [predicate, value] of o.inferred ?? []) {
-          const name = table.get(predicate) ?? names.flat.get(predicate);
-          if (name) values[name] = decode(value);
-        }
-        return { id: o.base, kind: overlayKind(o.kind), ...(entity ? { entity } : {}), values };
-      });
+      const proposals = await Promise.all(
+        staged.map(async (o): Promise<InterpretationProposal | null> => {
+          const entity = entities.get(o.base);
+          const kind = overlayKind(o.kind);
+          // The model's own names where the model is known, the dataset-wide table where it is not.
+          // See `NameTables` for why the difference matters more than it looks.
+          const table = (entity && names.byEntity.get(entity)) || names.flat;
+          const inferred =
+            kind === 'update' ? await withoutUnchanged(perspective, o.base, o.inferred ?? []) : o.inferred;
+          // A change that changes nothing is not a decision anybody can be asked to make.
+          if (kind === 'update' && !inferred?.length) return null;
+          const values: Record<string, unknown> = {};
+          for (const [predicate, value] of inferred ?? []) {
+            const name = table.get(predicate) ?? names.flat.get(predicate);
+            if (name) values[name] = decode(value);
+          }
+          return { id: o.base, kind, ...(entity ? { entity } : {}), values };
+        }),
+      );
+      return proposals.filter((p): p is InterpretationProposal => p !== null);
     },
 
     async accept(dataset: DatasetHandle, id: string, property?: string): Promise<boolean> {
@@ -1172,7 +1248,8 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       watchParents.set(request.watchId, { ...request.parent, provenance: request.provenance });
       await attachListener(perspective);
 
-      const sourceScopeQuery = transcriptScopeQuery(request.parent.id, request.parent.predicate);
+      // Read the conversation's own lines, through the containment predicate the caller resolved.
+      const sourceScopeQuery = transcriptScopeQuery(conversationOf(request)!, request.parent.predicate);
       const interpretationClasses = targetClasses(perspective, request.classes);
       /*
         Both at debug, and the query included deliberately.
@@ -1228,7 +1305,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         await perspective.addAutoProcessor({
           processorId: request.watchId,
           sourceScopeQuery,
-          basePrefix: request.basePrefix ?? `${DEFAULT_BASE_PREFIX}${encodeURIComponent(request.parent.id)}/`,
+          basePrefix: request.basePrefix ?? prefixFor(conversationOf(request)!),
           interpretationClasses,
           debounceMs: request.debounceMs ?? WATCH_DEFAULTS.debounceMs,
           batchMin: request.batchMin ?? WATCH_DEFAULTS.batchMin,
@@ -1266,7 +1343,15 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
     async reconcile(dataset: DatasetHandle, request: InterpretationRequest): Promise<number> {
       if (!request.parent || !runtimeSupportsInterpretation(dataset)) return 0;
       const perspective = proxy(dataset);
-      const prefix = request.basePrefix ?? `${DEFAULT_BASE_PREFIX}${encodeURIComponent(request.parent.id)}/`;
+      const prefix = request.basePrefix ?? prefixFor(conversationOf(request)!);
+      const provenance = request.provenance;
+      const produced = provenance
+        ? new Set(
+            (await perspective.get(new LinkQuery({ source: provenance.id, predicate: provenance.predicate }))).map(
+              (link) => link.data.target,
+            ),
+          )
+        : null;
 
       const contained = new Set(
         (await perspective.get(new LinkQuery({ source: request.parent.id, predicate: request.parent.predicate }))).map(
@@ -1290,11 +1375,23 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
           { findAll(p: PerspectiveProxy, o?: unknown): Promise<{ id: string }[]> } | undefined;
         if (!model) continue;
         for (const instance of await model.findAll(perspective)) {
-          if (!instance.id?.startsWith(prefix) || contained.has(instance.id)) continue;
-          await perspective.add(
-            new Link({ source: request.parent.id, predicate: request.parent.predicate, target: instance.id }),
-          );
-          linked += 1;
+          if (!instance.id?.startsWith(prefix)) continue;
+          // Both links a pass writes, each only where it is missing — a record filed into a shared
+          // collection can lose its provenance as easily as its place.
+          let repaired = false;
+          if (!contained.has(instance.id)) {
+            await perspective.add(
+              new Link({ source: request.parent.id, predicate: request.parent.predicate, target: instance.id }),
+            );
+            repaired = true;
+          }
+          if (provenance && produced && !produced.has(instance.id)) {
+            await perspective.add(
+              new Link({ source: provenance.id, predicate: provenance.predicate, target: instance.id }),
+            );
+            repaired = true;
+          }
+          if (repaired) linked += 1;
         }
       }
       return linked;
@@ -1334,10 +1431,25 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
  * `rdf:reifies`), and it is why a WE `TextBlock` needs no author field for this to work: every
  * agent transcribes their own microphone, so the link's author *is* the speaker.
  */
+/*
+ * ## What it reads
+ *
+ * The conversation's own lines and the replies under them (`we://comment`, followed down — a reply
+ * is linked from what it answers, not contained by the conversation), and of those only what a
+ * person said or wrote: a line whose `we://text_source` is spoken, typed or corrected. A bot writing
+ * here does not know that field, so its replies and digests are left out, which is what stops a
+ * summary being extracted back into the records it summarises.
+ *
+ * The reply path is a property path, which the executor's subscription triggers cannot see — but a
+ * watch re-runs on a timer rather than a subscription, so that limit does not reach it.
+ */
 export function transcriptScopeQuery(parentId: string, childPredicate: string): string {
   return `SELECT ?speaker ?text ?timestamp WHERE {
-  <${parentId}> <${childPredicate}> ?m .
+  <${parentId}> <${childPredicate}> ?line .
+  ?line <${REPLY_PREDICATE}>* ?m .
   ?m <${TEXT_BLOCK_FLAG.predicate}> <${TEXT_BLOCK_FLAG.value}> .
+  ?m <${TEXT_SOURCE_PREDICATE}> ?source .
+  FILTER(?source IN (${INPUT_SOURCES.map((source) => `"${source}"`).join(', ')}))
   ?m <${TEXT_PREDICATE}> ?text .
   ?r <http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> <<( ?m <${TEXT_PREDICATE}> ?text )>> .
   ?r <ad4m://ontology/author> ?speaker .

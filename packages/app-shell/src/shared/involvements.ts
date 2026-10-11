@@ -15,10 +15,10 @@
  * - **Non-reflexive kinds stack.** A task can have an assignee and a reviewer, and they can be the
  *   same person. Each is its own record and its own toggle.
  *
- * ## The vocabulary is virtual until somebody acts on it
+ * ## The vocabulary is the space's records
  *
- * `DEFAULT_INVOLVEMENT_TYPES` stand in until a space writes its own, under `TaskState`'s rule and for
- * its reason: unset means these, not none. A record with a default's slug *is* that default adopted.
+ * The kinds a space has are its `InvolvementType` records, which a new space's starter writes. There
+ * are no defaults standing in for records, under `TaskState`'s rule.
  *
  * ## Conflict-freedom, and where it stops
  *
@@ -32,13 +32,7 @@
  * Framework-neutral, per `CONVENTIONS.md`: which dataset, who is asking, the vocabulary and how a
  * failure reaches a person all arrive as `InvolvementDeps`.
  */
-import {
-  type DatasetProxy,
-  DEFAULT_INVOLVEMENT_TYPES,
-  Involvement,
-  type InvolvementSemantic,
-  runEntityTransaction,
-} from '@we/entities';
+import { type DatasetProxy, Involvement, type InvolvementSemantic, runEntityTransaction } from '@we/entities';
 
 /** What `InvolvementType.semantic` may hold, in the reading order a list uses. */
 export const INVOLVEMENT_SEMANTICS: readonly InvolvementSemantic[] = [
@@ -50,14 +44,12 @@ export const INVOLVEMENT_SEMANTICS: readonly InvolvementSemantic[] = [
 ];
 
 /**
- * A kind of part, as a screen reads it.
+ * A kind of part, as a screen reads it — one `InvolvementType` record.
  *
- * `defined` is false for a default the space has never written down — a virtual kind, which becomes
- * a record the first time somebody edits or withdraws it. `appliesTo` is split into entity names
- * here so an expression can ask `'TaskBlock' in kind.appliesTo`; empty means every kind of record.
+ * `appliesTo` is split into entity names here so an expression can ask `'TaskBlock' in
+ * kind.appliesTo`; empty means every kind of record.
  */
 export interface InvolvementTypeView {
-  /** Empty for a default the space has not written down. */
   id: string;
   name: string;
   /** What `Involvement.kind` holds. */
@@ -68,7 +60,6 @@ export interface InvolvementTypeView {
   icon: string;
   color: string;
   retired: boolean;
-  defined: boolean;
 }
 
 /** `appliesTo` as stored — comma-separated entity names — read as a list. */
@@ -86,7 +77,7 @@ const rank = (semantic: string) => {
 };
 
 /**
- * The kinds this space uses: its own records, and beneath them every default nobody has overridden.
+ * The kinds this space uses, as screens read them.
  *
  * Ordered by semantic — who is doing it, who is checking it, who is coming, who might, who will not —
  * which is the only order that means anything across communities. Records sharing a slug collapse to
@@ -95,19 +86,7 @@ const rank = (semantic: string) => {
 export function resolveInvolvementTypes(own: readonly InvolvementTypeView[]): InvolvementTypeView[] {
   const bySlug = new Map<string, InvolvementTypeView>();
   for (const kind of own) if (kind.slug && !bySlug.has(kind.slug)) bySlug.set(kind.slug, kind);
-  const virtual: InvolvementTypeView[] = DEFAULT_INVOLVEMENT_TYPES.filter((d) => !bySlug.has(d.slug)).map((d) => ({
-    id: '',
-    name: d.name,
-    slug: d.slug,
-    semantic: d.semantic,
-    reflexive: d.reflexive,
-    appliesTo: parseAppliesTo(d.appliesTo),
-    icon: d.icon,
-    color: d.color,
-    retired: false,
-    defined: false,
-  }));
-  return [...bySlug.values(), ...virtual].sort((a, b) => rank(a.semantic) - rank(b.semantic));
+  return [...bySlug.values()].sort((a, b) => rank(a.semantic) - rank(b.semantic));
 }
 
 /** A relation read back as an id, whichever shape the backend handed it over in. */

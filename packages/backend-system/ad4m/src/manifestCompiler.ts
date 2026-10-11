@@ -14,7 +14,12 @@
  * metadata for forms and prompts — not compiled, since SHACL carries no enum the executor reads.
  */
 import { Ad4mModel, fileToDataUri, Flag, HasMany, HasOne, Model, Property } from '@coasys/ad4m';
-import { type EntityManifest, type EntitySchema, resolvesPolymorphically } from '@we/backend-shared';
+import {
+  CONTAINMENT_PREDICATE,
+  type EntityManifest,
+  type EntitySchema,
+  resolvesPolymorphically,
+} from '@we/backend-shared';
 import { FILE_STORAGE_LANGUAGE } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
@@ -231,7 +236,9 @@ export function manifestToEntries(manifest: EntityManifest, opts: CompileManifes
         })),
         ...Object.entries(entity.relations).map(([relName, spec]) => ({
           name: relName,
-          predicate: spec.predicate ?? resolvePredicate(name, relName),
+          // Containment is one predicate on every backend, whatever a manifest spelled — see
+          // `RelationSchema.containment`.
+          predicate: spec.containment ? CONTAINMENT_PREDICATE : (spec.predicate ?? resolvePredicate(name, relName)),
           type: 'uri' as const,
           isCollection: spec.cardinality === 'many',
           required: false,

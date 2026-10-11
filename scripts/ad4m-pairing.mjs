@@ -22,24 +22,30 @@
 // paired to whoever wrote it, and use the pin. A mention of an ad4m pull request in a
 // sentence, a table or inline code is not an attempt, wherever it is.
 //
-// Three things read the block: the Netlify preview (which builds against it), the
-// `AD4M compatibility` workflow (which typechecks and tests against it), and the
-// required CI jobs (which, when they fail, point at that workflow's check). One parser,
-// so the three cannot disagree about whether a pull request is paired. The policy is in
-// docs/contributing/ad4m-and-deploys.md.
+// Four things read the block: the Netlify preview (which builds against it), the
+// `AD4M compatibility` workflow (which typechecks and tests against it), the required CI
+// jobs (which, when they fail, point at that workflow's check), and the merge gate (which
+// fails while the block is there). One parser, so the four cannot disagree about whether a
+// pull request is paired. The policy is in docs/contributing/ad4m-and-deploys.md.
 //
 // Usage: the description on stdin, `key=value` lines on stdout — the format both
 // `$GITHUB_OUTPUT` and a shell `sed` read.
 //
-//   node scripts/ad4m-pairing.mjs [--resolve] [--error-comment <file>] < body.md
+//   node scripts/ad4m-pairing.mjs [--resolve] [--require-unpaired] [--error-comment <file>] < body.md
 //
 //   paired=true|false
 //   pairing=coasys/ad4m#1187       as written, for messages
 //   ref=pull/1187/head             something `git fetch` accepts (with --resolve)
 //   reason=…                       one line on why that ref
+//   branch_pr=1187                 a branch pairing's open pull request, if it has one (with --resolve)
 //
 // `--resolve` asks the GitHub API whether a paired pull request has merged, and names
 // its merge commit if so. GITHUB_TOKEN raises the rate limit when set.
+//
+// `--require-unpaired` is the merge gate: a paired description exits 1 with what to do.
+// A pairing says the pull request needs an ad4m change nobody has published, which is
+// the one thing that must not merge — and the pinned checks cannot always see it, since
+// a change to how ad4m behaves compiles the same either way.
 //
 // On an error it exits 1 and explains on stderr — and, with `--error-comment`, writes the
 // same explanation as Markdown to that file, for the pull request comment.
@@ -141,6 +147,29 @@ async function resolvePairing(pairing) {
   return { ref: `pull/${pairing.number}/head`, reason: `the description pairs it with ${AD4M_REPO}#${pairing.number}` };
 }
 
+/**
+ * The open ad4m pull request from a branch a pairing names, if there is one.
+ *
+ * A branch pairing works, but it costs the link, the "ready to bump" label (a branch has no
+ * moment at which it is done) and the merge commit once the change lands — after which the
+ * branch may be deleted and the paired check has nothing to fetch. So where the branch has a
+ * pull request, the pairing comment suggests that instead. A nicety: any failure is "none".
+ *
+ * @param {string} ref
+ * @param {(path: string) => Promise<unknown>} get  the GitHub API, injected for tests
+ * @returns {Promise<string | undefined>}
+ */
+export async function pullRequestForBranch(ref, get = github) {
+  try {
+    const owner = AD4M_REPO.split('/')[0];
+    const pulls = await get(`repos/${AD4M_REPO}/pulls?head=${owner}:${encodeURIComponent(ref)}&state=open&per_page=1`);
+    const number = Array.isArray(pulls) ? pulls[0]?.number : undefined;
+    return number ? String(number) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function describe(pairing) {
   return pairing.kind === 'pr' ? `${AD4M_REPO}#${pairing.number}` : `${AD4M_REPO}@${pairing.ref}`;
 }
@@ -178,6 +207,7 @@ function fail(commentFile, { problem, found, target }) {
 async function main() {
   const args = process.argv.slice(2);
   const resolve = args.includes('--resolve');
+  const requireUnpaired = args.includes('--require-unpaired');
   const commentAt = args.indexOf('--error-comment');
   const commentFile = commentAt >= 0 ? args[commentAt + 1] : undefined;
 
@@ -190,12 +220,29 @@ async function main() {
 
   console.log('paired=true');
   console.log(`pairing=${describe(pairing)}`);
+
+  if (requireUnpaired) {
+    console.error(
+      [
+        `This PR is paired with ${describe(pairing)}, so it needs an ad4m change the pin does not have yet.`,
+        'It cannot merge until the pairing block is removed from the description:',
+        '  - once a version with the change is published, run `pnpm bump:ad4m`, push, and remove the block;',
+        '  - or, if this PR works with the ad4m WE already pins, just remove the block.',
+        'Editing the description re-runs this check. See docs/contributing/ad4m-and-deploys.md.',
+      ].join('\n'),
+    );
+    process.exit(1);
+  }
   if (!resolve) return;
 
   try {
     const { ref, reason } = await resolvePairing(pairing);
     console.log(`ref=${ref}`);
     console.log(`reason=${reason}`);
+    if (pairing.kind === 'ref') {
+      const number = await pullRequestForBranch(pairing.ref);
+      if (number) console.log(`branch_pr=${number}`);
+    }
   } catch (error) {
     // Asked for, so failing is right: silently using the pin would give a result
     // that is not what the description says it is.

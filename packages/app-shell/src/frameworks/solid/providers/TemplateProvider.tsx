@@ -48,7 +48,7 @@ import { type ContentInput, copyableContent, createBlocks, deleteBlocks, reconci
 import { BlockDisplayOverrides, BlockHostProvider, colorFor } from '@we/block-solid';
 import { toastService } from '@we/components/solid';
 import type { DatasetProxy } from '@we/entities';
-import { CollectionBlock, getEntity } from '@we/entities';
+import { CollectionBlock, getEntity, PREDICATES, Space } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import type { DocumentAccess } from '@we/module-shared';
 import { holdTopLayer, installTopLayerGuard } from '@we/primitives/top-layer';
@@ -163,6 +163,20 @@ export default function TemplateProvider() {
     return found.handle;
   }
 
+  /**
+   * The space collection of a dataset — where its top-level records live. The space on screen
+   * answers from the store; any other is read, since a call can outlive the view of its space.
+   */
+  async function spaceRootOf(perspective: DatasetProxy): Promise<string> {
+    if (perspective === datasetStore.currentDataset()?.handle && spaceStore.root()) return spaceStore.root();
+    try {
+      const space = await Space.findOne(perspective, { include: { root: true } });
+      return space?.root?.id ?? '';
+    } catch {
+      return '';
+    }
+  }
+
   /** `record.create`, against a resolved handle rather than a store path. */
   function createInDataset(
     entity: string,
@@ -241,7 +255,11 @@ export default function TemplateProvider() {
       createEntity: async (entity, fields, options) => {
         const perspective = moduleTarget(options?.dataset);
         if (!perspective) return null;
-        const rest = Object.fromEntries(Object.entries(options ?? {}).filter(([key]) => key !== 'dataset'));
+        const { dataset: _dataset, topLevel, ...rest } = (options ?? {}) as Record<string, unknown>;
+        if (topLevel && !rest.parent) {
+          const root = await spaceRootOf(perspective);
+          if (root) rest.parent = { id: root, predicate: PREDICATES.CHILDREN };
+        }
         const created = (await createInDataset(entity, fields, perspective, rest)) as { id?: string } | undefined;
         return created?.id ?? null;
       },
