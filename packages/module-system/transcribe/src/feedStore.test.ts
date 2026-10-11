@@ -49,15 +49,18 @@ function reactive() {
  * hears only about records contained by that record, and one without hears about any of its entity.
  */
 function space() {
-  const subs: { entity: string; within?: string; cb: () => void }[] = [];
+  const subs: { entity: string; within?: string; ids?: string[]; cb: () => void }[] = [];
   const reads: string[] = [];
+  /** The lines typed into the space, as a page of them reads back. */
+  const lines: Record<string, unknown>[] = [];
   const records = {
-    find: async (entity: string) => {
+    find: async (entity: string, query: { within?: string } = {}) => {
       reads.push(entity);
-      return entity === 'Space' ? [{ root: 'root-1' }] : [];
+      if (entity === 'Space') return [{ root: 'root-1' }];
+      return entity === 'TextBlock' && query.within === 'root-1' ? lines.map((line) => ({ ...line })) : [];
     },
-    subscribe: (entity: string, query: { within?: string }, cb: () => void) => {
-      const sub = { entity, within: query.within, cb };
+    subscribe: (entity: string, query: { within?: string; where?: { id?: string[] } }, cb: () => void) => {
+      const sub = { entity, within: query.within, ids: query.where?.id, cb };
       subs.push(sub);
       return () => subs.splice(subs.indexOf(sub), 1);
     },
@@ -67,10 +70,16 @@ function space() {
     for (const sub of [...subs]) {
       if (sub.entity !== entity) continue;
       if (sub.within && sub.within !== containedBy) continue;
+      // A subscription to particular records hears nothing about a new one.
+      if (sub.ids) continue;
       sub.cb();
     }
   };
-  return { records, reads, write };
+  /** An edit to a record already written: only a subscription naming it hears of it. */
+  const edit = (entity: string, id: string) => {
+    for (const sub of [...subs]) if (sub.entity === entity && sub.ids?.includes(id)) sub.cb();
+  };
+  return { records, reads, write, edit, lines };
 }
 
 describe('the Feed staying live', () => {
@@ -99,6 +108,39 @@ describe('the Feed staying live', () => {
 
     // A reply: a TextBlock linked from the line it answers, contained by neither the space nor a call.
     s.write('TextBlock', undefined);
+    await vi.runAllTimersAsync();
+
+    expect(s.reads.filter((e) => e === 'TextBlock').length).toBeGreaterThan(before);
+    vi.useRealTimers();
+  });
+
+  it('re-reads when a line it is showing is edited', async () => {
+    /*
+      Nothing new arrives with an edit, so the subscriptions that say "something new may be here"
+      stay quiet. The Feed follows the lines it draws as well, as the transcript does.
+    */
+    vi.useFakeTimers();
+    const { signal, effect } = reactive();
+    const s = space();
+    s.lines.push({ id: 'msg-1', text: 'lunch at 1?', author: 'did:ann', createdAt: 1 });
+    const feed = createFeed({
+      signal,
+      effect,
+      state: markState,
+      action: markAction,
+      onDispose: () => {},
+      dataset: () => 'space-1',
+      records: s.records as never,
+      interpretation: undefined,
+      unconfirmedIds: () => [],
+      write: async () => null,
+    });
+    await vi.runAllTimersAsync();
+    (feed.openFeed as unknown as () => void)();
+    await vi.runAllTimersAsync();
+    const before = s.reads.filter((e) => e === 'TextBlock').length;
+
+    s.edit('TextBlock', 'msg-1');
     await vi.runAllTimersAsync();
 
     expect(s.reads.filter((e) => e === 'TextBlock').length).toBeGreaterThan(before);

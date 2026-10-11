@@ -9,7 +9,7 @@
  *
  * The window is read whole (see `readFeedWindow`) and read again when something it shows may have
  * changed: the newest line written anywhere in the space (a message, a call's line or a reply), the newest
- * call started, and the suggestions settling. Each of those is a one-row subscription
+ * call started, an edit to any line it is showing, and the suggestions settling. Each of those is a one-row subscription
  * rather than a subscription over everything, and a burst of them is one re-read, not one each. Only
  * while the panel is open: nobody looking, nothing read.
  */
@@ -135,8 +135,35 @@ export function createFeed(deps: FeedDeps) {
     stops.push(records.subscribe('TextBlock', newest, soon));
     stops.push(records.subscribe('CollectionBlock', { within: space, where: { kind: 'call' }, ...newest }, soon));
   });
+  /*
+    And the lines it is showing, by id — what an edit changes.
+
+    The one-row subscriptions above say something NEW may be in the window; nothing about them moves
+    when a line already in it is edited, so a correction made here did not appear until the Feed was
+    opened again. The transcript never had this, because its subscription is over the very rows it
+    draws. This is the same idea for a window read whole: bounded by the window, and rebuilt only when
+    the set of lines in it changes, so a re-read that draws the same lines leaves it alone.
+  */
+  let shownStop: (() => void) | null = null;
+  let shownKey = '';
+  effect?.(() => {
+    const ids = open()
+      ? rows()
+          .filter((row) => row.kind === 'line')
+          .map((row) => row.id)
+          .filter(Boolean)
+      : [];
+    const key = ids.join(',');
+    if (key === shownKey) return;
+    shownKey = key;
+    shownStop?.();
+    shownStop = null;
+    if (!ids.length || typeof records?.subscribe !== 'function') return;
+    shownStop = records.subscribe('TextBlock', { where: { id: ids } }, soon);
+  });
   deps.onDispose?.(() => {
     unsubscribe();
+    shownStop?.();
     if (pending) clearTimeout(pending);
   });
 
