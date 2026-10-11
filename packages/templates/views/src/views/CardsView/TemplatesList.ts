@@ -12,4 +12,6 @@ export const templatesList: SchemaNode = installedList({
   applyAction: 'templateStore.switchTemplate',
   defaultField: 'defaultTemplateId',
   refreshAction: 'templateStore.refreshSpaceTemplates',
+  // A section copied into the space is placed in Space settings → Sections, never applied.
+  sectionWhen: "template.role == 'view'",
 });

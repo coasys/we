@@ -359,6 +359,12 @@ export type SchemaNode = {
    * changes is two-way drift, which has no honest automatic answer.
    */
   forkedFrom?: string;
+  /**
+   * On the top node of each level of a module's part that was copied into the template: the
+   * placement it replaced and a fingerprint of it as copied — what giving it back restores, and how
+   * the editor tells whether it has been changed since. See `forkPrint.ts`.
+   */
+  forkedPart?: import('./forkPrint').PartFork;
 };
 
 // Types that need to be passed a framework specific NodeType (e.g. JSX.Element for Solid, React.ReactNode for React)

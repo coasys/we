@@ -327,16 +327,29 @@ async function main() {
           A press and a move at an element's middle, by coordinates. Playwright's own click refuses an
           element that takes no pointer — the point, for a case about an editor that makes them so.
         */
-        clickAt: async (sel) => {
+        // `hold` is a key held through the press — a modifier, the way a person reaches for one.
+        clickAt: async (sel, { hold } = {}) => {
           const b = await page.locator(sel).first().boundingBox();
+          if (hold) await page.keyboard.down(hold);
           await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+          if (hold) await page.keyboard.up(hold);
           // Past the editor's 200 ms hold, so a press that wrongly became a drag would show it.
           await page.waitForTimeout(300);
         },
-        moveTo: async (sel) => {
+        moveTo: async (sel, { hold } = {}) => {
           const b = await page.locator(sel).first().boundingBox();
+          if (hold) await page.keyboard.down(hold);
           await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
           await page.waitForTimeout(100);
+        },
+        /** A key pressed and left down, or let go — a modifier changing what the pointer would do. */
+        keyDown: async (name) => {
+          await page.keyboard.down(name);
+          await page.waitForTimeout(50);
+        },
+        keyUp: async (name) => {
+          await page.keyboard.up(name);
+          await page.waitForTimeout(50);
         },
         /** A key pressed on whatever has focus, the way a person would. */
         key: async (name) => {

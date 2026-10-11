@@ -21,6 +21,15 @@ import { paintedRoles } from '../paintedRoles';
 import { deepClone } from '../utils';
 import { ConditionEditor } from './ConditionEditor';
 import { ContentEditor } from './ContentEditor';
+import {
+  acceptsParts,
+  CopiedPartNote,
+  OwnerCard,
+  PartCard,
+  PartsPalette,
+  SectionOnItsOwnBar,
+  SuppliedPanelNote,
+} from './OwnerCard';
 import { ValueEditor } from './ValueEditor';
 
 // -----------------------------------------------------------------------
@@ -513,6 +522,7 @@ export function InspectorPanel() {
       <Row ax="between" ay="center" px="300" py="300" flexShrink="0">
         <we-text {...PANEL_TITLE_PROPS}>Visual Inspector</we-text>
       </Row>
+      <SectionOnItsOwnBar />
 
       {/* Layer tree */}
       <Column flex="none" height={`${treeHeight()}px`} overflow="hidden">
@@ -543,28 +553,38 @@ export function InspectorPanel() {
         }}
       />
 
-      {/* Properties for selected node */}
+      {/* Properties for selected node — or, for a region somebody else provides, who and what next */}
       <Column flex="1" overflow="hidden" pb="500">
-        <Show
-          when={selectedNode()}
-          fallback={
-            <Column flex="1" ax="center" ay="center" gap="200" p="500" textAlign="center">
-              <we-icon name="cursor-click" size="lg" color="text-faint" />
-              <we-text fontSize="200" color="text-faint">
-                Click a node to inspect it
-              </we-text>
-            </Column>
-          }
-        >
-          {(node) => (
-            <NodeProperties
-              node={node()}
-              onPropChange={handlePropChange}
-              onContentChange={handleContentChange}
-              onContentTokenChange={handleContentTokenChange}
-              onChildrenChange={(children) => setChildren(children.length === 0 ? null : children)}
-            />
-          )}
+        {/* The owner from the condition, never read again: selecting a node clears it before this swaps. */}
+        <Show when={visualEditor.selectedOwner()}>{(owner) => <OwnerCard owner={owner()} />}</Show>
+        <Show when={!visualEditor.selectedOwner()}>
+          <Show
+            when={selectedNode()}
+            fallback={
+              <Column flex="1" ax="center" ay="center" gap="200" p="500" textAlign="center">
+                <we-icon name="cursor-click" size="lg" color="text-faint" />
+                <we-text fontSize="200" color="text-faint">
+                  Click a node to inspect it
+                </we-text>
+              </Column>
+            }
+          >
+            {(node) => (
+              <>
+                <SuppliedPanelNote nodeId={node().id ?? ''} />
+                <CopiedPartNote nodeId={node().id ?? ''} />
+                <Show when={node().type !== '$part'} fallback={<PartCard node={node()} />}>
+                  <NodeProperties
+                    node={node()}
+                    onPropChange={handlePropChange}
+                    onContentChange={handleContentChange}
+                    onContentTokenChange={handleContentTokenChange}
+                    onChildrenChange={(children) => setChildren(children.length === 0 ? null : children)}
+                  />
+                </Show>
+              </>
+            )}
+          </Show>
         </Show>
       </Column>
     </Column>
@@ -919,6 +939,10 @@ function NodeProperties(props: {
               )}
             </For>
           </Column>
+        </Show>
+
+        <Show when={acceptsParts(props.node)}>
+          <PartsPalette node={props.node} />
         </Show>
       </we-scroll-area>
     </>

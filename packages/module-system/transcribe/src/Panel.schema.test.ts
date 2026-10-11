@@ -404,10 +404,11 @@ describe('what belongs to the live microphone only', () => {
     // All three are about the microphone this agent is running now, which says nothing about a
     // meeting somebody opened from a link. A bar moving beside it would measure the wrong thing.
     const live = '{"$":"!routeStore.params.call || routeStore.params.call == modules.transcribe.callId"}';
-    const meter = panelJson.indexOf('"Microphone"');
-    const coverage = panelJson.indexOf('"Coverage"');
-    // Any of the status notes will do as the marker; this is the first of them.
-    const status = panelJson.indexOf('Nothing to listen to');
+    // Placed as parts, so a template arranging the panel keeps them the module's — found by the ids
+    // they are placed under.
+    const meter = panelJson.indexOf('"transcribe.captureMeter"');
+    const coverage = panelJson.indexOf('"transcribe.coverage"');
+    const status = panelJson.indexOf('"transcribe.captureStatus"');
 
     // All three inside one gate rather than three of their own: they answer one question between
     // them, and that question is not asked at all of a meeting somebody is reading back.
@@ -656,7 +657,10 @@ describe('the feed', () => {
     */
     expect(feedJson).toContain('pin');
     expect(feedJson).toContain('transcribe.transcriptLines');
-    expect(feedJson.indexOf('transcribe.transcriptLines')).toBeLessThan(feedJson.indexOf('Not saved yet'));
+    // Placed after the rows, as a part, so opening the feed keeps the unsaved line the module's.
+    expect(feedJson.indexOf('transcribe.transcriptLines')).toBeLessThan(
+      feedJson.indexOf('transcribe.pendingUtterance'),
+    );
   });
 
   /**

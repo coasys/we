@@ -4368,11 +4368,20 @@ export const transcriptFeed: SchemaNode = timeline({
             else: { type: '$part', props: { id: 'transcribe.transcriptLines', subject: SUBJECT } },
           },
         },
-        pendingUtterance,
+        { type: '$part', props: { id: 'transcribe.pendingUtterance' } },
       ],
     },
   ],
 });
+
+/**
+ * One of this module's own parts, placed in its panel rather than pasted into it.
+ *
+ * The panel draws the same either way. The difference is what arranging the panel gives somebody:
+ * a placed part comes across as a reference that keeps receiving this module's fixes, a pasted node
+ * as a copy that never will. `lintModule` warns about a panel that pastes one.
+ */
+const placed = (name: string): SchemaNode => ({ type: '$part', props: { id: `transcribe.${name}` } });
 
 /**
  * Extraction, as a surface of its own.
@@ -5096,13 +5105,13 @@ export const panel: SchemaNode = panelShell({
           props: { gap: '300' },
           children: [
             // ── Is it hearing me? ────────────────────────────────────────
-            captureMeter,
+            placed('captureMeter'),
 
             // ── Is it hearing everyone else? ─────────────────────────────
-            coverage,
+            placed('coverage'),
 
             // ── Why nothing is happening, when nothing is ────────────────
-            captureStatus,
+            placed('captureStatus'),
           ],
         },
       },
@@ -5111,11 +5120,11 @@ export const panel: SchemaNode = panelShell({
     // ── What has been heard, and what is still being said ────────────────
     // One node, not two: the unsaved line lives inside the feed's scroll region, immediately
     // after the last saved row. See `transcriptFeed`.
-    transcriptFeed,
+    placed('transcriptFeed'),
 
     // ── And a place to write into it ─────────────────────────────────────
     // Outside the scroll area, so it holds the foot of the panel instead of following the last
     // thing anybody said. See `transcriptComposer`.
-    transcriptComposer,
+    placed('transcriptComposer'),
   ],
 });
