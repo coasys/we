@@ -75,6 +75,11 @@ export const KERNEL_NAMES: readonly KernelName[] = [
  * cannot already ask. Kept to the renderer's vocabulary on purpose — see {@link RecordsKernel.find}.
  */
 export interface RecordQuery {
+  /**
+   * Only what this container holds — its contents, by containment. The `scope` a `$query` drills
+   * through, for the one case a module needs it: a page of one conversation's lines.
+   */
+  within?: string;
   where?: Record<string, unknown>;
   order?: Record<string, 'asc' | 'desc'>;
   limit?: number;
@@ -169,6 +174,8 @@ export interface RecordsKernel {
    * conflict-free by construction.
    */
   link: (entity: string, id: string, relation: string, value: string, target?: DatasetTarget) => Promise<void>;
+  /** Take one value out of a to-many relation — the counterpart of {@link link}, and conflict-free for the same reason. */
+  unlink: (entity: string, id: string, relation: string, value: string, target?: DatasetTarget) => Promise<void>;
   /** Change the named scalar fields of a record, leaving the rest. Last-write-wins per field, as `record.update` is. */
   update: (entity: string, id: string, fields: Record<string, unknown>, target?: DatasetTarget) => Promise<void>;
   /** Delete one record. Irreversible. */

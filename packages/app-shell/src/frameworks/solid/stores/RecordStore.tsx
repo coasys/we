@@ -1594,12 +1594,12 @@ export function RecordStoreProvider(props: ParentProps) {
       handle as never,
       {
         where: { id: linkId },
-        include: { $comments: { from: 'comments', count: true }, $signals: { from: 'signals', count: true } },
+        include: { $responses: { from: 'responses', count: true }, $signals: { from: 'signals', count: true } },
       } as never,
-    )) as unknown as { $comments?: number; $signals?: number } | null;
+    )) as unknown as { $responses?: number; $signals?: number } | null;
     if (!row) return false;
 
-    if (Number(row.$comments ?? 0) > 0 || Number(row.$signals ?? 0) > 0) {
+    if (Number(row.$responses ?? 0) > 0 || Number(row.$signals ?? 0) > 0) {
       toastService.info('People have discussed that connection. Select the line itself to remove it.');
       return false;
     }

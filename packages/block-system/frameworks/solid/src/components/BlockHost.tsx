@@ -67,6 +67,14 @@ export interface BlockHostValue {
    * Absent, or `undefined` for an unknown person, and the block says nothing rather than a DID.
    */
   personName?: (did: string) => string | undefined;
+  /**
+   * A person as the host knows them now — their name and picture — for a mention's hover card.
+   *
+   * Beside `personName` rather than replacing it: a quote needs the name alone, and a card needs the
+   * face too, so that two people with one name can be told apart. The same rules: reactive where
+   * the host's cache is, may start a fetch, and `undefined` for somebody not known yet.
+   */
+  person?: (did: string) => { name?: string; avatar?: string } | undefined;
 }
 
 const NONE: BlockHostValue = {
@@ -85,6 +93,7 @@ export function BlockHostProvider(props: {
   collabUser?: () => CollabUser;
   openRef?: (ref: string) => void;
   personName?: (did: string) => string | undefined;
+  person?: (did: string) => { name?: string; avatar?: string } | undefined;
   children: JSX.Element;
 }) {
   const parent = useContext(BlockHostContext);
@@ -95,6 +104,7 @@ export function BlockHostProvider(props: {
     collabUser: () => (props.collabUser ? props.collabUser() : parent.collabUser()),
     openRef: props.openRef ?? parent.openRef,
     personName: props.personName ?? parent.personName,
+    person: props.person ?? parent.person,
   };
   return <BlockHostContext.Provider value={value}>{props.children}</BlockHostContext.Provider>;
 }

@@ -102,27 +102,17 @@ describe('gatherTranscriptTurns', () => {
     expect(turns.map((t) => t.text)).toEqual(['said', 'typed', 'mended']);
   });
 
-  it('follows replies down from each message, in one read', async () => {
+  it('reads replies as the lines they are, in the order they were said, in one read', async () => {
+    // A reply said in a conversation is one of its children, so the conversation's children are
+    // everything said in it — and following responses down as well would read each reply twice.
     let seen: Record<string, unknown> | undefined;
     const turns = await gatherTranscriptTurns(
       deps(
         [
-          {
-            text: 'question',
-            author: 'did:a',
-            createdAt: 1,
-            source: 'typed',
-            comments: [
-              {
-                text: 'answer',
-                author: 'did:b',
-                createdAt: 3,
-                source: 'typed',
-                comments: [{ text: 'thanks', author: 'did:a', createdAt: 4, source: 'typed' }],
-              },
-              { text: 'a bot chiming in', author: 'did:bot', createdAt: 2 },
-            ],
-          },
+          { text: 'question', author: 'did:a', createdAt: 1, source: 'typed' },
+          { text: 'thanks', author: 'did:a', createdAt: 4, source: 'typed', respondsTo: 'answer' },
+          { text: 'answer', author: 'did:b', createdAt: 3, source: 'typed', respondsTo: 'question' },
+          { text: 'a bot chiming in', author: 'did:bot', createdAt: 2 },
         ],
         (options) => {
           seen = options;
@@ -131,7 +121,7 @@ describe('gatherTranscriptTurns', () => {
       'c',
     );
     expect(turns.map((t) => t.text)).toEqual(['question', 'answer', 'thanks']);
-    expect(seen?.include).toMatchObject({ comments: { include: { comments: { include: { comments: true } } } } });
+    expect(seen?.include).toBeUndefined();
   });
 });
 

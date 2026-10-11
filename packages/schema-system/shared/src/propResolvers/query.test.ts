@@ -24,6 +24,15 @@ describe('resolveQueryProp', () => {
 });
 
 describe('pruneUnresolvedWhere', () => {
+  it('drops an empty exclusion list, which excludes nothing', () => {
+    // `author: { not: spaceStore.mutedDids }` with nobody muted. Sent, AD4M refused it beside the
+    // thread's `kind` and failed the whole query over a filter that would not have removed a row.
+    expect(pruneUnresolvedWhere({ kind: 'post', author: { not: [] } })).toEqual({ kind: 'post' });
+    // A non-empty one stays, and so does an empty list that is a value rather than an exclusion.
+    expect(pruneUnresolvedWhere({ author: { not: ['did:a'] } })).toEqual({ author: { not: ['did:a'] } });
+    expect(pruneUnresolvedWhere({ id: [] })).toEqual({ id: [] });
+  });
+
   it('drops operator conditions whose operand is unresolved', () => {
     // The reload-into-a-space bug: currentDatasetCid not loaded yet →
     // { not: undefined } serialized as the empty condition {} → backend 500.

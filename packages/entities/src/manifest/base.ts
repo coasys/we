@@ -32,15 +32,19 @@ type SharedRelationMethods<K extends string> = RelationAccessors<K>['addOne'] &
  * accessors are contract, exactly as they are for the per-entity relations in `types.ts`).
  */
 export interface WeNodeRecord
-  extends RecordInstance, SharedRelationMethods<'comments' | 'signals' | 'participants' | 'calls' | 'mentions'> {
-  comments: string[];
+  extends RecordInstance, SharedRelationMethods<'responses' | 'thread' | 'signals' | 'participants' | 'mentions'> {
+  responses: string[];
+  thread: string[];
   signals: string[];
   participants: string[];
-  calls: string[];
   mentions: string[];
   /**
-   * The node this one is a comment on, when it is one. Read-only: the link belongs to the parent,
-   * so this side gets no accessors — `addComments` on the parent is how it is written.
+   * What this node is a response to, when it is one. Read-only: the link belongs to the subject,
+   * so this side gets no accessors — `addResponses` on the subject is how it is written.
    */
-  inReplyTo?: string;
+  respondsTo?: string;
+  /** The subject of the thread this response is in — read-only, for `respondsTo`'s reason. */
+  inThread?: string;
+  /** The collection this node lives in — `children` read backwards. Read-only. */
+  partOf?: string;
 }

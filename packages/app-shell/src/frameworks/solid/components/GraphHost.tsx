@@ -166,7 +166,7 @@ function RecordCard(props: { node: GraphNode }) {
     prose: [],
     pending: false,
     signals: 0,
-    comments: 0,
+    responses: 0,
   });
   createComputed(() =>
     setCard(

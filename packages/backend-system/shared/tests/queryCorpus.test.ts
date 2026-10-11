@@ -34,7 +34,7 @@ const SUPPORTED: { name: string; query: FlatQuery }[] = [
     name: 'PostsList — count projection + aggregate-alias sort + plain include',
     query: {
       entity: 'CollectionBlock',
-      where: { type: 'root', textContent: { contains: 'x' } },
+      where: { kind: 'post', textContent: { contains: 'x' } },
       limit: 20,
       order: { $likeCount: 'desc' }, // resolved $if branch — sort by the count projection
       include: {

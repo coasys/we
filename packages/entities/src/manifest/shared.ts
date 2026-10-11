@@ -1,23 +1,42 @@
-import type { EntitySchema } from '@we/backend-shared';
+import { CONTAINMENT_PREDICATE, type EntitySchema } from '@we/backend-shared';
 
 /**
- * The relations every `WeNode` carries — the generic affordances (comments, signals, who is
- * taking part, calls held here, agents mentioned). Declared once and merged into every
- * WeNode-based entity's assembled manifest entry by `index.ts`, exactly as the class hierarchy
- * gives them to every subclass. The prose for each lives on `WeNode.ts`, which remains the
+ * The relations every `WeNode` carries — the generic affordances (what was made in response to it,
+ * the thread under it, signals, who is taking part, agents mentioned). Declared once and merged into
+ * every WeNode-based entity's assembled manifest entry by `index.ts`, exactly as the class
+ * hierarchy gives them to every subclass. The prose for each lives on `WeNode.ts`, which remains the
  * hand-written behavioural base these definitions generate subclasses of.
  *
- * `signals` is the one typed edge: `include: { signals: true }` must hydrate `Signal` instances.
- * The rest deliberately name no target — core mints the predicate and stays agnostic about the
- * other end (see the notes on `WeNode.calls`).
+ * ## Two kinds of link between records, and what each means
  *
- * **Untyped splits two ways here, and only one of them is polymorphic.** `comments` and `calls`
- * hold records — heterogeneous ones, which is the case reading each member as its own class exists
- * for. `participants` and `mentions` hold **agent DIDs**: `setAttending` writes `me.did` and
- * `writeMentions` writes the DIDs its marks name. A DID is not an instance of anything, so
- * classifying one finds no class and hydrating it yields nothing — the read degrades rather than
- * failing, but it is work spent to learn that. They opt out explicitly, which is the whole reason
- * the opt-out exists.
+ * Every record answers two independent questions, and each has one link:
+ *
+ * - **Where does it live?** `we://child`, on `CollectionBlock.children` — the room it is in. Always
+ *   exactly one, and `mode` on the collection governs it: who owns the parts, and whether re-saving
+ *   may rewrite them.
+ * - **What is it about?** `we://response`, here — what it was made in response to: a reply to a
+ *   line, a comment on a post, a call about a task, a channel spun off from a post. Optional, open
+ *   to anyone whatever `mode` says, and on every node, since a task or a block has no inside to be
+ *   part of but can always be answered.
+ *
+ * They do not override each other. A reply to a line in a call is *about* the line and *lives* in
+ * the call; a comment on a post is about the post and lives in the post's channel. The rule for the
+ * second half is that **a response lives in the same feed as the thing it responds to** — walk up
+ * from the subject to the nearest collection whose `mode` is `feed`, skipping documents, whose parts
+ * belong to their author. See `docs/architecture/relations.md`.
+ *
+ * `thread` is the response axis flattened: one link from a thread's subject to every response under
+ * it, at any depth, so "the whole discussion under this post" is one read rather than a walk.
+ *
+ * ## Untyped splits two ways here, and only one of them is polymorphic
+ *
+ * `signals` is the one typed edge: `include: { signals: true }` must hydrate `Signal` instances. The
+ * rest deliberately name no target. `responses` and `thread` hold records — heterogeneous ones,
+ * which is the case reading each member as its own class exists for. `participants` and `mentions`
+ * hold **agent DIDs**: `setAttending` writes `me.did` and `writeMentions` writes the DIDs its marks
+ * name. A DID is not an instance of anything, so classifying one finds no class and hydrating it
+ * yields nothing — the read degrades rather than failing, but it is work spent to learn that. They
+ * opt out explicitly, which is the whole reason the opt-out exists.
  *
  * `participants` is **membership a machine observed** — who was in a call — and must not be used for
  * intent a person stated. An assignment or an RSVP is an `Involvement`, which carries the author,
@@ -30,44 +49,81 @@ import type { EntitySchema } from '@we/backend-shared';
  * relation appears, that is the point to give the manifest a way to say which.
  */
 export const WE_NODE_RELATIONS: EntitySchema['relations'] = {
-  comments: { target: '', cardinality: 'many', predicate: 'we://comment' },
   /**
-   * What this node is a comment on — `comments` read backwards.
+   * What was made in response to this node — a reply, a comment, a call held about it, a channel
+   * spun off from it. Only the direct ones: a reply to a reply is the first reply's.
    *
-   * The first relation here that a node does not own: the link lives on the parent, and this reads
-   * it from the other end. It earns its place because a thread cannot be drawn without it. Asking
-   * for every descendant of a post answers with a flat bag of replies, since the traversal that
-   * found them reports only its endpoints — so the shape has to come from each reply naming its
-   * own parent, and one batched query answers that for a whole page of them.
+   * One relation for every kind of response rather than one per kind (it was `comments`, with
+   * calls on a link of their own), because what a response *is* is already on the response — its
+   * entity, and a collection's `kind` — and a surface that wants only some of them filters by that.
+   * A relation per kind made every new kind of response a new predicate and a new walker.
+   */
+  responses: { target: '', cardinality: 'many', predicate: 'we://response' },
+  /**
+   * What this node is a response to — `responses` read backwards.
    *
-   * Untyped for the same reason `comments` is, and the inverse of a heterogeneous relation is
-   * heterogeneous in both directions: whatever was linked is whatever somebody linked. A reply's
-   * parent is a post, a task or another reply.
+   * The first relation here that a node does not own: the link lives on the subject, and this reads
+   * it from the other end. It earns its place because a thread cannot be drawn without it. Reading
+   * every response under a post answers with a flat list — `thread` does that in one read — so the
+   * shape has to come from each response naming its own parent, and one batched query answers that
+   * for a whole page of them.
    *
-   * To-one because a comment is written under one thing. Nothing stops a peer writing a second
-   * `we://comment` link at the same target — a neighbourhood is writable by every member — and the
+   * Untyped for the same reason `responses` is, and the inverse of a heterogeneous relation is
+   * heterogeneous in both directions: a response's subject is a post, a task, a line or another
+   * response.
+   *
+   * To-one because a response is made to one thing. Nothing stops a peer writing a second
+   * `we://response` link at the same target — a neighbourhood is writable by every member — and the
    * read then picks one. That is the ordinary last-write-wins shape of every scalar here, not a
    * case this relation is special in.
    */
-  inReplyTo: { target: '', cardinality: 'one', predicate: 'we://comment', reverseOf: 'comments' },
+  respondsTo: { target: '', cardinality: 'one', predicate: 'we://response', reverseOf: 'responses' },
+  /**
+   * Every response under this node, at any depth — on a thread's **subject**, which is the first
+   * thing above a response that is not itself a response.
+   *
+   * The response axis, flattened. Each response is linked from its subject when it is written, so
+   * "everything said under this post", its total and everything a delete has to take with it are
+   * one forward read — where following `responses` down is a walk of unknown depth. The tree is
+   * still drawn from `respondsTo`; this answers *which* thread, never *where* in it.
+   *
+   * Safe to store because a response is written once and never changes what it responds to. The
+   * child axis gets no such link on purpose: parts move between collections all the time, and a
+   * stored root would have to be rewritten for a whole subtree on every move.
+   *
+   * A reply to a block in a post is in the *block's* thread, not the post's, and a reply to a line
+   * in a call is in the line's: the subject is exactly what was answered, so a block's discussion
+   * and a post's stay apart.
+   */
+  thread: { target: '', cardinality: 'many', predicate: 'we://thread' },
+  /** The subject of the thread this response is in — `thread` read backwards. Empty on anything that is not a response. */
+  inThread: { target: '', cardinality: 'one', predicate: 'we://thread', reverseOf: 'thread' },
+  /**
+   * The collection this node lives in — `CollectionBlock.children` read backwards, exactly as
+   * `extractedFrom` reads `extracted`. The other half of the two questions above: where it is, as
+   * `respondsTo` is what it is about.
+   *
+   * What a response's home is worked out from: walk up from its thread's subject until a feed. One
+   * link a node does not own, read in one batched query for a page of them.
+   */
+  partOf: { target: '', cardinality: 'one', predicate: CONTAINMENT_PREDICATE, reverseOf: 'children' },
   /**
    * Where this record was extracted from — the call (or the space collection, for loose messages)
    * whose `extracted` links to it. `CollectionBlock.extracted` read backwards, exactly as
-   * `inReplyTo` reads `comments`.
+   * `respondsTo` reads `responses`.
    *
    * Provenance, not containment: an extracted item lives in the space collection and records where
    * it came from separately, so moving it or deleting the call changes neither link. What it gives
    * a template is the source without a second query — the Inbox grouping unplaced items by call, a
    * card saying it came from Monday's call, the "this call" lens. Empty on anything made by hand.
    *
-   * Untyped like `inReplyTo`, and for the generated class's sake: the source is always a collection,
+   * Untyped like `respondsTo`, and for the generated class's sake: the source is always a collection,
    * but a typed reverse on the base every collection extends would be a class importing its own
    * subclass.
    */
   extractedFrom: { target: '', cardinality: 'one', predicate: 'we://extracted', reverseOf: 'extracted' },
   signals: { target: 'Signal', cardinality: 'many', predicate: 'we://signal' },
   participants: { target: '', cardinality: 'many', predicate: 'we://participant', polymorphic: false },
-  calls: { target: '', cardinality: 'many', predicate: 'we://call' },
   mentions: { target: '', cardinality: 'many', predicate: 'we://mention', polymorphic: false },
 };
 

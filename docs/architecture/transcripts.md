@@ -8,15 +8,15 @@ nothing enforces any of it.
 ```
 CollectionBlock                    ← one call's transcript
   kind: 'call'                     ← what sort of collection this is
-  type: 'collection'
   mode: 'feed'                     ← many agents append here; never reconcile
-  children:  [TextBlock, …]        ← the utterances, in order
+  children:  [TextBlock, …]        ← the utterances, and the replies typed to them, in order
                 each carries: text, author (who said it), createdAt
   participants: [did, …]           ← who was present, including people who never spoke
-  ↑ parented to the call's anchor node through `we://call` (WeNode.calls)
+  ↑ a response to the node the call was about, through `we://response` (WeNode.responses),
+    and a child of the feed that node lives in — or of the space collection, for a call about nothing
 ```
 
-Created by `@we/module-call`, which owns `CALL_KIND` and `CALL_PREDICATE` in its `protocol.ts`;
+Created by `@we/module-call`, which owns `CALL_KIND` and `RESPONSE_PREDICATE` in its `protocol.ts`;
 the utterances inside it are written by `@we/module-transcribe`.
 
 ## The three behaviours that are not in the shape

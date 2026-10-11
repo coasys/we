@@ -12,7 +12,7 @@ import type { DestructiveFacts } from './destructiveWording';
 /** Stop counting somewhere. A thread this large is "many", and the walk is one read per level. */
 const MOST = 999;
 
-type Row = { id: string; comments?: unknown; inReplyTo?: unknown };
+type Row = { id: string; responses?: unknown; respondsTo?: unknown };
 
 const idsOf = (value: unknown): string[] =>
   Array.isArray(value)
@@ -32,15 +32,15 @@ export async function collectionFacts(dataset: unknown, id: string): Promise<Des
     if (!root) return {};
 
     const seen = new Set<string>([id]);
-    let frontier = idsOf(root.comments).filter((child) => !seen.has(child));
+    let frontier = idsOf(root.responses).filter((child) => !seen.has(child));
     let responses = 0;
     while (frontier.length && responses < MOST) {
       for (const child of frontier) seen.add(child);
       responses += frontier.length;
       const next = await read(frontier);
-      frontier = next.flatMap((row) => idsOf(row.comments)).filter((child) => !seen.has(child));
+      frontier = next.flatMap((row) => idsOf(row.responses)).filter((child) => !seen.has(child));
     }
-    return { reply: !!root.inReplyTo, responses: Math.min(responses, MOST) };
+    return { reply: !!root.respondsTo, responses: Math.min(responses, MOST) };
   } catch {
     return {};
   }

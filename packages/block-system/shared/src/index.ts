@@ -19,6 +19,7 @@ export type {
 } from './content';
 export {
   collectKeys,
+  contentToLine,
   contentHash,
   emptyContent,
   fromPortableText,
@@ -40,9 +41,11 @@ export {
   cpToUtf16,
   DECORATORS,
   isDecorator,
+  mentionChanges,
   mentionedDids,
   normalizeMarks,
   parseMarks,
+  rebaseMarks,
   serializeMarks,
   shiftMarks,
   utf16ToCp,

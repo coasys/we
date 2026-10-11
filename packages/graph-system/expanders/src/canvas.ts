@@ -158,7 +158,7 @@ export interface CanvasSeedOptions {
   hiddenTypes?: string[];
   /**
    * Relations to **count** on each card, read onto its data as `<name>Count` — `['signals',
-   * 'comments']` for "what have people made of this". Connections are counted the same way, onto the
+   * 'responses']` for "what have people made of this". Connections are counted the same way, onto the
    * edge's data, which is how a gesture can tell a line people have discussed from one nobody has.
    *
    * Counts rather than the rows, because a card is a preview: what it owes a reader is that there is
@@ -682,7 +682,7 @@ export function canvasSeed(): SeedSource {
       /**
        * The count projections one type can answer — see `counts`.
        *
-       * Filtered against the type's own declared relations, so a model with no `comments` is asked
+       * Filtered against the type's own declared relations, so a model with no `responses` is asked
        * for none rather than refusing the read and vanishing off the canvas.
        */
       const countsFor = (entity: string, weighed = true): Record<string, unknown> | undefined => {

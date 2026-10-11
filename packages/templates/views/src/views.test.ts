@@ -67,15 +67,10 @@ describe('the built-in views', () => {
 /**
  * The feed asks for posts, and a post is not every record that happens to be stored like one.
  *
- * `createPost` writes `kind` ALONGSIDE `type: 'root'` rather than instead of it, so a reply written
- * from a thread is `type: 'root'` too. Nothing said so until replies could be written from
- * anywhere, and then every comment in the space appeared in the feed as a post of its own.
- *
- * Pinned as a shape rather than a screenshot, because the two plausible fixes fail in opposite
- * directions: `kind: 'post'` and `kind: { not: 'reply' }` both turn on a field older posts do not
- * carry, and on AD4M an unbound value fails both tests — so either one empties the feed of
- * everything written before the field existed. Asking whether the record answers something is the
- * only spelling that is true of a post from any era.
+ * `createPost` writes a reply as well as a post. A reply carries `kind: 'reply'`, but a reply made
+ * before that was written carried `kind: 'post'`, and nothing said so until replies could be written
+ * from anywhere — then every comment in the space appeared in the feed as a post of its own. Asking
+ * whether the record answers something is what separates them, whatever its kind says.
  */
 describe('the cards view’s post feed', () => {
   /** Every node in a schema tree, including the ones behind `$if` branches and `routes`. */
@@ -88,7 +83,7 @@ describe('the cards view’s post feed', () => {
   }
 
   /**
-   * The feed's own query: a `CollectionBlock` read filtered on `type: 'root'`.
+   * The feed's own query: a `CollectionBlock` read filtered on `kind: 'post'`.
    *
    * Looked for in `$queries` as well as in props, because `cardList` HOISTS its query onto the node
    * it builds rather than leaving it on an `$each` — which is the whole point of the fragment, and
@@ -99,7 +94,7 @@ describe('the cards view’s post feed', () => {
     const consider = (value: unknown) => {
       const q = ((value as { $query?: unknown })?.$query ?? value) as
         { entity?: string; where?: Record<string, unknown> } | undefined;
-      if (q?.entity === 'CollectionBlock' && q.where?.type === 'root' && !found) {
+      if (q?.entity === 'CollectionBlock' && q.where?.kind === 'post' && !found) {
         found = q as Record<string, unknown>;
       }
     };
@@ -112,14 +107,15 @@ describe('the cards view’s post feed', () => {
 
   it('excludes anything that is a reply to something else', () => {
     const where = feedQuery()?.where as Record<string, unknown> | undefined;
-    expect(where, 'no CollectionBlock query filtered on type: root in the cards view').toBeTruthy();
-    expect(where!.inReplyTo).toEqual({ none: {} });
+    expect(where, 'no CollectionBlock query filtered on kind: post in the cards view').toBeTruthy();
+    expect(where!.respondsTo).toEqual({ none: {} });
   });
 
-  it('counts the whole conversation on each post, not the replies directly under it', () => {
-    // The number beside the icon is what expanding reveals in total; direct children would say
-    // "2" over a thread of forty. `transitive` is the difference, and it rides in the same read.
+  it('counts the whole conversation on each post, replies only', () => {
+    // The number beside the icon is what expanding reveals in total; direct responses would say
+    // "2" over a thread of forty. The post's `thread` holds every response at any depth, and the
+    // kind leaves out a call somebody held about the post, which is in its thread too.
     const include = feedQuery()?.include as Record<string, Record<string, unknown>> | undefined;
-    expect(include?.$commentCount).toMatchObject({ from: 'comments', count: true, transitive: true });
+    expect(include?.$replyCount).toMatchObject({ from: 'thread', count: true, where: { kind: 'reply' } });
   });
 });

@@ -418,7 +418,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     watchConversation: WIRING,
     unwatchConversation: WIRING,
     provideExtractionCandidates: WIRING,
-    provideCallExtraction: WIRING,
+    provideCollectionExtraction: WIRING,
     /*
       Written by InterpretationStore when a watched (automatic) pass settles, so an automatic pass
       leaves the same durable record a one-shot one does. Store-to-store wiring: the caller is the
@@ -615,16 +615,17 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       indicator that silently never rendered.
     */
     autoInterpret: state('space-settings'),
-    extractLooseMessages: state('space-settings'),
     /*
       `content`, not `space-settings`, and the difference is who may press it.
 
-      The space-wide switch above administers the space. This is one conversation's own answer,
-      written beside that call by whoever is in it — the same layer `setExtractionTarget` writes at,
-      and the same reason: stopping a standing pass mid-meeting is about that meeting, and gating it
-      on administering the space makes the honest response "leave the call".
+      The space-wide default above administers the space. This is one conversation's own answer,
+      written on that collection by whoever is in it: stopping a standing pass mid-meeting is about
+      that meeting, and gating it on administering the space makes the honest response "leave the
+      call". The space's own collection is the exception, and the store refuses that one to anybody
+      who does not administer the space — `canSetExtractionFor` says so up front.
     */
-    autoInterpretForCall: ambient('content'),
+    autoExtractFor: ambient('content'),
+    canSetExtractionFor: ambient('content'),
     /*
       A capability's settings, at each of the three levels a screen can edit.
 
@@ -656,9 +657,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setSpaceDefaultTheme: hereOnly('space-settings', 1),
     setModuleEnabled: hereOnly('space-settings', 2),
     setAutoInterpret: hereOnly('space-settings', 1),
-    setExtractLooseMessages: hereOnly('space-settings', 1),
     setThreadMode: hereOnly('space-settings', 1),
-    setAutoInterpretForCall: action('content'),
+    setAutoExtractFor: action('content'),
     /*
       Writing one. `hereOnly` on the community setter for the reason every other community write has
       it: the space id is the last parameter, so a template that could pass one could reconfigure a

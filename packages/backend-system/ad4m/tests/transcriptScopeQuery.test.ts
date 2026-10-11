@@ -35,7 +35,7 @@ describe('transcriptScopeQuery', () => {
   });
 
   it('scopes to one call, so a watch cannot read another call transcript', () => {
-    expect(query()).toContain(`<${CALL}> <we://child> ?line`);
+    expect(query()).toContain(`<${CALL}> <we://child> ?m`);
   });
 
   it('takes turns only from text blocks', () => {
@@ -50,13 +50,13 @@ describe('transcriptScopeQuery', () => {
 
   it('uses the predicate it is given rather than assuming containment', () => {
     // A foreign container reaches its children through its own predicate; the caller resolves it.
-    expect(transcriptScopeQuery(CALL, 'flux://messages')).toContain(`<${CALL}> <flux://messages> ?line`);
+    expect(transcriptScopeQuery(CALL, 'flux://messages')).toContain(`<${CALL}> <flux://messages> ?m`);
   });
 
-  it('follows replies down from each line', () => {
-    // A reply is linked from what it answers rather than contained by the call, so containment alone
-    // would leave every reply out of the conversation it belongs to.
-    expect(query()).toContain('?line <we://comment>* ?m');
+  it('reads replies as lines, not by following them down', () => {
+    // A reply said in a call is one of its children as well as a response to what it answers, so
+    // following `we://response` too would read every reply twice.
+    expect(query()).not.toContain('we://response');
   });
 
   it('reads only what a person said or wrote', () => {

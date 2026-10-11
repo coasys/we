@@ -58,7 +58,7 @@ const STARTER: SpaceStarter = {
     { $id: 'canvas', entity: 'CollectionBlock', fields: { kind: 'canvas' }, in: '$root' },
     { $id: 'board', entity: 'CollectionBlock', fields: { kind: 'board', gathers: ['$root'] }, in: '$root' },
     { entity: 'CollectionBlock', fields: { kind: 'column', slug: 'todo' }, in: '$board' },
-    { $id: 'post', entity: 'CollectionBlock', fields: { type: 'root', kind: 'post' }, in: '$root' },
+    { $id: 'post', entity: 'CollectionBlock', fields: { kind: 'post' }, in: '$root' },
     {
       entity: 'TextBlock',
       fields: { text: 'Welcome to {{space.name}}, $5 well spent', marks: '[{"type":"strong","start":0,"end":7}]' },
@@ -74,7 +74,6 @@ describe('starter settings', () => {
     expect(starterSettings(STARTER)).toEqual({
       defaultTemplateId: 'workshop',
       enabledModules: '["call"]',
-      extractLooseMessages: true,
     });
   });
 

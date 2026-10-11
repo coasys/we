@@ -16,12 +16,24 @@
  * rendering. The other three modules still declare their fragments inline; this is the shape they
  * should move to.
  */
-import { emptyState, foldingBody, foldingSectionLabel, panelScroll, panelShell } from '@we/schema-kit';
+import {
+  emptyState,
+  foldingBody,
+  foldingSectionLabel,
+  panelScroll,
+  panelShell,
+  timeline,
+  timelineMoreAt,
+  timelineOrder,
+} from '@we/schema-kit';
 import { type SchemaNode, type SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
 import { CARET_SIZE, codePane, extractionActivity } from './ExtractionStatus.schema';
+import { lineComposer } from './lineComposer';
+import { messageLine } from './messageLine';
 import { SUBJECT_EXPR as SHARED_SUBJECT_EXPR, VIEWING_LIVE_EXPR } from './subject';
+import { repliesInclude } from './thread';
 
 /**
  * Which call this panel is about — the one named in the address, or the one being recorded.
@@ -87,6 +99,53 @@ const CALL_ON_SCREEN_LIVE = 'modules.transcribe.callOnScreenLive';
 const TRANSCRIPT_FROM_START = 'modules.transcribe.transcriptFromStart';
 
 /**
+ * Which way round this reader draws a timeline — newest at the bottom, as a chat reads, or at the
+ * top, as a feed does. A per-viewer setting; see `timeline` in the schema kit for what it changes.
+ */
+export const TIMELINE_ORIENTATION = 'modules.transcribe.timelineOrientation';
+
+/**
+ * Newest at the top or the bottom — the reader's own setting, which both lists read.
+ *
+ * In the header of the Feed and of the transcript alike: it is one setting, so pressing it in either
+ * turns both round, and a list that is drawn the reader's chosen way round should be where the
+ * choice is made.
+ */
+export const timelineOrderButton: SchemaNode = {
+  type: 'we-tooltip',
+  props: { content: 'Newest at the top or the bottom' },
+  children: [
+    {
+      type: 'we-button',
+      props: {
+        size: 'xs',
+        variant: 'ghost',
+        label: 'Newest at the top or the bottom',
+        onClick: {
+          $action: 'spaceStore.setAgentModuleSetting',
+          args: [
+            'transcribe',
+            'timelineOrder',
+            { $: `${TIMELINE_ORIENTATION} == 'newestTop' ? 'newestBottom' : 'newestTop'` },
+          ],
+        },
+      },
+      children: [
+        {
+          type: 'we-icon',
+          props: { name: { $: `${TIMELINE_ORIENTATION} == 'newestTop' ? 'sort-descending' : 'sort-ascending'` } },
+        },
+      ],
+    },
+  ],
+};
+
+/** The words on the "more is coming" line, by which way the window grows. */
+const MORE_WORDS: { $: string } = {
+  $: `${TRANSCRIPT_FROM_START} ? 'Later in the conversation…' : 'Earlier in the conversation…'`,
+};
+
+/**
  * Whether the window may have more beyond it — a page came back full, so there is probably more
  * behind it.
  *
@@ -100,35 +159,26 @@ const TRANSCRIPT_FROM_START = 'modules.transcribe.transcriptFromStart';
 const TRANSCRIPT_HAS_MORE = `count(local.utterances) >= ${'modules.transcribe.transcriptShown'}`;
 
 /**
- * Which call the *extraction* surface is about.
+ * Which collection the *extraction* surface is about — always one, inside a space.
  *
- * The same shape as `SUBJECT_EXPR`, and a different fallback for a reason worth writing down.
- * `collectionId` is what the transcriber is writing into and is null until somebody speaks, which is
- * the honest answer for a transcript — no collection, nothing said. Extraction is asked earlier than
- * that: choosing what a meeting will look for, before the meeting, is exactly when somebody wants
- * to, and the call's own record exists from its first second. `callId` is that record.
+ * The call the address names, else the call this agent is in, else the space's own collection: the
+ * messages typed outside any call. Extraction is settled per collection, so there is always
+ * something for the panel to be about, and it never has to say "join a call" to be useful.
+ *
+ * The call fallback is `callId` rather than `collectionId`, and the difference matters: the
+ * transcriber's collection is null until somebody speaks, while choosing what a meeting will look
+ * for, before the meeting, is exactly when somebody wants to — and the call's own record exists
+ * from its first second.
  */
 export const EXTRACTION_SUBJECT_EXPR =
   'routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : ' +
-  "(spaceStore.extractLooseMessages ? spaceStore.root : ''))";
+  'spaceStore.root)';
 
 /**
- * Whether the panel is showing the space's loose messages rather than a call.
- *
- * Outside any call the panel follows the conversation that is still there: the messages typed
- * straight into the space, when the space extracts them at all. Their watch is the space's, decided
- * by its settings rather than by anybody in a room, so the per-call switch gives way to the
- * space's.
+ * Whether the panel is showing the messages outside calls — the space's own collection — rather
+ * than a call. That collection is the community's, so its switch and chips are only for somebody
+ * who administers the space; a call's are for whoever is in it.
  */
-/**
- * The call the panel is showing — the one somebody opened, else the live one — and never the space.
- *
- * The composer writes into a call's transcript, so it follows this rather than the extraction
- * subject: outside any call that falls back to the space collection, and a box there would write
- * a message into the space under a transcript saying there is no call to show.
- */
-const CALL_SUBJECT_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.transcribe.callId';
-
 const SUBJECT_IS_SPACE = `spaceStore.root && (${EXTRACTION_SUBJECT_EXPR}) == spaceStore.root`;
 const EXTRACTION_SUBJECT = { $: EXTRACTION_SUBJECT_EXPR };
 
@@ -185,13 +235,31 @@ const EXTRACTED_COUNT = `count(${EXTRACTED_ROWS})`;
  * {@link EXTRACTED_ROWS}: an amendment exists only because somebody accepted one, so there is no
  * unconfirmed state to take back out.
  */
+/**
+ * What this conversation found that was already in the space — another call's, the space's own, or
+ * somebody's typed by hand. See `CollectionBlock.recognised`.
+ *
+ * Its own list rather than more of {@link EXTRACTED_ROWS}, which it used to be: a pass that matched
+ * last week's task linked it as made here, and it sat under "Accepted" as though somebody had just
+ * kept it. No filter for suggestions, since a pass recognising something stages nothing new.
+ */
+const RECOGNISED_ROWS = 'first(local.extractedFrom).recognised';
+const RECOGNISED_COUNT = `count(${RECOGNISED_ROWS})`;
+
 const AMENDMENT_ROWS = 'first(local.extractedFrom).amendments';
 const AMENDMENT_COUNT = `count(${AMENDMENT_ROWS})`;
 
 /** What the store says can be extracted from that call — see `extractionFor` on the store. */
-const forSubject = (field: 'targets' | 'canChoose' | 'canExtract') => ({
+const forSubject = (field: 'targets' | 'canChoose' | 'canExtract' | 'auto') => ({
   $: `modules.transcribe.extractionFor[${EXTRACTION_SUBJECT_EXPR}].${field}`,
 });
+
+/**
+ * Whether this agent may change what the panel's collection extracts: the collection must be
+ * recordable at all, and the messages outside calls are the community's, so only somebody who
+ * administers the space may change those.
+ */
+const CAN_DECIDE = `${forSubject('canChoose').$} && !((${SUBJECT_IS_SPACE}) && !spaceStore.canAdministerCurrentSpace)`;
 
 /**
  * A message shown for exactly one status.
@@ -1625,55 +1693,18 @@ export const extractionTargets: SchemaNode = {
       },
     },
     /*
-      Why the chips below cannot be pressed, when they cannot.
-
-      A choice is recorded against the call's own record, so outside a call there is nothing to
-      record it on — and a host with no way to store one cannot either. Both used to be a guard in
-      the store that returned without a word, so the chips took the click and did nothing, which
-      reads as broken rather than as unavailable. They are disabled now, and this says which.
-    */
-    /*
-      Why the chips cannot be pressed, in the one case where they cannot.
-
-      A member who may not change the space's defaults, and who is not in a call, has neither list to
-      write to. That was a guard in the store returning without a word, so the chips took the click
-      and did nothing — which reads as broken rather than as somebody else's decision.
-    */
-    /*
-      Where the list on screen comes from, when it is not a call's.
-
-      Outside a call the chips are the space's default and cannot be pressed, which without a word is
-      the state that reads as broken. Two sentences: what this is, and where it is changed — and the
-      second is a control rather than an instruction, because "in the space's settings" is a place
-      somebody then has to find.
-
-      The tab is named, so the panel opens where the setting actually is instead of on About.
+      Why the chips cannot be pressed, in the one case where they cannot: the messages outside calls
+      are the community's, and this member does not administer the space. Said in words, because a
+      row of disabled chips with no reason reads as broken rather than as somebody else's decision.
     */
     {
       type: '$if',
       props: {
-        condition: { $: `count(${forSubject('targets').$}) && !${forSubject('canChoose').$}` },
+        condition: { $: `count(${forSubject('targets').$}) && !(${CAN_DECIDE})` },
         then: {
-          type: 'Row',
-          props: { gap: '200', ay: 'center', wrap: true },
-          children: [
-            {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint', italic: true },
-              children: ['Join a call to narrow it for that conversation.'],
-            },
-            {
-              type: 'we-button',
-              props: {
-                size: 'xs',
-                variant: 'bare',
-                textDecoration: 'underline',
-                color: 'accent-text',
-                onClick: { $action: 'shellStore.openSpaceSettings', args: ['features'] },
-              },
-              children: ['Change the default'],
-            },
-          ],
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-faint', italic: true },
+          children: ['Whoever administers this space decides what is extracted outside calls.'],
         },
       },
     },
@@ -1719,21 +1750,16 @@ export const extractionTargets: SchemaNode = {
                   than "press me and something happens".
                 */
                 r: 'pill',
-                // Only where neither list is this agent's to change. Refused visibly rather than in
+                // Only where the list is not this agent's to change. Refused visibly rather than in
                 // the store, where it was refused in silence.
-                // Outside a call there is no conversation to narrow, so these state the space's
-                // default rather than offering a change to it. The link below leads to the change.
-                disabled: { $: `!${forSubject('canChoose').$}` },
+                disabled: { $: `!(${CAN_DECIDE})` },
                 /*
-                  One meaning: this call's list, and only this call's.
+                  One meaning: this collection's list, and only this collection's.
 
-                  It briefly did two — the call's in a call, the space's default outside one, on the
-                  reasoning that editing what you are looking at is what a chip is for. That is one
-                  control with two blast radii, told apart by a heading: narrowing this afternoon's
-                  meeting and changing what every future call in the community starts from, behind
-                  the same press. In a personal space, where every member administers, the heavier of
-                  the two was also the default. A link to where the default lives is the honest
-                  version, and it is two clicks rather than one.
+                  Never the space's default, which is what every *future* collection starts from and
+                  lives in space settings. One control with two blast radii — narrowing this
+                  afternoon's meeting, and changing every meeting to come — told apart by a heading
+                  is the shape this replaced.
                 */
                 onClick: {
                   $action: 'modules.transcribe.toggleExtractionTarget',
@@ -2247,6 +2273,57 @@ const extractedCard: SchemaNode = {
   ],
 };
 
+/**
+ * A record this conversation recognised: what it is, and the conversation that made it.
+ *
+ * The maker is asked per card — the conversation whose `extracted` holds it — rather than included
+ * with the list, because nesting `extractedFrom` under the untyped `recognised` relation fails the
+ * whole read once any member has one. The list is a handful, and the question is native.
+ *
+ * A neutral edge rather than the accepted cards' green: nothing was decided here.
+ */
+const recognisedCard: SchemaNode = {
+  type: 'Column',
+  props: {
+    bg: 'surface',
+    color: 'text',
+    borderLeft: '3px solid border-strong',
+    r: '300',
+    px: '300',
+    py: '300',
+    gap: '200',
+    width: '100%',
+  },
+  $queries: {
+    madeIn: {
+      entity: 'CollectionBlock',
+      where: { extracted: { some: { id: { $: 'item.id' } } } },
+      select: ['title', 'kind'],
+      limit: 1,
+      subscribe: false,
+    },
+  },
+  children: [
+    cardKind(RECORD_SHAPE),
+    cardTitle(RECORD_SHAPE),
+    {
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'text-muted' },
+      children: [
+        {
+          $: `count(local.madeIn) ? (first(local.madeIn).kind == 'space' ? 'First found in messages outside calls' : 'First found in ' + (first(local.madeIn).title ? first(local.madeIn).title : 'another call')) : 'Already in the space'`,
+        },
+      ],
+    },
+  ],
+};
+
+const recognisedRows: SchemaNode = {
+  type: '$each',
+  props: { items: { $: RECOGNISED_ROWS }, as: 'item' },
+  children: [recognisedCard],
+};
+
 const extractedRows: SchemaNode = {
   type: '$each',
   props: {
@@ -2449,81 +2526,58 @@ const amendmentRows: SchemaNode = {
   keeps its own verb, so the two are no longer read as a matched pair.
 */
 /*
-  The space's own switch, for the space's own conversation.
+  Whether the collection on screen is extracted as it grows — a switch, because it is a state.
 
-  The loose-message watch runs on the space's settings, so this is `autoInterpret` itself — the
-  same switch space settings has, offered where somebody is looking at what it decides, and only to
-  somebody who administers the space.
+  One control for every collection, where there were two: a call's button and the space's, which
+  wrote different records and read differently. Each collection now holds its own answer, copied
+  from the space's default when it was made, so the switch says what this collection does and
+  nothing else — no inherited state, no "follow the space" to reset to.
+
+  Beside it, in words, what it does and to what — a switch's own `label` is only an aria-label, so
+  without visible text this is an unlabelled toggle next to a button reading "Extract now". "Outside
+  calls" is the scope menu's word for the space's own collection. The panel's title stays
+  "Extraction": a heading that changes as you move between calls describes where you are rather
+  than what the panel is, which is the reason the transcript's is fixed too.
+
+  Offered on every call, past ones included: the answer is the call's own and is what applies when
+  it is next live, so somebody can decide it before a meeting is picked back up.
 */
-const spaceAutoExtractControl: SchemaNode = {
-  type: 'we-tooltip',
-  props: {
-    placement: 'bottom',
-    content: {
-      $:
-        "!spaceStore.canAdministerCurrentSpace ? 'Set in space settings by whoever administers this space' : " +
-        "spaceStore.autoInterpret ? 'Stop extracting messages as they arrive, for this space' : " +
-        "'Extract messages as they arrive, for this space'",
-    },
-  },
+const autoExtractControl: SchemaNode = {
+  type: 'Row',
+  props: { gap: '200', ay: 'center' },
   children: [
     {
-      type: 'we-button',
-      props: {
-        size: 'sm',
-        gap: '100',
-        variant: { $: "spaceStore.autoInterpret ? 'primary' : 'ghost'" },
-        disabled: { $: '!spaceStore.canAdministerCurrentSpace' },
-        onClick: { $action: 'spaceStore.setAutoInterpret', args: [{ $: '!spaceStore.autoInterpret' }] },
-      },
-      children: [
-        { type: 'we-icon', props: { name: 'lightning' } },
-        { $: "spaceStore.autoInterpret ? 'Auto extract: on' : 'Auto extract: off'" },
-      ],
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'text-muted' },
+      children: [{ $: `(${SUBJECT_IS_SPACE}) ? 'Auto-extract outside calls' : 'Auto-extract this call'` }],
     },
-  ],
-};
-
-const autoExtractControl: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: VIEWING_LIVE,
-    then: {
+    {
       type: 'we-tooltip',
       props: {
         placement: 'bottom',
-        /*
-          Whose decision it is, said where the press is — the record button beside the transcript is
-          this agent's microphone, and this looks the same and is everybody's. Outside a call there
-          is no record to write the decision against, and the button explains that rather than
-          greying out in silence, which is what the switch did.
-        */
         content: {
           $:
-            "!modules.transcribe.extractionFor[modules.transcribe.callId].canChoose ? 'Join a call to decide for it' : " +
-            "modules.transcribe.autoExtract ? 'Stop extracting as the call goes, for everyone in it' : " +
-            "'Extract as the call goes, for everyone in it'",
+            `(${SUBJECT_IS_SPACE}) && !spaceStore.canAdministerCurrentSpace ? 'Set by whoever administers this space' : ` +
+            `(${SUBJECT_IS_SPACE}) ? 'Extract messages typed outside calls as they arrive, for this space' : ` +
+            "'Extract this call as it goes, for everyone in it'",
         },
       },
       children: [
         {
-          type: 'we-button',
+          type: 'we-switch',
           props: {
             size: 'sm',
-            gap: '100',
-            variant: { $: "modules.transcribe.autoExtract ? 'primary' : 'ghost'" },
-            // The live call's answer, and the same record `autoExtract` reads.
-            disabled: { $: '!modules.transcribe.extractionFor[modules.transcribe.callId].canChoose' },
-            onClick: { $action: 'modules.transcribe.toggleAutoExtract' },
+            label: 'Auto-extract',
+            checked: forSubject('auto'),
+            disabled: { $: `!(${CAN_DECIDE})` },
+            // The collection on screen, named: the store's own default is the call this agent is
+            // in, which is not the one this panel shows outside a call.
+            onChange: { $action: 'modules.transcribe.toggleAutoExtract', args: [EXTRACTION_SUBJECT] },
           },
-          children: [
-            { type: 'we-icon', props: { name: 'lightning' } },
-            { $: "modules.transcribe.autoExtract ? 'Auto extract: on' : 'Auto extract: off'" },
-          ],
         },
       ],
     },
-  },
+  ],
 };
 
 /*
@@ -3040,7 +3094,7 @@ const noUtterances: SchemaNode = {
  * One definition used at both ends, because the two are the same sentence about opposite directions
  * and a copy each is how they come to disagree about their own spinner.
  */
-const moreComing = (end: 'start' | 'end', words: string): SchemaNode => ({
+const moreComing = (end: 'start' | 'end', words: string | { $: string }): SchemaNode => ({
   type: 'Row',
   /*
     The marker is the same fact the line is: there is more beyond this end that is not loaded. The
@@ -3096,6 +3150,8 @@ export const transcriptLines: SchemaNode = {
         that is most of what the tab was doing.
       */
       limit: { $: 'modules.transcribe.transcriptShown' },
+      // Each line's replies, three levels down, so they are drawn inline — see `threadLines`.
+      include: repliesInclude(),
       when: { $: 'modules.transcribe.collectionId' },
       /*
         Live only while the call is.
@@ -3129,8 +3185,11 @@ export const transcriptLines: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: `${TRANSCRIPT_HAS_MORE} && !${TRANSCRIPT_FROM_START}` },
-        then: moreComing('start', 'Earlier in the conversation…'),
+        // At the top whenever the window grows that way — see `timelineMoreAt`.
+        condition: {
+          $: `${TRANSCRIPT_HAS_MORE} && ${timelineMoreAt('start', TRANSCRIPT_FROM_START, TIMELINE_ORIENTATION)}`,
+        },
+        then: moreComing('start', MORE_WORDS),
       },
     },
     {
@@ -3149,7 +3208,17 @@ export const transcriptLines: SchemaNode = {
               this line is by the same person as the one before it, and in a reversed list `prev` is
               the line *after*.
             */
-            items: { $: 'modules.transcribe.transcriptFromStart ? local.utterances : reverse(local.utterances)' },
+            /*
+              The lines with their replies flattened in, in the order they were said — a reply sent
+              after three more lines belongs after them, quoting what it answers. See `threadLines`.
+            */
+            items: {
+              $: timelineOrder(
+                `threadLines({ rows: local.utterances, newestFirst: !${TRANSCRIPT_FROM_START} })`,
+                TRANSCRIPT_FROM_START,
+                TIMELINE_ORIENTATION,
+              ),
+            },
             as: 'utterance',
           },
           children: [
@@ -3160,479 +3229,7 @@ export const transcriptLines: SchemaNode = {
                   rather than a generated blob — and it reaches anyone, not only this space's
                   members.
                 */
-            {
-              type: '$agent',
-              props: { did: { $: 'utterance.author' }, as: 'speaker' },
-              children: [
-                {
-                  type: 'Column',
-                  props: {
-                    /*
-                      No fill, no padding — the gap between rows is what separates them.
-
-                      A card each gave every utterance a box, and a transcript is a hundred of them:
-                      the padding pushed the words apart far more than telling one line from the
-                      next needs, and the whole feed read as a stack of tiles rather than as a
-                      conversation. The gap does that job on its own.
-
-                      It also stops the panel fighting whatever is behind it. A docked panel can be
-                      floating over the content on a translucent ground, and a column of opaque
-                      sunken rectangles cancels that out — the glass shows through the gaps and
-                      nowhere else.
-                    */
-                    gap: '100',
-                    /*
-                      The row knows whether the pointer is on it, so its pencil can keep out of the
-                      way until it is wanted.
-
-                      Held here rather than by the button, which is the whole point: an affordance
-                      that only appears once you are already on it cannot be found. `hoverProps` on
-                      the button answers for the button, and there is no way to say "when my parent
-                      is hovered" in props, so the parent says it instead — the same shape the
-                      break-out grip uses in `PanelLane`, written with a local rather than a signal.
-                    */
-                    onMouseEnter: { $setLocal: 'pointerOnRow', value: true },
-                    onMouseLeave: { $setLocal: 'pointerOnRow', value: false },
-                  },
-                  /*
-                    Per row, which is what makes this a local rather than store state.
-
-                    `$localState` on a node inside `$each` is created per row, so each line owns
-                    whether it is being mended and the words being typed into it — no id to compare
-                    against, and no way for two rows to disagree. The proposal editor needed a store
-                    draft because *which fields exist* comes from the model; here the field is
-                    `text` and nothing else, which is exactly the case locals are for.
-                  */
-                  $localState: {
-                    mending: { type: 'boolean', initial: false },
-                    draft: { type: 'string', initial: '' },
-                    pointerOnRow: { type: 'boolean', initial: false },
-                  },
-                  children: [
-                    {
-                      /*
-                        Somebody has to give up the space, and it is the name.
-
-                        A row that overflows is a row where nobody said who yields: a flex item's
-                        automatic minimum size is its content, so the deficit comes out of whichever
-                        sibling *can* shrink. Here that was the marks — and worse than usual,
-                        because the design system defaults typography to `overflow-wrap: anywhere`,
-                        which reduces a word's min-content width to a single glyph. "(edited)" could
-                        therefore shrink to nearly nothing and broke mid-word onto two lines.
-
-                        The name is the one thing on the row with a sensible narrower form, and it
-                        already asks to be truncated — which needs `minWidth: 0` to happen at all,
-                        since without it the item is never asked to be narrower than its text.
-                      */
-                      type: 'Row',
-                      props: { gap: '200', ay: 'center' },
-                      children: [
-                        {
-                          type: 'we-avatar',
-                          props: {
-                            // `xs`, not `xxs`. A transcript is a list of people talking, so who is
-                            // speaking is the second thing on the row after the words — at the
-                            // smallest size on the scale a face is a coloured dot and the run of
-                            // them stops being scannable.
-                            size: 'xs',
-                            image: { $: 'speaker.avatar' },
-                            // Always alongside `image`, never instead of it: a stable
-                            // generated avatar keeps somebody whose profile has not
-                            // arrived visually distinct from everybody else whose
-                            // profile has not arrived.
-                            hash: { $: 'utterance.author' },
-                          },
-                        },
-                        {
-                          type: 'we-text',
-                          // `label` rather than `footnote` — one step up the scale, and the weight
-                          // that comes with it is wanted here: a name is what the eye lands on when
-                          // skimming a transcript for who said something.
-                          props: {
-                            variant: 'label',
-                            color: 'text-muted',
-                            truncate: true,
-                            /*
-                              Shrink, but never grow — `0 1 auto`, not `1 1 auto`.
-
-                              A grow factor made the name take every spare pixel on the row, which
-                              pushed the clock, the marks and the pencil to the far edge. Nothing
-                              here wants to be right-aligned; the name only ever needed permission
-                              to *give up* space, which is the shrink half. `minWidth: 0` is what
-                              lets it, since a flex item is otherwise never asked to be narrower
-                              than its own text.
-                            */
-                            flex: '0 1 auto',
-                            minWidth: '0',
-                          },
-                          children: [{ $: 'speaker.name' }],
-                        },
-                        {
-                          /*
-                            How long ago while it is still happening; what time it was once it is not.
-
-                            Relative time answers "how fresh is this?", which is a question about a
-                            feed of unrelated items. A transcript is not one: every row came out of
-                            the same conversation, so on a call recorded last Tuesday all two hundred
-                            of them read "6 days ago" — the same string on every line, carrying no
-                            information and taking the width that made the row wrap. What a reader
-                            wants from a line of a finished meeting is where in it the line was, and
-                            that is the clock.
-
-                            On the live call relative earns its place: the tail is minutes old, the
-                            numbers differ row to row, and they move on their own.
-
-                            `narrow` for the live side because a transcript stamp is a *coordinate* —
-                            something skimmed past to find a moment, not read — and a coordinate wants
-                            to be terse at any width. That is a fact about the row rather than about
-                            the panel, so it is not conditional on how much room there is.
-
-                            One node rather than an `$if` on the two: `relative` short-circuits inside
-                            the primitive, so `timeStyle` simply goes unread while it is true. A
-                            branch here would unmount and rebuild the row every time a call ended.
-
-                            ## Last on the row, after the marks
-
-                            It used to sit before them, and in `en-US` that put "Aa" hard against
-                            "PM" — two letterforms beside two letterforms in the same faint grey,
-                            reading as one word. Moving the marks up to the name fixes it by
-                            separation rather than by decoration, which is what makes it hold: an
-                            `en-GB` reader sees "14:32" and never had the collision, so an
-                            icon-level or colour-level fix would have been treating one locale's
-                            symptom. The mark is about the line and the time is about the moment;
-                            they were only ever neighbours by accident.
-                          */
-                          type: 'we-timestamp',
-                          props: {
-                            value: { $: 'utterance.createdAt' },
-                            relative: VIEWING_LIVE,
-                            relativeStyle: 'narrow',
-                            timeStyle: 'short',
-                            fontSize: '100',
-                            color: 'text-faint',
-                          },
-                        },
-                        /*
-                          What this line is, where it is not simply what somebody said.
-
-                          Only ever shown for the two that are not plain speech, and `spoken` stays
-                          silent. That is the whole economy of the thing: a transcript is speech
-                          almost all the way down, so marking it would put furniture on every row to
-                          restate the panel's own title, and a mark that appears everywhere is one
-                          people stop reading. The reader's default assumption is already right; the
-                          mark exists for where it would not be.
-
-                          Which is also why neither of these is a sparkle. Machine-heard is the
-                          assumption here, so "this came from a model" is not news — that icon earns
-                          its place on an extraction card, where a record stands for something
-                          inferred and the reader would otherwise have no way to tell.
-                        */
-                        {
-                          /*
-                            Typed: an icon, because it is a provenance nicety rather than a warning.
-
-                            `text-aa` rather than `keyboard`, which was the first guess and the
-                            wrong one: a keyboard is a grid of small keys, and at 12px they merge
-                            into a grey smudge that reads as "some icon". Two letterforms survive
-                            the size and say "text" on sight.
-
-                            And not a pencil, which is the edit button two elements along this same
-                            row — one glyph cannot mean both "written rather than spoken" and
-                            "change these words". `translate` means language and `key-return` means
-                            submit; both are the wrong claim rather than an unclear one.
-                          */
-                          type: '$if',
-                          props: {
-                            condition: { $: "utterance.source == 'typed'" },
-                            then: {
-                              type: 'we-tooltip',
-                              // No `flexShrink` here: the tooltip generates no box, so the badge
-                              // inside it is the flex item and its own refusal to shrink is what
-                              // counts. That is the whole point of the wrapper being boxless.
-                              props: { content: 'Typed, not spoken', placement: 'top' },
-                              children: [
-                                {
-                                  /*
-                                    A chip, not a bare icon — because bare it read as part of the
-                                    clock beside it.
-
-                                    In `en-US` the time ends "AM" or "PM", and two letterforms in
-                                    the same faint grey immediately after two more letterforms are
-                                    one word to the eye. Moving the mark to the other side of the row
-                                    was tried first and did not help: what separates them is a
-                                    *ground*, not a gap, so the mark stops being loose text on the
-                                    row and becomes a thing sitting on it.
-
-                                    `control-surface` is a step away from both `surface` and
-                                    `surface-sunken` in either polarity, which is the whole reason
-                                    the neutral badge is painted with it — see
-                                    BADGE_APPEARANCE_DEFAULTS, where this same transcript row is the
-                                    case that argued it. The row carried a sunken fill when that was
-                                    written and carries none now, and the choice survives the change
-                                    precisely because it was made against both grounds.
-                                  */
-                                  type: 'we-badge',
-                                  props: { size: 'xs', variant: 'neutral' },
-                                  /*
-                                    A keyboard, because this marks *how the line arrived* rather than
-                                    that it is text — everything on this row is text.
-
-                                    It was `text-aa`, which is the glyph the record button in this
-                                    panel's own header now uses for transcription, as the call bar
-                                    always did. One surface cannot spend the same letterform on "this
-                                    module makes text" at the top and "somebody typed this" a few
-                                    rows down, so the more literal mark takes this one. It also stays
-                                    clear of "(edited)", which is the other provenance signal on
-                                    these rows.
-
-                                    Sized between the badge's own xxs (12px) and xs (16px). The
-                                    badge's height is fixed per size, so a larger glyph fills it
-                                    rather than stretching it.
-                                  */
-                                  children: [{ type: 'we-icon', props: { name: 'keyboard', size: '14px' } }],
-                                },
-                              ],
-                            },
-                          },
-                        },
-                        {
-                          /*
-                            Corrected: words, not an icon behind a hover.
-
-                            This one is a claim about whether the line is still a verbatim quote, and
-                            `editUtterance`'s own note is the reason it cannot be hover-only — a
-                            mended line reading as something somebody said is a claim nobody checked.
-                            A tooltip is invisible on a touchscreen and to anyone not poking at rows,
-                            which is exactly the wrong property for a trust signal.
-
-                            "(edited)" rather than a badge or an asterisk: it is lighter than the
-                            badge it replaces, needs no legend, and is the convention every reader
-                            already holds from chat. An asterisk needs learning, and a star reads as
-                            a rating.
-
-                            The tooltip is then the upgrade rather than the message — it says *when*,
-                            which is worth having and worth nothing if it is the only channel.
-                          */
-                          type: '$if',
-                          props: {
-                            condition: { $: "utterance.source == 'corrected'" },
-                            then: {
-                              type: 'we-tooltip',
-                              props: { placement: 'top' },
-                              children: [
-                                {
-                                  type: 'we-text',
-                                  // `nowrap` because this is one atomic phrase with no narrower
-                                  // form, and the `anywhere` default would otherwise let it break
-                                  // between any two letters rather than not at all.
-                                  props: { variant: 'footnote', color: 'text-faint', whiteSpace: 'nowrap' },
-                                  children: ['(edited)'],
-                                },
-                                {
-                                  /*
-                                    A formatted time, which is why this is slotted content rather
-                                    than the `title` string: a schema has no way to format a date,
-                                    and `updatedAt` arrives as epoch milliseconds. `we-timestamp`
-                                    already knows how, so the tooltip holds one.
-
-                                    `updatedAt` comes back on every fetch beside `author` and
-                                    `createdAt` — no field to declare. What it cannot say is *who*:
-                                    `author` stays the original speaker, and anybody may mend a line.
-                                  */
-                                  type: 'Row',
-                                  props: { gap: '100', ay: 'center' },
-                                  slot: 'content',
-                                  children: [
-                                    { type: 'we-text', props: { variant: 'footnote' }, children: ['Edited'] },
-                                    {
-                                      type: 'we-timestamp',
-                                      props: {
-                                        value: { $: 'utterance.updatedAt' },
-                                        relative: VIEWING_LIVE,
-                                        relativeStyle: 'narrow',
-                                        timeStyle: 'short',
-                                        fontSize: '100',
-                                      },
-                                    },
-                                  ],
-                                },
-                              ],
-                            },
-                          },
-                        },
-                        /*
-                          The correction affordance, on the row it corrects.
-
-                          Offered on every line rather than only your own: a recogniser mishears
-                          names and jargon, and whoever notices is usually not the speaker. See
-                          `editUtterance` for what that costs and what is recorded about it.
-                        */
-                        {
-                          type: '$if',
-                          props: {
-                            condition: { $: '!local.mending' },
-                            then: {
-                              type: 'we-tooltip',
-                              props: { content: 'Edit text' },
-                              children: [
-                                {
-                                  type: 'we-button',
-                                  props: {
-                                    label: 'Edit text',
-                                    size: 'xs',
-                                    variant: 'bare',
-                                    color: 'text-faint',
-                                    /*
-                                      Out of the way until the row is pointed at — and back the
-                                      moment it is focused.
-
-                                      A pencil on all two hundred rows is furniture on the ordinary
-                                      case, which is reading. Faded rather than unmounted, so the
-                                      row does not change width as the pointer crosses it, and so
-                                      the button keeps its place in the tab order.
-
-                                      `focusProps` is the half that stops this being a mouse-only
-                                      affordance: it fires on `:focus-visible`, so tabbing to the
-                                      pencil brings it back into view even though nothing is
-                                      hovering it. Without that pair, a keyboard user would be
-                                      moving focus onto something invisible.
-                                    */
-                                    opacity: { $: 'local.pointerOnRow ? 1 : 0' },
-                                    focusProps: { opacity: 1 },
-                                    transition: 'opacity 200 ease-in-out',
-                                    onClick: [
-                                      // Seeded on the press rather than at mount, so a row reopened
-                                      // after a cancel starts from the words as they now stand.
-                                      { $setLocal: 'draft', value: { $: 'utterance.text' } },
-                                      { $setLocal: 'mending', value: true },
-                                    ],
-                                  },
-                                  children: [{ type: 'we-icon', props: { size: 'xs', name: 'pencil-simple' } }],
-                                },
-                              ],
-                            },
-                          },
-                        },
-                      ],
-                    },
-                    {
-                      // Reading, or mending. The field replaces the words rather than sitting under
-                      // them, so what is being changed is the thing on screen.
-                      type: '$if',
-                      props: {
-                        condition: { $: 'local.mending' },
-                        then: {
-                          type: 'Column',
-                          props: { gap: '200' },
-                          children: [
-                            {
-                              /*
-                                One row, growing — and reading at the size of the words it replaces.
-
-                                Two rows was half a box of empty space under a line that is usually
-                                one line long. `autoGrow` starts it at the height of the text it is
-                                standing in for and takes the room only when there is something to
-                                put in it, which is the same behaviour the composer at the foot of
-                                the panel has.
-
-                                `fontSize` is pinned because `size: 'sm'` carries one: the size
-                                presets set padding *and* type, so a compact control also shrank the
-                                words — mending a line made it visibly smaller than the line beside
-                                it, and switching to `md` would have fixed the type by making the box
-                                bigger. The two are separable, so they are separated here.
-                              */
-                              type: 'we-textarea',
-                              props: {
-                                size: 'sm',
-                                fontSize: '300',
-                                rows: 1,
-                                autoGrow: true,
-                                maxRows: 6,
-                                submitOnEnter: true,
-                                value: { $: 'local.draft' },
-                                onInput: { $setLocal: 'draft', value: { $: 'event.detail' } },
-                                'on:submit': {
-                                  $action: 'modules.transcribe.editUtterance',
-                                  args: [{ $: 'utterance.id' }, { $: 'local.draft' }, { $: 'utterance.source' }],
-                                  onSuccess: [{ $setLocal: 'mending', value: false }],
-                                },
-                              },
-                            },
-                            {
-                              type: 'Row',
-                              props: { gap: '200', ay: 'center' },
-                              children: [
-                                {
-                                  type: 'we-button',
-                                  props: {
-                                    size: 'xs',
-                                    /*
-                                      Primary, not success. Green is the palette for an *outcome* —
-                                      it says something went well — and this button is a plain
-                                      submit that has not done anything yet. The Keep/Discard pair on
-                                      a proposal card is the case that earns success and danger,
-                                      because there the colour IS the decision being offered.
-                                    */
-                                    variant: 'primary',
-                                    disabled: { $: '!trim(local.draft)' },
-                                    onClick: {
-                                      $action: 'modules.transcribe.editUtterance',
-                                      args: [{ $: 'utterance.id' }, { $: 'local.draft' }, { $: 'utterance.source' }],
-                                      // Closed on success only: a failed write leaves the words on
-                                      // screen to try again with, rather than discarding them and
-                                      // showing the line unchanged as though nothing was attempted.
-                                      // `pointerOnRow` for the reason Cancel sets it — the row
-                                      // reflows out from under the pointer either way out.
-                                      onSuccess: [
-                                        { $setLocal: 'mending', value: false },
-                                        { $setLocal: 'pointerOnRow', value: false },
-                                      ],
-                                    },
-                                  },
-                                  children: ['Save'],
-                                },
-                                {
-                                  type: 'we-button',
-                                  props: {
-                                    size: 'xs',
-                                    // Secondary rather than ghost: ghost has no edge until it is
-                                    // hovered, so beside a filled Save it read as a word somebody
-                                    // had left next to a button rather than the other half of a
-                                    // pair.
-                                    variant: 'secondary',
-                                    /*
-                                      Both, and the second is what stops the pencil flashing.
-
-                                      Leaving the editor makes the row shorter — a field and two
-                                      buttons become one line of text — so it reflows out from under
-                                      a pointer that was on the Cancel button. The read view mounts
-                                      with `pointerOnRow` still true, so the pencil fades in, and the
-                                      pointer is then outside the shrunken row, so it fades straight
-                                      back out. Two hundred milliseconds each way, which is exactly
-                                      long enough to read as a glitch.
-
-                                      Saying the pointer has left is a small lie when it has not,
-                                      and it corrects itself on the next mouse move — where the
-                                      flash corrects itself by being wrong twice.
-                                    */
-                                    onClick: [
-                                      { $setLocal: 'mending', value: false },
-                                      { $setLocal: 'pointerOnRow', value: false },
-                                    ],
-                                  },
-                                  children: ['Cancel'],
-                                },
-                              ],
-                            },
-                          ],
-                        },
-                        else: { type: 'we-text', props: { color: 'text' }, children: [{ $: 'utterance.text' }] },
-                      },
-                    },
-                  ],
-                },
-              ],
-            },
+            messageLine({ as: 'utterance', surface: 'transcript', relative: VIEWING_LIVE }),
           ],
         },
         /*
@@ -3719,8 +3316,10 @@ export const transcriptLines: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: `${TRANSCRIPT_HAS_MORE} && ${TRANSCRIPT_FROM_START}` },
-        then: moreComing('end', 'Later in the conversation…'),
+        condition: {
+          $: `${TRANSCRIPT_HAS_MORE} && ${timelineMoreAt('end', TRANSCRIPT_FROM_START, TIMELINE_ORIENTATION)}`,
+        },
+        then: moreComing('end', MORE_WORDS),
       },
     },
   ],
@@ -4079,142 +3678,116 @@ export const pendingUtterance: SchemaNode = {
  * `message` is still cleared on success only. A failed write keeps what was typed rather than
  * swallowing it and leaving an empty box as the only report.
  */
+/**
+ * The call a typed line goes into: the one on screen, else the call in progress — from its first
+ * second, since a message needs nobody to have spoken first. Never the space: messages typed outside
+ * a call are the Feed's, and a transcript composer writing into the space would put a line nobody
+ * here can see.
+ */
+/** A reply started from the transcript's own lines — see `replyingTo`'s surface. */
+const TRANSCRIPT_REPLY = "modules.transcribe.replyingTo.surface == 'transcript'";
+
+const TRANSCRIPT_TARGET_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.transcribe.callId';
+
+/**
+ * Sending a line: a reply when one is being written, a message into the call otherwise — the text
+ * and the marks the composer gave (`event`), and the in-flight flag raised for the round trip and
+ * lowered however it ends.
+ */
 const sendMessage = [
   { $setLocal: 'sending', value: true },
   {
-    $action: 'modules.transcribe.addMessage',
-    args: [{ $: CALL_SUBJECT_EXPR }, { $: 'local.message' }],
-    onSuccess: [{ $setLocal: 'message', value: '' }],
-    onFinally: [{ $setLocal: 'sending', value: false }],
+    $if: {
+      condition: { $: TRANSCRIPT_REPLY },
+      then: {
+        $action: 'modules.transcribe.reply',
+        args: [
+          { $: 'modules.transcribe.replyingTo.id' },
+          { $: 'event.text' },
+          { $: 'event.marks' },
+          { $: VIEWING_LIVE_EXPR },
+        ],
+        onFinally: [{ $setLocal: 'sending', value: false }],
+      },
+      else: {
+        $action: 'modules.transcribe.addMessage',
+        args: [{ $: TRANSCRIPT_TARGET_EXPR }, { $: 'event.text' }, { $: 'event.marks' }],
+        onFinally: [{ $setLocal: 'sending', value: false }],
+      },
+    },
   },
 ];
 
-export const transcriptComposer: SchemaNode = {
+const composerRow: SchemaNode = {
   type: '$if',
   /*
-    Wherever a call's transcript is on screen, not only while one is being recorded — and nowhere
-    else: outside any call the panel shows no transcript, so there is nothing here to write into.
-
-    This was gated on the live call, on the reasoning that adding to a finished meeting's timeline
-    would date a remark to a conversation it was not made in. That is exactly the claim `source`
-    exists to stop it making: a typed line says it was typed and carries its own `createdAt`, so
-    nothing about it pretends to have been said at the time. And the case is a real one — watching a
-    call back is when somebody notices what is worth writing down, where during it they are busy
-    talking.
+    Wherever a call is on screen, not only while one is being recorded, and nowhere else: outside a
+    call there is no transcript here to write into. Watching a call back is when somebody notices
+    what is worth writing down. A typed line says it was typed and carries
+    its own time, so nothing about it pretends to have been said then.
   */
   props: {
-    condition: { $: CALL_SUBJECT_EXPR },
+    condition: { $: TRANSCRIPT_TARGET_EXPR },
     then: {
-      type: 'Row',
+      type: 'Column',
+      // Further from the transcript than the panel's own gap puts it: a fixture of the surface,
+      // not the last row of the document.
+      props: { width: '100%', mt: '100' },
       /*
-        Further from the transcript than the panel's own gap puts it.
-
-        `panelShell` spaces every child of the panel equally, and these are not equal distances: the
-        header names what is below it and wants to sit close to it, while this is a fixture of the
-        surface rather than the last row of the document — see above — and at one gap it read as one
-        more line of the timeline. Widening the panel's gap would have moved the heading off the
-        transcript to fix a boundary three children lower.
-
-        A margin rather than a wrapper, because what is being said is about this element's own
-        relationship to what precedes it, and it leaves with the element: the composer is gated on
-        there being a transcript at all, and a gap held by the container would have stayed behind on
-        a panel with nothing to write into.
+        In flight, so Enter pressed twice during a slow write is one line, not two. Plain, not
+        persisted and not in the URL: the one thing a reload must never restore is a box that thinks
+        it is still writing.
       */
-      props: { gap: '200', ay: 'end', width: '100%', mt: '100' },
-      /*
-        `sending` is plain, not persisted and not in the URL: it is an in-flight flag, and the one
-        thing a reload must never restore is a box that thinks it is still writing.
-      */
-      $localState: {
-        message: { type: 'string', initial: '' },
-        sending: { type: 'boolean', initial: false },
-      },
+      $localState: { sending: { type: 'boolean', initial: false } },
       children: [
-        {
-          type: 'we-textarea',
-          props: {
-            /*
-              No `size`, which is `md` — the height every other field in WE stands at.
-
-              It was `sm`, and 32px is the compact size: right for a control tucked into a dense row
-              of something else, wrong for the one thing on the panel a person is meant to type
-              into. The `fontSize` that used to be pinned here goes with it, because md's own preset
-              already reads at 300 — that override existed only to undo `sm`'s smaller type, which
-              is the trap the size presets set by carrying both.
-            */
-            rows: 1,
-            flex: '1',
-            minWidth: '0',
-            /*
-              One line to start, growing as somebody writes, capped before it eats the transcript.
-
-              `autoGrow` is also what makes this line up with the button: at rest it takes the same
-              control height `we-input` does, rather than whatever `rows` × line-height happens to
-              come to. See the prop's own note.
-            */
-            autoGrow: true,
-            maxRows: 6,
-            submitOnEnter: true,
-            // Short: a placeholder is read at a glance and the panel it sits in is already headed
-            // "Transcript", so naming the destination was the box explaining where it was.
-            placeholder: 'Type a message…',
-            value: { $: 'local.message' },
-            onInput: { $setLocal: 'message', value: { $: 'event.detail' } },
-            // Enter commits, and the primitive suppresses the newline that would otherwise follow —
-            // a schema can read a key event but has nothing that calls `preventDefault`.
-            /*
-              Guarded here rather than by disabling the field, which is how the button does it.
-
-              A write takes a round trip — a second against a local node, longer against a shared
-              remote one — and Enter is the fast path, so pressing it twice is the easy mistake and
-              the one that was reported. The button can simply go `disabled`; the textarea cannot,
-              because disabling the thing somebody is typing into takes the focus away mid-sentence
-              and is a worse interruption than the bug.
-
-              So the condition carries both halves of what `disabled` says on the button — there are
-              words, and no write is already going — and the two paths stay honest about being the
-              same act by running the same handler.
-            */
-            'on:submit': {
-              $if: { condition: { $: 'trim(local.message) && !local.sending' }, then: sendMessage },
-            },
-          },
-        },
-        {
-          type: 'we-tooltip',
-          props: { content: 'Add this to the transcript' },
-          children: [
-            {
-              type: 'we-button',
-              props: {
-                label: 'Add this to the transcript',
-                // No `size` either: the pair has to agree, and md is what the field is now.
-                // `square` sizes the width from that same height, so an icon-only button is a
-                // square rather than a rounded rectangle with an icon adrift in it.
-                square: true,
-                variant: 'secondary',
-                /*
-                  Two reasons to be unpressable, and they are not the same reason.
-
-                  Empty is a precondition: there is nothing to send. In flight is a guard: there is
-                  something to send and it is already going. Both spell `disabled`, but only the
-                  second wants a spinner — which is the whole of what was missing. A write against a
-                  shared remote executor takes long enough that a composer saying nothing at all
-                  reads as a press that did not register, so the next thing somebody does is press
-                  it again, and the transcript gets the line twice. Nothing in this panel can delete
-                  a line once it is written, so the duplicate is there for good.
-                */
-                disabled: { $: '!trim(local.message) || local.sending' },
-                loading: { $: 'local.sending' },
-                onClick: sendMessage,
-              },
-              children: [{ type: 'we-icon', props: { name: 'paper-plane-tilt' } }],
-            },
-          ],
-        },
+        /*
+          The block composer in its one-line mode — see `compact` on its props: Enter sends,
+          Shift+Enter breaks the line, and `@` names a person exactly as it does in a post, so the
+          line is written with its marks. It empties itself on sending. Framed, with a send button,
+          by `lineComposer`.
+        */
+        lineComposer({
+          placeholder: 'Type a message…',
+          sendLabel: 'Add this to the transcript',
+          onSubmit: { $if: { condition: { $: '!local.sending' }, then: sendMessage } },
+        }),
       ],
     },
   },
+};
+
+/**
+ * The composer, and above it the line a reply is being written to — said, with a way to put it down,
+ * so a message meant for the conversation is never sent as a reply by accident.
+ */
+export const transcriptComposer: SchemaNode = {
+  type: 'Column',
+  props: { gap: '100', width: '100%' },
+  children: [
+    {
+      type: '$if',
+      props: {
+        condition: { $: TRANSCRIPT_REPLY },
+        then: {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', width: '100%' },
+          children: [
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-muted', flex: '1', minWidth: '0', truncate: true },
+              children: [{ $: "'Replying to: ' + modules.transcribe.replyingTo.text" }],
+            },
+            {
+              type: 'we-button',
+              props: { size: 'xs', variant: 'ghost', onClick: { $action: 'modules.transcribe.cancelReply' } },
+              children: ['Cancel'],
+            },
+          ],
+        },
+      },
+    },
+    composerRow,
+  ],
 };
 
 /**
@@ -4237,91 +3810,27 @@ export const transcriptComposer: SchemaNode = {
  * is resolved. So pointing this feed at another call points its rows at that call too, and there is
  * one query in the codebase rather than two that have to agree.
  */
-export const transcriptFeed: SchemaNode = panelScroll({
+export const transcriptFeed: SchemaNode = timeline({
   /*
-    Follows the tail while somebody is at the tail, and holds still while they read further up. A
-    live transcript is the case this exists for — and the case that most needs a way back down
-    again, since holding still is otherwise a decision nothing offers to undo.
+    The window and the way round it is drawn — see `timeline` in the schema kit, which turns the two
+    into which end is pinned, which edge loads more, and which corner each jump button means.
 
-    Off while the transcript is anchored to its beginning: those rows are the oldest in the
-    conversation and new ones do not belong below them, so following the end would drag a reader
-    away from what they asked to read on every line somebody says.
+    A jump re-anchors rather than scrolling: the top of what is loaded is not the beginning of
+    anything, so reaching the real beginning means asking a different question. Which end asks is
+    read off the `data-we-more` marker on the "more is coming" line, so the scroller and the rows
+    cannot disagree. A transcript that has loaded whole scrolls at both ends.
+
+    Loading is guarded by which end is anchored and not by whether there is more: the rows are a
+    local of `transcriptLines`, a part inside this scroller, and an event on the scroller reaches its
+    ancestors, never its descendants. Reaching the far edge of a fully loaded transcript asks for one
+    page that comes back unchanged — one wasted read, bounded by what exists.
   */
-  pin: { $: `${'modules.transcribe.transcriptFromStart'} ? '' : 'end'` },
-  /*
-    Both ends, and the start one does something the scroller could not do for itself.
-
-    It was `end` alone, because the scroller's own start button goes to the top of what is *loaded*
-    — which, since the window arrived, is not the beginning of the conversation. It would have said
-    "start" and delivered "as far back as we happened to fetch".
-
-    That was the right call about the *action* and it cost the affordance. So the visibility stays
-    the scroller's — it is the one that knows whether there is anywhere above to go — and the action
-    comes from here, through the `jump-start` slot below. The button is the scroller's own, in its
-    own corner, and it means what it says.
-  */
-  jump: 'both',
-  /*
-    A jump is a scroll at the end you are anchored to, and a different query at the other one.
-
-    Anchored to the newest end, pressing "down" is a trip back through lines you have already loaded
-    — worth animating, because the movement is what says which way the content went. Pressing "up"
-    is not a longer version of that: the top of what is loaded is not the beginning of anything, and
-    reaching the real beginning means asking a different question. Read from the beginning, the two
-    swap over exactly.
-
-    Which end is which is not stated here. The scroller reads it from the `data-we-more` marker on
-    the "more is coming" line, which `transcriptLines` already renders under exactly that test — so
-    the two cannot disagree, and a transcript that has loaded whole simply scrolls at both ends
-    rather than re-asking for what it already has.
-
-    The re-anchoring case needs no scrolling of its own: a mode change resets the window and flips
-    `pin`, and `scrollTop: 0` is the anchored end in both coordinate systems — the newest under
-    column-reverse, the oldest without it — so the new query lands where it should.
-  */
-  onJumpStart: { $action: 'modules.transcribe.readTranscriptFromStart' },
-  onJumpEnd: { $action: 'modules.transcribe.readTranscriptLive' },
-  /*
-    More of the conversation loads as the reader reaches the edge of what is loaded, in whichever
-    direction they are going, rather than on a button.
-
-    Both ends, because the window has two. Following the live end it grows backwards, so the edge
-    worth watching is the top. Reading the same conversation from its beginning it grows forwards,
-    and the edge is the bottom — without that pair, choosing "read from the start" walked you to the
-    end of the first page and stopped, with the rest of the conversation unreachable.
-
-    The distance is about a panel's height of runway, so a page is asked for before the reader
-    arrives at the edge rather than when they hit it. Nothing has to hold their place: the scroller
-    is anchored to its newest end, so content arriving above them does not move them.
-
-    Guarded on which end is anchored, and NOT on there being more — which is a real imprecision and
-    a deliberate one.
-
-    "May have more" is `count(local.utterances) >= transcriptShown`, and those rows are a local of
-    `transcriptLines`, which is placed as a part *inside* this scroller. An event dispatched on the
-    scroller reaches its ancestors, never its descendants, so the node that could answer is the one
-    node that cannot be asked. The alternatives were each worse than the cost: a count projection is
-    a round trip to avoid a re-run, and a count reported back from a render is a write from drawing.
-
-    What it costs: reaching the far edge of a fully-loaded transcript raises the window by a page and
-    re-runs the query, which comes back with the same rows. The list is unchanged, the "earlier" line
-    correctly disappears, and nothing is drawn wrongly — one wasted read per trip to that edge, and
-    the read is bounded by what exists rather than by the window.
-  */
-  nearStart: 400,
-  onNearStart: {
-    $if: {
-      condition: { $: `!${TRANSCRIPT_FROM_START}` },
-      then: { $action: 'modules.transcribe.showMoreTranscript' },
-    },
-  },
-  nearEnd: 400,
-  onNearEnd: {
-    $if: {
-      condition: { $: TRANSCRIPT_FROM_START },
-      then: { $action: 'modules.transcribe.showMoreTranscript' },
-    },
-  },
+  fromStart: TRANSCRIPT_FROM_START,
+  orientation: TIMELINE_ORIENTATION,
+  onLoadOlder: { $action: 'modules.transcribe.showMoreTranscript' },
+  onLoadNewer: { $action: 'modules.transcribe.showMoreTranscript' },
+  onJumpNewest: { $action: 'modules.transcribe.readTranscriptLive' },
+  onJumpOldest: { $action: 'modules.transcribe.readTranscriptFromStart' },
   children: [
     {
       type: 'Column',
@@ -4409,10 +3918,7 @@ export const extractionPanel: SchemaNode = {
       type: '$if',
       props: {
         condition: { $: `modules.transcribe.extractable && (${EXTRACTION_SUBJECT_EXPR})` },
-        then: {
-          type: '$if',
-          props: { condition: { $: SUBJECT_IS_SPACE }, then: spaceAutoExtractControl, else: autoExtractControl },
-        },
+        then: autoExtractControl,
       },
     },
     /*
@@ -4423,10 +3929,11 @@ export const extractionPanel: SchemaNode = {
     choose which and from when, that Extract is the backfill, and that what arrives is a suggestion.
   */
     help:
-      'A model reads the transcript and writes what it finds as records. Auto extract reads the call ' +
-      'as it goes, for everyone in it; the chips choose what it looks for, from now on. Extract now ' +
-      'reads the whole conversation so far, including anything said before a model was switched on. ' +
-      'What it finds appears below as suggestions to accept or dismiss.',
+      'A model reads a conversation — the call on screen, or the messages typed outside calls — and ' +
+      'writes what it finds as records. Auto reads it as it goes, for everyone in it; the chips choose ' +
+      'what it looks for, from now on. Extract now reads the whole conversation so far, including ' +
+      'anything said before a model was switched on. What it finds appears below as suggestions to ' +
+      'accept or dismiss. New calls start with the space’s defaults, set in space settings.',
     children: [
       {
         type: '$if',
@@ -4487,6 +3994,8 @@ export const extractionPanel: SchemaNode = {
                   changesListOpen: { type: 'boolean', initial: true, persist: 'transcribe.changesListOpen' },
                   extractedOpen: { type: 'boolean', initial: true, persist: 'transcribe.extractedOpen' },
                   amendmentsOpen: { type: 'boolean', initial: true, persist: 'transcribe.amendmentsOpen' },
+                  // Folded to begin with: it is context, where the sections above are decisions.
+                  recognisedOpen: { type: 'boolean', initial: false, persist: 'transcribe.recognisedOpen' },
                   /*
                     Closed to start, where the other two open: the readings are a record of how the
                     other sections came to say what they say, wanted when something looks wrong and
@@ -4656,6 +4165,7 @@ export const extractionPanel: SchemaNode = {
                             */
                             include: {
                               extracted: { order: { createdAt: 'desc' } },
+                              recognised: { order: { createdAt: 'desc' } },
                               amendments: { order: { createdAt: 'desc' } },
                             },
                             when: EXTRACTION_SUBJECT,
@@ -4705,6 +4215,39 @@ export const extractionPanel: SchemaNode = {
                                         type: 'Grid',
                                         props: { minChildWidth: '240px', gap: '200', width: '100%' },
                                         children: [extractedRows],
+                                      },
+                                    ],
+                                  }),
+                                ],
+                              },
+                            },
+                          },
+                          {
+                            /*
+                              What the conversation found that was already in the space — see
+                              {@link RECOGNISED_ROWS}. After the records it made and before the
+                              changes it made, and folded: it is context rather than a decision.
+                            */
+                            type: '$if',
+                            props: {
+                              condition: { $: RECOGNISED_COUNT },
+                              then: {
+                                type: 'Column',
+                                props: { gap: '200', width: '100%' },
+                                children: [
+                                  foldingSectionLabel({
+                                    label: 'Already in the space',
+                                    count: RECOGNISED_COUNT,
+                                    tone: 'neutral',
+                                    open: { field: 'recognisedOpen' },
+                                  }),
+                                  foldingBody({
+                                    open: { field: 'recognisedOpen' },
+                                    children: [
+                                      {
+                                        type: 'Grid',
+                                        props: { minChildWidth: '240px', gap: '200', width: '100%' },
+                                        children: [recognisedRows],
                                       },
                                     ],
                                   }),
@@ -4769,13 +4312,13 @@ export const extractionPanel: SchemaNode = {
                       its delayed fade, which is what stops a placeholder asserting emptiness on
                       the frame before a query answers.
 
-                      "Join a call" rather than "Start a call": joining is the act either way, and
-                      it is the word the transcript's own placeholder uses one panel over.
+                      Reached only where there is no collection at all — a space made before spaces had
+                      one — since the panel otherwise falls back to the messages outside calls.
                     */
                       else: emptyState({
                         icon: 'sparkle',
                         label: 'extraction',
-                        message: 'Join a call to start extracting things.',
+                        message: 'This space has nothing to extract from.',
                       }),
                     },
                   },
@@ -4853,6 +4396,7 @@ export const panel: SchemaNode = panelShell({
     type: 'Row',
     props: { gap: '200', ay: 'center' },
     children: [
+      timelineOrderButton,
       /*
             Take the transcript with you — the calls list has offered this all along, and the panel
             reading the transcript is where somebody is when they want it.

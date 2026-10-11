@@ -59,7 +59,7 @@ describe('a stored record as data', () => {
       __subjectClass: 'TaskBlock',
       title: 'Ship it',
       status: '',
-      comments: [],
+      responses: [],
       tags: ['a'],
       createdAt: Date.parse('2026-09-14T11:00:00.000Z'),
       get id() {

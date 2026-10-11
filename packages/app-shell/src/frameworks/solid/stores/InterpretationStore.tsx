@@ -474,14 +474,13 @@ export function InterpretationStoreProvider(props: ParentProps) {
         auto-extraction was unavailable until everybody left and rejoined. Published here, a module's
         watch effect depends on it and follows the toggle.
 
-        Asked about a *call* now, with the space's answer underneath it. Participants can stop a
-        standing pass on this conversation without the community changing its mind about every future
-        one — and without needing whoever administers the space to be in the room, which was the only
-        way to stop one before. Called with no id, it answers for the space, which is what a surface
-        asking "does this space do this at all" wants.
+        Asked about a *collection*: each holds its own answer, copied from the space's default when
+        it was made, so participants can stop a standing pass on their conversation without the
+        community changing its mind about every future one. Called with no id, it answers with the
+        space's default, which is what a surface asking "does this space do this at all" wants.
       */
       autoInterpretEnabled: (collectionId?: string) =>
-        collectionId ? spaceStore.autoInterpretForCall(collectionId) : spaceStore.autoInterpret(),
+        collectionId ? spaceStore.autoExtractFor(collectionId) : spaceStore.autoInterpret(),
     }),
   );
 

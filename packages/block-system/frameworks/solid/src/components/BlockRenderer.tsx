@@ -21,6 +21,7 @@ import { useDisplayOverride } from './BlockDisplayOverrides';
 import { useBlockHost } from './BlockHost';
 import { CollectionDisplay } from './CollectionBlock/CollectionDisplay';
 import { FallbackBlockCard } from './FallbackBlockCard/FallbackBlockCard';
+import { MentionCard } from './MentionCard';
 
 registerCoreBlocks();
 registerCoreBlockComponents();
@@ -232,13 +233,17 @@ export function BlockRenderer(props: Props) {
     ? `we-block-renderer we-block-content ${rootClass}`
     : 'we-block-renderer we-block-content';
 
+  // Where the words are, for the mention card's one listener.
+  let wordsEl: HTMLDivElement | undefined;
+
   return (
     <Column class="we-block-renderer-wrapper" width={width} ax={props.ax} ay={props.ay}>
       {/*
         `data-we-text`: a press on these words selects them. A card that can be dragged around a
         composition used to pick the whole post up the moment somebody tried to highlight a sentence.
       */}
-      <div class={themeRoot} data-we-text="">
+      <div class={themeRoot} data-we-text="" ref={wordsEl}>
+        <MentionCard root={() => wordsEl} />
         <BlockDragContext.Provider value={props.blockDrag?.within ? props.blockDrag : undefined}>
           <Switch fallback={<Blocks blocks={blocks() ?? []} />}>
             <Match when={blocks() === null}>

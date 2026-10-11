@@ -59,7 +59,7 @@ export interface CanvasCard {
    * is a conversation here" is the whole of what it owes, and one press opens the rest.
    */
   signals: number;
-  comments: number;
+  responses: number;
 }
 
 /** A state as a card needs it: its slug, what the community calls it, and the colour it is drawn in. */
@@ -181,7 +181,7 @@ export function canvasCard(input: CanvasCardInput): CanvasCard {
     prose,
     pending: data.pending === true,
     signals: count(data.signalsCount),
-    comments: count(data.commentsCount),
+    responses: count(data.responsesCount),
   };
 }
 
@@ -313,7 +313,7 @@ export const CANVAS_RECORD_CARD: SchemaNode = {
       type: 'div',
       props: {
         style: {
-          $: "card.signals || card.comments ? 'margin-top: 0.4em; font-size: 0.8em; opacity: 0.7;' : 'display: none;'",
+          $: "card.signals || card.responses ? 'margin-top: 0.4em; font-size: 0.8em; opacity: 0.7;' : 'display: none;'",
         },
       },
       children: [
@@ -331,14 +331,14 @@ export const CANVAS_RECORD_CARD: SchemaNode = {
         },
         {
           type: 'span',
-          props: { style: { $: "card.comments ? '' : 'display: none;'" } },
+          props: { style: { $: "card.responses ? '' : 'display: none;'" } },
           children: [
             {
               type: 'span',
               props: { style: 'display: inline-flex; vertical-align: -0.15em; margin-inline-end: 0.25em;' },
               children: [{ type: 'we-icon', props: { name: 'chat-circle', size: '1.1em' } }],
             },
-            { $: 'card.comments' },
+            { $: 'card.responses' },
           ],
         },
       ],

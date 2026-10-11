@@ -46,6 +46,13 @@ const EXTRACTION_PASS_PREDICATE = 'we://extraction_pass_record';
  */
 const EXTRACTED_PREDICATE = 'we://extracted';
 
+/**
+ * Where a record a pass recognised rather than made is linked from — `CollectionBlock.recognised`.
+ * A pass over this conversation that matches something already in the space links it here, so the
+ * conversation's own view can say "already in the space" rather than claiming it as made here.
+ */
+const RECOGNISED_PREDICATE = 'we://recognised';
+
 export type { EntityManifestEntry, EntityManifestProperty } from '@we/backend-shared';
 
 /**
@@ -209,23 +216,25 @@ export interface DatasetStore {
    */
   provideExtractionCandidates: (candidates: () => string[]) => () => void;
   /**
-   * SpaceStore supplies the two layers under that: what one call extracts, and how to change it.
+   * SpaceStore supplies what one collection extracts, and how to change it.
    *
-   * Both take a collection id, because the answer is per call — `forCall` resolves the call's own
-   * list if its participants set one, else the space's default. Injected for the reason
-   * `provideAutoInterpretGate` is: the answer lives on `Space` and on a record in the space, and
-   * SpaceStore mounts below this one.
+   * Every member takes a collection id, because the answer is the collection's own — copied from
+   * the space's defaults when it was made. Injected for the reason `provideAutoInterpretGate` is:
+   * the answer lives on records this store does not read, and SpaceStore mounts below this one.
    *
-   * Unset, `forCall` reads as the candidates — which keeps a host that has not wired this yet
+   * Unset, `targetsFor` reads as the candidates — which keeps a host that has not wired this yet
    * behaving as it did rather than silently extracting nothing.
    */
-  provideCallExtraction: (access: {
-    forCall: (collectionId: string) => string[];
-    setForCall: (collectionId: string, entity: string, on: boolean) => Promise<void>;
-    /** Whether *this call* is extracted as it happens — its own answer, else the space's. */
-    autoForCall: (collectionId: string) => boolean;
-    setAutoForCall: (collectionId: string, on: boolean) => Promise<void>;
-  }) => () => void;
+  provideCollectionExtraction: (access: CollectionExtractionAccess) => () => void;
+}
+
+/** What SpaceStore lends this store about one collection's extraction settings. */
+export interface CollectionExtractionAccess {
+  targetsFor: (collectionId: string) => string[];
+  setTargetFor: (collectionId: string, entity: string, on: boolean) => Promise<void>;
+  /** Whether this collection is extracted as it grows — its own answer. */
+  autoFor: (collectionId: string) => boolean;
+  setAutoFor: (collectionId: string, on: boolean) => Promise<void>;
 }
 
 const DatasetContext = createContext<DatasetStore>();
@@ -289,18 +298,13 @@ export function DatasetStoreProvider(props: ParentProps) {
   const extractionCandidatesGate = hostSlot<() => string[]>();
 
   /*
-    What one call extracts, and how to change it — the two layers below candidacy.
+    What one collection extracts, and how to change it — the layer below candidacy.
 
-    Injected from SpaceStore, which owns `Space.extractionTargets` and the `CallExtraction` records
-    and mounts below this store. Unset, `forCall` falls back to the candidates rather than to
-    nothing: a host that has not wired this in should behave as it did before the layer existed.
+    Injected from SpaceStore, which reads the collections' own settings and mounts below this
+    store. Unset, `targetsFor` falls back to the candidates rather than to nothing: a host that has
+    not wired this in should behave as it did before the layer existed.
   */
-  const callExtraction = hostSlot<{
-    forCall: (collectionId: string) => string[];
-    setForCall: (collectionId: string, entity: string, on: boolean) => Promise<void>;
-    autoForCall: (collectionId: string) => boolean;
-    setAutoForCall: (collectionId: string, on: boolean) => Promise<void>;
-  }>();
+  const collectionExtraction = hostSlot<CollectionExtractionAccess>();
 
   /**
    * The class list one pass over this collection should ask for.
@@ -356,7 +360,7 @@ export function DatasetStoreProvider(props: ParentProps) {
 
   const targetsForCollection = (collectionId: string): string[] => {
     const candidates = extractionCandidatesGate.get()?.() ?? [];
-    const chosen = callExtraction.get()?.forCall(collectionId);
+    const chosen = collectionExtraction.get()?.targetsFor(collectionId);
     if (!chosen) return candidates;
     return candidates.filter((entity) => chosen.includes(entity));
   };
@@ -431,11 +435,11 @@ export function DatasetStoreProvider(props: ParentProps) {
       },
 
       /*
-        What this call extracts, and what else it could — for a module that offers the choice.
+        What this collection extracts, and what else it could — for a module that offers the choice.
 
         One list of `{ entity, selected }` rather than two arrays, because the surface that renders it
         is a row of toggles and a schema cannot join two lists to decide which are ticked. The module
-        never sees the resolution: candidacy, the space's default and the call's own list are three
+        never sees the resolution: candidacy, the space's default and the collection's own list are
         questions it has no business knowing about, and it is handed the answer.
       */
       extractionTargets: (collectionId: string) => {
@@ -446,14 +450,14 @@ export function DatasetStoreProvider(props: ParentProps) {
         }));
       },
       setAutoInterpret: async (collectionId: string, on: boolean) => {
-        const extraction = callExtraction.get();
-        if (!extraction) throw new Error('interpretation: this host cannot record a call’s extraction settings');
-        await extraction.setAutoForCall(collectionId, on);
+        const extraction = collectionExtraction.get();
+        if (!extraction) throw new Error('interpretation: this host cannot record a collection’s extraction settings');
+        await extraction.setAutoFor(collectionId, on);
       },
       setExtractionTarget: async (collectionId: string, entity: string, on: boolean) => {
-        const extraction = callExtraction.get();
-        if (!extraction) throw new Error('interpretation: this host cannot record a call’s extraction targets');
-        await extraction.setForCall(collectionId, entity, on);
+        const extraction = collectionExtraction.get();
+        if (!extraction) throw new Error('interpretation: this host cannot record a collection’s extraction targets');
+        await extraction.setTargetFor(collectionId, entity, on);
       },
 
       // Gathering the turns is the host's half of the job: the port takes turns, and a module has no
@@ -489,6 +493,7 @@ export function DatasetStoreProvider(props: ParentProps) {
             classes,
             parent: await filedUnder(dataset.handle, collectionId, predicate),
             provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
+            recognised: { id: collectionId, predicate: RECOGNISED_PREDICATE },
           });
           await recordPass(dataset.handle, collectionId, {
             // Nothing to look for is not a failure and not a quiet meeting — it is a call whose
@@ -590,6 +595,7 @@ export function DatasetStoreProvider(props: ParentProps) {
           classes: targetsForCollection(collectionId),
           parent: await filedUnder(dataset.handle, collectionId, predicate),
           provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
+          recognised: { id: collectionId, predicate: RECOGNISED_PREDICATE },
         });
       },
 
@@ -610,16 +616,15 @@ export function DatasetStoreProvider(props: ParentProps) {
     // it and cannot reach a Space. Absent (no gate provided yet, or no space) reads as off, which
     // is the right way round for something that spends somebody's LLM budget.
     /*
-      Asked about *this call*, not about the space.
+      Asked about *this collection*, not about the space.
 
-      The space's switch is still the answer for a call whose participants have not decided —
-      `autoForCall` resolves that — but a call that has been turned off has to stay off, and a
-      gate that could only see the space would re-register the watch on the next tick. Falls back
-      to the space-wide gate where the call layer has not been wired, which keeps a host that
+      A collection holds its own answer, and one that has been turned off has to stay off — a gate
+      that could only see the space would re-register the watch on the next tick. Falls back to the
+      space's default where the collection layer has not been wired, which keeps a host that
       predates it behaving as it did.
     */
-    const auto = callExtraction.get()?.autoForCall(collectionId) ?? autoInterpretGate.get()?.();
-    if (!auto) throw new Error('interpretation: automatic extraction is off for this call');
+    const auto = collectionExtraction.get()?.autoFor(collectionId) ?? autoInterpretGate.get()?.();
+    if (!auto) throw new Error('interpretation: automatic extraction is off for this collection');
     /*
       The caller's dataset, not `currentDataset()`: a call outlives the space on screen, and a watch
       registered wherever the reader had wandered to interprets the call into a perspective that
@@ -642,6 +647,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       classes,
       parent: await filedUnder(handle, collectionId, predicate),
       provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
+      recognised: { id: collectionId, predicate: RECOGNISED_PREDICATE },
     });
   }
 
@@ -1275,7 +1281,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     watchConversation,
     unwatchConversation,
     provideExtractionCandidates: extractionCandidatesGate.provide,
-    provideCallExtraction: callExtraction.provide,
+    provideCollectionExtraction: collectionExtraction.provide,
   };
 
   return <DatasetContext.Provider value={store}>{props.children}</DatasetContext.Provider>;
