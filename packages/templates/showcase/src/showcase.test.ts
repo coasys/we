@@ -2320,30 +2320,44 @@ describe('the workshop’s tree', () => {
 describe('the workshop’s space-wide views', () => {
   const workshop = showcase.workshopTemplate as Schema & { meta?: { panels?: TemplatePanel[] } };
   const route = (path: string) => JSON.stringify((workshop.routes ?? []).find((entry) => entry.path === path));
-  const DIM = `(${CALL_EXPR}) && routeStore.params.from == 'dim'`;
-  const HIDE = `(${CALL_EXPR}) && routeStore.params.from == 'hide'`;
+  const SCOPE = 'routeStore.params.scope';
+  const RECORD = `(${SCOPE} == 'call' ? (${CALL_EXPR}) : ${SCOPE} == 'space' ? spaceStore.root : ${SCOPE} ? ${SCOPE} : '')`;
+  const DIM = `(${RECORD}) && routeStore.params.from == 'dim'`;
+  const HIDE = `(${RECORD}) && routeStore.params.from == 'hide'`;
 
-  it('narrows nothing until somebody turns the lens on, and only while a call is on screen', () => {
+  it('narrows nothing until somebody picks a scope', () => {
     const canvas = route('/canvas');
-    // Hiding leaves off what the call did not produce; with the lens off it asks for nobody's cards.
-    expect(canvas).toContain(`"onlyFrom":{"$":"(${HIDE}) ? (${CALL_EXPR}) : ''"}`);
-    // Dimming fades everything else — a card with no origin is not from this call either. Under
-    // "only" too, so the cards stay faded while the canvas reloads without them rather than flashing
-    // back to full strength.
+    // Hiding leaves off what the conversation in scope did not produce; with no scope it asks for
+    // nobody's cards.
+    expect(canvas).toContain(`"onlyFrom":{"$":"(${HIDE}) ? (${RECORD}) : ''"}`);
+    // Dimming fades everything else — a card with no origin is in no scope. Under "hide" too, so the
+    // cards stay faded while the canvas reloads without them rather than flashing back.
     expect(canvas).toContain(
-      `((${DIM}) || (${HIDE})) ? [{ when: { 'data.origin': { not: (${CALL_EXPR}) } }, style: { opacity: 0.1 } }] : []`,
+      `((${DIM}) || (${HIDE})) ? [{ when: { 'data.origin': { not: (${RECORD}) } }, style: { opacity: 0.1 } }] : []`,
     );
     expect(canvas).toContain('"origin":"extractedFrom"');
   });
 
-  it('keeps the lens in the address, beside the colour lens, so a link shows the same view', () => {
-    expect(JSON.stringify(workshop)).toContain("routeStore.params.from ? '&from=' + routeStore.params.from : ''");
-    // A menu naming all three, rather than a button stepping through them, which read as a toggle.
-    expect(JSON.stringify(workshop)).toContain(`"args":["from",{"$":"arg.id == 'all' ? '' : arg.id"}]`);
+  it('scopes to the call on screen, to the messages outside calls, or to any record named', () => {
+    // "Outside calls" is the space collection: it is what extracts the messages typed into the space,
+    // so it is where those records came from. Any other value is a record's id — a channel, later.
+    expect(RECORD).toContain('spaceStore.root');
+    expect(JSON.stringify(workshop)).toContain("{ id: 'scope:space', label: 'Outside calls'");
+    // "This call" only while one is on screen; the lens itself whether or not there is one.
+    expect(JSON.stringify(workshop)).toContain(`hidden: !(${CALL_EXPR}) }`);
+  });
+
+  it('keeps the scope and its treatment in the address, so a link shows the same view', () => {
+    const json = JSON.stringify(workshop);
+    expect(json).toContain("routeStore.params.from ? '&from=' + routeStore.params.from : ''");
+    expect(json).toContain("routeStore.params.scope ? '&scope=' + routeStore.params.scope : ''");
+    // Picking a scope dims the rest to begin with; "All" clears both.
+    expect(json).toContain('"args":["from","dim"]');
+    expect(json).toContain('"args":["scope",""]');
   });
 
   it('puts the lens beside each page’s own controls, not in the page switcher', () => {
-    const lens = '"triggerTitle":"Pick out what this call produced"';
+    const lens = '"triggerTitle":"Show what came from one call, or from outside calls"';
     for (const path of ['/canvas', '/kanban', '/calendar']) expect(route(path), path).toContain(lens);
     const routes = JSON.stringify(workshop.routes);
     expect(JSON.stringify(workshop).split(lens).length - 1).toBe(routes.split(lens).length - 1);

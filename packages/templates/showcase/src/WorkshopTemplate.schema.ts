@@ -183,22 +183,34 @@ const SPACE_CANVAS = { $: SPACE_CANVAS_EXPR };
 const EXTRACTABLE = { $: 'shapeStore.extractionCandidates' };
 
 /**
- * The "this call" lens: the space's views picking out what came from the call on screen.
+ * The scope lens: the space's views picking out what one conversation produced.
+ *
+ * Two choices, held in the address so a link shows the same view, as the colour lenses are:
+ *
+ * - **Which conversation** (`scope`): `call` for the call on screen, `space` for the messages typed
+ *   outside any call — the space collection, which is what extracts them — or any other record's id,
+ *   which is where a channel or another grouping slots in later with nothing new underneath. Absent
+ *   is everything, and so is `call` with no call on screen.
+ * - **What happens to the rest** (`from`): `dim` fades it, `hide` puts it away.
  *
  * Off unless somebody turns it on — opening a call must never quietly narrow the space's views, or
  * per-call scoping comes back by the back door and the canvas changes with whichever panel is open.
- * `dim` fades everything else, `hide` puts it away. In the address, like the colour lenses, so a
- * link shows the same view; and only while a call is on screen, since without one there is nothing
- * to pick out.
  *
- * Matched on where each record came from (`extractedFrom`). Something made by hand, or from the
- * messages typed outside any call, has no call to have come from, so it is "not from this call".
+ * Matched on where each record came from (`extractedFrom`), which is the conversation that made it:
+ * one a conversation only recognised belongs to the one that made it. Something made by hand comes
+ * from no conversation, so it is outside every scope.
  */
+const SCOPE_PARAM = 'scope';
+const SCOPE = `routeStore.params.${SCOPE_PARAM}`;
+/** The record the scope names, or empty for none. */
+const SCOPE_RECORD = `(${SCOPE} == 'call' ? (${CALL_EXPR}) : ${SCOPE} == 'space' ? spaceStore.root : ${SCOPE} ? ${SCOPE} : '')`;
 const FROM_PARAM = 'from';
 const FROM_MODE = `routeStore.params.${FROM_PARAM}`;
-const FROM_DIM = `(${CALL_EXPR}) && ${FROM_MODE} == 'dim'`;
-const FROM_HIDE = `(${CALL_EXPR}) && ${FROM_MODE} == 'hide'`;
+const FROM_DIM = `(${SCOPE_RECORD}) && ${FROM_MODE} == 'dim'`;
+const FROM_HIDE = `(${SCOPE_RECORD}) && ${FROM_MODE} == 'hide'`;
 const FROM_ON = `(${FROM_DIM}) || (${FROM_HIDE})`;
+/** The scope's parameter, carried between pages beside `FROM_QUERY`. */
+const SCOPE_QUERY = `\${${SCOPE} ? '&${SCOPE_PARAM}=' + ${SCOPE} : ''}`;
 /** The lens parameter, carried between pages the way `LENS_QUERY` carries the colour lens. */
 const FROM_QUERY = `\${routeStore.params.${FROM_PARAM} ? '&${FROM_PARAM}=' + routeStore.params.${FROM_PARAM} : ''}`;
 
@@ -314,7 +326,7 @@ const NAV = [
  * switch that spelt its query without it would silently put the colours back to the default.
  */
 const navPath = {
-  $: `\`\${spaceStore.spacePath}/\${nav.segment}?call=\${routeStore.params.call ?? ''}${LENS_QUERY}${FOLD_QUERY}${FROM_QUERY}\``,
+  $: `\`\${spaceStore.spacePath}/\${nav.segment}?call=\${routeStore.params.call ?? ''}${LENS_QUERY}${FOLD_QUERY}${FROM_QUERY}${SCOPE_QUERY}\``,
 };
 
 /**
@@ -596,41 +608,71 @@ const callPill: SchemaNode = {
 };
 
 /*
-  The "this call" lens — see `FROM_PARAM`.
+  The scope lens — see `SCOPE_PARAM`.
 
   Beside each page's own controls rather than in the switcher: it changes how the page shows what is
-  on it, not which page is on screen. The same control on all three, writing the one parameter they
+  on it, not which page is on screen. The same control on all three, writing the parameters they
   share, so the choice holds as somebody moves between them.
 
-  A menu naming all three states rather than a button stepping through them. Stepping read as a
-  toggle — a second press was expected to put everything back, and hid everything else instead.
-  Only while a call is on screen: with none there is nothing to pick out.
+  One menu, two groups: which conversation, then what happens to everything else. Choosing a scope
+  dims the rest to begin with, which is the gentler of the two; "All" clears both. "This call" is
+  offered only while one is on screen, since it names nothing otherwise.
 */
+const SCOPE_LABEL = `${SCOPE} == 'space' ? 'Outside calls' : ${SCOPE} == 'call' ? 'This call' : 'Scoped'`;
 const fromLensControl: SchemaNode = {
-  type: '$if',
+  type: 'DropdownMenu',
   props: {
-    condition: CALL,
-    then: {
-      type: 'DropdownMenu',
-      props: {
-        triggerIcon: 'funnel',
-        triggerLabel: {
-          $: `(${FROM_DIM}) ? 'Other calls dimmed' : (${FROM_HIDE}) ? 'Only this call' : 'All calls'`,
-        },
-        triggerTitle: 'Pick out what this call produced',
-        triggerVariant: { $: `(${FROM_ON}) ? 'secondary' : 'ghost'` },
-        items: {
-          $:
-            `[{ id: 'all', label: 'All calls', icon: 'squares-four', selected: !(${FROM_ON}) }, ` +
-            `{ id: 'dim', label: 'Dim other calls', icon: 'circle-half', selected: ${FROM_DIM} }, ` +
-            `{ id: 'hide', label: 'Only this call', icon: 'funnel', selected: ${FROM_HIDE} }]`,
-        },
-        onSelect: {
-          $action: 'routeStore.setParam',
-          args: [FROM_PARAM, { $: "arg.id == 'all' ? '' : arg.id" }],
+    triggerIcon: 'funnel',
+    triggerLabel: {
+      $: `(${FROM_ON}) ? (${SCOPE_LABEL}) + ((${FROM_HIDE}) ? ' · others hidden' : ' · others dimmed') : 'All'`,
+    },
+    triggerTitle: 'Show what came from one call, or from outside calls',
+    triggerVariant: { $: `(${FROM_ON}) ? 'secondary' : 'ghost'` },
+    items: {
+      $:
+        `[{ type: 'group', id: 'scope', label: 'Scope', items: [` +
+        `{ id: 'scope:all', label: 'All', icon: 'squares-four', selected: !(${FROM_ON}) }, ` +
+        `{ id: 'scope:space', label: 'Outside calls', icon: 'chat-circle-text', selected: (${FROM_ON}) && ${SCOPE} == 'space' }, ` +
+        `{ id: 'scope:call', label: 'This call', icon: 'phone', selected: (${FROM_ON}) && ${SCOPE} == 'call', hidden: !(${CALL_EXPR}) }` +
+        `] }, { type: 'group', id: 'rest', label: 'Everything else', hidden: !(${FROM_ON}), items: [` +
+        `{ id: 'mode:dim', label: 'Dim', icon: 'circle-half', selected: ${FROM_DIM} }, ` +
+        `{ id: 'mode:hide', label: 'Hide', icon: 'eye-slash', selected: ${FROM_HIDE} }` +
+        `] }]`,
+    },
+    onSelect: [
+      {
+        $if: {
+          condition: { $: "arg.id == 'scope:all'" },
+          then: [
+            { $action: 'routeStore.setParam', args: [SCOPE_PARAM, ''] },
+            { $action: 'routeStore.setParam', args: [FROM_PARAM, ''] },
+          ],
         },
       },
-    },
+      {
+        $if: {
+          condition: { $: "arg.id == 'scope:space' || arg.id == 'scope:call'" },
+          then: [
+            {
+              $action: 'routeStore.setParam',
+              args: [SCOPE_PARAM, { $: "arg.id == 'scope:space' ? 'space' : 'call'" }],
+            },
+            {
+              $if: {
+                condition: { $: `!${FROM_MODE}` },
+                then: { $action: 'routeStore.setParam', args: [FROM_PARAM, 'dim'] },
+              },
+            },
+          ],
+        },
+      },
+      {
+        $if: {
+          condition: { $: "arg.id == 'mode:dim' || arg.id == 'mode:hide'" },
+          then: { $action: 'routeStore.setParam', args: [FROM_PARAM, { $: "arg.id == 'mode:hide' ? 'hide' : 'dim'" }] },
+        },
+      },
+    ],
   },
 };
 
@@ -3401,8 +3443,8 @@ const canvas: SchemaNode = {
         contains: EXTRACTABLE,
         // Where each card came from, for the "this call" lens.
         origin: 'extractedFrom',
-        // The lens, hiding: only what the call on screen produced. See `FROM_PARAM`.
-        onlyFrom: { $: `(${FROM_HIDE}) ? (${CALL_EXPR}) : ''` },
+        // The lens, hiding: only what the conversation in scope produced. See `SCOPE_PARAM`.
+        onlyFrom: { $: `(${FROM_HIDE}) ? (${SCOPE_RECORD}) : ''` },
         connections: 'Relationship',
         // How this canvas draws those connections: which side of a card each line attaches to, and
         // any points somebody bent it through. Per canvas, like a placement — the same claim shown
@@ -3552,7 +3594,7 @@ const canvas: SchemaNode = {
         moment, and with the fade switched off at the press they flashed back to full strength in
         between. Dimmer than a suggestion (0.5), so the two read as different things.
       */
-      { $: `(${FROM_ON}) ? [{ when: { 'data.origin': { not: (${CALL_EXPR}) } }, style: { opacity: 0.1 } }] : []` },
+      { $: `(${FROM_ON}) ? [{ when: { 'data.origin': { not: (${SCOPE_RECORD}) } }, style: { opacity: 0.1 } }] : []` },
     ],
     /*
       No ARMED `connect-nodes`. Connecting is a handle on the card, not a mode.
@@ -4427,8 +4469,8 @@ const kanbanRoute: RouteSchema = {
                       // The space's own board, which gathers from the space collection — a fact the
                       // board carries, so nothing here has to say so.
                       boardId: { $: 'spaceStore.roles.board' },
-                      // The "this call" lens — see `FROM_PARAM`.
-                      onlyFrom: { record: CALL, param: FROM_PARAM },
+                      // The scope lens — see `SCOPE_PARAM`.
+                      onlyFrom: { record: { $: SCOPE_RECORD }, param: FROM_PARAM },
                       // Its control, beside the board's own filters.
                       controls: [fromLensControl],
                       /*
@@ -5227,7 +5269,12 @@ const calendarRoute: RouteSchema = {
                 // not a child of anything, and there are as many as people have given.
                 involvements: { entity: 'Involvement' },
                 // What the call on screen produced, for the "this call" lens. See `FROM_PARAM`.
-                calendarFrom: { entity: 'CollectionBlock', where: { id: CALL }, limit: 1, when: CALL },
+                calendarFrom: {
+                  entity: 'CollectionBlock',
+                  where: { id: { $: SCOPE_RECORD } },
+                  limit: 1,
+                  when: { $: SCOPE_RECORD },
+                },
               },
               children: [
                 // ── The month, with the way through them either side ──────────────────
