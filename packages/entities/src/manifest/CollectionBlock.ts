@@ -25,7 +25,7 @@ export const CollectionBlock: CoreEntityDef = {
       is the name and which the one-line summary — worth knowing for a *container*, since a call, a
       channel and a board column all carry a title somebody chose — while `fields` is the list a
       surface enumerates, and there is no list here worth enumerating. Everything else on this class
-      is machinery (the structural `type`, the `kind` label, `mode`, `version`, and `textContent`,
+      is machinery (the `kind` label, `mode`, `version`, and `textContent`,
       which is a projection of the children for search), and a note has nothing to say in a field at
       all: its substance is its children, read through the composer, and its name is their first
       line. Declaring the two properties as a list made an inspector offer to *name a sticky note*,
@@ -40,37 +40,23 @@ export const CollectionBlock: CoreEntityDef = {
     properties: {
       editorState: { type: 'string', predicate: 'we://editor_state', format: 'file', default: null },
       /**
-       * The **structural** node type — `root` for a composition, `collection` for a nested one — which
-       * the serializer round-trips.
-       *
-       * Semantic values do not belong here; that is `kind`. Boards briefly marked which one was
-       * canonical with `type: 'space'` and `type: 'anchor'`, which is the mistake this field's own
-       * documentation names (see `kind`, and the transcribe module writing `tag: 'transcript'` into
-       * `TextBlock.style`). It is a relation now — `CollectionBlock.board`, and the space's `board`
-       * role — which also converges where a marker could not.
-       */
-      type: { type: 'string', predicate: 'we://type', default: '' },
-      /**
-       * What this collection *is* — `'call'`, `'notes'`, later `'board'`. Semantic, and deliberately
-       * separate from `type`.
-       *
-       * `type` is the **structural node type** (`root` for a composition, `collection` for a nested
-       * one), which the serializer round-trips. It has been doing double duty as a discriminator — `type: 'root'`
-       * currently means "is a post" — and overloading it further would put semantic values into a
-       * structural field, which is the mistake the transcribe module made writing `tag: 'transcript'`
-       * into `TextBlock.style` (a field that means `h1`/`blockquote`).
+       * What this collection *is* — `'post'`, `'call'`, `'space'`, `'board'`, `'column'`. A free label,
+       * invented by whichever surface needs it and registered nowhere.
        *
        * A scalar rather than a tag relation because this is the field you *query by*:
        * `where: { kind: 'call' }` is a native `eq` that pushes down and composes with `order`/`limit`,
        * whereas tag membership would need a reverse traversal WE does not wire up. Tags remain for user
        * taxonomy — what a thing is *about*, not what surface owns it.
        *
+       * It is the only discriminator. A `type` field used to sit beside it holding `root` or
+       * `collection`, which was meant to be the editor's node type and ended up meaning "is a post" —
+       * a structural field carrying a semantic value, the mistake the transcribe module made writing
+       * `tag: 'transcript'` into `TextBlock.style`. The editor's own node type lives in the document
+       * (`_type` in `editorState`), where the serializer reads it; nothing read the stored copy, so it
+       * went.
+       *
        * Never written into `editorState`: the blob is a projection of the children, and `kind` is a
        * fact about the collection, not its content.
-       *
-       * Posts predate this field and are still identified by `type: 'root'`; the composer now also writes
-       * `kind: 'post'` so new posts carry both, and the read side can switch once the legacy set stops
-       * mattering. **A `CollectionBlock` with `type: 'root'` and no `kind` is a post.**
        */
       kind: { type: 'string', predicate: 'we://kind', default: '' },
       /**
@@ -133,9 +119,6 @@ export const CollectionBlock: CoreEntityDef = {
        * A slug rather than a link to the `TaskState` record, for the reason `TaskBlock.status` holds
        * one: the vocabulary is a naming of values that already exist, so a column keeps working when
        * a state is retired, and a task whose state nothing recognises can still be found and moved.
-       *
-       * Its own field rather than more meaning on `type`, which is already the post discriminator
-       * and was explicitly not to accumulate a third reading.
        */
       slug: { type: 'string', predicate: 'we://slug', default: '' },
       description: { type: 'string', predicate: 'we://description', default: '' },

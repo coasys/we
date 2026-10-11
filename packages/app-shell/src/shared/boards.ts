@@ -213,7 +213,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         for (const state of offeredStates()) {
           const column = await CollectionBlock.create(
             p,
-            { kind: 'column', mode: 'feed', title: '', slug: state.slug, type: '' },
+            { kind: 'column', mode: 'feed', title: '', slug: state.slug },
             { batchId: tx.batchId },
           );
           columns.push(column.id);
@@ -224,7 +224,6 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
             kind: 'board',
             mode: 'feed',
             title: title.trim(),
-            type: '',
             // An untyped to-one is written as a one-element list at creation, the way `Placement`
             // writes `node`: the generated class exposes no setter for a relation with no target.
             ...(options?.gathers ? { gathers: [options.gathers] } : {}),
@@ -385,7 +384,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       await runEntityTransaction(p, async (tx) => {
         const column = await CollectionBlock.create(
           p,
-          { kind: 'column', mode: 'feed', title: columnTitle(name, slug), slug, type: '' },
+          { kind: 'column', mode: 'feed', title: columnTitle(name, slug), slug },
           { batchId: tx.batchId },
         );
         await CollectionBlock.addRelation(p, board.id, 'children', column.id, tx.batchId);

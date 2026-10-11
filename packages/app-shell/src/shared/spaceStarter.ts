@@ -35,7 +35,7 @@
  *   on the space, written once the records it names exist.
  *
  * What a record's writer derives from it, the starter does not spell out: a composition (a
- * `CollectionBlock` of `type: 'root'`) is written as the blocks inside it, and the stored document a
+ * `CollectionBlock` of `kind: 'post'`) is written as the blocks inside it, and the stored document a
  * renderer draws from is derived from those afterwards — see `StarterWriter.compose`.
  *
  * ## Why a starter is separate from a template

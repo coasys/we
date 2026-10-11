@@ -1674,7 +1674,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * been written, and the person's space exists.
    */
   async function writeSpaceStructure(dataset: DatasetProxy, space: Space, starter?: SpaceStarter): Promise<void> {
-    const root = await CollectionBlock.create(dataset, { kind: SPACE_COLLECTION_KIND, type: 'collection', title: '' });
+    const root = await CollectionBlock.create(dataset, { kind: SPACE_COLLECTION_KIND, title: '' });
     await space.setRoot({ id: root.id } as CollectionBlock);
 
     const target = {
@@ -1704,12 +1704,11 @@ export function SpaceStoreProvider(props: ParentProps) {
         }
       },
       /*
-        A composition — a `CollectionBlock` of `type: 'root'`, which is what the block writer marks
-        one as — is seeded as the blocks inside it, and its stored document is derived from those
-        here, unless the starter wrote one itself. Anything else has nothing to derive.
+        A post is seeded as the blocks inside it, and its stored document is derived from those here,
+        unless the starter wrote one itself. Anything else has nothing to derive.
       */
       compose: async (id, entity, fields) => {
-        if (entity !== 'CollectionBlock' || fields.type !== 'root' || fields.editorState) return;
+        if (entity !== 'CollectionBlock' || fields.kind !== 'post' || fields.editorState) return;
         await refreshComposition(dataset, id);
       },
     });
@@ -2099,10 +2098,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
 
-    // `kind` is written alongside the `type: 'root'` that already identifies a post, not instead of
-    // it: reads still key on `type`, so existing posts stay in the feed and nothing needs
-    // backfilling. See `createBlocks`.
-    //
     // The anchor is what makes one action serve every composed artifact. A post has none — it sits
     // in the space. A message names its channel through `we://child`; a reply names whatever it
     // answers through `we://comment`. Both arrive from a schema as ids, which is all a template

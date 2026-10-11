@@ -137,7 +137,6 @@ export function newContainerModal(opts: {
         {
           kind: opts.kind,
           mode: MODE.feed,
-          type: 'collection',
           title: { $: 'local.name' },
         },
         // Inside the container named, or else at the space's top level — its collection — so a new

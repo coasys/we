@@ -285,7 +285,7 @@ describe('refreshComposition', () => {
     document alone, so until this runs the post is blank however many blocks it holds.
   */
   async function writtenByHand() {
-    const root = (await FakeCollection.create(perspective, { type: 'root', kind: 'post' })) as FakeCollection;
+    const root = (await FakeCollection.create(perspective, { kind: 'post' })) as FakeCollection;
     const heading = await FakeText.create(perspective, { style: 'h2', text: 'Welcome' });
     const body = await FakeText.create(perspective, {
       style: 'normal',
@@ -332,7 +332,7 @@ describe('createBlocks', () => {
 
     expect(root).toBeInstanceOf(FakeCollection);
     expect(root.kind).toBe('post');
-    expect(root.type).toBe('root');
+    expect(root.type).toBeUndefined();
     expect(root.children).toHaveLength(2);
     // keys stamped back onto the caller's blocks for later reconciliation
     expect(blocks[0]._key).toBe(root.children[0]);

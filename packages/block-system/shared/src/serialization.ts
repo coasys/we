@@ -596,16 +596,10 @@ export interface CreateBlocksOptions {
  * Parent-child relationships are established via the `children` relation on the root and on any
  * nested collection.
  *
- * `kind` stamps the semantic type onto the root — `'post'` for a post. Optional and supplied by the
- * caller rather than assumed here, because not every root composition is a post: the block system
- * knows how to persist a document, not what the document is for.
- *
- * Why it exists at all: `type: 'root'` has been doing double duty as *the* post discriminator,
- * which conflates the editor's node type with what the collection means. Writing `kind` on new
- * roots starts the changeover without a backfill — reads still key on `type: 'root'`, and can
- * switch once the legacy set stops mattering. There is no coordinated migration point in a P2P
- * system, so a bulk rewrite is not available; converging one record at a time as they are created
- * is.
+ * `kind` stamps what the collection is onto the root — `'post'` for a post. Supplied by the caller
+ * rather than assumed here, because not every root composition is a post: the block system knows
+ * how to persist a document, not what the document is for. It is the only discriminator a reader
+ * has, so a caller writing something it means to be found should always pass one.
  *
  * Mutates the blocks handed in: every persisted block gets its `_key` stamped, so a caller holding
  * the document can reconcile against it later.
@@ -626,12 +620,14 @@ export async function createBlocks(
       // The file store wants addresses, not payloads; upload before anything is written so the
       // records and the blob agree about every asset.
       const uploaded = await preUploadFileAssets(perspective, blocks);
-      // `type: 'root'` is what identifies a post to every reader that predates `kind`.
-      const rootData: Record<string, unknown> = { type: 'root' };
-      const root = (await registration.model.create(perspective, rootData, {
-        batchId: tx.batchId,
-        ...(anchor && { parent: { id: anchor.id, predicate: anchor.predicate } }),
-      })) as BlockRecord;
+      const root = (await registration.model.create(
+        perspective,
+        {},
+        {
+          batchId: tx.batchId,
+          ...(anchor && { parent: { id: anchor.id, predicate: anchor.predicate } }),
+        },
+      )) as BlockRecord;
 
       // Models are written from the author's blocks (file payloads), the blob from the uploaded
       // copies (file addresses); the two walk in lockstep so every key lands on both.

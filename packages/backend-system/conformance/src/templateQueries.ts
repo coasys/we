@@ -115,7 +115,7 @@ async function seed(dataset: DatasetHandle): Promise<Record<Key, string>> {
     ['post2', 'hello again'],
     ['post3', 'hello there'],
   ] as const) {
-    await channel.addChildren(await make(key, 'CollectionBlock', { type: 'root', kind: 'post', textContent: text }));
+    await channel.addChildren(await make(key, 'CollectionBlock', { kind: 'post', textContent: text }));
   }
   await made.post2.addComments(made.post3);
 
@@ -211,7 +211,7 @@ const CASES: Record<TemplateQueryCase, QueryCase> = {
     from: 'templates/views/src/views/CardsView/PostsList.ts',
     query: (k) => ({
       entity: 'CollectionBlock',
-      where: { type: 'root', inReplyTo: { none: {} }, textContent: { contains: 'hello' } },
+      where: { kind: 'post', inReplyTo: { none: {} }, textContent: { contains: 'hello' } },
       scope: inChannel(k),
       limit: 20,
       order: { createdAt: 'desc' },
@@ -222,7 +222,7 @@ const CASES: Record<TemplateQueryCase, QueryCase> = {
     from: 'templates/views/src/views/CardsView/PostsList.ts',
     query: (k) => ({
       entity: 'CollectionBlock',
-      where: { type: 'root', inReplyTo: { none: {} } },
+      where: { kind: 'post', inReplyTo: { none: {} } },
       scope: inChannel(k),
       limit: 20,
       order: { $likeCount: 'desc' },

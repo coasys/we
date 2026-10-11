@@ -95,7 +95,6 @@ export interface CodeBlockRecord extends WeNodeRecord {
 
 export interface CollectionBlockRecord extends WeNodeRecord {
   editorState: string | null;
-  type: string;
   kind: string;
   mode: string;
   title: string;

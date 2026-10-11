@@ -151,7 +151,6 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
     const id = idFor(node);
     const instance = await getEntity('CollectionBlock').create(dataset, {
       id,
-      type: 'collection',
       kind: node.kind,
       mode: node.mode ?? (hasBody ? 'document' : 'feed'),
       ...(node.title ? { title: node.title } : {}),

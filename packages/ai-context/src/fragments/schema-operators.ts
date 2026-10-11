@@ -491,7 +491,7 @@ post's text blocks, images and tasks together, each with its own fields. Every m
 type, so a card can pick a display per row rather than assuming one.
 
 That makes include the right tool for a FEED, where the alternative is one drill-down per parent:
-{ "$query": { "entity": "CollectionBlock", "where": { "type": "root" }, "include": { "children": true } } }
+{ "$query": { "entity": "CollectionBlock", "where": { "kind": "post" }, "include": { "children": true } } }
 
 A scope drill-down is still right on a DETAIL route, where the parent is fixed and its children are
 the whole subject — it is a narrower question, not a worse one. For external models, check the
