@@ -1426,6 +1426,12 @@ export default function TemplateProvider() {
         if (!profile) void profileStore.fetchProfile(did);
         return profile?.name || undefined;
       }}
+      // Who a mention names, for its hover card: the face beside the name, by the same cache.
+      person={(did) => {
+        const profile = profileStore.profiles().find((entry) => entry.did === did);
+        if (!profile) void profileStore.fetchProfile(did);
+        return profile ? { name: profile.name || undefined, avatar: profile.avatar || undefined } : undefined;
+      }}
     >
       <BlockDisplayOverrides overrides={moduleBlockDisplays()}>
         <VisualEditorProvider value={visualEditorCtx}>

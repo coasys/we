@@ -23,6 +23,7 @@ import { MissingMarker, PresentPart } from '@solid/components/PartFrame';
 import { injectDSInteropStyles } from '@solid/dsInterop';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import { createInMemoryBackend } from '@we/backend-inmemory';
+import { BlockHostProvider } from '@we/block-solid';
 import {
   CopiedPartNote,
   EditorHostProvider,
@@ -148,8 +149,22 @@ function mount(name: string, width: number, scale?: number): void {
   };
   // A scenario about the trust boundary renders against what a space template is actually handed.
   const bag = scenario.bag === 'space' ? buildTemplateBag(stores, { grants: SPACE_TIER, gesture: 'enforce' }) : stores;
+  /*
+    The block host, as the app gives one (`TemplateProvider`): who a mention names, from the same
+    profiles the scenario seeds. Without it a mention's hover card has nobody to show.
+  */
+  const person = (did: string) => {
+    const known = identityOf[did] as { name?: string; avatar?: string } | undefined;
+    return known ? { name: known.name, avatar: known.avatar } : undefined;
+  };
   disposeMount = render(
-    () => RenderSchema({ node: scenario.node, stores: bag, registry: componentRegistry } as never) as never,
+    () =>
+      createComponent(BlockHostProvider, {
+        person,
+        get children() {
+          return RenderSchema({ node: scenario.node, stores: bag, registry: componentRegistry } as never) as never;
+        },
+      }),
     host,
   );
 }

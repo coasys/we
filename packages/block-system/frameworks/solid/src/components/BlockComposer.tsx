@@ -40,6 +40,7 @@ import { createBlockSchema, MENTION_NODE, UNKNOWN_NODE } from '../editor/schema'
 import { DisplayOverridesContext } from './BlockDisplayOverrides';
 import { useBlockHost } from './BlockHost';
 import BlockMenu from './BlockMenu';
+import { MentionCard } from './MentionCard';
 
 registerCoreBlocks();
 registerCoreBlockComponents();
@@ -349,6 +350,7 @@ export function BlockComposer(props: Props) {
   return (
     <Column class="we-block-composer-wrapper" width={width} ax={props.ax} ay={props.ay}>
       <div ref={mountEl} class="we-block-composer-mount" />
+      <MentionCard root={() => mountEl} />
       <Show when={view()}>
         {/*
           The gutter is opt-out, not conditional on anything the composer can work out for itself:

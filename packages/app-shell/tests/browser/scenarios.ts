@@ -740,6 +740,37 @@ const lineComposerScenario = (): Scenario => ({
   tables: {},
 });
 
+/**
+ * Rendered words holding a mention, with the person it names known to the host under a newer name
+ * than the chip was written with — so a card showing the chip's own words is told apart from one
+ * showing the person.
+ */
+const mentionCard = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { width: '100%', p: '300' },
+    children: [
+      {
+        type: 'BlockRenderer',
+        props: {
+          editorState: [
+            {
+              _type: 'block',
+              style: 'normal',
+              text: 'Thanks @Ann for this',
+              marks: [{ start: 7, end: 11, type: 'mention', did: 'did:test:ann' }],
+            },
+          ],
+        },
+      },
+      // Somewhere else to move the pointer to.
+      { type: 'we-text', props: { id: 'elsewhere', p: '400' }, children: ['Elsewhere'] },
+    ],
+  },
+  tables: {},
+  stores: { profileStore: { profiles: [{ did: 'did:test:ann', name: 'Ann Okafor', avatar: '' }] } },
+});
+
 const pinnedShortContent = (): Scenario => ({
   node: {
     type: 'Column',
@@ -1256,6 +1287,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:pinned-empty': pinnedShortContent,
   'composer:compact': compactComposer,
   'composer:line': lineComposerScenario,
+  'mention:card': mentionCard,
   'timeline:live-newest-bottom': timelineReading(false, 'newestBottom'),
   'timeline:live-newest-top': timelineReading(false, 'newestTop'),
   'timeline:start-newest-bottom': timelineReading(true, 'newestBottom'),
