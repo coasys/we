@@ -7,20 +7,37 @@ the app — a panel that floats and a panel that displaces look identical until 
 
 ## The vocabulary
 
-| Term               | What it is                                                                                                                                                                                   |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Sidebar**        | The strip on the **left** — spaces, profile, settings, logout. 80px collapsed, widens on hover to show labels. `SIDEBAR_PX`, `SHELL_SIDEBAR_WIDTH`, `Sidebar.schema.ts`.                     |
-| **Module rail**    | The strip on the **right** — module launchers, space settings, the template and theme pickers. 56px, icon-only, never widens. `CHROME_RAIL_PX`, `CHROME_RAIL_WIDTH`, `ChromeRail.schema.ts`. |
-| **Call bar**       | The bar centred at the **top**, contributed by `@we/module-call`, present only during a call or when one is running to join.                                                                 |
-| **Chrome**         | All of the above, plus the editor's editing bar: app furniture that persists across spaces and templates, positions itself, and is never part of a template.                                 |
-| **Panel**          | A surface a module opens — the call's video stage, notes, the transcript, the editor's four panels. Also called a **dock** in the code, which is the registry's word for the same thing.     |
-| **Lane**           | A band across one edge, at a given distance inboard. The panels sharing one divide it along the edge's length. `band` says which, `order` says where in it — see below.                      |
-| **Content region** | The window, minus the sidebar, minus every **displacing** panel. What a template is laid out inside.                                                                                         |
-| **Inset**          | How much one edge of the content region has given up, in pixels. Published as `--we-chrome-<edge>`.                                                                                          |
-| **Band**           | How far the module rail has dropped to clear something. Published as `--we-panel-chrome-top`.                                                                                                |
+| Term               | What it is                                                                                                                                                                                          |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Sidebar**        | The strip on the **left** — spaces, profile, settings, logout. 80px collapsed, widens on hover to show labels. `SIDEBAR_PX`, `SHELL_SIDEBAR_WIDTH`, `Sidebar.schema.ts`.                            |
+| **Module rail**    | The strip on the **right** — module launchers, space settings, the template and theme pickers. 56px, icon-only, never widens. `CHROME_RAIL_PX`, `CHROME_RAIL_WIDTH`, `ChromeRail.schema.ts`.        |
+| **Call bar**       | The bar centred at the **top**, contributed by `@we/module-call`, present only during a call or when one is running to join.                                                                        |
+| **Chrome**         | All of the above, plus the editor's editing bar: app furniture that persists across spaces and templates and positions itself. The sidebar and rail are drawn from the **app template**; see below. |
+| **Panel**          | A surface a module opens — the call's video stage, notes, the transcript, the editor's four panels. Also called a **dock** in the code, which is the registry's word for the same thing.            |
+| **Lane**           | A band across one edge, at a given distance inboard. The panels sharing one divide it along the edge's length. `band` says which, `order` says where in it — see below.                             |
+| **Content region** | The window, minus the bands the app's chrome holds (`meta.frame`), minus every **displacing** panel. What a template is laid out inside.                                                            |
+| **Inset**          | How much one edge of the content region has given up, in pixels. Published as `--we-chrome-<edge>`.                                                                                                 |
+| **Band**           | How far the module rail has dropped to clear something. Published as `--we-panel-chrome-top`.                                                                                                       |
 
 Both strips are built from the same `railShell` fragment, which is why "rail" alone is ambiguous.
 Reserve **rail** for the right-hand one and **sidebar** for the left, as the code does.
+
+## The app template, and the bands its chrome holds
+
+The sidebar and the rail are not drawn by the shell directly: they are **host parts** an **app
+template** places (`meta.role: 'app'`, `host.sidebar`, `host.rail`). WE's own app
+(`templates/shell/src/WeApp.schema.ts`) is today's arrangement written as data. An agent may choose
+an app of their own in Settings → Appearance, and edit it from the inspector ("Edit the app"); safe
+mode always draws WE's. Everything else here — the editor's panels and bar, the boot screen and its
+modals, module chrome, the safety prompts — the host draws whatever the app says.
+
+The geometry does not assume a sidebar. The app declares how much of each edge its chrome holds,
+`meta.frame: { left, right, top, bottom }`, and that is the frame (`AppFrame` in `dockGeometry.ts`,
+held by `shared/registries/appFrame.ts`) everything measures against: the content region, panel
+docking, floating clearance, the rail's band, and `--we-sidebar-width` / `--we-chrome-rail-width`.
+WE's app declares `{ left: 80, right: 56 }`, which is what `SIDEBAR_PX` and `CHROME_RAIL_PX` were. An
+app with a top bar declares `top`, and the content and the panels clear it; an app with no rail
+declares no `right`, and nothing keeps clear of a rail that is not there.
 
 ## A panel has one position and four states
 

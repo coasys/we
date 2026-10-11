@@ -186,8 +186,12 @@ see docs/architecture/codebase-map.md.
 For how reusable template fragments work and where they are going, see
 docs/architecture/template-fragments.md.
 
-**A template is one of two things.** A *shell* owns a space's chrome, arrangement and route table;
-a *view* renders one section inside one. \`meta.role\` says which, and absent means shell. A shell
+**A template is one of three things.** A *shell* owns a space's chrome, arrangement and route table;
+a *view* renders one section inside one; an *app* is WE's own chrome around every space — the
+sidebar and the module rail placed as host parts (\`{ type: '$part', props: { id: 'host.sidebar' } }\`)
+beside nodes of its own, with the bands that chrome holds declared in \`meta.frame\`. An app is
+chosen by the agent, never applied as a space's template, and only an app may place a host part.
+\`meta.role\` says which, and absent means shell. A shell
 marks where its sections go with \`{ path: '$views' }\` and the host expands that per space, from
 \`Space.enabledViews\` (the community's list, and its order) minus \`SpacePreference.hiddenViews\`
 (each agent's own). Do **not** hardcode a space's sections as routes, and do not write a nav strip

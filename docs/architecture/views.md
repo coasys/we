@@ -110,6 +110,16 @@ Both are paid, and both are the kind of thing that would otherwise fail silently
   globe module while a space had the globe section on would succeed and that section would render
   nothing.
 
+## Editing a section where its shell draws it
+
+A section the agent may change — a stored copy, not a built-in or a module's, and, for a space's own,
+only for whoever runs the space — is edited in place: the first press in visual mode selects the
+section whole, and a second press (or one with the modifier) makes it the editor's **edit target**
+(`stores/editTarget.ts`). The session then edits a working copy of the section
+(`stores/templateDrafts.ts`), which `SpaceStore.availableViews` prefers while it is open, so the shell
+draws each edit where it will be seen. Escape at its top, a press outside it, or Done comes back
+out. A built-in section is copied first ("Make your own copy"), and the copy is edited the same way.
+
 ## Where to look
 
 | What                            | Where                                                      |

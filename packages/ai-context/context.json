@@ -3592,6 +3592,12 @@
           "default": "'default'"
         },
         {
+          "name": "appTemplateId",
+          "type": "string",
+          "predicate": "we://app_template",
+          "required": false
+        },
+        {
           "name": "currentThemeId",
           "type": "string",
           "predicate": "we://current_theme",
@@ -7381,6 +7387,12 @@
         "pendingInstall": {
           "type": "object"
         },
+        "appTemplateId": {
+          "type": "string"
+        },
+        "appTemplateOptions": {
+          "type": "array"
+        },
         "safeMode": {
           "type": "object",
           "properties": ["on", "reason", "template"]
@@ -7402,6 +7414,7 @@
         "cancelInstall",
         "toggleInstalled",
         "setDefaultTemplate",
+        "setAppTemplate",
         "saveTemplate",
         "saveTemplateAs",
         "publishToSpace",
