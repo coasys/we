@@ -126,7 +126,8 @@ describe('a thread in a panel', () => {
         return {
           // Flat either way, so each row says whose reply it is — which is what the renderer puts
           // the tree back together from.
-          subscribe: () => Promise.resolve(rows.map((reply) => ({ ...reply, respondsTo: { id: reply.parent } }))),
+          subscribe: () =>
+            Promise.resolve(rows.map((reply) => ({ ...reply, kind: 'reply', respondsTo: { id: reply.parent } }))),
           dispose: vi.fn(),
         };
       }),
@@ -268,7 +269,7 @@ describe('a thread in a panel', () => {
           Promise.resolve(
             replies
               .filter((reply) => reply.parent === options.scope?.anchorId)
-              .map((reply) => ({ ...reply, respondsTo: { id: reply.parent } })),
+              .map((reply) => ({ ...reply, kind: 'reply', respondsTo: { id: reply.parent } })),
           ),
         dispose: vi.fn(),
       })),
