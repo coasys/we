@@ -109,3 +109,21 @@ export function collectionExtractionDefaults(
     extractionTargets: JSON.stringify(parseEntityList(space.extractionTargets) ?? LEGACY_EXTRACTION_TARGETS),
   };
 }
+
+/**
+ * The fields a new record is written with, with a new feed's extraction defaults added — the copy
+ * a call or a channel starts with. Anything the caller already said wins.
+ *
+ * Feeds only: a document is one author's artifact and is not extracted as it grows, so stamping
+ * every post would be two links on each for an answer nobody asks. Anything that is not a
+ * collection, or a dataset with no space, is returned as it came.
+ */
+export function withExtractionDefaults(
+  entity: string,
+  fields: Record<string, unknown>,
+  space: { autoInterpret?: boolean; extractionTargets?: string } | null | undefined,
+): Record<string, unknown> {
+  if (entity !== 'CollectionBlock' || fields.mode !== 'feed' || 'autoExtract' in fields) return fields;
+  const defaults = collectionExtractionDefaults(space);
+  return defaults ? { ...defaults, ...fields } : fields;
+}

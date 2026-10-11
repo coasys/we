@@ -1,5 +1,5 @@
 import { boardOptimism } from '@shared/boardOptimism';
-import { collectionExtractionDefaults } from '@shared/collectionExtraction';
+import { withExtractionDefaults } from '@shared/collectionExtraction';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
 import { involvementOptimism } from '@shared/involvementOptimism';
@@ -217,8 +217,7 @@ export default function TemplateProvider() {
       perspective === datasetStore.currentDataset()?.handle
         ? spaceStore.currentSpace()
         : await Space.findOne(perspective).catch(() => null);
-    const defaults = collectionExtractionDefaults(space);
-    return defaults ? { ...defaults, ...fields } : fields;
+    return withExtractionDefaults(entity, fields, space);
   }
 
   /**

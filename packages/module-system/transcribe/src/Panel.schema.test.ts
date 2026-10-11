@@ -1558,6 +1558,64 @@ describe('the panel’s reads reach the store', () => {
     expect(run(EXTRACTION_SUBJECT_EXPR, storeBag(['TaskBlock']))).toBe(CALL);
   });
 
+  /**
+   * The switch outside calls, for a member and for an administrator — its own expressions,
+   * evaluated, against a store answering as it does with no call on screen.
+   */
+  it('outside calls, disables the switch for a member and says why, and not for an administrator', () => {
+    const find = (node: unknown, type: string): Record<string, unknown> | undefined => {
+      if (Array.isArray(node)) return node.map((n) => find(n, type)).find(Boolean);
+      if (!node || typeof node !== 'object') return undefined;
+      const fields = node as Record<string, unknown>;
+      if (fields.type === type) return fields;
+      return Object.values(fields)
+        .map((v) => find(v, type))
+        .find(Boolean);
+    };
+    const header = (extractionPanel.children as SchemaNode[])[0];
+    const toggle = find(header, 'we-switch')!.props as { disabled: { $: string } };
+    // The tooltip round the switch, not the first one in the header (the help's).
+    const tooltips: Record<string, unknown>[] = [];
+    const collect = (node: unknown): void => {
+      if (Array.isArray(node)) return node.forEach(collect);
+      if (!node || typeof node !== 'object') return;
+      const fields = node as Record<string, unknown>;
+      if (fields.type === 'we-tooltip' && find(fields.children, 'we-switch')) tooltips.push(fields);
+      Object.values(fields).forEach(collect);
+    };
+    collect(header);
+    const tooltip = tooltips[0]!.props as { content: { $: string } };
+
+    const outsideCalls = (admin: boolean) => ({
+      modules: namespace((id) =>
+        id === 'transcribe'
+          ? namespace((member) =>
+              member === 'callId'
+                ? markReactive(() => '')
+                : member === 'extractionFor'
+                  ? markReactive(() =>
+                      namespace(() => ({ targets: [], canChoose: true, canExtract: false, auto: true })),
+                    )
+                  : undefined,
+            )
+          : undefined,
+      ),
+      routeStore: namespace((member) => (member === 'params' ? markReactive(() => ({})) : undefined)),
+      spaceStore: namespace((member) =>
+        member === 'root'
+          ? markReactive(() => 'the-space-collection')
+          : member === 'canAdministerCurrentSpace'
+            ? markReactive(() => admin)
+            : undefined,
+      ),
+    });
+
+    expect(run(EXTRACTION_SUBJECT_EXPR, outsideCalls(false))).toBe('the-space-collection');
+    expect(run(toggle.disabled.$, outsideCalls(false))).toBe(true);
+    expect(run(tooltip.content.$, outsideCalls(false))).toBe('Set by whoever administers this space');
+    expect(run(toggle.disabled.$, outsideCalls(true))).toBe(false);
+  });
+
   it('finds that call’s targets, which is what the chips count', () => {
     const roots = storeBag(['TaskBlock', 'EventBlock']);
     const targets = `modules.transcribe.extractionFor[${EXTRACTION_SUBJECT_EXPR}].targets`;
