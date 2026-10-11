@@ -29,7 +29,7 @@ import {
   toRelativeRect,
 } from '../helpers';
 import { useEditorHost } from '../host';
-import { deepClone } from '../utils';
+import { deepClone, lastOf } from '../utils';
 import { levelsAbove, selectLevel } from './partLevels';
 
 /**
@@ -746,7 +746,7 @@ function VisualEditorLayer() {
   const ownerRingRect = createMemo(() => toRelative(ownerVisible()?.rect ?? null));
   const partNames = (parts: string[] | undefined) => (parts ?? []).map((id) => owners?.part(id)?.label ?? id);
   const deepLabel = (name: string, parts: string[] | undefined, selected: boolean): RingLabel => {
-    const within = partNames(parts).at(-1);
+    const within = lastOf(partNames(parts));
     const where = within ? `in ${within}` : 'in a module’s part';
     return { name, note: selected ? where : `${where} — select it for options` };
   };

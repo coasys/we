@@ -12,6 +12,8 @@
  */
 import type { OwnerRef, VisualEditorContextValue } from '@we/schema-solid';
 
+import { lastOf } from '../utils';
+
 export interface PartLevel {
   /** The placement's id: the template's node for the first, a derived id for the rest. */
   id: string;
@@ -25,7 +27,7 @@ export function levelsAbove(owner: OwnerRef): PartLevel[] {
   const parts = owner.parts ?? [];
   const levels = chain.map((id, i) => ({ id, part: parts[i] ?? '' }));
   // A part pressed inside another is its own last link, and is not above itself.
-  return levels.at(-1)?.id === owner.id ? levels.slice(0, -1) : levels;
+  return lastOf(levels)?.id === owner.id ? levels.slice(0, -1) : levels;
 }
 
 /** Select one of the levels above a node inside a part, by its position in `levelsAbove`. */

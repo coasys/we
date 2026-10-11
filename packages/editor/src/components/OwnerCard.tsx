@@ -36,12 +36,12 @@ import { type OwnerRef, useVisualEditor } from '@we/schema-solid';
 import { createMemo, createSignal, For, type JSX, Show } from 'solid-js';
 
 import { type OwnedPart, useEditorHost } from '../host';
-import { deepClone } from '../utils';
+import { deepClone, lastOf } from '../utils';
 import { levelsAbove, selectLevel } from './partLevels';
 
 /** Names in a sentence: "A", "A and B", "A, B and C". */
 const listed = (names: string[]) =>
-  names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+  names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${lastOf(names)}`;
 
 /** One route out of an owned region: what it does, what it costs, and the button. */
 function Route(props: { title: string; detail: string; action: string; onPress: () => void; disabled?: boolean }) {
@@ -300,10 +300,10 @@ function PartNodeCard(props: { owner: OwnerRef }) {
   const labelOf = (part: string) => host.owners?.part(part)?.label ?? part;
   /** The levels above this node, outermost first, each one a step of the path in the heading. */
   const above = createMemo(() => levelsAbove(props.owner));
-  const within = () => infos().at(-1);
+  const within = () => lastOf(infos());
   const moduleName = () => within()?.moduleName ?? 'its module';
   /** The parts the copy opens: every one on the path, less the last when the node is itself a placement. */
-  const opened = () => infos().slice(0, chain().at(-1) === props.owner.id ? -1 : undefined);
+  const opened = () => infos().slice(0, lastOf(chain()) === props.owner.id ? -1 : undefined);
 
   const makeOwn = () => {
     let picked: string | undefined;
@@ -730,7 +730,7 @@ export function CopiedPartNote(props: { nodeId: string }) {
     // The unchanged levels that can go back on their own: clean, and held by a level that is not.
     const returnable = all.filter((level) => {
       if (dirty.get(level)) return false;
-      const holder = all.filter((other) => other !== level && forksWithin(other).includes(level)).at(-1);
+      const holder = lastOf(all.filter((other) => other !== level && forksWithin(other).includes(level)));
       return !!holder && dirty.get(holder);
     });
     return { outermost, changed, returnable, clean: !dirty.get(outermost) };
