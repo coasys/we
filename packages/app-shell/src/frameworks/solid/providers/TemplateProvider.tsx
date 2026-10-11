@@ -4,7 +4,8 @@ import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
 import { involvementOptimism } from '@shared/involvementOptimism';
 import { linkNewMentions, type MentionWriter, prepareMentionUpdate } from '@shared/lineMentions';
-import { appFrame } from '@shared/registries/appFrame';
+import { appFrame, declareAppFrame } from '@shared/registries/appFrame';
+import { HOST_PART_SLOTS } from '@shared/registries/hostParts';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
@@ -56,7 +57,7 @@ import { CollectionBlock, getEntity, PREDICATES, Space } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import type { DocumentAccess } from '@we/module-shared';
 import { holdTopLayer, installTopLayerGuard } from '@we/primitives/top-layer';
-import type { TemplateSchema } from '@we/schema-shared';
+import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { expandViewRoutes, hasViewsMarker, installGestureTracking, SPACE_ROUTE_PATH } from '@we/schema-shared';
 import type { OwnerRef, VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
@@ -100,6 +101,9 @@ export default function TemplateProvider() {
   //
   // Both follow the app's frame, which the app template declares (`meta.frame`): a frame with no rail
   // publishes no rail width, so nothing keeps clear of a rail that is not there.
+  // The bands the app's chrome holds, as it declares them — what panels dock against.
+  createEffect(() => declareAppFrame(templateStore.appTemplate().meta?.frame));
+
   createEffect(() => {
     const frame = appFrame();
     document.documentElement.style.setProperty('--we-sidebar-width', `${frame.left}px`);
@@ -967,10 +971,22 @@ export default function TemplateProvider() {
         Not in the slot registry itself, which `moduleParts` already imports for the parts map —
         putting it there makes a cycle out of two modules that currently only point one way.
       */
-      return slotRegistry.nodes().flatMap((node) => {
-        const expanded = resolveParts(node);
-        return Array.isArray(expanded) ? expanded : [expanded];
-      });
+      /*
+        The app first: the template WE's own chrome is drawn from, placing the sidebar and the rail as
+        host parts beside nodes of its own (`templateStore.appTemplate`). Then everything the host draws
+        whatever the app says — the editor's panels and bar, the boot screen and its modals, module
+        chrome — less the pieces the app places itself, so none is drawn twice.
+      */
+      const app = templateStore.appTemplate();
+      const { meta: _meta, ...appNode } = app;
+      const expandedApp = resolveParts(appNode as SchemaNode);
+      return [
+        ...(Array.isArray(expandedApp) ? expandedApp : [expandedApp]),
+        ...slotRegistry.nodes({ except: HOST_PART_SLOTS }).flatMap((node) => {
+          const expanded = resolveParts(node);
+          return Array.isArray(expanded) ? expanded : [expanded];
+        }),
+      ];
     },
   };
 

@@ -1,7 +1,9 @@
+import { appTemplateRegistry, DEFAULT_APP_ID, resolveAppTemplate } from '@shared/registries/appTemplates';
 import { withDerivedIds } from '@shared/registries/derivedIds';
 import { reservedTemplateIds } from '@shared/registries/reservedTemplateIds';
 import { templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
+import { getSeed } from '@shared/seedRegistry';
 import { reserveId } from '@shared/templateIdentity';
 import { explain } from '@shared/userMessage';
 import { deepClone } from '@shared/utils';
@@ -22,7 +24,7 @@ import {
 import type { RouteSchema, SchemaNode, StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { createStoredTemplate, ensureNodeIds, hasViewsMarker } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
-import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
+import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
 import { CHROME_TIER, SPACE_TIER } from '../../../shared/registries/templateSurface';
@@ -150,6 +152,14 @@ export interface TemplateStore {
   cancelInstall: () => void;
   toggleInstalled: (templateId: string) => Promise<void>;
   setDefaultTemplate: (templateId: string) => Promise<boolean>;
+  /** The app this agent is in — the template WE's chrome is drawn from. See the definition. */
+  appTemplate: Accessor<TemplateSchema>;
+  /** Its id, for a picker to show as selected. */
+  appTemplateId: Accessor<string>;
+  /** The apps this agent can be in: WE's own, then their own copies — `{ label, value }` for a we-select. */
+  appTemplateOptions: () => { label: string; value: string }[];
+  /** Choose the app this agent is in. Theirs alone, kept in their settings. */
+  setAppTemplate: (id: string) => Promise<boolean>;
   saveTemplate: (name: string) => Promise<void>;
   /**
    * Save a schema as a template of its own, in the agent's library or the current space. By default it
@@ -334,23 +344,64 @@ export function TemplateStoreProvider(props: ParentProps) {
   const [pendingInstall, setPendingInstall] = createSignal<PendingInstall | null>(null);
   // Shell overlay: which shell view (if any) is currently shown above the active template
 
+  /** Working copies of templates edited where another draws them — see `templateDrafts.ts`. */
+  const { openDraft, updateDraft, closeDraft, draftOf } = createTemplateDrafts({
+    onInvalid: (message) => toastService.error(`Schema validation failed: ${message}`),
+  });
+
+  /*
+    An app template is the chrome around every space, chosen by the agent — never a space's template.
+    It is stored like any template, so every list a space's template is chosen from leaves it out.
+  */
+  const isApp = (t: TemplateSchema) => t.meta?.role === 'app';
+  const spaceChoosable = () => allTemplates().filter((t) => !isApp(t));
+
   const personalTemplates = () => {
     const installed = installedIds();
     const spaceIds = spaceTemplateIdSet();
-    return allTemplates().filter(
+    return spaceChoosable().filter(
       (t) => !spaceIds.has(t.id || '') && (isBuiltInTemplateId(t.id || '') || installed.has(t.id || '')),
     );
   };
 
-  const spaceTemplates = () => allTemplates().filter((t) => t._fromSpace);
+  const spaceTemplates = () => spaceChoosable().filter((t) => t._fromSpace);
 
-  const builtInTemplatesAccessor = () => allTemplates().filter((t) => isBuiltInTemplateId(t.id || ''));
+  const builtInTemplatesAccessor = () => spaceChoosable().filter((t) => isBuiltInTemplateId(t.id || ''));
 
   // User-installed templates that are neither built-in core nor from the current space
   const myTemplates = () => {
     const installed = installedIds();
-    return allTemplates().filter((t) => !isBuiltInTemplateId(t.id || '') && !t._fromSpace && installed.has(t.id || ''));
+    return spaceChoosable().filter(
+      (t) => !isBuiltInTemplateId(t.id || '') && !t._fromSpace && installed.has(t.id || ''),
+    );
   };
+
+  /*
+    The app this agent is in: the template WE's own chrome is drawn from.
+
+    Their own choice, else the deployment's (the seed's `host.ui.app`), else WE's. Only WE's apps and
+    the agent's own copies are honoured — an app is drawn with the chrome tier, so one from a
+    stranger waits for an install that asks first. Safe mode always draws WE's, so an app that hides
+    every way out is never the only way in. While the app is being edited, its working copy is drawn.
+  */
+  const ownApps = () => allTemplates().filter((t) => isApp(t) && !t._fromSpace && !!t.id);
+  const appTemplate = createMemo<TemplateSchema>(() => {
+    const found = resolveAppTemplate({
+      safe: safe.on,
+      chosen: datasetStore.agentSettings()?.appTemplateId,
+      seed: getSeed().host?.ui?.app,
+      own: ownApps(),
+    });
+    return draftOf(found) ?? found;
+  });
+  const appTemplateOptions = () => [
+    ...Object.values(appTemplateRegistry).map((t) => ({ label: t.meta?.name ?? t.id ?? '', value: t.id ?? '' })),
+    ...ownApps().map((t) => ({ label: t.meta?.name ?? t.id ?? '', value: t.id ?? '' })),
+  ];
+  const appTemplateId = () => appTemplate().id ?? DEFAULT_APP_ID;
+  function setAppTemplate(id: string): Promise<boolean> {
+    return datasetStore.updateAgentSettings({ appTemplateId: id === DEFAULT_APP_ID ? '' : id });
+  }
 
   const toSwitcherItems = (templates: TemplateSchema[], prefix = ''): TemplateSwitcherItem[] =>
     templates.map((t) => ({
@@ -806,11 +857,6 @@ export function TemplateStoreProvider(props: ParentProps) {
       toastService.error(`Schema validation failed: ${result.errors[0].message}`);
     }
   }
-
-  /** Working copies of templates edited where another draws them — see `templateDrafts.ts`. */
-  const { openDraft, updateDraft, closeDraft, draftOf } = createTemplateDrafts({
-    onInvalid: (message) => toastService.error(`Schema validation failed: ${message}`),
-  });
 
   /** Replace the current template wholesale using reconcile (bypasses findMutations).
    *  Preferred for AI updates where large structural changes (new routes, etc.) need
@@ -1740,7 +1786,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   const templateManagementList = () => {
     const defaultId = defaultTemplateId();
     const installed = installedIds();
-    return allTemplates()
+    return spaceChoosable()
       .filter((t) => !t._fromSpace)
       .map((t) => ({
         id: t.id || '',
@@ -1793,6 +1839,10 @@ export function TemplateStoreProvider(props: ParentProps) {
     publishToMarketplace,
     persistCurrentTemplate,
     persistTemplate,
+    appTemplate,
+    appTemplateId,
+    appTemplateOptions,
+    setAppTemplate,
     openDraft,
     updateDraft,
     closeDraft,

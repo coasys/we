@@ -183,7 +183,11 @@ export type TemplateMeta = {
    */
   themeId?: string;
   /**
-   * What this template *is* — a whole interface, or one section inside one.
+   * What this template *is* — a whole interface, one section inside one, or the app around them all.
+   *
+   * An `'app'` is WE's own chrome as a template: the sidebar, the rail and whatever surrounds every
+   * space, placed as host parts (`{ type: '$part', props: { id: 'host.sidebar' } }`) beside nodes of
+   * its own. It is chosen by the agent, not by a space, and never applied as a space's template.
    *
    * A `'shell'` (the default, and what every template was before this existed) owns the space's
    * chrome, its route table and the arrangement everything sits in. A `'view'` owns a single
@@ -198,7 +202,7 @@ export type TemplateMeta = {
    * Optional and defaulted rather than required, so every template that predates this keeps working
    * unchanged and unannotated: absent means shell, which is what they all are.
    */
-  role?: 'shell' | 'view';
+  role?: 'shell' | 'view' | 'app';
   /**
    * For a `'view'`: the URL segment it renders at, and the identity a space enables or disables it
    * by. Ignored on a shell.
@@ -234,6 +238,16 @@ export type TemplateMeta = {
    * an edge pointing the wrong way.
    */
   chromeReserve?: { top?: number; bottom?: number; width?: number };
+  /**
+   * For an `'app'`: how much of each edge its own chrome holds — the sidebar's band, the rail's, a top
+   * bar's — in pixels, at the chrome's collapsed size. Panels dock against these bands and the content
+   * clears them, so an app that has no sidebar loses the band and one with a top bar gains one.
+   *
+   * Declared, as `chromeReserve` is, so chrome that grows as somebody opens it does not shove every
+   * docked panel across the screen. A band left out is empty; an app declaring no frame keeps WE's
+   * own furniture. Ignored on a shell or a view.
+   */
+  frame?: { left?: number; right?: number; top?: number; bottom?: number };
   /**
    * The panels this interface has, and where each one starts. See {@link TemplatePanel}.
    *

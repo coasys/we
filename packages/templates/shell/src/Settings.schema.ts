@@ -68,6 +68,38 @@ const accountSection: SchemaNode = {
   ],
 };
 
+/**
+ * Which app you are in — the chrome around every space. Yours alone, and the same in every space:
+ * which app you use is a fact about you, not about the community on screen.
+ */
+const appSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300' },
+  children: [
+    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['App'] },
+    {
+      type: 'we-form-field',
+      props: {
+        label: 'The app you are in',
+        description:
+          'The chrome around every space: your spaces, the module rail, and whatever an app of your own arranges around them. Yours alone.',
+        size: 'sm',
+      },
+      children: [
+        {
+          type: 'we-select',
+          props: {
+            options: { $: 'templateStore.appTemplateOptions' },
+            value: { $: 'templateStore.appTemplateId' },
+            size: 'sm',
+            onChange: { $action: 'templateStore.setAppTemplate', args: [{ $: 'event.detail' }] },
+          },
+        },
+      ],
+    },
+  ],
+};
+
 const templatesSection: SchemaNode = {
   type: 'Column',
   props: { gap: '300' },
@@ -1031,7 +1063,7 @@ export const settingsTemplate: TemplateSchema = {
   // render time, whatever the schema tree looks like, and state declared here would never reach it.
   routes: [
     { path: '/', ...page([accountSection]) },
-    { path: '/appearance', ...page([templatesSection, themeScopeSection, themesSection]) },
+    { path: '/appearance', ...page([appSection, templatesSection, themeScopeSection, themesSection]) },
     {
       path: '/spaces',
       ...page([

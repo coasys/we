@@ -302,14 +302,30 @@ export const slotRegistry = {
    *
    * Everything but the safety prompts, which render in a layer of their own — {@link promptNodes}.
    */
-  nodes(): SchemaNode[] {
-    return slotRegistry
-      .ordered()
-      .filter((entry) => !isProtectedSlot(entry.id))
-      .flatMap((entry) => {
-        const resolved = resolveAnchors(entry.node);
-        return Array.isArray(resolved) ? resolved : [resolved];
-      });
+  nodes(options: { except?: ReadonlySet<string> } = {}): SchemaNode[] {
+    return (
+      slotRegistry
+        .ordered()
+        // `except`: chrome the app template places itself, as host parts, rather than the flat list.
+        .filter((entry) => !isProtectedSlot(entry.id) && !options.except?.has(entry.id))
+        .flatMap((entry) => {
+          const resolved = resolveAnchors(entry.node);
+          return Array.isArray(resolved) ? resolved : [resolved];
+        })
+    );
+  },
+
+  /**
+   * One piece of chrome, with its `$slot` markers filled in — what a host part draws where an app
+   * template places it. Never a safety prompt: those are the host's own layer and nothing places them.
+   */
+  nodeOf(id: string): SchemaNode | undefined {
+    const entry = registry.get(id);
+    if (!entry || isProtectedSlot(id)) return undefined;
+    const resolved = resolveAnchors(entry.node);
+    return Array.isArray(resolved)
+      ? { type: 'Column', props: { styles: { display: 'contents' } }, children: resolved }
+      : resolved;
   },
 
   /** The safety prompts, in order — the host's own layer above everything {@link nodes} draws. */
