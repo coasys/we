@@ -14,7 +14,7 @@ import { panelShell, timeline, timelineMoreAt, timelineOrder } from '@we/schema-
 import type { SchemaNode } from '@we/schema-shared';
 
 import { lineComposer } from './lineComposer';
-import { TIMELINE_ORIENTATION } from './Panel.schema';
+import { TIMELINE_ORIENTATION, timelineOrderButton } from './Panel.schema';
 
 const FROM_START = 'modules.transcribe.feedFromStart';
 
@@ -289,28 +289,7 @@ export const feedPanel: SchemaNode = {
             },
             children: [{ $: "local.feedActivity ? 'Messages and activity' : 'Messages only'" }],
           },
-          {
-            type: 'we-button',
-            props: {
-              size: 'xs',
-              variant: 'ghost',
-              label: 'Newest at the top or the bottom',
-              onClick: {
-                $action: 'spaceStore.setAgentModuleSetting',
-                args: [
-                  'transcribe',
-                  'timelineOrder',
-                  { $: `${TIMELINE_ORIENTATION} == 'newestTop' ? 'newestBottom' : 'newestTop'` },
-                ],
-              },
-            },
-            children: [
-              {
-                type: 'we-icon',
-                props: { name: { $: `${TIMELINE_ORIENTATION} == 'newestTop' ? 'sort-descending' : 'sort-ascending'` } },
-              },
-            ],
-          },
+          timelineOrderButton,
         ],
       },
       help: 'Everything said and written in this space — every call, messages typed outside calls, and replies — with what was found in it as it is found. Newest at the top or the bottom is yours to choose, and applies to transcripts too.',

@@ -103,6 +103,42 @@ const TRANSCRIPT_FROM_START = 'modules.transcribe.transcriptFromStart';
  */
 export const TIMELINE_ORIENTATION = 'modules.transcribe.timelineOrientation';
 
+/**
+ * Newest at the top or the bottom — the reader's own setting, which both lists read.
+ *
+ * In the header of the Feed and of the transcript alike: it is one setting, so pressing it in either
+ * turns both round, and a list that is drawn the reader's chosen way round should be where the
+ * choice is made.
+ */
+export const timelineOrderButton: SchemaNode = {
+  type: 'we-tooltip',
+  props: { content: 'Newest at the top or the bottom' },
+  children: [
+    {
+      type: 'we-button',
+      props: {
+        size: 'xs',
+        variant: 'ghost',
+        label: 'Newest at the top or the bottom',
+        onClick: {
+          $action: 'spaceStore.setAgentModuleSetting',
+          args: [
+            'transcribe',
+            'timelineOrder',
+            { $: `${TIMELINE_ORIENTATION} == 'newestTop' ? 'newestBottom' : 'newestTop'` },
+          ],
+        },
+      },
+      children: [
+        {
+          type: 'we-icon',
+          props: { name: { $: `${TIMELINE_ORIENTATION} == 'newestTop' ? 'sort-descending' : 'sort-ascending'` } },
+        },
+      ],
+    },
+  ],
+};
+
 /** The words on the "more is coming" line, by which way the window grows. */
 const MORE_WORDS: { $: string } = {
   $: `${TRANSCRIPT_FROM_START} ? 'Later in the conversation…' : 'Earlier in the conversation…'`,
@@ -4866,6 +4902,7 @@ export const panel: SchemaNode = panelShell({
     type: 'Row',
     props: { gap: '200', ay: 'center' },
     children: [
+      timelineOrderButton,
       /*
             Take the transcript with you — the calls list has offered this all along, and the panel
             reading the transcript is where somebody is when they want it.
