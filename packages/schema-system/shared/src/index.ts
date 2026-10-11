@@ -128,6 +128,7 @@ export {
   themeParametersToStyle,
 } from './themeStyles';
 export { validateField } from './validation';
+export { type FreeNames, freeNames } from './freeNames';
 export {
   computeSectionIndex,
   extractByPath,
@@ -146,6 +147,7 @@ export {
 } from './indexer';
 export type { SectionEntry, StoredTemplate, FindNodeResult, PatchError } from './indexer';
 export { deriveNodeIds, derivedNodeId, isNodeId, newNodeId, NODE_ID_LENGTH } from './nodeIdentity';
+export { type PartFork, partForkChanged, partForkPrint } from './forkPrint';
 export { createStoredTemplate, listSections, getSection, updateSection } from './sections';
 export {
   expandViewRoutes,
@@ -153,6 +155,10 @@ export {
   SPACE_ROUTE_DEPTH,
   SPACE_ROUTE_PATH,
   EDIT_SURFACE_ATTR,
+  OWNER_ATTR,
+  OWNER_NAME_ATTR,
+  PART_ATTR,
+  PART_NODE_ATTR,
   VIEW_BOUNDARY_ATTR,
   VIEW_BOUNDARY_NAME_ATTR,
   VIEWS_MARKER,

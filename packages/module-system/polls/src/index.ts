@@ -65,7 +65,19 @@ export const pollsModule: ModuleDefinition = defineModule({
      * `pollCard` is public API: a template places it over any Poll record bound as `block`, and the
      * block contribution below names it as the card a composed poll is drawn with.
      */
-    parts: { pollCard, pollComposer },
+    parts: {
+      pollCard: {
+        node: pollCard,
+        label: 'Poll',
+        description: 'A poll with its choices, the votes so far, and a vote of your own.',
+        inputs: { block: { description: 'the Poll record to show' } },
+      },
+      pollComposer: {
+        node: pollComposer,
+        label: 'New poll',
+        description: 'Asks the space a question with a list of choices.',
+      },
+    },
 
     /** A poll composes into a post. No input component — it is inserted through the record form. */
     blocks: [{ entity: 'Poll', card: 'pollCard' }],

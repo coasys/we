@@ -1038,7 +1038,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setDefaultTemplate:
           "(templateId: string): sets the agent's preferred default template (persists to AgentSettings.defaultTemplateId)",
         saveTemplateAs:
-          "(schema: TemplateSchema, destination?: 'root' | 'space'): saves a schema as a new template in your library or in the current space. Resolves true on success. The editor's fork path; prefer editorStore.startFork from chrome",
+          "(schema: TemplateSchema, destination?: 'root' | 'space', options?: { activate?: boolean; rename?: boolean }): saves a schema as a new template in your library or in the current space, and makes it the template on screen unless activate is false. A copy saved beside the built-in it came from is named (yours) unless rename is false. Resolves true on success. The editor's fork path; prefer editorStore.startFork from chrome",
         publishToSpace:
           '(perspectiveUuid: string, spaceName: string): copies the current template into that space, so its members get it. Resolves true on success',
         deleteMarketplaceTemplate:

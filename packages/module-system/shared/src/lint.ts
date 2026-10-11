@@ -10,6 +10,8 @@
  * or misleading but not worth taking the module out of the app over.
  */
 import { validateManifest } from '@we/backend-shared';
+import type { SchemaNode } from '@we/schema-shared';
+import { freeNames } from '@we/schema-shared';
 
 import type { ModuleDefinition } from './module';
 import { modulePredicatePrefix, modulePredicateViolations } from './module';
@@ -184,6 +186,8 @@ export function lintModule(
   }
 
   if (manifest?.id) crossModuleReferences(manifest.id, definition, problems, warnings);
+  partInputs(definition, warnings);
+  panelsPasteParts(definition, warnings);
 
   return { problems, warnings };
 }
@@ -225,6 +229,86 @@ export function lintModule(
  * renders nothing — and templates already have the answer, which is `meta.requires.modules` plus a
  * bare-read gate. So this says which, rather than refusing a shape that is correct in a template.
  */
+/**
+ * A part that reads something from its parents without saying so.
+ *
+ * A part is placed by people who did not write it — in another panel, in a template's own page, one
+ * level deep inside an arrangement somebody opened. Wherever it lands, the names it reads must be
+ * bound by something around it, and the only way a placer can know what to provide is for the part
+ * to say. An undeclared read is a part that works in its home and renders empty everywhere else.
+ *
+ * A warning rather than a refusal: the walk that finds these reads expressions as data, and a false
+ * positive taking a module out of the app would be the larger failure. Bundled modules are tested to
+ * have none, which is what makes it a gate.
+ */
+function partInputs(definition: ModuleDefinition, warnings: string[]): void {
+  for (const [name, raw] of Object.entries(definition.contributes?.parts ?? {})) {
+    const part = 'node' in raw && !('type' in raw) ? raw : { node: raw as SchemaNode };
+    const declared = new Set(Object.keys((part as { inputs?: object }).inputs ?? {}));
+    const free = freeNames(part.node);
+    for (const read of free.names) {
+      if (declared.has(read)) continue;
+      warnings.push(
+        `part "${name}" reads "${read}", which nothing inside it binds. Declare it in the part's inputs so a placement can provide it.`,
+      );
+    }
+    // A local cannot be an input: a placement binds a name, and nothing outside a part can declare
+    // the state inside it. So a local a part reads is either its own or the module's.
+    for (const local of free.locals) {
+      warnings.push(
+        `part "${name}" reads local "${local}", which nothing inside it declares. Declare the $localState in the part, or move the state to the module's store.`,
+      );
+    }
+    for (const input of declared) {
+      if (free.names.includes(input)) continue;
+      warnings.push(`part "${name}" declares the input "${input}" and never reads it.`);
+    }
+  }
+}
+
+/**
+ * A panel that pastes in a node the module also publishes as a part, rather than placing the part.
+ *
+ * The two draw the same thing, so nothing on screen says which was written — until somebody arranges
+ * the panel. Arranging copies the panel's tree into their template, and what was placed comes across
+ * as a reference that keeps receiving the module's fixes, where what was pasted comes across as a
+ * copy that never will. The transcript panel pasted its feed, meter and composer, so arranging it
+ * froze them while its card promised the pieces stayed the module's.
+ *
+ * A part that pastes in another part has the same flaw one level down: opening it copies the pasted
+ * one as well, where a placed one would stay a reference.
+ *
+ * Found by identity, which is exact: a part's node and the panel's are the same object exactly when
+ * the panel was written by naming the constant the part publishes.
+ */
+function panelsPasteParts(definition: ModuleDefinition, warnings: string[]): void {
+  const published = new Map<object, string>();
+  for (const [name, raw] of Object.entries(definition.contributes?.parts ?? {})) {
+    const node = 'node' in raw && !('type' in raw) ? raw.node : (raw as SchemaNode);
+    if (node && typeof node === 'object') published.set(node, name);
+  }
+  if (!published.size) return;
+  const moduleId = definition.manifest?.id ?? '<module>';
+  const check = (where: string, root: unknown, taking: string) => {
+    const walk = (value: unknown) => {
+      if (Array.isArray(value)) return value.forEach(walk);
+      if (!value || typeof value !== 'object') return;
+      const part = value !== root ? published.get(value) : undefined;
+      if (part) {
+        warnings.push(
+          `${where} pastes in the node part "${part}" publishes. Place it — { type: '$part', props: { id: '${moduleId}.${part}' } } — so ${taking} keeps it the module's.`,
+        );
+        return;
+      }
+      for (const entry of Object.values(value)) walk(entry);
+    };
+    walk(root);
+  };
+  for (const panel of definition.contributes?.panels ?? [])
+    check(`panel "${panel.name}"`, panel.node, 'arranging the panel');
+  for (const [node, name] of published) check(`part "${name}"`, node, 'opening it');
+}
+
 function crossModuleReferences(id: string, definition: ModuleDefinition, problems: string[], warnings: string[]): void {
   const { contributes } = definition;
 

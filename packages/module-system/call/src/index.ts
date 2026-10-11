@@ -952,7 +952,15 @@ const stage: SchemaNode = {
             // The box itself, for the one decision the grid cannot make: which edge the strip runs along.
             onMeasure: { $action: 'modules.call.setStageBox' },
           },
-          children: [{ type: '$each', props: { items: { $: 'modules.call.tiles' }, as: 'tile' }, children: [tile] }],
+          // Placed rather than pasted, so a template that arranges the stage keeps the tile the
+          // module's. The row binds `tile`, which is the name the part declares it needs.
+          children: [
+            {
+              type: '$each',
+              props: { items: { $: 'modules.call.tiles' }, as: 'tile' },
+              children: [{ type: '$part', props: { id: 'call.tile' } }],
+            },
+          ],
         },
       ],
     },
@@ -1492,7 +1500,7 @@ const bar: SchemaNode = {
                     label: 'Start another call',
                     variant: 'ghost',
                     size: 'sm',
-                    onClick: { $action: 'modules.call.startCall' },
+                    onClick: { $action: 'modules.call.startCall', args: [''] },
                   },
                   children: [{ type: 'we-icon', props: { name: 'plus' } }],
                 },
@@ -1961,7 +1969,7 @@ const continueCallButton: SchemaNode = {
 /** A bare "start a call here" trigger, for templates that want one in their own chrome. */
 const startCallButton: SchemaNode = {
   type: 'we-button',
-  props: { variant: 'ghost', size: 'sm', onClick: { $action: 'modules.call.startCall' } },
+  props: { variant: 'ghost', size: 'sm', onClick: { $action: 'modules.call.startCall', args: [''] } },
   children: [{ type: 'we-icon', props: { name: 'phone-call' } }],
 };
 
@@ -1998,7 +2006,35 @@ export const callModule = defineModule({
   // ── What it puts in front of a person ────────────────────────────────────
   contributes: {
     // Named fragments an interface places. Public API — see the note on `ModuleContributions.parts`.
-    parts: { anchoredCallButton, continueCallButton, deviceSettings, startCallButton, tile },
+    parts: {
+      anchoredCallButton: {
+        node: anchoredCallButton,
+        label: 'Call about this',
+        description: 'Joins the call about the record it sits beside, or starts one.',
+        inputs: { node: { description: 'the record the call is about — anything with an id' } },
+      },
+      continueCallButton: {
+        node: continueCallButton,
+        label: 'Continue call',
+        description: 'Picks a past call on screen back up, joining anyone already in it.',
+      },
+      deviceSettings: {
+        node: deviceSettings,
+        label: 'Camera and microphone',
+        description: 'Chooses which camera and microphone the call uses.',
+      },
+      startCallButton: {
+        node: startCallButton,
+        label: 'Start call',
+        description: 'Starts a call in the space on screen, or goes to the one running.',
+      },
+      tile: {
+        node: tile,
+        label: 'Participant tile',
+        description: 'One person in the call: their video, or their face when it is off.',
+        inputs: { tile: { description: 'the participant to show — one of modules.call.tiles' } },
+      },
+    },
 
     // Opens the control bar to other modules. Declared so the registry can report chrome aimed at an
     // anchor nobody provides, which otherwise renders nowhere and looks like a module switched off.

@@ -1,4 +1,5 @@
 import { withDerivedIds } from '@shared/registries/derivedIds';
+import { reservedTemplateIds } from '@shared/registries/reservedTemplateIds';
 import { templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
 import { reserveId } from '@shared/templateIdentity';
@@ -149,7 +150,19 @@ export interface TemplateStore {
   toggleInstalled: (templateId: string) => Promise<void>;
   setDefaultTemplate: (templateId: string) => Promise<boolean>;
   saveTemplate: (name: string) => Promise<void>;
-  saveTemplateAs: (schema: TemplateSchema, destination?: 'root' | 'space') => Promise<boolean>;
+  /**
+   * Save a schema as a template of its own, in the agent's library or the current space. By default it
+   * then becomes the template on screen, which is what forking wants. `activate: false` saves it and
+   * leaves the screen alone — what copying a section wants, since the section takes its place in the
+   * shell rather than replacing the shell. A template saved beside a built-in it was forked from is
+   * named "(yours)" so the two can be told apart; `rename: false` keeps the name, for a copy that
+   * replaces its original rather than sitting beside it.
+   */
+  saveTemplateAs: (
+    schema: TemplateSchema,
+    destination?: 'root' | 'space',
+    options?: { activate?: boolean; rename?: boolean },
+  ) => Promise<boolean>;
   publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
   deleteMarketplaceTemplate: (templateId: string) => Promise<void>;
   publishToMarketplace: (options: {
@@ -1273,7 +1286,11 @@ export function TemplateStoreProvider(props: ParentProps) {
    * templates list, and switch to it. Returns true on success.
    * Pass destination='space' to save into the current space perspective instead of we-root.
    */
-  async function saveTemplateAs(schema: TemplateSchema, destination: 'root' | 'space' = 'root'): Promise<boolean> {
+  async function saveTemplateAs(
+    schema: TemplateSchema,
+    destination: 'root' | 'space' = 'root',
+    options: { activate?: boolean; rename?: boolean } = {},
+  ): Promise<boolean> {
     const isSpace = destination === 'space';
     const targetDs = isSpace ? datasetStore.currentDataset() : datasetStore.rootDataset();
     const perspective = targetDs?.handle;
@@ -1293,7 +1310,8 @@ export function TemplateStoreProvider(props: ParentProps) {
       about which it was. An id that was already free is a save in place, where renaming somebody's
       template every time they pressed save would be its own bug.
     */
-    const name = templateId === requestedId ? schema.meta.name : `${schema.meta.name} (yours)`;
+    const name =
+      templateId === requestedId || options.rename === false ? schema.meta.name : `${schema.meta.name} (yours)`;
     setOperationLoading('save');
     const schemaToSave: TemplateSchema = {
       ...deepClone(schema),
@@ -1365,6 +1383,10 @@ export function TemplateStoreProvider(props: ParentProps) {
         return next;
       });
 
+      if (options.activate === false) {
+        setOperationLoading(null);
+        return true;
+      }
       commitTemplate(schemaToSave);
       const p = datasetStore.currentDataset();
       if (p) {
@@ -1621,10 +1643,8 @@ export function TemplateStoreProvider(props: ParentProps) {
    * The built-in or a fork, and nothing between; `@shared/templateIdentity` is why.
    */
   function reserveTemplateId(requested: string): string {
-    return reserveId(
-      requested,
-      builtInTemplates.map((t) => t.id || ''),
-    );
+    // Built-in sections too, not only built-in templates — see `reservedTemplateIds`.
+    return reserveId(requested, reservedTemplateIds());
   }
 
   /**
