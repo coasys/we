@@ -7551,6 +7551,7 @@
     "EditorInspectorPanel",
     "EditorThemePanel",
     "PanelLane",
+    "PartFrame",
     "TemplateCard",
     "TemplatePanelBody",
     "WeCube"
@@ -7902,7 +7903,13 @@
       ],
       "parts": [
         {
-          "name": "anchoredCallButton"
+          "name": "anchoredCallButton",
+          "inputs": [
+            {
+              "name": "node",
+              "description": "the record the call is about — anything with an id"
+            }
+          ]
         },
         {
           "name": "continueCallButton"
@@ -7914,7 +7921,13 @@
           "name": "startCallButton"
         },
         {
-          "name": "tile"
+          "name": "tile",
+          "inputs": [
+            {
+              "name": "tile",
+              "description": "the participant to show — one of modules.call.tiles"
+            }
+          ]
         }
       ],
       "panels": [
@@ -9167,7 +9180,13 @@
       ],
       "parts": [
         {
-          "name": "pollCard"
+          "name": "pollCard",
+          "inputs": [
+            {
+              "name": "block",
+              "description": "the Poll record to show"
+            }
+          ]
         },
         {
           "name": "pollComposer"
