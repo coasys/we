@@ -159,7 +159,9 @@ export function createOwnersPort(deps: {
       copy.forkedFrom = id;
       // Saved without becoming the template on screen: the copy takes the section's place in the
       // shell, and making it current would replace the whole shell with one section.
-      if (!(await template.saveTemplateAs(copy, 'space', { activate: false }))) return null;
+      // And named as the section it replaces: it is the space's About now, read by every member in
+      // the nav, and "(yours)" would be true only for whoever made it.
+      if (!(await template.saveTemplateAs(copy, 'space', { activate: false, rename: false }))) return null;
       const made = template.spaceTemplates().find((t) => !before.has(t.id) && t.forkedFrom === id);
       if (!made?.id) return null;
       const order = space.enabledViewIds();

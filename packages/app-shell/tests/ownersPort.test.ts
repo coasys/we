@@ -15,7 +15,7 @@ function setup(opts: { admin?: boolean; inSpace?: boolean } = {}) {
   let enabled = ['about', 'cards', 'graph'];
   const writes: string[][] = [];
   /** How each save was asked to behave — whether it was to become the template on screen. */
-  const saves: { activate?: boolean }[] = [];
+  const saves: { activate?: boolean; rename?: boolean }[] = [];
   const switches: string[] = [];
   const screen = {
     switcherId: 'my-shell',
@@ -46,7 +46,11 @@ function setup(opts: { admin?: boolean; inSpace?: boolean } = {}) {
     dataset: { currentDataset: () => (opts.inSpace === false ? null : { id: 'ds' }) } as never,
     template: {
       spaceTemplates: () => spaceTemplates,
-      saveTemplateAs: async (schema: TemplateSchema, _where?: string, options: { activate?: boolean } = {}) => {
+      saveTemplateAs: async (
+        schema: TemplateSchema,
+        _where?: string,
+        options: { activate?: boolean; rename?: boolean } = {},
+      ) => {
         saves.push(options);
         spaceTemplates.push({ ...schema, id: 'cards-yours' });
         return true;
@@ -77,8 +81,9 @@ describe('copying a section in its place', () => {
     expect(enabled()).toEqual(['about', 'cards-yours', 'graph']);
     expect(spaceTemplates[0].forkedFrom).toBe('cards');
     expect(spaceTemplates[0].meta?.role).toBe('view');
-    // Not made the template on screen: that replaced the whole shell with the one section.
-    expect(saves).toEqual([{ activate: false }]);
+    // Not made the template on screen, which replaced the whole shell with the one section; and not
+    // renamed "(yours)", which every member would read in the nav.
+    expect(saves).toEqual([{ activate: false, rename: false }]);
   });
 
   it('is refused to somebody who does not run the space, and says so', async () => {

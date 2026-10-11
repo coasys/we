@@ -3436,7 +3436,7 @@ TemplateStore:
   - toggleInstalled(templateId: string): installs or uninstalls by id — what the settings list’s switch calls. Prefer installTemplate/uninstallTemplate where the switch can pass its value
   - setDefaultTemplate(templateId: string): sets the agent's preferred default template (persists to AgentSettings.defaultTemplateId)
   - saveTemplate(name: string): saves the current template
-  - saveTemplateAs(schema: TemplateSchema, destination?: 'root' | 'space', options?: { activate?: boolean }): saves a schema as a new template in your library or in the current space, and makes it the template on screen unless activate is false. Resolves true on success. The editor's fork path; prefer editorStore.startFork from chrome
+  - saveTemplateAs(schema: TemplateSchema, destination?: 'root' | 'space', options?: { activate?: boolean; rename?: boolean }): saves a schema as a new template in your library or in the current space, and makes it the template on screen unless activate is false. A copy saved beside the built-in it came from is named (yours) unless rename is false. Resolves true on success. The editor's fork path; prefer editorStore.startFork from chrome
   - publishToSpace(perspectiveUuid: string, spaceName: string): copies the current template into that space, so its members get it. Resolves true on success
   - deleteMarketplaceTemplate(templateId: string): removes a template this agent published from the marketplace. Only its author may
   - publishToMarketplace(options: { name, description, icon?, themeId?, slug?, screenshots: File[] }): publishes the current template to the marketplace under those details. Resolves true on success

@@ -25,6 +25,13 @@ export interface InstalledListOptions {
   defaultField: string;
   /** Store action re-pulling the space list after the author deletes a row. */
   refreshAction: string;
+  /**
+   * An expression true for a row that is a **section** rather than a whole template —
+   * `"template.role == 'view'"`. A section is never applied or made the space's default: either
+   * makes the one section the whole screen. It is placed among the space's sections instead, so its
+   * row offers the way there.
+   */
+  sectionWhen?: string;
 }
 
 /**
@@ -102,11 +109,13 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                   // The row's own page. Renders itself away outside a space, which this list also
                   // appears in — see `recordLink`.
                   recordLink({ $: `'${opts.entity}'` }, { $: `${opts.as}.id` }),
-                  // Apply — switch to this one (hidden if already active)
+                  // Apply — switch to this one (hidden if already active, and for a section)
                   {
                     type: '$if',
                     props: {
-                      condition: expr`${opts.key} != ${{ $: opts.activeStorePath }}`,
+                      condition: opts.sectionWhen
+                        ? expr`${opts.key} != ${{ $: opts.activeStorePath }} && !(${{ $: opts.sectionWhen }})`
+                        : expr`${opts.key} != ${{ $: opts.activeStorePath }}`,
                       then: {
                         type: 'we-button',
                         props: {
@@ -125,7 +134,9 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                   {
                     type: '$if',
                     props: {
-                      condition: expr`spaceStore.currentSpace.author == me.did && ${opts.key} != ${{ $: `spaceStore.currentSpace.${opts.defaultField}` }}`,
+                      condition: opts.sectionWhen
+                        ? expr`spaceStore.currentSpace.author == me.did && ${opts.key} != ${{ $: `spaceStore.currentSpace.${opts.defaultField}` }} && !(${{ $: opts.sectionWhen }})`
+                        : expr`spaceStore.currentSpace.author == me.did && ${opts.key} != ${{ $: `spaceStore.currentSpace.${opts.defaultField}` }}`,
                       then: {
                         type: 'we-button',
                         props: {
@@ -140,6 +151,26 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                       },
                     },
                   },
+                  // A section is placed among the space's sections, not applied: the way there.
+                  ...(opts.sectionWhen
+                    ? [
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $: opts.sectionWhen },
+                            then: {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'sm',
+                                onClick: { $action: 'shellStore.openSpaceSettings', args: ['features'] },
+                              },
+                              children: ['Sections'],
+                            },
+                          },
+                        } as SchemaNode,
+                      ]
+                    : []),
                   /*
                     Delete — whoever made it, or whoever runs the space.
 
