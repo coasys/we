@@ -62,6 +62,8 @@ const discussionThread = (): Scenario => ({
       */
       {
         id: 'r1',
+        // What the discussion composer writes, and what a thread draws.
+        kind: 'reply',
         parentId: 'card-1',
         author: 'did:me',
         createdAt: '2026-09-01T10:00:00Z',
@@ -78,6 +80,8 @@ const discussionThread = (): Scenario => ({
       */
       {
         id: 'r2',
+        // What the discussion composer writes, and what a thread draws.
+        kind: 'reply',
         parentId: 'r1',
         author: 'did:them',
         createdAt: '2026-09-01T11:00:00Z',

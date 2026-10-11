@@ -255,8 +255,7 @@ body.block-dragging {
   // Six lines, as the text area allowed, before it scrolls rather than eating the panel.
   max-height: calc(6 * var(--we-compact-line) + var(--we-compact-control-height) - var(--we-compact-line));
   overflow-y: auto;
-  padding: max(0px, calc((var(--we-compact-control-height) - 2px - var(--we-compact-line)) / 2))
-    var(--we-space-300);
+  padding: max(0px, calc((var(--we-compact-control-height) - 2px - var(--we-compact-line)) / 2)) var(--we-space-300);
   line-height: var(--we-theme-line-height, var(--we-line-height-normal, 1.5));
   border: 1px solid var(--we-role-border);
   border-radius: var(--we-theme-input-radius, var(--we-radius-400));
