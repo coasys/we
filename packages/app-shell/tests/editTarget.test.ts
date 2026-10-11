@@ -13,15 +13,24 @@ import { createEditTarget } from '../src/frameworks/solid/stores/editTarget';
 function setup(screen: TemplateSchema) {
   const saved: TemplateSchema[] = [];
   const updated: TemplateSchema[] = [];
+  const drafted: { draft: TemplateSchema; next: TemplateSchema }[] = [];
+  const open = new Set<TemplateSchema>();
   const store = {
     get currentTemplate() {
       return screen;
     },
     updateTemplate: (next: TemplateSchema) => updated.push(next),
+    openDraft: (template: TemplateSchema) => {
+      const draft = { ...template };
+      open.add(draft);
+      return draft;
+    },
+    updateDraft: (draft: TemplateSchema, next: TemplateSchema) => drafted.push({ draft, next }),
+    closeDraft: (draft: TemplateSchema) => open.delete(draft),
     persistTemplate: async (template: TemplateSchema) => void saved.push(template),
     isBuiltInTemplateId: (id: string) => id === 'default',
   };
-  return { edit: createEditTarget(store as never), saved, updated };
+  return { edit: createEditTarget(store as never), saved, updated, drafted, open };
 }
 
 describe('the edit target', () => {
@@ -45,5 +54,58 @@ describe('the edit target', () => {
     const own = setup({ id: 'about-1', type: 'Column' } as TemplateSchema).edit.key();
     const space = setup({ id: 'about-1', type: 'Column', _fromSpace: true } as TemplateSchema).edit.key();
     expect(own).not.toBe(space);
+  });
+});
+
+/*
+  A section edited where its shell draws it. The session edits a working copy of it, which the shell
+  draws in its place, and coming back out drops the copy — every edit was saved as it was made.
+*/
+describe('a section as the edit target', () => {
+  const screen = { id: 'shell', type: 'Column', meta: { name: 'Shell' } } as TemplateSchema;
+  const about = {
+    id: 'about-1',
+    type: 'Column',
+    meta: { name: 'About', role: 'view' },
+    _fromSpace: true,
+  } as TemplateSchema;
+
+  it('edits and saves the section’s working copy, not the template on screen', async () => {
+    const { edit, saved, updated, drafted } = setup(screen);
+    edit.enterSection('about-1', about);
+    expect(edit.target()).toMatchObject({ kind: 'section', id: 'about-1', name: 'About' });
+    const draft = edit.template();
+    expect(draft).not.toBe(about);
+    expect(draft.meta?.name).toBe('About');
+    edit.update({ ...about, children: [] });
+    await edit.persist();
+    expect(updated).toEqual([]);
+    expect(drafted.map((d) => d.draft)).toEqual([draft]);
+    expect(saved).toEqual([draft]);
+  });
+
+  it('has a history of its own', () => {
+    const { edit } = setup(screen);
+    const onScreen = edit.key();
+    edit.enterSection('about-1', about);
+    expect(edit.key()).not.toBe(onScreen);
+  });
+
+  it('drops the working copy on the way out, and is the template on screen again', () => {
+    const { edit, open } = setup(screen);
+    edit.enterSection('about-1', about);
+    expect(open.size).toBe(1);
+    edit.leave();
+    expect(open.size).toBe(0);
+    expect(edit.target()).toEqual({ kind: 'screen' });
+    expect(edit.template()).toBe(screen);
+  });
+
+  it('leaves one section for another, never holding two copies open', () => {
+    const { edit, open } = setup(screen);
+    edit.enterSection('about-1', about);
+    edit.enterSection('cards-1', { ...about, id: 'cards-1', meta: { name: 'Cards', role: 'view' } } as TemplateSchema);
+    expect(open.size).toBe(1);
+    expect(edit.target()).toMatchObject({ id: 'cards-1' });
   });
 });

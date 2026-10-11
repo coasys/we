@@ -344,7 +344,24 @@ export interface OwnersPort {
   sectionOnItsOwn?: () => { section: string; shell?: { name: string; back: () => void } } | null;
 }
 
+/**
+ * What the session edits beyond the template on screen: a section its shell draws, edited where it is
+ * seen. The host decides which sections may be; the editor decides when to go in and come out.
+ */
+export interface EditTargetsPort {
+  /** The section being edited in place, or null while it is the template on screen. */
+  section: () => { id: string; name: string } | null;
+  /** Whether a section the shell draws can be edited where it is — one the agent may change. */
+  canEditSection: (id: string) => boolean;
+  /** Edit that section in place. False when it cannot be. */
+  enterSection: (id: string) => boolean;
+  /** Back to the template on screen. */
+  leave: () => void;
+}
+
 export interface EditorHost {
+  /** What the session edits beyond the template on screen. Without it, only that template is edited. */
+  targets?: EditTargetsPort;
   /** What the host knows about regions somebody else provides. Without it the editor names none. */
   owners?: OwnersPort;
   template: TemplatePort;

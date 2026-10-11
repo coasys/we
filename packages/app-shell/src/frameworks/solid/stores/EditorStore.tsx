@@ -672,6 +672,8 @@ export function EditorStoreProvider(props: ParentProps) {
   }
 
   function exitTemplateEditing() {
+    // A section edited in place goes back to being drawn from its saved template.
+    edit.leave();
     setIsEditingTemplate(false);
     setEditAction(null);
     setIsOpen(false);
@@ -1224,6 +1226,7 @@ export function EditorStoreProvider(props: ParentProps) {
   createEffect(() => {
     const templateId = templateStore.currentTemplate.id;
     if (templateId && datasetStore.rootDataset()) {
+      untrack(() => edit.leave());
       setContentModeSignal('preview');
       setIsEditingTemplate(false);
       setEditAction(null);

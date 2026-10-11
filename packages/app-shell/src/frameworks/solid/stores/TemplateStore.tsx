@@ -36,6 +36,7 @@ import {
 import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
+import { createTemplateDrafts } from './templateDrafts';
 
 const emptyMeta: TemplateMeta = { name: '', description: '', icon: '' };
 const emptyTemplate: TemplateSchema = { id: '', meta: emptyMeta, type: '', children: [], slots: {}, routes: [] };
@@ -176,6 +177,17 @@ export interface TemplateStore {
   persistCurrentTemplate: () => Promise<void>;
   /** Save a template's working copy to its own record, whichever template it is — see the definition. */
   persistTemplate: (template: TemplateSchema) => Promise<void>;
+  /**
+   * A working copy of a template edited where another draws it — a section inside its shell — as a
+   * store, so what draws it updates finely. Opening one twice answers with the same copy.
+   */
+  openDraft: (template: TemplateSchema) => TemplateSchema;
+  /** Replace a draft's contents, as `updateTemplate` does the template on screen. */
+  updateDraft: (draft: TemplateSchema, next: TemplateSchema) => void;
+  /** Drop a draft: what draws it goes back to the saved template. */
+  closeDraft: (draft: TemplateSchema) => void;
+  /** The open draft of a template, if it has one — what draws it prefers this. */
+  draftOf: (template: { id?: string; _fromSpace?: boolean }) => TemplateSchema | undefined;
   preloadSpaceTemplates: (dataset: AppDataset) => Promise<void>;
   loadSpaceTemplates: (dataset: AppDataset) => Promise<void>;
   refreshSpaceTemplates: () => Promise<void>;
@@ -794,6 +806,11 @@ export function TemplateStoreProvider(props: ParentProps) {
       toastService.error(`Schema validation failed: ${result.errors[0].message}`);
     }
   }
+
+  /** Working copies of templates edited where another draws them — see `templateDrafts.ts`. */
+  const { openDraft, updateDraft, closeDraft, draftOf } = createTemplateDrafts({
+    onInvalid: (message) => toastService.error(`Schema validation failed: ${message}`),
+  });
 
   /** Replace the current template wholesale using reconcile (bypasses findMutations).
    *  Preferred for AI updates where large structural changes (new routes, etc.) need
@@ -1776,6 +1793,10 @@ export function TemplateStoreProvider(props: ParentProps) {
     publishToMarketplace,
     persistCurrentTemplate,
     persistTemplate,
+    openDraft,
+    updateDraft,
+    closeDraft,
+    draftOf,
     preloadSpaceTemplates,
     loadSpaceTemplates,
     clearSpaceTemplates,

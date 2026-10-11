@@ -31,6 +31,7 @@ export { CodePanel } from './components/CodePanel';
 export { InspectorPanel } from './components/InspectorPanel';
 export {
   CopiedPartNote,
+  EditingSectionBar,
   OwnerCard,
   PartCard,
   PartsPalette,

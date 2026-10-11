@@ -436,6 +436,11 @@ async function idleFrames(frames = 1): Promise<void> {
  * and the editor's selection is recorded as well, so a case can ask which of the two heard a press.
  */
 function editorProbe(): void {
+  // Each run starts with nothing recorded: cases share the page, and one case's presses are not the
+  // next case's evidence.
+  for (const key of Object.keys(globalThis)) {
+    if (key.startsWith('__probe')) delete (globalThis as unknown as Record<string, unknown>)[key];
+  }
   const record = (key: string, value: unknown) => {
     const bag = globalThis as unknown as Record<string, unknown[]>;
     (bag[key] ??= []).push(value);
@@ -574,6 +579,13 @@ function editorProbe(): void {
     ],
   };
   const [selected, setSelected] = createSignal<string | null>(null);
+  const [editingSection, setEditingSection] = createSignal<{ id: string; name: string } | null>(null);
+  const aboutSection = {
+    id: 'about',
+    type: 'Column',
+    meta: { name: 'About', role: 'view' },
+    children: [{ id: 'n-view-inner', type: 'we-button' }],
+  };
   const [hovered, setHovered] = createSignal<string | null>(null);
   const [owner, setOwner] = createSignal<{ kind: string; id: string; name: string } | null>(null);
   const visual = {
@@ -601,7 +613,27 @@ function editorProbe(): void {
   probeSelect = (id: string | null) => visual.onSelect(id);
   const host = {
     session: { contentMode: () => 'visual', isStreaming: () => false, pushSnapshot() {}, commitEdit: async () => {} },
-    template: { currentTemplate: template, updateTemplate: () => record('__probeUpdated', true) },
+    // The template being edited: the one on screen, or the About section once it is gone into.
+    template: {
+      get currentTemplate() {
+        return editingSection() ? aboutSection : template;
+      },
+      updateTemplate: () => record('__probeUpdated', true),
+    },
+    // About is a section this agent may change, so a press can go into it and edit it where it is.
+    targets: {
+      section: editingSection,
+      canEditSection: (id: string) => id === 'about',
+      enterSection: (id: string) => {
+        setEditingSection({ id, name: 'About' });
+        record('__probeTarget', `section:${id}`);
+        return true;
+      },
+      leave: () => {
+        if (editingSection()) record('__probeTarget', 'screen');
+        setEditingSection(null);
+      },
+    },
     // Only what a ring asks about a part: what it is called and whose it is.
     owners: { part: (id: string) => ({ id, label: 'Tile', moduleName: 'Calls' }) },
   };

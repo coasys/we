@@ -467,7 +467,14 @@ function PanelCard(props: { dockId: string }) {
 
 function ViewCard(props: { id: string }) {
   const host = useEditorHost();
+  const visualEditor = useVisualEditor();
   const info = createMemo(() => host.owners?.view(props.id) ?? null);
+  /** Whether a section can be edited where it is: one this agent may change, a stored copy. */
+  const canChangeHere = (id: string | null) => !!id && !!host.targets?.canEditSection(id);
+  /** Edit it in this shell, where it is seen. The press that follows selects inside it. */
+  const changeHere = (id: string) => {
+    if (host.targets?.enterSection(id)) visualEditor.onSelectOwner(null);
+  };
   /** Asking before replacing a section for everyone — 'ask' once pressed, 'busy' while it saves. */
   const [step, setStep] = createSignal<'idle' | 'ask' | 'busy'>('idle');
   const [made, setMade] = createSignal<string | null>(null);
@@ -493,17 +500,38 @@ function ViewCard(props: { id: string }) {
             </we-text>
           </Heading>
           <Column px="400" gap="100">
-            <Show when={host.owners?.forkView}>
+            <Show when={canChangeHere(props.id)}>
+              <we-text {...SECTION_LABEL_PROPS}>Change it</we-text>
+              <Route
+                title="Change it here"
+                detail="Edit it where it is, in this shell. Your changes are saved to it for everyone who sees it."
+                action="Change"
+                onPress={() => changeHere(props.id)}
+              />
+            </Show>
+            <Show when={host.owners?.forkView && !canChangeHere(props.id)}>
               <we-text {...SECTION_LABEL_PROPS}>Change it</we-text>
               <Show
                 when={!made()}
                 fallback={
-                  <Route
-                    title="Your copy is in its place"
-                    detail="Open it on its own to change it. Switch back to this template from the template menu when you are done."
-                    action="Edit it"
-                    onPress={() => host.owners?.openTemplate?.(made()!)}
-                  />
+                  <Show
+                    when={canChangeHere(made())}
+                    fallback={
+                      <Route
+                        title="Your copy is in its place"
+                        detail="Open it on its own to change it. Switch back to this template from the template menu when you are done."
+                        action="Edit it"
+                        onPress={() => host.owners?.openTemplate?.(made()!)}
+                      />
+                    }
+                  >
+                    <Route
+                      title="Your copy is in its place"
+                      detail="Change it where it is, in this shell."
+                      action="Change it here"
+                      onPress={() => changeHere(made()!)}
+                    />
+                  </Show>
                 }
               >
                 <Show
@@ -665,6 +693,51 @@ export function SectionOnItsOwnBar() {
               </we-button>
             )}
           </Show>
+        </Row>
+      )}
+    </Show>
+  );
+}
+
+/**
+ * Where you are while a section is edited where its shell draws it, and the way out.
+ *
+ * What the inspector shows and what the editor saves is the section's, not the shell's, and nothing
+ * on the page changes to say so — the section looks exactly as it does when it is not being edited.
+ */
+export function EditingSectionBar() {
+  const host = useEditorHost();
+  const visualEditor = useVisualEditor();
+  const section = createMemo(() => host.targets?.section() ?? null);
+  return (
+    <Show when={section()}>
+      {(on) => (
+        <Row
+          data-we-editing-section=""
+          ax="between"
+          ay="center"
+          gap="300"
+          mx="300"
+          mb="200"
+          px="300"
+          py="200"
+          r="surface"
+          bg="accent-muted"
+          flexShrink="0"
+        >
+          <we-text variant="footnote">
+            Editing {on().name}, a section of this space, where it is. Escape or a press outside it comes back out.
+          </we-text>
+          <we-button
+            size="xs"
+            variant="secondary"
+            onClick={() => {
+              host.targets?.leave();
+              visualEditor.onSelect(null);
+            }}
+          >
+            Done
+          </we-button>
         </Row>
       )}
     </Show>

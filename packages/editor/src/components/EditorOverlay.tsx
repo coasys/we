@@ -205,7 +205,8 @@ function templateElementAt(x: number, y: number): Element | null {
  */
 type Boundary =
   | { kind: 'node'; id: string; part?: { id: string; el: HTMLElement } }
-  | { kind: 'owner'; owner: OwnerRef; el: HTMLElement }
+  /** `inner` is the node under the press inside the region — what going into it selects. */
+  | { kind: 'owner'; owner: OwnerRef; el: HTMLElement; inner?: { id: string; el: HTMLElement } }
   /** A node inside a part the selection has gone into, with the placements it sits in. */
   | { kind: 'deep'; id: string; el: HTMLElement; chain: string[]; parts: string[] };
 
@@ -231,7 +232,13 @@ function ownerAt(el: Element): OwnerRef | null {
  * `reach` is the shortcut past both steps — the modifier held (see `reaches`) — straight to the
  * deepest node under the pointer, however many parts it is inside.
  */
-function findBoundary(el: Element | null, entered: string | null = null, reach = false): Boundary | null {
+function findBoundary(
+  el: Element | null,
+  entered: string | null = null,
+  reach = false,
+  /** A section being edited where its shell draws it: its nodes are the edited template's, not somebody else's. */
+  editingSection: string | null = null,
+): Boundary | null {
   if (!el) return null;
   const surface = surfaceOf(el);
   let nearest: { id: string; el: HTMLElement } | null = null;
@@ -240,7 +247,10 @@ function findBoundary(el: Element | null, entered: string | null = null, reach =
   const frames: { at: string; part: string }[] = [];
   for (let at: Element | null = el; at; at = at.parentElement) {
     const owner = ownerAt(at);
-    if (owner) outer = { kind: 'owner', owner, el: at as HTMLElement };
+    // Inside the section being edited the walk stops at its edge, as it does at a surface's: what is
+    // above it is the shell, which is not what the session is editing.
+    if (owner?.kind === 'view' && owner.id === editingSection) break;
+    if (owner) outer = { kind: 'owner', owner, el: at as HTMLElement, ...(nearest ? { inner: nearest } : {}) };
     else if (at.hasAttribute(PART_ATTR) && at.getAttribute(PART_NODE_ATTR)) {
       const placement = at.getAttribute(PART_NODE_ATTR)!;
       frames.push({ at: placement, part: at.getAttribute(PART_ATTR)! });
@@ -730,6 +740,9 @@ function VisualEditorLayer() {
     inside it selecting the whole thing read as the editor failing to reach in.
   */
   const owners = useEditorHost().owners;
+  /** What the session edits beyond the template on screen — a section edited where it is drawn. */
+  const targets = useEditorHost().targets;
+  const editingSection = () => targets?.section()?.id ?? null;
   const partLabel = (id: string | null | undefined, selected: boolean): RingLabel | undefined => {
     if (!id) return undefined;
     const part = owners?.part(id);
@@ -1389,8 +1402,15 @@ function VisualEditorLayer() {
     // The template's root is the page itself, and selecting it rings everything: up from a child of
     // the root is out, to nothing selected.
     if (!parent || parent === templateStore.currentTemplate || !parent.id) {
-      visualEditor.onSelect(null);
       setEnteredEachParentId(null);
+      // At the top of a section edited in place, up is out of it: back to the section, selected whole.
+      const section = targets?.section();
+      if (section) {
+        targets?.leave();
+        visualEditor.onSelectOwner({ kind: 'view', id: section.id, name: section.name });
+        return true;
+      }
+      visualEditor.onSelect(null);
       return true;
     }
     if (parent.type === '$each') setEnteredEachParentId(null);
@@ -1464,7 +1484,7 @@ function VisualEditorLayer() {
     const under = hit;
     hoveredElement = under;
 
-    const boundary = findBoundary(under, enteredPart(), reach);
+    const boundary = findBoundary(under, enteredPart(), reach, editingSection());
 
     /*
       A view answers for itself and stops there.
@@ -1543,11 +1563,32 @@ function VisualEditorLayer() {
     hoveredElement = hit;
 
     const reach = reaches(e);
-    const clicked = findBoundary(hoveredElement, enteredPart(), reach);
+
+    // A press outside the section being edited goes back to the template on screen, and is then an
+    // ordinary press there: the shell's nodes are not the section's, and the inspector reads the target.
+    const inSection = editingSection();
+    if (inSection && !hoveredElement?.closest(`[${VIEW_BOUNDARY_ATTR}="${CSS.escape(inSection)}"]`)) {
+      targets?.leave();
+    }
+
+    const clicked = findBoundary(hoveredElement, enteredPart(), reach, editingSection());
 
     // A region somebody else provides is selected as a whole — a section, or a module's own panel —
     // never the shell node behind it, which is what made a section look broken.
     if (clicked?.kind === 'owner') {
+      /*
+        A section the agent may change is gone into the way a part is: the first press selects it, and
+        a second press inside it — or one with the modifier — edits it where it is, selecting the node
+        under the pointer. Its own working copy becomes what the session edits.
+      */
+      const section = clicked.owner.kind === 'view' ? clicked.owner.id : null;
+      const goingIn = !!section && (reach || visualEditor.selectedOwner()?.id === section);
+      if (section && goingIn && clicked.inner && targets?.canEditSection(section) && targets.enterSection(section)) {
+        notePress(clicked.inner.el, clicked.inner.id);
+        visualEditor.onSelect(clicked.inner.id);
+        setEnteredEachParentId(null);
+        return;
+      }
       visualEditor.onSelectOwner(clicked.owner);
       setEnteredEachParentId(null);
       return;

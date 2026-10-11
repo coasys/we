@@ -16,13 +16,19 @@ import { type Accessor, createContext, createSignal, useContext } from 'solid-js
 
 import type { TemplateStore } from './TemplateStore';
 
-/** The template on screen — the only target until sections and the app can be edited in place. */
-export type EditTarget = { kind: 'screen' };
+/**
+ * The template on screen, or a section the shell on screen draws — edited through its working copy,
+ * which the shell draws in its place while it is the target (`TemplateStore.openDraft`).
+ */
+export type EditTarget = { kind: 'screen' } | { kind: 'section'; id: string; name: string; draft: TemplateSchema };
 
 export interface EditTargetPort {
   /** What is being edited. */
   target: Accessor<EditTarget>;
-  setTarget: (next: EditTarget) => void;
+  /** Edit a section where its shell draws it, from the template the shell draws it from. */
+  enterSection: (id: string, saved: TemplateSchema) => void;
+  /** Back to the template on screen. A section's working copy is dropped; its edits are saved already. */
+  leave: () => void;
   /** Its working copy — a store, so the renderer and the editor read it finely. */
   template: () => TemplateSchema;
   /** Replace its working copy, keeping the store's identity. */
@@ -40,12 +46,28 @@ export interface EditTargetPort {
 
 export function createEditTarget(templateStore: TemplateStore): EditTargetPort {
   const [target, setTarget] = createSignal<EditTarget>({ kind: 'screen' });
-  const template = (): TemplateSchema => templateStore.currentTemplate;
+  const template = (): TemplateSchema => {
+    const now = target();
+    return now.kind === 'section' ? now.draft : templateStore.currentTemplate;
+  };
+  const leave = () => {
+    const now = target();
+    if (now.kind === 'section') templateStore.closeDraft(now.draft);
+    setTarget({ kind: 'screen' });
+  };
   return {
     target,
-    setTarget,
+    enterSection: (id, saved) => {
+      leave();
+      setTarget({ kind: 'section', id, name: saved.meta?.name ?? id, draft: templateStore.openDraft(saved) });
+    },
+    leave,
     template,
-    update: (next) => templateStore.updateTemplate(next),
+    update: (next) => {
+      const now = target();
+      if (now.kind === 'section') templateStore.updateDraft(now.draft, next);
+      else templateStore.updateTemplate(next);
+    },
     persist: () => templateStore.persistTemplate(template()),
     isBuiltIn: () => {
       const id = template().id;

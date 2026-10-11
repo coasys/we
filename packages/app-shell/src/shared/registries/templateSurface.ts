@@ -997,6 +997,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     replaceTemplate: WIRING,
     persistCurrentTemplate: WIRING,
     persistTemplate: WIRING,
+    openDraft: WIRING,
+    updateDraft: WIRING,
+    closeDraft: WIRING,
+    draftOf: WIRING,
     // Install or uninstall by id, which is what the settings list's switch calls. `library`, like
     // the two actions it delegates to — marking it wiring left that switch inert.
     toggleInstalled: action('library'),

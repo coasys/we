@@ -24,6 +24,7 @@ import { ContentEditor } from './ContentEditor';
 import {
   acceptsParts,
   CopiedPartNote,
+  EditingSectionBar,
   OwnerCard,
   PartCard,
   PartsPalette,
@@ -523,6 +524,7 @@ export function InspectorPanel() {
         <we-text {...PANEL_TITLE_PROPS}>Visual Inspector</we-text>
       </Row>
       <SectionOnItsOwnBar />
+      <EditingSectionBar />
 
       {/* Layer tree */}
       <Column flex="none" height={`${treeHeight()}px`} overflow="hidden">

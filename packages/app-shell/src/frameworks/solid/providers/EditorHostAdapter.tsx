@@ -1,5 +1,8 @@
+import { moduleRegistry } from '@shared/registries/moduleRegistry';
+import { viewRegistry } from '@shared/registries/viewRegistry';
 import { type EditorHost, EditorHostProvider } from '@we/editor/runtime';
 import { compressImageToFileData, ImageBlock } from '@we/entities';
+import type { TemplateSchema } from '@we/schema-shared';
 import type { ParentProps } from 'solid-js';
 
 import { useDatasetStore } from '../stores/DatasetStore';
@@ -52,7 +55,35 @@ export function EditorHostAdapter(props: ParentProps) {
     },
   });
 
+  /**
+   * A section the agent may edit where the shell draws it: a stored copy, not a built-in or a
+   * module's, and — when it is the space's — only for whoever runs the space, the rule copying one
+   * follows. The saved template, not a working copy, since that is what a new draft starts from.
+   */
+  const editableSection = (id: string): TemplateSchema | null => {
+    if (id in viewRegistry || id in moduleRegistry.views() || template.isBuiltInTemplateId(id)) return null;
+    const stored = template.allTemplates().find((t) => t.id === id && t.meta?.role === 'view');
+    if (!stored) return null;
+    if (stored._fromSpace && !space.canAdministerCurrentSpace()) return null;
+    return stored;
+  };
+
   const host: EditorHost = {
+    targets: {
+      section: () => {
+        const now = edit.target();
+        return now.kind === 'section' ? { id: now.id, name: now.name } : null;
+      },
+      canEditSection: (id) => !!editableSection(id),
+      enterSection: (id) => {
+        const saved = editableSection(id);
+        if (!saved) return false;
+        edit.enterSection(id, saved);
+        return true;
+      },
+      leave: () => edit.leave(),
+    },
+
     // Who provides the regions of the page the template does not own — see `ownersPort.ts`.
     owners: createOwnersPort({ space, shell, dataset: datasetStore, template }),
 
