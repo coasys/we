@@ -17,3 +17,11 @@
 export function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
+
+/**
+ * The last entry of a list. Not `Array.prototype.at`: the editor is compiled into the Tauri app
+ * against a library target that predates it.
+ */
+export function lastOf<T>(items: readonly T[]): T | undefined {
+  return items[items.length - 1];
+}

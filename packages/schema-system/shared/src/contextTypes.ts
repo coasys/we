@@ -212,8 +212,11 @@ export interface ModuleCatalogEntry {
   capabilities: string[];
   /** The store's public members — `modules.<id>.<name>` — with what each is and means. */
   members: { name: string; kind: 'state' | 'action'; doc: string; ambient?: true }[];
-  /** Fragments a template may place with `$part` as `<id>.<name>`. */
-  parts: { name: string; subject?: string }[];
+  /**
+   * Fragments a template may place with `$part` as `<id>.<name>`. `inputs` are names the part reads
+   * that whatever it is placed in must bind, or the placement must give through `$part`'s `inputs`.
+   */
+  parts: { name: string; subject?: string; inputs?: { name: string; description: string }[] }[];
   /** Panels, by the name `meta.panels[].dock` addresses. */
   panels: { name: string; title: string; icon?: string; hostOwned: boolean }[];
   /** Rail entries that are not a panel's. */

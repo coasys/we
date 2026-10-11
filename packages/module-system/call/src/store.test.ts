@@ -318,6 +318,8 @@ describe('transport and device lifetime', () => {
 
     const disposers: Array<() => void> = [];
     let created = 0;
+    /** What each record write was asked for — the entity, the fields, and where it hangs. */
+    const createdWith: unknown[][] = [];
     // The host's removal channel — see `ModuleDatasetAccess.onRemoved`. Held so a test can fire it.
     let notifyRemoved: ((uri: string) => void) | null = null;
     /*
@@ -363,7 +365,12 @@ describe('transport and device lifetime', () => {
       kernels: {
         ephemeral: () => (options.personal ? null : scope),
         presence: { peers: () => roster, setActivity: () => {}, clearActivity: () => {} },
-        records: { create: async () => `rec-${++created}` },
+        records: {
+          create: async (...args: unknown[]) => {
+            createdWith.push(args);
+            return `rec-${++created}`;
+          },
+        },
         peerConnection: {
           create: (configuration?: RTCConfiguration) => {
             configs.push(configuration ?? {});
@@ -417,6 +424,7 @@ describe('transport and device lifetime', () => {
       published: publishedMedia,
       scopeDisposals: () => disposed,
       recordsCreated: () => created,
+      createdWith,
       disposers,
       removeDataset: (uri: string) => notifyRemoved?.(uri),
       /** Somebody else joins the call this store is in, and the roster catches up. */
@@ -449,6 +457,23 @@ describe('transport and device lifetime', () => {
       },
     };
   }
+
+  /*
+    A button wired the obvious way — `{ $action: 'modules.call.startCall' }`, no args — hands the store
+    the click, and the optional first parameter took it for the record the call is about. The write
+    then failed at the backend ("invalid type: map, expected a string") and the call never started.
+    Placing the start button as a part made it easy to hit, so it is refused where every caller lands.
+  */
+  it('starts a call about the space when it is handed a click rather than an id', async () => {
+    const { store, createdWith } = callable();
+
+    await store.startCall({ type: 'click', detail: 1 });
+
+    expect(createdWith).toHaveLength(1);
+    // The space's own call, hanging off nothing — not a call about a record the click stood in for.
+    expect(createdWith[0][2]).toEqual({ topLevel: true });
+    expect(store.problem()).toBeNull();
+  });
 
   it('shows the video when the call starts', async () => {
     // Nothing did this, so pressing the call button produced a control bar and no picture: the panel

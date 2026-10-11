@@ -6,9 +6,11 @@ import { useDatasetStore } from '../stores/DatasetStore';
 import { useEditorStore } from '../stores/EditorStore';
 import { useProfileStore } from '../stores/ProfileStore';
 import { useSessionStore } from '../stores/SessionStore';
+import { useShellStore } from '../stores/ShellStore';
 import { useSpaceStore } from '../stores/SpaceStore';
 import { useTemplateStore } from '../stores/TemplateStore';
 import { useThemeStore } from '../stores/ThemeStore';
+import { createOwnersPort } from './ownersPort';
 
 /**
  * WE's implementation of the editor's host port.
@@ -31,8 +33,12 @@ export function EditorHostAdapter(props: ParentProps) {
   const datasetStore = useDatasetStore();
   const profileStore = useProfileStore();
   const space = useSpaceStore();
+  const shell = useShellStore();
 
   const host: EditorHost = {
+    // Who provides the regions of the page the template does not own — see `ownersPort.ts`.
+    owners: createOwnersPort({ space, shell, dataset: datasetStore, template }),
+
     // `currentTemplate` is a getter on the store, so it is forwarded as one — reading it eagerly
     // here would snapshot the template and the editor would render a stale copy after every edit.
     get template() {

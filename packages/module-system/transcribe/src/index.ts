@@ -184,17 +184,46 @@ export const transcribeModule = defineModule({
         here would match nothing and a `subject` would silently do nothing, which is the failure mode
         this map exists to avoid.
       */
-      transcriptFeed: { node: transcriptFeed, subject: SUBJECT_EXPR },
-      transcriptLines: { node: transcriptLines, subject: 'modules.transcribe.collectionId' },
-      // Bare nodes rather than `{ node }`: the wrapper exists to name a subject, and these have none.
-      // The composer writes into the live call by construction — it is about this agent typing now,
-      // not about whichever call is being read — so there is no subject to point elsewhere.
-      transcriptComposer,
-      captureMeter,
-      captureStatus,
-      coverage,
-      extractionTargets,
-      pendingUtterance,
+      transcriptFeed: {
+        node: transcriptFeed,
+        subject: SUBJECT_EXPR,
+        label: 'Transcript',
+        description: 'Everything said in a call, scrolling as it is said.',
+      },
+      transcriptLines: {
+        node: transcriptLines,
+        subject: 'modules.transcribe.collectionId',
+        label: 'Transcript lines',
+        description: 'The lines of a transcript alone, without the controls around them.',
+      },
+      // No subject: the composer writes into the live call by construction — it is about this agent
+      // typing now, not about whichever call is being read — so there is nothing to point elsewhere.
+      transcriptComposer: {
+        node: transcriptComposer,
+        label: 'Write into the transcript',
+        description: 'A box for typing a line into the call’s transcript.',
+      },
+      captureMeter: { node: captureMeter, label: 'Microphone level', description: 'How loud your microphone is.' },
+      captureStatus: {
+        node: captureStatus,
+        label: 'Recording status',
+        description: 'Whether your microphone is being transcribed, and why not.',
+      },
+      coverage: {
+        node: coverage,
+        label: 'Who is recorded',
+        description: 'Who in the call is being transcribed and who is not.',
+      },
+      extractionTargets: {
+        node: extractionTargets,
+        label: 'What to extract',
+        description: 'Which kinds of thing a call is turned into.',
+      },
+      pendingUtterance: {
+        node: pendingUtterance,
+        label: 'Being heard',
+        description: 'What has been said and is not in the transcript yet.',
+      },
     },
 
     slots: [

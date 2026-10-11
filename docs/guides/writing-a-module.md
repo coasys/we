@@ -147,6 +147,39 @@ it, so a placer may point it at another record:
 parts: { transcriptFeed: { node: transcriptFeed, subject: 'modules.transcribe.collectionId' } }
 ```
 
+Give each part a `label` and a one-line `description`. They are what the editor's parts palette
+shows, and a part nobody can find is a part nobody places.
+
+**Declare what a part needs from where it sits.** A part placed by somebody else lands in a page, in
+another panel, or one level deep in an arrangement somebody opened. A part that reads a name its
+parents bind (the row a tile is drawn for, the block a card shows) renders empty anywhere but its
+home unless it says so:
+
+```ts
+tile: {
+  node: tile,
+  label: 'Participant tile',
+  description: 'One person in the call: their video, or their face when it is off.',
+  inputs: { tile: { description: 'the participant to show — one of modules.call.tiles' } },
+},
+```
+
+A placer then binds it, by placing the part where something binds `tile` or by giving it:
+`{ type: '$part', props: { id: 'call.tile', inputs: { tile: { $: '…' } } } }`.
+
+`lintModule` warns about a name a part reads that nothing inside it binds and it does not declare,
+about a `local.*` it reads without declaring the `$localState` itself, and about an input it never
+reads. A local cannot be an input: nothing outside a part can declare the state inside it, so state
+two parts share belongs in your store, or in a part that holds both. Bundled modules are tested to
+have no warnings.
+
+**Place your own parts; do not paste them.** Your panel, and any part built of others, should place a
+part with `{ type: '$part', props: { id: '<module>.<part>' } }` rather than naming the constant it
+publishes. The two draw the same, so nothing on screen tells them apart until somebody arranges the
+panel or opens the part: a placed piece comes across as a reference that keeps receiving your fixes, a
+pasted one as a copy that never will. `lintModule` warns about a part's node found pasted into a panel
+or into another part.
+
 ## The store, and what a template may reach
 
 ```ts
