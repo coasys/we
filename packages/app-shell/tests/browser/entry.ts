@@ -27,6 +27,7 @@ import {
   OwnerCard,
   PartCard,
   PartsPalette,
+  SectionOnItsOwnBar,
   SuppliedPanelNote,
 } from '@we/editor';
 import {
@@ -633,7 +634,8 @@ function ownerCardProbe(
     | 'part-node'
     | 'copied-clean'
     | 'copied-inner'
-    | 'copied-outer',
+    | 'copied-outer'
+    | 'section-alone',
 ): void {
   const record = (key: string, value: unknown) => {
     const bag = globalThis as unknown as Record<string, unknown[]>;
@@ -760,6 +762,10 @@ function ownerCardProbe(
         return 'about-yours';
       },
       openTemplate: (id: string) => record('__probeOpened', id),
+      sectionOnItsOwn: () =>
+        kind === 'section-alone'
+          ? { section: 'About (yours)', shell: { name: 'My shell', back: () => record('__probeBack', true) } }
+          : null,
     },
   };
   const visual = {
@@ -789,6 +795,7 @@ function ownerCardProbe(
               if (kind === 'arranged' || kind === 'arranged-placed')
                 return createComponent(SuppliedPanelNote, { nodeId: 'bbbbbbbbbb' });
               if (kind.startsWith('copied-')) return createComponent(CopiedPartNote, { nodeId: 'vvvvvvvvvv' });
+              if (kind === 'section-alone') return createComponent(SectionOnItsOwnBar, {});
               if (kind === 'part-node')
                 return createComponent(OwnerCard, {
                   owner: {

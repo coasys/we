@@ -29,7 +29,14 @@ export { TemplateCard } from './components/TemplateCard';
 */
 export { CodePanel } from './components/CodePanel';
 export { InspectorPanel } from './components/InspectorPanel';
-export { CopiedPartNote, OwnerCard, PartCard, PartsPalette, SuppliedPanelNote } from './components/OwnerCard';
+export {
+  CopiedPartNote,
+  OwnerCard,
+  PartCard,
+  PartsPalette,
+  SectionOnItsOwnBar,
+  SuppliedPanelNote,
+} from './components/OwnerCard';
 export { ThemePanel } from './components/ThemePanel';
 
 export { mountTemplateEditor, type MountOptions } from './mount';

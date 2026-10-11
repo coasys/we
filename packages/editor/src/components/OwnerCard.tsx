@@ -622,6 +622,56 @@ export function SuppliedPanelNote(props: { nodeId: string }) {
 }
 
 // -----------------------------------------------------------------------
+// A section edited on its own
+// -----------------------------------------------------------------------
+
+/**
+ * Where you are when a section is on screen by itself, and the way back to the shell it lives in.
+ *
+ * A section is a template of its own, and the editor edits the template on screen, so editing a
+ * section opens it alone — the shell around it gone. Without saying so that reads as the rest of the
+ * template having vanished, and the way back was a template menu nobody had been told about. Editing
+ * a section in place, inside its shell, is a change to what the editor edits; until then this says
+ * what is happening and offers the way back.
+ */
+export function SectionOnItsOwnBar() {
+  const host = useEditorHost();
+  const state = createMemo(() => host.owners?.sectionOnItsOwn?.() ?? null);
+  return (
+    <Show when={state()}>
+      {(on) => (
+        <Row
+          data-we-section-on-its-own=""
+          ax="between"
+          ay="center"
+          gap="300"
+          mx="300"
+          mb="200"
+          px="300"
+          py="200"
+          r="surface"
+          bg="surface-sunken"
+          flexShrink="0"
+        >
+          <we-text variant="footnote" color="text-muted">
+            {on().shell
+              ? `Editing ${on().section} on its own, a section of ${on().shell!.name}.`
+              : `Editing ${on().section} on its own. Switch back to a shell from the template menu.`}
+          </we-text>
+          <Show when={on().shell}>
+            {(shell) => (
+              <we-button size="xs" variant="secondary" onClick={() => shell().back()}>
+                Back to {shell().name}
+              </we-button>
+            )}
+          </Show>
+        </Row>
+      )}
+    </Show>
+  );
+}
+
+// -----------------------------------------------------------------------
 // A module's part the template copied
 // -----------------------------------------------------------------------
 

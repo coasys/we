@@ -7,6 +7,7 @@
  */
 import type { OwnedPart, OwnersPort } from '@we/editor/runtime';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
+import { createSignal } from 'solid-js';
 
 import { describeMissing, fixFor, whyMissing } from '../../../shared/partAvailability';
 import { openPart, openPartPath } from '../../../shared/registries/moduleParts';
@@ -46,6 +47,11 @@ export function createOwnersPort(deps: {
   template: TemplateStore;
 }): OwnersPort {
   const { space, shell, dataset, template } = deps;
+  /**
+   * The shell a section was opened from, to go back to. In memory: after a reload there is nothing to
+   * go back *from*, and the bar says where the template menu is instead.
+   */
+  const [cameFrom, setCameFrom] = createSignal<{ switcherId: string; name: string } | null>(null);
 
   const describe = (id: string, part?: RegisteredPart): OwnedPart => {
     const moduleId = id.split('.')[0] ?? '';
@@ -163,8 +169,34 @@ export function createOwnersPort(deps: {
     },
 
     openTemplate: (id) => {
+      if (template.currentTemplate.meta?.role !== 'view') {
+        setCameFrom({
+          switcherId: template.currentSwitcherId(),
+          name: template.currentTemplate.meta?.name ?? 'the shell',
+        });
+      }
       const fromSpace = template.spaceTemplates().some((t) => t.id === id);
       template.switchTemplate(fromSpace ? `space::${id}` : id);
+    },
+
+    sectionOnItsOwn: () => {
+      const current = template.currentTemplate;
+      if (current.meta?.role !== 'view') return null;
+      const from = cameFrom();
+      return {
+        section: current.meta?.name ?? 'This section',
+        ...(from
+          ? {
+              shell: {
+                name: from.name,
+                back: () => {
+                  setCameFrom(null);
+                  template.switchTemplate(from.switcherId);
+                },
+              },
+            }
+          : {}),
+      };
     },
   };
 }

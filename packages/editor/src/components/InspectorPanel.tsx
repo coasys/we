@@ -21,7 +21,15 @@ import { paintedRoles } from '../paintedRoles';
 import { deepClone } from '../utils';
 import { ConditionEditor } from './ConditionEditor';
 import { ContentEditor } from './ContentEditor';
-import { acceptsParts, CopiedPartNote, OwnerCard, PartCard, PartsPalette, SuppliedPanelNote } from './OwnerCard';
+import {
+  acceptsParts,
+  CopiedPartNote,
+  OwnerCard,
+  PartCard,
+  PartsPalette,
+  SectionOnItsOwnBar,
+  SuppliedPanelNote,
+} from './OwnerCard';
 import { ValueEditor } from './ValueEditor';
 
 // -----------------------------------------------------------------------
@@ -514,6 +522,7 @@ export function InspectorPanel() {
       <Row ax="between" ay="center" px="300" py="300" flexShrink="0">
         <we-text {...PANEL_TITLE_PROPS}>Visual Inspector</we-text>
       </Row>
+      <SectionOnItsOwnBar />
 
       {/* Layer tree */}
       <Column flex="none" height={`${treeHeight()}px`} overflow="hidden">

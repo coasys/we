@@ -16,6 +16,11 @@ function setup(opts: { admin?: boolean; inSpace?: boolean } = {}) {
   const writes: string[][] = [];
   /** How each save was asked to behave — whether it was to become the template on screen. */
   const saves: { activate?: boolean }[] = [];
+  const switches: string[] = [];
+  const screen = {
+    switcherId: 'my-shell',
+    template: { id: 'my-shell', type: 'Column', meta: { name: 'My shell' } } as TemplateSchema,
+  };
   const view = {
     id: 'cards',
     segment: 'cards',
@@ -46,10 +51,22 @@ function setup(opts: { admin?: boolean; inSpace?: boolean } = {}) {
         spaceTemplates.push({ ...schema, id: 'cards-yours' });
         return true;
       },
-      switchTemplate: () => {},
+      // The template on screen and the switcher's id for it, moved by switchTemplate as the store does.
+      get currentTemplate() {
+        return screen.template;
+      },
+      currentSwitcherId: () => screen.switcherId,
+      switchTemplate: (id: string) => {
+        switches.push(id);
+        screen.switcherId = id;
+        screen.template =
+          id === 'my-shell'
+            ? ({ id: 'my-shell', type: 'Column', meta: { name: 'My shell' } } as TemplateSchema)
+            : ({ id, type: 'Column', meta: { name: 'Cards (yours)', role: 'view' } } as TemplateSchema);
+      },
     } as never,
   });
-  return { port, enabled: () => enabled, writes, spaceTemplates, saves };
+  return { port, enabled: () => enabled, writes, spaceTemplates, saves, switches, screen };
 }
 
 describe('copying a section in its place', () => {
@@ -118,5 +135,32 @@ describe('what arranging a module’s panel keeps', () => {
     } finally {
       moduleRegistry.unregister('kept');
     }
+  });
+});
+
+/*
+  Editing a copied section opens it on its own, the shell around it gone. The way back to that shell
+  is remembered, so the editor can offer it instead of leaving somebody to find the template menu.
+*/
+describe('a section edited on its own', () => {
+  it('says nothing while a shell is on screen', () => {
+    const { port } = setup();
+    expect(port.sectionOnItsOwn!()).toBeNull();
+  });
+
+  it('remembers the shell it was opened from, and goes back to it', () => {
+    const { port, switches } = setup();
+    port.openTemplate!('cards-yours');
+    const on = port.sectionOnItsOwn!();
+    expect(on).toMatchObject({ section: 'Cards (yours)', shell: { name: 'My shell' } });
+    on!.shell!.back();
+    expect(switches.at(-1)).toBe('my-shell');
+    expect(port.sectionOnItsOwn!()).toBeNull();
+  });
+
+  it('still says what is on screen with no shell to go back to', () => {
+    const { port, screen } = setup();
+    screen.template = { id: 'x', type: 'Column', meta: { name: 'About', role: 'view' } } as TemplateSchema;
+    expect(port.sectionOnItsOwn!()).toEqual({ section: 'About' });
   });
 });

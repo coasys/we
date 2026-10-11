@@ -332,6 +332,11 @@ export interface OwnersPort {
   forkView?: (id: string) => Promise<string | null>;
   /** Open a template on its own, to edit it — how a section of a space is edited. */
   openTemplate?: (id: string) => void;
+  /**
+   * When the template on screen is a section, edited on its own: what it is called, and — when it was
+   * opened from a shell — that shell's name and the way back to it. Null when a shell is on screen.
+   */
+  sectionOnItsOwn?: () => { section: string; shell?: { name: string; back: () => void } } | null;
 }
 
 export interface EditorHost {

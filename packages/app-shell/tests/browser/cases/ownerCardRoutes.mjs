@@ -117,6 +117,17 @@ export async function check({ call, count, recorded }) {
     await call('editorProbeDispose');
   }
 
+  // A section opened on its own says so, and the way back to the shell it lives in is one press.
+  await call('ownerCardProbe', 'section-alone');
+  try {
+    if (!(await count('we-text:has-text("Editing About (yours) on its own, a section of My shell")')))
+      problems.push('a section on its own does not say it is one');
+    if (!(await call('pressButton', 'Back to My shell'))) problems.push('a section on its own offers no way back');
+    if (!(await recorded('__probeBack')).length) problems.push('the way back does not go back');
+  } finally {
+    await call('editorProbeDispose');
+  }
+
   await call('ownerCardProbe', 'panel');
   try {
     // It names what stays the module's, rather than claiming everything does.
