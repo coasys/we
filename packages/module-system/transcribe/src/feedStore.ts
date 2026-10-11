@@ -8,12 +8,11 @@
  * ## Staying live, cheaply
  *
  * The window is read whole (see `readFeedWindow`) and read again when something it shows may have
- * changed: the newest message typed into the space, the newest call started, the newest line of every
- * call running in it right now, and the suggestions settling. Each of those is a one-row subscription
+ * changed: the newest line written anywhere in the space (a message, a call's line or a reply), the newest
+ * call started, and the suggestions settling. Each of those is a one-row subscription
  * rather than a subscription over everything, and a burst of them is one re-read, not one each. Only
  * while the panel is open: nobody looking, nothing read.
  */
-import { activitiesOfType } from '@we/backend-shared';
 import type { InterpretationKernel, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 
 import { FEED_FIRST_PAGE, FEED_PAGE, type FeedRow, readFeedWindow } from './feed';
@@ -30,7 +29,6 @@ export interface FeedDeps {
   dataset: ModuleStoreDeps['dataset'];
   records: RecordsKernel | undefined;
   interpretation: InterpretationKernel | undefined;
-  presence: { peers: () => unknown[] } | undefined;
   /** Records a pass made that nobody has kept yet. */
   unconfirmedIds: () => string[];
   /** Write a message — the store's own, so typed lines and feed messages are written one way. */
@@ -115,7 +113,14 @@ export function createFeed(deps: FeedDeps) {
 
   /*
     The one-row subscriptions that say "something new may be in the window" — see the module comment.
-    Rebuilt when the calls running here change, so a call starting is followed from its first line.
+
+    The newest line anywhere in the space, not the newest line *contained by* the space or a call.
+    A reply is linked from the line it answers rather than contained by anything, so the contained
+    reads never saw one: a reply written from the Feed did not appear in it until something else
+    happened to prompt a read — which a live call's extraction usually did for a reply written in a
+    transcript, and nothing did for one written here. One row space-wide covers typed messages, every
+    call's lines and every reply, whoever wrote them; a line that is not in the window (a post's
+    paragraph) costs one debounced re-read.
   */
   let stops: (() => void)[] = [];
   const unsubscribe = () => {
@@ -126,15 +131,9 @@ export function createFeed(deps: FeedDeps) {
     unsubscribe();
     const space = root();
     if (!open() || !space || typeof records?.subscribe !== 'function') return;
-    const live = new Set(
-      activitiesOfType((deps.presence?.peers() ?? []) as never, 'call')
-        .map(({ activity }) => (activity as { record?: unknown }).record)
-        .filter((id): id is string => typeof id === 'string' && id.length > 0),
-    );
     const newest = { order: { createdAt: 'desc' as const }, limit: 1 };
-    stops.push(records.subscribe('TextBlock', { within: space, ...newest }, soon));
+    stops.push(records.subscribe('TextBlock', newest, soon));
     stops.push(records.subscribe('CollectionBlock', { within: space, where: { kind: 'call' }, ...newest }, soon));
-    for (const call of live) stops.push(records.subscribe('TextBlock', { within: call, ...newest }, soon));
   });
   deps.onDispose?.(() => {
     unsubscribe();

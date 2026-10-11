@@ -2754,7 +2754,6 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     dataset,
     records,
     interpretation,
-    presence,
     unconfirmedIds,
     // Into the space on screen: the Feed is about the space somebody is reading.
     write: (collection, text, marks) => writeMessage({ id: collection, predicate: CHILDREN_PREDICATE }, text, marks),
