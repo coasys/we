@@ -307,7 +307,7 @@ export function BlockComposer(props: Props) {
     };
     document.addEventListener('mousedown', onMouseDown, true);
 
-    props.onReady?.({ save });
+    props.onReady?.({ save, submit });
 
     /*
       Focus after the next frame so the modal/DOM is fully settled.

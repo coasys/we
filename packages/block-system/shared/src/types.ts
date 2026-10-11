@@ -27,7 +27,12 @@ export type BlockComposerProps = Omit<DesignSystemProps, 'direction'> & {
    * that were loaded, so the save can tell the author's removals from other people's additions.
    */
   onSave?: (document: ContentDocument) => void;
-  onReady?: (api: { save: () => void }) => void;
+  /**
+   * Hands out the composer's own actions once it is ready. `save` serialises the document for
+   * `onSave`; `submit` sends a `compact` composer's line through `onSubmit`, exactly as Enter does —
+   * for a send button beside the line. An empty line sends nothing.
+   */
+  onReady?: (api: { save: () => void; submit: () => void }) => void;
   /**
    * Fires when the composer starts or stops holding work the author would mind losing.
    *

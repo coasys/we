@@ -2213,7 +2213,7 @@
         },
         {
           "name": "onReady",
-          "type": "((api: { save: () => void; }) => void)",
+          "type": "((api: { save: () => void; submit: () => void; }) => void)",
           "optional": true
         },
         {

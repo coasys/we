@@ -2089,6 +2089,21 @@ describe('the composer', () => {
     expect(composer?.props).toMatchObject({ compact: true, autoFocus: false, handles: false });
   });
 
+  it('sends from a button as well as Enter, through the same send', () => {
+    /*
+      The compact composer is an editor with no chrome of its own, so on its own the box had no
+      outline and no way to send but Enter. The button presses the composer's own submit, which
+      goes through onSubmit as Enter does — so the in-flight guard there covers both.
+    */
+    expect(composer?.props.onReady).toEqual({ $setLocal: 'sendLine', value: { $: 'event.submit' } });
+    const send = findNode(
+      transcriptComposer,
+      (n) => n.type === 'we-button' && JSON.stringify(n.props).includes('sendLine'),
+    ) as { props: Record<string, unknown> } | undefined;
+    expect(send?.props.onClick).toEqual({ $callLocal: 'sendLine' });
+    expect(send?.props.disabled).toEqual({ $: 'local.sending' });
+  });
+
   it('declares the in-flight flag, and keeps it out of the URL', () => {
     const declared = (holder?.$localState as Record<string, Record<string, unknown>> | undefined)?.sending;
     expect(declared).toEqual({ type: 'boolean', initial: false });

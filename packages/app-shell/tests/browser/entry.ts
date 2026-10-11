@@ -13,6 +13,9 @@
  * Exposes `window.__harness` for the runner to drive.
  */
 import '@we/primitives';
+// The block system's stylesheet, as the app imports it (`@solid/index.ts`): a composer or a
+// renderer measured without it is measured without its padding, its placeholder and its field.
+import '@we/block-solid/styles';
 
 import { buildTemplateBag, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
@@ -954,7 +957,21 @@ function editorProbeDispose(): void {
 }
 
 injectDSInteropStyles();
+/** The compact composer's own box: its edge and its height, and the send button's height beside it. */
+function composerFrame(): { border: string; height: number; button: number } | null {
+  const box = document.querySelector('.we-block-composer--compact');
+  const button = document.querySelector('we-button');
+  if (!box) return null;
+  const cs = getComputedStyle(box);
+  return {
+    border: `${cs.borderTopWidth} ${cs.borderTopStyle}`,
+    height: Math.round(box.getBoundingClientRect().height),
+    button: Math.round(button?.getBoundingClientRect().height ?? 0),
+  };
+}
+
 (window as unknown as Record<string, unknown>).__harness = {
+  composerFrame,
   editorProbe,
   editorProbeCover,
   ownerCardProbe,

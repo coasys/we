@@ -13,6 +13,7 @@
 import { panelShell, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 
+import { lineComposer } from './lineComposer';
 import { TIMELINE_ORIENTATION } from './Panel.schema';
 
 const FROM_START = 'modules.transcribe.feedFromStart';
@@ -231,40 +232,35 @@ const composer: SchemaNode = {
         },
       },
     },
-    // The block composer in its one-line mode, as the transcript's — see `compact` on its props.
-    {
-      type: 'BlockComposer',
-      props: {
-        compact: true,
-        autoFocus: false,
-        handles: false,
-        placeholder: 'Write to the space…',
-        onSubmit: {
-          $if: {
-            condition: { $: '!local.sending' },
-            then: [
-              { $setLocal: 'sending', value: true },
-              {
-                $if: {
-                  condition: { $: 'local.replyingTo' },
-                  then: {
-                    $action: 'modules.transcribe.reply',
-                    args: [{ $: 'local.replyingTo.id' }, { $: 'event.text' }, { $: 'event.marks' }],
-                    onSuccess: [{ $setLocal: 'replyingTo', value: null }],
-                    onFinally: [{ $setLocal: 'sending', value: false }],
-                  },
-                  else: {
-                    $action: 'modules.transcribe.sendToFeed',
-                    args: [{ $: 'event.text' }, { $: 'event.marks' }],
-                    onFinally: [{ $setLocal: 'sending', value: false }],
-                  },
+    // The block composer in its one-line mode, as the transcript's — see `lineComposer`.
+    lineComposer({
+      placeholder: 'Write to the space…',
+      sendLabel: 'Send to the space',
+      onSubmit: {
+        $if: {
+          condition: { $: '!local.sending' },
+          then: [
+            { $setLocal: 'sending', value: true },
+            {
+              $if: {
+                condition: { $: 'local.replyingTo' },
+                then: {
+                  $action: 'modules.transcribe.reply',
+                  args: [{ $: 'local.replyingTo.id' }, { $: 'event.text' }, { $: 'event.marks' }],
+                  onSuccess: [{ $setLocal: 'replyingTo', value: null }],
+                  onFinally: [{ $setLocal: 'sending', value: false }],
+                },
+                else: {
+                  $action: 'modules.transcribe.sendToFeed',
+                  args: [{ $: 'event.text' }, { $: 'event.marks' }],
+                  onFinally: [{ $setLocal: 'sending', value: false }],
                 },
               },
-            ],
-          },
+            },
+          ],
         },
       },
-    },
+    }),
   ],
 };
 

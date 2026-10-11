@@ -783,7 +783,7 @@ export const contextData: ContextData = {
         { name: 'editorState', type: 'EditorStateInput', optional: true },
         { name: 'dataset', type: 'unknown', optional: true },
         { name: 'onSave', type: '((document: ContentDocument) => void)', optional: true },
-        { name: 'onReady', type: '((api: { save: () => void; }) => void)', optional: true },
+        { name: 'onReady', type: '((api: { save: () => void; submit: () => void; }) => void)', optional: true },
         { name: 'onDirtyChange', type: '((dirty: boolean) => void)', optional: true },
         { name: 'mentions', type: 'MentionCandidate[]', optional: true },
         { name: 'collaborate', type: 'string', optional: true },

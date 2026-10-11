@@ -5,7 +5,7 @@
  * than restated — plus the rows a seeded backend should answer with. Nothing here describes layout;
  * the assertions live beside the cases, so one scenario can be measured several ways.
  */
-import { transcriptLines } from '@we/module-transcribe';
+import { lineComposer, transcriptLines } from '@we/module-transcribe';
 import { cardShell, panelScroll, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 import { discussionSection, foldingSectionLabel, signalDisplay } from '@we/template-kit';
@@ -711,6 +711,35 @@ const compactComposer = (): Scenario => ({
   tables: {},
 });
 
+/**
+ * The transcript's and the Feed's input as they place it: the compact composer framed as a field,
+ * with a send button beside it.
+ */
+const lineComposerScenario = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { width: '100%', gap: '300', p: '300', bg: 'chrome' },
+    $localState: {
+      sending: { type: 'boolean', initial: false },
+      sent: { type: 'string', initial: '' },
+      sends: { type: 'number', initial: 0 },
+    },
+    children: [
+      lineComposer({
+        placeholder: 'Type a message…',
+        sendLabel: 'Send it',
+        onSubmit: [
+          { $setLocal: 'sent', value: { $: 'event.text' } },
+          { $setLocal: 'sends', value: { $: 'local.sends + 1' } },
+        ],
+      }),
+      { type: 'we-text', props: { id: 'sent' }, children: [{ $: 'local.sent' }] },
+      { type: 'we-text', props: { id: 'sends' }, children: [{ $: "'' + local.sends" }] },
+    ],
+  },
+  tables: {},
+});
+
 const pinnedShortContent = (): Scenario => ({
   node: {
     type: 'Column',
@@ -1226,6 +1255,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:pinned-short': pinnedPage(20),
   'ds:pinned-empty': pinnedShortContent,
   'composer:compact': compactComposer,
+  'composer:line': lineComposerScenario,
   'timeline:live-newest-bottom': timelineReading(false, 'newestBottom'),
   'timeline:live-newest-top': timelineReading(false, 'newestTop'),
   'timeline:start-newest-bottom': timelineReading(true, 'newestBottom'),

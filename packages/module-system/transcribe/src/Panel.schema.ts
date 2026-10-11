@@ -30,6 +30,7 @@ import { type SchemaNode, type SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
 import { CARET_SIZE, codePane, extractionActivity } from './ExtractionStatus.schema';
+import { lineComposer } from './lineComposer';
 import { SUBJECT_EXPR as SHARED_SUBJECT_EXPR, VIEWING_LIVE_EXPR } from './subject';
 import { repliesInclude } from './thread';
 
@@ -4246,18 +4247,14 @@ const composerRow: SchemaNode = {
         /*
           The block composer in its one-line mode — see `compact` on its props: Enter sends,
           Shift+Enter breaks the line, and `@` names a person exactly as it does in a post, so the
-          line is written with its marks. It empties itself on sending.
+          line is written with its marks. It empties itself on sending. Framed, with a send button,
+          by `lineComposer`.
         */
-        {
-          type: 'BlockComposer',
-          props: {
-            compact: true,
-            autoFocus: false,
-            handles: false,
-            placeholder: 'Type a message…',
-            onSubmit: { $if: { condition: { $: '!local.sending' }, then: sendMessage } },
-          },
-        },
+        lineComposer({
+          placeholder: 'Type a message…',
+          sendLabel: 'Add this to the transcript',
+          onSubmit: { $if: { condition: { $: '!local.sending' }, then: sendMessage } },
+        }),
       ],
     },
   },
