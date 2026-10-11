@@ -4,6 +4,7 @@ import type { ParentProps } from 'solid-js';
 
 import { useDatasetStore } from '../stores/DatasetStore';
 import { useEditorStore } from '../stores/EditorStore';
+import { useEditTarget } from '../stores/editTarget';
 import { useProfileStore } from '../stores/ProfileStore';
 import { useSessionStore } from '../stores/SessionStore';
 import { useShellStore } from '../stores/ShellStore';
@@ -34,15 +35,31 @@ export function EditorHostAdapter(props: ParentProps) {
   const profileStore = useProfileStore();
   const space = useSpaceStore();
   const shell = useShellStore();
+  const edit = useEditTarget();
+
+  /*
+    The template port the editor edits through, answering with the edit target rather than the
+    template on screen. Everything the editor does to "the current template" — the inspector, the
+    overlay, the cards, the canvas — is done to whatever the session is editing, and the rest of the
+    port is the template store's. A Proxy rather than a copy so the store's getters stay live.
+  */
+  const templatePort = new Proxy(template as unknown as EditorHost['template'], {
+    get(target, key, receiver) {
+      if (key === 'currentTemplate') return edit.template();
+      if (key === 'updateTemplate') return edit.update;
+      if (key === 'persistCurrentTemplate') return edit.persist;
+      return Reflect.get(target, key, receiver);
+    },
+  });
 
   const host: EditorHost = {
     // Who provides the regions of the page the template does not own — see `ownersPort.ts`.
     owners: createOwnersPort({ space, shell, dataset: datasetStore, template }),
 
-    // `currentTemplate` is a getter on the store, so it is forwarded as one — reading it eagerly
-    // here would snapshot the template and the editor would render a stale copy after every edit.
+    // A getter, and `currentTemplate` read through the proxy each time — reading it eagerly here would
+    // snapshot the template and the editor would render a stale copy after every edit.
     get template() {
-      return template as unknown as EditorHost['template'];
+      return templatePort;
     },
 
     // Including `editingTheme` and the `updateEditing*` family, which look like editor state and are

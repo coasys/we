@@ -1,0 +1,67 @@
+/**
+ * What the editing session edits — kept apart from what is on screen.
+ *
+ * Every edit used to read and write `templateStore.currentTemplate`, which made "the template being
+ * edited" and "the template on screen" the same thing by construction. They are not: a section is
+ * drawn by the shell on screen and is a template of its own, and so is the app around both. Editing
+ * either in place, where it is seen, needs the session to name its target and every editing path —
+ * the inspector, the overlay, the cards, the code panel, the AI's patches, undo, saving — to go
+ * through that name rather than through `currentTemplate`.
+ *
+ * Not members of the editor store, which is public API every template can reach: this is the
+ * editor's own plumbing, published to the editor's host adapter through a context of its own.
+ */
+import type { TemplateSchema } from '@we/schema-shared';
+import { type Accessor, createContext, createSignal, useContext } from 'solid-js';
+
+import type { TemplateStore } from './TemplateStore';
+
+/** The template on screen — the only target until sections and the app can be edited in place. */
+export type EditTarget = { kind: 'screen' };
+
+export interface EditTargetPort {
+  /** What is being edited. */
+  target: Accessor<EditTarget>;
+  setTarget: (next: EditTarget) => void;
+  /** Its working copy — a store, so the renderer and the editor read it finely. */
+  template: () => TemplateSchema;
+  /** Replace its working copy, keeping the store's identity. */
+  update: (next: TemplateSchema) => void;
+  /** Save its working copy to its own record. */
+  persist: () => Promise<void>;
+  /** It ships with the app, so editing it means forking it. */
+  isBuiltIn: () => boolean;
+  /**
+   * Which history it has. A space's template and an agent's can share an id, so the origin is part
+   * of the key: two templates' undo must never be one stack.
+   */
+  key: () => string;
+}
+
+export function createEditTarget(templateStore: TemplateStore): EditTargetPort {
+  const [target, setTarget] = createSignal<EditTarget>({ kind: 'screen' });
+  const template = (): TemplateSchema => templateStore.currentTemplate;
+  return {
+    target,
+    setTarget,
+    template,
+    update: (next) => templateStore.updateTemplate(next),
+    persist: () => templateStore.persistTemplate(template()),
+    isBuiltIn: () => {
+      const id = template().id;
+      return !!id && templateStore.isBuiltInTemplateId(id);
+    },
+    key: () => {
+      const edited = template();
+      return `${edited._fromSpace ? 'space' : 'own'}:${edited.id ?? ''}`;
+    },
+  };
+}
+
+export const EditTargetContext = createContext<EditTargetPort>();
+
+export function useEditTarget(): EditTargetPort {
+  const ctx = useContext(EditTargetContext);
+  if (!ctx) throw new Error('useEditTarget must be used within EditorStoreProvider');
+  return ctx;
+}

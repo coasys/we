@@ -174,6 +174,8 @@ export interface TemplateStore {
     screenshots: File[];
   }) => Promise<boolean>;
   persistCurrentTemplate: () => Promise<void>;
+  /** Save a template's working copy to its own record, whichever template it is — see the definition. */
+  persistTemplate: (template: TemplateSchema) => Promise<void>;
   preloadSpaceTemplates: (dataset: AppDataset) => Promise<void>;
   loadSpaceTemplates: (dataset: AppDataset) => Promise<void>;
   refreshSpaceTemplates: () => Promise<void>;
@@ -1409,13 +1411,30 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   /** Persist the current in-memory template state to AD4M (for saved templates only) */
   async function persistCurrentTemplate(): Promise<void> {
-    const templateId = currentTemplate.id;
-    if (!templateId || (!savedTemplateMap.has(templateId) && !spaceTemplateMap.has(templateId))) return;
+    return persistTemplate(currentTemplate);
+  }
+
+  /**
+   * Save a template's working copy to its own record — the agent's library or the space it lives in.
+   *
+   * Takes the template rather than reading `currentTemplate`, because the template being edited is not
+   * always the one on screen: a section is edited inside the shell that draws it, and the app around
+   * both. Which record it is follows where the copy came from, `_fromSpace`, since an agent's template
+   * and a space's may share an id.
+   */
+  async function persistTemplate(template: TemplateSchema): Promise<void> {
+    const templateId = template.id;
+    const fromSpace = !!template._fromSpace;
+    const recordOf = (id: string) =>
+      fromSpace
+        ? (spaceTemplateMap.get(id) ?? savedTemplateMap.get(id))
+        : (savedTemplateMap.get(id) ?? spaceTemplateMap.get(id));
+    if (!templateId || !recordOf(templateId)) return;
 
     const perspective = datasetStore.rootDataset()?.handle;
     if (!perspective) return;
 
-    const cloned = deepClone(currentTemplate);
+    const cloned = deepClone(template);
     delete cloned._fromSpace;
     const schemaToSave: TemplateSchema = { ...cloned, author: session.me()?.did };
     const storedTemplate = createStoredTemplate(schemaToSave);
@@ -1434,7 +1453,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     } as FileData;
 
     try {
-      const existing = savedTemplateMap.get(templateId) ?? spaceTemplateMap.get(templateId);
+      const existing = recordOf(templateId);
       if (!existing) return;
       existing.schema = asFileField(schemaBlob);
       existing.version = (existing.version || 1) + 1;
@@ -1456,9 +1475,11 @@ export function TemplateStoreProvider(props: ParentProps) {
     // and may not be present on currentTemplate if the fallback path was taken.
     setAllTemplates((prev) =>
       prev.map((t) => {
-        if (t.id !== templateId) return t;
-        const tv = t.templateVersion ?? savedTemplateMap.get(templateId)?.version ?? 1;
-        return { ...schemaToSave, templateVersion: tv };
+        if (t.id !== templateId || !!t._fromSpace !== fromSpace) return t;
+        const tv = t.templateVersion ?? recordOf(templateId)?.version ?? 1;
+        // The origin is kept: dropping it is what let a space's copy and an agent's template with the
+        // same id be confused on the next load.
+        return { ...schemaToSave, ...(fromSpace ? { _fromSpace: true } : {}), templateVersion: tv };
       }),
     );
   }
@@ -1754,6 +1775,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     publishToSpace,
     publishToMarketplace,
     persistCurrentTemplate,
+    persistTemplate,
     preloadSpaceTemplates,
     loadSpaceTemplates,
     clearSpaceTemplates,

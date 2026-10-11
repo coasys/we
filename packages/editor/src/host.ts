@@ -44,6 +44,11 @@ export type EditorEditingTheme = EditorTheme & { isDirty: boolean };
  * change twice as hard to review. Names can narrow when state migrates into the editor.
  */
 export interface TemplatePort {
+  /**
+   * The template being edited — the session's target. Usually the one on screen; it can also be a
+   * template drawn with it, such as a section inside its shell, edited where it is seen. Everything
+   * the editor reads and writes as "the template" is this one.
+   */
   currentTemplate: TemplateSchema & { id?: string; version?: number; slug?: string };
   switcherGroups: () => { label: string; items: { id: string; name: string; icon?: string }[] }[];
   updateTemplate: (next: TemplateSchema) => void;

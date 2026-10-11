@@ -42,6 +42,8 @@ import {
   useContext,
 } from 'solid-js';
 
+import { createEditTarget, EditTargetContext } from './editTarget';
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -240,6 +242,8 @@ export function EditorStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const datasetStore = useDatasetStore();
   const templateStore = useTemplateStore();
+  /** What the session edits — the template on screen, or another drawn with it. See `editTarget.ts`. */
+  const edit = createEditTarget(templateStore);
   const themeStore = useThemeStore();
 
   const shapeStore = useShapeStore();
@@ -328,15 +332,12 @@ export function EditorStoreProvider(props: ParentProps) {
     code panel is where somebody reads the template exactly. Stripping them made every save from the
     panel renumber the whole tree.
   */
-  const schemaJson = () => JSON.stringify(templateStore.currentTemplate, null, 2);
+  const schemaJson = () => JSON.stringify(edit.template(), null, 2);
 
   // --- Template context (computed) ---
-  const templateName = () => templateStore.currentTemplate.meta?.name || templateStore.currentTemplate.id || 'Template';
-  const templateIcon = () => templateStore.currentTemplate.meta?.icon || 'cube';
-  const isReadOnly = () => {
-    const id = templateStore.currentTemplate.id;
-    return !!id && templateStore.isBuiltInTemplateId(id);
-  };
+  const templateName = () => edit.template().meta?.name || edit.template().id || 'Template';
+  const templateIcon = () => edit.template().meta?.icon || 'cube';
+  const isReadOnly = () => edit.isBuiltIn();
 
   // --- Pending changes (buffered edits for read-only templates) ---
   const [pendingTemplate, setPendingTemplate] = createSignal<TemplateSchema | null>(null);
@@ -352,9 +353,7 @@ export function EditorStoreProvider(props: ParentProps) {
   const canRedo: Accessor<boolean> = () => redoStack().length > 0;
 
   function pushSnapshot() {
-    const current = isReadOnly()
-      ? (pendingTemplate() ?? deepClone(templateStore.currentTemplate))
-      : deepClone(templateStore.currentTemplate);
+    const current = isReadOnly() ? (pendingTemplate() ?? deepClone(edit.template())) : deepClone(edit.template());
     setUndoStack((prev) => {
       const next = [...prev, { type: 'template' as const, snapshot: current as TemplateSchema }];
       return next.length > MAX_UNDO ? next.slice(next.length - MAX_UNDO) : next;
@@ -372,10 +371,10 @@ export function EditorStoreProvider(props: ParentProps) {
    */
   async function commitEdit() {
     if (!isReadOnly()) {
-      await templateStore.persistCurrentTemplate();
+      await edit.persist();
       return;
     }
-    setPendingTemplate(deepClone(templateStore.currentTemplate) as TemplateSchema);
+    setPendingTemplate(deepClone(edit.template()) as TemplateSchema);
   }
 
   async function undo() {
@@ -386,17 +385,15 @@ export function EditorStoreProvider(props: ParentProps) {
 
     if (entry.type === 'template') {
       const currentSnap = (
-        isReadOnly()
-          ? (pendingTemplate() ?? deepClone(templateStore.currentTemplate))
-          : deepClone(templateStore.currentTemplate)
+        isReadOnly() ? (pendingTemplate() ?? deepClone(edit.template())) : deepClone(edit.template())
       ) as TemplateSchema;
       setRedoStack((prev) => [...prev, { type: 'template' as const, snapshot: currentSnap }]);
       if (isReadOnly()) {
         setPendingTemplate(entry.snapshot);
       } else {
-        templateStore.updateTemplate(entry.snapshot);
+        edit.update(entry.snapshot);
         try {
-          await templateStore.persistCurrentTemplate();
+          await edit.persist();
         } catch {
           /* key may already exist */
         }
@@ -416,17 +413,15 @@ export function EditorStoreProvider(props: ParentProps) {
 
     if (entry.type === 'template') {
       const currentSnap = (
-        isReadOnly()
-          ? (pendingTemplate() ?? deepClone(templateStore.currentTemplate))
-          : deepClone(templateStore.currentTemplate)
+        isReadOnly() ? (pendingTemplate() ?? deepClone(edit.template())) : deepClone(edit.template())
       ) as TemplateSchema;
       setUndoStack((prev) => [...prev, { type: 'template' as const, snapshot: currentSnap }]);
       if (isReadOnly()) {
         setPendingTemplate(entry.snapshot);
       } else {
-        templateStore.updateTemplate(entry.snapshot);
+        edit.update(entry.snapshot);
         try {
-          await templateStore.persistCurrentTemplate();
+          await edit.persist();
         } catch {
           /* key may already exist */
         }
@@ -548,7 +543,7 @@ export function EditorStoreProvider(props: ParentProps) {
 
   /** Create a new chat session for the current template */
   async function newChat() {
-    const templateId = templateStore.currentTemplate.id;
+    const templateId = edit.template().id;
     if (!templateId || templateStore.isBuiltInTemplateId(templateId)) {
       // For core templates, clear in-memory messages (ephemeral sessions)
       setMessages([]);
@@ -595,7 +590,7 @@ export function EditorStoreProvider(props: ParentProps) {
 
   /** Delete a session and its messages */
   async function deleteSession(sessionId: string) {
-    const templateId = templateStore.currentTemplate.id;
+    const templateId = edit.template().id;
     if (!templateId) return;
 
     const templateRecord = templateStore.getTemplateRecord(templateId);
@@ -873,9 +868,9 @@ export function EditorStoreProvider(props: ParentProps) {
   // Template actions — Fork / Start Fresh / Picker
   // ----------------------------------------------------------------
   function startFork() {
-    const name = templateStore.currentTemplate.meta?.name || templateStore.currentTemplate.id || '';
+    const name = edit.template().meta?.name || edit.template().id || '';
     setPickerDefaultName(`${name} (copy)`);
-    setPickerDefaultIcon(templateStore.currentTemplate.meta?.icon || 'cube');
+    setPickerDefaultIcon(edit.template().meta?.icon || 'cube');
     setPickerAction('fork');
     setPickerOpen(true);
   }
@@ -901,7 +896,7 @@ export function EditorStoreProvider(props: ParentProps) {
       } as TemplateSchema;
     } else {
       // Fork: clone current state (with any pending changes)
-      const base = pendingTemplate() ?? templateStore.currentTemplate;
+      const base = pendingTemplate() ?? edit.template();
       schema = {
         ...deepClone(base),
         id: templateId,
@@ -942,7 +937,7 @@ export function EditorStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   async function sendMessage(text: string) {
     // Lazy session creation for custom templates: if no active session, create one
-    const templateId = templateStore.currentTemplate.id;
+    const templateId = edit.template().id;
     if (templateId && !templateStore.isBuiltInTemplateId(templateId) && !activeSessionRecord) {
       await newChat();
     }
@@ -1019,7 +1014,7 @@ export function EditorStoreProvider(props: ParentProps) {
       side, to one inline copy of it. It validated, it saved, it changed something plausible, and
       the model's explanation of what it had done was confidently wrong.
     */
-    const modelTree = prepareForModel(deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode);
+    const modelTree = prepareForModel(deepClone(pendingTemplate() ?? edit.template()) as SchemaNode);
     const schemaForRequest = modelTree.schema;
     const prepared = await chatContext({ request: text, schema: schemaForRequest });
     /*
@@ -1061,11 +1056,11 @@ export function EditorStoreProvider(props: ParentProps) {
           setPendingTemplate(authored);
           return 'Schema changes validated and buffered. Template is read-only — user must fork to apply.';
         }
-        templateStore.updateTemplate({
+        edit.update({
           ...authored,
-          id: templateStore.currentTemplate.id,
+          id: edit.template().id,
         } as TemplateSchema);
-        await templateStore.persistCurrentTemplate();
+        await edit.persist();
         setPendingTemplate(null);
         return 'Template updated successfully.';
       },
@@ -1189,8 +1184,8 @@ export function EditorStoreProvider(props: ParentProps) {
         given a new one there too, with a warning. The root's id is the template's, and the panel
         does not get to change which template this is.
       */
-      const schema = { ...(parsed as TemplateSchema), id: templateStore.currentTemplate.id } as TemplateSchema;
-      templateStore.updateTemplate(schema);
+      const schema = { ...(parsed as TemplateSchema), id: edit.template().id } as TemplateSchema;
+      edit.update(schema);
       void commitEdit();
       setMessages((prev) => [...prev, createMessage('assistant', 'Schema updated from JSON editor.')]);
     } catch {
@@ -1225,20 +1220,26 @@ export function EditorStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   // Load sessions when template changes
   // ----------------------------------------------------------------
+  // Switching the template on screen ends the session; what is edited within one is chosen there.
   createEffect(() => {
     const templateId = templateStore.currentTemplate.id;
     if (templateId && datasetStore.rootDataset()) {
-      loadSessionsForTemplate(templateId);
       setContentModeSignal('preview');
       setIsEditingTemplate(false);
       setEditAction(null);
     }
   });
 
-  // Save/restore undo/redo stacks per template.
+  // Chats are about what is being edited, which is not always the template on screen.
+  createEffect(() => {
+    const templateId = edit.template().id;
+    if (templateId && datasetStore.rootDataset()) loadSessionsForTemplate(templateId);
+  });
+
+  // Save/restore undo/redo stacks per edited template — keyed with its origin, see `EditTargetPort.key`.
   // Only template entries are persisted — theme entries become stale after a switch.
   createEffect(() => {
-    const newId = templateStore.currentTemplate.id;
+    const newId = edit.key();
     untrack(() => {
       if (prevTemplateId) {
         const undo = undoStack().filter((e) => e.type === 'template');
@@ -1367,7 +1368,11 @@ export function EditorStoreProvider(props: ParentProps) {
   registerHostDockStore(EDITOR_STORE_ID, store as unknown as Record<string, unknown>);
   onCleanup(() => unregisterHostDockStore(EDITOR_STORE_ID));
 
-  return <EditorContext.Provider value={store}>{props.children}</EditorContext.Provider>;
+  return (
+    <EditorContext.Provider value={store}>
+      <EditTargetContext.Provider value={edit}>{props.children}</EditTargetContext.Provider>
+    </EditorContext.Provider>
+  );
 }
 
 export function useEditorStore(): EditorStore {
