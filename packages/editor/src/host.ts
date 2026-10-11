@@ -355,6 +355,10 @@ export interface EditTargetsPort {
   canEditSection: (id: string) => boolean;
   /** Edit that section in place. False when it cannot be. */
   enterSection: (id: string) => boolean;
+  /** The app being edited — the chrome around every space — or null while it is not. */
+  app?: () => { name: string } | null;
+  /** Edit the app the agent is in, where it is drawn. False when this host has no app to edit. */
+  enterApp?: () => boolean;
   /** Back to the template on screen. */
   leave: () => void;
 }

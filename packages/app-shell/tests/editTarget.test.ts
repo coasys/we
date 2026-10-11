@@ -109,3 +109,29 @@ describe('a section as the edit target', () => {
     expect(edit.target()).toMatchObject({ id: 'cards-1' });
   });
 });
+
+/*
+  The app around every space, edited where it is drawn. WE's own app ships with the build, so editing
+  it is a fork, exactly as editing a built-in template is.
+*/
+describe('the app as the edit target', () => {
+  const screen = { id: 'shell', type: 'Column', meta: { name: 'Shell' } } as TemplateSchema;
+
+  it('edits the app’s working copy, and comes back out to the page', () => {
+    const { edit, open } = setup(screen);
+    const mine = { id: 'my-app', type: 'Column', meta: { name: 'Mine', role: 'app' } } as TemplateSchema;
+    edit.enterApp(mine);
+    expect(edit.target()).toMatchObject({ kind: 'app' });
+    expect(edit.template().id).toBe('my-app');
+    expect(edit.isBuiltIn()).toBe(false);
+    edit.leave();
+    expect(open.size).toBe(0);
+    expect(edit.template()).toBe(screen);
+  });
+
+  it('treats WE’s own app as built in, so editing it forks', () => {
+    const { edit } = setup(screen);
+    edit.enterApp({ id: 'we-app', type: 'Column', meta: { name: 'WE', role: 'app' } } as TemplateSchema);
+    expect(edit.isBuiltIn()).toBe(true);
+  });
+});

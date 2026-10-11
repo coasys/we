@@ -58,7 +58,13 @@ import { CORE_MANIFEST } from '@we/entities/manifest';
 import type { DocumentAccess } from '@we/module-shared';
 import { holdTopLayer, installTopLayerGuard } from '@we/primitives/top-layer';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
-import { expandViewRoutes, hasViewsMarker, installGestureTracking, SPACE_ROUTE_PATH } from '@we/schema-shared';
+import {
+  EDIT_SURFACE_ATTR,
+  expandViewRoutes,
+  hasViewsMarker,
+  installGestureTracking,
+  SPACE_ROUTE_PATH,
+} from '@we/schema-shared';
 import type { OwnerRef, VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
 import { RECORD_ROUTE_PATH, recordPage } from '@we/template-views';
@@ -69,6 +75,7 @@ import { moduleBlockDisplays } from '../components/moduleBlockDisplays';
 import { registerRecordGhost } from '../drag/recordGhost';
 import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
 import { TemplateLayout } from '../layouts/TemplateLayout';
+import { useEditTarget } from '../stores/editTarget';
 import { buildRoutes } from '../utils/buildRoutes';
 
 export default function TemplateProvider() {
@@ -85,6 +92,8 @@ export default function TemplateProvider() {
   const recordStore = useRecordStore();
   const themeStore = useThemeStore();
   const templateStore = useTemplateStore();
+  /** What the editor edits — the app is an edit surface only while it is the target. */
+  const editTarget = useEditTarget();
   const routeStore = useRouteStore();
   const shellStore = useShellStore();
   const presenceStore = usePresenceStore();
@@ -951,6 +960,24 @@ export default function TemplateProvider() {
   const [slotVersion, setSlotVersion] = createSignal(0);
   onCleanup(onSlotRegistryChanged(() => setSlotVersion((version) => version + 1)));
 
+  /*
+    The app — the template WE's own chrome is drawn from — rendered before the host's chrome, in a
+    wrapper of its own so it can be edited where it is drawn: while the app is the editor's target the
+    wrapper is an edit surface, so presses inside it select the app's nodes; otherwise it is not, and
+    the chrome keeps behaving as chrome.
+  */
+  const appSchema: TemplateSchema = {
+    meta: { name: 'App', description: 'The app around every space', icon: '' },
+    type: 'Column',
+    props: { styles: { display: 'contents' } },
+    get children() {
+      const { meta: _meta, ...app } = templateStore.appTemplate();
+      const expanded = resolveParts(app as SchemaNode);
+      return Array.isArray(expanded) ? expanded : [expanded];
+    },
+  };
+  const appEditing = () => editTarget.target().kind === 'app';
+
   const shellSchema: TemplateSchema = {
     meta: { name: 'Shell', description: 'App shell chrome', icon: '' },
     type: 'Column',
@@ -977,16 +1004,10 @@ export default function TemplateProvider() {
         whatever the app says — the editor's panels and bar, the boot screen and its modals, module
         chrome — less the pieces the app places itself, so none is drawn twice.
       */
-      const app = templateStore.appTemplate();
-      const { meta: _meta, ...appNode } = app;
-      const expandedApp = resolveParts(appNode as SchemaNode);
-      return [
-        ...(Array.isArray(expandedApp) ? expandedApp : [expandedApp]),
-        ...slotRegistry.nodes({ except: HOST_PART_SLOTS }).flatMap((node) => {
-          const expanded = resolveParts(node);
-          return Array.isArray(expanded) ? expanded : [expanded];
-        }),
-      ];
+      return slotRegistry.nodes({ except: HOST_PART_SLOTS }).flatMap((node) => {
+        const expanded = resolveParts(node);
+        return Array.isArray(expanded) ? expanded : [expanded];
+      });
     },
   };
 
@@ -1502,6 +1523,17 @@ export default function TemplateProvider() {
            nothing below lays out any differently for being inside it. */}
           <div ref={appLayer} style={{ display: 'contents' }}>
             {/* Shell chrome — stable, never remounts. Chrome tier: this is host-authored. */}
+            <div
+              style={{ display: 'contents' }}
+              data-we-app-chrome=""
+              ref={(el) =>
+                createEffect(() =>
+                  appEditing() ? el.setAttribute(EDIT_SURFACE_ATTR, '') : el.removeAttribute(EDIT_SURFACE_ATTR),
+                )
+              }
+            >
+              <RenderSchema node={appSchema} stores={chromeBag} registry={registry} />
+            </div>
             <RenderSchema node={shellSchema} stores={chromeBag} registry={registry} />
 
             {/* Router — keyed on the template ID *and* the resolved section list, since both decide what

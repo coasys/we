@@ -1410,6 +1410,12 @@ function VisualEditorLayer() {
         visualEditor.onSelectOwner({ kind: 'view', id: section.id, name: section.name });
         return true;
       }
+      // At the top of the app, up is out of it, back to the page.
+      if (targets?.app?.()) {
+        targets.leave();
+        visualEditor.onSelect(null);
+        return true;
+      }
       visualEditor.onSelect(null);
       return true;
     }
@@ -1570,6 +1576,8 @@ function VisualEditorLayer() {
     if (inSection && !hoveredElement?.closest(`[${VIEW_BOUNDARY_ATTR}="${CSS.escape(inSection)}"]`)) {
       targets?.leave();
     }
+    // And the same for the app: a press in the page while the chrome is being edited is the page's.
+    if (targets?.app?.() && !hoveredElement?.closest('[data-we-app-chrome]')) targets.leave();
 
     const clicked = findBoundary(hoveredElement, enteredPart(), reach, editingSection());
 

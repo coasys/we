@@ -11,6 +11,7 @@
  * Not members of the editor store, which is public API every template can reach: this is the
  * editor's own plumbing, published to the editor's host adapter through a context of its own.
  */
+import { appTemplateRegistry } from '@shared/registries/appTemplates';
 import type { TemplateSchema } from '@we/schema-shared';
 import { type Accessor, createContext, createSignal, useContext } from 'solid-js';
 
@@ -20,13 +21,19 @@ import type { TemplateStore } from './TemplateStore';
  * The template on screen, or a section the shell on screen draws — edited through its working copy,
  * which the shell draws in its place while it is the target (`TemplateStore.openDraft`).
  */
-export type EditTarget = { kind: 'screen' } | { kind: 'section'; id: string; name: string; draft: TemplateSchema };
+export type EditTarget =
+  | { kind: 'screen' }
+  | { kind: 'section'; id: string; name: string; draft: TemplateSchema }
+  /** The app around every space — its working copy is what the chrome is drawn from while edited. */
+  | { kind: 'app'; draft: TemplateSchema };
 
 export interface EditTargetPort {
   /** What is being edited. */
   target: Accessor<EditTarget>;
   /** Edit a section where its shell draws it, from the template the shell draws it from. */
   enterSection: (id: string, saved: TemplateSchema) => void;
+  /** Edit the app the agent is in, where it is drawn: around everything. */
+  enterApp: (saved: TemplateSchema) => void;
   /** Back to the template on screen. A section's working copy is dropped; its edits are saved already. */
   leave: () => void;
   /** Its working copy — a store, so the renderer and the editor read it finely. */
@@ -48,11 +55,11 @@ export function createEditTarget(templateStore: TemplateStore): EditTargetPort {
   const [target, setTarget] = createSignal<EditTarget>({ kind: 'screen' });
   const template = (): TemplateSchema => {
     const now = target();
-    return now.kind === 'section' ? now.draft : templateStore.currentTemplate;
+    return now.kind === 'screen' ? templateStore.currentTemplate : now.draft;
   };
   const leave = () => {
     const now = target();
-    if (now.kind === 'section') templateStore.closeDraft(now.draft);
+    if (now.kind !== 'screen') templateStore.closeDraft(now.draft);
     setTarget({ kind: 'screen' });
   };
   return {
@@ -61,17 +68,22 @@ export function createEditTarget(templateStore: TemplateStore): EditTargetPort {
       leave();
       setTarget({ kind: 'section', id, name: saved.meta?.name ?? id, draft: templateStore.openDraft(saved) });
     },
+    enterApp: (saved) => {
+      leave();
+      setTarget({ kind: 'app', draft: templateStore.openDraft(saved) });
+    },
     leave,
     template,
     update: (next) => {
       const now = target();
-      if (now.kind === 'section') templateStore.updateDraft(now.draft, next);
-      else templateStore.updateTemplate(next);
+      if (now.kind === 'screen') templateStore.updateTemplate(next);
+      else templateStore.updateDraft(now.draft, next);
     },
     persist: () => templateStore.persistTemplate(template()),
     isBuiltIn: () => {
       const id = template().id;
-      return !!id && templateStore.isBuiltInTemplateId(id);
+      // WE's own app ships with the build as the built-in templates do, so editing it forks it too.
+      return !!id && (templateStore.isBuiltInTemplateId(id) || id in appTemplateRegistry);
     },
     key: () => {
       const edited = template();

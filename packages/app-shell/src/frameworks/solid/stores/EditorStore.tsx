@@ -12,6 +12,7 @@ import { chatContext, formatExternalManifestForPrompt, requestMessage, updateSch
 import { countedPatches, runEditSession } from '@shared/ai/editSession';
 import { prepareForModel } from '@shared/ai/nodeAliases';
 import { boundTemplate } from '@shared/ai/templateContext';
+import { isEditorChord } from '@shared/editorChord';
 import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
 import { deepClone } from '@shared/utils';
@@ -455,7 +456,8 @@ export function EditorStoreProvider(props: ParentProps) {
   const [pickerAction, setPickerAction] = createSignal<'fork' | 'fresh'>('fork');
   const [pickerDefaultName, setPickerDefaultName] = createSignal('');
   const [pickerDefaultIcon, setPickerDefaultIcon] = createSignal('cube');
-  const pickerShowDestination = () => !!datasetStore.currentDataset();
+  // An app is the agent's own, whatever space is open, so forking one never asks where to put it.
+  const pickerShowDestination = () => !!datasetStore.currentDataset() && edit.target().kind !== 'app';
 
   // ----------------------------------------------------------------
   // Session management — load, create, switch, delete
@@ -889,6 +891,35 @@ export function EditorStoreProvider(props: ParentProps) {
     const action = pickerAction();
     const templateId = `${name.toLowerCase().replace(/\s+/g, '-')}-${crypto.randomUUID().slice(0, 8)}`;
 
+    /*
+      Forking the app: a copy of the agent's own, chosen as their app at once and edited where it is
+      drawn. Saved without becoming the template on screen — an app is the chrome around the page, and
+      making it the page would draw the sidebar as content.
+    */
+    if (action !== 'fresh' && edit.target().kind === 'app') {
+      const base = pendingTemplate() ?? edit.template();
+      const forked = {
+        ...deepClone(base),
+        id: templateId,
+        meta: { ...base.meta, name, icon, role: 'app' as const },
+      } as TemplateSchema;
+      const saved = await templateStore.saveTemplateAs(forked, 'root', { activate: false });
+      setPickerOpen(false);
+      if (!saved) {
+        setMessages((prev) => [...prev, createMessage('assistant', `Failed to save the app "${name}".`)]);
+        return;
+      }
+      setPendingTemplate(null);
+      await templateStore.setAppTemplate(templateId);
+      const copy = templateStore.allTemplates().find((t) => t.id === templateId && !t._fromSpace);
+      if (copy) edit.enterApp(copy);
+      setMessages((prev) => [
+        ...prev,
+        createMessage('assistant', `Forked the app as "${name}". It is the app you are in now.`),
+      ]);
+      return;
+    }
+
     let schema: TemplateSchema;
     if (action === 'fresh') {
       schema = {
@@ -1222,6 +1253,29 @@ export function EditorStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   // Load sessions when template changes
   // ----------------------------------------------------------------
+  /*
+    The host's own way into the editor: Ctrl+Alt+Shift+E (⌘ on a Mac), beside safe mode's …+S.
+
+    An app template decides what the chrome shows, including whether there is any button that opens
+    the editor. One with none could only be changed back from safe mode; this chord makes it one key
+    instead. Listened for on the window in capture, ahead of anything a template's nodes do, so no
+    template can swallow it. It toggles: a second press leaves editing.
+  */
+  if (typeof window !== 'undefined') {
+    const onEditorChord = (event: KeyboardEvent) => {
+      if (!isEditorChord(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (isEditingTemplate()) exitTemplateEditing();
+      else {
+        enterTemplateEditing('edit');
+        setContentMode('visual');
+      }
+    };
+    window.addEventListener('keydown', onEditorChord, true);
+    onCleanup(() => window.removeEventListener('keydown', onEditorChord, true));
+  }
+
   // Switching the template on screen ends the session; what is edited within one is chosen there.
   createEffect(() => {
     const templateId = templateStore.currentTemplate.id;

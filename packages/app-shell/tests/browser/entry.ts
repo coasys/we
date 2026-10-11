@@ -26,6 +26,7 @@ import { createInMemoryBackend } from '@we/backend-inmemory';
 import { BlockHostProvider } from '@we/block-solid';
 import {
   CopiedPartNote,
+  EditingSectionBar,
   EditorHostProvider,
   EditorOverlay,
   OwnerCard,
@@ -47,7 +48,7 @@ import {
 } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { VisualEditorProvider } from '@we/schema-solid';
-import { createComponent, createSignal } from 'solid-js';
+import { createComponent, createEffect, createSignal } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { render } from 'solid-js/web';
 
@@ -558,7 +559,13 @@ function editorProbe(): void {
   for (let i = 0; i < 3; i++) list.append(instance('n-item', i));
   for (let i = 0; i < 3; i++) list.append(instance('n-copy', i));
 
-  document.body.append(content, panel, scrolled, list);
+  // The app's chrome, as the host draws it: an edit surface only while the app is being edited.
+  const appChrome = document.createElement('div');
+  appChrome.setAttribute('data-we-app-chrome', '');
+  appChrome.style.cssText = 'position: fixed; left: 0; top: 680px; width: 160px; height: 40px; z-index: 1;';
+  appChrome.append(node('n-app-inner', 'app'));
+
+  document.body.append(content, panel, scrolled, list, appChrome);
   scroller.scrollTop = 300;
   // The scenario mounted beside this one autofocuses a field, and a key typed there is typing — which
   // the editor rightly ignores. Nothing here should have focus to begin with.
@@ -580,6 +587,16 @@ function editorProbe(): void {
   };
   const [selected, setSelected] = createSignal<string | null>(null);
   const [editingSection, setEditingSection] = createSignal<{ id: string; name: string } | null>(null);
+  const [editingApp, setEditingApp] = createSignal(false);
+  const appTemplate = {
+    id: 'my-app',
+    type: 'Column',
+    meta: { name: 'My app', role: 'app' },
+    children: [{ id: 'n-app-inner', type: 'we-button' }],
+  };
+  createEffect(() =>
+    editingApp() ? appChrome.setAttribute(EDIT_SURFACE_ATTR, '') : appChrome.removeAttribute(EDIT_SURFACE_ATTR),
+  );
   const aboutSection = {
     id: 'about',
     type: 'Column',
@@ -611,12 +628,13 @@ function editorProbe(): void {
   };
   // A selection made for somebody rather than by a press — what copying a node inside a part does.
   probeSelect = (id: string | null) => visual.onSelect(id);
+  probeEnterApp = () => host.targets.enterApp();
   const host = {
     session: { contentMode: () => 'visual', isStreaming: () => false, pushSnapshot() {}, commitEdit: async () => {} },
     // The template being edited: the one on screen, or the About section once it is gone into.
     template: {
       get currentTemplate() {
-        return editingSection() ? aboutSection : template;
+        return editingApp() ? appTemplate : editingSection() ? aboutSection : template;
       },
       updateTemplate: () => record('__probeUpdated', true),
     },
@@ -629,9 +647,16 @@ function editorProbe(): void {
         record('__probeTarget', `section:${id}`);
         return true;
       },
+      app: () => (editingApp() ? { name: 'My app' } : null),
+      enterApp: () => {
+        setEditingApp(true);
+        record('__probeTarget', 'app');
+        return true;
+      },
       leave: () => {
-        if (editingSection()) record('__probeTarget', 'screen');
+        if (editingSection() || editingApp()) record('__probeTarget', 'screen');
         setEditingSection(null);
+        setEditingApp(false);
       },
     },
     // Only what a ring asks about a part: what it is called and whose it is.
@@ -645,6 +670,7 @@ function editorProbe(): void {
     content.remove();
     scrolled.remove();
     list.remove();
+    appChrome.remove();
     owned.remove();
     panel.remove();
     root.remove();
@@ -685,7 +711,8 @@ function ownerCardProbe(
     | 'copied-clean'
     | 'copied-inner'
     | 'copied-outer'
-    | 'section-alone',
+    | 'section-alone'
+    | 'targets',
 ): void {
   const record = (key: string, value: unknown) => {
     const bag = globalThis as unknown as Record<string, unknown[]>;
@@ -731,7 +758,22 @@ function ownerCardProbe(
       ((feed.children as Record<string, unknown>[])[0].children as string[])[0] = 'What was said';
     template.children = [feed];
   }
+  const [barApp, setBarApp] = createSignal<{ name: string } | null>(null);
   const host = {
+    targets: {
+      section: () => null,
+      canEditSection: () => false,
+      enterSection: () => false,
+      app: barApp,
+      enterApp: () => {
+        setBarApp({ name: 'WE' });
+        return true;
+      },
+      leave: () => {
+        setBarApp(null);
+        record('__probeLeft', true);
+      },
+    },
     session: {
       isReadOnly: () => false,
       pushSnapshot() {},
@@ -846,6 +888,7 @@ function ownerCardProbe(
                 return createComponent(SuppliedPanelNote, { nodeId: 'bbbbbbbbbb' });
               if (kind.startsWith('copied-')) return createComponent(CopiedPartNote, { nodeId: 'vvvvvvvvvv' });
               if (kind === 'section-alone') return createComponent(SectionOnItsOwnBar, {});
+              if (kind === 'targets') return createComponent(EditingSectionBar, {});
               if (kind === 'part-node')
                 return createComponent(OwnerCard, {
                   owner: {
@@ -996,6 +1039,10 @@ function emptyPartDraws(on: boolean): void {
   setPartDraws(on);
 }
 let probeSelect: (id: string | null) => void = () => {};
+let probeEnterApp: () => void = () => {};
+function editorProbeEnterApp(): void {
+  probeEnterApp();
+}
 function editorProbeSelect(id: string | null): void {
   probeSelect(id);
 }
@@ -1026,6 +1073,7 @@ function composerFrame(): { border: string; height: number; button: number } | n
   pressGiveBackUnchanged,
   editorProbeDispose,
   editorProbeSelect,
+  editorProbeEnterApp,
   emptyPartProbe,
   missingPartProbe,
   emptyPartEditing,

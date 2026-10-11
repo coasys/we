@@ -709,9 +709,41 @@ export function EditingSectionBar() {
   const host = useEditorHost();
   const visualEditor = useVisualEditor();
   const section = createMemo(() => host.targets?.section() ?? null);
+  const app = createMemo(() => host.targets?.app?.() ?? null);
+  const leave = () => {
+    host.targets?.leave();
+    visualEditor.onSelect(null);
+  };
+  const enterApp = () => {
+    if (host.targets?.enterApp?.()) visualEditor.onSelect(null);
+  };
+  /** Where you are, in a sentence — or nothing, while it is the template on screen. */
+  const where = () => {
+    const on = section();
+    if (on) return `Editing ${on.name}, a section of this space, where it is.`;
+    const editingApp = app();
+    if (editingApp) return `Editing ${editingApp.name}, the app around every space.`;
+    return null;
+  };
   return (
-    <Show when={section()}>
-      {(on) => (
+    <Show
+      when={where()}
+      fallback={
+        // The app is a template too, and the chrome surrounds everything, so there is nothing to press
+        // inside first: it is gone into from here.
+        <Show when={host.targets?.enterApp}>
+          <Row ax="between" ay="center" gap="300" mx="300" mb="200" px="300" flexShrink="0">
+            <we-text variant="footnote" color="text-muted">
+              The sidebar and rail around every space are an app you can change too.
+            </we-text>
+            <we-button size="xs" variant="ghost" onClick={enterApp}>
+              Edit the app
+            </we-button>
+          </Row>
+        </Show>
+      }
+    >
+      {(sentence) => (
         <Row
           data-we-editing-section=""
           ax="between"
@@ -725,17 +757,8 @@ export function EditingSectionBar() {
           bg="accent-muted"
           flexShrink="0"
         >
-          <we-text variant="footnote">
-            Editing {on().name}, a section of this space, where it is. Escape or a press outside it comes back out.
-          </we-text>
-          <we-button
-            size="xs"
-            variant="secondary"
-            onClick={() => {
-              host.targets?.leave();
-              visualEditor.onSelect(null);
-            }}
-          >
+          <we-text variant="footnote">{sentence()} Escape or a press outside it comes back out.</we-text>
+          <we-button size="xs" variant="secondary" onClick={leave}>
             Done
           </we-button>
         </Row>

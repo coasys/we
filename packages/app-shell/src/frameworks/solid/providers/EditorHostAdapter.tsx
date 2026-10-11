@@ -81,6 +81,15 @@ export function EditorHostAdapter(props: ParentProps) {
         edit.enterSection(id, saved);
         return true;
       },
+      app: () => {
+        const now = edit.target();
+        return now.kind === 'app' ? { name: now.draft.meta?.name ?? 'The app' } : null;
+      },
+      enterApp: () => {
+        if (edit.target().kind === 'app') return true;
+        edit.enterApp(template.appTemplate());
+        return true;
+      },
       leave: () => edit.leave(),
     },
 
