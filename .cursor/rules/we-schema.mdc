@@ -5100,7 +5100,9 @@ Modules). Place such a part inside an `$each` that binds the name, or give it wi
 ```
 
 A part whose module is not here — not in this build, turned off by the person, or off in the space —
-draws a placeholder saying which, and how to turn it back on. Declare the modules a template places
+draws a small marker in its place, which says why and links to the setting that turns it back on. Do
+not leave room for it or design around it: it is the size of a control, whatever the part would have
+been. Declare the modules a template places
 parts from in `meta.requires.modules`. Placing the module's *whole* panel is still
 `{ "module": "<id>" }` in `meta.panels`; parts are for building something else out of it.
 

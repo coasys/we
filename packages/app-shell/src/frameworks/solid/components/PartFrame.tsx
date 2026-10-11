@@ -19,15 +19,14 @@
  */
 import { describeMissing, fixFor, type MissingPart as MissingPartReason, whyMissing } from '@shared/partAvailability';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
-import { Column, Row } from '@we/components/solid';
-import { findNodeById, PART_ATTR, PART_NODE_ATTR, type SchemaNode, type TemplateSchema } from '@we/schema-shared';
+import { Row } from '@we/components/solid';
+import { PART_ATTR, PART_NODE_ATTR } from '@we/schema-shared';
 import { createEffect, createMemo, createSignal, type JSX, onCleanup, Show } from 'solid-js';
 
 import { useDatasetStore } from '../stores/DatasetStore';
 import { useEditorStore } from '../stores/EditorStore';
 import { useShellStore } from '../stores/ShellStore';
 import { useSpaceStore } from '../stores/SpaceStore';
-import { useTemplateStore } from '../stores/TemplateStore';
 
 const humanise = (name: string) => name.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
 
@@ -133,17 +132,23 @@ function frameAttrs(props: { part: string; at?: string }) {
 }
 
 /**
- * What stands where a part cannot draw.
+ * What stands where a part cannot draw: small, in place, with the details a step away.
  *
- * In full while the template is being edited, which is when somebody can do something about it from
- * here. Otherwise one quiet line, and only to somebody who can act on it — a visitor told "this needs
- * a module you cannot turn on" has been given a problem with no answer.
+ * It used to be a card naming the part, the reason, a fix and a way to remove it — far bigger than
+ * the icon button it stood in for, so a row of controls grew a box in the middle of it. The part
+ * never rendered, so there is no size of its own to keep; most parts are controls, so a control's
+ * square is the honest guess, and it sits inline so a row keeps its line.
+ *
+ * The reason and the fix are where somebody looks for them rather than drawn every time. While the
+ * template is edited, the editor's ring names the part and why it is not here, and pressing it
+ * selects the part, whose card carries the fix and the way to remove it. Outside editing, somebody
+ * who can act gets the reason on hover and the fix on a press; anybody else sees nothing — "this
+ * needs a module you cannot turn on" is a problem with no answer.
  */
 function MissingPart(props: { part: string; at?: string; why: MissingPartReason }) {
   const spaceStore = useSpaceStore();
   const shellStore = useShellStore();
   const editorStore = useEditorStore();
-  const templateStore = useTemplateStore();
   const datasetStore = useDatasetStore();
 
   const moduleId = () => props.part.split('.')[0] ?? '';
@@ -161,61 +166,59 @@ function MissingPart(props: { part: string; at?: string; why: MissingPartReason 
       openSpaceSettings: shellStore.openSpaceSettings,
     });
 
-  const editing = () => editorStore.isEditingTemplate() && !editorStore.isReadOnly();
+  return (
+    <MissingMarker
+      label={label()}
+      reason={reason()}
+      editing={editorStore.contentMode() === 'visual'}
+      fix={fix() ?? undefined}
+    />
+  );
+}
 
-  const remove = () => {
-    const at = props.at;
-    if (!at) return;
-    const template = structuredClone(templateStore.currentTemplate) as SchemaNode;
-    const found = findNodeById(template, at);
-    if (!found?.parent || found.key !== 'children' || !found.parent.children) return;
-    found.parent.children.splice(found.index, 1);
-    editorStore.pushSnapshot();
-    templateStore.updateTemplate(template as TemplateSchema);
-    void editorStore.commitEdit();
-  };
-
+/**
+ * The marker itself, from what it says and what it does — kept apart from the stores so it can be
+ * looked at on its own.
+ */
+export function MissingMarker(props: {
+  label: string;
+  reason: string;
+  editing: boolean;
+  fix?: { label: string; go: () => void };
+}) {
+  const glyph = () => (
+    <Row position="relative" width="24px" height="24px" ax="center" ay="center" flexShrink={0}>
+      <we-icon name="puzzle-piece" size="xs" color="text-muted" />
+      <Row position="absolute" top="2px" right="2px" width="6px" height="6px" r="full" bg="warning-text" />
+    </Row>
+  );
   return (
     <Show
-      when={editing()}
+      when={props.editing}
       fallback={
-        <Show when={fix()}>
+        <Show when={props.fix}>
           {(action) => (
-            <Row ay="center" gap="200" color="text-muted">
-              <we-text variant="footnote">
-                {label()} needs {moduleName()}.
-              </we-text>
-              <we-button size="xs" variant="ghost" onClick={() => action().go()}>
-                {action().label}
+            <we-tooltip content={`${props.label} is not here. ${props.reason} ${action().label}.`}>
+              <we-button
+                data-we-part-missing=""
+                size="xs"
+                variant="ghost"
+                square
+                label={`${props.label} is not here — ${action().label}`}
+                onClick={() => action().go()}
+              >
+                {glyph()}
               </we-button>
-            </Row>
+            </we-tooltip>
           )}
         </Show>
       }
     >
-      <Column gap="200" p="300" r="surface" border="1px dashed border" color="text-muted">
-        <Row ay="center" gap="200">
-          <we-icon name="puzzle-piece" size="sm" />
-          <we-text variant="label" color="text">
-            {label()} is not here
-          </we-text>
+      <span data-we-part-missing="" style={{ display: 'inline-flex', 'flex-shrink': '0' }}>
+        <Row r="control" border="1px dashed border">
+          {glyph()}
         </Row>
-        <we-text variant="footnote">{reason()}</we-text>
-        <Row gap="200" wrap>
-          <Show when={fix()}>
-            {(action) => (
-              <we-button size="xs" variant="secondary" onClick={() => action().go()}>
-                {action().label}
-              </we-button>
-            )}
-          </Show>
-          <Show when={props.at}>
-            <we-button size="xs" variant="ghost" onClick={remove}>
-              Remove from template
-            </we-button>
-          </Show>
-        </Row>
-      </Column>
+      </span>
     </Show>
   );
 }

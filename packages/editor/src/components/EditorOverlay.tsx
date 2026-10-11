@@ -735,6 +735,9 @@ function VisualEditorLayer() {
     const part = owners?.part(id);
     const name = part?.label ?? id;
     const from = part?.moduleName ? `from ${part.moduleName}` : 'a module’s part';
+    // A part that cannot draw here stands in as a small marker, so its ring says why — in edit mode
+    // the page takes no pointer, so this is where the reason is read, and its card has the fix.
+    if (part?.missing) return { name, note: selected ? part.missing : `${part.missing} Select it for options.` };
     // Selected, it says how to go further: nothing else does, and a second press doing something new
     // is not a thing anybody guesses.
     return { name, note: selected ? `${from} — press inside to reach its pieces` : `${from} — select it for options` };

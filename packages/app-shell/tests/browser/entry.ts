@@ -16,7 +16,7 @@ import '@we/primitives';
 
 import { buildTemplateBag, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
-import { PresentPart } from '@solid/components/PartFrame';
+import { MissingMarker, PresentPart } from '@solid/components/PartFrame';
 import { injectDSInteropStyles } from '@solid/dsInterop';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import { createInMemoryBackend } from '@we/backend-inmemory';
@@ -886,6 +886,35 @@ function emptyPartProbe(): void {
   );
   probeDisposers.unshift(dispose);
 }
+/**
+ * What stands where a part's module is off: the real marker, editing or not, with a fix to offer or
+ * none — which is what somebody who cannot turn the module on gets.
+ */
+function missingPartProbe(mode: 'editing' | 'fixable' | 'unfixable'): void {
+  const record = (key: string, value: unknown) => {
+    const bag = globalThis as unknown as Record<string, unknown[]>;
+    (bag[key] ??= []).push(value);
+  };
+  const root = document.createElement('div');
+  root.id = 'probe-missing-row';
+  root.style.cssText = 'position: fixed; left: 0; top: 0; width: 320px; display: flex; align-items: center; gap: 8px;';
+  document.body.append(root);
+  probeDisposers.push(() => root.remove());
+  const dispose = render(
+    () =>
+      createComponent(MissingMarker, {
+        label: 'Continue call',
+        reason: 'Calls is turned off in this space.',
+        editing: mode === 'editing',
+        ...(mode === 'unfixable'
+          ? {}
+          : { fix: { label: 'Open space settings', go: () => record('__probeFixed', true) } }),
+      }),
+    root,
+  );
+  probeDisposers.unshift(dispose);
+}
+
 function emptyPartEditing(on: boolean): void {
   setPartEditing(on);
 }
@@ -910,6 +939,7 @@ injectDSInteropStyles();
   editorProbeDispose,
   editorProbeSelect,
   emptyPartProbe,
+  missingPartProbe,
   emptyPartEditing,
   emptyPartDraws,
   mount,
