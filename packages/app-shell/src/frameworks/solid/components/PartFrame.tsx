@@ -186,10 +186,22 @@ export function MissingMarker(props: {
   editing: boolean;
   fix?: { label: string; go: () => void };
 }) {
+  /*
+    Dashed in the warning colour, on a faint warning fill: plainly not a control, in a row of controls.
+    A neutral outline, or a dot beside an icon, read as one more button.
+  */
   const glyph = () => (
-    <Row position="relative" width="24px" height="24px" ax="center" ay="center" flexShrink={0}>
-      <we-icon name="puzzle-piece" size="xs" color="text-muted" />
-      <Row position="absolute" top="2px" right="2px" width="6px" height="6px" r="full" bg="warning-text" />
+    <Row
+      width="24px"
+      height="24px"
+      ax="center"
+      ay="center"
+      flexShrink={0}
+      r="control"
+      border="1px dashed warning-text"
+      bg="warning-surface"
+    >
+      <we-icon name="puzzle-piece" size="xs" color="warning-text" />
     </Row>
   );
   return (
@@ -202,8 +214,7 @@ export function MissingMarker(props: {
               <we-button
                 data-we-part-missing=""
                 size="xs"
-                variant="ghost"
-                square
+                variant="bare"
                 label={`${props.label} is not here — ${action().label}`}
                 onClick={() => action().go()}
               >
@@ -215,9 +226,7 @@ export function MissingMarker(props: {
       }
     >
       <span data-we-part-missing="" style={{ display: 'inline-flex', 'flex-shrink': '0' }}>
-        <Row r="control" border="1px dashed border">
-          {glyph()}
-        </Row>
+        {glyph()}
       </span>
     </Show>
   );
