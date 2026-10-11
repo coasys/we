@@ -245,16 +245,18 @@ const CASES: Record<TemplateQueryCase, QueryCase> = {
     expect: { field: 'signals', values: { post1: 2 } },
   },
   'queries.comment-thread': {
-    // The call about post 1 is a response too, and is left out by its kind: a thread draws replies.
+    // The call about post 1 is a response too, and comes back: the thread leaves it out by its kind
+    // on the client, because a level walk filtered on `author` and a property together timed out on
+    // AD4M.
     from: 'templates/views/src/views/GraphView/EdgeDetail.ts',
     query: (k) => ({
       entity: 'CollectionBlock',
-      where: { kind: 'reply', author: { not: ['did:test:somebody-muted'] } },
+      where: { author: { not: ['did:test:somebody-muted'] } },
       scope: { anchor: 'CollectionBlock', via: 'responses', anchorId: k.post1, levels: [10, 5, 3] },
       order: { createdAt: 'asc' },
       include: { respondsTo: true },
     }),
-    expect: { relation: 'respondsTo', points: { comment1: 'post1', comment2: 'comment1' } },
+    expect: { relation: 'respondsTo', points: { comment1: 'post1', comment2: 'comment1', callAbout: 'post1' } },
   },
   'queries.comment-thread-muted': {
     // The same thread with its author muted: everything in it is theirs, so nothing is left.

@@ -392,11 +392,13 @@ function threadQueries(opts: CommentThreadOptions, depth: number): Record<string
     [WHOLE_THREAD]: {
       entity: 'CollectionBlock',
       /*
-        Replies only. `responses` holds everything made in response to the anchor — a call held
-        about it is one too — and a thread draws what people wrote, which the discussion composer
-        writes with `kind: 'reply'`.
+        Muted authors only. Replies are told from the other responses — a call held about the
+        anchor is one too — by `kind` in each level's filter below, not here: on AD4M a level walk
+        filtered on `author` and a property together is the slow path, and the query that should
+        take milliseconds timed out at thirty seconds. Calls about a post are few, so drawing them
+        out on the client costs nothing.
       */
-      where: { kind: 'reply', author: { not: { $: 'spaceStore.mutedDids' } } },
+      where: { author: { not: { $: 'spaceStore.mutedDids' } } },
       // The `responses` relation, drilled from the anchor. Untyped like `children`, so `scope` is
       // the only form available — `include` needs a known target class.
       scope: { anchor: 'CollectionBlock', via: 'responses', anchorId: opts.anchorId, levels },
@@ -525,7 +527,8 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
     above otherwise. One read puts every level in one local, so this is a filter rather than a query.
   */
   const parent = level === 1 ? anchorExpr(opts.anchorId) : `${asFor(level - 1)}.id`;
-  const itemsExpr = `local.${WHOLE_THREAD}.filter(r, r.respondsTo.id == ${parent})`;
+  // Replies only — what the discussion composer writes. See the query for why this is not there.
+  const itemsExpr = `local.${WHOLE_THREAD}.filter(r, r.respondsTo.id == ${parent} && r.kind == 'reply')`;
 
   /** True while this reply is folded. One expression, read by the rail, the fold and the caller. */
   const collapsed = `${as}.id in local.${COLLAPSED}`;

@@ -37,10 +37,12 @@ function levelExpressions(node: Node): string[] {
 }
 
 const rows = [
-  { id: 'c1', respondsTo: { id: 'card-1' } },
-  { id: 'c2', respondsTo: { id: 'card-1' } },
-  { id: 'r1', respondsTo: { id: 'c1' } },
-  { id: 'rr1', respondsTo: { id: 'r1' } },
+  { id: 'c1', kind: 'reply', respondsTo: { id: 'card-1' } },
+  { id: 'c2', kind: 'reply', respondsTo: { id: 'card-1' } },
+  { id: 'r1', kind: 'reply', respondsTo: { id: 'c1' } },
+  { id: 'rr1', kind: 'reply', respondsTo: { id: 'r1' } },
+  // A call held about the card is a response too, and is never drawn as a reply.
+  { id: 'call-1', kind: 'call', respondsTo: { id: 'card-1' } },
 ];
 
 const evaluate = (source: string, roots: Record<string, unknown>) =>
@@ -203,9 +205,9 @@ describe('commentThread truncation arithmetic', () => {
   }) as Node;
 
   const rows = [
-    { id: 'x', respondsTo: { id: 'focused' } },
-    { id: 'y', respondsTo: { id: 'card-1' } },
-    { id: 'z', respondsTo: { id: 'card-1' } },
+    { id: 'x', kind: 'reply', respondsTo: { id: 'focused' } },
+    { id: 'y', kind: 'reply', respondsTo: { id: 'card-1' } },
+    { id: 'z', kind: 'reply', respondsTo: { id: 'card-1' } },
   ];
 
   const offers = (roots: Record<string, unknown>) =>
