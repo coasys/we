@@ -1,4 +1,5 @@
 import { withDerivedIds } from '@shared/registries/derivedIds';
+import { reservedTemplateIds } from '@shared/registries/reservedTemplateIds';
 import { templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
 import { reserveId } from '@shared/templateIdentity';
@@ -1639,10 +1640,8 @@ export function TemplateStoreProvider(props: ParentProps) {
    * The built-in or a fork, and nothing between; `@shared/templateIdentity` is why.
    */
   function reserveTemplateId(requested: string): string {
-    return reserveId(
-      requested,
-      builtInTemplates.map((t) => t.id || ''),
-    );
+    // Built-in sections too, not only built-in templates — see `reservedTemplateIds`.
+    return reserveId(requested, reservedTemplateIds());
   }
 
   /**
