@@ -3786,7 +3786,7 @@ export const contextData: ContextData = {
         {
           name: 'replyingTo',
           kind: 'state',
-          doc: 'The transcript line a reply is being written to — { id, text, author } — or null.',
+          doc: "The line a reply is being written to — { id, text, author, surface } — or null. `surface` is 'transcript' or 'feed': the list it was started from, whose composer sends it.",
         },
         {
           name: 'sendToFeed',
@@ -3810,7 +3810,7 @@ export const contextData: ContextData = {
         {
           name: 'startReply',
           kind: 'action',
-          doc: 'Starts a reply to one transcript line — pass { id, text, author } — which the composer then sends as a reply.',
+          doc: "Starts a reply to one line — pass { id, text, author, surface } — which that surface's composer then sends as a reply. `surface` is 'transcript' (the default) or 'feed'.",
           ambient: true,
         },
         {

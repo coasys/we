@@ -180,6 +180,25 @@ describe('grouping and naming', () => {
     expect(flat[2]).toMatchObject({ replyTo: { id: 'a' } });
   });
 
+  it('keeps the id of a line that holds it on its class, as a model instance does', () => {
+    /*
+      The Feed reads its lines through the module host, which hands back model instances whose `id`
+      is a getter on the class. A spread copies only a row's own properties, so every line the Feed
+      drew had an empty id, and a reply to one was written under no parent and went nowhere.
+    */
+    class Line {
+      readonly text = 'lunch?';
+      get id() {
+        return 'msg-1';
+      }
+      get author() {
+        return 'did:ann';
+      }
+    }
+    const [line] = threadLines({ rows: [new Line()] });
+    expect(line).toMatchObject({ id: 'msg-1', author: 'did:ann', text: 'lunch?' });
+  });
+
   it('draws a line with marks from one block, and leaves plain text as text', () => {
     const marks = '[{"start":0,"end":4,"type":"mention","did":"did:ann"}]';
     expect(lineContent({ text: '@Ann can you?', marks })).toEqual([

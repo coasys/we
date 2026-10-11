@@ -68,7 +68,24 @@ export function threadLines(options: { rows?: unknown; newestFirst?: unknown } |
         }
       : null;
     const content = lineContent(row);
-    out.push({ ...row, ...(replyTo ? { replyTo } : {}), ...(content ? { content } : {}) });
+    /*
+      The identity fields named, not only spread.
+
+      A spread copies a row's own properties, and a row can be a model instance whose `id` — and,
+      depending on the backend, `author` and its timestamps — are getters on its class. A `$query`
+      hands the renderer plain objects, so the transcript never noticed; the Feed reads through the
+      module host, which hands back instances, and every line it drew had an empty `id`. Nothing
+      failed: a reply to one was written under no parent and silently went nowhere.
+    */
+    out.push({
+      ...row,
+      id,
+      author: row.author,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      ...(replyTo ? { replyTo } : {}),
+      ...(content ? { content } : {}),
+    });
     for (const reply of Array.isArray(row.comments) ? row.comments : []) {
       if (reply && typeof reply === 'object') walk(reply as Row, row);
     }

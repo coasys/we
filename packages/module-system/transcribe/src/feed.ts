@@ -50,6 +50,9 @@ export interface FeedLine {
   kind: 'line';
   id: string;
   at: string;
+  /** The same moment as `at`, and when it was last edited — the names `messageLine` reads. */
+  createdAt: string;
+  updatedAt: string;
   author: string;
   text: string;
   marks: string;
@@ -134,6 +137,8 @@ function toLine(row: Row, call: string, callTitle: string): FeedLine {
     kind: 'line',
     id: text(row.id),
     at: iso(row),
+    createdAt: iso(row),
+    updatedAt: text(row.updatedAt),
     author: text(row.author),
     text: text(row.text),
     marks: text(row.marks),

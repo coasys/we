@@ -16,6 +16,7 @@ import { evaluateExpression, markReactive, namespace, parseCached, type SchemaNo
 import { describe, expect, it } from 'vitest';
 
 import { extractionActivity } from './ExtractionStatus.schema';
+import { feedPanel } from './Feed.schema';
 import { transcribeModule } from './index';
 import {
   captureMeter,
@@ -2136,5 +2137,33 @@ describe('the composer', () => {
       // would be a worse bug than the one this fixes.
       expect(write.onFinally).toEqual([{ $setLocal: 'sending', value: false }]);
     }
+  });
+});
+
+/*
+  The transcript and the Feed draw one line, and a reply goes back to the list it was started from.
+
+  The Feed used to draw a line of its own, which drifted from the transcript's (a text badge for a
+  typed line, Reply always showing, no Edit) and kept its reply in a local the transcript knew nothing
+  of. Both now draw `messageLine` and hold the reply in the store, tagged with where it was started.
+*/
+describe('one line, two lists', () => {
+  const feed = JSON.stringify(feedPanel);
+  const transcript = JSON.stringify(transcribeModule);
+
+  it("gives the Feed the transcript's line, Edit and the typed mark included", () => {
+    expect(feed).toContain('"$action":"modules.transcribe.editUtterance"');
+    expect(feed).toContain('"name":"keyboard"');
+    // The text badge the Feed's own line drew for a typed message is gone.
+    expect(feed).not.toContain("row.source == '' ? 'bot' : 'typed'");
+  });
+
+  it('starts a reply tagged with its list, and each composer sends only its own', () => {
+    expect(feed).toContain("surface: 'feed'");
+    expect(transcript).toContain("surface: 'transcript'");
+    expect(feed).toContain(`"condition":{"$":"modules.transcribe.replyingTo.surface == 'feed'"}`);
+    expect(transcript).toContain(`"condition":{"$":"modules.transcribe.replyingTo.surface == 'transcript'"}`);
+    // And no reply of the Feed's own, held where the transcript cannot see it.
+    expect(feed).not.toContain('local.replyingTo');
   });
 });

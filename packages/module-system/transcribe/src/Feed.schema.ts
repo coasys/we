@@ -14,9 +14,13 @@ import { panelShell, timeline, timelineMoreAt, timelineOrder } from '@we/schema-
 import type { SchemaNode } from '@we/schema-shared';
 
 import { lineComposer } from './lineComposer';
+import { messageLine } from './messageLine';
 import { TIMELINE_ORIENTATION, timelineOrderButton } from './Panel.schema';
 
 const FROM_START = 'modules.transcribe.feedFromStart';
+
+/** A reply started from the Feed's own lines — see `replyingTo`'s surface. */
+const FEED_REPLY = "modules.transcribe.replyingTo.surface == 'feed'";
 
 /** What the window draws: everything, or only messages when the reader put activity away. */
 const ROWS =
@@ -41,8 +45,8 @@ const more = (end: 'start' | 'end'): SchemaNode => ({
 });
 
 /**
- * Where a line came from, beside its time: the call, which opens it, or what kind of message it is.
- * A message WE did not write carries no `source` — a bot's — and says so.
+ * Where a line came from, beside its time: the call, which opens it. A message WE did not write
+ * carries no `source` — a bot's — and says so.
  */
 const origin: SchemaNode = {
   type: '$if',
@@ -58,82 +62,19 @@ const origin: SchemaNode = {
       },
       children: [{ $: 'row.callTitle' }],
     },
+    // How a line arrived — typed, corrected — is the line's own mark. A bot's carries no source at all.
     else: {
-      type: 'we-badge',
-      props: { size: 'sm', variant: 'neutral' },
-      children: [{ $: "row.source == '' ? 'bot' : 'typed'" }],
+      type: '$if',
+      props: {
+        condition: { $: "row.source == ''" },
+        then: { type: 'we-badge', props: { size: 'sm', variant: 'neutral' }, children: ['bot'] },
+      },
     },
   },
 };
 
-/** One message: who, when, where from, the quote of what it answers, and the words. */
-const line: SchemaNode = {
-  type: '$agent',
-  props: { did: { $: 'row.author' }, as: 'speaker' },
-  children: [
-    {
-      type: 'Column',
-      props: { gap: '100', width: '100%' },
-      children: [
-        {
-          type: 'Row',
-          props: { gap: '200', ay: 'center', width: '100%' },
-          children: [
-            { type: 'we-avatar', props: { image: { $: 'speaker.avatar' }, hash: { $: 'row.author' }, size: 'xs' } },
-            {
-              type: 'we-text',
-              props: { variant: 'label', truncate: true, minWidth: '0' },
-              children: [{ $: 'speaker.name' }],
-            },
-            { type: 'we-timestamp', props: { value: { $: 'row.at' }, timeStyle: 'short', color: 'text-faint' } },
-            origin,
-            {
-              type: 'we-button',
-              props: {
-                size: 'xs',
-                variant: 'ghost',
-                ml: 'auto',
-                label: 'Reply',
-                onClick: { $setLocal: 'replyingTo', value: { $: 'row' } },
-              },
-              children: [{ type: 'we-icon', props: { name: 'arrow-bend-up-left' } }],
-            },
-          ],
-        },
-        // The line this answers, first line only — a reply to a reply quotes its direct parent.
-        {
-          type: '$if',
-          props: {
-            condition: { $: 'row.replyTo' },
-            then: {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-muted', truncate: true, pl: '600' },
-              children: [{ $: "'↳ ' + (row.replyTo.text ? row.replyTo.text : 'original message removed')" }],
-            },
-          },
-        },
-        {
-          // Marks — a mention, a link, emphasis — drawn the way a post draws them; plain text as text.
-          type: '$if',
-          props: {
-            condition: { $: 'row.content' },
-            then: {
-              type: 'Column',
-              props: { width: '100%', pl: '600' },
-              children: [
-                {
-                  type: 'BlockRenderer',
-                  props: { editorState: { $: 'row.content' }, rootClass: 'we-block-content--compact' },
-                },
-              ],
-            },
-            else: { type: 'we-text', props: { color: 'text', pl: '600' }, children: [{ $: 'row.text' }] },
-          },
-        },
-      ],
-    },
-  ],
-};
+/** One message, drawn exactly as the transcript draws one — see `messageLine`. */
+const line: SchemaNode = messageLine({ as: 'row', surface: 'feed', relative: false, extra: origin });
 
 /**
  * What extraction found, or somebody made, grouped — "3 tasks and 1 event, from Monday sync" — with
@@ -213,7 +154,7 @@ const composer: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: 'local.replyingTo' },
+        condition: { $: FEED_REPLY },
         then: {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
@@ -221,11 +162,11 @@ const composer: SchemaNode = {
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-muted', flex: '1', minWidth: '0', truncate: true },
-              children: [{ $: "'Replying to: ' + local.replyingTo.text" }],
+              children: [{ $: "'Replying to: ' + modules.transcribe.replyingTo.text" }],
             },
             {
               type: 'we-button',
-              props: { size: 'xs', variant: 'ghost', onClick: { $setLocal: 'replyingTo', value: null } },
+              props: { size: 'xs', variant: 'ghost', onClick: { $action: 'modules.transcribe.cancelReply', args: [] } },
               children: ['Cancel'],
             },
           ],
@@ -243,11 +184,10 @@ const composer: SchemaNode = {
             { $setLocal: 'sending', value: true },
             {
               $if: {
-                condition: { $: 'local.replyingTo' },
+                condition: { $: FEED_REPLY },
                 then: {
                   $action: 'modules.transcribe.reply',
-                  args: [{ $: 'local.replyingTo.id' }, { $: 'event.text' }, { $: 'event.marks' }],
-                  onSuccess: [{ $setLocal: 'replyingTo', value: null }],
+                  args: [{ $: 'modules.transcribe.replyingTo.id' }, { $: 'event.text' }, { $: 'event.marks' }],
                   onFinally: [{ $setLocal: 'sending', value: false }],
                 },
                 else: {
@@ -270,8 +210,6 @@ export const feedPanel: SchemaNode = {
   $localState: {
     // Messages only, or messages and what was found — the reader's own, kept on this device.
     feedActivity: { type: 'boolean', initial: true, persist: 'feed.activity' },
-    // The line a reply is being written to, set by the line's reply button.
-    replyingTo: { type: 'object', initial: null },
   },
   children: [
     panelShell({

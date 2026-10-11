@@ -3640,7 +3640,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - proposals — Suggestions staged on the live call — prefer proposalsFor with the call named.
   - proposalsFor — Suggestions staged on one conversation, by record id — read as proposalsFor[id].
   - reconnecting — The link to the speech model dropped and is being re-established; what is said meanwhile is held.
-  - replyingTo — The transcript line a reply is being written to — { id, text, author } — or null.
+  - replyingTo — The line a reply is being written to — { id, text, author, surface } — or null. `surface` is 'transcript' or 'feed': the list it was started from, whose composer sends it.
   - speaking — Whether the microphone level currently counts as speech.
   - status — What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error.
   - thresholdPercent — The speech-onset threshold as a CSS width, to mark on the same meter.
@@ -3685,7 +3685,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - setProposalField — Sets one field of the open draft, by property name.
   - showMoreFeed — Grows the Feed’s window by a page.
   - showMoreTranscript — Loads one more page of the transcript, in whichever direction it is being read.
-  - startReply — Starts a reply to one transcript line — pass { id, text, author } — which the composer then sends as a reply.
+  - startReply — Starts a reply to one line — pass { id, text, author, surface } — which that surface's composer then sends as a reply. `surface` is 'transcript' (the default) or 'feed'.
   - toggle — Starts or stops recording this agent’s microphone into the call, and opens the transcript when starting.
   - toggleAutoExtract — Turns automatic extraction on or off for this call, for everyone in it.
   - toggleExtractionTarget — Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call.
