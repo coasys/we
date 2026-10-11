@@ -151,7 +151,9 @@ export function createOwnersPort(deps: {
       const before = new Set(template.spaceTemplates().map((t) => t.id));
       const copy = copyOf(resolved.schema) as TemplateSchema;
       copy.forkedFrom = id;
-      if (!(await template.saveTemplateAs(copy, 'space'))) return null;
+      // Saved without becoming the template on screen: the copy takes the section's place in the
+      // shell, and making it current would replace the whole shell with one section.
+      if (!(await template.saveTemplateAs(copy, 'space', { activate: false }))) return null;
       const made = template.spaceTemplates().find((t) => !before.has(t.id) && t.forkedFrom === id);
       if (!made?.id) return null;
       const order = space.enabledViewIds();

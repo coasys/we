@@ -149,7 +149,17 @@ export interface TemplateStore {
   toggleInstalled: (templateId: string) => Promise<void>;
   setDefaultTemplate: (templateId: string) => Promise<boolean>;
   saveTemplate: (name: string) => Promise<void>;
-  saveTemplateAs: (schema: TemplateSchema, destination?: 'root' | 'space') => Promise<boolean>;
+  /**
+   * Save a schema as a template of its own, in the agent's library or the current space. By default it
+   * then becomes the template on screen, which is what forking wants. `activate: false` saves it and
+   * leaves the screen alone — what copying a section wants, since the section takes its place in the
+   * shell rather than replacing the shell.
+   */
+  saveTemplateAs: (
+    schema: TemplateSchema,
+    destination?: 'root' | 'space',
+    options?: { activate?: boolean },
+  ) => Promise<boolean>;
   publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
   deleteMarketplaceTemplate: (templateId: string) => Promise<void>;
   publishToMarketplace: (options: {
@@ -1273,7 +1283,11 @@ export function TemplateStoreProvider(props: ParentProps) {
    * templates list, and switch to it. Returns true on success.
    * Pass destination='space' to save into the current space perspective instead of we-root.
    */
-  async function saveTemplateAs(schema: TemplateSchema, destination: 'root' | 'space' = 'root'): Promise<boolean> {
+  async function saveTemplateAs(
+    schema: TemplateSchema,
+    destination: 'root' | 'space' = 'root',
+    options: { activate?: boolean } = {},
+  ): Promise<boolean> {
     const isSpace = destination === 'space';
     const targetDs = isSpace ? datasetStore.currentDataset() : datasetStore.rootDataset();
     const perspective = targetDs?.handle;
@@ -1365,6 +1379,10 @@ export function TemplateStoreProvider(props: ParentProps) {
         return next;
       });
 
+      if (options.activate === false) {
+        setOperationLoading(null);
+        return true;
+      }
       commitTemplate(schemaToSave);
       const p = datasetStore.currentDataset();
       if (p) {

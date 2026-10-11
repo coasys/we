@@ -14,6 +14,8 @@ function setup(opts: { admin?: boolean; inSpace?: boolean } = {}) {
   const spaceTemplates: TemplateSchema[] = [];
   let enabled = ['about', 'cards', 'graph'];
   const writes: string[][] = [];
+  /** How each save was asked to behave — whether it was to become the template on screen. */
+  const saves: { activate?: boolean }[] = [];
   const view = {
     id: 'cards',
     segment: 'cards',
@@ -39,24 +41,27 @@ function setup(opts: { admin?: boolean; inSpace?: boolean } = {}) {
     dataset: { currentDataset: () => (opts.inSpace === false ? null : { id: 'ds' }) } as never,
     template: {
       spaceTemplates: () => spaceTemplates,
-      saveTemplateAs: async (schema: TemplateSchema) => {
+      saveTemplateAs: async (schema: TemplateSchema, _where?: string, options: { activate?: boolean } = {}) => {
+        saves.push(options);
         spaceTemplates.push({ ...schema, id: 'cards-yours' });
         return true;
       },
       switchTemplate: () => {},
     } as never,
   });
-  return { port, enabled: () => enabled, writes, spaceTemplates };
+  return { port, enabled: () => enabled, writes, spaceTemplates, saves };
 }
 
 describe('copying a section in its place', () => {
   it('puts the copy where the original was, and the original out of the list', async () => {
-    const { port, enabled, spaceTemplates } = setup();
+    const { port, enabled, spaceTemplates, saves } = setup();
     const id = await port.forkView!('cards');
     expect(id).toBe('cards-yours');
     expect(enabled()).toEqual(['about', 'cards-yours', 'graph']);
     expect(spaceTemplates[0].forkedFrom).toBe('cards');
     expect(spaceTemplates[0].meta?.role).toBe('view');
+    // Not made the template on screen: that replaced the whole shell with the one section.
+    expect(saves).toEqual([{ activate: false }]);
   });
 
   it('is refused to somebody who does not run the space, and says so', async () => {
