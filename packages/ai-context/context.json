@@ -3774,32 +3774,6 @@
       "relations": []
     },
     {
-      "name": "CallExtraction",
-      "className": "CallExtraction",
-      "extends": "WeNode",
-      "fields": [
-        {
-          "name": "callId",
-          "type": "string",
-          "predicate": "we://call_id",
-          "required": false
-        },
-        {
-          "name": "entities",
-          "type": "string",
-          "predicate": "we://extraction_targets",
-          "required": false
-        },
-        {
-          "name": "auto",
-          "type": "string",
-          "predicate": "we://auto_interpret",
-          "required": false
-        }
-      ],
-      "relations": []
-    },
-    {
       "name": "ChatMessage",
       "className": "ChatMessage",
       "extends": "WeNode",
@@ -3884,19 +3858,6 @@
       "extends": "WeNode",
       "fields": [
         {
-          "name": "editorState",
-          "type": "string",
-          "predicate": "we://editor_state",
-          "required": false,
-          "default": "null"
-        },
-        {
-          "name": "type",
-          "type": "string",
-          "predicate": "we://type",
-          "required": false
-        },
-        {
           "name": "kind",
           "type": "string",
           "predicate": "we://kind",
@@ -3915,27 +3876,34 @@
           "required": false
         },
         {
-          "name": "slug",
-          "type": "string",
-          "predicate": "we://slug",
-          "required": false
-        },
-        {
           "name": "description",
           "type": "string",
           "predicate": "we://description",
           "required": false
         },
         {
-          "name": "version",
-          "type": "number",
-          "predicate": "we://version",
+          "name": "slug",
+          "type": "string",
+          "predicate": "we://slug",
           "required": false
+        },
+        {
+          "name": "editorState",
+          "type": "string",
+          "predicate": "we://editor_state",
+          "required": false,
+          "default": "null"
         },
         {
           "name": "textContent",
           "type": "string",
           "predicate": "we://text_content",
+          "required": false
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "predicate": "we://version",
           "required": false
         },
         {
@@ -3948,6 +3916,18 @@
           "name": "sourceName",
           "type": "string",
           "predicate": "we://source_name",
+          "required": false
+        },
+        {
+          "name": "autoExtract",
+          "type": "boolean",
+          "predicate": "we://auto_extract",
+          "required": false
+        },
+        {
+          "name": "extractionTargets",
+          "type": "string",
+          "predicate": "we://extraction_targets",
           "required": false
         }
       ],
@@ -4955,13 +4935,6 @@
           "default": "true"
         },
         {
-          "name": "extractLooseMessages",
-          "type": "boolean",
-          "predicate": "we://extract_loose_messages",
-          "required": false,
-          "default": "false"
-        },
-        {
           "name": "threadMode",
           "type": "string",
           "predicate": "we://thread_mode",
@@ -5642,14 +5615,29 @@
       "fields": [],
       "relations": [
         {
-          "name": "comments",
+          "name": "responses",
           "kind": "HasMany",
-          "predicate": "we://comment"
+          "predicate": "we://response"
         },
         {
-          "name": "inReplyTo",
+          "name": "respondsTo",
           "kind": "HasOne",
-          "predicate": "we://comment"
+          "predicate": "we://response"
+        },
+        {
+          "name": "thread",
+          "kind": "HasMany",
+          "predicate": "we://thread"
+        },
+        {
+          "name": "inThread",
+          "kind": "HasOne",
+          "predicate": "we://thread"
+        },
+        {
+          "name": "partOf",
+          "kind": "HasOne",
+          "predicate": "we://child"
         },
         {
           "name": "extractedFrom",
@@ -5666,11 +5654,6 @@
           "name": "participants",
           "kind": "HasMany",
           "predicate": "we://participant"
-        },
-        {
-          "name": "calls",
-          "kind": "HasMany",
-          "predicate": "we://call"
         },
         {
           "name": "mentions",
@@ -7249,9 +7232,6 @@
         "autoInterpret": {
           "type": "boolean"
         },
-        "extractLooseMessages": {
-          "type": "boolean"
-        },
         "root": {
           "type": "string"
         },
@@ -7298,9 +7278,9 @@
         "setSpaceModuleSetting",
         "setMyModuleSetting",
         "setAgentModuleSetting",
-        "setExtractLooseMessages",
-        "autoInterpretForCall",
-        "setAutoInterpretForCall",
+        "autoExtractFor",
+        "setAutoExtractFor",
+        "canSetExtractionFor",
         "setAutoInterpret",
         "setThreadMode",
         "setExtractionTarget",
@@ -7341,7 +7321,8 @@
         "removeSpaceFromGlobal"
       ],
       "ambient": [
-        "autoInterpretForCall",
+        "autoExtractFor",
+        "canSetExtractionFor",
         "navigateToSpace",
         "openRecordRef",
         "canAdministerSpace",
@@ -8012,7 +7993,7 @@
         {
           "name": "autoExtract",
           "kind": "state",
-          "doc": "Whether this call is extracted as it happens — its participants’ answer, else the space’s."
+          "doc": "Whether the call this agent is in is extracted as it happens — its own answer."
         },
         {
           "name": "autoJoined",
@@ -8169,7 +8150,7 @@
         {
           "name": "extractionFor",
           "kind": "state",
-          "doc": "What one call can extract, by record id — { targets, canChoose, canExtract }, read as extractionFor[id]."
+          "doc": "What one collection can extract, by record id — { targets, canChoose, canExtract, auto }, read as extractionFor[id]."
         },
         {
           "name": "extractionOpen",
@@ -8476,7 +8457,7 @@
         {
           "name": "toggleAutoExtract",
           "kind": "action",
-          "doc": "Turns automatic extraction on or off for this call, for everyone in it."
+          "doc": "Turns automatic extraction on or off for one collection, for everyone in it; defaults to the live call."
         },
         {
           "name": "toggleExtractionTarget",
@@ -8592,7 +8573,7 @@
         {
           "name": "threadLines",
           "params": ["options"],
-          "doc": "A page of lines with the replies under each flattened in, every one once, in time order — newest first when `newestFirst` is true. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, and a line with marks carries `content` — the one block a BlockRenderer draws it from. Read the page with `include: { comments: { include: { comments: { include: { comments: true } } } } }` so the replies arrive with it. Options: rows (the page), newestFirst (boolean).",
+          "doc": "A page of a conversation’s lines, every one once, in time order — newest first when `newestFirst` is true. A reply said in a conversation is one of its lines, so the page already holds it; each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, and a line with marks carries `content` — the one block a BlockRenderer draws it from. Read the page with `include: { respondsTo: true }` so each reply arrives knowing what it answers. Options: rows (the page), newestFirst (boolean).",
           "example": "threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })"
         }
       ],
