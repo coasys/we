@@ -20,6 +20,7 @@
  * $routes outlets work with a real router context, without touching the browser URL.
  */
 import { activePanels as panelsFor } from '@shared/panelScope';
+import { appFrame } from '@shared/registries/appFrame';
 import { registerHostChromeReserve } from '@shared/registries/dockRegistry';
 import { resolveParts } from '@shared/registries/moduleParts';
 import { setTemplatePanels } from '@shared/registries/templatePanels';
@@ -87,12 +88,13 @@ export function computeLeftOffset(stores: Stores): string {
   return dock ? `calc(${sidebar} + ${dock}px)` : sidebar;
 }
 
+// The app's own top and bottom bands (`meta.frame`) are held before any panel's — a top bar is chrome.
 export function computeTopOffset(stores: Stores): string {
-  return `${stores.shellStore.contentInset().top}px`;
+  return `${appFrame().top + stores.shellStore.contentInset().top}px`;
 }
 
 export function computeBottomOffset(stores: Stores): string {
-  return `${stores.shellStore.contentInset().bottom}px`;
+  return `${appFrame().bottom + stores.shellStore.contentInset().bottom}px`;
 }
 
 // ---------------------------------------------------------------------------

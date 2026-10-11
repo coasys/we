@@ -13,7 +13,6 @@ import {
   arrangeHomeDrop,
   canFold,
   chooseTarget,
-  CHROME_RAIL_PX,
   columnLayout,
   columnSlots,
   type ContentInset,
@@ -71,6 +70,7 @@ import {
   widestMin,
 } from '@shared/dockGeometry';
 import type { ScreenSource } from '@shared/platform/types';
+import { appFrame } from '@shared/registries/appFrame';
 import {
   DOCK_CONTENT_ATTR,
   DOCK_FRAME_ATTR,
@@ -1037,7 +1037,7 @@ export function ShellStoreProvider(props: ParentProps) {
 
   // Docks are sized against the window, so the window is state. Tracked here rather than in each
   // module because the whole point of the arrangement is that a module never does viewport maths.
-  const [viewport, setViewport] = createSignal({
+  const [viewportSize, setViewport] = createSignal({
     width: typeof window === 'undefined' ? 1440 : window.innerWidth,
     height: typeof window === 'undefined' ? 900 : window.innerHeight,
   });
@@ -1046,6 +1046,15 @@ export function ShellStoreProvider(props: ParentProps) {
     window.addEventListener('resize', onResize);
     onCleanup(() => window.removeEventListener('resize', onResize));
   }
+  /*
+    The window, as every geometry memo here reads it — and the app's frame with it, since every
+    function in `dockGeometry` measures against that too. Reading it here is what makes them all
+    follow an app template that changes its chrome, without each memo having to know.
+  */
+  const viewport = () => {
+    appFrame();
+    return viewportSize();
+  };
 
   /**
    * Where each panel has been put, by dock id. Empty until somebody moves or resizes one.
@@ -1836,7 +1845,7 @@ export function ShellStoreProvider(props: ParentProps) {
 
   const floatChrome = createMemo<ContentInset>(() => ({
     left: 0,
-    right: CHROME_RAIL_PX,
+    right: appFrame().right,
     top: moduleChrome().top,
     bottom: moduleChrome().bottom,
   }));
@@ -2473,8 +2482,9 @@ export function ShellStoreProvider(props: ParentProps) {
       fullScreen ? '0px' : `calc(var(--we-sidebar-width, ${SIDEBAR_PX}px) + ${edges.left}px)`,
     );
     root.setProperty('--we-chrome-right', `${edges.right}px`);
-    root.setProperty('--we-chrome-top', `${edges.top}px`);
-    root.setProperty('--we-chrome-bottom', `${edges.bottom}px`);
+    // The app's own top and bottom bands are chrome too, so anything clearing the edges clears them.
+    root.setProperty('--we-chrome-top', `${edges.top + (fullScreen ? 0 : appFrame().top)}px`);
+    root.setProperty('--we-chrome-bottom', `${edges.bottom + (fullScreen ? 0 : appFrame().bottom)}px`);
     /*
       How far the content's centre has moved from the window's — the horizontal twin of the four
       above, for anything centred rather than pinned. Written as a calc over them rather than as a
