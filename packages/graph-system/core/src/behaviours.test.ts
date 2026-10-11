@@ -97,6 +97,25 @@ describe('panZoomBehaviour', () => {
     expect(ctx.pan).not.toHaveBeenCalled();
   });
 
+  it('leaves the secondary button alone, so a right-click for a menu starts no pan', () => {
+    const ctx = fakeContext();
+    const behaviour = panZoomBehaviour();
+    expect(behaviour.onPointerDown!(input(0, 0, { buttons: 2 }), ctx)).toBeUndefined();
+    behaviour.onPointerMove!(input(30, 10, { buttons: 0 }), ctx);
+    expect(ctx.pan).not.toHaveBeenCalled();
+  });
+
+  it('ends a pan whose release it never heard, once no button is held', () => {
+    // The release went to a context menu or another window: the next move with nothing held must
+    // not carry the canvas along with it.
+    const ctx = fakeContext();
+    const behaviour = panZoomBehaviour();
+    behaviour.onPointerDown!(input(0, 0), ctx);
+    behaviour.onPointerMove!(input(30, 10, { buttons: 0 }), ctx);
+    behaviour.onPointerMove!(input(60, 20, { buttons: 1 }), ctx);
+    expect(ctx.pan).not.toHaveBeenCalled();
+  });
+
   it('zooms exponentially about the cursor', () => {
     const ctx = fakeContext();
     panZoomBehaviour({ zoomSpeed: 0.001 }).onWheel!(input(50, 50, { delta: -100 }), ctx);
