@@ -969,11 +969,12 @@ describe('the extraction panel', () => {
     expect(json).not.toContain('"$action":"modules.transcribe.extract"');
   });
 
-  it('keeps "as it happens" to the live call, where it is the only thing that means anything', () => {
-    // A meeting somebody opened from a link is not happening. Everything else here follows the call
-    // on screen; this one cannot.
-    const live = '{"$":"!routeStore.params.call || routeStore.params.call == modules.transcribe.callId"}';
-    expect(json.indexOf(live)).toBeLessThan(json.indexOf('"$action":"modules.transcribe.toggleAutoExtract"'));
+  it('offers the switch on any call, not only the one this agent is in', () => {
+    // The answer is stored on the call, so a call opened from a link can be decided too — it is what
+    // applies when the call is next live. Only the read-back gate on everything else stays.
+    const header = JSON.stringify((extractionPanel.children as SchemaNode[])[0]);
+    expect(header).toContain('"$action":"modules.transcribe.toggleAutoExtract"');
+    expect(header).not.toContain(VIEWING_LIVE_EXPR);
   });
 
   it('gives the messages outside calls the same switch as a call, for administrators only', () => {

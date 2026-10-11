@@ -2539,50 +2539,45 @@ const amendmentRows: SchemaNode = {
   "Extraction": a heading that changes as you move between calls describes where you are rather
   than what the panel is, which is the reason the transcript's is fixed too.
 
-  Not offered on a past call: a meeting being read back has no "as it happens" to answer.
+  Offered on every call, past ones included: the answer is the call's own and is what applies when
+  it is next live, so somebody can decide it before a meeting is picked back up.
 */
 const autoExtractControl: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $: `(${SUBJECT_IS_SPACE}) || (${VIEWING_LIVE_EXPR})` },
-    then: {
-      type: 'Row',
-      props: { gap: '200', ay: 'center' },
+  type: 'Row',
+  props: { gap: '200', ay: 'center' },
+  children: [
+    {
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'text-muted' },
+      children: [{ $: `(${SUBJECT_IS_SPACE}) ? 'Auto-extract outside calls' : 'Auto-extract this call'` }],
+    },
+    {
+      type: 'we-tooltip',
+      props: {
+        placement: 'bottom',
+        content: {
+          $:
+            `(${SUBJECT_IS_SPACE}) && !spaceStore.canAdministerCurrentSpace ? 'Set by whoever administers this space' : ` +
+            `(${SUBJECT_IS_SPACE}) ? 'Extract messages typed outside calls as they arrive, for this space' : ` +
+            "'Extract this call as it goes, for everyone in it'",
+        },
+      },
       children: [
         {
-          type: 'we-text',
-          props: { variant: 'footnote', color: 'text-muted' },
-          children: [{ $: `(${SUBJECT_IS_SPACE}) ? 'Auto-extract outside calls' : 'Auto-extract this call'` }],
-        },
-        {
-          type: 'we-tooltip',
+          type: 'we-switch',
           props: {
-            placement: 'bottom',
-            content: {
-              $:
-                `(${SUBJECT_IS_SPACE}) && !spaceStore.canAdministerCurrentSpace ? 'Set by whoever administers this space' : ` +
-                `(${SUBJECT_IS_SPACE}) ? 'Extract messages typed outside calls as they arrive, for this space' : ` +
-                "'Extract this call as it goes, for everyone in it'",
-            },
+            size: 'sm',
+            label: 'Auto-extract',
+            checked: forSubject('auto'),
+            disabled: { $: `!(${CAN_DECIDE})` },
+            // The collection on screen, named: the store's own default is the call this agent is
+            // in, which is not the one this panel shows outside a call.
+            onChange: { $action: 'modules.transcribe.toggleAutoExtract', args: [EXTRACTION_SUBJECT] },
           },
-          children: [
-            {
-              type: 'we-switch',
-              props: {
-                size: 'sm',
-                label: 'Auto-extract',
-                checked: forSubject('auto'),
-                disabled: { $: `!(${CAN_DECIDE})` },
-                // The collection on screen, named: the store's own default is the call this agent is
-                // in, which is not the one this panel shows outside a call.
-                onChange: { $action: 'modules.transcribe.toggleAutoExtract', args: [EXTRACTION_SUBJECT] },
-              },
-            },
-          ],
         },
       ],
     },
-  },
+  ],
 };
 
 /*
