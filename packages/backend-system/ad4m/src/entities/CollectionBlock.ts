@@ -287,6 +287,22 @@ export class CollectionBlock extends WeNode {
   extracted: string[] = [];
 
   /**
+   * Records a pass found in this conversation that another had already made — "Already in the
+   * space", where {@link extracted} is "made here".
+   *
+   * A pass that recognises something already in the space writes nothing new, which is right,
+   * and used to link it here as `extracted` all the same — so a review panel listed a task from
+   * last week's call as accepted in this one, and the record carried a second `extracted` link
+   * that made "where did this come from" ambiguous. The two facts are different: this
+   * conversation mentioned it; another one made it. Kept, rather than dropped, because the
+   * mention is worth knowing — it is how a conversation's own view shows everything it touched.
+   *
+   * Untyped and unordered, for `extracted`'s reasons.
+   */
+  @HasMany({ through: 'we://recognised', polymorphic: true })
+  recognised: string[] = [];
+
+  /**
    * Changes a pass suggested to records that already existed, and somebody kept — see
    * {@link ExtractionAmendment}.
    *

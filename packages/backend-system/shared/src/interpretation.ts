@@ -106,6 +106,17 @@ export interface InterpretationRequest {
    */
   provenance?: { id: string; predicate: string };
   /**
+   * Where a record the pass *recognised* — already in the space, made by another conversation or by
+   * hand — is linked from, instead of `provenance`.
+   *
+   * Only what a pass made here is its provenance. A pass that matches something already written
+   * touches it without making it, and naming it as produced here is how a review surface came to
+   * list last week's task as accepted in this call, and how a record ended up with two conversations
+   * claiming to have produced it. Named by the caller for `provenance`'s reason. Omit it and a
+   * recognised record is linked as `provenance`, as before.
+   */
+  recognised?: { id: string; predicate: string };
+  /**
    * URI namespace new instances are minted under. Backend-specific and usually best left to the
    * adapter, which derives one from the conversation (`provenance`, else `parent`) so a call's
    * extractions are confined to that call.

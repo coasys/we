@@ -46,6 +46,13 @@ const EXTRACTION_PASS_PREDICATE = 'we://extraction_pass_record';
  */
 const EXTRACTED_PREDICATE = 'we://extracted';
 
+/**
+ * Where a record a pass recognised rather than made is linked from — `CollectionBlock.recognised`.
+ * A pass over this conversation that matches something already in the space links it here, so the
+ * conversation's own view can say "already in the space" rather than claiming it as made here.
+ */
+const RECOGNISED_PREDICATE = 'we://recognised';
+
 export type { EntityManifestEntry, EntityManifestProperty } from '@we/backend-shared';
 
 /**
@@ -489,6 +496,7 @@ export function DatasetStoreProvider(props: ParentProps) {
             classes,
             parent: await filedUnder(dataset.handle, collectionId, predicate),
             provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
+            recognised: { id: collectionId, predicate: RECOGNISED_PREDICATE },
           });
           await recordPass(dataset.handle, collectionId, {
             // Nothing to look for is not a failure and not a quiet meeting — it is a call whose
@@ -590,6 +598,7 @@ export function DatasetStoreProvider(props: ParentProps) {
           classes: targetsForCollection(collectionId),
           parent: await filedUnder(dataset.handle, collectionId, predicate),
           provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
+          recognised: { id: collectionId, predicate: RECOGNISED_PREDICATE },
         });
       },
 
@@ -642,6 +651,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       classes,
       parent: await filedUnder(handle, collectionId, predicate),
       provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
+      recognised: { id: collectionId, predicate: RECOGNISED_PREDICATE },
     });
   }
 

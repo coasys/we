@@ -111,6 +111,7 @@ export interface CollectionBlockRecord extends WeNodeRecord {
   board?: CollectionBlockRecord;
   extractionPasses: string[];
   extracted: string[];
+  recognised: string[];
   amendments: string[];
   addChildren(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeChildren(value: string | { id: string }, batch?: string): Promise<unknown>;

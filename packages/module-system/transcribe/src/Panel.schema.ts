@@ -235,6 +235,17 @@ const EXTRACTED_COUNT = `count(${EXTRACTED_ROWS})`;
  * {@link EXTRACTED_ROWS}: an amendment exists only because somebody accepted one, so there is no
  * unconfirmed state to take back out.
  */
+/**
+ * What this conversation found that was already in the space — another call's, the space's own, or
+ * somebody's typed by hand. See `CollectionBlock.recognised`.
+ *
+ * Its own list rather than more of {@link EXTRACTED_ROWS}, which it used to be: a pass that matched
+ * last week's task linked it as made here, and it sat under "Accepted" as though somebody had just
+ * kept it. No filter for suggestions, since a pass recognising something stages nothing new.
+ */
+const RECOGNISED_ROWS = 'first(local.extractedFrom).recognised';
+const RECOGNISED_COUNT = `count(${RECOGNISED_ROWS})`;
+
 const AMENDMENT_ROWS = 'first(local.extractedFrom).amendments';
 const AMENDMENT_COUNT = `count(${AMENDMENT_ROWS})`;
 
@@ -2297,6 +2308,57 @@ const extractedCard: SchemaNode = {
   ],
 };
 
+/**
+ * A record this conversation recognised: what it is, and the conversation that made it.
+ *
+ * The maker is asked per card — the conversation whose `extracted` holds it — rather than included
+ * with the list, because nesting `extractedFrom` under the untyped `recognised` relation fails the
+ * whole read once any member has one. The list is a handful, and the question is native.
+ *
+ * A neutral edge rather than the accepted cards' green: nothing was decided here.
+ */
+const recognisedCard: SchemaNode = {
+  type: 'Column',
+  props: {
+    bg: 'surface',
+    color: 'text',
+    borderLeft: '3px solid border-strong',
+    r: '300',
+    px: '300',
+    py: '300',
+    gap: '200',
+    width: '100%',
+  },
+  $queries: {
+    madeIn: {
+      entity: 'CollectionBlock',
+      where: { extracted: { some: { id: { $: 'item.id' } } } },
+      select: ['title', 'kind'],
+      limit: 1,
+      subscribe: false,
+    },
+  },
+  children: [
+    cardKind(RECORD_SHAPE),
+    cardTitle(RECORD_SHAPE),
+    {
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'text-muted' },
+      children: [
+        {
+          $: `count(local.madeIn) ? (first(local.madeIn).kind == 'space' ? 'First found in messages outside calls' : 'First found in ' + (first(local.madeIn).title ? first(local.madeIn).title : 'another call')) : 'Already in the space'`,
+        },
+      ],
+    },
+  ],
+};
+
+const recognisedRows: SchemaNode = {
+  type: '$each',
+  props: { items: { $: RECOGNISED_ROWS }, as: 'item' },
+  children: [recognisedCard],
+};
+
 const extractedRows: SchemaNode = {
   type: '$each',
   props: {
@@ -3992,6 +4054,8 @@ export const extractionPanel: SchemaNode = {
                   changesListOpen: { type: 'boolean', initial: true, persist: 'transcribe.changesListOpen' },
                   extractedOpen: { type: 'boolean', initial: true, persist: 'transcribe.extractedOpen' },
                   amendmentsOpen: { type: 'boolean', initial: true, persist: 'transcribe.amendmentsOpen' },
+                  // Folded to begin with: it is context, where the sections above are decisions.
+                  recognisedOpen: { type: 'boolean', initial: false, persist: 'transcribe.recognisedOpen' },
                   /*
                     Closed to start, where the other two open: the readings are a record of how the
                     other sections came to say what they say, wanted when something looks wrong and
@@ -4161,6 +4225,7 @@ export const extractionPanel: SchemaNode = {
                             */
                             include: {
                               extracted: { order: { createdAt: 'desc' } },
+                              recognised: { order: { createdAt: 'desc' } },
                               amendments: { order: { createdAt: 'desc' } },
                             },
                             when: EXTRACTION_SUBJECT,
@@ -4210,6 +4275,39 @@ export const extractionPanel: SchemaNode = {
                                         type: 'Grid',
                                         props: { minChildWidth: '240px', gap: '200', width: '100%' },
                                         children: [extractedRows],
+                                      },
+                                    ],
+                                  }),
+                                ],
+                              },
+                            },
+                          },
+                          {
+                            /*
+                              What the conversation found that was already in the space — see
+                              {@link RECOGNISED_ROWS}. After the records it made and before the
+                              changes it made, and folded: it is context rather than a decision.
+                            */
+                            type: '$if',
+                            props: {
+                              condition: { $: RECOGNISED_COUNT },
+                              then: {
+                                type: 'Column',
+                                props: { gap: '200', width: '100%' },
+                                children: [
+                                  foldingSectionLabel({
+                                    label: 'Already in the space',
+                                    count: RECOGNISED_COUNT,
+                                    tone: 'neutral',
+                                    open: { field: 'recognisedOpen' },
+                                  }),
+                                  foldingBody({
+                                    open: { field: 'recognisedOpen' },
+                                    children: [
+                                      {
+                                        type: 'Grid',
+                                        props: { minChildWidth: '240px', gap: '200', width: '100%' },
+                                        children: [recognisedRows],
                                       },
                                     ],
                                   }),

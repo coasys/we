@@ -1467,6 +1467,7 @@ export const contextData: ContextData = {
           target: 'ExtractionPass',
         },
         { name: 'extracted', kind: 'HasMany', predicate: 'we://extracted' },
+        { name: 'recognised', kind: 'HasMany', predicate: 'we://recognised' },
         { name: 'amendments', kind: 'HasMany', predicate: 'we://extraction_amendment', target: 'ExtractionAmendment' },
       ],
     },

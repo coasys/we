@@ -2167,3 +2167,27 @@ describe('one line, two lists', () => {
     expect(feed).not.toContain('local.replyingTo');
   });
 });
+
+/*
+  What a conversation recognised is not what it made.
+
+  A pass that matched a record already in the space used to link it as `extracted`, so the panel
+  listed last week's task under "Accepted" as though somebody had just kept it. Recognised records
+  are linked as `recognised` now, and drawn in their own section, saying where they were first found.
+*/
+describe('records a conversation recognised', () => {
+  const panelJson = JSON.stringify(extractionPanel);
+
+  it('reads them beside what it made, and lists them apart from Accepted', () => {
+    expect(panelJson).toContain('"recognised":{"order":{"createdAt":"desc"}}');
+    expect(panelJson).toContain('Already in the space');
+    // Accepted is still only what this conversation made.
+    expect(panelJson).toContain(
+      'first(local.extractedFrom).extracted.filter(r, !(r.id in modules.transcribe.unconfirmedIds))',
+    );
+  });
+
+  it('names the conversation that made each one, by asking which one extracted it', () => {
+    expect(panelJson).toContain('"where":{"extracted":{"some":{"id":{"$":"item.id"}}}}');
+  });
+});

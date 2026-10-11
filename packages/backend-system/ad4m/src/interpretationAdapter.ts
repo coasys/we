@@ -97,6 +97,26 @@ const conversationOf = (request: { parent?: { id: string }; provenance?: { id: s
 const prefixFor = (conversation: string) => `${DEFAULT_BASE_PREFIX}${encodeURIComponent(conversation)}/`;
 
 /**
+ * The link saying how a conversation relates to a record its pass touched: it made it, or it
+ * recognised it.
+ *
+ * Told apart by the id, because a pass mints everything new under its own conversation's namespace
+ * (`prefixFor`) — so a record outside it is one the pass matched rather than made: another call's,
+ * the space's own, or somebody's typed by hand. One made by an earlier pass of this same conversation
+ * is inside it, and is rightly still "made here". Without a `recognised` link named, everything is
+ * provenance, as it was.
+ */
+export function provenanceLink(
+  id: string,
+  prefix: string,
+  provenance: { id: string; predicate: string } | undefined,
+  recognised: { id: string; predicate: string } | undefined,
+): { id: string; predicate: string } | undefined {
+  if (!provenance) return undefined;
+  return recognised && !id.startsWith(prefix) ? recognised : provenance;
+}
+
+/**
  * How a watch paces itself, where the caller says nothing.
  *
  * Tuned for a conversation rather than a feed. `debounceMs` is a *quiet window*, so it wants to be
@@ -654,7 +674,13 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
   */
   const watchParents = new Map<
     string,
-    { id: string; predicate: string; provenance?: { id: string; predicate: string } }
+    {
+      id: string;
+      predicate: string;
+      provenance?: { id: string; predicate: string };
+      recognised?: { id: string; predicate: string };
+      prefix: string;
+    }
   >();
 
   /**
@@ -913,11 +939,8 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
             loses its provenance, where one marked but unparented would be invisible to every surface
             that reaches content by traversal.
           */
-          if (parent.provenance) {
-            await perspective.add(
-              new Link({ source: parent.provenance.id, predicate: parent.provenance.predicate, target: base }),
-            );
-          }
+          const made = provenanceLink(base, parent.prefix, parent.provenance, parent.recognised);
+          if (made) await perspective.add(new Link({ source: made.id, predicate: made.predicate, target: base }));
         } catch (error) {
           // One failed link should not cost the rest of the batch its parent.
           console.warn('[interpretation] could not parent an auto-extracted record', base, error);
@@ -1062,12 +1085,10 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
             await perspective.add(
               new Link({ source: request.parent.id, predicate: request.parent.predicate, target: id }),
             );
-            // The provenance link, for the reason the watch path writes one — see there.
-            if (request.provenance) {
-              await perspective.add(
-                new Link({ source: request.provenance.id, predicate: request.provenance.predicate, target: id }),
-              );
-            }
+            // The provenance link, for the reason the watch path writes one — see there — or the
+            // recognised one, for a record this pass matched rather than made.
+            const made = provenanceLink(id, basePrefix, request.provenance, request.recognised);
+            if (made) await perspective.add(new Link({ source: made.id, predicate: made.predicate, target: id }));
           }
         }
 
@@ -1245,7 +1266,12 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       // finds nothing.
       await assertShapesInstalled(perspective, request.classes);
 
-      watchParents.set(request.watchId, { ...request.parent, provenance: request.provenance });
+      watchParents.set(request.watchId, {
+        ...request.parent,
+        provenance: request.provenance,
+        recognised: request.recognised,
+        prefix: request.basePrefix ?? prefixFor(conversationOf(request)!),
+      });
       await attachListener(perspective);
 
       // Read the conversation's own lines, through the containment predicate the caller resolved.
