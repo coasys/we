@@ -35,6 +35,15 @@ import {
 
 import { moduleRegistry } from './moduleRegistry';
 
+/**
+ * A deep copy of template data, which is JSON by definition.
+ *
+ * Not `structuredClone`: a placement the editor hands over is the template's own node, held in a
+ * Solid store, so its props are a proxy, and `structuredClone` refuses a proxy outright. Selecting a
+ * placed part crashed the app that way.
+ */
+const copyOf = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+
 /** Names already reported, so a template re-rendering does not repeat itself every frame. */
 const reported = new Set<string>();
 
@@ -132,7 +141,7 @@ function instantiate(placement: SchemaNode, part: { node: SchemaNode; subject?: 
   let tree = bindInputs(resolved, props.inputs);
   if (placement.id) {
     const seed = `part:${placement.id}`;
-    tree = deriveNodeIds(structuredClone(tree), seed);
+    tree = deriveNodeIds(copyOf(tree), seed);
     tree.id ??= derivedNodeId(`${seed}|`);
   }
   byKey.set(key, tree);
@@ -237,9 +246,9 @@ function openRaw(placement: SchemaNode, depth: 'one' | 'all'): SchemaNode | null
   const part = typeof props.id === 'string' ? moduleRegistry.parts()[props.id] : undefined;
   if (!part) return null;
 
-  const bound = structuredClone(instantiate(placement, part));
+  const bound = copyOf(instantiate(placement, part));
   bound.forkedFrom = `part:${String(props.id)}`;
-  bound.forkedPart = { placement: structuredClone(placement.props ?? {}), print: '' };
+  bound.forkedPart = { placement: copyOf(placement.props ?? {}), print: '' };
   return depth === 'all' ? inlineParts(bound) : bound;
 }
 

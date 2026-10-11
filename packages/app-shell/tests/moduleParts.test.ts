@@ -276,6 +276,19 @@ describe('opening a placed part', () => {
     expect(openPart({ type: '$part', props: { id: 'nobody.thing' } }, 'one')).toBeNull();
   });
 
+  /*
+    The editor hands over the template's own node, which lives in a Solid store, so its props are a
+    proxy — and `structuredClone` refuses a proxy. Selecting a placed part crashed the app the moment
+    the card asked what opening it would give.
+  */
+  it('opens a placement held in a store, whose props are a proxy', () => {
+    withNested(() => {
+      const props = new Proxy({ id: 'deep.branch', inputs: { row: { $: 'local.row' } } }, {});
+      const opened = openPart({ type: '$part', props } as SchemaNode, 'one')!;
+      expect(opened.forkedPart?.placement).toEqual({ id: 'deep.branch', inputs: { row: { $: 'local.row' } } });
+    });
+  });
+
   it('never hands back the registry’s own node', () => {
     withNested(() => {
       const opened = openPart({ type: '$part', props: { id: 'deep.leaf' } }, 'one')!;

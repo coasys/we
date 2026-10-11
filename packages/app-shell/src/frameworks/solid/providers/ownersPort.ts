@@ -17,6 +17,9 @@ import type { ShellStore } from '../stores/ShellStore';
 import type { SpaceStore } from '../stores/SpaceStore';
 import type { TemplateStore } from '../stores/TemplateStore';
 
+/** Template data is JSON; copied that way because a store hands over proxies `structuredClone` refuses. */
+const copyOf = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+
 const humanise = (name: string) => name.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
 
 /**
@@ -114,7 +117,7 @@ export function createOwnersPort(deps: {
 
     panelNode: (dockId) => {
       const node = panelOf(dockId)?.panel.node;
-      return node ? (structuredClone(node) as SchemaNode) : null;
+      return node ? (copyOf(node) as SchemaNode) : null;
     },
 
     view: (id) => {
@@ -146,7 +149,7 @@ export function createOwnersPort(deps: {
       const resolved = space.routableViews().find((view) => view.id === id);
       if (!resolved || !space.canAdministerCurrentSpace()) return null;
       const before = new Set(template.spaceTemplates().map((t) => t.id));
-      const copy = structuredClone(resolved.schema) as TemplateSchema;
+      const copy = copyOf(resolved.schema) as TemplateSchema;
       copy.forkedFrom = id;
       if (!(await template.saveTemplateAs(copy, 'space'))) return null;
       const made = template.spaceTemplates().find((t) => !before.has(t.id) && t.forkedFrom === id);
