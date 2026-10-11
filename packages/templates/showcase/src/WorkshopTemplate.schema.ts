@@ -2207,16 +2207,15 @@ const reactionsSection: SchemaNode = {
 /**
  * The whole conversation, counted — not the top of it.
  *
- * `count(row.comments)` is the first level only: a thread of one reply carrying nine answers reads
+ * `count(row.responses)` is the first level only: a thread of one reply carrying nine answers reads
  * "1", and a caption over a conversation should count the conversation.
  *
- * This used to add up the three levels the panel draws, by hand, because a subtree could not be
- * walked — each level was another hop, so a true descendant total was not expressible at any price
- * and the number was right only as far down as it had been written. `$descendants` is a transitive
- * count projection: one number, every level, no extra query. It falls back to the record's own
- * count where the backend cannot walk a path, which reads low rather than wrong.
+ * This used to add up the three levels the panel draws, by hand, and then walked the subtree with a
+ * transitive count. The record's `thread` now holds every response under it at any depth, so the
+ * total is a plain count of that — replies only, since a call held about the record is in its
+ * thread too. It falls back to the record's own count while the read is on its way.
  */
-const REPLY_TOTAL = 'first(local.card).$descendants ?? count(row.comments)';
+const REPLY_TOTAL = 'first(local.card).$replies ?? count(row.responses)';
 
 /** The thread, and the way into it. */
 const discussion: SchemaNode = {
@@ -2359,13 +2358,11 @@ const inspectorPanel: SchemaNode = {
       include: {
         signals: true,
         /*
-          The whole conversation under this card, as one number.
-
-          A count projection is already asked of every row at once and already grouped per row, so
-          `transitive` costs one character in the emitted path and no extra round trip. Without it
-          this is the direct replies only, which is not what a reader takes "42 replies" to mean.
+          The whole conversation under this card, as one number — every reply in its thread, at any
+          depth. Without the thread this is the direct replies only, which is not what a reader takes
+          "42 replies" to mean; without the kind it would count a call about the card as a reply.
         */
-        $descendants: { from: 'comments', count: true, transitive: true },
+        $replies: { from: 'thread', count: true, where: { kind: 'post' } },
       },
       /*
         Not until there is an id to ask about — which is what kept the panel showing a record
@@ -3486,7 +3483,7 @@ const canvas: SchemaNode = {
           a preview inside an arrangement, and what it owes the reader is that there is something to
           open.
         */
-        counts: ['signals', 'comments'],
+        counts: ['signals', 'responses'],
         /*
           What each card weighs, whenever the tree is shown or the order is a reaction — see `TREE_WEIGH`
           in `WorkshopTree` for why both.
@@ -5259,7 +5256,7 @@ const calendarRoute: RouteSchema = {
                   scope: anchorScope({ $: 'spaceStore.root' }),
                   order: { startDate: 'asc' },
                   limit: 200,
-                  // The place, and the reactions the row's counts read. `comments` needs no include —
+                  // The place, and the reactions the row's counts read. `responses` needs no include —
                   // a relation's own ids arrive anyway, which is what makes a reply count free.
                   include: { location: true, signals: true },
                 },

@@ -10,6 +10,7 @@ import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry'
 import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegistry';
 import { provideChromeBag, provideTemplateBag } from '@shared/registries/templateBag';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
+import { completeResponse, respondsThrough } from '@shared/responses';
 import { installRenderSettleOnExit, installSafeModeShortcut } from '@shared/safeMode';
 import { hostSourceBag } from '@shared/sources';
 import { flowStateOf } from '@shared/taskFlow';
@@ -133,7 +134,9 @@ export default function TemplateProvider() {
       const [Entity, p] = resolve(entity, options as { dataset?: string });
       const rest = Object.fromEntries(Object.entries(options ?? {}).filter(([k]) => k !== 'dataset'));
       const fields = await withCollectionDefaults(entity, data, p as DatasetProxy);
-      return Entity.create(p, fields, Object.keys(rest).length ? rest : undefined);
+      const created = await Entity.create(p, fields, Object.keys(rest).length ? rest : undefined);
+      fileResponse(p as DatasetProxy, created as { id?: string } | undefined, rest);
+      return created;
     },
     update: (entity: string, id: string, data: Record<string, unknown>, options?: { dataset?: string }) => {
       const [Entity, p] = resolve(entity, options);
@@ -218,6 +221,16 @@ export default function TemplateProvider() {
     return defaults ? { ...defaults, ...fields } : fields;
   }
 
+  /**
+   * A record written as a response goes into its thread and into the feed it lives in — see
+   * `@shared/responses`. Not awaited: the response exists, and the press that wrote it should not
+   * wait on the filing.
+   */
+  function fileResponse(perspective: DatasetProxy, created: { id?: string } | undefined, options: unknown): void {
+    const subject = respondsThrough(options);
+    if (subject && created?.id) void completeResponse(perspective, created.id, subject);
+  }
+
   /** `record.create`, against a resolved handle rather than a store path. */
   async function createInDataset(
     entity: string,
@@ -226,7 +239,9 @@ export default function TemplateProvider() {
     rest: Record<string, unknown>,
   ) {
     const stamped = await withCollectionDefaults(entity, fields, perspective);
-    return getEntity(entity).create(perspective, stamped, Object.keys(rest).length ? rest : undefined);
+    const created = await getEntity(entity).create(perspective, stamped, Object.keys(rest).length ? rest : undefined);
+    fileResponse(perspective, created as { id?: string } | undefined, rest);
+    return created;
   }
 
   /**

@@ -85,11 +85,11 @@ describe('the feed window', () => {
   });
 
   it('draws a reply after the line it answers, in the order it was said, quoting it', async () => {
+    // A reply said in a call is one of its lines, and names what it answers.
     const { find } = store([
       ...calls,
-      line('q', 1, 'monday', {
-        comments: [{ id: 'a', createdAt: t(4), author: 'did:ben', text: 'answer', source: 'typed' }],
-      }),
+      line('q', 1, 'monday'),
+      line('a', 4, 'monday', { author: 'did:ben', text: 'answer', source: 'typed', respondsTo: 'q' }),
       line('m3', 3, 'monday'),
     ]);
     const { rows: drawn } = await readFeedWindow(find, { root: ROOT, shown: 10, fromStart: true, activityTypes: [] });
@@ -166,18 +166,19 @@ describe('grouping and naming', () => {
     expect(nounFor('Sighting', 3)).toBe('sightings');
   });
 
-  it('flattens every reply once, however it arrived', () => {
+  it('quotes what each reply answers, whether its parent arrived included or as an id', () => {
     const flat = threadLines({
       rows: [
-        {
-          id: 'q',
-          createdAt: t(1),
-          comments: [{ id: 'a', createdAt: t(2), comments: [{ id: 'b', createdAt: t(3) }] }],
-        },
+        { id: 'b', createdAt: t(3), respondsTo: { id: 'a', author: 'did:ben', text: 'answer' } },
+        { id: 'q', createdAt: t(1), author: 'did:ann', text: 'question' },
+        { id: 'a', createdAt: t(2), respondsTo: 'q' },
+        // Read twice — a page and a subscription can both hand a row over — and drawn once.
+        { id: 'a', createdAt: t(2), respondsTo: 'q' },
       ],
     });
     expect(flat.map((r) => r.id)).toEqual(['q', 'a', 'b']);
-    expect(flat[2]).toMatchObject({ replyTo: { id: 'a' } });
+    expect(flat[1]).toMatchObject({ replyTo: { id: 'q', author: 'did:ann', text: 'question' } });
+    expect(flat[2]).toMatchObject({ replyTo: { id: 'a', author: 'did:ben', text: 'answer' } });
   });
 
   it('keeps the id of a line that holds it on its class, as a model instance does', () => {

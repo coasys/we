@@ -172,7 +172,7 @@ export function postContent(id: number) {
     title: `Post ${id} — ${POST_AUTHORS[id % POST_AUTHORS.length].split(' ')[0]}'s update`,
     body: POST_BODIES[id % POST_BODIES.length],
     likes: `${(id * 7) % 140}`,
-    comments: `${(id * 3) % 40}`,
+    responses: `${(id * 3) % 40}`,
   };
 }
 
@@ -227,7 +227,7 @@ export function realisticCard(id: number): SchemaNode {
             props: { variant: 'ghost', size: 'sm' },
             children: [{ type: 'we-icon', props: { name: 'chat-circle' } }],
           },
-          { type: 'we-text', props: { text: c.comments, fontSize: '200', color: 'neutral-500' } },
+          { type: 'we-text', props: { text: c.responses, fontSize: '200', color: 'neutral-500' } },
         ],
       },
     ],

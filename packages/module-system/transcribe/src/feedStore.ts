@@ -115,12 +115,10 @@ export function createFeed(deps: FeedDeps) {
     The one-row subscriptions that say "something new may be in the window" — see the module comment.
 
     The newest line anywhere in the space, not the newest line *contained by* the space or a call.
-    A reply is linked from the line it answers rather than contained by anything, so the contained
-    reads never saw one: a reply written from the Feed did not appear in it until something else
-    happened to prompt a read — which a live call's extraction usually did for a reply written in a
-    transcript, and nothing did for one written here. One row space-wide covers typed messages, every
-    call's lines and every reply, whoever wrote them; a line that is not in the window (a post's
-    paragraph) costs one debounced re-read.
+    One row space-wide covers typed messages, every call's lines and every reply, whoever wrote them,
+    on one subscription where a contained read per call would be one each; a line that is not in the
+    window (a post's paragraph) costs one debounced re-read. A reply is in the window like any other
+    line, since the host files a reply as a child of the feed it was said in.
   */
   let stops: (() => void)[] = [];
   const unsubscribe = () => {

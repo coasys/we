@@ -16,6 +16,49 @@ cost all matter, but they are consequences of this distinction rather than the t
 the same distinction decides where a _position_ lives, which is why `Placement` exists rather than
 `x`/`y` on a block.
 
+## Two links every record has: where it lives, and what it is about
+
+Before the tiers below, the two connections every record makes are fixed, and each has one link.
+
+| Question                | Link                                                                    | Rule                                                                                                                                          |
+| ----------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Where does it live?** | `we://child` — `CollectionBlock.children`, read back as `WeNode.partOf` | Always exactly one home: the room it is in. `mode` on the collection governs it — who owns its parts, and whether re-saving may rewrite them. |
+| **What is it about?**   | `we://response` — `WeNode.responses`, read back as `respondsTo`         | Optional, open to anyone whatever `mode` says, on every node: a reply, a comment, a call held about it, a channel spun off from it.           |
+
+They do not override each other. A reply to a line in a call is _about_ the line and _lives_ in the
+call; a comment on a post is about the post and lives in the post's channel. Threads, quotes and
+per-record counts read the first; room-wide operations — extraction, unread, export, a transcript —
+read the second.
+
+**A response lives in the same feed as the thing it responds to.** Walk up from the thread's subject
+to the nearest collection whose `mode` is `feed`; documents are skipped, because a document's parts
+belong to its author. So:
+
+| Responding to                            | About (its thread)   | Lives in                                                          |
+| ---------------------------------------- | -------------------- | ----------------------------------------------------------------- |
+| a line in a call                         | the line             | the call                                                          |
+| a block inside a post                    | the block            | the post's channel, or the space collection                       |
+| a post                                   | the post             | the post's channel                                                |
+| a task, or a message typed outside calls | that task or message | the space collection                                              |
+| a call itself                            | the call             | where the call lives — commenting on a call is not speaking in it |
+
+**A thread belongs to its subject**: the first record above a response that is not itself a
+response. Every response is linked from that subject through `we://thread` (`WeNode.thread`, read
+back as `inThread`) when it is written, so the whole discussion under a post, its total and what a
+delete takes with it are one read rather than a walk. A reply to a block is in the block's thread
+and a reply to the post in the post's, so the two discussions stay apart. The child axis has no such
+link on purpose: parts move between collections, and a stored root would have to be rewritten for a
+whole subtree on every move. Responses never change what they respond to.
+
+One relation holds every kind of response, so **surfaces filter by what a response is**: a thread
+list or a reply count says `kind: 'post'` (a reply is a post — `createPost` writes both), and a
+listing of a room's calls says `kind: 'call'`. The host does the filing — `completeResponse` in
+`app-shell/src/shared/responses.ts` runs for every write made with the response predicate — so no
+template or module writes the thread or the home itself.
+
+A space is its own dataset, so "a space made in response to a post" cannot be a link in either. That
+one is a stored reference, like `sourceRef`.
+
 ## The three tiers
 
 |                        | Authored by               | Cost to add                         | Query by it                     | Carries its own data | Visible as a kind |
@@ -145,7 +188,7 @@ staged as a suggestion, and context described as a query. They are not workaroun
 | ------------------------------------ | --------------------------------- | ----------------------------------------------------------------------------------------- |
 | `CollectionBlock.children`           | declared (untyped)                | Structural, written by the composer per block, queried constantly.                        |
 | `Space.location`                     | declared                          | A fact about the class, one per space, nothing to dispute.                                |
-| `WeNode.comments`                    | declared (untyped)                | Written by code on every reply; the _comment_ carries the provenance, not the link.       |
+| `WeNode.responses`                   | declared (untyped)                | Written by code on every response; the _response_ carries the provenance, not the link.   |
 | "This contradicts that"              | reified + kind                    | A claim, arguable, authored, and the vocabulary is the community's.                       |
 | "This card sits here on this canvas" | reified (`Placement`)             | A fact about the pair — the same note sits elsewhere on another canvas.                   |
 | A reaction                           | reified (`Signal` + `SignalType`) | Per agent, per node, with a vocabulary the community names. Already this shape.           |

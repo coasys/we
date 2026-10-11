@@ -44,7 +44,7 @@ export { createCallMesh, type CallMesh, type SignallingChannel } from './mesh';
 export { createMediaController, type MediaController, type MediaState } from './media';
 export {
   CALL_KIND,
-  CALL_PREDICATE,
+  RESPONSE_PREDICATE,
   CALL_PROTOCOL_VERSION,
   callRecordId,
   parseCallMessage,

@@ -2249,8 +2249,8 @@ describe('the workshop’s tree', () => {
   it('keeps a discussed connection when a card is dragged out of its tree, and says so first', () => {
     // arrangeOnTree refuses to delete a connection people have commented on or reacted to; the gesture is
     // told which counts mean that, so the preview refuses instead of showing a detach the store turns down.
-    expect(canvas).toContain("keep: ['commentsCount', 'signalsCount']");
-    expect(canvas).toContain('"counts":["signals","comments"]');
+    expect(canvas).toContain("keep: ['responsesCount', 'signalsCount']");
+    expect(canvas).toContain('"counts":["signals","responses"]');
   });
 
   it('gives every card one box in the tree, and its own on the canvas', () => {

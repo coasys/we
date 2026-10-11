@@ -3,7 +3,7 @@
  *
  * ## What was missing, and what was already there
  *
- * Almost all of this existed. `WeNode.comments` (`we://comment`) hangs a reply off *anything* — a
+ * Almost all of this existed. `WeNode.responses` (`we://response`) hangs a reply off *anything* — a
  * post, an image inside it, a task, a drawn connection, another reply — and `commentThread` has
  * drawn those nested for as long as it has existed. What was missing was the other half: **there was
  * no way to write one below the top.** Every surface offered a single "Reply" button against the
@@ -326,7 +326,7 @@ function replyBody(
                     {
                       type: '$if',
                       props: {
-                        condition: { $: `count(${as}.comments)` },
+                        condition: { $: `count(${as}.responses)` },
                         then: {
                           type: 'we-text',
                           props: {
@@ -521,7 +521,7 @@ function replyBody(
                           */
                           type: 'we-tooltip',
                           props: {
-                            content: { $: `count(${as}.comments) ? 'Hide this branch' : 'Fold this comment'` },
+                            content: { $: `count(${as}.responses) ? 'Hide this branch' : 'Fold this comment'` },
                           },
                           children: [
                             {
@@ -539,7 +539,7 @@ function replyBody(
                                 // comment: folding a branch takes its answers with it, folding a
                                 // leaf takes only its words.
                                 label: {
-                                  $: `count(${as}.comments) ? 'Fold this branch' : 'Fold this comment'`,
+                                  $: `count(${as}.responses) ? 'Fold this branch' : 'Fold this comment'`,
                                 },
                                 ...railHighlight(),
                                 onClick: foldToggle(as),
@@ -789,7 +789,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
           the top level cannot tell a full page from a complete one, and would offer more that
           sometimes revealed nothing.
         */
-        anchorTotal: `local.${ROOT} ? count(first(local.discussionFocus).comments) : count(${opts.record}.comments)`,
+        anchorTotal: `local.${ROOT} ? count(first(local.discussionFocus).responses) : count(${opts.record}.responses)`,
         ...(opts.perLevel !== undefined && { perLevel: opts.perLevel }),
         collapsible: true,
         // The reply's own box is `replyBody`'s now — it holds whether the pointer is on the comment,
@@ -913,12 +913,12 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
                         { $setLocal: COMPOSER_BUSY, value: true },
                         {
                           $action: 'spaceStore.createPost',
-                          // The tree first: `createPost(json, options)`. `we://comment` rather than
+                          // The tree first: `createPost(json, options)`. `we://response` rather than
                           // `we://child` — a reply answers the thing rather than becoming part
                           // of it, which is what lets a reply be a composition with children.
                           args: [
                             { $: 'arg' },
-                            { kind: 'reply', parentId: { $: anchor }, predicate: 'we://comment' } as SchemaProp,
+                            { kind: 'reply', parentId: { $: anchor }, predicate: 'we://response' } as SchemaProp,
                           ],
                           onSuccess: [
                             { $setLocal: COMPOSER_KEY, value: { $: `local.${COMPOSER_KEY} + 1` } },
@@ -1000,12 +1000,12 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
         saveLabel: 'Reply',
         saveAction: {
           $action: 'spaceStore.createPost',
-          // The tree first: `createPost(json, options)`. `we://comment` rather than `we://child`
+          // The tree first: `createPost(json, options)`. `we://response` rather than `we://child`
           // — a reply answers the thing rather than becoming part of it, which is what lets a reply
           // be a full composition with children of its own.
           args: [
             { $: 'arg' },
-            { kind: 'reply', parentId: { $: `local.${REPLY_TO}` }, predicate: 'we://comment' } as SchemaProp,
+            { kind: 'reply', parentId: { $: `local.${REPLY_TO}` }, predicate: 'we://response' } as SchemaProp,
           ],
         },
       }),

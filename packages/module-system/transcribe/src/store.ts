@@ -134,7 +134,7 @@ export const CHILDREN_PREDICATE = 'we://child';
 export const SPOKEN = 'spoken';
 export const TYPED = 'typed';
 /** What a reply hangs off — the reply mechanism every record in WE shares. */
-export const REPLY_PREDICATE = 'we://comment';
+export const REPLY_PREDICATE = 'we://response';
 export const CORRECTED = 'corrected';
 
 /**
@@ -3676,7 +3676,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     /**
      * Answer one line — in a transcript or the Feed — with a typed line of its own.
      *
-     * Linked from the line it answers through `comments`, the one reply mechanism WE has, rather
+     * Linked from the line it answers through `responses`, the one reply mechanism WE has, rather
      * than contained by the conversation: a reply is about a line, and the transcript and the Feed
      * draw it inline, after what it answers, quoting it. `inCall` writes into the call's space, for
      * a reply made from a transcript of a call running somewhere else.

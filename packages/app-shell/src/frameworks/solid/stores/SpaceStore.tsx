@@ -54,6 +54,7 @@ import {
   moduleSurface,
 } from '@shared/registries/moduleRegistry';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
+import { completeResponse } from '@shared/responses';
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
 import { readSpaceRoles, writeSpaceRole } from '@shared/spaceRoles';
@@ -382,7 +383,7 @@ export interface CreatePostOptions {
   parentId?: string;
   /**
    * How it attaches. Defaults to `we://child` — containment, which is what a channel message
-   * wants. Pass `we://comment` for a reply, which hangs off a node rather than sitting inside it.
+   * wants. Pass `we://response` for a reply, which hangs off a node rather than sitting inside it.
    */
   predicate?: string;
 }
@@ -1682,6 +1683,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     const defaults = collectionExtractionDefaults(space);
     const root = await CollectionBlock.create(dataset, {
       kind: SPACE_COLLECTION_KIND,
+      // A feed: every member adds to it, so no one member's editor may ever reconcile it, and a
+      // response to anything that lives in it lives in it too.
+      mode: 'feed',
       title: '',
       ...defaults,
       ...(starter?.input !== undefined && { autoExtract: starter.input }),
@@ -2111,7 +2115,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     // The anchor is what makes one action serve every composed artifact. A post has none — it sits
     // in the space. A message names its channel through `we://child`; a reply names whatever it
-    // answers through `we://comment`. Both arrive from a schema as ids, which is all a template
+    // answers through `we://response`. Both arrive from a schema as ids, which is all a template
     // has, and both are `$each`/route values rather than anything the store could derive.
     // With no anchor named, a post goes in the space collection — the space's top level — rather than
     // nowhere. Read at the call, not destructured as a default, so a space entered after this store
@@ -2124,6 +2128,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       kind,
       ...(parentId && { anchor: { id: parentId, predicate } }),
     });
+    // A reply goes into its thread and the feed it lives in — see `@shared/responses`.
+    if (root?.id && parentId && predicate === PREDICATES.RESPONSE) void completeResponse(p, root.id, parentId);
     return root?.id;
   }
 

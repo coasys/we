@@ -276,15 +276,15 @@ function hasChildren(block: RecordInstance): block is BlockWithChildren {
 }
 
 /**
- * The replies hanging off a record — `WeNode.comments`, as ids.
+ * The replies hanging off a record — `WeNode.responses`, as ids.
  *
- * Read structurally rather than through a class, because what is on the other end of `we://comment`
+ * Read structurally rather than through a class, because what is on the other end of `we://response`
  * is whatever somebody replied with, and the relation is declared on `WeNode` rather than on any
  * one model.
  */
-function commentsOf(block: RecordInstance): string[] {
-  const comments = (block as { comments?: unknown }).comments;
-  return Array.isArray(comments) ? comments.filter((uri): uri is string => typeof uri === 'string') : [];
+function responsesOf(block: RecordInstance): string[] {
+  const responses = (block as { responses?: unknown }).responses;
+  return Array.isArray(responses) ? responses.filter((uri): uri is string => typeof uri === 'string') : [];
 }
 
 /** Returns true if a value looks like a FileData object (data_base64 + file_type). */
@@ -544,7 +544,7 @@ async function writeMentions(root: RecordInstance, blocks: readonly ContentBlock
  *
  * A predicate rather than a relation name because the two anchors that matter mean different
  * things and live on different models: `we://child` puts a message *inside* a channel
- * (composition — what a container is made of), `we://comment` hangs a reply *off* any `WeNode`
+ * (composition — what a container is made of), `we://response` hangs a reply *off* any `WeNode`
  * (discourse — what was said about it). A relation-name API would have to resolve the name against
  * the anchor's class, which the block system does not have and should not need: it is persisting a
  * document, and where that document belongs is the caller's knowledge.
@@ -552,7 +552,7 @@ async function writeMentions(root: RecordInstance, blocks: readonly ContentBlock
 export interface BlockAnchor {
   /** Id of the existing node the new root links from. */
   id: string;
-  /** The predicate to link through — `'we://child'`, `'we://comment'`. */
+  /** The predicate to link through — `'we://child'`, `'we://response'`. */
   predicate: string;
 }
 
@@ -771,19 +771,24 @@ export async function childrenToBlocks(perspective: BlockDataset, collection: Re
  *
  * ## Why replies go too
  *
- * A reply is a composition hanging off `we://comment` rather than `we://child`, which is what
+ * A reply is a composition hanging off `we://response` rather than `we://child`, which is what
  * makes threads fractal — the two relations say different things, and keeping them apart is the
  * whole design (see `commentThread`). This walk followed only `children`, so deleting a post left
  * every reply to it in the perspective: reachable by nothing, rendered by nothing, and counted by
- * `count(post.comments)` on a post that no longer exists.
+ * `count(post.responses)` on a post that no longer exists.
  *
  * That was survivable while a thread was one level a person had to open a modal to write into. It
  * is not now that a reply can be replied to, because the orphan is a whole subtree.
  *
  * So a delete takes the conversation with it, which is also what a reader means by it: a reply
  * whose subject is gone cannot be read, let alone answered. Anything on the relation that is not a
- * block resolves to nothing and is skipped, and the cycle guard and depth limit cover `comments`
+ * block resolves to nothing and is skipped, and the cycle guard and depth limit cover `responses`
  * exactly as they cover `children` — both are multi-writer link sets.
+ *
+ * **Replies, not every response.** A call held about a post, or a channel spun off from one, is a
+ * response too — but it is a feed, with its own participants, transcript and extracted records, and
+ * it lives in a room of its own. Deleting the post it was about does not delete that conversation;
+ * it stays where it lives, about something that is gone.
  */
 export async function deleteBlocks(perspective: BlockDataset, rootUri: string): Promise<void> {
   await runEntityTransaction(perspective, async (tx) => {
@@ -798,7 +803,11 @@ export async function deleteBlocks(perspective: BlockDataset, rootUri: string): 
       if (hasChildren(resolved.model)) {
         for (const childUri of resolved.model.children) await deleteNode(childUri, depth + 1);
       }
-      for (const replyUri of commentsOf(resolved.model)) await deleteNode(replyUri, depth + 1);
+      for (const replyUri of responsesOf(resolved.model)) {
+        const response = await resolveBlockInstance(perspective, replyUri);
+        if ((response?.model as { mode?: unknown } | undefined)?.mode === 'feed') continue;
+        await deleteNode(replyUri, depth + 1);
+      }
       await resolved.model.delete(tx.batchId);
     }
     await deleteNode(rootUri, 0);

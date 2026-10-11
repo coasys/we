@@ -36,16 +36,16 @@ export interface Scenario {
 const discussionThread = (): Scenario => ({
   node: {
     type: '$each',
-    props: { items: [{ id: 'card-1', comments: ['r1'] }], as: 'row' },
+    props: { items: [{ id: 'card-1', responses: ['r1'] }], as: 'row' },
     $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
     children: [discussionSection({ record: 'row' })],
   },
   /*
-    `comments` is seeded on each row as well as being derivable from `parentId`, and that is a
+    `responses` is seeded on each row as well as being derivable from `parentId`, and that is a
     fidelity fix rather than belt and braces.
 
     On AD4M a relation's own ids arrive whether or not the query included it — a relation IS a link,
-    so reading `count(row.comments)` costs nothing and every thread does it. The in-memory engine
+    so reading `count(row.responses)` costs nothing and every thread does it. The in-memory engine
     resolves a declared relation on demand and leaves no ids on the row, so `count` read zero, the
     nested level never rendered, and the harness quietly showed a one-reply thread while asserting
     about it. Seeded here so a scenario matches what the app is handed.
@@ -53,7 +53,7 @@ const discussionThread = (): Scenario => ({
   tables: {
     SignalType: [],
     CollectionBlock: [
-      { id: 'card-1', parentId: null, author: 'did:me', createdAt: '2026-09-01T09:00:00Z', comments: ['r1'] },
+      { id: 'card-1', parentId: null, author: 'did:me', createdAt: '2026-09-01T09:00:00Z', responses: ['r1'] },
       /*
         The reply is the VIEWER'S OWN, which is what puts the edit and delete controls on the line —
         they are gated on `author == me.did`, and faded rather than unmounted, so they take their
@@ -67,7 +67,7 @@ const discussionThread = (): Scenario => ({
         createdAt: '2026-09-01T10:00:00Z',
         editorState: [{ _type: 'block', style: 'normal', text: 'A reply with something under it' }],
         textContent: 'A reply with something under it',
-        comments: ['r2'],
+        responses: ['r2'],
       },
       /*
         Childless, and the reason this scenario has a third row: folding is offered on every comment
@@ -91,14 +91,14 @@ const discussionThread = (): Scenario => ({
         */
         editorState: [{ _type: 'block', style: 'normal', text: 'A reply with nothing under it at all' }],
         textContent: 'A reply with nothing under it at all',
-        comments: [],
+        responses: [],
       },
     ],
   },
   relations: {
     CollectionBlock: {
-      comments: { type: 'hasMany', target: 'CollectionBlock', foreignKey: 'parentId' },
-      inReplyTo: { type: 'hasOne', target: 'CollectionBlock', foreignKey: 'parentId' },
+      responses: { type: 'hasMany', target: 'CollectionBlock', foreignKey: 'parentId' },
+      respondsTo: { type: 'hasOne', target: 'CollectionBlock', foreignKey: 'parentId' },
     },
   },
   stores: {
@@ -193,7 +193,7 @@ const countControls = (): Scenario => ({
           id: 'card-1',
           // Used, so `compact` draws it — see the reaction scenario for why it is seeded here.
           signals: [{ signalTypeId: 'st-like', value: 1, author: 'did:them' }],
-          $commentCount: 3,
+          $responseCount: 3,
           $myComments: 0,
         },
       ],
@@ -210,7 +210,7 @@ const countControls = (): Scenario => ({
             type: 'CountMark',
             props: {
               icon: 'chat-circle',
-              count: { $: 'row.$commentCount' },
+              count: { $: 'row.$responseCount' },
               mine: { $: 'row.$myComments > 0' },
               label: 'Show the conversation',
             },

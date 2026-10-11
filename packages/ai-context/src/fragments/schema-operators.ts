@@ -252,9 +252,9 @@ values may be expressions (in an expression) or tokens (in a $query):
   { OR: [ {…}, {…} ] }  { AND: [ … ] }  { NOT: {…} }   — combinators; sibling keys are implicitly ANDed
 
 "some" and "none" ask about LINKED RECORDS rather than a field's value, and are the only way to do
-so: "posts with no comments", "nodes carrying a relationship of this kind". Without them the caller
+so: "posts with no replies", "nodes carrying a relationship of this kind". Without them the caller
 fetched everything with its children and counted client-side. An empty clause means "any", so
-{ comments: { some: {} } } is "has at least one". They nest — the clause inside one may itself
+{ responses: { some: {} } } is "has at least one". They nest — the clause inside one may itself
 contain a quantifier — and they run natively in a $query, so nothing is fetched to count.
 
 A key is read as a quantifier because it carries "some" or "none", not because the model says it is
@@ -516,14 +516,14 @@ Reading a TREE rather than one record's children — the same scope, with one mo
   anchorId may be a LIST, which asks the same question of every anchor at once. One query for a
   whole level of a tree rather than one per parent, which also means one subscription instead of
   one per parent.
-  { "scope": { "anchor": "CollectionBlock", "via": "comments", "anchorId": { "$": "local.replies.map(r, r.id)" } } }
+  { "scope": { "anchor": "CollectionBlock", "via": "responses", "anchorId": { "$": "local.replies.map(r, r.id)" } } }
 
   "levels": [10, 5, 3] walks the relation depth by depth — ten children, five under each of those,
   three under each of THOSE — and the backend answers once. This is how to read a comment thread, a
   knowledge map's neighbourhood, or any nested containment: bounded at every depth and one request,
   where asking level by level from the template costs a round trip each and draws the tree a layer
   at a time.
-  { "scope": { "anchor": "CollectionBlock", "via": "comments", "anchorId": { "$": "card.id" }, "levels": [10, 5, 3] } }
+  { "scope": { "anchor": "CollectionBlock", "via": "responses", "anchorId": { "$": "card.id" }, "levels": [10, 5, 3] } }
 
   "transitive": true is the same walk with no bound — every descendant, however deep. Right for a
   count, and for a small tree you mean to draw whole; wrong as a default, since it fetches a subtree
@@ -538,17 +538,28 @@ Reading a TREE rather than one record's children — the same scope, with one mo
 
 A walked or transitive result is FLAT and does not describe its own shape — a row says it is under
 the anchor, never where. Include the inverse relation to rebuild the tree: every WeNode carries
-inReplyTo, the reverse of comments, so a row names its own parent.
-  "include": { "inReplyTo": true }
+respondsTo, the reverse of responses, so a row names its own parent.
+  "include": { "respondsTo": true }
 Then each level is a filter over the one result:
-  { "$": "local.threadRows.filter(r, r.inReplyTo.id == (card.id))" }
+  { "$": "local.threadRows.filter(r, r.respondsTo.id == (card.id))" }
 PARENTHESISE the anchor when it is anything but a plain path — \`==\` binds tighter than \`?:\`, so a
 ternary spliced in bare turns the predicate into its own result, which is truthy for every row.
 
-A count over a whole subtree is the same idea in a projection:
-  "include": { "$descendants": { "from": "comments", "count": true, "transitive": true } }
-It rides in the read already being made, so "42 replies" on a collapsed branch costs no extra query
-— where count(row.comments) is the direct children only and would say 3.
+Responses and threads. Everything made in response to a record — a reply, a call about it, a channel
+spun off from it — is in its "responses" (direct ones only), and each names what it answers through
+"respondsTo". A record ALSO carries "thread": every response under it at any depth, flattened, one
+link each — so the whole discussion under a post, and its total, are one read with no walk:
+  "include": { "$replies": { "from": "thread", "count": true, "where": { "kind": "post" } } }
+FILTER BY WHAT A RESPONSE IS. A call held about a post is in its responses and its thread too, so a
+reply count or a thread list says which responses it means — replies are CollectionBlocks of kind
+'post' (createPost writes both). A thread lives on its SUBJECT, the first record above that is not
+itself a response, so a reply's own "thread" is empty; to count under a reply, walk it:
+  "include": { "$descendants": { "from": "responses", "count": true, "transitive": true } }
+— where count(row.responses) is the direct responses only and would say 3.
+
+A response also LIVES somewhere: a reply said in a call is one of the call's children, and a comment
+on a post is a child of the post's channel. So listing a feed's children shows its replies inline, in
+the order they were said — filter on respondsTo: { none: {} } for a list of top-level items only.
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }

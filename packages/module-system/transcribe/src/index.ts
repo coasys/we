@@ -27,8 +27,8 @@
  * ## Where the transcript goes
  *
  * Into a `CollectionBlock` with `kind: 'call'` — one per call, holding the utterances as children and
- * the roster as `participants`, and attached to whatever node the call was anchored to via
- * `WeNode.calls`. Blocks used to be written loose into the space with `tag: 'transcript'`, which
+ * the roster as `participants`, and a response to whatever node the call was about
+ * (`WeNode.responses`). Blocks used to be written loose into the space with `tag: 'transcript'`, which
  * collided with the Lexical tag field and left transcripts showing up in the Cards route's Text list
  * next to authored prose.
  *

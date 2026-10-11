@@ -79,8 +79,6 @@ const TEXT_BLOCK_FLAG = { predicate: 'we://flag', value: 'we://text_block' } as 
 const TEXT_SOURCE_PREDICATE = 'we://text_source';
 /** What a person said or wrote, by that field. Anything else is not read as input. */
 const INPUT_SOURCES = ['spoken', 'typed', 'corrected'] as const;
-/** A reply hangs off what it answers through this — followed down from each line. */
-const REPLY_PREDICATE = 'we://comment';
 
 /**
  * The conversation a request is about: its provenance where it names one, else its parent.
@@ -1460,19 +1458,18 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
 /*
  * ## What it reads
  *
- * The conversation's own lines and the replies under them (`we://comment`, followed down — a reply
- * is linked from what it answers, not contained by the conversation), and of those only what a
+ * The conversation's own lines — the replies said in it included, since a reply in a conversation
+ * is filed as one of its lines as well as a response to what it answers — and of those only what a
  * person said or wrote: a line whose `we://text_source` is spoken, typed or corrected. A bot writing
  * here does not know that field, so its replies and digests are left out, which is what stops a
  * summary being extracted back into the records it summarises.
  *
- * The reply path is a property path, which the executor's subscription triggers cannot see — but a
- * watch re-runs on a timer rather than a subscription, so that limit does not reach it.
+ * It used to follow `we://response` down from each line, when replies hung off lines and nothing
+ * else. Now that they are children too, following both would read every reply twice.
  */
 export function transcriptScopeQuery(parentId: string, childPredicate: string): string {
   return `SELECT ?speaker ?text ?timestamp WHERE {
-  <${parentId}> <${childPredicate}> ?line .
-  ?line <${REPLY_PREDICATE}>* ?m .
+  <${parentId}> <${childPredicate}> ?m .
   ?m <${TEXT_BLOCK_FLAG.predicate}> <${TEXT_BLOCK_FLAG.value}> .
   ?m <${TEXT_SOURCE_PREDICATE}> ?source .
   FILTER(?source IN (${INPUT_SOURCES.map((source) => `"${source}"`).join(', ')}))

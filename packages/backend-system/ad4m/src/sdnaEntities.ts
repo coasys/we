@@ -153,7 +153,7 @@ export interface StoredShape {
    *
    * A set of paths cannot tell one property on a predicate from two, and two is a real shape: a
    * relation and its `reverseOf` inverse are one link read from both ends, so they share a
-   * predicate by construction. `WeNode` gained `inReplyTo` beside `comments` on `we://comment` and
+   * predicate by construction. `WeNode` gained `respondsTo` beside `responses` on `we://response` and
    * every existing space read as fresh — the set was unchanged — so the new relation never reached
    * them and the reverse include silently found nothing to hydrate.
    */

@@ -3215,7 +3215,7 @@ describe('the feed and replies', () => {
     expect(h.created[0]).toMatchObject({
       entity: 'TextBlock',
       fields: { text: 'I do', source: 'typed' },
-      options: { parent: { id: 'line-1', predicate: 'we://comment' } },
+      options: { parent: { id: 'line-1', predicate: 'we://response' } },
     });
     expect(h.store.replyingTo()).toBeNull();
   });

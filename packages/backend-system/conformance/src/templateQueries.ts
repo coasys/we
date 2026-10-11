@@ -38,6 +38,7 @@ export const TEMPLATE_QUERY_CASES = [
   'queries.discussion-root',
   'queries.comment-thread',
   'queries.comment-thread-muted',
+  'queries.reply-total-leaves-calls-out',
   'queries.boards-in-a-channel',
   'queries.columns-of-a-board',
   'queries.tasks-in-a-channel',
@@ -53,7 +54,8 @@ interface Row {
 
 interface Instance extends Row {
   addChildren(child: unknown): Promise<void>;
-  addComments(child: unknown): Promise<void>;
+  addResponses(child: unknown): Promise<void>;
+  addThread(child: unknown): Promise<void>;
   addSignals(child: unknown): Promise<void>;
 }
 
@@ -64,7 +66,8 @@ interface Model {
 // ── The space ──────────────────────────────────────────────────────────────
 //
 //   channel ─┬─ post 1 "hello world"   ─┬─ text 1, text 2, link 1      ♥♥
-//            │                          └─ comment 1 ── comment 2
+//            │                          ├─ comment 1 ── comment 2   (both in post 1's thread)
+//            │                          └─ call "About this"        (a response, in the thread too)
 //            ├─ post 2 "hello again"                                    ♥
 //            ├─ post 3 "hello there"  (also a reply to post 2)
 //            ├─ call "Standup"
@@ -83,6 +86,7 @@ type Key =
   | 'text2'
   | 'link1'
   | 'call'
+  | 'callAbout'
   | 'board'
   | 'column1'
   | 'column2'
@@ -117,7 +121,7 @@ async function seed(dataset: DatasetHandle): Promise<Record<Key, string>> {
   ] as const) {
     await channel.addChildren(await make(key, 'CollectionBlock', { kind: 'post', textContent: text }));
   }
-  await made.post2.addComments(made.post3);
+  await made.post2.addResponses(made.post3);
 
   for (const key of ['text1', 'text2'] as const) {
     await made.post1.addChildren(await make(key, 'TextBlock', { text: key }));
@@ -126,10 +130,14 @@ async function seed(dataset: DatasetHandle): Promise<Record<Key, string>> {
   // storage service a test executor with no network cannot reach. The query is the same either way.
   await made.post1.addChildren(await make('link1', 'LinkBlock', { url: 'https://example.org', title: 'link1' }));
 
-  await made.post1.addComments(await make('comment1', 'CollectionBlock', { kind: 'comment', textContent: 'a reply' }));
-  await made.comment1.addComments(
-    await make('comment2', 'CollectionBlock', { kind: 'comment', textContent: 'and another' }),
+  // Replies are posts — `createPost` writes both — and every response under post 1 is in its thread,
+  // a call about it included: the app links each one from the thread's subject as it is written.
+  await made.post1.addResponses(await make('comment1', 'CollectionBlock', { kind: 'post', textContent: 'a reply' }));
+  await made.comment1.addResponses(
+    await make('comment2', 'CollectionBlock', { kind: 'post', textContent: 'and another' }),
   );
+  await made.post1.addResponses(await make('callAbout', 'CollectionBlock', { kind: 'call', title: 'About this' }));
+  for (const key of ['comment1', 'comment2', 'callAbout'] as const) await made.post1.addThread(made[key]);
 
   for (const post of [made.post1, made.post1, made.post2]) {
     await post.addSignals(await model('Signal').create(dataset, { signalTypeId: 'like', value: 1 }));
@@ -211,7 +219,7 @@ const CASES: Record<TemplateQueryCase, QueryCase> = {
     from: 'templates/views/src/views/CardsView/PostsList.ts',
     query: (k) => ({
       entity: 'CollectionBlock',
-      where: { kind: 'post', inReplyTo: { none: {} }, textContent: { contains: 'hello' } },
+      where: { kind: 'post', respondsTo: { none: {} }, textContent: { contains: 'hello' } },
       scope: inChannel(k),
       limit: 20,
       order: { createdAt: 'desc' },
@@ -222,7 +230,7 @@ const CASES: Record<TemplateQueryCase, QueryCase> = {
     from: 'templates/views/src/views/CardsView/PostsList.ts',
     query: (k) => ({
       entity: 'CollectionBlock',
-      where: { kind: 'post', inReplyTo: { none: {} } },
+      where: { kind: 'post', respondsTo: { none: {} } },
       scope: inChannel(k),
       limit: 20,
       order: { $likeCount: 'desc' },
@@ -236,15 +244,16 @@ const CASES: Record<TemplateQueryCase, QueryCase> = {
     expect: { field: 'signals', values: { post1: 2 } },
   },
   'queries.comment-thread': {
+    // The call about post 1 is a response too, and is left out by its kind: a thread draws replies.
     from: 'templates/views/src/views/GraphView/EdgeDetail.ts',
     query: (k) => ({
       entity: 'CollectionBlock',
-      where: { author: { not: ['did:test:somebody-muted'] } },
-      scope: { anchor: 'CollectionBlock', via: 'comments', anchorId: k.post1, levels: [10, 5, 3] },
+      where: { kind: 'post', author: { not: ['did:test:somebody-muted'] } },
+      scope: { anchor: 'CollectionBlock', via: 'responses', anchorId: k.post1, levels: [10, 5, 3] },
       order: { createdAt: 'asc' },
-      include: { inReplyTo: true },
+      include: { respondsTo: true },
     }),
-    expect: { relation: 'inReplyTo', points: { comment1: 'post1', comment2: 'comment1' } },
+    expect: { relation: 'respondsTo', points: { comment1: 'post1', comment2: 'comment1' } },
   },
   'queries.comment-thread-muted': {
     // The same thread with its author muted: everything in it is theirs, so nothing is left.
@@ -252,10 +261,22 @@ const CASES: Record<TemplateQueryCase, QueryCase> = {
     query: (k, agent) => ({
       entity: 'CollectionBlock',
       where: { author: { not: [agent] } },
-      scope: { anchor: 'CollectionBlock', via: 'comments', anchorId: k.post1, levels: [10, 5, 3] },
+      scope: { anchor: 'CollectionBlock', via: 'responses', anchorId: k.post1, levels: [10, 5, 3] },
       order: { createdAt: 'asc' },
     }),
     expect: { order: [] },
+  },
+  'queries.reply-total-leaves-calls-out': {
+    // The number beside a post's reply icon: everything in its thread that is a reply, at any depth,
+    // and not the call somebody held about it. A count with a `where` over an untyped relation.
+    from: 'templates/views/src/views/CardsView/PostsList.ts',
+    query: (k) => ({
+      entity: 'CollectionBlock',
+      where: { id: k.post1 },
+      limit: 1,
+      include: { $replyCount: { from: 'thread', count: true, where: { kind: 'post' } } },
+    }),
+    expect: { field: '$replyCount', values: { post1: 2 } },
   },
   'queries.boards-in-a-channel': {
     from: 'templates/views/src/views/BoardsView/index.ts',

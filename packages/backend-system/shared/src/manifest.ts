@@ -166,7 +166,7 @@ export interface RelationSchema {
    *
    * Replies are deliberately *not* containment in this sense, though an agent reading context treats
    * both alike. A node's parts and the replies to it render, count, query and delete differently, and
-   * one predicate cannot hold both without losing that. They keep their own (`we://comment`).
+   * one predicate cannot hold both without losing that. They keep their own (`we://response`).
    */
   containment?: boolean;
 

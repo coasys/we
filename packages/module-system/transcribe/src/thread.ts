@@ -1,17 +1,16 @@
 /**
- * Lines and the replies under them, as one list in time order — how a transcript and the feed draw a
- * conversation with replies inline.
+ * A conversation's lines with replies inline — how a transcript and the feed draw a conversation.
  *
- * ## Why replies need flattening at all
+ * ## A reply is a line too
  *
- * A reply is linked from what it answers (`we://comment`), not contained by the conversation, and
- * that is deliberate: one reply mechanism across WE, kept apart from a node's own parts. So a page of
- * a call's lines arrives with each line's replies nested under it (`include: { comments: … }`), and a
- * chat reads them in the order they were said — a reply to the first line, sent after the third,
- * belongs after the third, quoting the first.
+ * A reply said in a conversation is two things at once: a response to the line it answers
+ * (`respondsTo`), and a line of that conversation — the host files it as a child of the feed the
+ * answered line lives in. So a page of a call's lines already holds its replies, in the order they
+ * were said: a reply to the first line, sent after the third, comes after the third. What a page
+ * does not carry is who each reply answers, which is what the quote above it draws — so the page is
+ * read with `include: { respondsTo: true }`, and this turns that into `replyTo`.
  *
- * Each reply carries `replyTo` — who and what it answers — for the quote drawn above it. Only its
- * direct parent: a reply to a reply quotes the reply.
+ * Only the direct parent is quoted: a reply to a reply quotes the reply.
  */
 import type { ModuleFunction } from '@we/module-shared';
 
@@ -48,25 +47,39 @@ const timeOf = (row: Row): number => {
   return 0;
 };
 
+/** Who and what a reply answers, from its included parent — or from the page, where the parent is a bare id on it. */
+function quoteOf(row: Row, byId: Map<string, Row>): ReplyQuote | null {
+  const parent = Array.isArray(row.respondsTo) ? row.respondsTo[0] : row.respondsTo;
+  const found: Row | undefined =
+    parent && typeof parent === 'object'
+      ? (parent as Row)
+      : typeof parent === 'string' && parent
+        ? (byId.get(parent) ?? { id: parent })
+        : undefined;
+  const id = found ? (typeof found.id === 'string' ? found.id : '') : '';
+  if (!id) return null;
+  return {
+    id,
+    author: typeof found!.author === 'string' ? found!.author : '',
+    text: typeof found!.text === 'string' ? found!.text : '',
+  };
+}
+
 /**
- * Every line and every reply under it, once each, in time order — newest first when asked, as a page
- * read from the live end arrives.
+ * Every line on a page, once each, in time order — newest first when asked, as a page read from the
+ * live end arrives — each reply carrying the quote of what it answers.
  */
 export function threadLines(options: { rows?: unknown; newestFirst?: unknown } | undefined): Row[] {
   const rows = Array.isArray(options?.rows) ? (options.rows as Row[]) : [];
+  const byId = new Map<string, Row>();
+  for (const row of rows) if (typeof row?.id === 'string' && row.id) byId.set(row.id, row);
   const seen = new Set<string>();
   const out: Row[] = [];
-  const walk = (row: Row, parent: Row | null) => {
+  for (const row of rows) {
     const id = typeof row?.id === 'string' ? row.id : '';
-    if (!id || seen.has(id)) return;
+    if (!id || seen.has(id)) continue;
     seen.add(id);
-    const replyTo: ReplyQuote | null = parent
-      ? {
-          id: String(parent.id),
-          author: typeof parent.author === 'string' ? parent.author : '',
-          text: typeof parent.text === 'string' ? parent.text : '',
-        }
-      : null;
+    const replyTo = quoteOf(row, byId);
     const content = lineContent(row);
     /*
       The identity fields named, not only spread.
@@ -86,27 +99,20 @@ export function threadLines(options: { rows?: unknown; newestFirst?: unknown } |
       ...(replyTo ? { replyTo } : {}),
       ...(content ? { content } : {}),
     });
-    for (const reply of Array.isArray(row.comments) ? row.comments : []) {
-      if (reply && typeof reply === 'object') walk(reply as Row, row);
-    }
-  };
-  for (const row of rows) walk(row, null);
+  }
   const newestFirst = options?.newestFirst === true;
   return out.sort((a, b) => (newestFirst ? timeOf(b) - timeOf(a) : timeOf(a) - timeOf(b)));
 }
 
-/** How deep a page's read follows replies — a reply, a reply to it, and one more. */
-export const REPLY_DEPTH = 3;
-
-/** The `include` that brings a line's replies with it, {@link REPLY_DEPTH} levels down. */
-export function repliesInclude(depth = REPLY_DEPTH): Record<string, unknown> {
-  return { comments: depth <= 1 ? true : { include: repliesInclude(depth - 1) } };
+/** The `include` that brings each line's parent with it, for the quote a reply draws. */
+export function repliesInclude(): Record<string, unknown> {
+  return { respondsTo: true };
 }
 
 export const threadLinesFunction: ModuleFunction = {
   name: 'threadLines',
   params: ['options'],
-  doc: 'A page of lines with the replies under each flattened in, every one once, in time order — newest first when `newestFirst` is true. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, and a line with marks carries `content` — the one block a BlockRenderer draws it from. Read the page with `include: { comments: { include: { comments: { include: { comments: true } } } } }` so the replies arrive with it. Options: rows (the page), newestFirst (boolean).',
+  doc: 'A page of a conversation’s lines, every one once, in time order — newest first when `newestFirst` is true. A reply said in a conversation is one of its lines, so the page already holds it; each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, and a line with marks carries `content` — the one block a BlockRenderer draws it from. Read the page with `include: { respondsTo: true }` so each reply arrives knowing what it answers. Options: rows (the page), newestFirst (boolean).',
   example: 'threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })',
   fn: threadLines as (...args: never[]) => unknown,
 };

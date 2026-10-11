@@ -108,13 +108,14 @@ describe('the cards view’s post feed', () => {
   it('excludes anything that is a reply to something else', () => {
     const where = feedQuery()?.where as Record<string, unknown> | undefined;
     expect(where, 'no CollectionBlock query filtered on kind: post in the cards view').toBeTruthy();
-    expect(where!.inReplyTo).toEqual({ none: {} });
+    expect(where!.respondsTo).toEqual({ none: {} });
   });
 
-  it('counts the whole conversation on each post, not the replies directly under it', () => {
-    // The number beside the icon is what expanding reveals in total; direct children would say
-    // "2" over a thread of forty. `transitive` is the difference, and it rides in the same read.
+  it('counts the whole conversation on each post, replies only', () => {
+    // The number beside the icon is what expanding reveals in total; direct responses would say
+    // "2" over a thread of forty. The post's `thread` holds every response at any depth, and the
+    // kind leaves out a call somebody held about the post, which is in its thread too.
     const include = feedQuery()?.include as Record<string, Record<string, unknown>> | undefined;
-    expect(include?.$commentCount).toMatchObject({ from: 'comments', count: true, transitive: true });
+    expect(include?.$replyCount).toMatchObject({ from: 'thread', count: true, where: { kind: 'post' } });
   });
 });

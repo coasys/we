@@ -262,12 +262,12 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
   }
 
   /*
-    The reverse relations, by the forward relation they read back: `comments` → `inReplyTo`.
+    The reverse relations, by the forward relation they read back: `responses` → `respondsTo`.
 
     A reverse relation (`reverseOf`) is the same link read from the other end, so nothing writes it
-    directly — and nothing here derived it either, so `inReplyTo` was empty on every record. Every
+    directly — and nothing here derived it either, so `respondsTo` was empty on every record. Every
     comment thread rebuilds its tree from it, and the feeds leave replies out with
-    `inReplyTo: { none: {} }`, so on this backend a reply showed up as a post of its own and a thread
+    `respondsTo: { none: {} }`, so on this backend a reply showed up as a post of its own and a thread
     had no shape. The forward write now stamps the parent on the child under the reverse relation's
     name, which is where the query engine reads a to-one link from.
   */

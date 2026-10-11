@@ -4,9 +4,9 @@
  * ## Why replies are not `children`
  *
  * A post's `children` slot is already occupied — by the post's own content, the blocks it is made
- * of. So a reply cannot go there, and it does not need to: `WeNode.comments` (`we://comment`) has
+ * of. So a reply cannot go there, and it does not need to: `WeNode.responses` (`we://response`) has
  * existed since the beginning with no consumers, and it is exactly the right edge. The two say
- * different things — `we://child` is what a thing is *made of*, `we://comment` is what others
+ * different things — `we://child` is what a thing is *made of*, `we://response` is what others
  * *said about it* — and keeping them apart is what lets a reply be a full composition (with its own
  * children, its own blocks) rather than a string.
  *
@@ -54,7 +54,7 @@ export interface CommentThreadOptions {
    * local for which reply the thread is rooted at — passes a control instead, and the limit stops
    * being a wall. See `discussionSection`, which is that caller.
    *
-   * Rendered inside the same `count(<reply>.comments)` guard as the default, so a thread that simply
+   * Rendered inside the same `count(<reply>.responses)` guard as the default, so a thread that simply
    * ends still ends: this replaces what is said, never whether anything is.
    */
   more?: (as: string) => SchemaNode;
@@ -97,10 +97,10 @@ export interface CommentThreadOptions {
    */
   perLevel?: number[];
   /**
-   * How many direct replies the anchor has, as an expression — `count(card.comments)`.
+   * How many direct replies the anchor has, as an expression — `count(card.responses)`.
    *
    * Only the top level needs telling. Every level below it is drawn under a reply that is itself on
-   * screen, and a row carries its own `comments` ids, so the count is already to hand there.
+   * screen, and a row carries its own `responses` ids, so the count is already to hand there.
    *
    * Without it the top level cannot tell "ten shown because ten is all there is" from "ten shown
    * because ten is the limit", and the choice is between offering more that may not exist and
@@ -117,7 +117,7 @@ export interface CommentThreadOptions {
  * Falls back to the direct-child count where the backend cannot walk a path, which reads low rather
  * than wrong — a thread that says "2 more" over nine is unhelpful; one that says nothing is worse.
  */
-export const descendantCount = (as: string): string => `${as}.$descendants ?? count(${as}.comments)`;
+export const descendantCount = (as: string): string => `${as}.$descendants ?? count(${as}.responses)`;
 
 /** Which replies are folded, by id — declared on the outermost thread. See `collapsible`. */
 const COLLAPSED = 'collapsedReplies';
@@ -193,7 +193,7 @@ const DEFAULT_PER_LEVEL = [10, 5, 3];
  *
  * **Parenthesised, always.** The caller's anchor is an arbitrary expression — `discussionSection`
  * passes a ternary, because the thread can be re-rooted on a reply — and `==` binds tighter than
- * `?:`. Spliced in bare, `r.inReplyTo.id == a ? a : b` parses as `(r.inReplyTo.id == a) ? a : b`,
+ * `?:`. Spliced in bare, `r.respondsTo.id == a ? a : b` parses as `(r.respondsTo.id == a) ? a : b`,
  * so the filter's predicate becomes the ternary's *result*: a non-empty id, which is truthy for
  * every row. Every descendant then passed the top level's filter and the whole thread drew flat.
  */
@@ -209,17 +209,17 @@ function anchorExpr(anchorId: AnchorId): string {
 const THREAD_INCLUDE = {
   signals: true,
   // The parent each row names — what puts a flat answer back into a tree.
-  inReplyTo: true,
+  respondsTo: true,
   // What a folded branch or a depth limit says is below it. Transitive, because "3 more in this
   // thread" above nine replies is a number nobody can act on, and it rides in the read already
   // being made: the projection is grouped per row and asked of every row at once.
-  $descendants: { from: 'comments', count: true, transitive: true },
+  $descendants: { from: 'responses', count: true, transitive: true },
 } as const;
 
 /**
  * What a level says when it is showing fewer replies than exist.
  *
- * Counted, not guessed. A row carries its own `comments` — the ids of its direct replies — so how
+ * Counted, not guessed. A row carries its own `responses` — the ids of its direct replies — so how
  * many a level *could* draw is already in hand, and comparing it against how many it *did* is
  * exact. The first version tested whether a level came back full, which cannot tell "ten shown
  * because ten is the limit" from "ten shown because ten is all there is", and so offered more that
@@ -235,7 +235,7 @@ const THREAD_INCLUDE = {
  */
 function truncationNote(opts: CommentThreadOptions, level: number, itemsExpr: string): SchemaNode | undefined {
   const parentAs = level === 2 ? (opts.as ?? 'reply') : `${opts.as ?? 'reply'}${level - 1}`;
-  const total = level === 1 ? opts.anchorTotal : `count(${parentAs}.comments)`;
+  const total = level === 1 ? opts.anchorTotal : `count(${parentAs}.responses)`;
   /*
     Nothing, written as nothing.
 
@@ -391,10 +391,15 @@ function threadQueries(opts: CommentThreadOptions, depth: number): Record<string
   return {
     [WHOLE_THREAD]: {
       entity: 'CollectionBlock',
-      where: { author: { not: { $: 'spaceStore.mutedDids' } } },
-      // The `comments` relation, drilled from the anchor. Untyped like `children`, so `scope` is
+      /*
+        Replies only. `responses` holds everything made in response to the anchor — a call held
+        about it is one too — and a thread draws what people wrote. A reply is a post, because
+        `createPost` writes both.
+      */
+      where: { kind: 'post', author: { not: { $: 'spaceStore.mutedDids' } } },
+      // The `responses` relation, drilled from the anchor. Untyped like `children`, so `scope` is
       // the only form available — `include` needs a known target class.
-      scope: { anchor: 'CollectionBlock', via: 'comments', anchorId: opts.anchorId, levels },
+      scope: { anchor: 'CollectionBlock', via: 'responses', anchorId: opts.anchorId, levels },
       order: { createdAt: 'asc' },
       include: { ...THREAD_INCLUDE },
     },
@@ -520,7 +525,7 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
     above otherwise. One read puts every level in one local, so this is a filter rather than a query.
   */
   const parent = level === 1 ? anchorExpr(opts.anchorId) : `${asFor(level - 1)}.id`;
-  const itemsExpr = `local.${WHOLE_THREAD}.filter(r, r.inReplyTo.id == ${parent})`;
+  const itemsExpr = `local.${WHOLE_THREAD}.filter(r, r.respondsTo.id == ${parent})`;
 
   /** True while this reply is folded. One expression, read by the rail, the fold and the caller. */
   const collapsed = `${as}.id in local.${COLLAPSED}`;
@@ -535,7 +540,7 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
       : {
           type: '$if',
           props: {
-            condition: { $: `count(${as}.comments)` },
+            condition: { $: `count(${as}.responses)` },
             then: opts.more
               ? opts.more(as)
               : {
@@ -581,7 +586,7 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
           {
             type: '$if',
             props: {
-              condition: { $: `count(${as}.comments)` },
+              condition: { $: `count(${as}.responses)` },
               // The rail and what it gathers fold together: a line with nothing beside it is a mark
               // on empty space, and the caret in the byline is what brings both back.
               then: fold(opts, collapsed, {
@@ -674,7 +679,7 @@ export function replyCount(anchor: string): SchemaNode {
     // "0 replies" under every post in a quiet feed is a column of zeroes asserting nothing, and it
     // is the row's whole height. A count is worth showing once there is something to count.
     props: {
-      condition: { $: `count(${anchor}.comments)` },
+      condition: { $: `count(${anchor}.responses)` },
       then: {
         type: 'Row',
         props: { gap: '100', ay: 'center' },

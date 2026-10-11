@@ -190,7 +190,7 @@ export function RealisticCards(): JSX.Element {
               <we-button variant="ghost" size="sm">
                 <we-icon name="chat-circle" />
               </we-button>
-              <we-text text={c.comments} fontSize="200" color="neutral-500" />
+              <we-text text={c.responses} fontSize="200" color="neutral-500" />
             </Row>
           </Column>
         );
@@ -237,7 +237,7 @@ export function RealisticCardsPropBound(): JSX.Element {
                 <we-icon name="chat-circle" />
               </we-button>
               {/* @ts-expect-error `prop:` is not emitted for regular DS props. */}
-              <we-text prop:text={c.comments} prop:fontSize="200" prop:color="neutral-500" />
+              <we-text prop:text={c.responses} prop:fontSize="200" prop:color="neutral-500" />
             </Row>
           </Column>
         );

@@ -105,7 +105,7 @@ export const Space: CoreEntityDef = {
        * the record itself may be).
        *
        * **A reading, not a shape.** Replies are always stored as a tree — a reply hangs off whatever
-       * it answers through `we://comment`, which is true of a post, a block, a drawn connection and
+       * it answers through `we://response`, which is true of a post, a block, a drawn connection and
        * another reply alike. This says only what may be *added*, so a community that switches to
        * flat keeps showing the nesting it already has rather than silently redrawing a hierarchy as
        * a list, and switching back loses nothing. Nothing migrates, because nothing about the data
@@ -114,7 +114,7 @@ export const Space: CoreEntityDef = {
        * A field here rather than a `ModuleSetting`, and the distinction is the one `moduleSettings`
        * draws below: that field exists so a *module* stops adding columns to this entity on its own
        * behalf, and setting groups are built from what registered modules declare. Threads are not a
-       * module — `comments` is on `WeNode`, so every record in WE has them whatever is installed —
+       * module — `responses` is on `WeNode`, so every record in WE has them whatever is installed —
        * so there is no group to hang this on and nothing to uninstall it with. It sits beside
        * `autoInterpret` for the same reason: a core capability whose scope is the community's to
        * decide.

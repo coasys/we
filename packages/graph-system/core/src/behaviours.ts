@@ -581,7 +581,7 @@ export interface ArrangeNodesOptions {
    * Fields of a connection that keep a card in its tree. A drag into the unconnected zone is refused for a card
    * whose connection to its parent holds a value in any of them — and shown refused, rather than shown
    * happening and then turned down. Which connections are worth keeping is the host's to say: WE passes
-   * `['commentsCount', 'signalsCount']`, because it will not delete a connection people have discussed.
+   * `['responsesCount', 'signalsCount']`, because it will not delete a connection people have discussed.
    */
   keep?: string[];
   /** What the preview says when it refuses for that reason. */
