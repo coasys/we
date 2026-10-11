@@ -140,6 +140,48 @@ export class CollectionBlock extends WeNode {
   sourceName: string = '';
 
   /**
+   * Whether this collection is extracted as it grows — a call as it happens, a channel as
+   * messages arrive — rather than only when somebody presses Extract.
+   *
+   * Copied from the space's default (`Space.autoInterpret`) when the collection is made, and the
+   * collection's own from then on. A copy rather than a live fallback, so that a community
+   * changing its default changes the *next* conversation and never one already under way: the
+   * only way this value changes is somebody changing it here.
+   *
+   * Who may change it is the collection's business. A call's participants decide for their call;
+   * the space's own collection — the messages typed outside any call — is the community's, so
+   * only somebody who administers the space can switch it.
+   *
+   * **No declared default, deliberately.** A declared default is written on every create, so a
+   * collection made by something that never heard of extraction would carry an explicit `false`
+   * and the fallback below could never apply. Unset means "made without a copy", and reads as
+   * the space's default.
+   *
+   * On every collection rather than on a subclass for collections that are extracted, because
+   * any collection can be extracted, and one that never is simply never has it written.
+   */
+  @Property({ through: 'we://auto_extract' })
+  autoExtract?: boolean;
+
+  /**
+   * The models this collection looks for, as a JSON array of entity names — copied from the
+   * space's default (`Space.extractionTargets`) when the collection is made, for `autoExtract`'s
+   * reason.
+   *
+   * **`'[]'` means none, and that is different from unset.** Unset is a collection made without
+   * a copy, and reads as the space's default; `'[]'` is a conversation whose participants turned
+   * everything off, and extracts nothing. A string rather than one link per model for exactly
+   * that: zero links could not tell the two apart.
+   *
+   * Always intersected with the candidates when read, so a model since deleted narrows the list
+   * rather than failing the pass. Rewritten whole, so two people toggling in the same instant
+   * lose one edit — the trade `Space.enabledModules` makes, and the right one for a list somebody
+   * presses occasionally.
+   */
+  @Property({ through: 'we://extraction_targets' })
+  extractionTargets: string = '';
+
+  /**
    * What is in this collection, in the order somebody put it there.
    *
    * `ordered` because the sequence is authored: a person dragged the image above the paragraph,

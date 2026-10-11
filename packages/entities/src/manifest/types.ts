@@ -66,12 +66,6 @@ export interface CalloutBlockRecord extends WeNodeRecord {
   version: number;
 }
 
-export interface CallExtractionRecord extends WeNodeRecord {
-  callId: string;
-  entities: string;
-  auto: string;
-}
-
 export interface ChatMessageRecord extends WeNodeRecord {
   role: string;
   content: string;
@@ -104,6 +98,8 @@ export interface CollectionBlockRecord extends WeNodeRecord {
   textContent: string;
   sourceRef: string;
   sourceName: string;
+  autoExtract?: boolean;
+  extractionTargets: string;
   children: string[];
   arranges: string[];
   gathers?: string;
@@ -308,7 +304,6 @@ export interface SpaceRecord extends WeNodeRecord {
   enabledViews: string;
   extractionTargets: string;
   autoInterpret: boolean;
-  extractLooseMessages: boolean;
   threadMode: string;
   moduleSettings: string;
   location?: LocationBlockRecord;

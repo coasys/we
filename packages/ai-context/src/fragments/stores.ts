@@ -382,7 +382,6 @@ export const storeEntries: StoreEntry[] = [
       taskStatesLoaded: { type: 'boolean' },
       root: { type: 'string' },
       roles: { type: 'object' },
-      extractLooseMessages: { type: 'boolean' },
       taskFlowEnabled: { type: 'boolean' },
       involvementTypes: {
         type: 'array',
@@ -1078,10 +1077,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         root: "string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one",
         roles:
           "Record<name, id> — the records this space names by role, e.g. spaceStore.roles.canvas is the space's canvas. Written by the space's starter at creation. A role can be absent — a space can switch template and a template must never assume what another set up — so guard every read",
-        extractLooseMessages:
-          'boolean — whether the messages typed straight into this space, outside any call, are extracted at all. Whether, not when: autoInterpret still decides whether extraction runs by itself. Readable by every member; writing it is space-settings',
         autoInterpret:
-          'boolean — whether this space has calls interpreted (extracted into records) as they happen. A community decision, off by default. Readable by every member; writing it is space-settings',
+          'boolean — whether a NEW collection here (a call, a channel) starts out extracted into records as it grows. A community default, copied onto each collection when it is made — a conversation already under way keeps its own answer, read with autoExtractFor. Readable by every member; writing it is space-settings',
         spaceModuleSettings:
           "SettingRow[] — what each capability that declares settings is set to FOR THIS COMMUNITY, as rows a screen renders directly: { group, groupLabel, key, label, description, type, options, value, source, set, locked, lockedBy }. `value` is already resolved across every level that had an opinion; `source` names the level that decided it ('default' when nobody did); `set` says whether THIS level holds an opinion, so a reset has something to undo; `locked` says a level that BINDS this one has forced it and the control must be disabled rather than springing back — a member's private refusal does not bind the community, so it never locks this list. Built from what modules declare, so a module that adds a setting gets a control with nothing to register",
         myModuleSettings:
@@ -1089,7 +1086,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         agentModuleSettings:
           'SettingRow[] — the same rows, for what THIS AGENT has decided everywhere. Private. Render it in global settings, where the question is what you want in every space',
         extractionTargets:
-          "string[] — the models a call in this space starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a call begins with, and the call's own participants add or remove from there (modules.transcribe.extractionTargets). Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings",
+          'string[] — the models a NEW collection here starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a new conversation begins with, and each collection then holds its own list, which its participants change (modules.transcribe.extractionFor[id].targets). A default, copied when a collection is made. Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings',
         personalSpaces: 'array of Space objects (local/personal spaces; all Space fields)',
         sharedSpaces: 'array of Space objects (shared/neighbourhood spaces; all Space fields)',
         spacePath:
@@ -1166,15 +1163,15 @@ export function generateStoresText(entries: StoreEntry[]): string {
         markRead:
           '(nodeId: string, spaceUuid?): marks a node read as of now, so it leaves unreadNodeIds. Silent on failure — a lost marker is a stale dot, not an error',
         setAutoInterpret:
-          '(enabled: boolean, spaceUuid?): turns automatic call interpretation on or off for a space. Omit spaceUuid for the space on screen',
-        setExtractLooseMessages:
-          '(enabled: boolean, spaceUuid?): whether the messages typed straight into the space, outside any call, are extracted at all. Omit spaceUuid for the space on screen',
+          '(enabled: boolean, spaceUuid?): sets whether a NEW collection in a space starts out extracted as it grows. A default: conversations already under way keep their own answer. Omit spaceUuid for the space on screen',
         setThreadMode:
           "(mode: 'fractal' | 'flat', spaceUuid?): sets how deep conversations go here — whether a reply may itself be replied to. A decision about what may be ADDED, never about what is stored: replies are a tree either way, so switching to flat leaves existing threads drawn as they are and switching back restores the button that grows them. Read it back as spaceStore.currentSpace.threadMode; anything but 'flat' means fractal, so a space that predates the setting reads as fractal. Omit spaceUuid for the space on screen",
-        autoInterpretForCall:
-          "(collectionId): whether ONE CALL is extracted as it happens — its participants' answer if they gave one, else the space's. A function rather than a value because the answer is per call, like canAdministerSpace",
-        setAutoInterpretForCall:
-          "(collectionId, on) => turns automatic extraction on or off for ONE CALL, for everyone in it. A participant's decision, unlike setAutoInterpret, which administers the space — and it leaves the space's default alone. Does not stop a pass already running: those tokens are spent",
+        autoExtractFor:
+          "(collectionId): whether ONE COLLECTION — a call, a channel, the space collection (spaceStore.root) — is extracted as it grows: its own answer, copied from the space's default when it was made. A function rather than a value because the answer is per collection, like canAdministerSpace. False until the collection has been read",
+        setAutoExtractFor:
+          "(collectionId, on): turns automatic extraction on or off for ONE COLLECTION, for everyone in it. A call's participants decide for their call; the space collection is the community's, so only somebody who administers the space can change it — check canSetExtractionFor first. Leaves the space's default alone. Does not stop a pass already running: those tokens are spent",
+        canSetExtractionFor:
+          '(collectionId): whether this agent may change what one collection extracts — anyone for a call or channel, only an administrator for the space collection. Gate the switch on it rather than letting the store refuse the press',
         setSpaceModuleSetting:
           "(group: string, key: string, value?, spaceUuid?): sets one of a capability's settings for everyone in a space — `group` is the module id and `key` the setting's key, both off the row. **Omit `value` to clear it**, which returns the level to having no opinion: a stored value that happens to equal the default goes on overruling everything less specific while its control reads as untouched. Omit spaceUuid for the space on screen",
         setMyModuleSetting:
@@ -1182,7 +1179,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setAgentModuleSetting:
           '(group: string, key: string, value?): the same, for this agent in every space. Private, and global, so there is no space to name. Omitting `value` clears it',
         setExtractionTarget:
-          "(entity: string, on: boolean, spaceUuid?): adds or removes one model from what this space's calls start out extracting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. The community's decision; a call's participants override it per call",
+          '(entity: string, on: boolean, spaceUuid?): adds or removes one model from what a NEW collection here starts out extracting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. A default: each collection holds its own list afterwards',
         setViewEnabled:
           '(viewId: string, enabled: boolean, spaceUuid?): adds or removes a section from a space. The community’s decision — every member sees it. Omit spaceUuid for the space on screen',
         reorderViews:
@@ -1413,7 +1410,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         aiAvailable: 'boolean — AI model generation is available (the agent has a Claude API key configured)',
         generating: 'boolean — an AI generation is in flight',
         extractionCandidates:
-          "string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a call actually looks for is two layers down (spaceStore.extractionTargets, then the call's own participants). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off",
+          "string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a collection actually looks for is two layers down (spaceStore.extractionTargets, the default a new collection copies, then the collection's own list). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off",
         extractionNeedsIdentity:
           'boolean — the open draft would be extracted into and has no field to recognise what it already wrote, so every pass duplicates everything. A warning to put beside the switch, not a refusal: the wizard saves either way',
         hintEditorDirty:

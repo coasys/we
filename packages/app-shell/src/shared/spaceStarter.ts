@@ -78,7 +78,11 @@ export interface SpaceStarter {
   records?: SpaceStarterRecord[];
   /** Role name → `$<id>` of the record playing it. One `SpaceRole` record each. */
   roles?: Record<string, string>;
-  /** Extract the space collection's loose messages — kept as the `extractLooseMessages` setting. */
+  /**
+   * Whether the space collection — the messages typed outside any call — is extracted as it grows.
+   * Written onto that collection when it is made (`CollectionBlock.autoExtract`); absent, it starts
+   * with the space's default like any other new collection.
+   */
   input?: boolean;
 }
 
@@ -144,7 +148,6 @@ export function starterSettings(starter: SpaceStarter | undefined): Record<strin
     // `enabledModules`, `enabledViews` and `extractionTargets` hold their list as one JSON string.
     fields[key] = Array.isArray(value) ? JSON.stringify(value) : value;
   }
-  if (starter.input !== undefined) fields.extractLooseMessages = starter.input;
   return fields;
 }
 

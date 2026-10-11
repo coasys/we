@@ -1,12 +1,13 @@
 import { boardOptimism } from '@shared/boardOptimism';
 import { createBoardActions, type CreateBoardOptions } from '@shared/boards';
 import {
+  collectionExtractionDefaults,
   LEGACY_EXTRACTION_TARGETS,
   parseEntityList,
-  resolveCallAutoInterpret,
-  resolveCallExtractionTargets,
+  resolveCollectionAutoExtract,
+  resolveCollectionExtractionTargets,
   resolveSpaceExtractionTargets,
-} from '@shared/callExtraction';
+} from '@shared/collectionExtraction';
 import {
   CONTAINER_ACTIVITY_QUERY,
   type ContainerActivity,
@@ -109,7 +110,6 @@ import { toastService } from '@we/components/solid';
 import { saveFile, type SaveOutcome } from '@we/design-utils';
 import {
   AGENT_DEFAULT,
-  CallExtraction,
   CollectionBlock,
   compressImageToFileData,
   type DatasetProxy,
@@ -239,9 +239,9 @@ export interface SpaceListEntry {
 }
 
 /*
-  The extraction-settings resolution — `LEGACY_EXTRACTION_TARGETS`, `parseEntityList` and the two
-  `*ForCall` resolvers below — lives in `@shared/callExtraction` so it can be tested without
-  mounting this provider. See that module for why the per-call level is the part worth guarding.
+  The extraction-settings resolution — `LEGACY_EXTRACTION_TARGETS`, `parseEntityList` and the
+  per-collection resolvers below — lives in `@shared/collectionExtraction` so it can be tested
+  without mounting this provider. See that module for why a collection holds a copy.
 */
 
 /**
@@ -821,14 +821,12 @@ export interface SpaceStore {
   setMyModuleSetting: (group: string, key: string, value?: SettingValue, spaceUuid?: string) => Promise<void>;
   /** The same, for this agent everywhere. */
   setAgentModuleSetting: (group: string, key: string, value?: SettingValue) => Promise<void>;
-  /** Whether this space has calls interpreted as they happen. A community decision; defaults off. */
-  autoInterpret: Accessor<boolean>;
   /**
-   * Whether the messages typed straight into this space, outside any call, are extracted too. Whether,
-   * not when — `autoInterpret` still decides that. See `Space.extractLooseMessages`.
+   * Whether a new collection here — a call, a channel — starts out extracted as it grows. A
+   * community default, copied onto each collection when it is made; see `autoExtractFor` for the
+   * answer that counts.
    */
-  extractLooseMessages: Accessor<boolean>;
-  setExtractLooseMessages: (enabled: boolean, spaceUuid?: string) => Promise<void>;
+  autoInterpret: Accessor<boolean>;
   /**
    * The id of this space's collection — the one everything top-level hangs off (`Space.root`). Empty
    * outside a space, and in a space made before spaces had one.
@@ -841,23 +839,26 @@ export interface SpaceStore {
    */
   roles: Accessor<Record<string, string>>;
   /**
-   * Whether one call is extracted as it happens: its participants' answer, else the space's.
-   *
-   * The counterpart of `extractionTargetsForCall`, and the same three states behind two — a call
-   * with no record of its own has not decided, and follows the space.
+   * Whether one collection — a call, a channel, the space's own — is extracted as it grows: its own
+   * answer, copied from the space's default when it was made. False until it has been read.
    */
-  autoInterpretForCall: (collectionId: string) => boolean;
-  /** Turn it on or off for one call, for everyone in it. A participant's decision, not an admin's. */
-  setAutoInterpretForCall: (collectionId: string, on: boolean) => Promise<void>;
+  autoExtractFor: (collectionId: string) => boolean;
+  /**
+   * Turn it on or off for one collection, for everyone in it. A call's participants decide for their
+   * call; the space collection is the community's, so only somebody who administers the space can.
+   */
+  setAutoExtractFor: (collectionId: string, on: boolean) => Promise<void>;
+  /** Whether this agent may change what one collection extracts — see `setAutoExtractFor`. */
+  canSetExtractionFor: (collectionId: string) => boolean;
   setAutoInterpret: (enabled: boolean, spaceUuid?: string) => Promise<void>;
   setThreadMode: (mode: string, spaceUuid?: string) => Promise<void>;
   /**
-   * Which models this community's calls start out extracting.
+   * Which models a new collection here starts out extracting.
    *
    * The middle of three layers: the codebase says what is a *candidate*
-   * (`shapeStore.extractionCandidates`), this says which of them a call here begins with, and a
-   * call's participants may add or remove for themselves. Always intersected with the candidates,
-   * so a model since deleted cannot reach a pass and fail it.
+   * (`shapeStore.extractionCandidates`), this says which of them a new conversation begins with, and
+   * each collection then holds its own list, which its participants change. Always intersected with
+   * the candidates, so a model since deleted cannot reach a pass and fail it.
    *
    * A community decision, readable by every member; writing it is space-settings. Unset falls back
    * to the two classes that were hardcoded before the setting existed, so nothing regresses.
@@ -1674,7 +1675,17 @@ export function SpaceStoreProvider(props: ParentProps) {
    * been written, and the person's space exists.
    */
   async function writeSpaceStructure(dataset: DatasetProxy, space: Space, starter?: SpaceStarter): Promise<void> {
-    const root = await CollectionBlock.create(dataset, { kind: SPACE_COLLECTION_KIND, title: '' });
+    /*
+      Made with the space's extraction defaults like any new collection, unless the starter says
+      otherwise about the messages typed outside calls (`input`).
+    */
+    const defaults = collectionExtractionDefaults(space);
+    const root = await CollectionBlock.create(dataset, {
+      kind: SPACE_COLLECTION_KIND,
+      title: '',
+      ...defaults,
+      ...(starter?.input !== undefined && { autoExtract: starter.input }),
+    });
     await space.setRoot({ id: root.id } as CollectionBlock);
 
     const target = {
@@ -2930,9 +2941,9 @@ export function SpaceStoreProvider(props: ParentProps) {
             callTitle: row?.title,
             spaceName: currentSpace()?.name,
             exportedAt,
-            callTargets: extractionTargetsForCall(callId),
+            callTargets: extractionTargetsFor(callId),
             spaceTargets: extractionTargets(),
-            autoInterpret: autoInterpretForCall(callId),
+            autoInterpret: autoExtractFor(callId),
             transcript: turns,
             passes,
             records,
@@ -3919,19 +3930,20 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /*
-    Does this space want its calls interpreted as they happen.
+    What a new collection here starts with — whether it is extracted as it grows.
 
     Read off the space rather than stored here, so it answers for whichever space is on screen, and
-    handed down to DatasetStore — which owns the watch registration and sits below this store, so it
-    cannot reach a `Space` itself. Absent space reads false: a decision nobody has made is not a
-    decision to spend somebody's LLM budget.
+    handed down to DatasetStore for a watch whose collection has not been read yet. Absent space
+    reads false: a decision nobody has made is not a decision to spend somebody's LLM budget.
+
+    A default and nothing more. Each collection holds its own answer, copied from this when it was
+    made (`CollectionBlock.autoExtract`); see `@shared/collectionExtraction` for why a copy.
   */
   const autoInterpret = createMemo<boolean>(() => currentSpace()?.autoInterpret === true);
-  const extractLooseMessages = createMemo<boolean>(() => currentSpace()?.extractLooseMessages === true);
   onCleanup(datasetStore.provideAutoInterpretGate(() => autoInterpret()));
 
   /*
-    Which candidates this space's calls start with.
+    Which candidates a new collection here starts with.
 
     Intersected with the candidates rather than trusted as stored, and that is load bearing: a name
     the perspective has no shape for fails `assertShapesInstalled` and takes the whole pass down, so
@@ -3945,16 +3957,172 @@ export function SpaceStoreProvider(props: ParentProps) {
     resolveSpaceExtractionTargets(shapeStore.extractionCandidates(), currentSpace()?.extractionTargets),
   );
 
+  /**
+   * Each asked-about collection's own extraction settings, as stored on it, by id.
+   *
+   * Read on demand rather than for every collection in the space: a space holds a call for every
+   * meeting it ever had, and only the ones on screen are asked about — the call somebody is in, the
+   * one a panel names, and the space's own collection. Followed while asked, so a participant
+   * switching a call off is seen by everybody in it.
+   *
+   * `loaded` is separate from the settings, because an answer that has not arrived must not be
+   * mistaken for "made without a copy" — which defers to the space, and would register a standing
+   * watch for a call its participants had switched off for the moment it took to read.
+   */
+  const [collectionSettings, setCollectionSettings] = createSignal<
+    Record<string, { autoExtract?: boolean; extractionTargets?: string }>
+  >({});
+  const [loadedCollections, setLoadedCollections] = createSignal<ReadonlySet<string>>(new Set());
+  const [askedCollections, setAskedCollections] = createSignal<string[]>([]);
+
   /*
-    The space's own standing watch: the loose messages typed straight into it, outside any call.
+    Asking is a read, and reads happen inside computations. Writing the asked list there would be a
+    signal written while it is being read, so the request is posted for after the read instead.
+  */
+  function askCollection(collectionId: string): void {
+    if (!collectionId || untrack(askedCollections).includes(collectionId)) return;
+    queueMicrotask(() => {
+      if (!askedCollections().includes(collectionId)) setAskedCollections((ids) => [...ids, collectionId]);
+    });
+  }
+
+  createEffect(() => {
+    const handle = datasetStore.currentDataset()?.handle;
+    const weSpace = datasetStore.isWeSpace();
+    // A new space's collections are a different set: what was asked about the last one says nothing here.
+    setCollectionSettings({});
+    setLoadedCollections(new Set<string>());
+    setAskedCollections([]);
+    if (!handle || !weSpace) return;
+    const root = spaceRoot();
+    if (root) askCollection(root);
+  });
+
+  createEffect(() => {
+    const handle = datasetStore.currentDataset()?.handle;
+    const ids = askedCollections();
+    if (!handle || !datasetStore.isWeSpace() || !ids.length) return;
+    let stopped = false;
+    let watch: { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+    onCleanup(() => {
+      stopped = true;
+      watch?.dispose();
+    });
+    const read = async () => {
+      try {
+        const rows = await CollectionBlock.findAll(handle, { where: { id: ids } });
+        if (stopped) return;
+        setCollectionSettings((current) => {
+          const next = { ...current };
+          for (const row of rows) {
+            next[row.id] = { autoExtract: row.autoExtract, extractionTargets: row.extractionTargets };
+          }
+          return next;
+        });
+      } catch (error) {
+        console.warn('SpaceStore: could not read what these collections extract', error);
+      } finally {
+        if (!stopped) setLoadedCollections(new Set(ids));
+      }
+    };
+    void read().then(() => {
+      if (stopped) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      watch = (CollectionBlock as any).query(handle, { where: { id: ids } }) as typeof watch;
+      watch
+        ?.subscribe(() => void (!stopped && read()))
+        .catch((error: unknown) => {
+          console.warn('SpaceStore: could not follow what these collections extract', error);
+        });
+    });
+  });
+
+  /**
+   * Whether one collection is extracted as it grows: its own answer, or — for a collection made
+   * without one — the space's default. False until its settings have been read.
+   */
+  const autoExtractFor = (collectionId: string): boolean => {
+    if (!collectionId) return false;
+    askCollection(collectionId);
+    if (!loadedCollections().has(collectionId)) return false;
+    return resolveCollectionAutoExtract(autoInterpret(), collectionSettings()[collectionId]?.autoExtract);
+  };
+
+  /** The models one collection extracts: its own list, else the space's default, narrowed to the candidates. */
+  const extractionTargetsFor = (collectionId: string): string[] => {
+    askCollection(collectionId);
+    return resolveCollectionExtractionTargets(
+      shapeStore.extractionCandidates(),
+      currentSpace()?.extractionTargets,
+      collectionSettings()[collectionId]?.extractionTargets,
+    );
+  };
+
+  /**
+   * Whether this agent may change what one collection extracts.
+   *
+   * A call's participants decide for their call, which is everybody who can see it. The space's own
+   * collection is the community's — the messages typed outside any call — so it is whoever
+   * administers the space, exactly as its defaults are.
+   */
+  const canSetExtractionFor = (collectionId: string): boolean =>
+    Boolean(collectionId) && (collectionId !== spaceRoot() || canAdministerCurrentSpace());
+
+  async function writeCollectionSettings(
+    collectionId: string,
+    fields: { autoExtract?: boolean; extractionTargets?: string },
+    what: string,
+  ): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !collectionId) return;
+    if (!canSetExtractionFor(collectionId)) {
+      toastService.error(`Only someone who administers this space can change ${what} outside calls.`);
+      return;
+    }
+    const before = collectionSettings()[collectionId];
+    // Shown on the press: the subscription answers a moment later, and a switch that waits for it
+    // reads as one that did not take.
+    setCollectionSettings((current) => ({ ...current, [collectionId]: { ...current[collectionId], ...fields } }));
+    try {
+      await CollectionBlock.update(dataset.handle, collectionId, fields);
+    } catch (error) {
+      setCollectionSettings((current) => ({ ...current, [collectionId]: before ?? {} }));
+      console.error(`SpaceStore: could not save ${what}`, error);
+      toastService.error(`Could not save ${what}.`);
+      throw error;
+    }
+  }
+
+  /**
+   * Turn automatic extraction on or off for one collection, for everyone in it. Leaves the space's
+   * default alone — that is where the *next* conversation starts, and this is about this one.
+   * Does not stop a pass already running: those tokens are spent.
+   */
+  const setAutoExtractFor = (collectionId: string, on: boolean): Promise<void> =>
+    writeCollectionSettings(collectionId, { autoExtract: on }, 'whether this is extracted as it happens');
+
+  /**
+   * Add or remove one model from what a collection extracts, for everyone in it.
+   *
+   * Writes the resolved list rather than a diff, so a collection made without a copy pins whatever
+   * the space's default was at that moment — the same rule `setModuleEnabled` follows.
+   */
+  async function setExtractionTargetFor(collectionId: string, entity: string, on: boolean): Promise<void> {
+    const next = new Set(extractionTargetsFor(collectionId));
+    if (on) next.add(entity);
+    else next.delete(entity);
+    await writeCollectionSettings(collectionId, { extractionTargets: JSON.stringify([...next]) }, 'what this extracts');
+  }
+
+  /*
+    The space's own standing watch: the messages typed straight into it, outside any call.
 
     Calls are watched by the transcribe module for as long as somebody is in them. This one belongs
-    to the space, so it is the space's settings that decide it: registered while loose messages are
-    extracted at all (`extractLooseMessages`) and extraction runs by itself (`autoInterpret`).
-    Registered by every member who enters, which is one registration — it is keyed on the
-    collection, and the engine keeps one row per key in the shared perspective. Removed when either
-    setting is switched off while somebody is here to see it change; a member arriving later to a
-    space with it off has nothing to remove.
+    to the space, so it is the space collection's own setting that decides it. Registered by every
+    member who enters, which is one registration — it is keyed on the collection, and the engine
+    keeps one row per key in the shared perspective. Removed when the setting is switched off while
+    somebody is here to see it change; a member arriving later to a space with it off has nothing
+    to remove.
 
     What it reads and where it files are the same rules every pass follows: what a person wrote, and
     the space collection — with the collection itself as the provenance, so items from the feed are
@@ -3965,10 +4133,10 @@ export function SpaceStoreProvider(props: ParentProps) {
   createEffect(() => {
     const root = spaceRoot();
     const handle = datasetStore.currentDataset()?.handle;
-    const wanted = Boolean(root && handle && extractLooseMessages() && autoInterpret());
-    // Read so a change to what this space extracts re-registers: the watch's class list is fixed at
+    const wanted = Boolean(root && handle && autoExtractFor(root));
+    // Read so a change to what it extracts re-registers: the watch's class list is fixed at
     // registration, and the port replaces it when the list differs.
-    void extractionTargets();
+    if (root) void extractionTargetsFor(root);
     if (wanted) {
       looseWatchOn = { root, handle };
       void datasetStore.watchConversation(root, handle).catch((error: unknown) => {
@@ -3985,104 +4153,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   });
 
-  /**
-   * What one call extracts, where its participants asked for something other than the default.
-   *
-   * One subscription for the space rather than a read per call: a list of calls asks this question
-   * once per card, and the records are few — one per call that has been customised. Same shape as
-   * `readMarkers`.
-   */
-  const [callExtractions, setCallExtractions] = createSignal<CallExtraction[]>([]);
-
-  createEffect(() => {
-    const dataset = datasetStore.currentDataset();
-    if (!dataset || !datasetStore.isWeSpace()) {
-      setCallExtractions([]);
-      return;
-    }
-    void CallExtraction.findAll(dataset.handle)
-      .then(setCallExtractions)
-      .catch(() => setCallExtractions([]));
-  });
-
-  /**
-   * The models one call extracts: its own list if it has one, else the space's default.
-   *
-   * A record with `entities: '[]'` is a group that turned everything off, and answers `[]`. A call
-   * with no record has not been touched and answers the space's list — which is exactly the
-   * distinction the record exists to make, and why this cannot be a set of links.
-   */
-  /**
-   * Whether one call is extracted as it happens: its own answer if it has one, else the space's.
-   *
-   * The same shape as `extractionTargetsForCall` and the same absent-means-undecided rule — but
-   * stored as `'on'` / `'off'` / `''` rather than a boolean, because a boolean has two states and
-   * this needs three. A record is created the moment somebody narrows the *targets*, so an untouched
-   * auto flag on it must not read as a refusal of the space's default.
-   *
-   * A participant's decision, unlike `Space.autoInterpret`, which administers the space. Stopping a
-   * standing pass mid-meeting is about this conversation, and needing whoever owns the space to be
-   * in the room for it makes the honest response "leave the call".
-   */
-  const autoInterpretForCall = (collectionId: string): boolean =>
-    resolveCallAutoInterpret(autoInterpret(), callExtractions().find((row) => row.callId === collectionId)?.auto);
-
-  /**
-   * Turn automatic extraction on or off for one call, for everyone in it.
-   *
-   * Writes the decision rather than a diff, and writes it even when it agrees with the space — the
-   * point of the record is that it *has* decided, so a space that later changes its default does not
-   * silently change this call's mind mid-conversation.
-   */
-  async function setAutoInterpretForCall(collectionId: string, on: boolean): Promise<void> {
-    const dataset = datasetStore.currentDataset();
-    if (!dataset || !collectionId) return;
-    const auto = on ? 'on' : 'off';
-    const existing = callExtractions().find((row) => row.callId === collectionId);
-    try {
-      if (existing) await CallExtraction.update(dataset.handle, existing.id, { auto });
-      else await CallExtraction.create(dataset.handle, { callId: collectionId, auto });
-      setCallExtractions(await CallExtraction.findAll(dataset.handle));
-    } catch (error) {
-      console.error('SpaceStore: could not save whether this call extracts as it happens', error);
-      toastService.error('Could not save whether this call extracts as it happens.');
-      throw error;
-    }
-  }
-
-  const extractionTargetsForCall = (collectionId: string): string[] =>
-    resolveCallExtractionTargets(
-      shapeStore.extractionCandidates(),
-      currentSpace()?.extractionTargets,
-      callExtractions().find((row) => row.callId === collectionId)?.entities,
-    );
-
-  /**
-   * Add or remove one model from what a call extracts, for everyone in it.
-   *
-   * Writes the *resolved* list rather than a diff, so the first toggle also pins whatever the space
-   * default was at that moment — a model added to the space's defaults later does not silently join
-   * a call whose participants have already decided. The same rule `setModuleEnabled` follows.
-   */
-  async function setCallExtractionTarget(collectionId: string, entity: string, on: boolean): Promise<void> {
-    const dataset = datasetStore.currentDataset();
-    if (!dataset || !collectionId) return;
-    const next = new Set(extractionTargetsForCall(collectionId));
-    if (on) next.add(entity);
-    else next.delete(entity);
-    const entities = JSON.stringify([...next]);
-    const existing = callExtractions().find((row) => row.callId === collectionId);
-    try {
-      if (existing) await CallExtraction.update(dataset.handle, existing.id, { entities });
-      else await CallExtraction.create(dataset.handle, { callId: collectionId, entities });
-      setCallExtractions(await CallExtraction.findAll(dataset.handle));
-    } catch (error) {
-      console.error('SpaceStore: could not save what this call extracts', error);
-      toastService.error('Could not save what this call extracts.');
-      throw error;
-    }
-  }
-
   /*
     ShapeStore already lends the candidates downward — this store passed the very same accessor a
     second time, so which of the two won was decided by mount order and nothing else. Harmless while
@@ -4090,11 +4160,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     lends it.
   */
   onCleanup(
-    datasetStore.provideCallExtraction({
-      forCall: extractionTargetsForCall,
-      setForCall: setCallExtractionTarget,
-      autoForCall: autoInterpretForCall,
-      setAutoForCall: setAutoInterpretForCall,
+    datasetStore.provideCollectionExtraction({
+      targetsFor: extractionTargetsFor,
+      setTargetFor: setExtractionTargetFor,
+      autoFor: autoExtractFor,
+      setAutoFor: setAutoExtractFor,
     }),
   );
   /*
@@ -4908,35 +4978,14 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Turn automatic extraction on or off for a space.
+   * Whether a new collection in a space starts out extracted as it grows. A default: a conversation
+   * already under way keeps its own answer.
    *
    * Takes the value rather than toggling, so a `we-switch` can pass `$event.detail` straight
    * through — the same reason `setThemeScopeGlobal` does. Same failure handling as
    * `setModuleEnabled`: a switch that reports success without persisting is worse than one that
    * fails visibly, because the next member to open the page sees the old decision.
    */
-  async function setExtractLooseMessages(enabled: boolean, spaceUuid?: string) {
-    const ds = targetDataset(spaceUuid);
-    const space = ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
-    if (!ds || !space) return;
-    try {
-      await Space.update(ds.handle, space.id, { extractLooseMessages: enabled });
-    } catch (error) {
-      console.error('SpaceStore: could not persist extractLooseMessages', error);
-      toastService.error('Could not save this change for the space.');
-      throw error;
-    }
-    updateSpaceInCache(ds, { extractLooseMessages: enabled } as never);
-    if (!isCurrent(ds)) return;
-    setCurrentSpace((prev) =>
-      prev
-        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
-            extractLooseMessages: enabled,
-          }) as Space)
-        : prev,
-    );
-  }
-
   async function setAutoInterpret(enabled: boolean, spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
     const space = ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
@@ -5523,12 +5572,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSpaceDefaultTheme,
     setModuleEnabled,
     autoInterpret,
-    extractLooseMessages,
-    setExtractLooseMessages,
     root: spaceRoot,
     roles: spaceRoles,
-    autoInterpretForCall,
-    setAutoInterpretForCall,
+    autoExtractFor,
+    setAutoExtractFor,
+    canSetExtractionFor,
     spaceModuleSettings,
     myModuleSettings,
     agentModuleSettings,

@@ -1,4 +1,5 @@
 import { boardOptimism } from '@shared/boardOptimism';
+import { collectionExtractionDefaults } from '@shared/collectionExtraction';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
 import { involvementOptimism } from '@shared/involvementOptimism';
@@ -128,10 +129,11 @@ export default function TemplateProvider() {
   // with the dataset injected. Pass `{ dataset: 'store.path' }` in options to target a
   // different one (e.g. 'datasetStore.rootDataset' for we-root entities like AgentSettings).
   const recordActions = {
-    create: (entity: string, data: Record<string, unknown> = {}, options?: Record<string, unknown>) => {
+    create: async (entity: string, data: Record<string, unknown> = {}, options?: Record<string, unknown>) => {
       const [Entity, p] = resolve(entity, options as { dataset?: string });
       const rest = Object.fromEntries(Object.entries(options ?? {}).filter(([k]) => k !== 'dataset'));
-      return Entity.create(p, data, Object.keys(rest).length ? rest : undefined);
+      const fields = await withCollectionDefaults(entity, data, p as DatasetProxy);
+      return Entity.create(p, fields, Object.keys(rest).length ? rest : undefined);
     },
     update: (entity: string, id: string, data: Record<string, unknown>, options?: { dataset?: string }) => {
       const [Entity, p] = resolve(entity, options);
@@ -189,14 +191,42 @@ export default function TemplateProvider() {
       : rest;
   }
 
+  /**
+   * A new feed starts with its space's extraction defaults — written onto it, not inherited.
+   *
+   * Every collection that conversations happen in holds its own answer to "is this extracted as it
+   * grows, and for what", copied from the space when it is made; see `@shared/collectionExtraction`
+   * for why a copy. Done here because this is where both of the ways a new one arrives meet: a
+   * template's `record.create` (a channel) and a module's write (a call). Anything the caller
+   * already said wins, and a dataset with no space gets nothing, which leaves the collection unset.
+   *
+   * Feeds only. A document is one author's artifact and is not extracted as it grows; stamping
+   * every post would be two links on each for an answer nobody asks.
+   */
+  async function withCollectionDefaults(
+    entity: string,
+    fields: Record<string, unknown>,
+    perspective: DatasetProxy | undefined,
+  ): Promise<Record<string, unknown>> {
+    if (entity !== 'CollectionBlock' || fields.mode !== 'feed' || 'autoExtract' in fields || !perspective)
+      return fields;
+    const space =
+      perspective === datasetStore.currentDataset()?.handle
+        ? spaceStore.currentSpace()
+        : await Space.findOne(perspective).catch(() => null);
+    const defaults = collectionExtractionDefaults(space);
+    return defaults ? { ...defaults, ...fields } : fields;
+  }
+
   /** `record.create`, against a resolved handle rather than a store path. */
-  function createInDataset(
+  async function createInDataset(
     entity: string,
     fields: Record<string, unknown>,
     perspective: DatasetProxy,
     rest: Record<string, unknown>,
   ) {
-    return getEntity(entity).create(perspective, fields, Object.keys(rest).length ? rest : undefined);
+    const stamped = await withCollectionDefaults(entity, fields, perspective);
+    return getEntity(entity).create(perspective, stamped, Object.keys(rest).length ? rest : undefined);
   }
 
   /**

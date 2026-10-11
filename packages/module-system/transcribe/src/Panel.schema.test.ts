@@ -958,6 +958,9 @@ describe('the extraction panel', () => {
     expect(EXTRACTION_SUBJECT_EXPR).toContain('routeStore.params.call');
     expect(EXTRACTION_SUBJECT_EXPR).toContain('modules.transcribe.callId');
     expect(EXTRACTION_SUBJECT_EXPR).not.toContain('collectionId');
+    // And outside any call, the space's own collection — the messages typed there — so the panel is
+    // always about something and never asks somebody to join a call first.
+    expect(EXTRACTION_SUBJECT_EXPR.endsWith('spaceStore.root)')).toBe(true);
   });
 
   it('runs a pass over that call rather than over the one this agent is in', () => {
@@ -969,31 +972,38 @@ describe('the extraction panel', () => {
     // A meeting somebody opened from a link is not happening. Everything else here follows the call
     // on screen; this one cannot.
     const live = '{"$":"!routeStore.params.call || routeStore.params.call == modules.transcribe.callId"}';
-    expect(json.indexOf(live)).toBeLessThan(json.indexOf("modules.transcribe.autoExtract ? 'Auto extract: on'"));
+    expect(json.indexOf(live)).toBeLessThan(json.indexOf('"$action":"modules.transcribe.toggleAutoExtract"'));
   });
 
-  it('offers the space’s own switch, not a call’s, for the messages outside any call', () => {
-    // Outside a call the panel shows the space's loose messages, whose watch runs on the space's
-    // settings — so the press writes the space's setting, and only an administrator may make it.
-    expect(json).toContain("spaceStore.extractLooseMessages ? spaceStore.root : ''");
-    expect(json).toContain('"spaceStore.setAutoInterpret"');
-    expect(json).toContain('"!spaceStore.canAdministerCurrentSpace"');
-  });
-
-  it('says what the two header controls do, and for whom', () => {
+  it('gives the messages outside calls the same switch as a call, for administrators only', () => {
     /*
-      The auto control was a `we-switch` whose `label` is only an aria-label — an unlabelled toggle
-      beside a button reading "Extract", with nothing on screen to say which did what. Both name
-      themselves now, and the auto one says it is everybody's, since the record button one panel
-      over looks the same and is only this agent's microphone.
+      One control for every collection: the press writes the collection on screen, never the space's
+      default — that is what the next conversation starts from, and lives in space settings. The
+      messages outside calls are the community's, so the switch is off-limits to anybody who does
+      not administer the space.
     */
-    expect(json).not.toContain('"we-switch"');
-    expect(json).toContain('Auto extract: on');
-    expect(json).toContain('Auto extract: off');
+    expect(json).not.toContain('"spaceStore.setAutoInterpret"');
+    expect(json).toContain(
+      `"onChange":{"$action":"modules.transcribe.toggleAutoExtract","args":[{"$":"${EXTRACTION_SUBJECT_EXPR}"}]}`,
+    );
+    expect(json).toContain('!spaceStore.canAdministerCurrentSpace');
+    expect(json).toContain('Set by whoever administers this space');
+  });
+
+  it('says what the header switch does, and for whom', () => {
+    /*
+      A `we-switch`'s `label` is only an aria-label, so on its own it is an unlabelled toggle beside
+      a button reading "Extract now". The words beside it say what it does and to what, and the
+      tooltip says it is everybody's, since the record button one panel over looks similar and is
+      only this agent's microphone.
+    */
+    expect(json).toContain('"we-switch"');
+    expect(json).toContain('Auto-extract this call');
+    expect(json).toContain('Auto-extract outside calls');
     expect(json).toContain('for everyone in it');
     expect(json).toContain('Extract now');
-    // Accent, not red: red is the transcript's word for a live microphone.
-    expect(json).toContain(`modules.transcribe.autoExtract ? 'primary' : 'ghost'`);
+    // The collection's own answer, read for the collection on screen.
+    expect(json).toContain(`modules.transcribe.extractionFor[${EXTRACTION_SUBJECT_EXPR}].auto`);
   });
 
   it('says the node has no model, rather than that nothing has been said', () => {
@@ -1288,8 +1298,6 @@ describe('the extraction panel', () => {
       as unavailable rather than as unnecessary.
     */
     expect(json).not.toContain("modules.transcribe.autoExtract ? 'ghost' : 'secondary'");
-    // The auto button still carries its own state in its variant — that one is a toggle.
-    expect(json).toContain("modules.transcribe.autoExtract ? 'primary' : 'ghost'");
   });
 
   it('names the chips, then puts the press that acts on them underneath', () => {
@@ -1447,7 +1455,10 @@ describe('the extraction panel', () => {
       fragment also brings the delayed fade, which stops a placeholder asserting emptiness on the
       frame before a query answers.
     */
-    expect(json).toContain('Join a call to start extracting things.');
+    // Only where there is no collection at all: the panel otherwise falls back to the messages
+    // outside calls, so "join a call" is never the thing it has to say.
+    expect(json).toContain('This space has nothing to extract from.');
+    expect(json).not.toContain('Join a call to start extracting');
     expect(json).not.toContain('Start a call.');
     // `emptyState`'s own shape: the larger padding, no `variant` on the sentence, and the delay.
     expect(json).toContain('"p":"600"');

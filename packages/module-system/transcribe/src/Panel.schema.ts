@@ -159,25 +159,25 @@ const MORE_WORDS: { $: string } = {
 const TRANSCRIPT_HAS_MORE = `count(local.utterances) >= ${'modules.transcribe.transcriptShown'}`;
 
 /**
- * Which call the *extraction* surface is about.
+ * Which collection the *extraction* surface is about — always one, inside a space.
  *
- * The same shape as `SUBJECT_EXPR`, and a different fallback for a reason worth writing down.
- * `collectionId` is what the transcriber is writing into and is null until somebody speaks, which is
- * the honest answer for a transcript — no collection, nothing said. Extraction is asked earlier than
- * that: choosing what a meeting will look for, before the meeting, is exactly when somebody wants
- * to, and the call's own record exists from its first second. `callId` is that record.
+ * The call the address names, else the call this agent is in, else the space's own collection: the
+ * messages typed outside any call. Extraction is settled per collection, so there is always
+ * something for the panel to be about, and it never has to say "join a call" to be useful.
+ *
+ * The call fallback is `callId` rather than `collectionId`, and the difference matters: the
+ * transcriber's collection is null until somebody speaks, while choosing what a meeting will look
+ * for, before the meeting, is exactly when somebody wants to — and the call's own record exists
+ * from its first second.
  */
 export const EXTRACTION_SUBJECT_EXPR =
   'routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : ' +
-  "(spaceStore.extractLooseMessages ? spaceStore.root : ''))";
+  'spaceStore.root)';
 
 /**
- * Whether the panel is showing the space's loose messages rather than a call.
- *
- * Outside any call the panel follows the conversation that is still there: the messages typed
- * straight into the space, when the space extracts them at all. Their watch is the space's, decided
- * by its settings rather than by anybody in a room, so the per-call switch gives way to the
- * space's.
+ * Whether the panel is showing the messages outside calls — the space's own collection — rather
+ * than a call. That collection is the community's, so its switch and chips are only for somebody
+ * who administers the space; a call's are for whoever is in it.
  */
 const SUBJECT_IS_SPACE = `spaceStore.root && (${EXTRACTION_SUBJECT_EXPR}) == spaceStore.root`;
 const EXTRACTION_SUBJECT = { $: EXTRACTION_SUBJECT_EXPR };
@@ -250,9 +250,16 @@ const AMENDMENT_ROWS = 'first(local.extractedFrom).amendments';
 const AMENDMENT_COUNT = `count(${AMENDMENT_ROWS})`;
 
 /** What the store says can be extracted from that call — see `extractionFor` on the store. */
-const forSubject = (field: 'targets' | 'canChoose' | 'canExtract') => ({
+const forSubject = (field: 'targets' | 'canChoose' | 'canExtract' | 'auto') => ({
   $: `modules.transcribe.extractionFor[${EXTRACTION_SUBJECT_EXPR}].${field}`,
 });
+
+/**
+ * Whether this agent may change what the panel's collection extracts: the collection must be
+ * recordable at all, and the messages outside calls are the community's, so only somebody who
+ * administers the space may change those.
+ */
+const CAN_DECIDE = `${forSubject('canChoose').$} && !((${SUBJECT_IS_SPACE}) && !spaceStore.canAdministerCurrentSpace)`;
 
 /**
  * A message shown for exactly one status.
@@ -1686,55 +1693,18 @@ export const extractionTargets: SchemaNode = {
       },
     },
     /*
-      Why the chips below cannot be pressed, when they cannot.
-
-      A choice is recorded against the call's own record, so outside a call there is nothing to
-      record it on — and a host with no way to store one cannot either. Both used to be a guard in
-      the store that returned without a word, so the chips took the click and did nothing, which
-      reads as broken rather than as unavailable. They are disabled now, and this says which.
-    */
-    /*
-      Why the chips cannot be pressed, in the one case where they cannot.
-
-      A member who may not change the space's defaults, and who is not in a call, has neither list to
-      write to. That was a guard in the store returning without a word, so the chips took the click
-      and did nothing — which reads as broken rather than as somebody else's decision.
-    */
-    /*
-      Where the list on screen comes from, when it is not a call's.
-
-      Outside a call the chips are the space's default and cannot be pressed, which without a word is
-      the state that reads as broken. Two sentences: what this is, and where it is changed — and the
-      second is a control rather than an instruction, because "in the space's settings" is a place
-      somebody then has to find.
-
-      The tab is named, so the panel opens where the setting actually is instead of on About.
+      Why the chips cannot be pressed, in the one case where they cannot: the messages outside calls
+      are the community's, and this member does not administer the space. Said in words, because a
+      row of disabled chips with no reason reads as broken rather than as somebody else's decision.
     */
     {
       type: '$if',
       props: {
-        condition: { $: `count(${forSubject('targets').$}) && !${forSubject('canChoose').$}` },
+        condition: { $: `count(${forSubject('targets').$}) && !(${CAN_DECIDE})` },
         then: {
-          type: 'Row',
-          props: { gap: '200', ay: 'center', wrap: true },
-          children: [
-            {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint', italic: true },
-              children: ['Join a call to narrow it for that conversation.'],
-            },
-            {
-              type: 'we-button',
-              props: {
-                size: 'xs',
-                variant: 'bare',
-                textDecoration: 'underline',
-                color: 'accent-text',
-                onClick: { $action: 'shellStore.openSpaceSettings', args: ['features'] },
-              },
-              children: ['Change the default'],
-            },
-          ],
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-faint', italic: true },
+          children: ['Whoever administers this space decides what is extracted outside calls.'],
         },
       },
     },
@@ -1780,21 +1750,16 @@ export const extractionTargets: SchemaNode = {
                   than "press me and something happens".
                 */
                 r: 'pill',
-                // Only where neither list is this agent's to change. Refused visibly rather than in
+                // Only where the list is not this agent's to change. Refused visibly rather than in
                 // the store, where it was refused in silence.
-                // Outside a call there is no conversation to narrow, so these state the space's
-                // default rather than offering a change to it. The link below leads to the change.
-                disabled: { $: `!${forSubject('canChoose').$}` },
+                disabled: { $: `!(${CAN_DECIDE})` },
                 /*
-                  One meaning: this call's list, and only this call's.
+                  One meaning: this collection's list, and only this collection's.
 
-                  It briefly did two — the call's in a call, the space's default outside one, on the
-                  reasoning that editing what you are looking at is what a chip is for. That is one
-                  control with two blast radii, told apart by a heading: narrowing this afternoon's
-                  meeting and changing what every future call in the community starts from, behind
-                  the same press. In a personal space, where every member administers, the heavier of
-                  the two was also the default. A link to where the default lives is the honest
-                  version, and it is two clicks rather than one.
+                  Never the space's default, which is what every *future* collection starts from and
+                  lives in space settings. One control with two blast radii — narrowing this
+                  afternoon's meeting, and changing every meeting to come — told apart by a heading
+                  is the shape this replaced.
                 */
                 onClick: {
                   $action: 'modules.transcribe.toggleExtractionTarget',
@@ -2561,76 +2526,58 @@ const amendmentRows: SchemaNode = {
   keeps its own verb, so the two are no longer read as a matched pair.
 */
 /*
-  The space's own switch, for the space's own conversation.
+  Whether the collection on screen is extracted as it grows — a switch, because it is a state.
 
-  The loose-message watch runs on the space's settings, so this is `autoInterpret` itself — the
-  same switch space settings has, offered where somebody is looking at what it decides, and only to
-  somebody who administers the space.
+  One control for every collection, where there were two: a call's button and the space's, which
+  wrote different records and read differently. Each collection now holds its own answer, copied
+  from the space's default when it was made, so the switch says what this collection does and
+  nothing else — no inherited state, no "follow the space" to reset to.
+
+  Beside it, in words, what it does and to what — a switch's own `label` is only an aria-label, so
+  without visible text this is an unlabelled toggle next to a button reading "Extract now". "Outside
+  calls" is the scope menu's word for the space's own collection. The panel's title stays
+  "Extraction": a heading that changes as you move between calls describes where you are rather
+  than what the panel is, which is the reason the transcript's is fixed too.
+
+  Not offered on a past call: a meeting being read back has no "as it happens" to answer.
 */
-const spaceAutoExtractControl: SchemaNode = {
-  type: 'we-tooltip',
-  props: {
-    placement: 'bottom',
-    content: {
-      $:
-        "!spaceStore.canAdministerCurrentSpace ? 'Set in space settings by whoever administers this space' : " +
-        "spaceStore.autoInterpret ? 'Stop extracting messages as they arrive, for this space' : " +
-        "'Extract messages as they arrive, for this space'",
-    },
-  },
-  children: [
-    {
-      type: 'we-button',
-      props: {
-        size: 'sm',
-        gap: '100',
-        variant: { $: "spaceStore.autoInterpret ? 'primary' : 'ghost'" },
-        disabled: { $: '!spaceStore.canAdministerCurrentSpace' },
-        onClick: { $action: 'spaceStore.setAutoInterpret', args: [{ $: '!spaceStore.autoInterpret' }] },
-      },
-      children: [
-        { type: 'we-icon', props: { name: 'lightning' } },
-        { $: "spaceStore.autoInterpret ? 'Auto extract: on' : 'Auto extract: off'" },
-      ],
-    },
-  ],
-};
-
 const autoExtractControl: SchemaNode = {
   type: '$if',
   props: {
-    condition: VIEWING_LIVE,
+    condition: { $: `(${SUBJECT_IS_SPACE}) || (${VIEWING_LIVE_EXPR})` },
     then: {
-      type: 'we-tooltip',
-      props: {
-        placement: 'bottom',
-        /*
-          Whose decision it is, said where the press is — the record button beside the transcript is
-          this agent's microphone, and this looks the same and is everybody's. Outside a call there
-          is no record to write the decision against, and the button explains that rather than
-          greying out in silence, which is what the switch did.
-        */
-        content: {
-          $:
-            "!modules.transcribe.extractionFor[modules.transcribe.callId].canChoose ? 'Join a call to decide for it' : " +
-            "modules.transcribe.autoExtract ? 'Stop extracting as the call goes, for everyone in it' : " +
-            "'Extract as the call goes, for everyone in it'",
-        },
-      },
+      type: 'Row',
+      props: { gap: '200', ay: 'center' },
       children: [
         {
-          type: 'we-button',
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-muted' },
+          children: [{ $: `(${SUBJECT_IS_SPACE}) ? 'Auto-extract outside calls' : 'Auto-extract this call'` }],
+        },
+        {
+          type: 'we-tooltip',
           props: {
-            size: 'sm',
-            gap: '100',
-            variant: { $: "modules.transcribe.autoExtract ? 'primary' : 'ghost'" },
-            // The live call's answer, and the same record `autoExtract` reads.
-            disabled: { $: '!modules.transcribe.extractionFor[modules.transcribe.callId].canChoose' },
-            onClick: { $action: 'modules.transcribe.toggleAutoExtract' },
+            placement: 'bottom',
+            content: {
+              $:
+                `(${SUBJECT_IS_SPACE}) && !spaceStore.canAdministerCurrentSpace ? 'Set by whoever administers this space' : ` +
+                `(${SUBJECT_IS_SPACE}) ? 'Extract messages typed outside calls as they arrive, for this space' : ` +
+                "'Extract this call as it goes, for everyone in it'",
+            },
           },
           children: [
-            { type: 'we-icon', props: { name: 'lightning' } },
-            { $: "modules.transcribe.autoExtract ? 'Auto extract: on' : 'Auto extract: off'" },
+            {
+              type: 'we-switch',
+              props: {
+                size: 'sm',
+                label: 'Auto-extract',
+                checked: forSubject('auto'),
+                disabled: { $: `!(${CAN_DECIDE})` },
+                // The collection on screen, named: the store's own default is the call this agent is
+                // in, which is not the one this panel shows outside a call.
+                onChange: { $action: 'modules.transcribe.toggleAutoExtract', args: [EXTRACTION_SUBJECT] },
+              },
+            },
           ],
         },
       ],
@@ -3976,10 +3923,7 @@ export const extractionPanel: SchemaNode = {
       type: '$if',
       props: {
         condition: { $: `modules.transcribe.extractable && (${EXTRACTION_SUBJECT_EXPR})` },
-        then: {
-          type: '$if',
-          props: { condition: { $: SUBJECT_IS_SPACE }, then: spaceAutoExtractControl, else: autoExtractControl },
-        },
+        then: autoExtractControl,
       },
     },
     /*
@@ -3990,10 +3934,11 @@ export const extractionPanel: SchemaNode = {
     choose which and from when, that Extract is the backfill, and that what arrives is a suggestion.
   */
     help:
-      'A model reads the transcript and writes what it finds as records. Auto extract reads the call ' +
-      'as it goes, for everyone in it; the chips choose what it looks for, from now on. Extract now ' +
-      'reads the whole conversation so far, including anything said before a model was switched on. ' +
-      'What it finds appears below as suggestions to accept or dismiss.',
+      'A model reads a conversation — the call on screen, or the messages typed outside calls — and ' +
+      'writes what it finds as records. Auto reads it as it goes, for everyone in it; the chips choose ' +
+      'what it looks for, from now on. Extract now reads the whole conversation so far, including ' +
+      'anything said before a model was switched on. What it finds appears below as suggestions to ' +
+      'accept or dismiss. New calls start with the space’s defaults, set in space settings.',
     children: [
       {
         type: '$if',
@@ -4372,13 +4317,13 @@ export const extractionPanel: SchemaNode = {
                       its delayed fade, which is what stops a placeholder asserting emptiness on
                       the frame before a query answers.
 
-                      "Join a call" rather than "Start a call": joining is the act either way, and
-                      it is the word the transcript's own placeholder uses one panel over.
+                      Reached only where there is no collection at all — a space made before spaces had
+                      one — since the panel otherwise falls back to the messages outside calls.
                     */
                       else: emptyState({
                         icon: 'sparkle',
                         label: 'extraction',
-                        message: 'Join a call to start extracting things.',
+                        message: 'This space has nothing to extract from.',
                       }),
                     },
                   },

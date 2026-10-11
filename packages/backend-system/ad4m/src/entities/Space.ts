@@ -80,14 +80,19 @@ export class Space extends WeNode {
   enabledViews: string = '';
 
   /**
-   * Which candidate models this community's calls start out extracting, as a JSON array of
-   * entity names.
+   * Which candidate models a new collection here starts out extracting — a call, a channel, the
+   * space's own collection — as a JSON array of entity names.
    *
    * The middle of three layers. `EntitySchema.extractable` says what is a candidate at all —
    * a question about whether an LLM *could* mint one, answered by the codebase; this says which
-   * of them a call here begins with, which is a question about what this community's
-   * conversations are about and is nobody else's to answer. A call may then add or remove for
-   * itself (`CallExtraction`).
+   * of them a new conversation here begins with, which is a question about what this community
+   * talks about and is nobody else's to answer. Each collection then holds its own list
+   * (`CollectionBlock.extractionTargets`), copied from this when it is made.
+   *
+   * **A default, not a live setting.** Changing it changes what the *next* collection starts
+   * with; a call already under way keeps the list its participants have, so nobody's meeting
+   * changes underneath them because somebody edited the space. A collection that was made
+   * without a copy (by an app that did not know to write one) falls back to this at read time.
    *
    * **Empty means "not decided", not "none"** — the `enabledModules` rule, and it matters more
    * here than anywhere: reading empty as none would make every space that predates this field
@@ -103,7 +108,9 @@ export class Space extends WeNode {
   extractionTargets: string = '';
 
   /**
-   * Whether calls in this space are interpreted as they happen.
+   * Whether a new collection here is interpreted as it grows — a call as it happens, a channel as
+   * messages arrive. A default, copied onto each collection when it is made
+   * (`CollectionBlock.autoExtract`), for the reason `extractionTargets` gives.
    *
    * On by default. It was off, on the reasoning that a pass spends somebody's LLM budget and a
    * community should opt in — which reads well and played badly: extraction is the feature, and
@@ -117,21 +124,6 @@ export class Space extends WeNode {
    */
   @Property({ through: 'we://auto_interpret' })
   autoInterpret: boolean = true;
-
-  /**
-   * Whether the messages typed straight into this space — not in any call — are extracted too.
-   *
-   * Whether, not when: `autoInterpret` says whether extraction runs by itself or on request, and
-   * applies here as everywhere. With this on and that off, loose messages are extracted when
-   * somebody asks; with this off, never. It gates nothing else. Calls are extracted on their own
-   * terms either way, and what any pass finds goes into the space collection regardless (`root`),
-   * because every space-wide view reads it from there.
-   *
-   * Off by default, because the default is what a space gets when nobody chose: a space set up by
-   * a starter that wants it says so (`input: true`), and an administrator can change it later.
-   */
-  @Property({ through: 'we://extract_loose_messages' })
-  extractLooseMessages: boolean = false;
 
   /**
    * How deep a conversation here may go: `fractal` (a reply may be replied to) or `flat` (only
@@ -174,11 +166,11 @@ export class Space extends WeNode {
    *
    * This field replaced the *shape*, not the instances of it. This resolver answers along one axis, **who is asking**: deployment → agent
    * everywhere → community here → agent here, most specific wins. `autoInterpret` and
-   * `extractionTargets` carry a second axis it has no concept of, **which call** — a per-call
-   * decision belonging to that call's participants rather than to the space's administrator,
-   * held in `CallExtraction` and read through `spaceStore.autoInterpretForCall(collectionId)`,
-   * which is a function rather than a value for exactly that reason. Migrating them here as-is
-   * would typecheck, pass, and silently drop the layer where participants overrule the space.
+   * `extractionTargets` are not answers along that axis at all: they are the defaults a new
+   * collection copies, and the decision that matters is then the collection's own — held on the
+   * collection (`CollectionBlock.autoExtract`) and belonging to whoever is in that conversation.
+   * Migrating them here would typecheck, pass, and silently turn a starting point into a setting
+   * that overrules every conversation.
    *
    * What was worth fixing is fixed: a capability that wants a setting today declares a
    * `ModuleSetting` and gets a resolved value and a rendered control, so there is no fourth

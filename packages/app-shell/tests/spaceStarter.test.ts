@@ -74,7 +74,6 @@ describe('starter settings', () => {
     expect(starterSettings(STARTER)).toEqual({
       defaultTemplateId: 'workshop',
       enabledModules: '["call"]',
-      extractLooseMessages: true,
     });
   });
 
