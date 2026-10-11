@@ -393,10 +393,10 @@ function threadQueries(opts: CommentThreadOptions, depth: number): Record<string
       entity: 'CollectionBlock',
       /*
         Replies only. `responses` holds everything made in response to the anchor — a call held
-        about it is one too — and a thread draws what people wrote. A reply is a post, because
-        `createPost` writes both.
+        about it is one too — and a thread draws what people wrote, which the discussion composer
+        writes with `kind: 'reply'`.
       */
-      where: { kind: 'post', author: { not: { $: 'spaceStore.mutedDids' } } },
+      where: { kind: 'reply', author: { not: { $: 'spaceStore.mutedDids' } } },
       // The `responses` relation, drilled from the anchor. Untyped like `children`, so `scope` is
       // the only form available — `include` needs a known target class.
       scope: { anchor: 'CollectionBlock', via: 'responses', anchorId: opts.anchorId, levels },

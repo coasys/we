@@ -130,11 +130,12 @@ async function seed(dataset: DatasetHandle): Promise<Record<Key, string>> {
   // storage service a test executor with no network cannot reach. The query is the same either way.
   await made.post1.addChildren(await make('link1', 'LinkBlock', { url: 'https://example.org', title: 'link1' }));
 
-  // Replies are posts — `createPost` writes both — and every response under post 1 is in its thread,
-  // a call about it included: the app links each one from the thread's subject as it is written.
-  await made.post1.addResponses(await make('comment1', 'CollectionBlock', { kind: 'post', textContent: 'a reply' }));
+  // Replies carry `kind: 'reply'`, as the discussion composer writes them, and every response under
+  // post 1 is in its thread, a call about it included: the app links each one from the thread's
+  // subject as it is written.
+  await made.post1.addResponses(await make('comment1', 'CollectionBlock', { kind: 'reply', textContent: 'a reply' }));
   await made.comment1.addResponses(
-    await make('comment2', 'CollectionBlock', { kind: 'post', textContent: 'and another' }),
+    await make('comment2', 'CollectionBlock', { kind: 'reply', textContent: 'and another' }),
   );
   await made.post1.addResponses(await make('callAbout', 'CollectionBlock', { kind: 'call', title: 'About this' }));
   for (const key of ['comment1', 'comment2', 'callAbout'] as const) await made.post1.addThread(made[key]);
@@ -248,7 +249,7 @@ const CASES: Record<TemplateQueryCase, QueryCase> = {
     from: 'templates/views/src/views/GraphView/EdgeDetail.ts',
     query: (k) => ({
       entity: 'CollectionBlock',
-      where: { kind: 'post', author: { not: ['did:test:somebody-muted'] } },
+      where: { kind: 'reply', author: { not: ['did:test:somebody-muted'] } },
       scope: { anchor: 'CollectionBlock', via: 'responses', anchorId: k.post1, levels: [10, 5, 3] },
       order: { createdAt: 'asc' },
       include: { respondsTo: true },
@@ -274,7 +275,7 @@ const CASES: Record<TemplateQueryCase, QueryCase> = {
       entity: 'CollectionBlock',
       where: { id: k.post1 },
       limit: 1,
-      include: { $replyCount: { from: 'thread', count: true, where: { kind: 'post' } } },
+      include: { $replyCount: { from: 'thread', count: true, where: { kind: 'reply' } } },
     }),
     expect: { field: '$replyCount', values: { post1: 2 } },
   },

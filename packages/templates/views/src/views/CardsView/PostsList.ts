@@ -51,9 +51,9 @@ export const postsList: SchemaNode = {
             /*
               Top-level posts only.
 
-              A reply is written by the same `createPost` a post is, so it carries `kind: 'post'` too,
-              and without the second condition every comment in the space would turn up in the feed
-              as a post of its own.
+              A reply is written by the same `createPost` a post is, and one written before replies
+              carried their own kind is `kind: 'post'` too — so without the second condition a
+              comment could turn up in the feed as a post of its own.
 
               Asked as "has nothing it answers" rather than as `kind != 'reply'`. A post made before
               `kind` existed carries no value for it, and on AD4M a `!=` over an unbound value
@@ -104,7 +104,7 @@ export const postsList: SchemaNode = {
                 too, and is not something anybody wrote under it. It rides in the read already
                 being made, so a feed of twenty posts pays nothing for it.
               */
-              $replyCount: { from: 'thread', count: true, where: { kind: 'post' } },
+              $replyCount: { from: 'thread', count: true, where: { kind: 'reply' } },
               /*
                 Whether THIS agent is in the conversation, for the same reason a reaction knows
                 whether it is yours: the glyph carries "mine" and it needs an answer to carry.
@@ -114,7 +114,7 @@ export const postsList: SchemaNode = {
               */
               $myComments: {
                 from: 'thread',
-                where: { kind: 'post', author: { $: 'me.did' } },
+                where: { kind: 'reply', author: { $: 'me.did' } },
                 count: true,
               },
             },

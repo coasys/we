@@ -2362,7 +2362,7 @@ const inspectorPanel: SchemaNode = {
           depth. Without the thread this is the direct replies only, which is not what a reader takes
           "42 replies" to mean; without the kind it would count a call about the card as a reply.
         */
-        $replies: { from: 'thread', count: true, where: { kind: 'post' } },
+        $replies: { from: 'thread', count: true, where: { kind: 'reply' } },
       },
       /*
         Not until there is an id to ask about — which is what kept the panel showing a record

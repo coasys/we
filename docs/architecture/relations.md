@@ -51,7 +51,7 @@ link on purpose: parts move between collections, and a stored root would have to
 whole subtree on every move. Responses never change what they respond to.
 
 One relation holds every kind of response, so **surfaces filter by what a response is**: a thread
-list or a reply count says `kind: 'post'` (a reply is a post — `createPost` writes both), and a
+list or a reply count says `kind: 'reply'` (what the discussion composer writes), and a
 listing of a room's calls says `kind: 'call'`. The host does the filing — `completeResponse` in
 `app-shell/src/shared/responses.ts` runs for every write made with the response predicate — so no
 template or module writes the thread or the home itself.

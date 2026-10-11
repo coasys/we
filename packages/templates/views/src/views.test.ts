@@ -67,10 +67,10 @@ describe('the built-in views', () => {
 /**
  * The feed asks for posts, and a post is not every record that happens to be stored like one.
  *
- * `createPost` writes a reply as well as a post, and both carry `kind: 'post'`, so the kind alone
- * cannot tell them apart. Nothing said so until replies could be written from anywhere, and then
- * every comment in the space appeared in the feed as a post of its own. Asking whether the record
- * answers something is what separates them.
+ * `createPost` writes a reply as well as a post. A reply carries `kind: 'reply'`, but a reply made
+ * before that was written carried `kind: 'post'`, and nothing said so until replies could be written
+ * from anywhere — then every comment in the space appeared in the feed as a post of its own. Asking
+ * whether the record answers something is what separates them, whatever its kind says.
  */
 describe('the cards view’s post feed', () => {
   /** Every node in a schema tree, including the ones behind `$if` branches and `routes`. */
@@ -116,6 +116,6 @@ describe('the cards view’s post feed', () => {
     // "2" over a thread of forty. The post's `thread` holds every response at any depth, and the
     // kind leaves out a call somebody held about the post, which is in its thread too.
     const include = feedQuery()?.include as Record<string, Record<string, unknown>> | undefined;
-    expect(include?.$replyCount).toMatchObject({ from: 'thread', count: true, where: { kind: 'post' } });
+    expect(include?.$replyCount).toMatchObject({ from: 'thread', count: true, where: { kind: 'reply' } });
   });
 });

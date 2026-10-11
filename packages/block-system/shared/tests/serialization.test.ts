@@ -619,7 +619,7 @@ describe('deleteBlocks', () => {
 
   it('leaves a conversation held about it standing — a call is a response, and a feed of its own', async () => {
     const post = (await createBlocks(perspective, [paragraph('a')], { kind: 'post' })) as unknown as FakeCollection;
-    const reply = (await createBlocks(perspective, [paragraph('b')], { kind: 'post' })) as unknown as FakeCollection;
+    const reply = (await createBlocks(perspective, [paragraph('b')], { kind: 'reply' })) as unknown as FakeCollection;
     const call = (await FakeCollection.create(perspective, {})) as FakeCollection;
     // Set after: the fake's own field initialisers run after its constructor copies the data in.
     call.kind = 'call';

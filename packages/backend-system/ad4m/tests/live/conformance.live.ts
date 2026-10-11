@@ -50,6 +50,8 @@ describeBackendConformance('AD4M', {
       "a model subscription re-runs only for its own class's predicates; an included record's are not in its trigger set",
     'live.identical-queries-independent':
       'identical subscriptions share one server-side id with no holder count, so disposing one ends both',
+    'queries.reply-total-leaves-calls-out':
+      "a count's `where` resolves property names through the relation's target class, and an untyped relation has none, so `kind` is skipped and every response is counted (build_projection_where_patterns)",
   },
   knownIntermittent: {
     // Seen in 3 of 10 runs, only ever on the first post in a fresh perspective: the first two

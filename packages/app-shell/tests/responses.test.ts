@@ -65,7 +65,7 @@ describe('a response, filed', () => {
     const channel = await model('CollectionBlock').create(dataset, { kind: 'channel', mode: 'feed' });
     const post = await model('CollectionBlock').create(dataset, { kind: 'post', mode: 'document' }, inside(channel.id));
 
-    const comment = await respond('CollectionBlock', post, { kind: 'post' });
+    const comment = await respond('CollectionBlock', post, { kind: 'reply' });
 
     expect((await reread('CollectionBlock', post)).thread).toEqual([comment.id]);
     // The post is a document — its parts are its author's — so the comment goes up to the channel.
@@ -87,7 +87,7 @@ describe('a response, filed', () => {
   it('a response to something in no feed is still in its thread, and filed nowhere', async () => {
     const canvas = await model('CollectionBlock').create(dataset, { kind: 'canvas' });
 
-    const comment = await respond('CollectionBlock', canvas, { kind: 'post' });
+    const comment = await respond('CollectionBlock', canvas, { kind: 'reply' });
 
     expect((await reread('CollectionBlock', canvas)).thread).toEqual([comment.id]);
     expect((await reread('CollectionBlock', canvas)).children ?? []).not.toContain(comment.id);

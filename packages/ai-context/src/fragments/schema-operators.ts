@@ -549,10 +549,10 @@ Responses and threads. Everything made in response to a record — a reply, a ca
 spun off from it — is in its "responses" (direct ones only), and each names what it answers through
 "respondsTo". A record ALSO carries "thread": every response under it at any depth, flattened, one
 link each — so the whole discussion under a post, and its total, are one read with no walk:
-  "include": { "$replies": { "from": "thread", "count": true, "where": { "kind": "post" } } }
+  "include": { "$replies": { "from": "thread", "count": true, "where": { "kind": "reply" } } }
 FILTER BY WHAT A RESPONSE IS. A call held about a post is in its responses and its thread too, so a
-reply count or a thread list says which responses it means — replies are CollectionBlocks of kind
-'post' (createPost writes both). A thread lives on its SUBJECT, the first record above that is not
+reply count or a thread list says which responses it means — a reply is a CollectionBlock of kind
+'reply'. A thread lives on its SUBJECT, the first record above that is not
 itself a response, so a reply's own "thread" is empty; to count under a reply, walk it:
   "include": { "$descendants": { "from": "responses", "count": true, "transitive": true } }
 — where count(row.responses) is the direct responses only and would say 3.
