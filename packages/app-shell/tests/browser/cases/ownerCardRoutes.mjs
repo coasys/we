@@ -71,6 +71,52 @@ export async function check({ call, count, recorded }) {
     await call('editorProbeDispose');
   }
 
+  // A copy nobody has changed goes back whole, as the placement it replaced, with nothing to lose.
+  await call('ownerCardProbe', 'copied-clean');
+  try {
+    if (await count('we-text:has-text("Give it all back")'))
+      problems.push('an unchanged copy warns about losing changes');
+    if (!(await call('pressButton', 'Give back'))) problems.push('an unchanged copy offers no way back');
+    const [back] = (await recorded('__probeTemplates')).slice(-1);
+    const placed = back?.children?.[0];
+    if (placed?.type !== '$part' || placed?.props?.id !== 'demo.feed')
+      problems.push(`giving a copy back wrote ${placed?.type ?? 'nothing'} in its place`);
+    if (placed?.props?.subject?.$ !== 'local.chosen')
+      problems.push('giving a copy back lost what its placement was about');
+  } finally {
+    await call('editorProbeDispose');
+  }
+
+  // A change inside the lines keeps the feed holding them: only all of it can go back, and it says so.
+  await call('ownerCardProbe', 'copied-inner');
+  try {
+    if (!(await count('we-text:has-text("your changes to Lines are lost")')))
+      problems.push('giving back a changed copy does not say which changes are lost');
+    if (await count('we-text:has-text("Give back what you have not changed")'))
+      problems.push('offers to give back unchanged levels when none can go without the change');
+  } finally {
+    await call('editorProbeDispose');
+  }
+
+  // A change to the feed's own nodes leaves the lines untouched: they can go back alone.
+  await call('ownerCardProbe', 'copied-outer');
+  try {
+    if (!(await count('we-text:has-text("Lines goes back to Demo")')))
+      problems.push('does not offer to give back the unchanged lines below a change');
+    const buttons = await count('we-button:has-text("Give back")');
+    if (buttons !== 2) problems.push(`a copy changed outside its inner level offers ${buttons} ways back, not 2`);
+    await call('pressGiveBackUnchanged');
+    const [kept] = (await recorded('__probeTemplates')).slice(-1);
+    const feed = kept?.children?.[0];
+    if (!feed?.forkedPart) problems.push('giving back the unchanged levels gave back the changed one too');
+    if (feed?.children?.[1]?.type !== '$part' || feed?.children?.[1]?.props?.id !== 'demo.lines')
+      problems.push('the unchanged lines were not put back as their placement');
+    if (feed?.children?.[0]?.children?.[0] !== 'What was said')
+      problems.push('giving back the unchanged levels lost a change');
+  } finally {
+    await call('editorProbeDispose');
+  }
+
   await call('ownerCardProbe', 'panel');
   try {
     // It names what stays the module's, rather than claiming everything does.

@@ -306,6 +306,9 @@ export interface OwnersPort {
   /**
    * A placed part as nodes the template owns: `one` opens a level and keeps the pieces below it as
    * references; `all` forks the whole thing. Null for a part nobody publishes.
+   *
+   * Every level opened carries `forkedFrom` (`part:<id>`) and `forkedPart` — the placement it replaced
+   * and a fingerprint of it as opened — which is what lets the editor give it back.
    */
   openPart: (placement: SchemaNode, depth: 'one' | 'all') => SchemaNode | null;
   /**

@@ -21,7 +21,7 @@ import { paintedRoles } from '../paintedRoles';
 import { deepClone } from '../utils';
 import { ConditionEditor } from './ConditionEditor';
 import { ContentEditor } from './ContentEditor';
-import { acceptsParts, OwnerCard, PartCard, PartsPalette, SuppliedPanelNote } from './OwnerCard';
+import { acceptsParts, CopiedPartNote, OwnerCard, PartCard, PartsPalette, SuppliedPanelNote } from './OwnerCard';
 import { ValueEditor } from './ValueEditor';
 
 // -----------------------------------------------------------------------
@@ -563,6 +563,7 @@ export function InspectorPanel() {
             {(node) => (
               <>
                 <SuppliedPanelNote nodeId={node().id ?? ''} />
+                <CopiedPartNote nodeId={node().id ?? ''} />
                 <Show when={node().type !== '$part'} fallback={<PartCard node={node()} />}>
                   <NodeProperties
                     node={node()}

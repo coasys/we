@@ -27,6 +27,7 @@ import {
   ensureNodeIds,
   findNodeById,
   forEachNode,
+  partForkChanged,
   type SchemaNode,
   type TemplatePanel,
   type TemplateSchema,
@@ -125,7 +126,6 @@ export function PartCard(props: { node: SchemaNode }) {
       const opened = found && host.owners?.openPart(found.node, depth);
       if (!found || !opened) return false;
       replacement = copyWithNewIds(opened);
-      replacement.forkedFrom = `part:${partId()}`;
       // In place, so the parent — whatever position it holds the part in — holds the replacement.
       for (const key of Object.keys(found.node)) delete (found.node as Record<string, unknown>)[key];
       Object.assign(found.node, replacement);
@@ -617,6 +617,152 @@ export function SuppliedPanelNote(props: { nodeId: string }) {
           </we-button>
         </Row>
       </Column>
+    </Show>
+  );
+}
+
+// -----------------------------------------------------------------------
+// A module's part the template copied
+// -----------------------------------------------------------------------
+
+/** The nodes from the root down to `id`, root first; empty when it is not in the tree. */
+function pathTo(template: SchemaNode, id: string): SchemaNode[] {
+  const path: SchemaNode[] = [];
+  let found = findNodeById(template, id);
+  if (!found) return path;
+  path.unshift(found.node);
+  while (found?.parent) {
+    path.unshift(found.parent);
+    found = found.parent.id ? findNodeById(template, found.parent.id) : null;
+  }
+  return path;
+}
+
+/** Every copied level inside a node, itself included, outermost first. */
+function forksWithin(node: SchemaNode): SchemaNode[] {
+  const out: SchemaNode[] = [];
+  forEachNode(node, (each) => {
+    if (each.forkedPart) out.push(each);
+  });
+  return out;
+}
+
+/**
+ * The way back from copying a module's part: the placement it replaced, and the module drawing it.
+ *
+ * Shown above any node inside a copy. What goes back is the outermost copied level — what the
+ * template placed — since a level cannot go back while something below it stays the template's: the
+ * module would draw its own version of that something in its place.
+ *
+ * What it costs is said first. Each copied level carries a fingerprint of itself as copied, so the
+ * note can say which levels have been changed since — and, where some have not, offer to give back
+ * just those: the unchanged levels below the changes go back to the module, and every change stays.
+ */
+export function CopiedPartNote(props: { nodeId: string }) {
+  const host = useEditorHost();
+  const visualEditor = useVisualEditor();
+  const write = useTemplateWriter();
+
+  const forks = createMemo(() => {
+    const template = host.template.currentTemplate as SchemaNode;
+    const outermost = pathTo(template, props.nodeId).find((node) => node.forkedPart);
+    if (!outermost) return null;
+    const all = forksWithin(outermost);
+    /** A level is dirty when it, or any level copied inside it, has changed since it was copied. */
+    const dirty = new Map<SchemaNode, boolean>();
+    for (const level of [...all].reverse()) {
+      dirty.set(
+        level,
+        partForkChanged(level) || forksWithin(level).some((inner) => inner !== level && dirty.get(inner)),
+      );
+    }
+    const changed = all.filter((level) => partForkChanged(level));
+    // The unchanged levels that can go back on their own: clean, and held by a level that is not.
+    const returnable = all.filter((level) => {
+      if (dirty.get(level)) return false;
+      const holder = all.filter((other) => other !== level && forksWithin(other).includes(level)).at(-1);
+      return !!holder && dirty.get(holder);
+    });
+    return { outermost, changed, returnable, clean: !dirty.get(outermost) };
+  });
+
+  const partOf = (level: SchemaNode) => {
+    const id = String(level.forkedPart?.placement.id ?? '');
+    return host.owners?.part(id) ?? null;
+  };
+  const labelOf = (level: SchemaNode) => partOf(level)?.label ?? String(level.forkedPart?.placement.id ?? 'a part');
+  const moduleName = () => {
+    const found = forks();
+    return (found && partOf(found.outermost)?.moduleName) || 'its module';
+  };
+
+  /** Put each level back as the placement it replaced. */
+  const giveBack = (levels: SchemaNode[]) => {
+    const ids = levels.map((level) => level.id).filter((id): id is string => !!id);
+    let first: string | undefined;
+    const written = write((template) => {
+      for (const id of ids) {
+        const found = findNodeById(template, id);
+        if (!found?.node.forkedPart) return false;
+        const placement = ensureNodeIds({
+          type: '$part',
+          props: deepClone(found.node.forkedPart.placement) as SchemaNode['props'],
+        });
+        first ??= placement.id;
+        for (const key of Object.keys(found.node)) delete (found.node as Record<string, unknown>)[key];
+        Object.assign(found.node, placement);
+      }
+      return true;
+    });
+    if (!written) return;
+    // The node selected may have gone back with a level; if so, select what replaced the outermost.
+    if (!findNodeById(host.template.currentTemplate as SchemaNode, props.nodeId)) visualEditor.onSelect(first ?? null);
+  };
+
+  return (
+    <Show when={forks()}>
+      {(found) => (
+        <Column gap="200" mx="400" mt="300" p="300" r="surface" bg="surface-sunken">
+          <Row ay="center" gap="200">
+            <we-icon name="puzzle-piece" size="sm" color="text-muted" />
+            <we-text variant="label">
+              {labelOf(found().outermost)}, copied from {moduleName()}
+            </we-text>
+          </Row>
+          <Show
+            when={!found().clean}
+            fallback={
+              <Route
+                title="Give it back"
+                detail={`${moduleName()} draws it again. Nothing in it has changed since it was copied.`}
+                action="Give back"
+                disabled={host.session.isReadOnly()}
+                onPress={() => giveBack([found().outermost])}
+              />
+            }
+          >
+            <we-text variant="footnote" color="text-muted">
+              Changed since copying: {listed(found().changed.map(labelOf))}.
+            </we-text>
+            <Route
+              title="Give it all back"
+              detail={`${moduleName()} draws it again, and your changes to ${listed(found().changed.map(labelOf))} are lost.`}
+              action="Give back"
+              disabled={host.session.isReadOnly()}
+              onPress={() => giveBack([found().outermost])}
+            />
+            <Show when={found().returnable.length}>
+              <Route
+                title="Give back what you have not changed"
+                detail={`${listed(found().returnable.map(labelOf))} ${found().returnable.length === 1 ? 'goes' : 'go'} back to ${moduleName()}. Your changes stay.`}
+                action="Give back"
+                disabled={host.session.isReadOnly()}
+                onPress={() => giveBack(found().returnable)}
+              />
+            </Show>
+          </Show>
+        </Column>
+      )}
     </Show>
   );
 }

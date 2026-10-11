@@ -263,7 +263,12 @@ describe('opening a placed part', () => {
       const forked = openPart({ type: '$part', props: { id: 'deep.branch' } }, 'all')!;
       expect(JSON.stringify(forked)).not.toContain('$part');
       expect(JSON.stringify(forked)).not.toContain('PartFrame');
-      expect((forked.children as SchemaNode[])[0]).toEqual({ type: 'we-badge', children: ['leaf'] });
+      expect((forked.children as SchemaNode[])[0]).toMatchObject({ type: 'we-badge', children: ['leaf'] });
+      // Each level copied says which part it was and which placement it replaced, so it can be given back.
+      expect((forked.children as SchemaNode[])[0]).toMatchObject({
+        forkedFrom: 'part:deep.leaf',
+        forkedPart: { placement: { id: 'deep.leaf' } },
+      });
     });
   });
 

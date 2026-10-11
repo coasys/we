@@ -20,7 +20,15 @@ import { PresentPart } from '@solid/components/PartFrame';
 import { injectDSInteropStyles } from '@solid/dsInterop';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import { createInMemoryBackend } from '@we/backend-inmemory';
-import { EditorHostProvider, EditorOverlay, OwnerCard, PartCard, PartsPalette, SuppliedPanelNote } from '@we/editor';
+import {
+  CopiedPartNote,
+  EditorHostProvider,
+  EditorOverlay,
+  OwnerCard,
+  PartCard,
+  PartsPalette,
+  SuppliedPanelNote,
+} from '@we/editor';
 import {
   EDIT_SURFACE_ATTR,
   installGestureTracking,
@@ -28,6 +36,7 @@ import {
   OWNER_NAME_ATTR,
   PART_ATTR,
   PART_NODE_ATTR,
+  partForkPrint,
   VIEW_BOUNDARY_ATTR,
   VIEW_BOUNDARY_NAME_ATTR,
 } from '@we/schema-shared';
@@ -613,7 +622,18 @@ function editorProbe(): void {
  * the template it handed `updateTemplate`, so a case can read what taking a region over did.
  */
 function ownerCardProbe(
-  kind: 'part' | 'panel' | 'palette' | 'view' | 'view-blocked' | 'arranged' | 'arranged-placed' | 'part-node',
+  kind:
+    | 'part'
+    | 'panel'
+    | 'palette'
+    | 'view'
+    | 'view-blocked'
+    | 'arranged'
+    | 'arranged-placed'
+    | 'part-node'
+    | 'copied-clean'
+    | 'copied-inner'
+    | 'copied-outer',
 ): void {
   const record = (key: string, value: unknown) => {
     const bag = globalThis as unknown as Record<string, unknown[]>;
@@ -632,6 +652,33 @@ function ownerCardProbe(
       kind === 'arranged' ? arranged : { ...arranged, snap: 'right' },
     ];
   }
+  /*
+    A feed copied with the lines inside it — two copied levels, each fingerprinted as the copy makes
+    them — then left alone, changed inside the lines (the avatar), or changed in the feed's own nodes.
+  */
+  if (kind.startsWith('copied-')) {
+    const lines: Record<string, unknown> = {
+      id: 'llllllllll',
+      type: 'Column',
+      forkedFrom: 'part:demo.lines',
+      forkedPart: { placement: { id: 'demo.lines' }, print: '' },
+      children: [{ id: 'vvvvvvvvvv', type: 'we-avatar', props: { size: 'sm' } }],
+    };
+    const feed: Record<string, unknown> = {
+      id: 'ffffffffff',
+      type: 'Column',
+      forkedFrom: 'part:demo.feed',
+      forkedPart: { placement: { id: 'demo.feed', subject: { $: 'local.chosen' } }, print: '' },
+      children: [{ id: 'hhhhhhhhhh', type: 'we-text', children: ['Transcript'] }, lines],
+    };
+    (lines.forkedPart as { print: string }).print = partForkPrint(lines as never);
+    (feed.forkedPart as { print: string }).print = partForkPrint(feed as never);
+    if (kind === 'copied-inner')
+      ((lines.children as Record<string, unknown>[])[0].props as Record<string, unknown>).size = 'lg';
+    if (kind === 'copied-outer')
+      ((feed.children as Record<string, unknown>[])[0].children as string[])[0] = 'What was said';
+    template.children = [feed];
+  }
   const host = {
     session: {
       isReadOnly: () => false,
@@ -649,7 +696,14 @@ function ownerCardProbe(
       },
     },
     owners: {
-      part: () => ({ id: 'demo.box', label: 'Box', moduleId: 'demo', moduleName: 'Demo', inputs: [], missing: '' }),
+      part: (id: string) => ({
+        id,
+        label: ({ 'demo.feed': 'Feed', 'demo.lines': 'Lines' } as Record<string, string>)[id] ?? 'Box',
+        moduleId: 'demo',
+        moduleName: 'Demo',
+        inputs: [],
+        missing: '',
+      }),
       parts: () => [
         {
           id: 'demo.box',
@@ -675,10 +729,16 @@ function ownerCardProbe(
           parts: ['demo.box'],
         };
       },
-      openPart: (_placement: unknown, depth: 'one' | 'all') =>
-        depth === 'one'
-          ? { type: 'Column', children: [{ type: '$part', props: { id: 'demo.inner' } }] }
-          : { type: 'Column', children: [{ type: 'we-text', children: ['inner'] }] },
+      // As the real port does, each level opened says which part it was and which placement it replaced.
+      openPart: (placement: { props?: Record<string, unknown> }, depth: 'one' | 'all') => ({
+        type: 'Column',
+        forkedFrom: 'part:demo.box',
+        forkedPart: { placement: placement.props ?? {}, print: '' },
+        children:
+          depth === 'one'
+            ? [{ type: '$part', props: { id: 'demo.inner' } }]
+            : [{ type: 'we-text', children: ['inner'] }],
+      }),
       panel: () => ({
         dockId: 'call:stage',
         moduleId: 'call',
@@ -728,6 +788,7 @@ function ownerCardProbe(
               if (kind === 'palette') return createComponent(PartsPalette, { node: template as never });
               if (kind === 'arranged' || kind === 'arranged-placed')
                 return createComponent(SuppliedPanelNote, { nodeId: 'bbbbbbbbbb' });
+              if (kind.startsWith('copied-')) return createComponent(CopiedPartNote, { nodeId: 'vvvvvvvvvv' });
               if (kind === 'part-node')
                 return createComponent(OwnerCard, {
                   owner: {
@@ -762,6 +823,14 @@ function pressButton(words: string): boolean {
   if (!button || button.disabled) return false;
   button.click();
   return true;
+}
+
+/** Press the last "Give back" — the one that returns only what was not changed. */
+function pressGiveBackUnchanged(): boolean {
+  const buttons = [...document.querySelectorAll('we-button')].filter((b) => b.textContent?.trim() === 'Give back');
+  const last = buttons.at(-1) as HTMLElement | undefined;
+  last?.click();
+  return !!last;
 }
 
 /**
@@ -837,6 +906,7 @@ injectDSInteropStyles();
   editorProbeCover,
   ownerCardProbe,
   pressButton,
+  pressGiveBackUnchanged,
   editorProbeDispose,
   editorProbeSelect,
   emptyPartProbe,

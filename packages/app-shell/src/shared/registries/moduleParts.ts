@@ -23,7 +23,15 @@
  * isolation — `{ $: 'part.id' }` names nothing the validator can resolve, so the module's own
  * fragment would stop being checkable. This way the part stays the module's working node.
  */
-import { derivedNodeId, deriveNodeIds, findNodeById, type SchemaNode, type SchemaProp } from '@we/schema-shared';
+import {
+  derivedNodeId,
+  deriveNodeIds,
+  findNodeById,
+  forEachNode,
+  partForkPrint,
+  type SchemaNode,
+  type SchemaProp,
+} from '@we/schema-shared';
 
 import { moduleRegistry } from './moduleRegistry';
 
@@ -213,12 +221,34 @@ export function resolveParts(node: SchemaNode): SchemaNode | SchemaNode[] {
  * written into a template. Null for a part nobody publishes — there is nothing to open.
  */
 export function openPart(placement: SchemaNode, depth: 'one' | 'all'): SchemaNode | null {
+  const opened = openRaw(placement, depth);
+  return opened && printForks(opened);
+}
+
+/**
+ * {@link openPart} without the fingerprints, for building a copy in steps: a level's fingerprint
+ * reduces the copied levels inside it to which part each is, so it is only right once they are open.
+ *
+ * Every level opened records what it was — `forkedFrom` names the part, `forkedPart` keeps the
+ * placement it replaces — which is what lets the editor give it back exactly as it was placed.
+ */
+function openRaw(placement: SchemaNode, depth: 'one' | 'all'): SchemaNode | null {
   const props = (placement.props ?? {}) as { id?: unknown; subject?: unknown; inputs?: unknown };
   const part = typeof props.id === 'string' ? moduleRegistry.parts()[props.id] : undefined;
   if (!part) return null;
 
   const bound = structuredClone(instantiate(placement, part));
+  bound.forkedFrom = `part:${String(props.id)}`;
+  bound.forkedPart = { placement: structuredClone(placement.props ?? {}), print: '' };
   return depth === 'all' ? inlineParts(bound) : bound;
+}
+
+/** Fingerprint every copied level in a finished copy. Mutates and returns it. */
+function printForks(root: SchemaNode): SchemaNode {
+  forEachNode(root, (node) => {
+    if (node.forkedPart) node.forkedPart.print = partForkPrint(node);
+  });
+  return root;
 }
 
 /**
@@ -246,16 +276,16 @@ export function openPartPath(
     if (chain[i] === target && i > 0) break;
     const at = i === 0 ? placement : root && findNodeById(root, chain[i])?.node;
     if (!at || at.type !== '$part') return null;
-    const opened = openPart(at, 'one');
+    const opened = openRaw(at, 'one');
     if (!opened) return null;
     parts.push(String((at.props as { id?: unknown } | undefined)?.id ?? ''));
-    opened.forkedFrom = `part:${parts[parts.length - 1]}`;
     if (i === 0) root = opened;
     else {
       for (const key of Object.keys(at)) delete (at as Record<string, unknown>)[key];
       Object.assign(at, opened);
     }
   }
+  if (root) printForks(root);
   const found = root && (root.id === target ? root : findNodeById(root, target)?.node);
   return root && found ? { node: root, target: found, parts } : null;
 }
@@ -265,7 +295,7 @@ function inlineParts<T>(value: T): T {
   if (Array.isArray(value)) return value.map((entry) => inlineParts(entry)) as unknown as T;
   if (!value || typeof value !== 'object') return value;
   const record = value as Record<string, unknown>;
-  if (record.type === '$part') return (openPart(record as SchemaNode, 'all') ?? record) as T;
+  if (record.type === '$part') return (openRaw(record as SchemaNode, 'all') ?? record) as T;
   return Object.fromEntries(Object.entries(record).map(([key, entry]) => [key, inlineParts(entry)])) as T;
 }
 
