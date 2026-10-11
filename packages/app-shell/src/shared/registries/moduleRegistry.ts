@@ -40,6 +40,7 @@ import {
   type ModuleFunction,
   type ModuleHostProfile,
   type ModuleLauncher,
+  type ModulePart,
   type ModuleScope,
   type ModuleStore,
   type ModuleStoreDeps,
@@ -48,12 +49,29 @@ import {
   type PanelContribution,
   storeSurface,
 } from '@we/module-shared';
-import { collectComponentTypes, type SchemaNode, type TemplateSchema } from '@we/schema-shared';
+import {
+  collectComponentTypes,
+  EDIT_SURFACE_ATTR,
+  OWNER_ATTR,
+  OWNER_NAME_ATTR,
+  type SchemaNode,
+  type TemplateSchema,
+} from '@we/schema-shared';
 
 import type { SettingGroup, SettingValue } from '../moduleSettings';
-import { type DockEntry, dockFrame, dockRegistry } from './dockRegistry';
+import { type DockEntry, dockFrame, dockRegistry, dockTitle } from './dockRegistry';
 import { notePublisher } from './moduleHostServices';
 import { slotRegistry } from './slotRegistry';
+
+/** A part as the host lists it: what the module declared, and where it came from. */
+export interface RegisteredPart extends ModulePart {
+  /** `<moduleId>.<name>` — what a `$part` names. */
+  id: string;
+  name: string;
+  moduleId: string;
+  moduleName: string;
+  moduleIcon?: string;
+}
 
 /**
  * What a module puts in front of the user — which decides *where* it can be turned off.
@@ -261,13 +279,30 @@ function registerModuleBlocks(definition: ModuleDefinition, compiled: Record<str
  * by **dock id**, not by module: keyed by module, one supplied body would replace the contents of
  * every panel a module contributes.
  */
-function suppliedOrOwn(moduleId: string, dockId: string, dock: string, own: SchemaNode): SchemaNode {
+function suppliedOrOwn(moduleId: string, dockId: string, dock: string, own: SchemaNode, title: string): SchemaNode {
   return {
     type: '$if',
     props: {
       condition: { $: `shellStore.panelSupplied['${dockId}']` },
       then: { type: 'TemplatePanelBody', props: { moduleId, dock } },
-      else: own,
+      /*
+        The module's own composition, marked as the module's.
+
+        An edit surface, so the visual editor can reach it — and an owned region, so what it reaches
+        is the panel as a whole, named for whoever provides it, rather than a node inside it the
+        template does not own. Selecting it is how somebody finds out it can be arranged, restyled or
+        replaced, where before the panel simply did not respond. Box-less, so it lays out as before.
+      */
+      else: {
+        type: 'Column',
+        props: {
+          styles: { display: 'contents' },
+          [EDIT_SURFACE_ATTR]: '',
+          [OWNER_ATTR]: `panel:${dockId}`,
+          [OWNER_NAME_ATTR]: title,
+        },
+        children: [own],
+      },
     },
   };
 }
@@ -585,7 +620,11 @@ export const moduleRegistry = {
         anchor: 'dock-right',
         order: panel.order,
         id: `dock:${dockId}`,
-        node: gateOnSpace(id, dockFrame(entry, suppliedOrOwn(id, dockId, panel.name, panel.node)), holds),
+        node: gateOnSpace(
+          id,
+          dockFrame(entry, suppliedOrOwn(id, dockId, panel.name, panel.node, dockTitle(entry))),
+          holds,
+        ),
       });
     }
 
@@ -854,12 +893,20 @@ export const moduleRegistry = {
    * Named parts, keyed `<moduleId>.<name>` so two modules cannot collide. Normalised: a part written as
    * a bare node comes back as one with no subject, so a caller has one shape to handle.
    */
-  parts(): Record<string, { node: SchemaNode; subject?: string }> {
-    const out: Record<string, { node: SchemaNode; subject?: string }> = {};
+  parts(): Record<string, RegisteredPart> {
+    const out: Record<string, RegisteredPart> = {};
     for (const { definition } of moduleRegistry.all()) {
       for (const [name, part] of Object.entries(definition.contributes?.parts ?? {})) {
-        const normalised = 'node' in part ? (part as { node: SchemaNode; subject?: string }) : { node: part };
-        out[`${definition.manifest.id}.${name}`] = normalised;
+        const normalised: ModulePart =
+          'node' in part && !('type' in part) ? (part as ModulePart) : { node: part as SchemaNode };
+        out[`${definition.manifest.id}.${name}`] = {
+          ...normalised,
+          id: `${definition.manifest.id}.${name}`,
+          name,
+          moduleId: definition.manifest.id,
+          moduleName: definition.manifest.name,
+          moduleIcon: definition.manifest.icon,
+        };
       }
     }
     return out;

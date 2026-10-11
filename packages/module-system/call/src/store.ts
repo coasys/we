@@ -1994,7 +1994,10 @@ export function createCallStore(deps: ModuleStoreDeps) {
 
     /** Start a new call here, whether or not one is already running. Resolves once it is joined. */
     startCall: action(
-      (anchorNodeId?: string) => startCall(anchorNodeId),
+      // Only an id is an anchor. A button wired without `args` hands over the click, and taking that
+      // for the record the call is about sent an event to the backend, which refused the write.
+      (anchorNodeId?: unknown) =>
+        startCall(typeof anchorNodeId === 'string' && anchorNodeId ? anchorNodeId : undefined),
       'Start a new call in the space on screen, optionally about the record whose id is given; resolves once joined.',
     ),
 

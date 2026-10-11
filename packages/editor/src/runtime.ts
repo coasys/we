@@ -6,5 +6,13 @@
  * the editing UI behind `@we/editor` is needed only in a mode most sessions never enter. Keeping
  * them apart is what lets that UI, and CodeMirror with it, load on demand.
  */
-export { EditorHostProvider, type EditorHost, useEditorHost } from './host';
+export {
+  EditorHostProvider,
+  type EditorHost,
+  type OwnedPanel,
+  type OwnedPart,
+  type OwnedView,
+  type OwnersPort,
+  useEditorHost,
+} from './host';
 export * from './panelLayout';

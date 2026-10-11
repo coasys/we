@@ -3449,7 +3449,7 @@ TemplateStore:
   - toggleInstalled(templateId: string): installs or uninstalls by id — what the settings list’s switch calls. Prefer installTemplate/uninstallTemplate where the switch can pass its value
   - setDefaultTemplate(templateId: string): sets the agent's preferred default template (persists to AgentSettings.defaultTemplateId)
   - saveTemplate(name: string): saves the current template
-  - saveTemplateAs(schema: TemplateSchema, destination?: 'root' | 'space'): saves a schema as a new template in your library or in the current space. Resolves true on success. The editor's fork path; prefer editorStore.startFork from chrome
+  - saveTemplateAs(schema: TemplateSchema, destination?: 'root' | 'space', options?: { activate?: boolean; rename?: boolean }): saves a schema as a new template in your library or in the current space, and makes it the template on screen unless activate is false. A copy saved beside the built-in it came from is named (yours) unless rename is false. Resolves true on success. The editor's fork path; prefer editorStore.startFork from chrome
   - publishToSpace(perspectiveUuid: string, spaceName: string): copies the current template into that space, so its members get it. Resolves true on success
   - deleteMarketplaceTemplate(templateId: string): removes a template this agent published from the marketplace. Only its author may
   - publishToMarketplace(options: { name, description, icon?, themeId?, slug?, screenshots: File[] }): publishes the current template to the marketplace under those details. Resolves true on success
@@ -3579,7 +3579,7 @@ Needs: kernels records, presence, ephemeral, media, peerConnection; permissions 
   - toggleScreenShare — Start or stop sharing this agent’s screen; sharing replaces the camera until it stops.
   - toggleSolo — Hide everyone but the spotlight, or bring them back; does nothing while nobody is focused.
   - toggleVideo — Turn this agent’s camera on or off, reporting through problem when it is refused.
-- Parts: `call.anchoredCallButton`, `call.continueCallButton`, `call.deviceSettings`, `call.startCallButton`, `call.tile`
+- Parts: `call.anchoredCallButton` (needs node — the record the call is about — anything with an id), `call.continueCallButton`, `call.deviceSettings`, `call.startCallButton`, `call.tile` (needs tile — the participant to show — one of modules.call.tiles)
 - Panels (`meta.panels[].dock`): `stage` "Call" (module-owned openness)
 - Settings: `iceServers` (string; deployment, space, agent) — ICE servers
 - Presence activities: `call` { id: string, anchor: object, media: object, record: string, continued: boolean }
@@ -3755,7 +3755,7 @@ Needs: kernels records.
   - voting — The id of the poll a vote is being written for, or empty.
 - Actions (`{ "$action": "modules.polls.<name>" }`):
   - vote — Casts this agent’s vote on a poll, or changes it — one vote per person per poll.
-- Parts: `polls.pollCard`, `polls.pollComposer`
+- Parts: `polls.pollCard` (needs block — the Poll record to show), `polls.pollComposer`
 - Settings: `revealBeforeVoting` (boolean; space) — Show counts before voting
 - Functions:
   - tally(options) — Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices), pending (modules.polls.pendingVote[<poll id>] — this agent’s vote written and not yet read back, counted in place of their stored one so the bars move on the press).  e.g. tally({ votes: local.votes, options: block.options, pending: modules.polls.pendingVote[block.id] })
@@ -5104,8 +5104,19 @@ over a call somebody opened from a link rather than the one being recorded:
 { "type": "$part", "props": { "id": "transcribe.transcriptFeed", "subject": { "$": "routeStore.params.call" } } }
 ```
 
-A part naming a module nobody has installed renders nothing and reports itself, the same way a
-contribution to an unprovided anchor does. Placing the module's *whole* panel is still
+Some parts draw one thing out of a list — a call tile draws one participant, a poll card one poll —
+and read it under a name the list binds. The module lists those as what a part **needs** (see Feature
+Modules). Place such a part inside an `$each` that binds the name, or give it with `inputs`:
+
+```json
+{ "type": "$part", "props": { "id": "call.tile", "inputs": { "tile": { "$": "first(modules.call.tiles)" } } } }
+```
+
+A part whose module is not here — not in this build, turned off by the person, or off in the space —
+draws a small marker in its place, which says why and links to the setting that turns it back on. Do
+not leave room for it or design around it: it is the size of a control, whatever the part would have
+been. Declare the modules a template places
+parts from in `meta.requires.modules`. Placing the module's *whole* panel is still
 `{ "module": "<id>" }` in `meta.panels`; parts are for building something else out of it.
 
 **Supplying a module's panel yourself.** A `meta.panels` entry carrying **both** `module` and

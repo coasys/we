@@ -2835,7 +2835,9 @@ export function ShellStoreProvider(props: ParentProps) {
     },
     toggleSpaceSettings: () => setSpaceSettingsOpen((open) => !open),
     openSpaceSettings: (tab?: string) => {
-      setSpaceSettingsTab(tab ?? 'about');
+      // Only a name is a tab. A button wired without `args` hands an action the click, and the About
+      // view's pencil did, so the panel was asked to open on a MouseEvent.
+      setSpaceSettingsTab(typeof tab === 'string' && tab ? tab : 'about');
       setSpaceSettingsOpen(true);
     },
     closeSpaceSettings: () => setSpaceSettingsOpen(false),

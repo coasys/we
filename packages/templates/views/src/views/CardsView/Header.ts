@@ -42,7 +42,7 @@ const startCallButton: SchemaNode = {
           {
             $if: {
               condition: { $: '!modules.call.active' },
-              then: { $action: 'modules.call.startCall' },
+              then: { $action: 'modules.call.startCall', args: [''] },
             },
           },
         ],
