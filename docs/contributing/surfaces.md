@@ -453,7 +453,7 @@ its seed (`{ "id": "polls", "package": "@acme/we-module-polls" }`) and rebuilds.
 longer has to clone the monorepo; a person running a deployment still decides which code it runs.
 
 How it changes is the subject of
-[internal/plans/module-marketplace.md](../internal/plans/module-marketplace.md), which places every
+[architecture/module-marketplace.md](../architecture/module-marketplace.md), which places every
 surface on this page on a **distribution ladder** — pure data, declared data + fragments, sandboxed
 embed, host-provided capability kernels, code — and says which rung each can reach and what moves
 it. The short version: sections, content types and (with research) modules can come down the ladder;

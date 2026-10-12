@@ -2,7 +2,12 @@
 
 ## Status
 
-**Accepted** — foundational architectural decision. All plan documents build on this.
+**Accepted** — foundational architectural decision.
+
+> **Since (2026-10-12):** the decision stands; its picture of the operators does not. The ~18 value
+> tokens listed below (`$store`, `$map`, `$filter`, …) were replaced by one expression language with a
+> closed grammar and an open function library — the answer to the very concern this record raises.
+> See `packages/schema-system/CONVENTIONS.md` and the schema reference in `CLAUDE.md`.
 
 ## Context
 

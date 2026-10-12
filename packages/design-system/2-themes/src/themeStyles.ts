@@ -1056,9 +1056,8 @@ export const DARK_SURFACES: Partial<Record<ThemeRole, string>> = {
     and not others — with nothing on screen to say which kind you were looking at.
 
     `surfaceSunken` is left where it is: its 1.5-point disagreement with the parametric `-0.035`
-    predates this and moving a well is not part of moving a card. It is the same fault, and it is
-    written up as Problem 2 in `docs/internal/plans/prs/SURFACE_STACK_DERIVATION.md` rather than
-    fixed halfway here.
+    predates this and moving a well is not part of moving a card. It is the same fault, left for a
+    change of its own rather than fixed halfway here.
   */
   surface: neutralAt(12.5),
   surfaceSunken: neutralAt(8),

@@ -2,7 +2,8 @@
 
 ## Status
 
-**Accepted** — implementation in progress on `feat/schema-customization`.
+**Accepted** — implemented: templates are stored whole, with a section index computed alongside
+(`computeSectionIndex` in `packages/schema-system/shared/src/indexer.ts`).
 
 ## Context
 

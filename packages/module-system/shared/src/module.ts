@@ -11,7 +11,7 @@
  * and compared at registration), a set of {@link ModuleContributions} (what it puts in front of a
  * person — data the host fans out to its registries), and an optional `createStore` (the one piece
  * that is code). They have different lifetimes, different readers and different trust levels, and the
- * distribution ladder in `docs/internal/plans/module-marketplace.md` already draws exactly this line:
+ * distribution ladder in `docs/architecture/module-marketplace.md` already draws exactly this line:
  * the first two are data, the third is code. The contract used to hold all three in one flat
  * interface grown a field per bug, and the shape here is what that interface was trying to be.
  *

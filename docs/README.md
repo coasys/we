@@ -30,6 +30,7 @@ How WE is designed and why.
 - [Why a Meta-App Instead of Many Separate Apps?](architecture/meta-app-vs-separate-apps.md) — Why shared continuity and cumulative evolution matter
 - [Practical Examples](architecture/examples.md) — Simple examples of how WE ideas work in practice
 - [Performance](architecture/performance.md) — What the template system and design system cost, measured against raw DOM and plain Solid
+- [Distribution](architecture/module-marketplace.md) — The distribution ladder: which contribution surfaces can ship outside the repo, and what moves one down it
 
 ## Guides
 
@@ -40,14 +41,10 @@ How to build with WE.
 Per-system docs live with the code — every `packages/<system>/` directory has a README
 (`graph-system`'s is the model), and packages with authoring rules carry a `CONVENTIONS.md`.
 
-## Internal
+## Decisions
 
-Working notes for maintainers — plans, design decisions, and superseded documents.
+The choices every later change has to respect — one file each, with what was rejected and when to
+revisit it: [architecture/decisions/](architecture/decisions/README.md). For the current state of the
+code, use the [Codebase Map](architecture/codebase-map.md).
 
-- [decisions/](internal/decisions/) — Design decisions and rationale (block system, schema system, template storage, semantic predicates, AI integration)
-- [plans/](internal/plans/) — Strategy docs for upcoming work. **Every plan carries a dated `Status` line** saying whether it shipped, is in progress, was never started, or was superseded — see [plans/README.md](internal/plans/README.md), which also lists the ones that don't have one yet
-- [old/](internal/old/) — Superseded documents, kept for historical context — each carries a banner naming what replaced it
-
-> **Note:** documents under `internal/old/` and some under `internal/plans/` describe designs that
-> are aspirational or have drifted from the implementation. For the current state of the codebase,
-> always use the [Codebase Map](architecture/codebase-map.md).
+Working notes — plans, research, drafts — are kept outside the repo.
