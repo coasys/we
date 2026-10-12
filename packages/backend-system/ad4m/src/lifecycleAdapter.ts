@@ -4,7 +4,7 @@
  * `client.neighbourhood.*`, and `client.agent.*` calls the app shell's stores previously made
  * directly. Datasets are perspectives; shared datasets are neighbourhoods.
  */
-import { Ad4mClient, Perspective, type PerspectiveProxy, RpcError } from '@coasys/ad4m';
+import { Ad4mClient, Perspective, PerspectiveHandle, type PerspectiveProxy, RpcError } from '@coasys/ad4m';
 import {
   type AgentIdentity,
   type AgentSessionPort,
@@ -142,12 +142,13 @@ export function createAd4mDatasetLifecycle(
     tracking = true;
 
     // Events sent while the socket was down were never heard, so the registry stops vouching for
-    // itself until the next full read. The client may not offer the hook; a fresh read still works.
-    (client.perspective as { onReconnect?: (callback: () => void) => unknown }).onReconnect?.(() => {
+    // itself until the next full read.
+    client.perspective.onReconnect(() => {
       complete = false;
     });
 
-    client.perspective.addPerspectiveAddedListener((handle) => {
+    client.on('perspective-added', ({ perspective }) => {
+      const handle = PerspectiveHandle.fromWire(perspective);
       if (reading) addedWhileReading.add(handle.uuid);
       void (async () => {
         await resolveOwnProfileDatasetId();
@@ -157,28 +158,26 @@ export function createAd4mDatasetLifecycle(
         if (!p || isBackendBookkeeping(p)) return;
         for (const s of subscribers) s.onAdded?.(toRef(p));
       })();
-      return null;
     });
 
-    client.perspective.addPerspectiveUpdatedListener((handle) => {
+    client.on('perspective-updated', ({ perspective }) => {
+      const handle = PerspectiveHandle.fromWire(perspective);
       // The event carries the whole handle, so a perspective already held needs no read at all.
       const held = proxies.get(handle.uuid);
       if (held) {
         refresh(held, handle);
         for (const s of subscribers) s.onUpdated?.(toRef(held));
-        return null;
+        return;
       }
       void proxyFor(handle.uuid).then((p) => {
         if (p) for (const s of subscribers) s.onUpdated?.(toRef(p));
       });
-      return null;
     });
 
-    client.perspective.addPerspectiveRemovedListener((uuid) => {
+    client.on('perspective-removed', ({ perspectiveUuid: uuid }) => {
       if (reading) removedWhileReading.add(uuid);
       proxies.delete(uuid);
       for (const s of subscribers) s.onRemoved?.(uuid);
-      return null;
     });
   }
 
@@ -420,15 +419,15 @@ export function createAd4mAgentSession(backendClient: unknown): AgentSessionPort
 
   /*
     Calls waiting out a timed-out generate/unlock. One listener for the port's lifetime rather than
-    one per call, because AD4M's listener API has no detach.
+    one per call: every call needs it, so there is nothing to gain from detaching between calls.
 
     The event is the signal, not `agent.status()`: status reports unlocked the moment the wallet
     opens, before Holochain and the languages are up, and the executor only publishes this event at
     the end of the handler. Polling status would carry on into a session that is not ready.
   */
   const settleWaiters = new Set<() => void>();
-  client.agent.addAgentStatusChangedListener((status) => {
-    if (!(status as { isUnlocked?: unknown } | undefined)?.isUnlocked) return;
+  client.on('agent-status-changed', ({ agent: status }) => {
+    if (!status?.isUnlocked) return;
     for (const settle of [...settleWaiters]) settle();
   });
 

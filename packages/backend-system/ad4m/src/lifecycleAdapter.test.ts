@@ -225,16 +225,24 @@ describe('one handle per dataset', () => {
       constructed.push(p);
       return p;
     };
+    // The executor's payloads: added/updated carry the handle, removed carries the uuid.
     const client = {
+      on: vi.fn((type: string, cb: (event: never) => void) => {
+        const name = type.replace('perspective-', '');
+        listeners[name] = (arg: unknown) =>
+          (cb as (event: unknown) => void)(
+            name === 'removed'
+              ? { perspectiveUuid: arg, uuid: arg, owner: 'did:me' }
+              : { perspective: arg, perspectiveUuid: (arg as { uuid: string }).uuid, owner: 'did:me' },
+          );
+        return () => delete listeners[name];
+      }),
       agent: { me: vi.fn(async () => ({ did: 'did:me', perspective: null })) },
       perspective: {
         all: vi.fn(async () => [build('a', 'Alpha'), build('b', 'Beta')]),
         byUUID: vi.fn(async (uuid: string) => build(uuid)),
         add: vi.fn(async (name: string) => build(`new-${name}`, name)),
         remove: vi.fn(async () => undefined),
-        addPerspectiveAddedListener: vi.fn((cb) => (listeners.added = cb)),
-        addPerspectiveUpdatedListener: vi.fn((cb) => (listeners.updated = cb)),
-        addPerspectiveRemovedListener: vi.fn((cb) => (listeners.removed = cb)),
         onReconnect: vi.fn((cb) => (listeners.reconnected = cb)),
       },
     };
