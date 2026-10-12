@@ -1,5 +1,5 @@
 /**
- * Reading a collection's children back as a transcript.
+ * Reading a collection's children, and the replies to them, back as a transcript.
  *
  * This is the host's job rather than the module's, and that is a consequence of the module contract
  * rather than a preference: `createEntity` and `linkEntity` are its entire data surface, with no read
@@ -106,8 +106,27 @@ function isoTimestamp(value: unknown): string | null {
   return null;
 }
 
+/** A page's rows and every member of their threads, each once — the replies said under each line. */
+function withThreads(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  const seen = new Set<string>();
+  const out: Record<string, unknown>[] = [];
+  const add = (row: unknown) => {
+    if (!row || typeof row !== 'object') return;
+    const record = row as Record<string, unknown>;
+    const id = typeof record.id === 'string' ? record.id : '';
+    if (id && seen.has(id)) return;
+    if (id) seen.add(id);
+    out.push(record);
+  };
+  for (const row of rows) {
+    add(row);
+    if (Array.isArray(row.thread)) for (const member of row.thread) add(member);
+  }
+  return out;
+}
+
 /**
- * Gather a collection's children as ordered transcript turns.
+ * Gather a collection's children, and the replies in their threads, as ordered transcript turns.
  *
  * Ordered by timestamp here rather than left to the caller, because the order turns are read in is
  * an artefact of storage and the order they were *said* in is the only one an LLM can reason about.
@@ -131,14 +150,18 @@ export async function gatherTranscriptTurns(
     if (!model) continue;
 
     /*
-      Replies come with the rest. A reply said in a conversation is filed as one of its lines as
-      well as a response to the line it answers (see `@shared/responses`), so the conversation's
-      children are everything said in it, in the order it was said.
+      Replies come with the lines they answer. A reply is a child of nothing — it is in the `thread`
+      of the line it answers (see `@shared/responses`) — so each line is read with its thread, and
+      the two together are everything said in the conversation. A call held about a line is in its
+      thread too; it carries no text, so the checks below leave it out.
     */
-    const rows = (await model.findAll(deps.handle, {
-      parent: { id: collectionId, predicate },
-      ...(options.limit !== undefined ? { limit: options.limit } : {}),
-    })) as Record<string, unknown>[];
+    const rows = withThreads(
+      (await model.findAll(deps.handle, {
+        parent: { id: collectionId, predicate },
+        include: { thread: true },
+        ...(options.limit !== undefined ? { limit: options.limit } : {}),
+      })) as Record<string, unknown>[],
+    );
 
     for (const row of rows) {
       const text = typeof row.text === 'string' ? row.text.trim() : '';

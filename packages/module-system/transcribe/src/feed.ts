@@ -213,8 +213,9 @@ export async function readFeedWindow(
 
   const [loose, calls, ...extracted] = await Promise.all([
     find('TextBlock', page(root)),
+    // Every call in the space, not only those in its collection: one held about a task or a post is
+    // a response to it and a child of nothing. The space is the dataset, so this is the same set.
     find('CollectionBlock', {
-      within: root,
       where: { kind: 'call' },
       order: { createdAt: order },
       limit: CALL_WINDOW,

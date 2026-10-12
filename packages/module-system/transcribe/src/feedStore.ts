@@ -117,8 +117,15 @@ export function createFeed(deps: FeedDeps) {
     The newest line anywhere in the space, not the newest line *contained by* the space or a call.
     One row space-wide covers typed messages, every call's lines and every reply, whoever wrote them,
     on one subscription where a contained read per call would be one each; a line that is not in the
-    window (a post's paragraph) costs one debounced re-read. A reply is in the window like any other
-    line, since the host files a reply as a child of the feed it was said in.
+    window (a post's paragraph) costs one debounced re-read. A reply is a TextBlock too, so it is
+    heard here the moment it is written; it reaches the window through the thread of the line it
+    answers, and the link that puts it there lands a moment later — which the subscription over the
+    lines on screen, below, hears as a change to that line.
+
+    Calls are asked of the whole space rather than of the space collection. A call held about
+    something — a task, a post — is a response to it and a child of nothing, so "the calls in the
+    space collection" would miss it; the space is the dataset, so every call in the dataset is a
+    call in the space.
   */
   let stops: (() => void)[] = [];
   const unsubscribe = () => {
@@ -131,7 +138,7 @@ export function createFeed(deps: FeedDeps) {
     if (!open() || !space || typeof records?.subscribe !== 'function') return;
     const newest = { order: { createdAt: 'desc' as const }, limit: 1 };
     stops.push(records.subscribe('TextBlock', newest, soon));
-    stops.push(records.subscribe('CollectionBlock', { within: space, where: { kind: 'call' }, ...newest }, soon));
+    stops.push(records.subscribe('CollectionBlock', { where: { kind: 'call' }, ...newest }, soon));
   });
   /*
     And the lines it is showing, by id — what an edit changes.

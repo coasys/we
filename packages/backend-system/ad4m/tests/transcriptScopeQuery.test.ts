@@ -35,7 +35,8 @@ describe('transcriptScopeQuery', () => {
   });
 
   it('scopes to one call, so a watch cannot read another call transcript', () => {
-    expect(query()).toContain(`<${CALL}> <we://child> ?m`);
+    expect(query()).toContain(`{ <${CALL}> <we://child> ?m . }`);
+    expect(query()).toContain(`{ <${CALL}> <we://child> ?line . ?line <we://thread> ?m . }`);
   });
 
   it('takes turns only from text blocks', () => {
@@ -51,12 +52,17 @@ describe('transcriptScopeQuery', () => {
   it('uses the predicate it is given rather than assuming containment', () => {
     // A foreign container reaches its children through its own predicate; the caller resolves it.
     expect(transcriptScopeQuery(CALL, 'flux://messages')).toContain(`<${CALL}> <flux://messages> ?m`);
+    expect(transcriptScopeQuery(CALL, 'flux://messages')).not.toContain('we://child');
   });
 
-  it('reads replies as lines, not by following them down', () => {
-    // A reply said in a call is one of its children as well as a response to what it answers, so
-    // following `we://response` too would read every reply twice.
+  it('reads the replies through each line’s thread, one hop, not by following them down', () => {
+    // A reply is a child of nothing: it is in the thread of the line it answers, which holds every
+    // reply under that line at any depth. Walking `we://response` instead would need a path of
+    // unbounded length to reach the same rows.
+    expect(query()).toContain('UNION');
     expect(query()).not.toContain('we://response');
+    // Written out in full, never as a `?` path — the executor reads the predicates from the text.
+    expect(query()).not.toMatch(/>\?/);
   });
 
   it('reads only what a person said or wrote', () => {

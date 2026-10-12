@@ -1,16 +1,20 @@
 /**
  * A conversation's lines with replies inline — how a transcript and the feed draw a conversation.
  *
- * ## A reply is a line too
+ * ## Where the replies come from
  *
- * A reply said in a conversation is two things at once: a response to the line it answers
- * (`respondsTo`), and a line of that conversation — the host files it as a child of the feed the
- * answered line lives in. So a page of a call's lines already holds its replies, in the order they
- * were said: a reply to the first line, sent after the third, comes after the third. What a page
- * does not carry is who each reply answers, which is what the quote above it draws — so the page is
- * read with `include: { respondsTo: true }`, and this turns that into `replyTo`.
+ * A conversation's children are what was said in it at the top level; a reply is a child of nothing.
+ * It answers a line (`respondsTo`), and it is in the `thread` of the first line above it that is not
+ * itself a reply. So a page of a call's lines is read with `include: { thread: true }`, and this
+ * flattens each line's thread in beside it — every reply to that line, at any depth — and sorts the
+ * lot by when it was said: a reply to the first line, sent after the third, comes after the third.
  *
+ * What a reply answers arrives as an id on it, and its parent is always on the page — the line whose
+ * thread it came in, or another reply in that thread — so the quote above it is looked up there.
  * Only the direct parent is quoted: a reply to a reply quotes the reply.
+ *
+ * A thread holds every response, and a call held about a line is one; it is a conversation of its
+ * own, not a line of this one, so it is left out.
  */
 import type { ModuleFunction } from '@we/module-shared';
 
@@ -65,12 +69,30 @@ function quoteOf(row: Row, byId: Map<string, Row>): ReplyQuote | null {
   };
 }
 
+/** A conversation of its own — a call held about a line — rather than something said in this one. */
+const isConversation = (row: Row): boolean => row.mode === 'feed';
+
+/** A page's lines and every reply in their threads, in page order — each line followed by its thread. */
+function flatten(page: Row[]): Row[] {
+  const out: Row[] = [];
+  for (const row of page) {
+    if (!row || typeof row !== 'object') continue;
+    out.push(row);
+    const thread = Array.isArray(row.thread) ? (row.thread as unknown[]) : [];
+    for (const member of thread) {
+      if (member && typeof member === 'object' && !isConversation(member as Row)) out.push(member as Row);
+    }
+  }
+  return out;
+}
+
 /**
- * Every line on a page, once each, in time order — newest first when asked, as a page read from the
- * live end arrives — each reply carrying the quote of what it answers.
+ * Every line on a page and every reply in their threads, once each, in time order — newest first
+ * when asked, as a page read from the live end arrives — each reply carrying the quote of what it
+ * answers.
  */
 export function threadLines(options: { rows?: unknown; newestFirst?: unknown } | undefined): Row[] {
-  const rows = Array.isArray(options?.rows) ? (options.rows as Row[]) : [];
+  const rows = flatten(Array.isArray(options?.rows) ? (options.rows as Row[]) : []);
   const byId = new Map<string, Row>();
   for (const row of rows) if (typeof row?.id === 'string' && row.id) byId.set(row.id, row);
   const seen = new Set<string>();
@@ -104,15 +126,15 @@ export function threadLines(options: { rows?: unknown; newestFirst?: unknown } |
   return out.sort((a, b) => (newestFirst ? timeOf(b) - timeOf(a) : timeOf(a) - timeOf(b)));
 }
 
-/** The `include` that brings each line's parent with it, for the quote a reply draws. */
+/** The `include` that brings each line's replies with it — its whole thread, at any depth. */
 export function repliesInclude(): Record<string, unknown> {
-  return { respondsTo: true };
+  return { thread: true };
 }
 
 export const threadLinesFunction: ModuleFunction = {
   name: 'threadLines',
   params: ['options'],
-  doc: 'A page of a conversation’s lines, every one once, in time order — newest first when `newestFirst` is true. A reply said in a conversation is one of its lines, so the page already holds it; each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, and a line with marks carries `content` — the one block a BlockRenderer draws it from. Read the page with `include: { respondsTo: true }` so each reply arrives knowing what it answers. Options: rows (the page), newestFirst (boolean).',
+  doc: 'A page of a conversation’s lines with every reply to them, each once, in time order — newest first when `newestFirst` is true. A reply is a child of nothing: it is in the `thread` of the line it answers, so read the page with `include: { thread: true }` and this flattens each line’s thread in beside it, leaving out any call held about a line. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, and a line with marks carries `content` — the one block a BlockRenderer draws it from. Options: rows (the page), newestFirst (boolean).',
   example: 'threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })',
   fn: threadLines as (...args: never[]) => unknown,
 };

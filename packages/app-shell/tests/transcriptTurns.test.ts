@@ -28,6 +28,29 @@ describe('gatherTranscriptTurns', () => {
       'call-1',
     );
     expect(seen?.parent).toEqual({ id: 'call-1', predicate: 'we://child' });
+    // With each line's thread, which is where its replies are.
+    expect(seen?.include).toEqual({ thread: true });
+  });
+
+  it('reads the replies in each line’s thread as turns of the conversation, each once', async () => {
+    const reply = { id: 'r', text: 'yes', author: 'did:b', createdAt: 2_000, source: 'typed' };
+    const turns = await gatherTranscriptTurns(
+      deps([
+        {
+          id: 'q',
+          text: 'lunch at 1?',
+          author: 'did:a',
+          createdAt: 1_000,
+          source: 'spoken',
+          // A call held about the line is in its thread too, and is not something said.
+          thread: [reply, { id: 'call', kind: 'call', mode: 'feed', author: 'did:c', createdAt: 3_000 }],
+        },
+        // The same reply handed over twice is one turn.
+        { id: 'r2', text: 'later', author: 'did:a', createdAt: 4_000, source: 'spoken', thread: [reply] },
+      ]),
+      'c',
+    );
+    expect(turns.map((t) => t.text)).toEqual(['lunch at 1?', 'yes', 'later']);
   });
 
   it('returns nothing when the caller could not resolve one — a foreign space, not a bug', async () => {
@@ -100,28 +123,6 @@ describe('gatherTranscriptTurns', () => {
       'c',
     );
     expect(turns.map((t) => t.text)).toEqual(['said', 'typed', 'mended']);
-  });
-
-  it('reads replies as the lines they are, in the order they were said, in one read', async () => {
-    // A reply said in a conversation is one of its children, so the conversation's children are
-    // everything said in it — and following responses down as well would read each reply twice.
-    let seen: Record<string, unknown> | undefined;
-    const turns = await gatherTranscriptTurns(
-      deps(
-        [
-          { text: 'question', author: 'did:a', createdAt: 1, source: 'typed' },
-          { text: 'thanks', author: 'did:a', createdAt: 4, source: 'typed', respondsTo: 'answer' },
-          { text: 'answer', author: 'did:b', createdAt: 3, source: 'typed', respondsTo: 'question' },
-          { text: 'a bot chiming in', author: 'did:bot', createdAt: 2 },
-        ],
-        (options) => {
-          seen = options;
-        },
-      ),
-      'c',
-    );
-    expect(turns.map((t) => t.text)).toEqual(['question', 'answer', 'thanks']);
-    expect(seen?.include).toBeUndefined();
   });
 });
 
