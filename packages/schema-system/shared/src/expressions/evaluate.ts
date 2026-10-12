@@ -9,7 +9,8 @@
  * applies, which is the rule `$store` learned after it was found to be an execution channel: a
  * **tagged** accessor is a signal and is read; any other function resolves to `undefined`. There is
  * no method call — `a.f(b)` is the library's `f(a, b)` — so a value's own methods are unreachable
- * whatever it is.
+ * whatever it is. And a read stops at the page: a DOM node, a window or a storage object answers only
+ * the few fields `readField` names for it (`./reach.ts`), so holding one is not a way into the rest.
  *
  * ## Total
  *
@@ -27,6 +28,7 @@
 import { REACTIVE_ACCESSOR } from '../propResolvers/reactive';
 import type { Expr } from './ast';
 import { DENIED_PROPERTIES } from './ast';
+import { readField } from './reach';
 
 /**
  * A root whose members are read through a getter rather than as an object's own properties —
@@ -62,13 +64,16 @@ type CallbackNamespace = Namespace & { [RAW]: unknown };
  * The value of a call-time root — `event`, `arg`, `result` — as an expression reads it: its
  * properties are data, its functions are readable (bound to the object they came from), and the
  * whole thing settles back to the raw value, so `{ $: 'arg' }` still hands the argument itself on.
+ *
+ * Fields are read through `readField`, so the host handing over a payload is not the host handing
+ * over the page: an event reads its key and its detail, its target reads its value, and a function
+ * is let through only from data — a composer's `save()`, never a DOM method.
  */
 export function callbackValue(value: unknown): unknown {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
   const raw = value as Record<string, unknown>;
   const ns = namespace((property) => {
-    if (DENIED_PROPERTIES.has(property) || !(property in raw)) return undefined;
-    const member = raw[property];
+    const member = readField(raw, property);
     if (typeof member === 'function') {
       if (REACTIVE_ACCESSOR in member) return member;
       const bound = (...args: unknown[]) => (member as (...a: unknown[]) => unknown).apply(raw, args);
@@ -115,8 +120,7 @@ function readProperty(object: unknown, property: string): unknown {
   if (base === null || base === undefined) return undefined;
   if (typeof base === 'string') return property === 'length' ? base.length : undefined;
   if (typeof base !== 'object') return undefined;
-  if (!(property in (base as object))) return undefined;
-  return readValue((base as Record<string, unknown>)[property]);
+  return readValue(readField(base as object, property));
 }
 
 /**

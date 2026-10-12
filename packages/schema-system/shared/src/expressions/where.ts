@@ -19,6 +19,8 @@
  */
 import { RANGE_OPS, rangeCompare } from '@we/backend-shared';
 
+import { readField } from './reach';
+
 export function matchesWhere(item: unknown, where: Record<string, unknown>): boolean {
   const record = item as Record<string, unknown> | null | undefined;
 
@@ -39,7 +41,9 @@ export function matchesWhere(item: unknown, where: Record<string, unknown>): boo
       continue;
     }
 
-    const actual = record?.[key];
+    // Through `readField`: the field names are the template's, and a test against a value it may
+    // not read is a way of reading it a character at a time.
+    const actual = record !== null && typeof record === 'object' ? readField(record, key) : undefined;
 
     if (isRecord(expected)) {
       if ('exists' in expected) {
