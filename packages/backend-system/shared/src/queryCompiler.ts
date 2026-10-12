@@ -123,8 +123,17 @@ function translateWhere(where: Record<string, unknown>): Filter | undefined {
 
 // ─── order → SortKey[] ──────────────────────────────────────────────────────────
 
+/**
+ * Either dialect's direction — the flat `$query`'s `asc`/`desc` or the ORM's `ASC`/`DESC` — read as
+ * the IR's. A caller normalising the top-level order is not enough: a projection's own `order`
+ * arrives here untouched, and an unrecognised `DESC` sorted ascending, so "the newest child"
+ * answered with the oldest one.
+ */
 function translateOrder(order: Record<string, 'asc' | 'desc'>): SortKey[] {
-  return Object.entries(order).map(([by, dir]) => ({ by, dir }));
+  return Object.entries(order).map(([by, dir]) => ({
+    by,
+    dir: String(dir).toLowerCase() === 'desc' ? ('desc' as const) : ('asc' as const),
+  }));
 }
 
 // ─── include → IncludeMap + top-level aggregates ────────────────────────────────

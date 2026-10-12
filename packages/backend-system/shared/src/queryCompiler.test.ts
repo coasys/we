@@ -119,6 +119,18 @@ describe('compileQuery', () => {
     });
     expect(ir.include!.$recentLikes).not.toHaveProperty('first');
   });
+
+  it('reads the ORM’s upper-case direction in a projection as well as at the top', () => {
+    // A projection's order is not normalised by its caller; an unread `DESC` sorted ascending, and
+    // "the newest child" answered with the oldest.
+    const { ir } = compileQuery({
+      entity: 'CollectionBlock',
+      order: { createdAt: 'DESC' as never },
+      include: { $latestChild: { from: 'children', order: { createdAt: 'DESC' }, limit: 1 } },
+    });
+    expect(ir.sort).toEqual([{ by: 'createdAt', dir: 'desc' }]);
+    expect(ir.include).toMatchObject({ $latestChild: { sort: [{ by: 'createdAt', dir: 'desc' }] } });
+  });
 });
 
 describe('irToFlatQuery', () => {
