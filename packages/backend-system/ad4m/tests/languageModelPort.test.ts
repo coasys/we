@@ -97,6 +97,28 @@ describe('the default model’s status', () => {
     await expect(port.status!()).resolves.toMatchObject({ state: 'unchecked' });
   });
 
+  it('is unchecked when the refusal comes from the SDK copy bundled in ad4m-connect', async () => {
+    // The app's client throws ad4m-connect's own `RpcError`, a different class from the one
+    // `@coasys/ad4m` exports — this stands in for it, with the same shape.
+    class BundledRpcError extends Error {
+      constructor(
+        public status: number,
+        body: string,
+      ) {
+        super(`RPC error ${status}: ${body}`);
+      }
+    }
+    const refusal = new BundledRpcError(
+      403,
+      'ai.discoverModels acts on the node itself, so a user session may not call it',
+    );
+    const port = statusClient({
+      getDefaultModel: vi.fn(async () => claude),
+      discoverModels: vi.fn(async () => Promise.reject(refusal)),
+    });
+    await expect(port.status!()).resolves.toMatchObject({ state: 'unchecked' });
+  });
+
   it('is an error when the endpoint itself answers Unauthorized', async () => {
     const port = statusClient({
       getDefaultModel: vi.fn(async () => claude),

@@ -1,4 +1,4 @@
-import { type Ad4mClient, type AIModel, RpcError } from '@coasys/ad4m';
+import type { Ad4mClient, AIModel } from '@coasys/ad4m';
 import type {
   ConversationReply,
   ConversationRequest,
@@ -7,6 +7,7 @@ import type {
 } from '@we/backend-shared';
 
 import { readChatStream, toOpenAiMessages, toOpenAiTools } from './openaiChat';
+import { rpcStatus } from './rpcStatus';
 
 /**
  * The AD4M executor's AI service, as the neutral language-model port.
@@ -150,7 +151,7 @@ async function defaultModelStatus(client: Ad4mClient): Promise<LanguageModelStat
     // session on a multi-user node, which may never call `ai.discoverModels`. That says nothing
     // about the model — so it is unchecked, not broken. Read from the status, not the wording: the
     // two refusals word themselves differently, and an endpoint's own "Unauthorized" is an error.
-    if (err instanceof RpcError && err.status === 403) return { state: 'unchecked', name, model: id, detail: '' };
+    if (rpcStatus(err) === 403) return { state: 'unchecked', name, model: id, detail: '' };
     return { state: 'error', name, model: id, detail: messageOf(err) };
   }
 }

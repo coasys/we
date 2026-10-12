@@ -4,7 +4,7 @@
  * `client.neighbourhood.*`, and `client.agent.*` calls the app shell's stores previously made
  * directly. Datasets are perspectives; shared datasets are neighbourhoods.
  */
-import { Ad4mClient, Perspective, PerspectiveHandle, type PerspectiveProxy, RpcError } from '@coasys/ad4m';
+import { Ad4mClient, Perspective, PerspectiveHandle, type PerspectiveProxy } from '@coasys/ad4m';
 import {
   type AgentIdentity,
   type AgentSessionPort,
@@ -16,6 +16,7 @@ import {
 } from '@we/backend-shared';
 
 import { ensureFileStorageLanguage } from './agentHelpers';
+import { rpcStatus } from './rpcStatus';
 
 const SCHEME = 'neighbourhood://';
 
@@ -445,14 +446,14 @@ export function createAd4mAgentSession(backendClient: unknown): AgentSessionPort
     try {
       await call();
     } catch (err) {
-      if (!(err instanceof RpcError && err.status === 408)) throw err;
+      if (rpcStatus(err) !== 408) throw err;
       let timer: ReturnType<typeof setTimeout> | undefined;
       const expired = new Promise<'expired'>((resolve) => {
         timer = setTimeout(() => resolve('expired'), SESSION_SETTLE_MS);
       });
       const outcome = await Promise.race([settled.then(() => 'settled' as const), expired]);
       clearTimeout(timer);
-      if (outcome === 'expired') throw new SessionTimeoutError(err.message);
+      if (outcome === 'expired') throw new SessionTimeoutError(err instanceof Error ? err.message : String(err));
     } finally {
       settleWaiters.delete(settle);
     }
