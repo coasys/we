@@ -2,6 +2,7 @@
  * The model-authoring task follows the app's system prompt by replacement, never `updateTask` —
  * which the executor's RPC refuses for want of a `taskId` the client does not send.
  */
+import { RpcError } from '@coasys/ad4m';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createAd4mLanguageModelPort } from '../src/languageModelPort';
@@ -83,6 +84,50 @@ describe('the default model’s status', () => {
       discoverModels: vi.fn(async () => Promise.reject(new Error('Anthropic API error 401: invalid x-api-key'))),
     });
     await expect(port.status!()).resolves.toMatchObject({ state: 'error', detail: expect.stringContaining('401') });
+  });
+
+  it('is unchecked when the executor refuses the check itself', async () => {
+    // A user session on a multi-user node may not call `ai.discoverModels`; neither may a guest
+    // without the AI CREATE grant. Each refusal words itself differently, but both are a 403.
+    const refusal = new RpcError(403, 'ai.discoverModels acts on the node itself, so a user session may not call it');
+    const port = statusClient({
+      getDefaultModel: vi.fn(async () => claude),
+      discoverModels: vi.fn(async () => Promise.reject(refusal)),
+    });
+    await expect(port.status!()).resolves.toMatchObject({ state: 'unchecked' });
+  });
+
+  it('is unchecked when the refusal comes from the SDK copy bundled in ad4m-connect', async () => {
+    // The app's client throws ad4m-connect's own `RpcError`, a different class from the one
+    // `@coasys/ad4m` exports — this stands in for it, with the same shape.
+    class BundledRpcError extends Error {
+      constructor(
+        public status: number,
+        body: string,
+      ) {
+        super(`RPC error ${status}: ${body}`);
+      }
+    }
+    const refusal = new BundledRpcError(
+      403,
+      'ai.discoverModels acts on the node itself, so a user session may not call it',
+    );
+    const port = statusClient({
+      getDefaultModel: vi.fn(async () => claude),
+      discoverModels: vi.fn(async () => Promise.reject(refusal)),
+    });
+    await expect(port.status!()).resolves.toMatchObject({ state: 'unchecked' });
+  });
+
+  it('is an error when the endpoint itself answers Unauthorized', async () => {
+    const port = statusClient({
+      getDefaultModel: vi.fn(async () => claude),
+      discoverModels: vi.fn(async () => Promise.reject(new RpcError(500, 'OpenAI API error: 401 Unauthorized'))),
+    });
+    await expect(port.status!()).resolves.toMatchObject({
+      state: 'error',
+      detail: expect.stringContaining('Unauthorized'),
+    });
   });
 
   it('is an error when the service does not offer that model', async () => {

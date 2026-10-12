@@ -76,6 +76,28 @@ describe('AD4M agent session — unlock that outlasts the RPC timeout', () => {
     expect(isSessionTimeout(await settled)).toBe(true);
   });
 
+  it('waits out a timeout thrown by the SDK copy bundled in ad4m-connect', async () => {
+    // The app's client throws ad4m-connect's own `RpcError`, a different class from the one
+    // `@coasys/ad4m` exports — this stands in for it, with the same shape.
+    class BundledRpcError extends Error {
+      constructor(
+        public status: number,
+        body: string,
+      ) {
+        super(`RPC error ${status}: ${body}`);
+      }
+    }
+    const { client, emitStatus } = fakeClient(() =>
+      Promise.reject(new BundledRpcError(408, "RPC call 'agent.unlock' timed out after 30000ms")),
+    );
+    const unlocking = createAd4mAgentSession(client).unlock('pw');
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    emitStatus({ isUnlocked: true, did: 'did:key:zAgent' });
+
+    await expect(unlocking).resolves.toBeUndefined();
+  });
+
   it('rethrows a refusal as it came, without waiting', async () => {
     const refusal = new RpcError(500, 'aead::Error');
     const { client } = fakeClient(() => Promise.reject(refusal));

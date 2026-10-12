@@ -7,6 +7,7 @@ import type {
 } from '@we/backend-shared';
 
 import { readChatStream, toOpenAiMessages, toOpenAiTools } from './openaiChat';
+import { rpcStatus } from './rpcStatus';
 
 /**
  * The AD4M executor's AI service, as the neutral language-model port.
@@ -146,10 +147,11 @@ async function defaultModelStatus(client: Ad4mClient): Promise<LanguageModelStat
     }
     return { state: 'ready', name, model: id, detail: '' };
   } catch (err) {
-    // Discovery needs the AI CREATE grant. A guest without it has asked a question it may not ask,
-    // which says nothing about the model — so that is unchecked, not broken.
-    if (/capabilit|forbidden|unauthori/i.test(messageOf(err)))
-      return { state: 'unchecked', name, model: id, detail: '' };
+    // The executor refused the call itself (403): a guest without the AI CREATE grant, or a user
+    // session on a multi-user node, which may never call `ai.discoverModels`. That says nothing
+    // about the model — so it is unchecked, not broken. Read from the status, not the wording: the
+    // two refusals word themselves differently, and an endpoint's own "Unauthorized" is an error.
+    if (rpcStatus(err) === 403) return { state: 'unchecked', name, model: id, detail: '' };
     return { state: 'error', name, model: id, detail: messageOf(err) };
   }
 }
