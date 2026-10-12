@@ -1214,6 +1214,66 @@ const codeInTemplate = (): Scenario => {
 };
 
 /**
+ * A template reading the page through what a handler hands it (coasys/we#282).
+ *
+ * The page holds a secret in storage and a cookie, as a signed-in app holds its session token. One
+ * press tries every route to them that once worked — the event's target, a node kept in a local and
+ * read later, and `pick()` — and writes whatever came back where the case can read it. `clicked` is
+ * there so a handler that never ran cannot pass as one that found nothing.
+ */
+const pageThroughEvent = (): Scenario => {
+  localStorage.setItem('we-reach-secret', 'TOP-SECRET');
+  document.cookie = 'we-reach=SESSION-COOKIE';
+  const page = 'event.target.ownerDocument';
+  return {
+    node: {
+      type: 'Column',
+      $localState: {
+        clicked: { type: 'boolean', initial: false },
+        node: { type: 'object', initial: null },
+        leaked: { type: 'string', initial: '' },
+      },
+      props: { width: '100%', gap: '200' },
+      children: [
+        {
+          type: 'button',
+          props: {
+            id: 'reach',
+            onClick: [
+              { $setLocal: 'clicked', value: true },
+              { $setLocal: 'node', value: { $: 'event.target' } },
+              {
+                $setLocal: 'leaked',
+                // `+` joins as text and reads an absent value as '', so a clean run leaves '|||'.
+                value: {
+                  $: [
+                    `${page}.cookie`,
+                    `${page}.defaultView.localStorage['we-reach-secret']`,
+                    'local.node.ownerDocument.cookie',
+                    "pick(event.target, ['ownerDocument']).ownerDocument.cookie",
+                  ].join(" + '|' + "),
+                },
+              },
+            ],
+          },
+          children: ['Reach'],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'local.clicked' },
+            then: { type: 'span', props: { id: 'reach-ran' }, children: ['ran'] },
+          },
+        },
+        { type: 'span', props: { id: 'reach-leaked' }, children: [{ $: 'local.leaked' }] },
+      ],
+    },
+    tables: {},
+    bag: 'space',
+  };
+};
+
+/**
  * Sliders with labelled marks, one at each size the thumb differs at, so a mark's place can be
  * checked against where the thumb really goes rather than against the arithmetic that placed it.
  */
@@ -1272,6 +1332,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:slider-marks': sliderMarks,
   'security:self-firing-events': selfFiringEvents,
   'security:code-in-template': codeInTemplate,
+  'security:page-through-event': pageThroughEvent,
   'canvas:tree-strip': treeStripOverCanvas,
   'canvas:voices': voicesPopover,
   'perf:transcript': (scale) => transcriptAt(scale ?? 100),

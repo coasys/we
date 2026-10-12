@@ -24,6 +24,7 @@
  * it.
  */
 import type { LocalMetaMap } from '../propResolvers/local';
+import { readField } from './reach';
 import { matchesWhere } from './where';
 
 export type FunctionCategory = 'list' | 'text' | 'number' | 'object' | 'form';
@@ -348,7 +349,10 @@ defineFunction({
     const out: Record<string, unknown> = {};
     for (const key of asList(keys)) {
       const name = asText(key);
-      if (name in object) out[name] = object[name];
+      // `readField`, not `name in object`: the keys are the template's, so this is a property read
+      // like `a.b` and stops at the page the same way.
+      const value = readField(object, name);
+      if (value !== undefined) out[name] = value;
     }
     return out;
   },
