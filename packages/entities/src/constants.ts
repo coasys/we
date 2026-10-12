@@ -12,8 +12,8 @@ export const FILE_STORAGE_LANGUAGE = 'QmzSYwddqhm49PrRMzSrJf3AvmmreXMKtr1u56nbTj
 export const PREDICATES = {
   /** `CollectionBlock.children` — composition. What a container is made of. */
   CHILDREN: 'we://child',
-  /** `WeNode.comments` — discourse. What was said *about* a node, by anyone. */
-  COMMENT: 'we://comment',
+  /** `WeNode.responses` — what was made *in response to* a node, by anyone: a reply, a call about it. */
+  RESPONSE: 'we://response',
   /**
    * `WeNode.mentions` — the DIDs named inside a composition.
    *

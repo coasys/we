@@ -17,7 +17,6 @@ export type AssertClassesSatisfyContract = [
   Satisfies<InstanceType<typeof C.AgentSettings>, M.AgentSettingsRecord>,
   Satisfies<InstanceType<typeof C.AudioBlock>, M.AudioBlockRecord>,
   Satisfies<InstanceType<typeof C.CalloutBlock>, M.CalloutBlockRecord>,
-  Satisfies<InstanceType<typeof C.CallExtraction>, M.CallExtractionRecord>,
   Satisfies<InstanceType<typeof C.ChatMessage>, M.ChatMessageRecord>,
   Satisfies<InstanceType<typeof C.ChatSession>, M.ChatSessionRecord>,
   Satisfies<InstanceType<typeof C.CodeBlock>, M.CodeBlockRecord>,

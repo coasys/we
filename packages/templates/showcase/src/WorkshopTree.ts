@@ -472,7 +472,7 @@ export const TREE_BEHAVIOURS: SchemaProp = {
     */
     `${TREE_ON} ? [{ type: 'connect-nodes', options: { button: 'secondary' } }, 'node-double-click', 'canvas-double-click', 'select',` +
     ` { type: 'arrange-nodes', options: { reorder: local.order == 'manual',` +
-    ` keep: ['commentsCount', 'signalsCount'],` +
+    ` keep: ['responsesCount', 'signalsCount'],` +
     ` keepReason: 'People have discussed this connection. Select the line itself to remove it.' } }, 'pan-zoom']` +
     ` : [{ type: 'connect-nodes', options: { button: 'secondary' } }, 'node-double-click', 'canvas-double-click', 'marquee-select', 'select',` +
     ` { type: 'drag-node', options: { pin: true } }, 'pan-zoom']`,

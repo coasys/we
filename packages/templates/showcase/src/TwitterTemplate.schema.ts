@@ -333,7 +333,7 @@ const postDetail: RouteSchema = {
           kind: KIND.reply,
           parentId: { $: 'post.id' },
           // Discourse, not composition: a reply hangs off the post rather than becoming part of it.
-          predicate: 'we://comment',
+          predicate: 'we://response',
           saveLabel: 'Reply',
         }),
         {

@@ -25,7 +25,6 @@ import { VideoBlock } from './VideoBlock';
 // AD4M lane to it live beside that lane's generated classes (@we/backend-ad4m src/models).
 export * from './types';
 import { AgentSettings } from './AgentSettings';
-import { CallExtraction } from './CallExtraction';
 import { ChatMessage } from './ChatMessage';
 import { ChatSession } from './ChatSession';
 import { EdgeRoute } from './EdgeRoute';
@@ -60,7 +59,6 @@ export const CORE_DEFS: Record<string, CoreEntityDef> = {
   AgentSettings,
   AudioBlock,
   CalloutBlock,
-  CallExtraction,
   ChatMessage,
   ChatSession,
   CodeBlock,

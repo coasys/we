@@ -50,6 +50,19 @@ export function composerKeymap(schema: Schema, hooks: KeymapHooks = {}): Plugin 
   });
 }
 
+/**
+ * The keys of a composer that is one line — see `compact` on the composer's props. Enter sends;
+ * Shift+Enter breaks the line where the caret is, inside the same block, which is the only way a line
+ * holds more than one.
+ */
+export function compactKeymap(schema: Schema, submit: () => boolean): Plugin {
+  const lineBreak: Command = (state, dispatch) => {
+    dispatch?.(state.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView());
+    return true;
+  };
+  return keymap({ Enter: () => submit(), 'Shift-Enter': lineBreak });
+}
+
 export function baseKeymapPlugin(): Plugin {
   return keymap(baseKeymap);
 }

@@ -184,3 +184,27 @@ export function shiftMarks(marks: readonly StandoffMark[], at: number, delta: nu
   }
   return out;
 }
+
+/**
+ * The marks that survive an edit made as plain text — a correction typed into a field that knows
+ * nothing of marks.
+ *
+ * A mark is kept only where the words it covered are still the same words at the same place: a
+ * mention of Ann over "@Ann" stays while the rest of the line changes, and goes the moment "@Ann"
+ * is edited away or moved. Conservative on purpose — a mark left over the wrong words would name the
+ * wrong person to everything that reads it, where a dropped one only stops naming anybody.
+ */
+export function rebaseMarks(before: string, after: string, marks: readonly StandoffMark[]): StandoffMark[] {
+  return marks.filter((mark) => cpSlice(before, mark.start, mark.end) === cpSlice(after, mark.start, mark.end));
+}
+
+/** What to link and unlink to make a record's mentions `wanted` — see `writeMentions`. */
+export function mentionChanges(
+  current: readonly string[],
+  wanted: readonly string[],
+): { add: string[]; remove: string[] } {
+  return {
+    add: wanted.filter((did) => !current.includes(did)),
+    remove: current.filter((did) => !wanted.includes(did)),
+  };
+}

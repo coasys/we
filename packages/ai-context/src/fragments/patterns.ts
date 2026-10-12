@@ -60,7 +60,7 @@ array, a missing model).
 {
   "type": "Column",
   "props": { "width": "100%" },
-  "$queries": { "postRows": { "entity": "CollectionBlock", "where": { "type": "root" }, "limit": 20 } },
+  "$queries": { "postRows": { "entity": "CollectionBlock", "where": { "kind": "post" }, "limit": 20 } },
   "children": [
     {
       "type": "$if",

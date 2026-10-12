@@ -572,7 +572,7 @@ describe('contracts call sites depend on', () => {
       grounds that a line means "there is a branch below here". It does not: that is `branchRail`
       in `commentThread`, beside the REPLIES. This segment runs past the comment's own paragraphs
       and traces what the caret folds, which on a childless comment is the comment. So neither
-      condition may mention `comments` — a caret with no line under it leaves the fold's extent
+      condition may mention `responses` — a caret with no line under it leaves the fold's extent
       unmarked.
     */
     const gutter: string[] = [];
@@ -585,7 +585,7 @@ describe('contracts call sites depend on', () => {
     // One control per comment, named for what folding it takes with it: a branch's answers, or a
     // leaf's words. No caret — see the note above.
     expect(gutter.length).toBeGreaterThanOrEqual(1);
-    expect(gutter[0]).toContain("count(reply.comments) ? 'Fold this branch' : 'Fold this comment'");
+    expect(gutter[0]).toContain("count(reply.responses) ? 'Fold this branch' : 'Fold this comment'");
   });
 
   it('says what a folded comment was, not only how much is under it', () => {

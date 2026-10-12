@@ -22,7 +22,7 @@ const SHAPES: EntityShape[] = [
     // has none, which is the case that must not take a type off the canvas.
     relations: [
       { name: 'signals', target: 'Signal', cardinality: 'many' },
-      { name: 'comments', target: '', cardinality: 'many' },
+      { name: 'responses', target: '', cardinality: 'many' },
     ],
   },
   { name: 'TaskBlock', identityProperty: 'title', properties: [{ name: 'title', type: 'string' }], relations: [] },
@@ -66,7 +66,7 @@ const SHAPES: EntityShape[] = [
       { name: 'source', target: '', cardinality: 'one' },
       { name: 'target', target: '', cardinality: 'one' },
       { name: 'signals', target: 'Signal', cardinality: 'many' },
-      { name: 'comments', target: '', cardinality: 'many' },
+      { name: 'responses', target: '', cardinality: 'many' },
     ],
   },
   {
@@ -196,12 +196,12 @@ describe('canvasSeed', () => {
     // which is the difference between a canvas of three hundred cards loading and not.
     const { context: ctx } = context({
       Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
-      CollectionBlock: [{ id: 'c1', title: 'Idea', $signalsCount: 3, $commentsCount: 2 }],
+      CollectionBlock: [{ id: 'c1', title: 'Idea', $signalsCount: 3, $responsesCount: 2 }],
     });
 
-    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'comments'] }, ctx);
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'responses'] }, ctx);
 
-    expect(nodes[0].data).toMatchObject({ signalsCount: 3, commentsCount: 2 });
+    expect(nodes[0].data).toMatchObject({ signalsCount: 3, responsesCount: 2 });
   });
 
   it('counts what people made of a connection too, so a gesture can tell a discussed line from a bare one', async () => {
@@ -221,31 +221,31 @@ describe('canvasSeed', () => {
           sourceType: 'CollectionBlock',
           target: 'c2',
           targetType: 'CollectionBlock',
-          $commentsCount: 2,
+          $responsesCount: 2,
           $signalsCount: 0,
         },
       ],
     });
 
     const { edges } = await canvasSeed().seed(
-      { canvas: 'b1', connections: 'Relationship', counts: ['signals', 'comments'] },
+      { canvas: 'b1', connections: 'Relationship', counts: ['signals', 'responses'] },
       ctx,
     );
 
-    expect(edges[0].data).toMatchObject({ commentsCount: 2 });
+    expect(edges[0].data).toMatchObject({ responsesCount: 2 });
     expect(edges[0].data?.signalsCount).toBeUndefined();
   });
 
   it('leaves a zero out, so a card can ask whether the field is there', async () => {
     const { context: ctx } = context({
       Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
-      CollectionBlock: [{ id: 'c1', title: 'Idea', $signalsCount: 0, $commentsCount: 0 }],
+      CollectionBlock: [{ id: 'c1', title: 'Idea', $signalsCount: 0, $responsesCount: 0 }],
     });
 
-    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'comments'] }, ctx);
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'responses'] }, ctx);
 
     expect(nodes[0].data?.signalsCount).toBeUndefined();
-    expect(nodes[0].data?.commentsCount).toBeUndefined();
+    expect(nodes[0].data?.responsesCount).toBeUndefined();
   });
 
   it('asks a type for no count it cannot answer, rather than losing the type to a refused query', async () => {
@@ -266,7 +266,7 @@ describe('canvasSeed', () => {
       return query(request);
     };
 
-    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'comments'] }, ctx);
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'responses'] }, ctx);
 
     expect(asked.find((q) => q.entity === 'CollectionBlock')?.include).toMatchObject({
       $signalsCount: { from: 'signals', count: true },

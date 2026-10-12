@@ -10,7 +10,7 @@
  *
  * So this is a library over embedded video, and the template says so rather than offering an upload
  * button that cannot work. Everything else about it is real: playlists are containers, comments are
- * the same `we://comment` threads as everywhere else, and watch history would be the same
+ * the same `we://response` threads as everywhere else, and watch history would be the same
  * `ReadMarker` the channels template uses for unread.
  */
 import type { RouteSchema, SchemaNode, TemplateSchema } from '@we/schema-shared';
@@ -181,7 +181,7 @@ const watchRoute: RouteSchema = {
               title: 'Comment',
               kind: KIND.reply,
               parentId: { $: 'post.id' },
-              predicate: 'we://comment',
+              predicate: 'we://response',
               saveLabel: 'Comment',
             }),
             commentThread({

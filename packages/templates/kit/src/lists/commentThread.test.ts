@@ -37,10 +37,12 @@ function levelExpressions(node: Node): string[] {
 }
 
 const rows = [
-  { id: 'c1', inReplyTo: { id: 'card-1' } },
-  { id: 'c2', inReplyTo: { id: 'card-1' } },
-  { id: 'r1', inReplyTo: { id: 'c1' } },
-  { id: 'rr1', inReplyTo: { id: 'r1' } },
+  { id: 'c1', kind: 'reply', respondsTo: { id: 'card-1' } },
+  { id: 'c2', kind: 'reply', respondsTo: { id: 'card-1' } },
+  { id: 'r1', kind: 'reply', respondsTo: { id: 'c1' } },
+  { id: 'rr1', kind: 'reply', respondsTo: { id: 'r1' } },
+  // A call held about the card is a response too, and is never drawn as a reply.
+  { id: 'call-1', kind: 'call', respondsTo: { id: 'card-1' } },
 ];
 
 const evaluate = (source: string, roots: Record<string, unknown>) =>
@@ -62,7 +64,7 @@ describe('commentThread row selection', () => {
   /**
    * The bug this exists for. The anchor is an arbitrary caller expression — here a ternary, because
    * a thread can be re-rooted on a reply — and `==` binds tighter than `?:`. Spliced in bare, the
-   * predicate became `(r.inReplyTo.id == local.root) ? local.root : row.id`, whose value is a
+   * predicate became `(r.respondsTo.id == local.root) ? local.root : row.id`, whose value is a
    * non-empty id: truthy for every row. The whole subtree drew as top-level replies.
    */
   it('takes only the anchor’s own replies at the top level', () => {
@@ -92,7 +94,7 @@ describe('commentThread row selection', () => {
 describe('commentThread truncation', () => {
   const thread = commentThread({
     anchorId: { $: 'row.id' },
-    anchorTotal: 'count(row.comments)',
+    anchorTotal: 'count(row.responses)',
     perLevel: [2, 1],
     depth: 2,
     more: (as) => ({ type: 'we-button', children: [{ $: `${as}.id` }] }),
@@ -130,7 +132,7 @@ describe('commentThread truncation', () => {
     const offers = conditions(thread).filter((c) => c.includes('> 0') && c.includes('count('));
     expect(offers.length).toBeGreaterThan(0);
     // A deeper level counts its own parent's replies against the rows it drew.
-    expect(offers.some((c) => c.includes('reply.comments'))).toBe(true);
+    expect(offers.some((c) => c.includes('reply.responses'))).toBe(true);
   });
 
   it('says nothing at the top level when the caller cannot say how many there are', () => {
@@ -196,16 +198,16 @@ describe('commentThread truncation arithmetic', () => {
 
   const thread = commentThread({
     anchorId: { $: 'root ? root : card.id' },
-    anchorTotal: 'root ? count(first(focus).comments) : count(card.comments)',
+    anchorTotal: 'root ? count(first(focus).responses) : count(card.responses)',
     perLevel: [1],
     depth: 1,
     reply: () => [{ type: 'we-text' }],
   }) as Node;
 
   const rows = [
-    { id: 'x', inReplyTo: { id: 'focused' } },
-    { id: 'y', inReplyTo: { id: 'card-1' } },
-    { id: 'z', inReplyTo: { id: 'card-1' } },
+    { id: 'x', kind: 'reply', respondsTo: { id: 'focused' } },
+    { id: 'y', kind: 'reply', respondsTo: { id: 'card-1' } },
+    { id: 'z', kind: 'reply', respondsTo: { id: 'card-1' } },
   ];
 
   const offers = (roots: Record<string, unknown>) =>
@@ -220,18 +222,18 @@ describe('commentThread truncation arithmetic', () => {
   it('offers nothing when a re-rooted thread is showing everything it has', () => {
     // One reply under the focused row, and it is drawn: nothing is hidden.
     const local = { threadRows: rows, topReplies: 1 };
-    expect(offers({ local, root: 'focused', focus: [{ comments: ['x'] }], card: { id: 'card-1' } })).toBe(false);
+    expect(offers({ local, root: 'focused', focus: [{ responses: ['x'] }], card: { id: 'card-1' } })).toBe(false);
   });
 
   it('offers what is left when a re-rooted thread is showing some of them', () => {
     const local = { threadRows: rows, topReplies: 1 };
-    expect(offers({ local, root: 'focused', focus: [{ comments: ['x', 'x2'] }], card: { id: 'card-1' } })).toBe(true);
+    expect(offers({ local, root: 'focused', focus: [{ responses: ['x', 'x2'] }], card: { id: 'card-1' } })).toBe(true);
   });
 
   it('counts against the record when the thread is not re-rooted', () => {
     const local = { threadRows: rows, topReplies: 2 };
     // Two drawn under the card, two it has: nothing hidden.
-    expect(offers({ local, root: '', focus: [], card: { id: 'card-1', comments: ['y', 'z'] } })).toBe(false);
+    expect(offers({ local, root: '', focus: [], card: { id: 'card-1', responses: ['y', 'z'] } })).toBe(false);
   });
 });
 

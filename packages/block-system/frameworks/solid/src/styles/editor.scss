@@ -228,3 +228,76 @@ body.block-dragging {
     text-align: center;
   }
 }
+
+// ── The compact composer: an input, not a document ─────────────────────────
+//
+// In `compact` mode the composer is a one-line message box — the transcript's and the Feed's — and
+// it should look exactly like the text area it replaced, so it draws a field: the fill, edge, radius
+// and hover and focus states of every other field (see `fieldSurface` in the primitives), at the
+// control height of a `md` field, so one line is as tall as the button beside it.
+//
+// A document's spacing is wrong here twice over: every paragraph carries `--we-space-300` on all
+// sides, which is what gives a post's blocks their hover highlight and a comfortable caret target,
+// and the editor would then sit inside a frame's own padding as well. So the paragraphs give theirs
+// up and the field's padding is the only padding — derived from the control height exactly as
+// `we-textarea` derives its own, so the line is centred in one control and grows from there.
+//
+// Two selectors deep on purpose: the editor's own rule (`.we-block-composer-wrapper
+// .we-block-composer-editor`) sets a min-height, and the block rules set padding on every paragraph,
+// and this has to outrank both.
+.we-block-composer-wrapper .we-block-composer--compact {
+  --we-compact-control-height: calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px));
+  --we-compact-line: calc(1em * var(--we-theme-line-height, var(--we-line-height-normal, 1.5)));
+
+  box-sizing: border-box;
+  min-height: var(--we-compact-control-height);
+
+  // Six lines, as the text area allowed, before it scrolls rather than eating the panel.
+  max-height: calc(6 * var(--we-compact-line) + var(--we-compact-control-height) - var(--we-compact-line));
+  overflow-y: auto;
+  padding: max(0px, calc((var(--we-compact-control-height) - 2px - var(--we-compact-line)) / 2)) var(--we-space-300);
+  line-height: var(--we-theme-line-height, var(--we-line-height-normal, 1.5));
+  border: 1px solid var(--we-role-border);
+  border-radius: var(--we-theme-input-radius, var(--we-radius-400));
+  background: var(--we-role-surface-sunken);
+
+  // The transitions live on the states, not the resting rule, as `fieldSurface`'s do: declared at
+  // rest, a box mounted a frame before its class applied eased from the default border colour —
+  // white, in a dark theme — every time a call was picked and the composer remounted.
+  &:hover {
+    background: var(--we-role-surface-sunken-hover);
+    border-color: var(--we-role-border-hover);
+    transition:
+      background-color var(--we-theme-state-duration, var(--we-transition-100, 50ms)) ease-out,
+      border-color var(--we-theme-state-duration, var(--we-transition-100, 50ms)) ease-out;
+  }
+
+  // The fill as well as the ring, because focus outlasts the pointer.
+  &:focus {
+    background: var(--we-role-surface-sunken-hover);
+    border-color: var(--we-ring-color);
+    box-shadow: 0 0 0 1px var(--we-ring-color);
+    transition:
+      border-color var(--we-theme-state-duration, var(--we-transition-100, 50ms)) ease-out,
+      box-shadow var(--we-theme-state-duration, var(--we-transition-100, 50ms)) ease-out;
+  }
+
+  :is(.we-block, p, h1, h2, h3, blockquote, .we-list-item) {
+    padding: 0;
+    margin: 0;
+    border-radius: 0;
+  }
+
+  // A line is not a set of blocks to pick out: no hover or focus highlight on the paragraph.
+  :is([data-block-hovered='true'], [data-block-focused='true']) {
+    background-color: transparent;
+  }
+
+  // The placeholder sits where the text will start, and is always shown on an empty line, as a text
+  // area's is — not only on hover, as a document's empty-paragraph hint is.
+  [data-placeholder].we-block-placeholder-empty::before {
+    left: 0;
+    opacity: 1;
+    color: var(--we-role-text-faint);
+  }
+}

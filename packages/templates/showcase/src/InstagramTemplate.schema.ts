@@ -169,7 +169,7 @@ const photoDetail: RouteSchema = {
                   title: 'Comment',
                   kind: KIND.reply,
                   parentId: { $: 'post.id' },
-                  predicate: 'we://comment',
+                  predicate: 'we://response',
                   saveLabel: 'Comment',
                 }),
                 commentThread({

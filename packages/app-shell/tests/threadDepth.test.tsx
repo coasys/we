@@ -79,7 +79,7 @@ interface Reply {
   editorState: null;
   author: string;
   createdAt: string;
-  comments: string[];
+  responses: string[];
 }
 
 let dispose: (() => void) | undefined;
@@ -97,8 +97,8 @@ afterEach(() => {
 describe('a thread in a panel', () => {
   it('reads the whole thread in one walked query, and draws every level', async () => {
     const replies: Reply[] = [
-      { id: 'r1', parent: 'task-1', editorState: null, author: 'did:them', createdAt: '2026-09-01', comments: ['r2'] },
-      { id: 'r2', parent: 'r1', editorState: null, author: 'did:them', createdAt: '2026-09-02', comments: [] },
+      { id: 'r1', parent: 'task-1', editorState: null, author: 'did:them', createdAt: '2026-09-01', responses: ['r2'] },
+      { id: 'r2', parent: 'r1', editorState: null, author: 'did:them', createdAt: '2026-09-02', responses: [] },
     ];
     /** Every drill-down the thread issues: its anchors, and the per-depth limits it asked for. */
     const asked: { anchors: string[]; levels?: number[] }[] = [];
@@ -126,7 +126,8 @@ describe('a thread in a panel', () => {
         return {
           // Flat either way, so each row says whose reply it is — which is what the renderer puts
           // the tree back together from.
-          subscribe: () => Promise.resolve(rows.map((reply) => ({ ...reply, inReplyTo: { id: reply.parent } }))),
+          subscribe: () =>
+            Promise.resolve(rows.map((reply) => ({ ...reply, kind: 'reply', respondsTo: { id: reply.parent } }))),
           dispose: vi.fn(),
         };
       }),
@@ -147,7 +148,7 @@ describe('a thread in a panel', () => {
 
     const node: SchemaNode = {
       type: '$each',
-      props: { items: [{ id: 'task-1', comments: ['r1'] }], as: 'row' },
+      props: { items: [{ id: 'task-1', responses: ['r1'] }], as: 'row' },
       // The subscription the fragment reads for the counts on each reply — the panel's, in the app.
       $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
       children: [discussionSection({ record: 'row' })],
@@ -235,7 +236,7 @@ describe('a thread in a panel', () => {
 
     const node: SchemaNode = {
       type: '$each',
-      props: { items: [{ id: 'task-1', comments: [] }], as: 'row' },
+      props: { items: [{ id: 'task-1', responses: [] }], as: 'row' },
       $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
       children: [discussionSection({ record: 'row', perLevel: [4, 2] })],
     };
@@ -258,17 +259,17 @@ describe('a thread in a panel', () => {
     // A thread is read far more often than it is acted on: a reaction row and a Reply under every
     // reply is a column of furniture between one sentence and the next.
     const replies: Reply[] = [
-      { id: 'r1', parent: 'task-1', editorState: null, author: 'did:them', createdAt: '2026-09-01', comments: [] },
+      { id: 'r1', parent: 'task-1', editorState: null, author: 'did:them', createdAt: '2026-09-01', responses: [] },
     ];
     const collections = {
       query: vi.fn((_dataset: unknown, options: { scope?: { anchorId?: string } }) => ({
-        // `inReplyTo` is how the thread finds a row's place: one flat answer, each row naming its
+        // `respondsTo` is how the thread finds a row's place: one flat answer, each row naming its
         // parent. A fixture without it renders nothing, whatever rows it returns.
         subscribe: () =>
           Promise.resolve(
             replies
               .filter((reply) => reply.parent === options.scope?.anchorId)
-              .map((reply) => ({ ...reply, inReplyTo: { id: reply.parent } })),
+              .map((reply) => ({ ...reply, kind: 'reply', respondsTo: { id: reply.parent } })),
           ),
         dispose: vi.fn(),
       })),
@@ -288,7 +289,7 @@ describe('a thread in a panel', () => {
 
     const node: SchemaNode = {
       type: '$each',
-      props: { items: [{ id: 'task-1', comments: ['r1'] }], as: 'row' },
+      props: { items: [{ id: 'task-1', responses: ['r1'] }], as: 'row' },
       $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
       children: [discussionSection({ record: 'row' })],
     };

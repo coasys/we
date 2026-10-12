@@ -2,6 +2,7 @@ import { activitiesOfType } from '@we/backend-shared';
 import type { DatasetTarget, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 import { namespace } from '@we/schema-shared';
 
+import { createFeed } from './feedStore';
 import { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
 
 /**
@@ -132,6 +133,8 @@ export const CHILDREN_PREDICATE = 'we://child';
  */
 export const SPOKEN = 'spoken';
 export const TYPED = 'typed';
+/** What a reply hangs off — the reply mechanism every record in WE shares. */
+export const REPLY_PREDICATE = 'we://response';
 export const CORRECTED = 'corrected';
 
 /**
@@ -2248,7 +2251,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   let warnedEmpty: string | null = null;
 
   /**
-   * Whether this community has automatic extraction on.
+   * Whether one collection is extracted as it grows — its own answer, which the host reads.
    *
    * Feature-tested like every other interpretation call — the host publishes a forwarding wrapper
    * that is always present, so `interpretation?.` only answers "is there a wrapper". A host that
@@ -2709,7 +2712,67 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     if (context) void stop();
   });
 
+  /**
+   * Write one typed line into a collection — a transcript, or the space itself — with its marks.
+   *
+   * The one way a typed message is written, so the transcript's composer, the Feed's and a reply
+   * cannot drift apart about what a message is: a `TextBlock` with `source: typed`, its marks as
+   * the composer gave them, under whatever holds it.
+   */
+  async function writeMessage(
+    holder: { id: string; predicate: string },
+    text: string,
+    marks?: string,
+    dataset?: string,
+  ): Promise<string | null> {
+    const words = String(text ?? '').trim();
+    if (!words || !createEntity) return null;
+    return createEntity(
+      'TextBlock',
+      { text: words, source: TYPED, ...(marks ? { marks } : {}) },
+      { parent: holder, ...(dataset ? { dataset } : {}) },
+    );
+  }
+
+  /*
+    The line a reply is being written to — the store's rather than a local, because a list's lines and
+    its composer are separate parts of a panel with no scope in common.
+
+    With the list it was started from, because the transcript and the Feed draw the same lines and
+    can both be open: a reply started in one is offered, and sent, only by that one's composer.
+
+    A transcript's reply is put down when the call on screen changes — it belongs to the conversation
+    it was started in. A Feed's is not: the Feed is the whole space, whichever call is on screen. The
+    surface is kept beside the signal so that effect does not read, and so follow, the reply itself.
+  */
+  type ReplyTarget = { id: string; text: string; author: string; surface: 'transcript' | 'feed' };
+  const [replyingTo, setReplyingTo] = signal<ReplyTarget | null>(null);
+  let replySurface: ReplyTarget['surface'] | '' = '';
+  const replyTo = (target: ReplyTarget | null) => {
+    replySurface = target?.surface ?? '';
+    setReplyingTo(target);
+  };
+  effect?.(() => {
+    void deps.callOnScreen?.();
+    if (replySurface !== 'feed') replyTo(null);
+  });
+
+  const feed = createFeed({
+    signal,
+    effect,
+    state,
+    action,
+    onDispose,
+    dataset,
+    records,
+    interpretation,
+    unconfirmedIds,
+    // Into the space on screen: the Feed is about the space somebody is reading.
+    write: (collection, text, marks) => writeMessage({ id: collection, predicate: CHILDREN_PREDICATE }, text, marks),
+  });
+
   return {
+    ...feed,
     // ── State ────────────────────────────────────────────────────────────────
     status: state(
       status,
@@ -3079,11 +3142,17 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
                  */
                 canExtract:
                   hasTranscript(collection) && (interpretation?.available() ?? false) && hasTargets(collection),
+                /**
+                 * Whether this collection is extracted as it grows — its own answer, copied from the
+                 * space's default when it was made. What the panel's switch binds to, whichever
+                 * collection the panel is showing: the call on screen, or the messages outside calls.
+                 */
+                auto: Boolean(collection) && autoEnabled(collection),
               };
             }
           }
         }),
-      'What one call can extract, by record id — { targets, canChoose, canExtract }, read as extractionFor[id].',
+      'What one collection can extract, by record id — { targets, canChoose, canExtract, auto }, read as extractionFor[id].',
     ),
     /**
      * Include or exclude one model from what **this call** extracts, for everyone in it.
@@ -3110,14 +3179,15 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       }
     }, 'Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call.'),
     /**
-     * Whether this call is extracted as it happens — its participants' answer, else the space's.
+     * Whether the call this agent is in is extracted as it happens — its own answer. For any other
+     * collection, read `extractionFor[id].auto`.
      *
-     * What a switch in the extraction panel binds to. Absent a call it answers for the space, which
-     * is the honest reading of "does this happen here" when there is no conversation to be about.
+     * Absent a call it answers with the space's default, which is the honest reading of "does this
+     * happen here" when there is no conversation to be about.
      */
     autoExtract: state(
       () => autoEnabled(collectionId() ?? myCall()?.recordId ?? undefined),
-      'Whether this call is extracted as it happens — its participants’ answer, else the space’s.',
+      'Whether the call this agent is in is extracted as it happens — its own answer.',
     ),
     /**
      * Whether any pass is running right now, this node's or a peer's — what the rail's Extraction
@@ -3134,19 +3204,22 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       'Whether any extraction pass is running right now, this node’s or a peer’s.',
     ),
     /**
-     * Turn it on or off for **this call**, for everyone in it.
+     * Turn it on or off for **one collection**, for everyone in it — the one named, or the call this
+     * agent is in.
      *
-     * A group decision beside the call, like `toggleExtractionTarget` — the standing watch is one
-     * registration the whole neighbourhood shares. It leaves the space's own default alone, so a
+     * A group decision on the collection, like `toggleExtractionTarget` — the standing watch is one
+     * registration the whole neighbourhood shares. It leaves the space's default alone, so a
      * conversation that has wandered somewhere nobody wants records of can be stopped without the
-     * community changing its mind about every future call.
+     * community changing its mind about every future one. The host refuses the space's own
+     * collection to anybody who does not administer the space.
      *
-     * Refused quietly where there is no call to record it against, in the same shape and for the
-     * same reason as `toggleExtractionTarget` — pair it with `canChooseTargets`, which answers the
-     * same question about the same record.
+     * Refused quietly where there is nothing to record it against, in the same shape and for the
+     * same reason as `toggleExtractionTarget`.
      */
-    toggleAutoExtract: action(async () => {
-      const live = collectionId() ?? myCall()?.recordId ?? '';
+    toggleAutoExtract: action(async (collection?: unknown) => {
+      // A string only: an `$action` written without `args` hands the click event over in its place.
+      const named = typeof collection === 'string' ? collection : '';
+      const live = named || collectionId() || myCall()?.recordId || '';
       if (!live || typeof interpretation?.setAuto !== 'function') return;
       const next = !autoEnabled(live);
       // Switching it on shows what it makes, once — the same rule `toggle` follows for recording,
@@ -3157,9 +3230,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       try {
         await interpretation.setAuto(live, next);
       } catch (error) {
-        console.warn('[transcribe] could not change whether this call extracts as it happens', error);
+        console.warn('[transcribe] could not change whether this is extracted as it happens', error);
       }
-    }, 'Turns automatic extraction on or off for this call, for everyone in it.'),
+    }, 'Turns automatic extraction on or off for one collection, for everyone in it; defaults to the live call.'),
     /** True when the backend could interpret but there is no transcript yet — a waiting state. */
     extractable: state(
       () => interpretation?.available() ?? false,
@@ -3217,6 +3290,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * See {@link pendingIds} for why this is a union across calls rather than keyed by one.
      */
     unconfirmedIds: state(unconfirmedIds, 'Records a pass made that nobody has kept yet, by id.'),
+    timelineOrientation: state(
+      () => (settings?.().timelineOrder === 'newestTop' ? 'newestTop' : 'newestBottom'),
+      "Which way round this reader draws a timeline — 'newestBottom' or 'newestTop'. Their own setting.",
+    ),
     /**
      * An accept or discard that would decide other suggestions too, waiting on a confirmation — or
      * `null`. Drawn by the module's own overlay; see `TiedDecision`.
@@ -3564,7 +3641,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * second, since a message does not need somebody to have spoken first and `collectionId` is
      * null until they have.
      */
-    addMessage: action(async (collection: string, text: string) => {
+    addMessage: action(async (collection: string, text: string, marks?: string) => {
       const words = String(text ?? '').trim();
       if (!words || !createEntity) return;
       const target = collection || targetCollection();
@@ -3578,11 +3655,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         the live one is running in, where the record it names does not exist.
       */
       const dataset = target === targetCollection() ? (myCall()?.datasetUri ?? undefined) : undefined;
-      await createEntity(
-        'TextBlock',
-        { text: words, source: TYPED },
-        { parent: { id: target, predicate: CHILDREN_PREDICATE }, ...(dataset ? { dataset } : {}) },
-      );
+      await writeMessage({ id: target, predicate: CHILDREN_PREDICATE }, words, marks, dataset);
       /*
         Not awaited, because the composer is waiting on this promise to say it has finished.
 
@@ -3599,7 +3672,46 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         clears the guard so the next message retries.
       */
       void recordSelfParticipation(target, dataset);
-    }, 'Writes something a person typed into a transcript, as a typed line.'),
+    }, 'Writes something a person typed into a transcript, as a typed line — with its marks, when the composer gave any.'),
+    /**
+     * Answer one line — in a transcript or the Feed — with a typed line of its own.
+     *
+     * Linked from the line it answers through `responses`, the one reply mechanism WE has, rather
+     * than contained by the conversation: a reply is about a line, and the transcript and the Feed
+     * draw it inline, after what it answers, quoting it. `inCall` writes into the call's space, for
+     * a reply made from a transcript of a call running somewhere else.
+     */
+    reply: action(async (parentId: string, text: string, marks?: string, inCall?: boolean) => {
+      // Said rather than swallowed: a reply with nothing to answer used to resolve as though sent.
+      if (!parentId) {
+        console.warn('[transcribe] a reply has no line to answer, so it was not sent');
+        return;
+      }
+      const dataset = inCall ? callTarget()?.dataset : undefined;
+      await writeMessage({ id: parentId, predicate: REPLY_PREDICATE }, text, marks, dataset);
+      replyTo(null);
+    }, 'Answers one line with a typed line of its own, linked from it as a reply.'),
+    replyingTo: state(
+      replyingTo,
+      "The line a reply is being written to — { id, text, author, surface } — or null. `surface` is 'transcript' or 'feed': the list it was started from, whose composer sends it.",
+    ),
+    startReply: action(
+      (line: { id?: unknown; text?: unknown; author?: unknown; surface?: unknown }) =>
+        replyTo(
+          // A line with no id is nothing a reply can hang off: refused here, not after it is typed.
+          typeof line?.id === 'string' && line.id
+            ? {
+                id: line.id,
+                text: String(line.text ?? ''),
+                author: String(line.author ?? ''),
+                surface: line.surface === 'feed' ? 'feed' : 'transcript',
+              }
+            : null,
+        ),
+      "Starts a reply to one line — pass { id, text, author, surface } — which that surface's composer then sends as a reply. `surface` is 'transcript' (the default) or 'feed'.",
+      { ambient: true },
+    ),
+    cancelReply: action(() => replyTo(null), 'Puts a reply down without sending it.', { ambient: true }),
     /**
      * Fix the words on a line of the transcript.
      *

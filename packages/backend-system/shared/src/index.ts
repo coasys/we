@@ -158,6 +158,7 @@ export type {
   DataBindingDeps,
   EntityHintState,
   ProfileDirectoryPort,
+  ReferencePort,
   SchemaPort,
 } from './backendPorts';
 export type {

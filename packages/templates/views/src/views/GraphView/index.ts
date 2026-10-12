@@ -77,7 +77,7 @@ const schemaGraph: SchemaNode = {
  * The things people made, and what they connect to — one hop out, expandable by double-click.
  *
  * Seeded on `CollectionBlock`, because **there is no `Post` entity in WE.** A post is a
- * `CollectionBlock` with `type: 'root'`, which is exactly what the cards route queries. The seed
+ * `CollectionBlock` with `kind: 'post'`, which is exactly what the cards route queries. The seed
  * named `Post` for as long as this route existed and failed the only way it could — the registry
  * had nothing under that name, so the mode showed a toast and no graph.
  *

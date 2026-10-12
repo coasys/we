@@ -92,6 +92,8 @@ export type {
   PanelShellOptions,
   SectionLabelOptions,
 } from './layout/panelShell.ts';
+export { timeline, timelineMoreAt, timelineOrder } from './layout/timeline.ts';
+export type { TimelineOptions, TimelineOrientation } from './layout/timeline.ts';
 export { recordCard } from './layout/recordCard.ts';
 export type { RecordCardOptions } from './layout/recordCard.ts';
 export { railButton, railGroup, railItem, railShell } from './layout/rail.ts';

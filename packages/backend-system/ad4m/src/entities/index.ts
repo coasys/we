@@ -8,7 +8,6 @@
  */
 export * from './AgentSettings';
 export * from './AudioBlock';
-export * from './CallExtraction';
 export * from './CalloutBlock';
 export * from './ChatMessage';
 export * from './ChatSession';

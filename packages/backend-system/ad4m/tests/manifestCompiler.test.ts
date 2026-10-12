@@ -264,7 +264,7 @@ describe('a manifest extending the core vocabulary', () => {
     const [entry] = manifestToEntries(shape, { moduleId: 'shape/abc' });
     const byName = Object.fromEntries(entry.properties.map((p) => [p.name, p.predicate]));
     expect(byName.species).toBe('we://shape/abc/species');
-    expect(byName.comments).toBe('we://comment');
+    expect(byName.responses).toBe('we://response');
     expect(byName.signals).toBe('we://signal');
   });
 });

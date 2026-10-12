@@ -91,7 +91,7 @@ describe('shapeIsStale', () => {
    * The case a set of paths cannot see.
    *
    * A relation and its `reverseOf` inverse are one link read from both ends, so they share a
-   * predicate: `WeNode` gained `inReplyTo` beside `comments`, both on `we://comment`. The set of
+   * predicate: `WeNode` gained `respondsTo` beside `responses`, both on `we://response`. The set of
    * paths was therefore unchanged, every existing space read as fresh, the new relation never
    * reached them, and the reverse include found nothing to hydrate — a thread whose replies below
    * the first level silently vanished, in old spaces only.

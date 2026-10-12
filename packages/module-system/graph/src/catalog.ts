@@ -111,7 +111,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           name: 'counts',
           type: 'string[]',
           description:
-            'Relations to count on each card, read onto its data as `<name>Count` — `["signals", "comments"]` for "what have people made of this". The projections ride in the read the seed already makes, so a canvas of three hundred cards pays nothing extra; a query per card would be three hundred subscriptions. A type that does not declare the relation is asked for no count rather than refusing the read, since a refusal would take that whole type off the canvas. Absent for a count of zero, like every other unset field, so a rule can ask whether it is there.',
+            'Relations to count on each card, read onto its data as `<name>Count` — `["signals", "responses"]` for "what have people made of this". The projections ride in the read the seed already makes, so a canvas of three hundred cards pays nothing extra; a query per card would be three hundred subscriptions. A type that does not declare the relation is asked for no count rather than refusing the read, since a refusal would take that whole type off the canvas. Absent for a count of zero, like every other unset field, so a rule can ask whether it is there.',
         },
         {
           name: 'weigh',
@@ -514,7 +514,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           name: 'keep',
           type: 'string[]',
           description:
-            "Fields of a connection that keep a card in its tree: dragging into the unconnected zone is refused for a card whose connection to its parent holds a value in any of them, and the preview says why before it is let go. WE passes ['commentsCount', 'signalsCount'] with the canvas seed's `counts`, because it will not delete a connection people have discussed.",
+            "Fields of a connection that keep a card in its tree: dragging into the unconnected zone is refused for a card whose connection to its parent holds a value in any of them, and the preview says why before it is let go. WE passes ['responsesCount', 'signalsCount'] with the canvas seed's `counts`, because it will not delete a connection people have discussed.",
         },
         {
           name: 'keepReason',

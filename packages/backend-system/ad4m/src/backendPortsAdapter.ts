@@ -38,6 +38,7 @@ import { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './language
 import { type Ad4mLifecycleOptions, createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 import { compileManifest, manifestToEntries } from './manifestCompiler';
 import { buildEntityClasses, buildEntityManifest, getForeignShacl } from './perspectiveHelpers';
+import { createAd4mReferencePort } from './referencePort';
 import { installRelationWrites } from './relationWrites';
 import { type Ad4mRuntimeOptions, createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
 import {
@@ -196,6 +197,7 @@ export function createAd4mBackendPorts(
     // carries the dataset handle it needs.
     interpretation: createAd4mInterpretationPort(ctx.selfId),
     flows: createAd4mFlowPort(),
+    references: createAd4mReferencePort(),
     ephemeral,
     dataBindings: (deps: DataBindingDeps) =>
       createAd4mDataBindings({
