@@ -135,7 +135,7 @@ export default function TemplateProvider() {
       const rest = Object.fromEntries(Object.entries(options ?? {}).filter(([k]) => k !== 'dataset'));
       const fields = await withCollectionDefaults(entity, data, p as DatasetProxy);
       const created = await Entity.create(p, fields, Object.keys(rest).length ? rest : undefined);
-      fileResponse(p as DatasetProxy, created as { id?: string } | undefined, rest);
+      threadResponse(p as DatasetProxy, created as { id?: string } | undefined, rest);
       return created;
     },
     update: (entity: string, id: string, data: Record<string, unknown>, options?: { dataset?: string }) => {
@@ -221,11 +221,10 @@ export default function TemplateProvider() {
   }
 
   /**
-   * A record written as a response goes into its thread and into the feed it lives in — see
-   * `@shared/responses`. Not awaited: the response exists, and the press that wrote it should not
-   * wait on the filing.
+   * A record written as a response is linked into its thread — see `@shared/responses`. Not awaited:
+   * the response exists, and the press that wrote it should not wait on the thread link.
    */
-  function fileResponse(perspective: DatasetProxy, created: { id?: string } | undefined, options: unknown): void {
+  function threadResponse(perspective: DatasetProxy, created: { id?: string } | undefined, options: unknown): void {
     const subject = respondsThrough(options);
     if (subject && created?.id) void completeResponse(perspective, created.id, subject);
   }
@@ -239,7 +238,7 @@ export default function TemplateProvider() {
   ) {
     const stamped = await withCollectionDefaults(entity, fields, perspective);
     const created = await getEntity(entity).create(perspective, stamped, Object.keys(rest).length ? rest : undefined);
-    fileResponse(perspective, created as { id?: string } | undefined, rest);
+    threadResponse(perspective, created as { id?: string } | undefined, rest);
     return created;
   }
 

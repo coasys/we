@@ -2128,7 +2128,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       kind,
       ...(parentId && { anchor: { id: parentId, predicate } }),
     });
-    // A reply goes into its thread and the feed it lives in — see `@shared/responses`.
+    // A reply is linked into its thread, and is a child of nothing — see `@shared/responses`.
     if (root?.id && parentId && predicate === PREDICATES.RESPONSE) void completeResponse(p, root.id, parentId);
     return root?.id;
   }

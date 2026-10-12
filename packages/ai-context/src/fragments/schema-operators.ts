@@ -557,9 +557,14 @@ itself a response, so a reply's own "thread" is empty; to count under a reply, w
   "include": { "$descendants": { "from": "responses", "count": true, "transitive": true } }
 — where count(row.responses) is the direct responses only and would say 3.
 
-A response also LIVES somewhere: a reply said in a call is one of the call's children, and a comment
-on a post is a child of the post's channel. So listing a feed's children shows its replies inline, in
-the order they were said — filter on respondsTo: { none: {} } for a list of top-level items only.
+A response is NEVER a child of anything. A reply to a line in a call is in the line's thread, not
+the call's children; a comment on a post is in the post's thread, not the channel's. Where it was
+said is derived — its thread's subject, and the container that subject is part of. So everything
+said in a room is its children PLUS THEIR THREADS: read the children with
+  "include": { "thread": true }
+and draw each row's thread beside it (threadLines does this for a transcript or a feed). Children
+alone are the top-level items, with no filter needed. The same three links — child, response,
+thread — hold for a single chat feed and for a forum of channels; only the arrangement differs.
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
