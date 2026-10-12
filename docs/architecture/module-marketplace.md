@@ -6,7 +6,7 @@ somebody you have never met, and be used, without a merge into this repository?*
 The previous version of this document (August 2026, "Module Marketplace — Design Conclusions")
 answered that question with `import()`. Blocks and components were to be compiled ESM bundles
 stored as `FILE_STORAGE_LANGUAGE` expressions, fetched and imported at install time. That plan
-predates [`templateSurface.ts`](../../../packages/app-shell/src/shared/registries/templateSurface.ts)
+predates [`templateSurface.ts`](../../packages/app-shell/src/shared/registries/templateSurface.ts)
 and reads as if it does not exist. A `registerBlock` display component is Solid code running in the
 host's context; imported from a stranger, it is total compromise, and nothing in the capability
 model covers code. The plan was not amendable — it needed rewriting around a different premise.
@@ -35,7 +35,7 @@ this is a smaller set every year.
 
 ## Where each surface sits
 
-The nineteen surfaces from [`docs/contributing/surfaces.md`](../../contributing/surfaces.md), placed.
+The nineteen surfaces from [`docs/contributing/surfaces.md`](../contributing/surfaces.md), placed.
 Where a surface can move, the rung it should reach and what moves it.
 
 | Surface            | Today                                                            | Reachable                  | What moves it                                                                                                                                                                                                                                                                       |

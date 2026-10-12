@@ -38,6 +38,7 @@ See docs/contributing/ad4m-and-deploys.md.
 - Architecture/layering changed → `docs/architecture/codebase-map.md` (and its sync partner `ai-context/src/fragments/architecture.ts`)
 - Seed shape changed → `packages/app-shell/src/types/seed.ts` comments + `docs/getting-started/seed-system.md` + `seed-examples/`
 - A package's public surface changed → that package's README/CONVENTIONS
+- Settled something every later change has to respect → a record in `docs/architecture/decisions/` (its README has the bar)
 
 ## Test plan
 

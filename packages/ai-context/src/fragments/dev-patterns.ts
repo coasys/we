@@ -88,8 +88,8 @@ diff/compare against \`dev\` (e.g. \`git diff dev...HEAD\`, \`git log dev..HEAD\
 never \`main\`, even though it exists.
 
 **PR summary convention:** a PR description follows \`docs/contributing/pull-requests.md\`. When
-asked to write one for a branch, create \`PR_<DESCRIPTIVE_NAME>.md\` at the repo root, based on
-\`git diff dev...<branch>\` and the branch's commit log, with these sections:
+asked to write one for a branch, base it on \`git diff dev...<branch>\` and the branch's commit
+log, with these sections:
 
 - **What** — what merging it changes, in a few bullets.
 - **Why** — the problem, and why this is the right fix for it.
@@ -103,14 +103,14 @@ asked to write one for a branch, create \`PR_<DESCRIPTIVE_NAME>.md\` at the repo
   so a box nobody intends to tick makes that number wrong on every PR, and a number that is always
   wrong is one everybody learns to ignore. \`scripts/pr-tasks.mjs\` fails CI on an unticked box.
 
-The file is the description and nothing else — no title heading above the sections, since it is
+The description is the body and nothing else — no title heading above the sections, since it is
 passed as \`gh pr create --body-file\` and anything above a pairing block (below) breaks it. Give
 the **title** alongside it, for \`--title\`, in Conventional Commits form: \`type(scope):
 description\`, the type lowercase (\`feat\`, \`fix\`, \`refactor\`, \`perf\`, \`docs\`, \`test\`,
 \`ci\`, \`chore\`), the scope optional, and the description short — under 60 characters, naming the
 change rather than explaining it: \`ci: pair PRs with an ad4m alert block\`.
 
-**If the branch needs an ad4m change that has not been published yet**, the file must START with
+**If the branch needs an ad4m change that has not been published yet**, the description must START with
 this block, exactly — the preview builds against it and a check tests the PR there, and
 anything close (no colon, another heading or alert, lower down) fails rather than pairing:
 
@@ -125,7 +125,13 @@ paired, import the new SDK API directly; never redeclare its types or feature-ch
 compile against the pin. The PR cannot merge until the block is removed. The rules are in
 \`docs/contributing/ad4m-and-deploys.md\`.
 
-**Never commit \`PR_*.md\` files.** They're scratch documents for the PR description.
+**Never commit a draft written for GitHub.** A PR description, an issue body or a review reply is
+not part of the repo: keep the draft outside the repo, wherever you keep notes, or delete it before
+committing. Nothing in \`.gitignore\` catches one, whatever it is called.
+
+**Record a decision when one is made.** When a change settles something every later change has to
+respect, add a record to \`docs/architecture/decisions/\` in the same PR — the bar and the format are
+in that folder's README. Most PRs make no such decision; a few a month is the expected rate.
 
 ---
 

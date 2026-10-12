@@ -119,9 +119,15 @@ as the one below it merges.
 Push merges from a terminal. An editor's "Sync" button that pulls with rebase flattens a merge commit
 into its individual commits.
 
-## Local PR notes
+## Drafts
 
-Drafts of a PR description can be kept as `PR_<NAME>.md` at the repository root while you work. They
-are ignored by git and never committed; paste the finished text into the PR, or pass the file to
-`gh pr create --body-file`. Keep the title out of the file and give it to `--title`: a heading above
-the sections would sit above a pairing block, which has to come first.
+A draft of a PR description — or of an issue, or a review reply — is not part of the repo. Keep it
+outside the repo, wherever you keep notes, and pass it to `gh pr create --body-file`; never commit it.
+Nothing in `.gitignore` catches one, whatever it is called. Keep the title out of the draft and give it
+to `--title`: a heading above the sections would sit above a pairing block, which has to come first.
+
+## Decisions
+
+When a change settles something every later change has to respect, the same PR adds a record to
+[`docs/architecture/decisions/`](../architecture/decisions/README.md). That folder's README has the
+bar for what qualifies and the format; most PRs make no such decision.

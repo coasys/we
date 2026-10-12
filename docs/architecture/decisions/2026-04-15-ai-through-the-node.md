@@ -1,5 +1,8 @@
 # Decision: AI Integration — Extend AD4M vs Direct in We
 
+**Status:** Accepted — shipped in we#206 ("AI through the node"): AI features run on the node's
+language model through `BackendPorts.languageModel`; personal API keys are a fallback.
+
 ## Context
 
 AD4M already provides an integrated AI service that supports remote model configuration (base URL, API key, model name) and local models. The question is whether We's AI assistant (chat with tool calling) should route through AD4M's AI service or integrate directly with LLM providers.
