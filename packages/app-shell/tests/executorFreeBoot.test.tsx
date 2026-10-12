@@ -1388,7 +1388,7 @@ describe('what a collection extracts', () => {
 // ── Responses, filed and deleted ──────────────────────────────────────────────
 
 describe('a post and what was said under it', () => {
-  it('a delete takes the replies, at any depth, out of the thread and the channel, and leaves a call about it', async () => {
+  it('a delete takes the replies, at any depth, and leaves a call about it', async () => {
     registerCoreBlocks();
     const stores = mountShell();
     await ready(stores);
@@ -1412,7 +1412,7 @@ describe('a post and what was said under it', () => {
       parentId: reply,
       predicate: 'we://response',
     }))!;
-    // And a call held about the post — a response too, filed the same way.
+    // And a call held about the post — a response too, threaded the same way.
     const call = await CollectionBlock.create(
       handle,
       { kind: 'call', mode: 'feed' } as never,
@@ -1427,26 +1427,23 @@ describe('a post and what was said under it', () => {
         thread?: string[];
         children?: string[];
       } | null;
-    // Filed before the delete: all three in the post's thread, and living in the space collection.
+    // Before the delete: all three in the post's thread, and none of them a child of anything — the
+    // space collection holds the post and nothing that was said under it.
     await vi.waitFor(async () =>
       expect((await row(post))?.thread ?? []).toEqual(expect.arrayContaining([reply, nested, call.id])),
     );
-    await vi.waitFor(async () =>
-      expect((await row(root))?.children ?? []).toEqual(expect.arrayContaining([post, reply, nested, call.id])),
-    );
+    const before = (await row(root))?.children ?? [];
+    expect(before).toContain(post);
+    for (const id of [reply, nested, call.id]) expect(before).not.toContain(id);
 
     await stores.spaces.deleteCollection(post);
 
     expect(await row(post)).toBeNull();
     expect(await row(reply)).toBeNull();
     expect(await row(nested)).toBeNull();
-    // Nothing left pointing at them from where they lived.
-    const children = (await row(root))?.children ?? [];
-    expect(children).not.toContain(post);
-    expect(children).not.toContain(reply);
-    expect(children).not.toContain(nested);
-    // The call is a conversation of its own, and stays where it lives.
+    // Nothing left pointing at the post from where it lived.
+    expect((await row(root))?.children ?? []).not.toContain(post);
+    // The call is a conversation of its own, and outlives what it was about.
     expect(await row(call.id)).not.toBeNull();
-    expect(children).toContain(call.id);
   }, 15000);
 });
