@@ -2,11 +2,13 @@ import type { BlockComposerProps, ContentBlock, ContentDocument, MentionCandidat
 import {
   collectKeys,
   contentHash,
+  contentToLine,
   decodeEditorState,
   emptyContent,
   getRegisteredBlockEntities,
   registerCoreBlocks,
   resolveExpressionAddresses,
+  serializeMarks,
 } from '@we/block-shared';
 import type { ColumnProps } from '@we/components/solid';
 import { Column } from '@we/components/solid';
@@ -29,7 +31,7 @@ import { blockChromePlugin } from '../editor/plugins/blockChrome';
 import { BlockHandles } from '../editor/plugins/blockHandles';
 import { FormattingToolbar } from '../editor/plugins/formattingToolbar';
 import { composerInputRules } from '../editor/plugins/inputRules';
-import { baseKeymapPlugin, composerKeymap } from '../editor/plugins/keymap';
+import { baseKeymapPlugin, compactKeymap, composerKeymap } from '../editor/plugins/keymap';
 import { linksPlugin } from '../editor/plugins/links';
 import { MentionMenu, mentionsPlugin } from '../editor/plugins/mentions';
 import { placeholdersPlugin } from '../editor/plugins/placeholders';
@@ -38,6 +40,7 @@ import { createBlockSchema, MENTION_NODE, UNKNOWN_NODE } from '../editor/schema'
 import { DisplayOverridesContext } from './BlockDisplayOverrides';
 import { useBlockHost } from './BlockHost';
 import BlockMenu from './BlockMenu';
+import { MentionCard } from './MentionCard';
 
 registerCoreBlocks();
 registerCoreBlockComponents();
@@ -172,7 +175,37 @@ export function BlockComposer(props: Props) {
     else console.error('BlockComposer: no onSave callback provided.');
   }
 
+  /**
+   * Send the line, in compact mode, and start the next one empty — see `compact` on the props.
+   *
+   * Flattened to one block whatever was typed or pasted: a line is one record. An empty line sends
+   * nothing, so Enter in an empty box is not a message.
+   */
+  function submit(): boolean {
+    const v = view();
+    if (!v) return true;
+    const line = contentToLine(docToContent(v.state.doc));
+    if (!line.text.trim()) return true;
+    props.onSubmit?.({ text: line.text, marks: line.marks.length ? serializeMarks(line.marks) : '' });
+    const schema = v.state.schema;
+    v.updateState(EditorState.create({ schema, doc: contentToDoc(schema, emptyContent()), plugins: v.state.plugins }));
+    setVersion((n) => n + 1);
+    return true;
+  }
+
   function plugins(schema: Schema): Plugin[] {
+    if (props.compact) {
+      return [
+        // First, so Enter chooses a person while the `@` menu is open rather than sending.
+        mentionsPlugin(),
+        compactKeymap(schema, submit),
+        composerKeymap(schema, { requestLink: ctx.requestLink }),
+        baseKeymapPlugin(),
+        history(),
+        linksPlugin(),
+        placeholdersPlugin(props.placeholder ?? 'Write a message…'),
+      ];
+    }
     return [
       mentionsPlugin(),
       slashCommandPlugin(ctx),
@@ -232,7 +265,11 @@ export function BlockComposer(props: Props) {
     const v = new EditorView(mountEl, {
       state,
       nodeViews: nodeViewsFor(customNodeNames(schema), ctx),
-      attributes: { class: 'we-block-composer-editor we-block-content' },
+      attributes: {
+        class: props.compact
+          ? 'we-block-composer-editor we-block-content we-block-composer--compact'
+          : 'we-block-composer-editor we-block-content',
+      },
       dispatchTransaction(tr) {
         const next = v.state.apply(tr);
         v.updateState(next);
@@ -271,7 +308,7 @@ export function BlockComposer(props: Props) {
     };
     document.addEventListener('mousedown', onMouseDown, true);
 
-    props.onReady?.({ save });
+    props.onReady?.({ save, submit });
 
     /*
       Focus after the next frame so the modal/DOM is fully settled.
@@ -313,18 +350,21 @@ export function BlockComposer(props: Props) {
   return (
     <Column class="we-block-composer-wrapper" width={width} ax={props.ax} ay={props.ay}>
       <div ref={mountEl} class="we-block-composer-mount" />
+      <MentionCard root={() => mountEl} />
       <Show when={view()}>
         {/*
           The gutter is opt-out, not conditional on anything the composer can work out for itself:
           whether a 50px strip beside each block is worth its room is a question about the surface,
           and only the caller knows how wide that is. See `handles` on the props.
         */}
-        <Show when={props.handles !== false}>
+        <Show when={props.handles !== false && !props.compact}>
           <BlockHandles ctx={ctx} />
         </Show>
         <MentionMenu ctx={ctx} />
-        <FormattingToolbar ctx={ctx} linkPrompt={linkPrompt} setLinkPrompt={setLinkPrompt} />
-        <Show when={!props.onReady}>
+        <Show when={!props.compact}>
+          <FormattingToolbar ctx={ctx} linkPrompt={linkPrompt} setLinkPrompt={setLinkPrompt} />
+        </Show>
+        <Show when={!props.onReady && !props.compact}>
           <div class="we-block-composer-save">
             <we-button onClick={save}>
               <we-icon name="floppy-disk" />

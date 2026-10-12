@@ -10,14 +10,14 @@ export class WeNode extends Ad4mModel {
     hand-written rather than generated, so it is the one place the manifest's answer is repeated by
     hand; `coreManifest.test.ts` holds the two in step, since SHACL does not carry the answer.
   */
-  @HasMany({ through: 'we://comment', polymorphic: true })
-  comments: string[] = [];
+  @HasMany({ through: 'we://response', polymorphic: true })
+  responses: string[] = [];
 
   /**
-   * What this node is a comment on — `comments` read from the other end.
+   * What this node is a response to — `responses` read from the other end.
    *
    * There is one link; this side does not add a second. `@BelongsToOne` binds the same predicate
-   * and matches `?source we://comment ?target` with the targets constrained to the rows in hand,
+   * and matches `?source we://response ?target` with the targets constrained to the rows in hand,
    * so a page of replies learns all its parents in one batched query rather than one each.
    *
    * It exists because a thread cannot be drawn without it. A transitive read answers with every
@@ -25,14 +25,33 @@ export class WeNode extends Ad4mModel {
    * the traversal reports its endpoints and nothing about the route — and the tree has to be
    * rebuilt from each reply naming its own parent.
    *
-   * Read-only, and generated that way: writing here would write a link `comments` owns.
+   * Read-only, and generated that way: writing here would write a link `responses` owns.
    */
-  @BelongsToOne({ through: 'we://comment', polymorphic: true })
-  inReplyTo?: string;
+  @BelongsToOne({ through: 'we://response', polymorphic: true })
+  respondsTo?: string;
+
+  /**
+   * Every response under this node at any depth, linked from the thread's subject when each is
+   * written — so the whole discussion, its total and what a delete takes with it are one forward
+   * read. See the manifest's `thread` for which node is the subject.
+   */
+  @HasMany({ through: 'we://thread', polymorphic: true })
+  thread: string[] = [];
+
+  /** The subject of the thread this response is in — `thread` read backwards. Read-only. */
+  @BelongsToOne({ through: 'we://thread', polymorphic: true })
+  inThread?: string;
+
+  /**
+   * The collection this node lives in — `CollectionBlock.children` read backwards, as
+   * `extractedFrom` reads `extracted`. Read-only: the link belongs to the collection.
+   */
+  @BelongsToOne({ through: 'we://child', polymorphic: true })
+  partOf?: string;
 
   /**
    * Where this record was extracted from — `CollectionBlock.extracted` read backwards. Provenance,
-   * not containment: see the manifest's `extractedFrom`. Read-only, as `inReplyTo` is.
+   * not containment: see the manifest's `extractedFrom`. Read-only, as `respondsTo` is.
    */
   @BelongsToOne({ through: 'we://extracted', polymorphic: true })
   extractedFrom?: string;
@@ -45,7 +64,7 @@ export class WeNode extends Ad4mModel {
    * an event's attendees.
    *
    * On `WeNode` rather than on any one model because "who is in this" is a generic affordance, like
-   * `comments`. It is also what keeps rosters *per occurrence*: a `CollectionBlock` is a `WeNode`, so
+   * `responses`. It is also what keeps rosters *per occurrence*: a `CollectionBlock` is a `WeNode`, so
    * two calls anchored to the same post are two collections with two independent rosters, rather than
    * one list on the post that both would have to share.
    *
@@ -69,29 +88,6 @@ export class WeNode extends Ad4mModel {
    */
   @HasMany({ through: 'we://participant' })
   participants: string[] = [];
-
-  /**
-   * Calls that happened on this node, as `CollectionBlock`s with `kind: 'call'`.
-   *
-   * The edge lives here rather than on the call because a forward drill-down is the cheap read: the
-   * IR's `scope` walks *from* an anchor through a relation the anchor owns. Put it on the call and
-   * "what calls happened on this post" becomes a full scan.
-   *
-   * Reading an edge backwards is possible — see `inReplyTo`, which does exactly that — but it is a
-   * different tool and not a cheaper one: it answers "who points at these rows I already have",
-   * which is the question a tree needs and a listing does not.
-   *
-   * Untyped, mirroring `comments` rather than `signals`: core mints the predicate and stays agnostic
-   * about the other end. Typing it would mean importing `CollectionBlock` here, and since
-   * `CollectionBlock extends WeNode` that is an evaluation-order cycle waiting to happen.
-   *
-   * `include: { calls: true }` used to be unavailable for exactly that reason — include had no
-   * target class to hydrate into, so listing a node's calls meant a `scope` drill-down. Reading each
-   * member as the class it actually is removes the requirement, so both routes now work and the
-   * drill-down is a choice rather than the only option.
-   */
-  @HasMany({ through: 'we://call', polymorphic: true })
-  calls: string[] = [];
 
   /**
    * Agents named inside this node — the @-mentions in its composed content.
@@ -118,5 +114,5 @@ export class WeNode extends Ad4mModel {
 }
 
 export interface WeNode extends HasManyMethods<
-  'comments' | 'signals' | 'reactions' | 'participants' | 'calls' | 'mentions'
+  'responses' | 'thread' | 'signals' | 'reactions' | 'participants' | 'mentions'
 > {}

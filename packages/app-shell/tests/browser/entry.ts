@@ -13,6 +13,9 @@
  * Exposes `window.__harness` for the runner to drive.
  */
 import '@we/primitives';
+// The block system's stylesheet, as the app imports it (`@solid/index.ts`): a composer or a
+// renderer measured without it is measured without its padding, its placeholder and its field.
+import '@we/block-solid/styles';
 
 import { buildTemplateBag, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
@@ -20,6 +23,7 @@ import { MissingMarker, PresentPart } from '@solid/components/PartFrame';
 import { injectDSInteropStyles } from '@solid/dsInterop';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import { createInMemoryBackend } from '@we/backend-inmemory';
+import { BlockHostProvider } from '@we/block-solid';
 import {
   CopiedPartNote,
   EditorHostProvider,
@@ -145,8 +149,22 @@ function mount(name: string, width: number, scale?: number): void {
   };
   // A scenario about the trust boundary renders against what a space template is actually handed.
   const bag = scenario.bag === 'space' ? buildTemplateBag(stores, { grants: SPACE_TIER, gesture: 'enforce' }) : stores;
+  /*
+    The block host, as the app gives one (`TemplateProvider`): who a mention names, from the same
+    profiles the scenario seeds. Without it a mention's hover card has nobody to show.
+  */
+  const person = (did: string) => {
+    const known = identityOf[did] as { name?: string; avatar?: string } | undefined;
+    return known ? { name: known.name, avatar: known.avatar } : undefined;
+  };
   disposeMount = render(
-    () => RenderSchema({ node: scenario.node, stores: bag, registry: componentRegistry } as never) as never,
+    () =>
+      createComponent(BlockHostProvider, {
+        person,
+        get children() {
+          return RenderSchema({ node: scenario.node, stores: bag, registry: componentRegistry } as never) as never;
+        },
+      }),
     host,
   );
 }
@@ -954,7 +972,21 @@ function editorProbeDispose(): void {
 }
 
 injectDSInteropStyles();
+/** The compact composer's own box: its edge and its height, and the send button's height beside it. */
+function composerFrame(): { border: string; height: number; button: number } | null {
+  const box = document.querySelector('.we-block-composer--compact');
+  const button = document.querySelector('we-button');
+  if (!box) return null;
+  const cs = getComputedStyle(box);
+  return {
+    border: `${cs.borderTopWidth} ${cs.borderTopStyle}`,
+    height: Math.round(box.getBoundingClientRect().height),
+    button: Math.round(button?.getBoundingClientRect().height ?? 0),
+  };
+}
+
 (window as unknown as Record<string, unknown>).__harness = {
+  composerFrame,
   editorProbe,
   editorProbeCover,
   ownerCardProbe,

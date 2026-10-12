@@ -121,7 +121,7 @@ defineFunction({
   category: 'list',
   params: ['items'],
   doc: 'The numbers in a list added together. Anything that is not a number counts as 0, and anything that is not a list sums to 0.',
-  example: 'sum(local.replies.map(r, count(r.comments)))',
+  example: 'sum(local.replies.map(r, count(r.responses)))',
   impl: ([items]) => asList(items).reduce((total: number, value) => total + asNumber(value), 0),
 });
 

@@ -152,8 +152,14 @@ export function parseCallMessage(payload: unknown): CallMessage | null {
  */
 export const CALL_KIND = 'call';
 
-/** Predicate joining a call record to the node it is about — `WeNode.calls`. */
-export const CALL_PREDICATE = 'we://call';
+/**
+ * Predicate joining a call record to the node it is about — `WeNode.responses`.
+ *
+ * A call about a post is a response to it, like a reply: the one relation for everything made in
+ * response to a node, told apart by what each response is (`kind: 'call'`). The host files it in
+ * the post's thread and in the feed the post lives in, so it is in that room's calls too.
+ */
+export const RESPONSE_PREDICATE = 'we://response';
 
 /**
  * The id of a call, derived from the record it is about.

@@ -320,3 +320,22 @@
     }
   }
 }
+
+// Who a mention names, on hover — see `MentionCard`. Above everything, fixed to the viewport, and
+// never in the way of the pointer that summoned it.
+.we-mention-card {
+  position: fixed;
+  z-index: var(--we-z-tooltip);
+  display: flex;
+  gap: var(--we-space-200);
+  align-items: center;
+  max-width: 240px;
+  padding: var(--we-space-200) var(--we-space-300);
+  border: 1px solid var(--we-role-border);
+  border-radius: var(--we-radius-300);
+  background: var(--we-role-surface-raised);
+  box-shadow: var(--we-shadow-md);
+  color: var(--we-role-text);
+  font-family: var(--we-font-family);
+  pointer-events: none;
+}

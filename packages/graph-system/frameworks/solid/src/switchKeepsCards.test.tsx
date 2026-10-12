@@ -44,7 +44,7 @@ const SHAPES = [
     properties: [{ name: 'title', type: 'string' }],
     relations: [
       { name: 'signals', target: 'Signal', cardinality: 'many' },
-      { name: 'comments', target: '', cardinality: 'many' },
+      { name: 'responses', target: '', cardinality: 'many' },
     ],
   },
   {

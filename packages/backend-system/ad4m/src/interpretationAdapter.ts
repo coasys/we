@@ -79,8 +79,6 @@ const TEXT_BLOCK_FLAG = { predicate: 'we://flag', value: 'we://text_block' } as 
 const TEXT_SOURCE_PREDICATE = 'we://text_source';
 /** What a person said or wrote, by that field. Anything else is not read as input. */
 const INPUT_SOURCES = ['spoken', 'typed', 'corrected'] as const;
-/** A reply hangs off what it answers through this — followed down from each line. */
-const REPLY_PREDICATE = 'we://comment';
 
 /**
  * The conversation a request is about: its provenance where it names one, else its parent.
@@ -95,6 +93,26 @@ const conversationOf = (request: { parent?: { id: string }; provenance?: { id: s
 
 /** The namespace a conversation's instances are minted under. */
 const prefixFor = (conversation: string) => `${DEFAULT_BASE_PREFIX}${encodeURIComponent(conversation)}/`;
+
+/**
+ * The link saying how a conversation relates to a record its pass touched: it made it, or it
+ * recognised it.
+ *
+ * Told apart by the id, because a pass mints everything new under its own conversation's namespace
+ * (`prefixFor`) — so a record outside it is one the pass matched rather than made: another call's,
+ * the space's own, or somebody's typed by hand. One made by an earlier pass of this same conversation
+ * is inside it, and is rightly still "made here". Without a `recognised` link named, everything is
+ * provenance, as it was.
+ */
+export function provenanceLink(
+  id: string,
+  prefix: string,
+  provenance: { id: string; predicate: string } | undefined,
+  recognised: { id: string; predicate: string } | undefined,
+): { id: string; predicate: string } | undefined {
+  if (!provenance) return undefined;
+  return recognised && !id.startsWith(prefix) ? recognised : provenance;
+}
 
 /**
  * How a watch paces itself, where the caller says nothing.
@@ -641,7 +659,13 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
   */
   const watchParents = new Map<
     string,
-    { id: string; predicate: string; provenance?: { id: string; predicate: string } }
+    {
+      id: string;
+      predicate: string;
+      provenance?: { id: string; predicate: string };
+      recognised?: { id: string; predicate: string };
+      prefix: string;
+    }
   >();
 
   /**
@@ -889,11 +913,8 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
             loses its provenance, where one marked but unparented would be invisible to every surface
             that reaches content by traversal.
           */
-          if (parent.provenance) {
-            await perspective.add(
-              new Link({ source: parent.provenance.id, predicate: parent.provenance.predicate, target: base }),
-            );
-          }
+          const made = provenanceLink(base, parent.prefix, parent.provenance, parent.recognised);
+          if (made) await perspective.add(new Link({ source: made.id, predicate: made.predicate, target: base }));
         } catch (error) {
           // One failed link should not cost the rest of the batch its parent.
           console.warn('[interpretation] could not parent an auto-extracted record', base, error);
@@ -1031,12 +1052,10 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
             await perspective.add(
               new Link({ source: request.parent.id, predicate: request.parent.predicate, target: id }),
             );
-            // The provenance link, for the reason the watch path writes one — see there.
-            if (request.provenance) {
-              await perspective.add(
-                new Link({ source: request.provenance.id, predicate: request.provenance.predicate, target: id }),
-              );
-            }
+            // The provenance link, for the reason the watch path writes one — see there — or the
+            // recognised one, for a record this pass matched rather than made.
+            const made = provenanceLink(id, basePrefix, request.provenance, request.recognised);
+            if (made) await perspective.add(new Link({ source: made.id, predicate: made.predicate, target: id }));
           }
         }
 
@@ -1210,7 +1229,12 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       // finds nothing.
       await assertShapesInstalled(perspective, request.classes);
 
-      watchParents.set(request.watchId, { ...request.parent, provenance: request.provenance });
+      watchParents.set(request.watchId, {
+        ...request.parent,
+        provenance: request.provenance,
+        recognised: request.recognised,
+        prefix: request.basePrefix ?? prefixFor(conversationOf(request)!),
+      });
       attachListener(perspective);
 
       // Read the conversation's own lines, through the containment predicate the caller resolved.
@@ -1399,19 +1423,18 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
 /*
  * ## What it reads
  *
- * The conversation's own lines and the replies under them (`we://comment`, followed down — a reply
- * is linked from what it answers, not contained by the conversation), and of those only what a
+ * The conversation's own lines — the replies said in it included, since a reply in a conversation
+ * is filed as one of its lines as well as a response to what it answers — and of those only what a
  * person said or wrote: a line whose `we://text_source` is spoken, typed or corrected. A bot writing
  * here does not know that field, so its replies and digests are left out, which is what stops a
  * summary being extracted back into the records it summarises.
  *
- * The reply path is a property path, which the executor's subscription triggers cannot see — but a
- * watch re-runs on a timer rather than a subscription, so that limit does not reach it.
+ * It used to follow `we://response` down from each line, when replies hung off lines and nothing
+ * else. Now that they are children too, following both would read every reply twice.
  */
 export function transcriptScopeQuery(parentId: string, childPredicate: string): string {
   return `SELECT ?speaker ?text ?timestamp WHERE {
-  <${parentId}> <${childPredicate}> ?line .
-  ?line <${REPLY_PREDICATE}>* ?m .
+  <${parentId}> <${childPredicate}> ?m .
   ?m <${TEXT_BLOCK_FLAG.predicate}> <${TEXT_BLOCK_FLAG.value}> .
   ?m <${TEXT_SOURCE_PREDICATE}> ?source .
   FILTER(?source IN (${INPUT_SOURCES.map((source) => `"${source}"`).join(', ')}))

@@ -77,7 +77,9 @@ export async function check({ count, measureAll, measureControl, measureText, ho
 
   // And folding it leaves a stub that says what was put away, rather than an anonymous byline.
   await click('button[aria-label="Fold this comment"]');
-  const stub = await measureText(CHILDLESS);
+  // The stub's own line, by element: the folded comment's paragraph says the same words and stays
+  // on the page under a closed reveal, so a search by text alone can land on it instead.
+  const stub = await measureText(CHILDLESS, 'we-text');
   if (!stub) problems.push('the folded comment says nothing about itself');
   else if (stub.h > 24) problems.push(`the stub is ${stub.h}px tall — it has wrapped rather than been cut`);
 

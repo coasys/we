@@ -51,21 +51,19 @@ export const postsList: SchemaNode = {
             /*
               Top-level posts only.
 
-              A reply is written by the same `createPost` a post is, and `kind` is stored ALONGSIDE
-              `type: 'root'` rather than instead of it — deliberately, so reads keyed on `type` did
-              not need backfilling when `kind` arrived. The consequence nobody had met until threads
-              could be written from anywhere: every comment in the space turned up in the feed as a
-              post of its own.
+              A reply is written by the same `createPost` a post is, and one written before replies
+              carried their own kind is `kind: 'post'` too — so without the second condition a
+              comment could turn up in the feed as a post of its own.
 
               Asked as "has nothing it answers" rather than as `kind != 'reply'`. A post made before
               `kind` existed carries no value for it, and on AD4M a `!=` over an unbound value
               excludes the row — so the obvious spelling would have emptied the feed of everything
-              written before this autumn. `inReplyTo` is the reverse of `comments`, and `none` is
+              written before this autumn. `respondsTo` is the reverse of `responses`, and `none` is
               native on both backends.
             */
             where: {
-              type: 'root',
-              inReplyTo: { none: {} },
+              kind: 'post',
+              respondsTo: { none: {} },
               textContent: { contains: { $: 'local.searchText' } },
             },
             // Space-wide unless the route names an anchor, in which case this is that container's own
@@ -100,24 +98,24 @@ export const postsList: SchemaNode = {
               /*
                 The whole conversation, not the replies directly under the post.
 
-                `transitive` walks the subtree, so the number beside the icon is what expanding
-                actually reveals once branches are opened. Counting direct children would say "2"
-                over a thread of forty. It rides in the read already being made, so a feed of twenty
-                posts pays nothing for it.
+                Read off the post's `thread` — every response under it, at any depth, one link each —
+                so the number beside the icon is what expanding actually reveals once branches are
+                opened, without a walk. Replies only: a call held about the post is in its thread
+                too, and is not something anybody wrote under it. It rides in the read already
+                being made, so a feed of twenty posts pays nothing for it.
               */
-              $commentCount: { from: 'comments', count: true, transitive: true },
+              $replyCount: { from: 'thread', count: true, where: { kind: 'reply' } },
               /*
                 Whether THIS agent is in the conversation, for the same reason a reaction knows
                 whether it is yours: the glyph carries "mine" and it needs an answer to carry.
 
-                Transitive like the total, so answering somebody four levels down counts — a
+                The whole thread like the total, so answering somebody four levels down counts — a
                 conversation you are in is one you are in, wherever in it you spoke.
               */
               $myComments: {
-                from: 'comments',
-                where: { author: { $: 'me.did' } },
+                from: 'thread',
+                where: { kind: 'reply', author: { $: 'me.did' } },
                 count: true,
-                transitive: true,
               },
             },
           },
@@ -348,7 +346,7 @@ export const postsList: SchemaNode = {
                       type: 'CountMark',
                       props: {
                         icon: 'chat-circle',
-                        count: { $: 'post.$commentCount ?? 0' },
+                        count: { $: 'post.$replyCount ?? 0' },
                         mine: { $: 'post.$myComments > 0' },
                         label: 'Show the conversation',
                         onPress: { $toggleLocal: 'commentsOpen' },

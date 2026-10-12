@@ -20,7 +20,7 @@ describe('hostSlot', () => {
   it('is empty until something is lent', () => {
     // Absent, not a default: what "nothing lent" means is the caller's decision, and the callers
     // disagree — `autoInterpretGate` reads off, `extractionCandidatesGate` reads none, and
-    // `callExtraction` falls back to the candidates.
+    // `collectionExtraction` falls back to the candidates.
     expect(hostSlot<string>().get()).toBeNull();
   });
 

@@ -3169,3 +3169,80 @@ describe('the transcript window', () => {
     expect(h.store.transcriptShown()).toBe(250);
   });
 });
+
+/**
+ * Writing into the space and answering a line.
+ *
+ * Both are one record each, and the only thing that can go wrong is where it lands: a message typed
+ * into the Feed belongs to the space collection, not to whichever call is running, and a reply hangs
+ * off what it answers rather than being filed beside it.
+ */
+describe('the feed and replies', () => {
+  const space = (root: string) => ({
+    find: async (entity: string) => (entity === 'Space' ? [{ id: 'space-1', root: { id: root } }] : []),
+    subscribe: () => () => {},
+  });
+
+  it('writes a message typed into the Feed into the space collection, as a typed line', async () => {
+    const h = harness([], { dataset: () => 'ds', records: space('root-1') as never });
+    await h.settle();
+    expect(h.store.feedRoot()).toBe('root-1');
+
+    await h.store.sendToFeed('see you all on Friday', '[{"start":0,"end":3,"type":"strong"}]');
+
+    expect(h.created).toEqual([
+      {
+        entity: 'TextBlock',
+        fields: { text: 'see you all on Friday', source: 'typed', marks: '[{"start":0,"end":3,"type":"strong"}]' },
+        options: { parent: { id: 'root-1', predicate: 'we://child' } },
+      },
+    ]);
+  });
+
+  it('hangs a reply off the line it answers, and puts the reply down once it is sent', async () => {
+    const h = harness();
+    h.store.startReply({ id: 'line-1', text: 'who has the venue?', author: 'did:ann' });
+    // From the transcript unless said otherwise: its composer is the one that sends it.
+    expect(h.store.replyingTo()).toEqual({
+      id: 'line-1',
+      text: 'who has the venue?',
+      author: 'did:ann',
+      surface: 'transcript',
+    });
+
+    await h.store.reply('line-1', 'I do');
+
+    expect(h.created[0]).toMatchObject({
+      entity: 'TextBlock',
+      fields: { text: 'I do', source: 'typed' },
+      options: { parent: { id: 'line-1', predicate: 'we://response' } },
+    });
+    expect(h.store.replyingTo()).toBeNull();
+  });
+
+  it('refuses to start a reply to a line with no id, rather than sending one to nothing', () => {
+    // A reply to an empty id used to be accepted here and dropped silently once it was typed.
+    const h = harness();
+    h.store.startReply({ id: '', text: 'lunch?', author: 'did:ann', surface: 'feed' });
+    expect(h.store.replyingTo()).toBeNull();
+  });
+
+  it("keeps a reply started in the Feed when the call on screen changes, and drops the transcript's", async () => {
+    /*
+      The Feed is the whole space, whichever call is on screen; a transcript's reply belongs to the
+      conversation it was started in. Both are held in one place, so the one rule must not clear both.
+    */
+    let onScreen: string | null = 'call-one';
+    const h = harness([], { callOnScreen: () => onScreen });
+
+    h.store.startReply({ id: 'msg-1', text: 'lunch?', author: 'did:ann', surface: 'feed' });
+    onScreen = 'call-two';
+    await h.settle();
+    expect(h.store.replyingTo()).toMatchObject({ id: 'msg-1', surface: 'feed' });
+
+    h.store.startReply({ id: 'line-1', text: 'who has the venue?', author: 'did:ann' });
+    onScreen = 'call-three';
+    await h.settle();
+    expect(h.store.replyingTo()).toBeNull();
+  });
+});

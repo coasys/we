@@ -48,6 +48,12 @@ export function resolveQueryProp(value: unknown): QueryDescriptor {
  * asking about a record it has no id for must be gated rather than quietly answered with whichever
  * record the backend happened to return first.
  *
+ * **And an empty exclusion list excludes nothing.** `{ not: [] }` is what a reactive list resolves to
+ * when it holds nothing — `author: { not: { $: 'spaceStore.mutedDids' } }` with nobody muted — and
+ * it is no condition at all, so it is dropped rather than sent. Sent, it is a shape a backend has to
+ * have thought about: AD4M refuses it on `author` beside another condition, and the whole query
+ * fails over a filter that would not have removed a row.
+ *
  * Returns the pruned clause, or `undefined` when nothing survives.
  */
 export function pruneUnresolvedWhere(where: Record<string, unknown>): Record<string, unknown> | undefined {
@@ -77,7 +83,9 @@ export function pruneUnresolvedWhere(where: Record<string, unknown>): Record<str
     // Operator objects ({ not, contains, exists, … }) — keep only resolved operands.
     // `null` stays: it is a value ("equals null"), only `undefined` means unresolved.
     if (value && typeof value === 'object' && !Array.isArray(value)) {
-      const ops = Object.entries(value as Record<string, unknown>).filter(([, operand]) => operand !== undefined);
+      const ops = Object.entries(value as Record<string, unknown>).filter(
+        ([op, operand]) => operand !== undefined && !(op === 'not' && Array.isArray(operand) && operand.length === 0),
+      );
       if (ops.length) out[key] = Object.fromEntries(ops);
       continue;
     }

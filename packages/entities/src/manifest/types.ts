@@ -66,12 +66,6 @@ export interface CalloutBlockRecord extends WeNodeRecord {
   version: number;
 }
 
-export interface CallExtractionRecord extends WeNodeRecord {
-  callId: string;
-  entities: string;
-  auto: string;
-}
-
 export interface ChatMessageRecord extends WeNodeRecord {
   role: string;
   content: string;
@@ -94,23 +88,25 @@ export interface CodeBlockRecord extends WeNodeRecord {
 }
 
 export interface CollectionBlockRecord extends WeNodeRecord {
-  editorState: string | null;
-  type: string;
   kind: string;
   mode: string;
   title: string;
-  slug: string;
   description: string;
-  version: number;
+  slug: string;
+  editorState: string | null;
   textContent: string;
+  version: number;
   sourceRef: string;
   sourceName: string;
+  autoExtract?: boolean;
+  extractionTargets: string;
   children: string[];
   arranges: string[];
   gathers?: string;
   board?: CollectionBlockRecord;
   extractionPasses: string[];
   extracted: string[];
+  recognised: string[];
   amendments: string[];
   addChildren(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeChildren(value: string | { id: string }, batch?: string): Promise<unknown>;
@@ -308,7 +304,6 @@ export interface SpaceRecord extends WeNodeRecord {
   enabledViews: string;
   extractionTargets: string;
   autoInterpret: boolean;
-  extractLooseMessages: boolean;
   threadMode: string;
   moduleSettings: string;
   location?: LocationBlockRecord;

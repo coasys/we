@@ -145,7 +145,6 @@
             "kind": "board",
             "mode": "feed",
             "title": "Everything",
-            "type": "",
             "gathers": ["$root"]
           },
           "in": "$root"
@@ -156,7 +155,6 @@
             "kind": "column",
             "mode": "feed",
             "title": "",
-            "type": "",
             "slug": "todo"
           },
           "in": "$board"
@@ -167,7 +165,6 @@
             "kind": "column",
             "mode": "feed",
             "title": "",
-            "type": "",
             "slug": "doing"
           },
           "in": "$board"
@@ -178,7 +175,6 @@
             "kind": "column",
             "mode": "feed",
             "title": "",
-            "type": "",
             "slug": "done"
           },
           "in": "$board"

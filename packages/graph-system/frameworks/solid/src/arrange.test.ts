@@ -454,9 +454,9 @@ describe('arranging a card in a tree', () => {
       nodes: [{ id: 'z', kind: 'entity', type: 'Thing', label: 'z', data: { rank: 0 } }],
     });
     const kept = setup.edges.find((edge) => edge.id === 'p-c')!;
-    kept.data = { commentsCount: 2 };
+    kept.data = { responsesCount: 2 };
     const { engine, events, at, press, move, drop } = await started(setup.seed, {
-      keep: ['commentsCount', 'signalsCount'],
+      keep: ['responsesCount', 'signalsCount'],
       keepReason: 'Discussed.',
     });
     const z = at('z');

@@ -16,7 +16,7 @@ import {
  * Recorded calls in this space.
  *
  * A call's record is a `CollectionBlock` with `kind: 'call'` — its utterances are the children, its
- * roster is `participants`, and it hangs off whatever node the call was about via `WeNode.calls`.
+ * roster is `participants`, and it is a response to whatever node the call was about (`WeNode.responses`).
  * So this is an ordinary entity list like every other section here; no new machinery.
  *
  * The shape is `docs/architecture/transcripts.md`. `'call'` is spelled here rather than imported

@@ -57,19 +57,6 @@ const DEFAULT_TURN_ENTITIES = ['TextBlock'];
  */
 export const INPUT_SOURCES = ['spoken', 'typed', 'corrected'] as const;
 
-/**
- * How far down a reply chain a gather follows — a reply, a reply to it, and one more.
- *
- * Replies are linked from what they answer (`we://comment`), not contained by the conversation, so
- * they are reached by following that link down from each message. In one read, as nested includes,
- * rather than one read per message — a long call has thousands of lines. Three levels covers a
- * conversation's back-and-forth; deeper than that is a thread, which wants a forum, not a transcript.
- */
-const REPLY_DEPTH = 3;
-
-const replies = (depth: number): Record<string, unknown> | true =>
-  depth <= 1 ? true : { include: { comments: replies(depth - 1) } };
-
 /** The shape statics this reads off a model class, narrowed so a caller passes an ORM class as-is. */
 interface ShapeBearing {
   generateSHACL?: () => { shape?: { properties?: { name?: string; path?: string }[] } };
@@ -143,24 +130,17 @@ export async function gatherTranscriptTurns(
     const model = deps.modelFor(entity);
     if (!model) continue;
 
-    const rows = await model.findAll(deps.handle, {
+    /*
+      Replies come with the rest. A reply said in a conversation is filed as one of its lines as
+      well as a response to the line it answers (see `@shared/responses`), so the conversation's
+      children are everything said in it, in the order it was said.
+    */
+    const rows = (await model.findAll(deps.handle, {
       parent: { id: collectionId, predicate },
-      include: { comments: replies(REPLY_DEPTH) },
       ...(options.limit !== undefined ? { limit: options.limit } : {}),
-    });
+    })) as Record<string, unknown>[];
 
-    // Each message, then the replies under it — see `REPLY_DEPTH`. A reply that is not a text line
-    // (a post somebody wrote in answer) has no `text` and falls out below.
-    const flat: Record<string, unknown>[] = [];
-    const walk = (row: Record<string, unknown>) => {
-      flat.push(row);
-      for (const reply of Array.isArray(row.comments) ? row.comments : []) {
-        if (reply && typeof reply === 'object') walk(reply as Record<string, unknown>);
-      }
-    };
-    rows.forEach(walk);
-
-    for (const row of flat) {
+    for (const row of rows) {
       const text = typeof row.text === 'string' ? row.text.trim() : '';
       const speaker = typeof row.author === 'string' ? row.author : '';
       const timestamp = isoTimestamp(row.createdAt);

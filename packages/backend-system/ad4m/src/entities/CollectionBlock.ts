@@ -16,43 +16,24 @@ export class CollectionBlock extends WeNode {
   @Flag({ through: 'we://flag', value: 'we://collection_block' })
   flag: string = '';
 
-  @Property({ through: 'we://editor_state', resolveLanguage: FILE_STORAGE_LANGUAGE })
-  editorState: string | null = null;
-
   /**
-   * The **structural** node type — `root` for a composition, `collection` for a nested one — which
-   * the serializer round-trips.
-   *
-   * Semantic values do not belong here; that is `kind`. Boards briefly marked which one was
-   * canonical with `type: 'space'` and `type: 'anchor'`, which is the mistake this field's own
-   * documentation names (see `kind`, and the transcribe module writing `tag: 'transcript'` into
-   * `TextBlock.style`). It is a relation now — `CollectionBlock.board`, and the space's `board`
-   * role — which also converges where a marker could not.
-   */
-  @Property({ through: 'we://type' })
-  type: string = '';
-
-  /**
-   * What this collection *is* — `'call'`, `'notes'`, later `'board'`. Semantic, and deliberately
-   * separate from `type`.
-   *
-   * `type` is the **structural node type** (`root` for a composition, `collection` for a nested
-   * one), which the serializer round-trips. It has been doing double duty as a discriminator — `type: 'root'`
-   * currently means "is a post" — and overloading it further would put semantic values into a
-   * structural field, which is the mistake the transcribe module made writing `tag: 'transcript'`
-   * into `TextBlock.style` (a field that means `h1`/`blockquote`).
+   * What this collection *is* — `'post'`, `'call'`, `'space'`, `'board'`, `'column'`. A free label,
+   * invented by whichever surface needs it and registered nowhere.
    *
    * A scalar rather than a tag relation because this is the field you *query by*:
    * `where: { kind: 'call' }` is a native `eq` that pushes down and composes with `order`/`limit`,
    * whereas tag membership would need a reverse traversal WE does not wire up. Tags remain for user
    * taxonomy — what a thing is *about*, not what surface owns it.
    *
+   * It is the only discriminator. A `type` field used to sit beside it holding `root` or
+   * `collection`, which was meant to be the editor's node type and ended up meaning "is a post" —
+   * a structural field carrying a semantic value, the mistake the transcribe module made writing
+   * `tag: 'transcript'` into `TextBlock.style`. The editor's own node type lives in the document
+   * (`_type` in `editorState`), where the serializer reads it; nothing read the stored copy, so it
+   * went.
+   *
    * Never written into `editorState`: the blob is a projection of the children, and `kind` is a
    * fact about the collection, not its content.
-   *
-   * Posts predate this field and are still identified by `type: 'root'`; the composer now also writes
-   * `kind: 'post'` so new posts carry both, and the read side can switch once the legacy set stops
-   * mattering. **A `CollectionBlock` with `type: 'root'` and no `kind` is a post.**
    */
   @Property({ through: 'we://kind' })
   kind: string = '';
@@ -107,6 +88,9 @@ export class CollectionBlock extends WeNode {
   @Property({ through: 'we://title' })
   title: string = '';
 
+  @Property({ through: 'we://description' })
+  description: string = '';
+
   /**
    * The vocabulary term this collection stands *for*, where it stands for one.
    *
@@ -121,21 +105,18 @@ export class CollectionBlock extends WeNode {
    * A slug rather than a link to the `TaskState` record, for the reason `TaskBlock.status` holds
    * one: the vocabulary is a naming of values that already exist, so a column keeps working when
    * a state is retired, and a task whose state nothing recognises can still be found and moved.
-   *
-   * Its own field rather than more meaning on `type`, which is already the post discriminator
-   * and was explicitly not to accumulate a third reading.
    */
   @Property({ through: 'we://slug' })
   slug: string = '';
 
-  @Property({ through: 'we://description' })
-  description: string = '';
-
-  @Property({ through: 'we://version' })
-  version: number = 0;
+  @Property({ through: 'we://editor_state', resolveLanguage: FILE_STORAGE_LANGUAGE })
+  editorState: string | null = null;
 
   @Property({ through: 'we://text_content' })
   textContent: string = '';
+
+  @Property({ through: 'we://version' })
+  version: number = 0;
 
   /**
    * Where this was posted before it was posted here — a reference to the original, and its space
@@ -157,6 +138,48 @@ export class CollectionBlock extends WeNode {
 
   @Property({ through: 'we://source_name' })
   sourceName: string = '';
+
+  /**
+   * Whether this collection is extracted as it grows — a call as it happens, a channel as
+   * messages arrive — rather than only when somebody presses Extract.
+   *
+   * Copied from the space's default (`Space.autoInterpret`) when the collection is made, and the
+   * collection's own from then on. A copy rather than a live fallback, so that a community
+   * changing its default changes the *next* conversation and never one already under way: the
+   * only way this value changes is somebody changing it here.
+   *
+   * Who may change it is the collection's business. A call's participants decide for their call;
+   * the space's own collection — the messages typed outside any call — is the community's, so
+   * only somebody who administers the space can switch it.
+   *
+   * **No declared default, deliberately.** A declared default is written on every create, so a
+   * collection made by something that never heard of extraction would carry an explicit `false`
+   * and the fallback below could never apply. Unset means "made without a copy", and reads as
+   * the space's default.
+   *
+   * On every collection rather than on a subclass for collections that are extracted, because
+   * any collection can be extracted, and one that never is simply never has it written.
+   */
+  @Property({ through: 'we://auto_extract' })
+  autoExtract?: boolean;
+
+  /**
+   * The models this collection looks for, as a JSON array of entity names — copied from the
+   * space's default (`Space.extractionTargets`) when the collection is made, for `autoExtract`'s
+   * reason.
+   *
+   * **`'[]'` means none, and that is different from unset.** Unset is a collection made without
+   * a copy, and reads as the space's default; `'[]'` is a conversation whose participants turned
+   * everything off, and extracts nothing. A string rather than one link per model for exactly
+   * that: zero links could not tell the two apart.
+   *
+   * Always intersected with the candidates when read, so a model since deleted narrows the list
+   * rather than failing the pass. Rewritten whole, so two people toggling in the same instant
+   * lose one edit — the trade `Space.enabledModules` makes, and the right one for a list somebody
+   * presses occasionally.
+   */
+  @Property({ through: 'we://extraction_targets' })
+  extractionTargets: string = '';
 
   /**
    * What is in this collection, in the order somebody put it there.
@@ -285,6 +308,22 @@ export class CollectionBlock extends WeNode {
    */
   @HasMany({ through: 'we://extracted', polymorphic: true })
   extracted: string[] = [];
+
+  /**
+   * Records a pass found in this conversation that another had already made — "Already in the
+   * space", where {@link extracted} is "made here".
+   *
+   * A pass that recognises something already in the space writes nothing new, which is right,
+   * and used to link it here as `extracted` all the same — so a review panel listed a task from
+   * last week's call as accepted in this one, and the record carried a second `extracted` link
+   * that made "where did this come from" ambiguous. The two facts are different: this
+   * conversation mentioned it; another one made it. Kept, rather than dropped, because the
+   * mention is worth knowing — it is how a conversation's own view shows everything it touched.
+   *
+   * Untyped and unordered, for `extracted`'s reasons.
+   */
+  @HasMany({ through: 'we://recognised', polymorphic: true })
+  recognised: string[] = [];
 
   /**
    * Changes a pass suggested to records that already existed, and somebody kept — see

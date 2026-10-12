@@ -452,12 +452,12 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
                     {
                       type: '$if',
                       props: {
-                        condition: { $: `count(${as}.comments)` },
+                        condition: { $: `count(${as}.responses)` },
                         then: {
                           type: 'CountMark',
                           props: {
                             icon: 'chat-circle',
-                            count: { $: `count(${as}.comments)` },
+                            count: { $: `count(${as}.responses)` },
                             size: 'xs',
                             label: 'Comments',
                           },
@@ -1749,7 +1749,7 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
         entity: opts.entity ?? 'TaskBlock',
         ...(opts.where && { where: opts.where }),
         // Hydrated only where the cards draw them: an include nobody reads is rows of links fetched
-        // for every card on the board. `comments` needs none — a relation's own ids arrive anyway,
+        // for every card on the board. `responses` needs none — a relation's own ids arrive anyway,
         // which is what lets a reply count cost nothing.
         ...(opts.social && { include: { signals: true } }),
         scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: ANCHOR } },
