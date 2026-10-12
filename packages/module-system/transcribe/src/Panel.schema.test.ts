@@ -247,8 +247,8 @@ describe('a transcript with nothing in it', () => {
     expect(linesJson).toContain(
       '? reverse(threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })) :',
     );
-    // Each line arrives knowing what it answers: a reply said in the call is one of its lines.
-    expect(linesJson).toContain('"include":{"respondsTo":true}');
+    // Each line arrives with its thread: a reply is a child of nothing, so this is where it comes from.
+    expect(linesJson).toContain('"include":{"thread":true}');
   });
 
   /**

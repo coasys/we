@@ -15,6 +15,7 @@ import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLif
 import { createBlocks, registerCoreBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { AgentSettings, CollectionBlock, getEntity, Space, SpaceRole } from '@we/entities';
+import { type FeedFind, readFeedWindow } from '@we/module-transcribe';
 import { createEffect, createRoot, createSignal } from 'solid-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -1388,7 +1389,7 @@ describe('what a collection extracts', () => {
 // ── Responses, filed and deleted ──────────────────────────────────────────────
 
 describe('a post and what was said under it', () => {
-  it('a delete takes the replies, at any depth, out of the thread and the channel, and leaves a call about it', async () => {
+  it('a delete takes the replies, at any depth, and leaves a call about it', async () => {
     registerCoreBlocks();
     const stores = mountShell();
     await ready(stores);
@@ -1412,7 +1413,7 @@ describe('a post and what was said under it', () => {
       parentId: reply,
       predicate: 'we://response',
     }))!;
-    // And a call held about the post — a response too, filed the same way.
+    // And a call held about the post — a response too, threaded the same way.
     const call = await CollectionBlock.create(
       handle,
       { kind: 'call', mode: 'feed' } as never,
@@ -1427,26 +1428,133 @@ describe('a post and what was said under it', () => {
         thread?: string[];
         children?: string[];
       } | null;
-    // Filed before the delete: all three in the post's thread, and living in the space collection.
+    // Before the delete: all three in the post's thread, and none of them a child of anything — the
+    // space collection holds the post and nothing that was said under it.
     await vi.waitFor(async () =>
       expect((await row(post))?.thread ?? []).toEqual(expect.arrayContaining([reply, nested, call.id])),
     );
-    await vi.waitFor(async () =>
-      expect((await row(root))?.children ?? []).toEqual(expect.arrayContaining([post, reply, nested, call.id])),
-    );
+    const before = (await row(root))?.children ?? [];
+    expect(before).toContain(post);
+    for (const id of [reply, nested, call.id]) expect(before).not.toContain(id);
 
     await stores.spaces.deleteCollection(post);
 
     expect(await row(post)).toBeNull();
     expect(await row(reply)).toBeNull();
     expect(await row(nested)).toBeNull();
-    // Nothing left pointing at them from where they lived.
-    const children = (await row(root))?.children ?? [];
-    expect(children).not.toContain(post);
-    expect(children).not.toContain(reply);
-    expect(children).not.toContain(nested);
-    // The call is a conversation of its own, and stays where it lives.
+    // Nothing left pointing at the post from where it lived.
+    expect((await row(root))?.children ?? []).not.toContain(post);
+    // The call is a conversation of its own, and outlives what it was about.
     expect(await row(call.id)).not.toBeNull();
-    expect(children).toContain(call.id);
+  }, 15000);
+});
+
+/*
+  The three links, end to end: a response is in its subject's thread and a child of nothing, and the
+  surfaces that ask "what was said in this room" derive the answer from the subject.
+*/
+describe('where a response was said', () => {
+  const doc = (text: string) => [{ _type: 'block', style: 'normal', children: [{ _type: 'span', text }] }];
+  const row = async (handle: never, id: string) =>
+    (await CollectionBlock.findOne(handle, { where: { id } } as never)) as unknown as {
+      thread?: string[];
+      children?: string[];
+    } | null;
+
+  async function enter(stores: Stores, name: string) {
+    await stores.spaces.createSpace(name, 'x', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === name)!;
+    await stores.spaces.navigateToSpace(ref.id);
+    await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
+    return ref;
+  }
+
+  it('a comment on a post in a channel is in the post’s thread, not the channel, and marks the channel unread', async () => {
+    registerCoreBlocks();
+    const stores = mountShell();
+    await ready(stores);
+    const ref = await enter(stores, 'Forum');
+    const other = await enter(stores, 'Elsewhere');
+    await stores.spaces.navigateToSpace(ref.id);
+    await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
+    const handle = ref.handle as never;
+
+    // A channel in the space, and a post in the channel — written the way the app writes them.
+    const channel = await CollectionBlock.create(
+      handle,
+      { kind: 'channel', mode: 'feed' } as never,
+      { parent: { id: stores.spaces.root(), predicate: 'we://child' } } as never,
+    );
+    const post = (await stores.spaces.createPost(doc('the post'), { parentId: channel.id }))!;
+
+    // This member reads the channel, then somebody comments on the post.
+    await stores.spaces.markRead(channel.id);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const comment = (await stores.spaces.createPost(doc('a comment'), {
+      kind: 'reply',
+      parentId: post,
+      predicate: 'we://response',
+    }))!;
+
+    // In the post's thread, and a child of nothing: the channel holds the post alone.
+    await vi.waitFor(async () => expect((await row(handle, post))?.thread ?? []).toEqual([comment]));
+    expect((await row(handle, channel.id))?.children ?? []).toEqual([post]);
+
+    // The space's activity is read once per entry, so leave and come back to read it again.
+    await stores.spaces.navigateToSpace(other.id);
+    await stores.spaces.navigateToSpace(ref.id);
+    // Where it was said is derived — the post is in the channel — so the channel has something new.
+    await vi.waitFor(() => expect(stores.spaces.unreadNodeIds()).toContain(channel.id));
+  }, 15000);
+
+  it('the Feed draws a call about nothing and leaves out a call held about a post', async () => {
+    registerCoreBlocks();
+    const stores = mountShell();
+    await ready(stores);
+    const ref = await enter(stores, 'Calls');
+    const handle = ref.handle as never;
+    const root = stores.spaces.root();
+
+    // A call started from the rail is a child of the space collection.
+    const standup = await CollectionBlock.create(
+      handle,
+      { kind: 'call', mode: 'feed', title: 'Standup' } as never,
+      { parent: { id: root, predicate: 'we://child' } } as never,
+    );
+    // A call held about a post is a response to the post — in its thread, and a child of nothing.
+    const post = (await stores.spaces.createPost(doc('the post')))!;
+    const about = await CollectionBlock.create(
+      handle,
+      { kind: 'call', mode: 'feed', title: 'About the post' } as never,
+      { parent: { id: post, predicate: 'we://response' } } as never,
+    );
+    await completeResponse(handle, about.id, post);
+    const TextBlock = getEntity('TextBlock') as unknown as {
+      create(h: never, d: Record<string, unknown>, o: Record<string, unknown>): Promise<{ id: string }>;
+    };
+    const said = await TextBlock.create(
+      handle,
+      { text: 'morning all', source: 'spoken' },
+      { parent: { id: standup.id, predicate: 'we://child' } },
+    );
+    const aside = await TextBlock.create(
+      handle,
+      { text: 'about that post', source: 'spoken' },
+      { parent: { id: about.id, predicate: 'we://child' } },
+    );
+
+    // The Feed's own read, through the host's mapping of a module's `within` onto `parent`
+    // (TemplateProvider's `withinAsParent`).
+    const find: FeedFind = async (entity, query) => {
+      const { within, ...rest } = query as { within?: string } & Record<string, unknown>;
+      const options = within ? { ...rest, parent: { id: within, predicate: 'we://child' } } : rest;
+      return ((await getEntity(entity).findAll(handle, options as never)) ?? []) as never;
+    };
+    const { rows } = await readFeedWindow(find, { root, shown: 20, fromStart: true, activityTypes: [] });
+    const ids = rows.map((r) => r.id);
+
+    expect(ids).toContain(said.id);
+    expect(rows.find((r) => r.id === said.id)).toMatchObject({ call: standup.id, callTitle: 'Standup' });
+    expect(ids).not.toContain(aside.id);
   }, 15000);
 });

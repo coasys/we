@@ -3150,7 +3150,7 @@ export const transcriptLines: SchemaNode = {
         that is most of what the tab was doing.
       */
       limit: { $: 'modules.transcribe.transcriptShown' },
-      // Each line's replies, three levels down, so they are drawn inline — see `threadLines`.
+      // Each line's whole thread, so its replies are drawn inline — see `threadLines`.
       include: repliesInclude(),
       when: { $: 'modules.transcribe.collectionId' },
       /*

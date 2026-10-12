@@ -7,26 +7,24 @@ import { CONTAINMENT_PREDICATE, type EntitySchema } from '@we/backend-shared';
  * hierarchy gives them to every subclass. The prose for each lives on `WeNode.ts`, which remains the
  * hand-written behavioural base these definitions generate subclasses of.
  *
- * ## Two kinds of link between records, and what each means
+ * ## Three links between records, and what each means
  *
- * Every record answers two independent questions, and each has one link:
- *
- * - **Where does it live?** `we://child`, on `CollectionBlock.children` — the room it is in. Always
- *   exactly one, and `mode` on the collection governs it: who owns the parts, and whether re-saving
- *   may rewrite them.
- * - **What is it about?** `we://response`, here — what it was made in response to: a reply to a
+ * - **What is it a part of?** `we://child`, on `CollectionBlock.children` — structure, and nothing
+ *   else. At most one container, and `mode` on the collection governs it: who owns the parts, and
+ *   whether re-saving may rewrite them.
+ * - **What does it answer?** `we://response`, here — what it was made in response to: a reply to a
  *   line, a comment on a post, a call about a task, a channel spun off from a post. Optional, open
  *   to anyone whatever `mode` says, and on every node, since a task or a block has no inside to be
  *   part of but can always be answered.
+ * - **Which discussion is it in?** `we://thread`, here — one link from a thread's subject to every
+ *   response under it, at any depth, so "the whole discussion under this post" is one read rather
+ *   than a walk. Written by the host, never by a writer.
  *
- * They do not override each other. A reply to a line in a call is *about* the line and *lives* in
- * the call; a comment on a post is about the post and lives in the post's channel. The rule for the
- * second half is that **a response lives in the same feed as the thing it responds to** — walk up
- * from the subject to the nearest collection whose `mode` is `feed`, skipping documents, whose parts
- * belong to their author. See `docs/architecture/relations.md`.
- *
- * `thread` is the response axis flattened: one link from a thread's subject to every response under
- * it, at any depth, so "the whole discussion under this post" is one read rather than a walk.
+ * A response is never a child of anything. Where it was said is derived — its thread's subject, and
+ * the container that subject is part of — so a comment on a post moves with the post, and everything
+ * said in a room is that room's children plus their threads. The same three links serve a single
+ * feed and a forum of channels; only the arrangement and the interface differ. See
+ * `docs/architecture/relations.md`.
  *
  * ## Untyped splits two ways here, and only one of them is polymorphic
  *
@@ -99,12 +97,11 @@ export const WE_NODE_RELATIONS: EntitySchema['relations'] = {
   /** The subject of the thread this response is in — `thread` read backwards. Empty on anything that is not a response. */
   inThread: { target: '', cardinality: 'one', predicate: 'we://thread', reverseOf: 'thread' },
   /**
-   * The collection this node lives in — `CollectionBlock.children` read backwards, exactly as
-   * `extractedFrom` reads `extracted`. The other half of the two questions above: where it is, as
-   * `respondsTo` is what it is about.
+   * The collection this node is part of — `CollectionBlock.children` read backwards, exactly as
+   * `extractedFrom` reads `extracted`. Empty on a response, which is a child of nothing.
    *
-   * What a response's home is worked out from: walk up from its thread's subject until a feed. One
-   * link a node does not own, read in one batched query for a page of them.
+   * Where a response was said is worked out from it: the `partOf` of its thread's subject. One link
+   * a node does not own, read in one batched query for a page of them.
    */
   partOf: { target: '', cardinality: 'one', predicate: CONTAINMENT_PREDICATE, reverseOf: 'children' },
   /**

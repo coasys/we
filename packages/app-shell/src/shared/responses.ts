@@ -3,35 +3,29 @@
  *
  * A record becomes a response by being written with `parent: { id: subject, predicate:
  * PREDICATES.RESPONSE }` — the subject's `responses` holds it, and its own `respondsTo` reads it back.
- * Two more facts follow from that, and nothing a writer passes says either, so the host works them
- * out once, here, for every path that writes a response:
+ * One more fact follows from that, and nothing a writer passes says it, so the host works it out
+ * once, here, for every path that writes a response:
  *
- * 1. **Which thread it is in.** The thread's subject is the first thing above the response that is
- *    not itself a response — the subject's own subject when it is one, else the subject. That node
- *    links to the response through `thread`, so the whole discussion under it is one read.
- * 2. **Where it lives.** A response lives in the same feed as the thing it responds to: walk up from
- *    the thread's subject, through the collections it is part of, to the nearest feed — a document
- *    is skipped, because its parts belong to its author. The response becomes a child of that feed,
- *    so a reply said in a call is in the call's transcript, its extraction and its unread count, and
- *    a comment on a post is in the post's channel.
+ * **Which thread it is in.** The thread's subject is the first thing above the response that is not
+ * itself a response — the subject's own subject when it is one, else the subject. That node links to
+ * the response through `thread`, so the whole discussion under it is one read.
  *
- * See `docs/architecture/relations.md` for the rule written out, and `WE_NODE_RELATIONS` for the
- * links.
+ * A response is never a child of anything. Where it was said is derived, not stored: its thread's
+ * subject, and wherever that subject is a child. So a reply to a line in a call is read with the
+ * call's lines, and a comment on a post with the post — nothing is filed twice, and moving a post
+ * to another channel moves its discussion with it.
  *
- * Best effort, deliberately: the response itself is written by the time this runs, and a failure
- * to file it leaves an ordinary response that every thread surface still draws. Logged, never
+ * See `docs/architecture/relations.md` for the three links written out, and `WE_NODE_RELATIONS` for
+ * their declarations.
+ *
+ * Best effort, deliberately: the response itself is written by the time this runs, and a failure to
+ * thread it leaves an ordinary response that its subject's `responses` still holds. Logged, never
  * thrown into the press that wrote it.
  */
-import { CollectionBlock, type DatasetProxy, getEntityForDataset, PREDICATES } from '@we/entities';
+import { type DatasetProxy, getEntityForDataset, PREDICATES } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
-/** How far up the containment a walk for a feed goes before giving up — collections nest shallowly. */
-const MOST_LEVELS = 8;
-
-/** The `kind` of the space collection, which is a feed whatever its `mode` says: spaces made before it was written carry none. */
-const SPACE_KIND = 'space';
-
-type NodeRow = { id: string; inThread?: unknown; partOf?: unknown; mode?: unknown; kind?: unknown };
+type NodeRow = { id: string; inThread?: unknown };
 
 const idOf = (value: unknown): string => {
   if (typeof value === 'string') return value;
@@ -74,21 +68,9 @@ async function readNode(
   return null;
 }
 
-/** The nearest feed above a node — the collection a response to its thread lives in — or empty. */
-async function feedAbove(dataset: DatasetProxy, node: NodeRow): Promise<string> {
-  let parentId = idOf(node.partOf);
-  for (let level = 0; parentId && level < MOST_LEVELS; level++) {
-    const parent = (await CollectionBlock.findOne(dataset, { where: { id: parentId } })) as unknown as NodeRow | null;
-    if (!parent) return '';
-    if (parent.mode === 'feed' || parent.kind === SPACE_KIND) return parent.id;
-    parentId = idOf(parent.partOf);
-  }
-  return '';
-}
-
 /**
- * File a response that has just been written: link it into its thread, and into the feed it lives
- * in. `subjectEntity` is a hint, for a caller that knows what it answered.
+ * Thread a response that has just been written: link it from its thread's subject. `subjectEntity`
+ * is a hint, for a caller that knows what it answered.
  */
 export async function completeResponse(
   dataset: DatasetProxy,
@@ -106,11 +88,8 @@ export async function completeResponse(
 
     const Root = getEntityForDataset(root.entity, dataset);
     await Root?.addRelation(dataset, rootId, 'thread', responseId);
-
-    const home = await feedAbove(dataset, root.row);
-    if (home) await CollectionBlock.addRelation(dataset, home, 'children', responseId);
   } catch (error) {
-    console.warn('responses: could not file a response in its thread and its feed', error);
+    console.warn('responses: could not link a response into its thread', error);
   }
 }
 

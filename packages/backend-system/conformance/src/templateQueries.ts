@@ -39,6 +39,9 @@ export const TEMPLATE_QUERY_CASES = [
   'queries.comment-thread',
   'queries.comment-thread-muted',
   'queries.reply-total-leaves-calls-out',
+  'queries.newest-in-a-channel',
+  'queries.newest-reply-under-a-post',
+  'queries.transcript-lines-with-replies',
   'queries.boards-in-a-channel',
   'queries.columns-of-a-board',
   'queries.tasks-in-a-channel',
@@ -70,7 +73,7 @@ interface Model {
 //            │                          └─ call "About this"        (a response, in the thread too)
 //            ├─ post 2 "hello again"                                    ♥
 //            ├─ post 3 "hello there"  (also a reply to post 2)
-//            ├─ call "Standup"
+//            ├─ call "Standup" ── line 1 ── line reply   (in line 1's thread, a child of nothing)
 //            ├─ board ── column 1, column 2
 //            └─ task 1, task 2
 //   canvas (on its own) · relationship types beta, alpha, gamma · a space whose board is `board`
@@ -86,6 +89,8 @@ type Key =
   | 'text2'
   | 'link1'
   | 'call'
+  | 'line1'
+  | 'lineReply'
   | 'callAbout'
   | 'board'
   | 'column1'
@@ -145,6 +150,11 @@ async function seed(dataset: DatasetHandle): Promise<Record<Key, string>> {
   }
 
   await channel.addChildren(await make('call', 'CollectionBlock', { kind: 'call', title: 'Standup' }));
+  // A line said in the call, and a reply to it: the reply answers the line and is in its thread, and
+  // is no child of the call's — what was said in a room is its children plus their threads.
+  await made.call.addChildren(await make('line1', 'TextBlock', { text: 'lunch at 1?' }));
+  await made.line1.addResponses(await make('lineReply', 'TextBlock', { text: 'yes' }));
+  await made.line1.addThread(made.lineReply);
   const board = await make('board', 'CollectionBlock', { kind: 'board', title: 'Work' });
   await channel.addChildren(board);
   for (const key of ['column1', 'column2'] as const) {
@@ -173,7 +183,8 @@ interface QueryCase {
     | { order: Key[] }
     | { set: Key[] }
     | { field: string; values: Partial<Record<Key, unknown>> }
-    | { relation: string; points: Partial<Record<Key, Key>> };
+    | { relation: string; points: Partial<Record<Key, Key>> }
+    | { ends: [string, string]; points: Partial<Record<Key, [Key, Key]>> };
 }
 
 const inChannel = (k: Record<Key, string>) => ({ anchor: 'CollectionBlock', via: 'children', anchorId: k.channel });
@@ -281,6 +292,58 @@ const CASES: Record<TemplateQueryCase, QueryCase> = {
     }),
     expect: { field: '$replyCount', values: { post1: 2 } },
   },
+  /*
+    The two "newest member" cases ask for the oldest member as well, in the same query.
+
+    The unread read only wants the newest, but a backend that ignores a projection's `order` answers
+    with whichever member it finds first — and that is the newest some of the time, so a case asking
+    for the newest alone passes or fails by chance. Asked both ways round, a backend that sorts names
+    two different members, and one that does not names the same one twice: a deterministic answer.
+  */
+  'queries.newest-in-a-channel': {
+    // The other half of an unread dot: the newest thing in the container itself. Post 1 was added
+    // first and task 2 last.
+    from: 'app-shell/src/shared/containerActivity.ts',
+    query: (k) => ({
+      entity: 'CollectionBlock',
+      where: { id: k.channel },
+      limit: 1,
+      include: {
+        $firstChild: { from: 'children', order: { createdAt: 'ASC' }, limit: 1 },
+        $latestChild: { from: 'children', order: { createdAt: 'DESC' }, limit: 1 },
+      },
+    }),
+    expect: { ends: ['$firstChild', '$latestChild'], points: { channel: ['post1', 'task2'] } },
+  },
+  'queries.newest-reply-under-a-post': {
+    // What an unread dot reads: the newest thing in each node's thread, credited to the container
+    // the node is part of. Comment 1 was made first and the call about post 1 last, and a thread
+    // holds every response.
+    from: 'app-shell/src/shared/containerActivity.ts',
+    query: (k) => ({
+      entity: 'CollectionBlock',
+      where: { id: k.post1 },
+      limit: 1,
+      include: {
+        $firstReply: { from: 'thread', order: { createdAt: 'ASC' }, limit: 1 },
+        $latestReply: { from: 'thread', order: { createdAt: 'DESC' }, limit: 1 },
+      },
+    }),
+    expect: { ends: ['$firstReply', '$latestReply'], points: { post1: ['comment1', 'callAbout'] } },
+  },
+  'queries.transcript-lines-with-replies': {
+    // A call's lines, each with its thread: the reply comes in its line's thread and not as a line,
+    // since it is a child of nothing. One page carries the whole conversation.
+    from: 'module-system/transcribe/src/Panel.schema.ts',
+    query: (k) => ({
+      entity: 'TextBlock',
+      scope: { anchor: 'CollectionBlock', via: 'children', anchorId: k.call },
+      order: { createdAt: 'desc' },
+      limit: 50,
+      include: { thread: true },
+    }),
+    expect: { field: 'thread', values: { line1: 1 } },
+  },
   'queries.boards-in-a-channel': {
     from: 'templates/views/src/views/BoardsView/index.ts',
     query: (k) => ({
@@ -330,14 +393,14 @@ function answer(rows: Row[], expected: QueryCase['expect'], keyOf: (id: string) 
       }),
     );
   }
-  return Object.fromEntries(
-    rows.map((r) => {
-      const target = idOf(
-        Array.isArray(r[expected.relation]) ? (r[expected.relation] as unknown[])[0] : r[expected.relation],
-      );
-      return [keyOf(r.id), target ? keyOf(target) : null];
-    }),
-  );
+  const pointsAt = (r: Row, relation: string) => {
+    const target = idOf(Array.isArray(r[relation]) ? (r[relation] as unknown[])[0] : r[relation]);
+    return target ? keyOf(target) : null;
+  };
+  if ('ends' in expected) {
+    return Object.fromEntries(rows.map((r) => [keyOf(r.id), expected.ends.map((relation) => pointsAt(r, relation))]));
+  }
+  return Object.fromEntries(rows.map((r) => [keyOf(r.id), pointsAt(r, expected.relation)]));
 }
 
 function wanted(expected: QueryCase['expect']): unknown {

@@ -15,16 +15,26 @@ import { lineContent, threadLines } from './thread';
 const ROOT = 'root';
 const t = (minute: number) => new Date(Date.UTC(2026, 9, 8, 10, minute)).toISOString();
 
-/** A tiny store answering the Feed's reads: rows by entity, each with the container holding it. */
-function store(rows: (Record<string, unknown> & { entity: string; in?: string })[]) {
+type StoredRow = Record<string, unknown> & { entity: string; in?: string; threadOf?: string };
+
+/**
+ * A tiny store answering the Feed's reads: rows by entity, each with the container holding it — or,
+ * for a reply, the subject whose thread holds it, which is hydrated when a read includes `thread`.
+ */
+function store(rows: StoredRow[]) {
   const asked: { entity: string; query: RecordQuery }[] = [];
+  const bare = ({ entity: _e, in: _in, threadOf: _t, ...rest }: StoredRow) => rest;
   const find = async (entity: string, query: RecordQuery) => {
     asked.push({ entity, query });
     let out = rows.filter((r) => r.entity === entity && (!query.within || r.in === query.within));
     if (query.where?.kind) out = out.filter((r) => r.kind === query.where?.kind);
     const dir = query.order?.createdAt === 'asc' ? 1 : -1;
     out = [...out].sort((a, b) => dir * (Date.parse(String(a.createdAt)) - Date.parse(String(b.createdAt))));
-    return out.slice(0, query.limit ?? out.length).map(({ entity: _e, in: _in, ...rest }) => rest);
+    const withThread = (r: StoredRow) =>
+      (query.include as Record<string, unknown> | undefined)?.thread
+        ? { ...bare(r), thread: rows.filter((m) => m.threadOf === r.id).map(bare) }
+        : bare(r);
+    return out.slice(0, query.limit ?? out.length).map(withThread);
   };
   return { find, asked };
 }
@@ -85,16 +95,33 @@ describe('the feed window', () => {
   });
 
   it('draws a reply after the line it answers, in the order it was said, quoting it', async () => {
-    // A reply said in a call is one of its lines, and names what it answers.
+    // A reply is a child of nothing: it is in the thread of the line it answers, and names that line.
     const { find } = store([
       ...calls,
       line('q', 1, 'monday'),
-      line('a', 4, 'monday', { author: 'did:ben', text: 'answer', source: 'typed', respondsTo: 'q' }),
+      { ...line('a', 4, '', { author: 'did:ben', text: 'answer', source: 'typed', respondsTo: 'q' }), threadOf: 'q' },
+      {
+        ...line('aa', 5, '', { author: 'did:ann', text: 'and again', source: 'typed', respondsTo: 'a' }),
+        threadOf: 'q',
+      },
       line('m3', 3, 'monday'),
     ]);
     const { rows: drawn } = await readFeedWindow(find, { root: ROOT, shown: 10, fromStart: true, activityTypes: [] });
-    expect(drawn.map((r) => r.id)).toEqual(['q', 'm3', 'a']);
-    expect(drawn[2]).toMatchObject({ replyTo: { id: 'q', text: 'q', author: 'did:ann' } });
+    expect(drawn.map((r) => r.id)).toEqual(['q', 'm3', 'a', 'aa']);
+    expect(drawn[2]).toMatchObject({ call: 'monday', replyTo: { id: 'q', text: 'q', author: 'did:ann' } });
+    // A reply to a reply quotes the reply, which came in the same thread.
+    expect(drawn[3]).toMatchObject({ replyTo: { id: 'a', text: 'answer', author: 'did:ben' } });
+  });
+
+  it('leaves out a call held about something, which belongs with what it is about', async () => {
+    // A call about a task is a response to the task: in its thread, and a child of nothing.
+    const { find } = store([
+      ...calls,
+      { entity: 'CollectionBlock', id: 'about', kind: 'call', title: 'About the brief', createdAt: t(2) },
+      line('b1', 3, 'about'),
+    ]);
+    const { rows: drawn } = await readFeedWindow(find, { root: ROOT, shown: 10, fromStart: true, activityTypes: [] });
+    expect(drawn.find((r) => r.id === 'b1')).toBeUndefined();
   });
 
   it('groups what one call found into one row, and what somebody made into another', async () => {
@@ -166,12 +193,21 @@ describe('grouping and naming', () => {
     expect(nounFor('Sighting', 3)).toBe('sightings');
   });
 
-  it('quotes what each reply answers, whether its parent arrived included or as an id', () => {
+  it('flattens each line’s thread in beside it, quoting what each reply answers', () => {
     const flat = threadLines({
       rows: [
-        { id: 'b', createdAt: t(3), respondsTo: { id: 'a', author: 'did:ben', text: 'answer' } },
-        { id: 'q', createdAt: t(1), author: 'did:ann', text: 'question' },
-        { id: 'a', createdAt: t(2), respondsTo: 'q' },
+        {
+          id: 'q',
+          createdAt: t(1),
+          author: 'did:ann',
+          text: 'question',
+          thread: [
+            { id: 'b', createdAt: t(3), respondsTo: { id: 'a', author: 'did:ben', text: 'answer' } },
+            { id: 'a', createdAt: t(2), author: 'did:ben', text: 'answer', respondsTo: 'q' },
+            // A call held about the line is a conversation of its own, not a line of this one.
+            { id: 'call', createdAt: t(4), kind: 'call', mode: 'feed', respondsTo: 'q' },
+          ],
+        },
         // Read twice — a page and a subscription can both hand a row over — and drawn once.
         { id: 'a', createdAt: t(2), respondsTo: 'q' },
       ],

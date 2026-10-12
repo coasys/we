@@ -117,8 +117,13 @@ export function createFeed(deps: FeedDeps) {
     The newest line anywhere in the space, not the newest line *contained by* the space or a call.
     One row space-wide covers typed messages, every call's lines and every reply, whoever wrote them,
     on one subscription where a contained read per call would be one each; a line that is not in the
-    window (a post's paragraph) costs one debounced re-read. A reply is in the window like any other
-    line, since the host files a reply as a child of the feed it was said in.
+    window (a post's paragraph) costs one debounced re-read. A reply is a TextBlock too, so it is
+    heard here the moment it is written; it reaches the window through the thread of the line it
+    answers, and the link that puts it there lands a moment later — which the subscription over the
+    lines on screen, below, hears as a change to that line.
+
+    Calls are the space collection's own — see `readFeedWindow` for why a call held about something
+    is not among them.
   */
   let stops: (() => void)[] = [];
   const unsubscribe = () => {

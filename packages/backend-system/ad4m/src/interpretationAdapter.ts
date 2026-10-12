@@ -75,6 +75,8 @@ const DEFAULT_BASE_PREFIX = 'we://interpreted/';
 /** Where a turn's words live, and what marks a child as one rather than any other block. */
 const TEXT_PREDICATE = 'we://text';
 const TEXT_BLOCK_FLAG = { predicate: 'we://flag', value: 'we://text_block' } as const;
+/** The link from a thread's subject to every response under it — see {@link transcriptScopeQuery}. */
+const THREAD_PREDICATE = 'we://thread';
 /** Where a text line records how it came to be — see {@link transcriptScopeQuery}. */
 const TEXT_SOURCE_PREDICATE = 'we://text_source';
 /** What a person said or wrote, by that field. Anything else is not read as input. */
@@ -1423,18 +1425,22 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
 /*
  * ## What it reads
  *
- * The conversation's own lines — the replies said in it included, since a reply in a conversation
- * is filed as one of its lines as well as a response to what it answers — and of those only what a
- * person said or wrote: a line whose `we://text_source` is spoken, typed or corrected. A bot writing
- * here does not know that field, so its replies and digests are left out, which is what stops a
- * summary being extracted back into the records it summarises.
+ * The conversation's own lines, and the replies to them — and of those only what a person said or
+ * wrote: a line whose `we://text_source` is spoken, typed or corrected. A bot writing here does not
+ * know that field, so its replies and digests are left out, which is what stops a summary being
+ * extracted back into the records it summarises.
  *
- * It used to follow `we://response` down from each line, when replies hung off lines and nothing
- * else. Now that they are children too, following both would read every reply twice.
+ * A reply is a child of nothing. It is in the `we://thread` of the line it answers — every reply
+ * under that line, at any depth, one link each — so the replies are one hop from the lines rather
+ * than a walk down `we://response`. A `UNION` rather than a `?` path, so every predicate is written
+ * out as a full IRI, which is what the executor reads a query's predicates from. A call held about a
+ * line is in its thread too, and is not a text block, so the flag below leaves it out.
  */
 export function transcriptScopeQuery(parentId: string, childPredicate: string): string {
   return `SELECT ?speaker ?text ?timestamp WHERE {
-  <${parentId}> <${childPredicate}> ?m .
+  { <${parentId}> <${childPredicate}> ?m . }
+  UNION
+  { <${parentId}> <${childPredicate}> ?line . ?line <${THREAD_PREDICATE}> ?m . }
   ?m <${TEXT_BLOCK_FLAG.predicate}> <${TEXT_BLOCK_FLAG.value}> .
   ?m <${TEXT_SOURCE_PREDICATE}> ?source .
   FILTER(?source IN (${INPUT_SOURCES.map((source) => `"${source}"`).join(', ')}))

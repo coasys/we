@@ -1,10 +1,10 @@
 /**
- * A response goes into its thread and into the feed it lives in — against the in-memory backend, so
- * the walk runs over real records and real links rather than a fake that agrees with it.
+ * A response goes into its thread, and nowhere else — against the in-memory backend, so the walk runs
+ * over real records and real links rather than a fake that agrees with it.
  *
  * The two rules being pinned, from `@shared/responses`:
  * - the thread's subject is the first thing above a response that is not itself one;
- * - a response lives in the nearest feed above that subject, documents skipped.
+ * - a response is never a child of anything — where it was said is derived from its subject.
  */
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { getEntity, PREDICATES } from '@we/entities';
@@ -36,7 +36,7 @@ beforeEach(async () => {
 const inside = (id: string) => ({ parent: { id, predicate: PREDICATES.CHILDREN } });
 const answering = (id: string) => ({ parent: { id, predicate: PREDICATES.RESPONSE } });
 
-/** Write a response the way the host does — the link that makes it one, then the filing. */
+/** Write a response the way the host does — the link that makes it one, then the thread link. */
 async function respond(entity: string, to: Node, fields: Record<string, unknown> = {}): Promise<Node> {
   const node = await model(entity).create(dataset, fields, answering(to.id));
   await completeResponse(dataset as never, node.id, to.id);
@@ -46,8 +46,8 @@ async function respond(entity: string, to: Node, fields: Record<string, unknown>
 const reread = async (entity: string, node: Node) =>
   (await model(entity).findOne(dataset, { where: { id: node.id } }))!;
 
-describe('a response, filed', () => {
-  it('a reply to a line in a call is in the line’s thread and is one of the call’s lines', async () => {
+describe('a response, threaded', () => {
+  it('a reply to a line in a call is in the line’s thread, and not one of the call’s children', async () => {
     const space = await model('CollectionBlock').create(dataset, { kind: 'space', mode: 'feed' });
     const call = await model('CollectionBlock').create(dataset, { kind: 'call', mode: 'feed' }, inside(space.id));
     const line = await model('TextBlock').create(dataset, { text: 'lunch at 1?' }, inside(call.id));
@@ -57,39 +57,28 @@ describe('a response, filed', () => {
 
     // Both are in the line's thread — the subject is the first thing that is not itself a response.
     expect((await reread('TextBlock', line)).thread).toEqual(expect.arrayContaining([reply.id, answer.id]));
-    // And both are lines of the call they were said in.
-    expect((await reread('CollectionBlock', call)).children).toEqual([line.id, reply.id, answer.id]);
+    // The call holds only what was said in it at the top level; the replies are reached through the line.
+    expect((await reread('CollectionBlock', call)).children).toEqual([line.id]);
   });
 
-  it('a comment on a post lives in the post’s channel, not in the post', async () => {
+  it('a comment on a post is in the post’s thread, and in no collection', async () => {
     const channel = await model('CollectionBlock').create(dataset, { kind: 'channel', mode: 'feed' });
     const post = await model('CollectionBlock').create(dataset, { kind: 'post', mode: 'document' }, inside(channel.id));
 
     const comment = await respond('CollectionBlock', post, { kind: 'reply' });
 
     expect((await reread('CollectionBlock', post)).thread).toEqual([comment.id]);
-    // The post is a document — its parts are its author's — so the comment goes up to the channel.
     expect((await reread('CollectionBlock', post)).children ?? []).not.toContain(comment.id);
-    expect((await reread('CollectionBlock', channel)).children).toContain(comment.id);
+    expect((await reread('CollectionBlock', channel)).children).toEqual([post.id]);
   });
 
-  it('a call about a task lives where the task does, in the space collection', async () => {
-    // A space collection made before it was written as a feed still counts as one, by its kind.
-    const space = await model('CollectionBlock').create(dataset, { kind: 'space' });
+  it('a call about a task is in the task’s thread, and the space holds only the task', async () => {
+    const space = await model('CollectionBlock').create(dataset, { kind: 'space', mode: 'feed' });
     const task = await model('TaskBlock').create(dataset, { title: 'Ship it' }, inside(space.id));
 
     const call = await respond('CollectionBlock', task, { kind: 'call', mode: 'feed' });
 
     expect((await reread('TaskBlock', task)).thread).toEqual([call.id]);
-    expect((await reread('CollectionBlock', space)).children).toEqual([task.id, call.id]);
-  });
-
-  it('a response to something in no feed is still in its thread, and filed nowhere', async () => {
-    const canvas = await model('CollectionBlock').create(dataset, { kind: 'canvas' });
-
-    const comment = await respond('CollectionBlock', canvas, { kind: 'reply' });
-
-    expect((await reread('CollectionBlock', canvas)).thread).toEqual([comment.id]);
-    expect((await reread('CollectionBlock', canvas)).children ?? []).not.toContain(comment.id);
+    expect((await reread('CollectionBlock', space)).children).toEqual([task.id]);
   });
 });
