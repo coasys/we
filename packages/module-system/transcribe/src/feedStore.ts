@@ -122,10 +122,8 @@ export function createFeed(deps: FeedDeps) {
     answers, and the link that puts it there lands a moment later — which the subscription over the
     lines on screen, below, hears as a change to that line.
 
-    Calls are asked of the whole space rather than of the space collection. A call held about
-    something — a task, a post — is a response to it and a child of nothing, so "the calls in the
-    space collection" would miss it; the space is the dataset, so every call in the dataset is a
-    call in the space.
+    Calls are the space collection's own — see `readFeedWindow` for why a call held about something
+    is not among them.
   */
   let stops: (() => void)[] = [];
   const unsubscribe = () => {
@@ -138,7 +136,7 @@ export function createFeed(deps: FeedDeps) {
     if (!open() || !space || typeof records?.subscribe !== 'function') return;
     const newest = { order: { createdAt: 'desc' as const }, limit: 1 };
     stops.push(records.subscribe('TextBlock', newest, soon));
-    stops.push(records.subscribe('CollectionBlock', { where: { kind: 'call' }, ...newest }, soon));
+    stops.push(records.subscribe('CollectionBlock', { within: space, where: { kind: 'call' }, ...newest }, soon));
   });
   /*
     And the lines it is showing, by id — what an edit changes.

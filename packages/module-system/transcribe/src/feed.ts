@@ -213,9 +213,14 @@ export async function readFeedWindow(
 
   const [loose, calls, ...extracted] = await Promise.all([
     find('TextBlock', page(root)),
-    // Every call in the space, not only those in its collection: one held about a task or a post is
-    // a response to it and a child of nothing. The space is the dataset, so this is the same set.
+    /*
+      The calls in the space collection itself — a call about nothing. A call held about something
+      is a response to it and a child of nothing, so it is not here: it belongs with what it is
+      about. Drawing those too means reading every call in the space and choosing by context, which
+      is a decision about what the Feed is for rather than a query to widen.
+    */
     find('CollectionBlock', {
+      within: root,
       where: { kind: 'call' },
       order: { createdAt: order },
       limit: CALL_WINDOW,

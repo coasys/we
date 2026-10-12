@@ -113,7 +113,7 @@ describe('the feed window', () => {
     expect(drawn[3]).toMatchObject({ replyTo: { id: 'a', text: 'answer', author: 'did:ben' } });
   });
 
-  it('reads a call held about something, which is in no collection, with the others', async () => {
+  it('leaves out a call held about something, which belongs with what it is about', async () => {
     // A call about a task is a response to the task: in its thread, and a child of nothing.
     const { find } = store([
       ...calls,
@@ -121,7 +121,7 @@ describe('the feed window', () => {
       line('b1', 3, 'about'),
     ]);
     const { rows: drawn } = await readFeedWindow(find, { root: ROOT, shown: 10, fromStart: true, activityTypes: [] });
-    expect(drawn.find((r) => r.id === 'b1')).toMatchObject({ call: 'about', callTitle: 'About the brief' });
+    expect(drawn.find((r) => r.id === 'b1')).toBeUndefined();
   });
 
   it('groups what one call found into one row, and what somebody made into another', async () => {
