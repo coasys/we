@@ -15,19 +15,29 @@
  *
  * The ceiling it lives under: a cartridge cannot bring new code. It composes what the host has.
  */
-import type { TemplateSchema } from '@we/schema-shared';
+import {
+  type Bundle,
+  BUNDLE_FORMAT,
+  BUNDLE_FORMAT_VERSION,
+  type BundleRecordType,
+  type TemplateSchema,
+} from '@we/schema-shared';
 import type { Fixture, FixtureAgent, FixtureRecord, FixtureShape, FixtureTheme } from '@we/template-fixtures';
 
 export interface Cartridge {
   id: string;
   name: string;
   description: string;
+  /** The chrome around every space, when the app brings its own rather than WE's. */
+  app?: TemplateSchema & { id: string };
   shell: TemplateSchema & { id: string };
   sections: Array<TemplateSchema & { id: string }>;
   theme: FixtureTheme;
   shapes: FixtureShape[];
   /** Modules the host must have. A cartridge names them; it cannot ship one. */
   modules: string[];
+  /** How the app shows spaces: its own shell for every space, or each space's own. */
+  display: 'ours' | 'theirs';
   sample: {
     space: { name: string; description: string; avatar?: string };
     agents: FixtureAgent[];
@@ -100,5 +110,51 @@ export function shape(
         },
       },
     },
+  };
+}
+
+/**
+ * The cartridge as a bundle: what a deployment ships in its seed, or a person installs from a file.
+ *
+ * Section ids lose the cartridge's own prefix (`field-guide-species` becomes `species`), since an
+ * install puts the bundle's id in front of every piece anyway. The modules a cartridge needs travel
+ * as its shell's `meta.requires.modules` — the place a template says what it leans on — so an install
+ * screen finds them by walking, as it finds everything else. The sample content stays behind: a
+ * bundle installs an app, not somebody else's records.
+ */
+export function toBundle(cartridge: Cartridge, version = '1.0.0'): Bundle {
+  const piece = (id: string) => (id.startsWith(`${cartridge.id}-`) ? id.slice(cartridge.id.length + 1) : id);
+  const shellId = piece(cartridge.shell.id) === cartridge.id ? 'shell' : piece(cartridge.shell.id);
+  const shell = {
+    ...cartridge.shell,
+    id: shellId,
+    meta: {
+      ...cartridge.shell.meta,
+      requires: { modules: [...new Set([...(cartridge.shell.meta.requires?.modules ?? []), ...cartridge.modules])] },
+    },
+  };
+  const theme = { ...cartridge.theme, id: piece(cartridge.theme.id) };
+  return {
+    format: BUNDLE_FORMAT,
+    formatVersion: BUNDLE_FORMAT_VERSION,
+    id: cartridge.id,
+    version,
+    name: cartridge.name,
+    description: cartridge.description,
+    icon: cartridge.shell.meta.icon ?? 'app-window',
+    author: { name: 'WE' },
+    ...(cartridge.app ? { app: { ...cartridge.app, id: piece(cartridge.app.id) } } : {}),
+    templates: [
+      { ...shell, meta: { ...shell.meta, themeId: theme.id } },
+      ...cartridge.sections.map((section) => ({ ...section, id: piece(section.id) })),
+    ],
+    theme,
+    recordTypes: cartridge.shapes.map((shape) => ({
+      name: shape.name,
+      ...(shape.icon ? { icon: shape.icon } : {}),
+      ...(shape.description ? { description: shape.description } : {}),
+      manifest: shape.manifest as BundleRecordType['manifest'],
+    })),
+    display: cartridge.display === 'ours' ? { spaces: 'ours', template: shellId } : { spaces: 'theirs' },
   };
 }

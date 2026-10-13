@@ -7,6 +7,7 @@
  * `notes/we/October-2026/cartridges-plan.md`.
  */
 export type { Cartridge } from './cartridge.ts';
-export { shape, toFixture } from './cartridge.ts';
+export { bundleFileName, cartridgeBundles } from './bundles.ts';
+export { shape, toBundle, toFixture } from './cartridge.ts';
 export { fieldGuide } from './field-guide/index.ts';
 export { toolLibrary } from './tool-library/index.ts';
