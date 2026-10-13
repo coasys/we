@@ -117,8 +117,9 @@ only for whoever runs the space — is edited in place: the first press in visua
 section whole, and a second press (or one with the modifier) makes it the editor's **edit target**
 (`stores/editTarget.ts`). The session then edits a working copy of the section
 (`stores/templateDrafts.ts`), which `SpaceStore.availableViews` prefers while it is open, so the shell
-draws each edit where it will be seen. Escape at its top, a press outside it, or Done comes back
-out. A built-in section is copied first ("Make your own copy"), and the copy is edited the same way.
+draws each edit where it will be seen. One thing is edited at a time: while the section is the
+target nothing outside it lights up, and a press outside it only comes back out, selecting nothing.
+Escape at its top and Done come back out too. A built-in section is copied first ("Make your own copy"), and the copy is edited the same way.
 
 ## Where to look
 

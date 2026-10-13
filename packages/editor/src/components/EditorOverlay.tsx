@@ -760,6 +760,19 @@ function VisualEditorLayer() {
   /** What the session edits beyond the template on screen — a section edited where it is drawn. */
   const targets = useEditorHost().targets;
   const editingSection = () => targets?.section()?.id ?? null;
+  /**
+   * Whether an element lies outside what the session is editing, while that is a section or the app.
+   *
+   * One thing is edited at a time: the page, a section of it, or the chrome around it. While it is a
+   * section or the app, nothing else lights up under the pointer, and a press anywhere else only comes
+   * back out — so the ring never offers a node the inspector is not editing.
+   */
+  const outsideTarget = (el: Element | null): boolean => {
+    const section = editingSection();
+    if (section) return !el?.closest(`[${VIEW_BOUNDARY_ATTR}="${CSS.escape(section)}"]`);
+    if (targets?.app?.()) return !el?.closest('[data-we-app-chrome]');
+    return false;
+  };
   const partLabel = (id: string | null | undefined, selected: boolean): RingLabel | undefined => {
     if (!id) return undefined;
     const part = owners?.part(id);
@@ -1500,7 +1513,7 @@ function VisualEditorLayer() {
   function hoverAt(x: number, y: number, reach: boolean) {
     // Normal hover — over the template's own surfaces only. Anywhere else is the app's, and clears it.
     const hit = templateElementAt(x, y);
-    if (!surfaceOf(hit)) {
+    if (!surfaceOf(hit) || outsideTarget(hit)) {
       handlePointerLeave();
       return;
     }
@@ -1587,14 +1600,13 @@ function VisualEditorLayer() {
 
     const reach = reaches(e);
 
-    // A press outside the section being edited goes back to the template on screen, and is then an
-    // ordinary press there: the shell's nodes are not the section's, and the inspector reads the target.
-    const inSection = editingSection();
-    if (inSection && !hoveredElement?.closest(`[${VIEW_BOUNDARY_ATTR}="${CSS.escape(inSection)}"]`)) {
+    // A press outside the section or the app being edited comes back out to the page, and does
+    // nothing more: it was not lit as it was approached, so selecting there would surprise.
+    if (outsideTarget(hoveredElement)) {
       targets?.leave();
+      visualEditor.onSelect(null);
+      return;
     }
-    // And the same for the app: a press in the page while the chrome is being edited is the page's.
-    if (targets?.app?.() && !hoveredElement?.closest('[data-we-app-chrome]')) targets.leave();
 
     const clicked = findBoundary(hoveredElement, enteredPart(), reach, editingSection());
 

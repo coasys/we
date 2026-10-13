@@ -3,13 +3,14 @@
  *
  * The chrome surrounds everything, so it is gone into from the inspector rather than by a press;
  * once in, a press inside the chrome selects the app's node, and a press in the page or Escape at the
- * app's top comes back out.
+ * app's top comes back out. While in it the page does not light up, and the press that leaves selects
+ * nothing there.
  */
 export const name = 'the app is edited where it is drawn';
 export const scenario = 'security:self-firing-events';
 export const widths = [320];
 
-export async function check({ call, clickAt, key, count, recorded }) {
+export async function check({ call, clickAt, moveTo, key, count, recorded }) {
   const problems = [];
   const last = async (bag) => (await recorded(bag)).at(-1);
 
@@ -37,9 +38,13 @@ export async function check({ call, clickAt, key, count, recorded }) {
     if ((await last('__probeSelected')) !== 'n-app-inner')
       problems.push('a press inside the app did not select its node');
 
+    // The page is not lit while the app is edited, and a press there only comes back out.
+    await moveTo('#probe-n-content');
+    if (await count('[data-we-ring="hover"]')) problems.push('the page lit up while the app was being edited');
     await clickAt('#probe-n-content');
     if ((await last('__probeTarget')) !== 'screen') problems.push('a press in the page did not leave the app');
-    if ((await last('__probeSelected')) !== 'n-content') problems.push('a press in the page did not select there');
+    if ((await last('__probeSelected')) !== null)
+      problems.push(`a press in the page selected ${await last('__probeSelected')} on the way out`);
 
     await call('editorProbeEnterApp');
     await clickAt('#probe-n-app-inner');
