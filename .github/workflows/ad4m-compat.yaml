@@ -86,13 +86,16 @@ jobs:
       ref: ${{ steps.resolve.outputs.ref }}
       branch_pr: ${{ steps.resolve.outputs.branch_pr }}
     steps:
-      # Only the parser and the action that reports it. Nothing here is built or installed.
+      # Only the parser, its cases, the docs whose examples they check, and the action that
+      # reports it. Nothing here is built or installed.
       - uses: actions/checkout@v7
         if: github.event_name == 'pull_request'
         with:
           sparse-checkout: |
             scripts/ad4m-pairing.mjs
             scripts/ad4m-pairing.test.mjs
+            docs/contributing/ad4m-and-deploys.md
+            docs/contributing/pull-requests.md
             .github/actions/pairing-status
           sparse-checkout-cone-mode: false
 

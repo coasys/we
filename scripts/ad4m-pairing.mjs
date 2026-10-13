@@ -12,8 +12,9 @@
 // An alert, so it is the first thing a reviewer sees, and a sentence, so it reads to
 // someone who has never met the convention: a pairing changes what every check on the
 // pull request means. One exact form, so every paired pull request looks the same — the
-// only slack is what does not change how it renders: trailing spaces, line endings, and
-// blank lines or HTML comments above it.
+// only slack is what does not change how it renders: trailing spaces, line endings,
+// blank lines or HTML comments above it, and blank quote lines between its two lines,
+// which Prettier inserts.
 //
 // Strict about what it accepts, broad about what it recognises. Anything that looks like
 // an attempt — a "Paired with" line in any case or heading level, a different alert, the
@@ -106,8 +107,14 @@ export function parsePairing(body) {
     return invalid('This is the old `ad4m:` form; a pairing is now written as an alert.');
   }
   if (!m) return invalid('The pairing line is not in the exact form.');
-  if (lines[at - 1] !== ALERT) return invalid('The pairing line is not inside a `> [!IMPORTANT]` alert.');
-  if (lines.slice(0, at - 1).some((l) => l.trim())) {
+  // A blank quote line between the alert and the heading renders as nothing, and it is what
+  // Prettier writes: it puts one before every heading in a quote. So formatting a description
+  // or a doc on save turns the exact block into this one, and refusing it would refuse every
+  // copy of the block the docs show.
+  let alert = at - 1;
+  while (alert >= 0 && /^>\s*$/.test(lines[alert])) alert--;
+  if (lines[alert] !== ALERT) return invalid('The pairing line is not inside a `> [!IMPORTANT]` alert.');
+  if (lines.slice(0, alert).some((l) => l.trim())) {
     return invalid('The pairing is not the first thing in the description.');
   }
 
