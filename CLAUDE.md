@@ -3548,8 +3548,7 @@ Needs: kernels records, presence, ephemeral, media, peerConnection; permissions 
   - active — Whether this agent is in a call right now.
   - arrangement — The { columns, rows } the stage is currently laid out in.
   - audioDevice — The microphone this agent has chosen, or empty for whatever the system offers.
-  - availableSfuNodes — SFU-capable executor nodes found in this neighbourhood — { did, bindAddress } each.
-  - callConfig — This space's call topology defaults — { mode, designatedPeer, fallback, maxMeshParticipants, sfuPeers } — as its creator stored it in the neighbourhood.
+  - callConfig — This space's call policy — { mode, maxMeshParticipants } — as its creator stored it in the neighbourhood.
   - callConfigSaving — Whether a call config write is in flight.
   - callConfigSupported — Whether the backend can read and write call configuration. False on executors without SFU support.
   - callId — The id of the call this agent is in, or null between calls.
@@ -3591,7 +3590,6 @@ Needs: kernels records, presence, ephemeral, media, peerConnection; permissions 
   - openDeviceSettings — Open the camera and microphone chooser.
   - reconnectPeer — Build one peer's connection again from scratch, without leaving the call.
   - refreshDevices — Re-read which microphones and cameras this machine has.
-  - refreshSfuNodes — Re-scan the neighbourhood for SFU-capable executor nodes.
   - returnToCall — Go back to the space the call is in; does nothing outside a call.
   - saveCallConfig — Replace the entire call config.
   - setArrangement — Report the { columns, rows } a stage grid settled on, so fit-to-content can solve for it.

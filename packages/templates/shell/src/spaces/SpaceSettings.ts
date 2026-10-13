@@ -924,18 +924,16 @@ const CALL_MODE_OPTIONS = [
   { label: 'Cascaded SFU', value: 'cascaded' },
 ];
 
-const CALL_FALLBACK_OPTIONS = [
-  { label: 'Mesh (peer-to-peer)', value: 'mesh' },
-  { label: 'Designated SFU', value: 'designated' },
-  { label: 'Gateway SFU', value: 'gateway' },
-];
-
 /**
  * Call topology defaults — how new calls in this space connect participants.
  *
  * Stored as a link in the neighbourhood (not WE module settings), so every member reads the
  * same configuration. Only shown when the call module runs here AND the executor supports SFU
  * configuration (feat/embedded-sfu builds).
+ *
+ * The space holds only its policy: the mode and the mesh limit. Which SFU nodes cascade, their
+ * capacity and ICE servers belong to each executor (its `--sfu-*` flags), and the executor refuses
+ * them here — so this section has no fields for them.
  *
  * Only the space's creator can change it: the executor refuses anyone else's write, and the
  * call store shows that refusal. Members see the result (the topology indicator in the call
@@ -954,7 +952,7 @@ const callSettingsSection: SchemaNode = {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint' },
           children: [
-            'How new calls in this space connect participants. Mesh connects everyone directly. SFU routes media through a relay server, which handles more participants but requires an SFU-capable executor.',
+            "How new calls in this space connect participants. Mesh connects everyone directly. The SFU modes route each member's media through their own executor's relay, which handles more participants; which relays cascade is set on each executor.",
           ],
         },
 
@@ -972,102 +970,6 @@ const callSettingsSection: SchemaNode = {
                 onChange: {
                   $action: 'modules.call.setCallConfigField',
                   args: ['mode', { $: 'event.detail' }],
-                },
-              },
-            },
-          ],
-        },
-
-        // ── Designated peer — only when mode = "designated" ─────────────
-        {
-          type: '$if',
-          props: {
-            condition: { $: "modules.call.callConfig.mode == 'designated'" },
-            then: {
-              type: 'we-form-field',
-              props: { label: 'Designated SFU peer (DID)' },
-              children: [
-                {
-                  type: 'we-input',
-                  props: {
-                    size: 'sm',
-                    placeholder: 'did:key:...',
-                    value: { $: "modules.call.callConfig.designatedPeer ?? ''" },
-                    onBlur: {
-                      $action: 'modules.call.setCallConfigField',
-                      args: ['designatedPeer', { $: 'event.target.value' }],
-                    },
-                  },
-                },
-              ],
-            },
-          },
-        },
-
-        // ── Cascaded mode fields ──────────────────────────────────────
-        {
-          type: '$if',
-          props: {
-            condition: { $: "modules.call.callConfig.mode == 'cascaded'" },
-            then: {
-              type: 'Column',
-              props: { gap: '300', width: '100%' },
-              children: [
-                {
-                  type: 'we-form-field',
-                  props: { label: 'Max participants per SFU node' },
-                  children: [
-                    {
-                      type: 'we-input',
-                      props: {
-                        size: 'sm',
-                        type: 'number',
-                        value: { $: 'modules.call.callConfig.maxParticipantsPerNode' },
-                        onBlur: {
-                          $action: 'modules.call.setCallConfigField',
-                          args: ['maxParticipantsPerNode', { $: 'Number(event.target.value)' }],
-                        },
-                      },
-                    },
-                  ],
-                },
-                {
-                  type: 'we-form-field',
-                  props: { label: 'Preferred SFU node (DID)' },
-                  children: [
-                    {
-                      type: 'we-input',
-                      props: {
-                        size: 'sm',
-                        placeholder: 'did:key:...',
-                        value: { $: "modules.call.callConfig.preferredSfuDid ?? ''" },
-                        onBlur: {
-                          $action: 'modules.call.setCallConfigField',
-                          args: ['preferredSfuDid', { $: 'event.target.value' }],
-                        },
-                      },
-                    },
-                  ],
-                },
-              ],
-            },
-          },
-        },
-
-        // ── Fallback mode ──────────────────────────────────────────────
-        {
-          type: 'we-form-field',
-          props: { label: 'Fallback when SFU unavailable' },
-          children: [
-            {
-              type: 'we-select',
-              props: {
-                size: 'sm',
-                value: { $: 'modules.call.callConfig.fallback' },
-                options: CALL_FALLBACK_OPTIONS,
-                onChange: {
-                  $action: 'modules.call.setCallConfigField',
-                  args: ['fallback', { $: 'event.detail' }],
                 },
               },
             },
@@ -1093,28 +995,6 @@ const callSettingsSection: SchemaNode = {
                   args: ['maxMeshParticipants', { $: 'Number(event.target.value)' }],
                 },
               },
-            },
-          ],
-        },
-
-        // ── Available SFU nodes (scan result) ──────────────────────────
-        {
-          type: 'Row',
-          props: { gap: '200', ay: 'center', width: '100%' },
-          children: [
-            {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint', flex: '1' },
-              children: [expr`"Available SFU nodes: " + ${{ $: 'modules.call.availableSfuNodes.length' }}`],
-            },
-            {
-              type: 'we-button',
-              props: {
-                size: 'xs',
-                variant: 'ghost',
-                onClick: { $action: 'modules.call.refreshSfuNodes' },
-              },
-              children: ['Scan'],
             },
           ],
         },

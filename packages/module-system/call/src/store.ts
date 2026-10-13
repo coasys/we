@@ -223,21 +223,27 @@ export type CallTopology = 'mesh' | 'sfu';
 /** Topology modes a moderator can choose from. */
 export type CallConfigMode = 'mesh' | 'designated' | 'gateway' | 'cascaded';
 
-/** Per-neighbourhood call configuration — topology defaults stored as a link in the neighbourhood. */
+/**
+ * A space's call policy — the part of the call configuration its neighbourhood stores.
+ *
+ * The executor reports more when it is read (its cascade peers, capacity, preferred node), but those
+ * are that executor's own settings and it refuses them on a write. So the store keeps and writes the
+ * policy alone; see {@link callPolicy}.
+ */
 export interface CallConfigState {
   mode: CallConfigMode;
-  designatedPeer?: string;
-  fallback: CallConfigMode;
   maxMeshParticipants: number;
-  sfuPeers: string[];
-  maxParticipantsPerNode?: number;
-  preferredSfuDid?: string;
 }
 
-/** An SFU-capable executor discovered via neighbourhood presence. */
-export interface CallSfuNodeState {
-  did: string;
-  bindAddress: string;
+const MESH_POLICY: CallConfigState = { mode: 'mesh', maxMeshParticipants: 6 };
+
+/** The policy out of whatever the executor answered, so a write never echoes its node fields back. */
+export function callPolicy(raw: unknown): CallConfigState {
+  const config = (raw ?? {}) as Partial<CallConfigState>;
+  return {
+    mode: config.mode ?? MESH_POLICY.mode,
+    maxMeshParticipants: config.maxMeshParticipants ?? MESH_POLICY.maxMeshParticipants,
+  };
 }
 
 /** Summary of relay (SFU) availability for the current call. */
@@ -397,14 +403,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
 
   /** Per-neighbourhood SFU configuration — topology defaults set by a moderator.
    *  Always non-null — defaults to pure mesh before the real config loads. */
-  const [callConfig, setCallConfig] = signal<CallConfigState>({
-    mode: 'mesh',
-    fallback: 'mesh',
-    maxMeshParticipants: 6,
-    sfuPeers: [],
-  });
-  /** Available SFU nodes discovered via presence scan. */
-  const [availableSfuNodes, setAvailableSfuNodes] = signal<CallSfuNodeState[]>([]);
+  const [callConfig, setCallConfig] = signal<CallConfigState>(MESH_POLICY);
   /** Whether the backend supports call configuration at all. */
   const [callConfigSupported, setCallConfigSupported] = signal(false);
   /** Whether a config save operation runs right now. */
@@ -417,8 +416,9 @@ export function createCallStore(deps: ModuleStoreDeps) {
    * its call config, so anyone else's edit is turned down. Logging it would leave the field
    * showing a value that was never saved.
    */
-  async function writeCallConfig(next: CallConfigState): Promise<void> {
+  async function writeCallConfig(raw: CallConfigState): Promise<void> {
     if (!deps.setCallConfig) return;
+    const next = callPolicy(raw);
     setCallConfigSaving(true);
     try {
       if (await deps.setCallConfig(next)) setCallConfig(next);
@@ -1581,10 +1581,8 @@ export function createCallStore(deps: ModuleStoreDeps) {
     const supported = !!ds && !!uri && !!deps.callConfigSupported?.();
     setCallConfigSupported(supported);
 
-    const meshDefault: CallConfigState = { mode: 'mesh', fallback: 'mesh', maxMeshParticipants: 6, sfuPeers: [] };
     if (!supported) {
-      setCallConfig(meshDefault);
-      setAvailableSfuNodes([]);
+      setCallConfig(MESH_POLICY);
       return;
     }
 
@@ -1593,13 +1591,8 @@ export function createCallStore(deps: ModuleStoreDeps) {
     // are overwritten next time this effect fires.
     void deps
       .getCallConfig?.()
-      .then((raw) => setCallConfig((raw as CallConfigState) ?? meshDefault))
-      .catch(() => setCallConfig(meshDefault));
-
-    void deps
-      .getAvailableSfuNodes?.()
-      .then((nodes) => setAvailableSfuNodes((nodes as CallSfuNodeState[]) ?? []))
-      .catch(() => setAvailableSfuNodes([]));
+      .then((raw) => setCallConfig(callPolicy(raw)))
+      .catch(() => setCallConfig(MESH_POLICY));
   });
 
   /*
@@ -2544,11 +2537,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
 
     callConfig: state(
       callConfig,
-      "This space's call topology defaults — { mode, designatedPeer, fallback, maxMeshParticipants, sfuPeers } — as its creator stored it in the neighbourhood.",
-    ),
-    availableSfuNodes: state(
-      availableSfuNodes,
-      'SFU-capable executor nodes found in this neighbourhood — { did, bindAddress } each.',
+      "This space's call policy — { mode, maxMeshParticipants } — as its creator stored it in the neighbourhood.",
     ),
     callConfigSupported: state(
       callConfigSupported,
@@ -2562,16 +2551,6 @@ export function createCallStore(deps: ModuleStoreDeps) {
     ),
 
     saveCallConfig: action((config: CallConfigState) => writeCallConfig(config), 'Replace the entire call config.'),
-
-    refreshSfuNodes: action(async () => {
-      if (!deps.getAvailableSfuNodes) return;
-      try {
-        const nodes = await deps.getAvailableSfuNodes();
-        setAvailableSfuNodes((nodes as CallSfuNodeState[]) ?? []);
-      } catch {
-        setAvailableSfuNodes([]);
-      }
-    }, 'Re-scan the neighbourhood for SFU-capable executor nodes.'),
 
     connectionInfo: () => ({
       topology: topology(),

@@ -2,9 +2,10 @@
  * Call configuration adapter — reads and writes SFU config through the
  * AD4M `NeighbourhoodProxy` API.
  *
- * The SFU configuration is a link in the neighbourhood, not a WE module
- * setting: every member's executor reads the same config, and only the
- * neighbourhood's creator may write it. This adapter provides the read/write
+ * The neighbourhood stores the call policy (mode and mesh limit) as a link,
+ * not a WE module setting: every member's executor reads the same policy, and
+ * only the neighbourhood's creator may write it. A read also reports the
+ * executor's own node settings, which a write must not send back. This adapter provides the read/write
  * path that the call module and Space Settings UI use to manage topology
  * defaults.
  */
@@ -23,15 +24,11 @@ export type CallConfigIceServer = IceServer;
 /** Per-neighbourhood call configuration, stored as a link in the neighbourhood. */
 export type CallConfig = SfuConfig;
 
-/** An SFU-capable executor discovered via presence in the neighbourhood. */
-export type CallSfuNode = Awaited<ReturnType<NeighbourhoodProxy['availableSfuNodes']>>[number];
-
 /** Default configuration — pure mesh, no SFU. */
 export const DEFAULT_CALL_CONFIG: CallConfig = {
   mode: 'mesh',
   fallback: 'mesh',
   maxMeshParticipants: 6,
-  sfuPeers: [],
 };
 
 // ── Adapter factory ─────────────────────────────────────────────────────
@@ -48,7 +45,6 @@ export const DEFAULT_CALL_CONFIG: CallConfig = {
 export function createCallConfigAccessors(getCurrentDataset: () => DatasetHandle | null): {
   getCallConfig: () => Promise<CallConfig>;
   setCallConfig: (config: unknown) => Promise<boolean>;
-  getAvailableSfuNodes: () => Promise<CallSfuNode[]>;
   callConfigSupported: () => boolean;
 } {
   /** Resolve the neighbourhood proxy of the current shared space. */
@@ -77,15 +73,6 @@ export function createCallConfigAccessors(getCurrentDataset: () => DatasetHandle
     async setCallConfig(config: unknown): Promise<boolean> {
       const { nhProxy, neighbourhoodUrl } = resolveProxy();
       return await nhProxy.setSfuConfig(neighbourhoodUrl, config as CallConfig);
-    },
-
-    async getAvailableSfuNodes(): Promise<CallSfuNode[]> {
-      const { nhProxy } = resolveProxy();
-      try {
-        return await nhProxy.availableSfuNodes();
-      } catch {
-        return [];
-      }
     },
 
     /**

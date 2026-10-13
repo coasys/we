@@ -656,8 +656,6 @@ export interface ModuleStoreDeps {
   getCallConfig?: () => Promise<unknown>;
   /** Write the neighbourhood's call configuration. */
   setCallConfig?: (config: unknown) => Promise<boolean>;
-  /** Discover SFU-capable executor nodes in this neighbourhood. */
-  getAvailableSfuNodes?: () => Promise<unknown[]>;
   /** Whether the current backend supports call configuration. */
   callConfigSupported?: () => boolean;
   /** A pre-existing call backend instance (tests / hosts that already hold a Session). */

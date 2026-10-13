@@ -110,13 +110,6 @@ export interface ModuleHostServices {
    */
   setCallConfig?: (config: unknown) => Promise<boolean>;
   /**
-   * Discover SFU-capable executor nodes in this neighbourhood.
-   *
-   * Scans online agents' presence for the `ad4m://sfu/available` predicate.
-   * Returns DIDs and bind addresses of nodes that can act as relay servers.
-   */
-  getAvailableSfuNodes?: () => Promise<unknown[]>;
-  /**
    * Synchronous probe: does the current backend support call configuration?
    *
    * Returns `false` when the executor lacks SFU types (pre-feat/embedded-sfu builds).
@@ -695,9 +688,6 @@ export function createModuleStoreDeps(framework: {
     },
     get setCallConfig() {
       return services.setCallConfig;
-    },
-    get getAvailableSfuNodes() {
-      return services.getAvailableSfuNodes;
     },
     get callConfigSupported() {
       return services.callConfigSupported;

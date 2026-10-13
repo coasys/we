@@ -80,5 +80,4 @@ export {
   type CallConfig,
   type CallConfigMode,
   type CallConfigIceServer,
-  type CallSfuNode,
 } from './callConfigAdapter';

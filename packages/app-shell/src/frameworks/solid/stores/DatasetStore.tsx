@@ -398,7 +398,6 @@ export function DatasetStoreProvider(props: ParentProps) {
         return {
           getCallConfig: accessors.getCallConfig,
           setCallConfig: accessors.setCallConfig,
-          getAvailableSfuNodes: accessors.getAvailableSfuNodes,
           callConfigSupported: accessors.callConfigSupported,
         };
       })(),

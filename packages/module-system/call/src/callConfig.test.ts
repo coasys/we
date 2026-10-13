@@ -12,7 +12,7 @@
 import { markAction, markState } from '@we/module-shared';
 import { describe, expect, it, vi } from 'vitest';
 
-import { type CallConfigState, type CallSfuNodeState, createCallStore } from './store';
+import { type CallConfigState, createCallStore } from './store';
 
 const baseDeps = { state: markState, action: markAction, kernels: {} } as const;
 
@@ -37,30 +37,58 @@ function createEffectRunner() {
 
 const MESH_DEFAULT: CallConfigState = {
   mode: 'mesh',
-  fallback: 'mesh',
   maxMeshParticipants: 6,
-  sfuPeers: [],
 };
 
 const SFU_CONFIG: CallConfigState = {
   mode: 'designated',
-  designatedPeer: 'did:key:z6MkSFU',
-  fallback: 'mesh',
   maxMeshParticipants: 4,
-  sfuPeers: [],
 };
 
-const SFU_NODES: CallSfuNodeState[] = [
-  { did: 'did:key:z6MkNode1', bindAddress: '10.0.0.1:8443' },
-  { did: 'did:key:z6MkNode2', bindAddress: '10.0.0.2:8443' },
-];
+/**
+ * What `sfu.getConfig` answers: the space's policy, plus this executor's own node settings, which
+ * it refuses on a write.
+ */
+const READ_CONFIG = {
+  ...SFU_CONFIG,
+  fallback: 'mesh',
+  sfuPeers: ['did:key:z6MkPeer'],
+  maxParticipantsPerNode: 20,
+  preferredSfuDid: 'did:key:z6MkPreferred',
+};
 
 describe('call config — store integration', () => {
   it('defaults to mesh config before any load', () => {
     const store = createCallStore({ ...baseDeps, signal });
     expect(store.callConfig()).toEqual(MESH_DEFAULT);
     expect(store.callConfigSupported()).toBe(false);
-    expect(store.availableSfuNodes()).toEqual([]);
+  });
+
+  it("keeps only the space's policy from a read, so a write never sends the executor's node settings back", async () => {
+    // The executor refuses a write that carries any node field. Echoing a read back field by field
+    // was how the first edit of a loaded config would have failed.
+    const { effect, flush } = createEffectRunner();
+    const setCallConfig = vi.fn().mockResolvedValue(true);
+    const store = createCallStore({
+      ...baseDeps,
+      signal,
+      effect,
+      dataset: () => ({ id: 'test' }) as never,
+      datasetUri: () => 'neighbourhood://test',
+      getCallConfig: async () => READ_CONFIG,
+      setCallConfig,
+      callConfigSupported: () => true,
+    });
+    flush();
+    await vi.waitFor(() => expect(store.callConfig()).toEqual(SFU_CONFIG));
+
+    await store.setCallConfigField('maxMeshParticipants', 8);
+    await store.saveCallConfig({ ...READ_CONFIG, mode: 'cascaded' } as CallConfigState);
+
+    expect(setCallConfig.mock.calls.map(([config]) => config)).toEqual([
+      { mode: 'designated', maxMeshParticipants: 8 },
+      { mode: 'cascaded', maxMeshParticipants: 4 },
+    ]);
   });
 
   it('loads config from the host when dataset changes', async () => {
@@ -69,7 +97,6 @@ describe('call config — store integration', () => {
     const [datasetUri, setDatasetUri] = signal<string | null>(null);
 
     const getCallConfig = vi.fn().mockResolvedValue(SFU_CONFIG);
-    const getAvailableSfuNodes = vi.fn().mockResolvedValue(SFU_NODES);
     const callConfigSupported = vi.fn().mockReturnValue(true);
 
     const store = createCallStore({
@@ -79,7 +106,6 @@ describe('call config — store integration', () => {
       dataset: dataset as () => null,
       datasetUri,
       getCallConfig,
-      getAvailableSfuNodes,
       callConfigSupported,
     });
 
@@ -98,14 +124,12 @@ describe('call config — store integration', () => {
 
     expect(store.callConfig()).toEqual(SFU_CONFIG);
     expect(store.callConfigSupported()).toBe(true);
-    expect(store.availableSfuNodes()).toEqual(SFU_NODES);
   });
 
   it('falls back to mesh defaults when getCallConfig rejects', async () => {
     const { effect, flush } = createEffectRunner();
 
     const getCallConfig = vi.fn().mockRejectedValue(new Error('RPC failed'));
-    const getAvailableSfuNodes = vi.fn().mockResolvedValue([]);
     const callConfigSupported = vi.fn().mockReturnValue(true);
 
     const store = createCallStore({
@@ -115,7 +139,6 @@ describe('call config — store integration', () => {
       dataset: () => ({ id: 'test' }) as never,
       datasetUri: () => 'neighbourhood://test',
       getCallConfig,
-      getAvailableSfuNodes,
       callConfigSupported,
     });
 
@@ -160,9 +183,7 @@ describe('call config — store integration', () => {
     // Now change one field
     await store.setCallConfigField('mode', 'cascaded');
 
-    expect(setCallConfig).toHaveBeenLastCalledWith(
-      expect.objectContaining({ mode: 'cascaded', designatedPeer: 'did:key:z6MkSFU' }),
-    );
+    expect(setCallConfig).toHaveBeenLastCalledWith({ mode: 'cascaded', maxMeshParticipants: 4 });
     expect(store.callConfig().mode).toBe('cascaded');
   });
 
@@ -177,9 +198,7 @@ describe('call config — store integration', () => {
 
     const newConfig: CallConfigState = {
       mode: 'gateway',
-      fallback: 'designated',
       maxMeshParticipants: 10,
-      sfuPeers: ['did:key:z6MkA', 'did:key:z6MkB'],
     };
 
     await store.saveCallConfig(newConfig);
@@ -237,19 +256,6 @@ describe('call config — store integration', () => {
     resolveWrite!(true);
     await promise;
     expect(store.callConfigSaving()).toBe(false);
-  });
-
-  it('refreshes SFU nodes on demand', async () => {
-    const getAvailableSfuNodes = vi.fn().mockResolvedValue(SFU_NODES);
-
-    const store = createCallStore({ ...baseDeps, signal, getAvailableSfuNodes });
-
-    expect(store.availableSfuNodes()).toEqual([]);
-
-    await store.refreshSfuNodes();
-
-    expect(store.availableSfuNodes()).toEqual(SFU_NODES);
-    expect(getAvailableSfuNodes).toHaveBeenCalledOnce();
   });
 
   it('connectionInfo reflects current call state', () => {

@@ -3283,14 +3283,9 @@ export const contextData: ContextData = {
           doc: 'The microphone this agent has chosen, or empty for whatever the system offers.',
         },
         {
-          name: 'availableSfuNodes',
-          kind: 'state',
-          doc: 'SFU-capable executor nodes found in this neighbourhood — { did, bindAddress } each.',
-        },
-        {
           name: 'callConfig',
           kind: 'state',
-          doc: "This space's call topology defaults — { mode, designatedPeer, fallback, maxMeshParticipants, sfuPeers } — as its creator stored it in the neighbourhood.",
+          doc: "This space's call policy — { mode, maxMeshParticipants } — as its creator stored it in the neighbourhood.",
         },
         { name: 'callConfigSaving', kind: 'state', doc: 'Whether a call config write is in flight.' },
         {
@@ -3424,7 +3419,6 @@ export const contextData: ContextData = {
           doc: 'Re-read which microphones and cameras this machine has.',
           ambient: true,
         },
-        { name: 'refreshSfuNodes', kind: 'action', doc: 'Re-scan the neighbourhood for SFU-capable executor nodes.' },
         {
           name: 'returnToCall',
           kind: 'action',
