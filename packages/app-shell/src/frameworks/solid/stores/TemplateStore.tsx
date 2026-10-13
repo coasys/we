@@ -5,6 +5,7 @@ import { templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
 import { getSeed } from '@shared/seedRegistry';
 import { reserveId } from '@shared/templateIdentity';
+import { withLibrary } from '@shared/templateLists';
 import { explain } from '@shared/userMessage';
 import { deepClone } from '@shared/utils';
 import type { NewRecord } from '@we/backend-shared';
@@ -496,7 +497,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       // If a saved template shares an ID with a core template, use the saved version
       const savedIds = new Set(savedTemplates.map((t) => t.id));
       const filteredCore = builtInTemplates.filter((t) => !savedIds.has(t.id));
-      setAllTemplates([...filteredCore, ...savedTemplates]);
+      setAllTemplates((prev) => withLibrary(prev, [...filteredCore, ...savedTemplates]));
 
       // Build installed ID set from AgentSettings HasMany relation
       // HasMany without .include() returns raw URI strings, not model instances.
