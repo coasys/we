@@ -161,6 +161,12 @@ export interface TemplateStore {
    * and mark them installed. How a bundle lands; throws if any write fails. Wiring, not template API.
    */
   writeLibraryTemplates: (templates: TemplateSchema[], origin: string) => Promise<void>;
+  /**
+   * Write templates into the space on screen under the ids they carry, updating any already there —
+   * so every member has them, as a space's own templates are had. How an app's sections reach a space
+   * it is set up in. Throws if any write fails. Wiring, not template API.
+   */
+  writeSpaceTemplates: (templates: TemplateSchema[], origin: string) => Promise<void>;
   deleteRefusedTemplate: (recordId: string) => Promise<void>;
   installTemplate: (templateId: string) => Promise<void>;
   uninstallTemplate: (templateId: string) => Promise<void>;
@@ -1145,6 +1151,37 @@ export function TemplateStoreProvider(props: ParentProps) {
     await loadSavedTemplates();
   }
 
+  async function writeSpaceTemplates(templates: TemplateSchema[], origin: string): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset) throw new Error('There is no space open');
+    for (const template of templates) {
+      const id = template.id;
+      if (!id) continue;
+      // The space's copy carries nothing of where it was read from but the bundle it came in.
+      const { _fromSpace: _ignored, ...clean } = template;
+      const schema = asFileField(encodeTemplateSchema(clean as TemplateSchema));
+      const existing = spaceTemplateMap.get(id);
+      if (existing) {
+        existing.schema = schema;
+        existing.name = template.meta.name;
+        existing.version = (existing.version || 1) + 1;
+        await existing.save();
+        continue;
+      }
+      await Template.create(dataset.handle, {
+        name: template.meta.name,
+        description: template.meta.description,
+        icon: template.meta.icon,
+        origin,
+        slug: id,
+        version: 1,
+        schema,
+        role: roleOf(template),
+      });
+    }
+    await loadSpaceTemplates(dataset);
+  }
+
   async function performPersonalInstall(request: PendingInstall): Promise<void> {
     const rootPerspective = datasetStore.rootDataset()?.handle;
     if (!rootPerspective) {
@@ -1932,6 +1969,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     removeTemplate,
     deleteTemplate,
     writeLibraryTemplates,
+    writeSpaceTemplates,
     deleteRefusedTemplate,
     installTemplate,
     uninstallTemplate,

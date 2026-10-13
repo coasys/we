@@ -96,7 +96,7 @@ const recordTypes: SchemaNode = {
           type: 'we-text',
           children: [
             {
-              $: `${pending}.recordTypesHere == 'add' ? \`Adds \${join(${pending}.recordTypes, ', ')} to “\${${pending}.spaceName}”, for everyone in it. They stay if you remove the app, because they hold what people make with it.\` : ${pending}.recordTypesHere == 'ask' ? \`It works with \${join(${pending}.recordTypes, ', ')}, which this space does not have. Whoever runs it can set it up for the app from Settings.\` : \`It works with \${join(${pending}.recordTypes, ', ')}. Whoever runs a space can set it up for the app from Settings.\``,
+              $: `${pending}.recordTypesHere == 'add' ? \`Sets “\${${pending}.spaceName}” up for it, for everyone in it: adds \${join(${pending}.recordTypes, ', ')} and turns its sections on. They stay if you remove the app, because they hold what people make with it.\` : ${pending}.recordTypesHere == 'ask' ? \`It works with \${join(${pending}.recordTypes, ', ')}, which this space does not have. Whoever runs it can set it up for the app from Settings.\` : \`It works with \${join(${pending}.recordTypes, ', ')}. Whoever runs a space can set it up for the app from Settings.\``,
             },
           ],
         },

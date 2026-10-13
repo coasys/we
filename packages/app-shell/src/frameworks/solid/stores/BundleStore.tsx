@@ -104,6 +104,11 @@ interface SetUpSource {
   name: string;
   sections: string[];
   recordTypes: BundleRecordType[];
+  /**
+   * Whether its sections have to be copied into the space for everyone in it to have them. An installed
+   * app's live in one person's library; a deployment's are built in for every member already.
+   */
+  copySections: boolean;
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -134,12 +139,14 @@ export function BundleStoreProvider(props: ParentProps) {
       name: pieces.name,
       sections: pieces.sections.map((section) => section.id),
       recordTypes: pieces.recordTypes,
+      copySections: false,
     })),
     ...installedList().map((entry) => ({
       id: entry.id,
       name: entry.name,
       sections: entry.sections,
       recordTypes: entry.recordTypes,
+      copySections: true,
     })),
   ];
 
@@ -320,6 +327,19 @@ export function BundleStoreProvider(props: ParentProps) {
     setBusy(true);
     try {
       const problems = source.recordTypes.length ? await shapeStore.addRecordTypes(source.id, source.recordTypes) : [];
+      /*
+        A section switched on is a section every member is shown, so every member has to have it: an
+        installed app's sections are copied into the space, as a space's own templates are stored.
+        From this agent's library, which holds the version they installed; a later set-up after an
+        update replaces the copy.
+      */
+      if (source.copySections) {
+        const wanted = new Set(source.sections);
+        const sections = templateStore
+          .allTemplates()
+          .filter((template) => !template._fromSpace && wanted.has(template.id ?? ''));
+        if (sections.length) await templateStore.writeSpaceTemplates(sections, 'bundle');
+      }
       const enabled = new Set(spaceStore.enabledViewIds());
       for (const section of source.sections) if (!enabled.has(section)) await spaceStore.setViewEnabled(section, true);
       if (problems.length) {

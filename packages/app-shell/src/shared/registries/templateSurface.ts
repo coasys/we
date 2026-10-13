@@ -964,6 +964,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     removeTemplate: destructive('library'),
     deleteTemplate: destructive('library'),
     writeLibraryTemplates: WIRING,
+    writeSpaceTemplates: WIRING,
     deleteRefusedTemplate: destructive('library'),
     installTemplate: action('library'),
     uninstallTemplate: action('library'),
