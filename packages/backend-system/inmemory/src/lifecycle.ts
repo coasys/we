@@ -214,11 +214,9 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
   const seedDeclaredHints = (manifest: Parameters<SchemaPort['declare']>[0]) => {
     for (const [name, entity] of Object.entries(manifest.entities)) {
       const propHints: Record<string, string> = {};
-      for (const spec of Object.values(entity.properties)) {
-        // Keyed by predicate to match the port contract; a declaration without one has no stable
-        // storage key, so its hint is unreachable through this surface — as in production, where
-        // the minted predicate is the key.
-        if (spec.interpretationHint && spec.predicate) propHints[spec.predicate] = spec.interpretationHint;
+      // Keyed by property name, as the port says.
+      for (const [property, spec] of Object.entries(entity.properties)) {
+        if (spec.interpretationHint) propHints[property] = spec.interpretationHint;
       }
       declaredHints.set(name, {
         ...(entity.interpretationHint ? { classHint: entity.interpretationHint } : {}),
@@ -288,9 +286,9 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
         if (hints.classHint) current.classHint = hints.classHint;
         else delete current.classHint;
       }
-      for (const [predicate, hint] of Object.entries(hints.propHints ?? {})) {
-        if (hint) current.propHints[predicate] = hint;
-        else delete current.propHints[predicate];
+      for (const [name, hint] of Object.entries(hints.propHints ?? {})) {
+        if (hint) current.propHints[name] = hint;
+        else delete current.propHints[name];
       }
       customized.set(k, current);
     },

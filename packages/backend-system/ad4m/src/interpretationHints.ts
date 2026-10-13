@@ -36,6 +36,28 @@ function decodeLiteral(value: string): string {
   }
 }
 
+/**
+ * Each declared property's name and the path it is stored under — what turns the contract's
+ * property names into this backend's storage keys and back. From the model's own shape, which is
+ * what was installed.
+ */
+function namedPaths(entity: string, p: PerspectiveProxy): { byName: Map<string, string>; byPath: Map<string, string> } {
+  const byName = new Map<string, string>();
+  const byPath = new Map<string, string>();
+  const model = getEntityForDataset(entity, p) as
+    { generateSHACL?: () => { shape?: { properties?: { name?: string; path?: string }[] } } } | undefined;
+  try {
+    for (const property of model?.generateSHACL?.().shape?.properties ?? []) {
+      if (!property.name || !property.path) continue;
+      byName.set(property.name, property.path);
+      if (!byPath.has(property.path)) byPath.set(property.path, property.name);
+    }
+  } catch {
+    // A model that cannot describe itself has no names to offer; its hints read as none.
+  }
+  return { byName, byPath };
+}
+
 /** The shape node and its property nodes (keyed by path) for one entity, or null when absent. */
 async function locateShape(
   p: PerspectiveProxy,
@@ -78,11 +100,14 @@ export async function readInterpretationHints(p: PerspectiveProxy, entity: strin
     p.get(new LinkQuery({ source: shapeUri, predicate: HINT_PREDICATE })),
     p.get(new LinkQuery({ source: shapeUri, predicate: HINTS_CUSTOMIZED_PREDICATE })),
   ]);
+  const { byPath } = namedPaths(entity, p);
   const propHints: Record<string, string> = {};
   await Promise.all(
     [...propNodes.entries()].map(async ([path, node]) => {
+      const name = byPath.get(path);
+      if (!name) return;
       const links = await p.get(new LinkQuery({ source: node, predicate: HINT_PREDICATE }));
-      if (links[0]) propHints[path] = decodeLiteral(links[0].data.target);
+      if (links[0]) propHints[name] = decodeLiteral(links[0].data.target);
     }),
   );
   return {
@@ -96,7 +121,7 @@ export async function readInterpretationHints(p: PerspectiveProxy, entity: strin
  * Write hint customizations for one entity and mark the shape customized.
  *
  * Only the keys present are touched (a partial update); an empty-string hint removes that hint.
- * `propHints` is keyed by predicate. Throws when the entity has no stored shape — customizing what
+ * `propHints` is keyed by property name. Throws when the entity has no stored shape — customizing what
  * is not installed would succeed silently and do nothing, which is the worse failure.
  */
 export async function writeInterpretationHints(
@@ -110,9 +135,11 @@ export async function writeInterpretationHints(
 
   try {
     if (hints.classHint !== undefined) await replaceLink(p, shapeUri, HINT_PREDICATE, hints.classHint || null);
-    for (const [predicate, hint] of Object.entries(hints.propHints ?? {})) {
-      const node = propNodes.get(predicate);
-      if (!node) throw new Error(`writeInterpretationHints: "${entity}" has no property stored under ${predicate}`);
+    const { byName } = namedPaths(entity, p);
+    for (const [name, hint] of Object.entries(hints.propHints ?? {})) {
+      const path = byName.get(name);
+      const node = path ? propNodes.get(path) : undefined;
+      if (!node) throw new Error(`writeInterpretationHints: "${entity}" has no stored property called ${name}`);
       await replaceLink(p, node, HINT_PREDICATE, hint || null);
     }
     await replaceLink(p, shapeUri, HINTS_CUSTOMIZED_PREDICATE, 'true');

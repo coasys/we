@@ -7,10 +7,10 @@
  * - a response is never a child of anything — where it was said is derived from its subject.
  */
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
-import { getEntity, PREDICATES } from '@we/entities';
+import { getEntity } from '@we/entities';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { completeResponse } from '../src/shared/responses';
+import { completeResponse, respondsThrough } from '../src/shared/responses';
 
 interface Node {
   id: string;
@@ -33,8 +33,8 @@ beforeEach(async () => {
   dataset = (await ports.lifecycle.get('ds'))!.handle;
 });
 
-const inside = (id: string) => ({ parent: { id, predicate: PREDICATES.CHILDREN } });
-const answering = (id: string) => ({ parent: { id, predicate: PREDICATES.RESPONSE } });
+const inside = (id: string) => ({ parent: { id, relation: 'children', entity: 'CollectionBlock' } });
+const answering = (id: string) => ({ parent: { id, relation: 'responses' } });
 
 /** Write a response the way the host does — the link that makes it one, then the thread link. */
 async function respond(entity: string, to: Node, fields: Record<string, unknown> = {}): Promise<Node> {
@@ -80,5 +80,17 @@ describe('a response, threaded', () => {
 
     expect((await reread('TaskBlock', task)).thread).toEqual([call.id]);
     expect((await reread('CollectionBlock', space)).children).toEqual([task.id]);
+  });
+});
+
+describe('which writes are responses', () => {
+  it('reads the subject off a parent naming `responses`', () => {
+    expect(respondsThrough(answering('post-1'))).toBe('post-1');
+  });
+
+  it('answers empty for a parent through any other relation, or none', () => {
+    expect(respondsThrough(inside('channel-1'))).toBe('');
+    expect(respondsThrough({})).toBe('');
+    expect(respondsThrough(undefined)).toBe('');
   });
 });

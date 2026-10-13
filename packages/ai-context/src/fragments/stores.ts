@@ -1497,7 +1497,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         nameOptions:
           '{ label, value }[] — "Work it out" plus every named property of the open draft, for the naming-field picker. A different first entry from identityOptions on purpose: no identity means no dedup key, where no naming field means the name is DERIVED (a property called name or title, else whichever string is required or first) — there is no such thing as a record with no name',
         hintEditor:
-          'the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal',
+          'the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal',
         hintBusy: 'boolean — the hint editor is loading or saving',
         memberOptions:
           "{ rowId, options }[] — each member's default-value picker entries. Read with find(shapeStore.memberOptions, { rowId: member.rowId }) rather than off member: rows are mutated in place while typing, so values hanging off the row cannot be reactive",
@@ -1551,7 +1551,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(): closes the hint editor, discarding unsaved edits. Pair it with hintEditorDirty in a discardGuard rather than wiring it to a modal’s close directly',
         hintEditorDirty:
           'whether the open hint editor holds edits that closing would lose. What a discard guard reads: the rows come from the model’s declaration, so a schema has no set of local names it could test. Compares against the state the editor opened in, so an editor somebody only read closes without a question',
-        setHintDraft: "(key, value): sets one hint in the open editor — key is 'class' or a property predicate",
+        setHintDraft: "(key, value): sets one hint in the open editor — key is 'class' or a property's name",
         saveHintEditor:
           '(): writes the hints to this space and marks them customized, so schema refreshes stop reverting them',
         resetHintEditor: "(): back to the declaration's hints; release improvements flow again",
