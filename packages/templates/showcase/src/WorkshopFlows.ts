@@ -1,0 +1,1337 @@
+/**
+ * The Flows page — every flow in the space, the records going through each, and the editor.
+ *
+ * A flow is drawn as lanes: the main line across the top, each branch below it saying where it leaves
+ * and whether it rejoins or ends, and any move the rest does not cover listed as an exception. A
+ * record going through it is drawn as a **walk** — the steps it has taken, the one it is at, the ones
+ * ahead — because a record never branches: it takes one path, whatever the flow allows.
+ *
+ * Everything shown is computed by `flowStore` (lanes, requirements in words, the walk); this file
+ * arranges it and names the actions. The editor works on a draft the store holds, so nothing reaches
+ * the space until Save, and every edit that cannot be made says why in a toast rather than half
+ * happening.
+ *
+ * ## The task-state flow
+ *
+ * Listed, and shown read-only: the board's task states write it, and tasks move on the board. "Edit in
+ * Task states" goes where it is edited.
+ */
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import { foldingBody, foldingSectionLabel, formModal } from '@we/template-kit';
+
+const OPEN = 'flowStore.open';
+const DRAFT = 'flowStore.draft';
+
+/** The locals the page declares: which modal is open, and what it is about. */
+export const FLOWS_LOCALS = {
+  newFlowOpen: { type: 'boolean', initial: false },
+  addStepLane: { type: 'number', initial: -1 },
+  addStepAfter: { type: 'string', initial: '' },
+  branchFrom: { type: 'string', initial: '' },
+  editStep: { type: 'string', initial: '' },
+  guardStep: { type: 'string', initial: '' },
+  excFrom: { type: 'string', initial: '' },
+  excTo: { type: 'string', initial: '' },
+  historyOf: { type: 'string', initial: '' },
+  showArchived: { type: 'boolean', initial: false },
+} as const;
+
+const text = (content: string | { $: string }, props: Record<string, SchemaProp> = {}): SchemaNode => ({
+  type: 'we-text',
+  props,
+  children: [content],
+});
+
+const iconButton = (
+  icon: string,
+  label: string,
+  onClick: SchemaProp,
+  extra: Record<string, unknown> = {},
+): SchemaNode => ({
+  type: 'we-tooltip',
+  props: { placement: 'top', content: label },
+  children: [
+    {
+      type: 'we-button',
+      props: { variant: 'ghost', size: 'sm', square: true, label, onClick, ...extra },
+      children: [{ type: 'we-icon', props: { name: icon, size: 'sm' } }],
+    },
+  ],
+});
+
+const chip = (content: string | { $: string }, tone = 'surface-sunken'): SchemaNode => ({
+  type: 'Row',
+  props: { px: '200', py: '100', r: 'full', bg: tone, ay: 'center', gap: '100' },
+  children: [text(content, { variant: 'footnote' })],
+});
+
+// ─── Lanes ─────────────────────────────────────────────────────────────────────
+
+/** One step, as a card. `editing` adds the controls that change it. */
+function stepCard(editing: boolean): SchemaNode {
+  return {
+    type: 'Column',
+    props: {
+      gap: '100',
+      p: '300',
+      r: 'card',
+      bg: 'surface-raised',
+      border: '1px solid border',
+      minWidth: '160px',
+      maxWidth: '220px',
+    },
+    children: [
+      {
+        type: 'Row',
+        props: { gap: '200', ay: 'center' },
+        children: [
+          text({ $: 'step.label' }, { fontWeight: 'semibold', truncate: true }),
+          {
+            type: '$if',
+            props: {
+              condition: { $: 'step.final' },
+              then: { type: 'we-icon', props: { name: 'flag-checkered', size: 'sm' } },
+            },
+          },
+        ],
+      },
+      {
+        type: '$each',
+        props: { items: { $: 'step.requires' }, as: 'need' },
+        children: [text({ $: 'need' }, { variant: 'footnote', color: 'text-muted' })],
+      },
+      {
+        type: '$if',
+        props: {
+          condition: { $: 'step.hint' },
+          then: text({ $: 'step.hint' }, { variant: 'footnote', color: 'text-faint' }),
+        },
+      },
+      ...(editing
+        ? [
+            {
+              type: 'Row',
+              props: { gap: '100', wrap: true },
+              children: [
+                iconButton('arrow-left', 'Earlier', { $action: 'flowStore.moveStep', args: [{ $: 'step.name' }, -1] }),
+                iconButton('arrow-right', 'Later', { $action: 'flowStore.moveStep', args: [{ $: 'step.name' }, 1] }),
+                iconButton('plus', 'Add a step after this one', [
+                  { $setLocal: 'addStepLane', value: { $: 'lane.index' } },
+                  { $setLocal: 'addStepAfter', value: { $: 'step.name' } },
+                ]),
+                iconButton('git-branch', 'Branch from here', { $setLocal: 'branchFrom', value: { $: 'step.name' } }),
+                iconButton('pencil-simple', 'Edit this step', { $setLocal: 'editStep', value: { $: 'step.name' } }),
+                iconButton('trash', 'Remove this step', {
+                  $action: 'flowStore.removeStep',
+                  args: [{ $: 'step.name' }],
+                }),
+              ],
+            } satisfies SchemaNode,
+          ]
+        : []),
+    ],
+  };
+}
+
+/** Every lane of a flow — `source` is `flowStore.open` or `flowStore.draft`. */
+function lanes(source: string, editing: boolean): SchemaNode {
+  return {
+    type: 'Column',
+    props: { gap: '400', width: '100%' },
+    children: [
+      {
+        type: '$each',
+        props: { items: { $: `${source}.lanes` }, as: 'lane' },
+        children: [
+          {
+            type: 'Column',
+            props: { gap: '200' },
+            children: [
+              {
+                type: '$if',
+                props: {
+                  condition: { $: '!lane.main' },
+                  then: {
+                    type: 'Row',
+                    props: { gap: '200', ay: 'center', wrap: true },
+                    children: [
+                      { type: 'we-icon', props: { name: 'git-branch', size: 'sm' } },
+                      text({ $: '`From ${lane.leavesLabel}`' }, { variant: 'label' }),
+                      ...(editing
+                        ? [
+                            {
+                              type: 'we-select',
+                              props: {
+                                fit: true,
+                                size: 'sm',
+                                value: { $: 'lane.rejoins' },
+                                options: {
+                                  $: `distinct([{ label: 'Ends here', value: '' }], ${source}.steps.map(s, { label: 'Rejoins at ' + s.label, value: s.name }))`,
+                                },
+                                onChange: {
+                                  $action: 'flowStore.setBranchEnd',
+                                  args: [{ $: 'lane.index' }, { $: 'event.detail' }],
+                                },
+                              },
+                            } satisfies SchemaNode,
+                          ]
+                        : [
+                            text(
+                              { $: "lane.ends ? 'and ends' : `and rejoins at ${lane.rejoinsLabel}`" },
+                              {
+                                variant: 'footnote',
+                                color: 'text-muted',
+                              },
+                            ),
+                          ]),
+                    ],
+                  },
+                },
+              },
+              {
+                type: 'Row',
+                props: { gap: '200', ay: 'center', wrap: true, pl: { $: "lane.main ? '0' : '600'" } },
+                children: [
+                  {
+                    type: '$each',
+                    props: { items: { $: 'lane.steps' }, as: 'step' },
+                    children: [
+                      {
+                        type: 'Row',
+                        props: { gap: '200', ay: 'center' },
+                        children: [
+                          {
+                            type: '$if',
+                            props: {
+                              condition: { $: 'index > 0' },
+                              then: {
+                                type: 'we-icon',
+                                props: { name: 'arrow-right', size: 'sm', color: 'text-faint' },
+                              },
+                            },
+                          },
+                          stepCard(editing),
+                        ],
+                      },
+                    ],
+                  },
+                  ...(editing
+                    ? [
+                        iconButton('plus', 'Add a step to the start of this lane', [
+                          { $setLocal: 'addStepLane', value: { $: 'lane.index' } },
+                          { $setLocal: 'addStepAfter', value: '' },
+                        ]),
+                      ]
+                    : []),
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/** The moves nothing else covers. */
+function exceptions(source: string, editing: boolean): SchemaNode {
+  return {
+    type: 'Column',
+    props: { gap: '200' },
+    children: [
+      {
+        type: '$if',
+        props: {
+          condition: { $: `count(${source}.exceptions) || ${editing}` },
+          then: text('Other moves', { variant: 'label', color: 'text-muted' }),
+        },
+      },
+      {
+        type: '$each',
+        props: { items: { $: `${source}.exceptions` }, as: 'move' },
+        children: [
+          {
+            type: 'Row',
+            props: { gap: '200', ay: 'center' },
+            children: [
+              text({ $: '`${move.fromLabel} → ${move.toLabel}`' }, { variant: 'footnote' }),
+              ...(editing
+                ? [
+                    iconButton('x', 'Remove this move', {
+                      $action: 'flowStore.removeException',
+                      args: [{ $: 'move.from' }, { $: 'move.to' }],
+                    }),
+                  ]
+                : []),
+            ],
+          },
+        ],
+      },
+      ...(editing
+        ? [
+            {
+              type: 'Row',
+              props: { gap: '200', ay: 'center', wrap: true },
+              children: [
+                {
+                  type: 'we-select',
+                  props: {
+                    fit: true,
+                    size: 'sm',
+                    placeholder: 'From',
+                    value: { $: 'local.excFrom' },
+                    options: { $: `${source}.steps.map(s, { label: s.label, value: s.name })` },
+                    onChange: { $setLocal: 'excFrom', value: { $: 'event.detail' } },
+                  },
+                },
+                { type: 'we-icon', props: { name: 'arrow-right', size: 'sm' } },
+                {
+                  type: 'we-select',
+                  props: {
+                    fit: true,
+                    size: 'sm',
+                    placeholder: 'To',
+                    value: { $: 'local.excTo' },
+                    options: { $: `${source}.steps.map(s, { label: s.label, value: s.name })` },
+                    onChange: { $setLocal: 'excTo', value: { $: 'event.detail' } },
+                  },
+                },
+                {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    variant: 'secondary',
+                    disabled: { $: '!local.excFrom || !local.excTo' },
+                    onClick: [
+                      { $action: 'flowStore.addException', args: [{ $: 'local.excFrom' }, { $: 'local.excTo' }] },
+                      { $setLocal: 'excFrom', value: '' },
+                      { $setLocal: 'excTo', value: '' },
+                    ],
+                  },
+                  children: [text('Add move')],
+                },
+              ],
+            } satisfies SchemaNode,
+          ]
+        : []),
+    ],
+  };
+}
+
+/** The sequence rule of a flow, in a sentence. */
+const ruleWords = (source: string) =>
+  `${source}.rule == 'any' ? 'Any step can move to any other.' : ${source}.rule == 'next-and-back' ? 'Each step moves on to the next, or back to the one before.' : 'Each step moves on to the next.'`;
+
+// ─── Records ───────────────────────────────────────────────────────────────────
+
+/** A record's walk, as a stepper. */
+const walk: SchemaNode = {
+  type: 'Row',
+  props: { gap: '100', ay: 'center', wrap: true },
+  children: [
+    {
+      type: '$each',
+      props: { items: { $: 'rec.walk' }, as: 'step' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '100', ay: 'center' },
+          children: [
+            {
+              type: '$if',
+              props: { condition: { $: 'index > 0' }, then: { type: 'we-divider', props: { width: '12px' } } },
+            },
+            {
+              type: 'we-icon',
+              props: {
+                size: 'sm',
+                name: { $: "step.at == 'done' ? 'check-circle' : step.at == 'current' ? 'record' : 'circle'" },
+                color: { $: "step.at == 'ahead' ? 'text-faint' : 'accent'" },
+              },
+            },
+            text(
+              { $: 'step.label' },
+              {
+                variant: 'footnote',
+                fontWeight: { $: "step.at == 'current' ? 'semibold' : 'normal'" },
+                color: { $: "step.at == 'ahead' ? 'text-faint' : 'text'" },
+              },
+            ),
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const historyList: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'local.historyOf == rec.subject' },
+    enterTransition: [
+      { type: 'reveal', duration: 250 },
+      { type: 'fade', duration: 150 },
+    ],
+    then: {
+      type: 'Column',
+      props: { gap: '100', pl: '400' },
+      children: [
+        {
+          type: '$each',
+          props: { items: { $: `${OPEN}.history[rec.subject] ?? []` }, as: 'step' },
+          children: [
+            text(
+              {
+                $: "`${step.fromLabel} → ${step.toLabel}, by ${count(step.voters)} ${count(step.voters) == 1 ? 'person' : 'people'}${count(step.evidence) ? ` · ${count(step.evidence)} cited` : ''}${step.note ? ` — “${step.note}”` : ''}`",
+              },
+              { variant: 'footnote', color: 'text-muted' },
+            ),
+          ],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: `!count(${OPEN}.history[rec.subject] ?? [])` },
+            then: text('Nothing has moved it yet.', { variant: 'footnote', color: 'text-faint' }),
+          },
+        },
+      ],
+    },
+  },
+};
+
+/** One record going through the open flow. */
+const recordRow: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200', p: '300', r: 'card', border: '1px solid border', bg: 'surface' },
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center', wrap: true },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'bare',
+            onClick: { $action: 'routeStore.setParam', args: ['card', { $: 'rec.subject' }] },
+          },
+          children: [text({ $: "rec.title ? rec.title : 'Untitled'" })],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'rec.stalled' },
+            then: chip('Stuck between two moves — one has to be withdrawn', 'warning-surface'),
+          },
+        },
+        { type: 'Row', props: { flex: '1' } },
+        iconButton('clock-counter-clockwise', 'What has happened to it', [
+          { $action: 'flowStore.loadHistory', args: [{ $: 'rec.subject' }] },
+          { $setLocal: 'historyOf', value: { $: "local.historyOf == rec.subject ? '' : rec.subject" } },
+        ]),
+      ],
+    },
+    walk,
+    {
+      type: '$each',
+      props: { items: { $: 'rec.waiting' }, as: 'move' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', wrap: true },
+          children: [
+            text(
+              { $: '`Asked to move to ${move.toLabel} · ${count(move.voters)} of ${move.needs}`' },
+              { variant: 'footnote' },
+            ),
+            {
+              type: '$if',
+              props: {
+                condition: { $: `!${OPEN}.managedBy` },
+                then: {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'move.mine' },
+                    then: {
+                      type: 'we-button',
+                      props: {
+                        size: 'sm',
+                        variant: 'ghost',
+                        onClick: {
+                          $action: 'flowStore.withdrawRecord',
+                          args: [{ $: `${OPEN}.name` }, { $: 'rec.subject' }],
+                        },
+                      },
+                      children: [text('Withdraw')],
+                    },
+                    else: {
+                      type: 'we-button',
+                      props: {
+                        size: 'sm',
+                        variant: 'secondary',
+                        onClick: {
+                          $action: 'flowStore.moveRecord',
+                          args: [{ $: `${OPEN}.name` }, { $: 'rec.subject' }, { $: 'move.to' }],
+                        },
+                      },
+                      children: [text('Agree')],
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: `!${OPEN}.managedBy && count(rec.next)` },
+        then: {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', wrap: true },
+          children: [
+            text('Move to', { variant: 'footnote', color: 'text-muted' }),
+            {
+              type: '$each',
+              props: { items: { $: 'rec.next' }, as: 'to' },
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    variant: 'ghost',
+                    onClick: {
+                      $action: 'flowStore.moveRecord',
+                      args: [{ $: `${OPEN}.name` }, { $: 'rec.subject' }, { $: 'to.name' }],
+                    },
+                  },
+                  children: [text({ $: 'to.label' })],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+    historyList,
+  ],
+};
+
+// ─── The open flow ─────────────────────────────────────────────────────────────
+
+const openHeader: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200' },
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center', wrap: true },
+      children: [
+        text({ $: `${OPEN}.label` }, { variant: 'heading-sm' }),
+        { type: '$if', props: { condition: { $: `${OPEN}.archived` }, then: chip('Archived') } },
+        { type: 'Row', props: { flex: '1' } },
+        {
+          type: '$if',
+          props: {
+            condition: { $: `${OPEN}.managedBy == 'task-states'` },
+            then: {
+              type: 'we-button',
+              props: {
+                size: 'sm',
+                variant: 'secondary',
+                onClick: { $action: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
+              },
+              children: [text('Edit in Task states')],
+            },
+          },
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: `flowStore.canEdit && !${OPEN}.managedBy` },
+            then: {
+              type: 'Row',
+              props: { gap: '200' },
+              children: [
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: `${OPEN}.editable` },
+                    then: {
+                      type: 'we-button',
+                      props: { size: 'sm', variant: 'secondary', onClick: { $action: 'flowStore.editFlow' } },
+                      children: [text('Edit')],
+                    },
+                  },
+                },
+                {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    variant: 'ghost',
+                    onClick: {
+                      $action: 'spaceStore.setFlowArchived',
+                      args: [{ $: `${OPEN}.name` }, { $: `!${OPEN}.archived` }],
+                    },
+                  },
+                  children: [text({ $: `${OPEN}.archived ? 'Bring back' : 'Archive'` })],
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: `!count(${OPEN}.records)` },
+                    then: {
+                      type: 'we-button',
+                      props: {
+                        size: 'sm',
+                        variant: 'ghost',
+                        onClick: { $action: 'flowStore.deleteFlow', args: [{ $: `${OPEN}.name` }] },
+                      },
+                      children: [text('Delete')],
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ],
+    },
+    {
+      type: '$if',
+      props: { condition: { $: `${OPEN}.hint` }, then: text({ $: `${OPEN}.hint` }, { color: 'text-muted' }) },
+    },
+    text({ $: ruleWords(OPEN) }, { variant: 'footnote', color: 'text-muted' }),
+    {
+      type: '$if',
+      props: {
+        condition: { $: `!${OPEN}.fits` },
+        then: text(
+          'This flow was not written as lanes, so it is shown as one line with every other move listed below it.',
+          {
+            variant: 'footnote',
+            color: 'text-faint',
+          },
+        ),
+      },
+    },
+  ],
+};
+
+const openFlow: SchemaNode = {
+  type: 'Column',
+  props: { gap: '500', width: '100%' },
+  children: [
+    openHeader,
+    lanes(OPEN, false),
+    exceptions(OPEN, false),
+    { type: 'we-divider' },
+    {
+      type: 'Row',
+      props: { gap: '200', ay: 'center' },
+      children: [text('Going through it', { variant: 'label' }), chip({ $: `count(${OPEN}.records)` })],
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: `count(${OPEN}.records)` },
+        then: {
+          type: 'Column',
+          props: { gap: '200' },
+          children: [{ type: '$each', props: { items: { $: `${OPEN}.records` }, as: 'rec' }, children: [recordRow] }],
+        },
+        else: text(
+          {
+            $: `${OPEN}.managedBy ? 'Tasks join this flow the first time somebody moves them on the board.' : 'Nothing yet. Start this flow on a record from its inspector.'`,
+          },
+          {
+            variant: 'footnote',
+            color: 'text-faint',
+          },
+        ),
+      },
+    },
+  ],
+};
+
+// ─── The editor ────────────────────────────────────────────────────────────────
+
+const draftHeader: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300' },
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center', wrap: true },
+      children: [
+        {
+          type: '$if',
+          props: {
+            condition: { $: `${DRAFT}.isNew` },
+            then: {
+              type: 'we-input',
+              props: {
+                label: 'Name',
+                value: { $: `${DRAFT}.label` },
+                onChange: { $action: 'flowStore.setDraftLabel', args: [{ $: 'event.detail' }] },
+              },
+            },
+            else: text({ $: `${DRAFT}.label` }, { variant: 'heading-sm' }),
+          },
+        },
+        { type: 'Row', props: { flex: '1' } },
+        {
+          type: 'we-button',
+          props: { variant: 'ghost', onClick: { $action: 'flowStore.cancelDraft' } },
+          children: [text('Cancel')],
+        },
+        {
+          type: 'we-button',
+          props: {
+            variant: 'primary',
+            disabled: { $: `count(${DRAFT}.problems) > 0 || !${DRAFT}.dirty` },
+            onClick: { $action: 'flowStore.saveDraft' },
+          },
+          children: [text('Save')],
+        },
+      ],
+    },
+    {
+      type: 'we-input',
+      props: {
+        label: 'What it is for',
+        value: { $: `${DRAFT}.hint` },
+        onChange: { $action: 'flowStore.setDraftHint', args: [{ $: 'event.detail' }] },
+      },
+    },
+    {
+      type: 'Row',
+      props: { gap: '300', wrap: true },
+      children: [
+        {
+          type: 'we-form-field',
+          props: { label: 'For' },
+          children: [
+            {
+              type: 'we-select',
+              props: {
+                value: { $: `${DRAFT}.subjects[0] ?? ''` },
+                options: {
+                  $: "[{ label: 'Any record', value: '' }, { label: 'Tasks', value: 'TaskBlock' }, { label: 'Notes and posts', value: 'TextBlock' }, { label: 'Events', value: 'EventBlock' }, { label: 'Collections', value: 'CollectionBlock' }]",
+                },
+                onChange: {
+                  $action: 'flowStore.setDraftSubjects',
+                  args: [{ $: 'event.detail ? [event.detail] : []' }],
+                },
+              },
+            },
+          ],
+        },
+        {
+          type: 'we-form-field',
+          props: { label: 'Steps move' },
+          children: [
+            {
+              type: 'we-select',
+              props: {
+                value: { $: `${DRAFT}.rule` },
+                options: {
+                  $: "[{ label: 'On to the next', value: 'next' }, { label: 'On, or back one', value: 'next-and-back' }, { label: 'Anywhere', value: 'any' }]",
+                },
+                onChange: { $action: 'flowStore.setRule', args: [{ $: 'event.detail' }] },
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: '$each',
+      props: { items: { $: `${DRAFT}.problems` }, as: 'problem' },
+      children: [text({ $: 'problem' }, { variant: 'footnote', color: 'danger' })],
+    },
+    {
+      // Said where two ends that each ask for agreement sit side by side, on a backend that will not
+      // choose between them.
+      type: '$if',
+      props: {
+        condition: { $: "flowStore.capabilities.contention == 'stall'" },
+        then: text(
+          'If two moves out of one step are both agreed, the record stops there until somebody withdraws — so give the ends of a vote different numbers, or expect to settle a tie.',
+          { variant: 'footnote', color: 'text-faint' },
+        ),
+      },
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: "flowStore.capabilities.enforcement == 'peers'" },
+        then: text(
+          'These rules are kept by every member’s app. Somebody running other software could write past them, and nobody else’s screen would show it.',
+          { variant: 'footnote', color: 'text-faint' },
+        ),
+      },
+    },
+  ],
+};
+
+const draftEditor: SchemaNode = {
+  type: 'Column',
+  props: { gap: '500', width: '100%' },
+  children: [draftHeader, lanes(DRAFT, true), exceptions(DRAFT, true)],
+};
+
+// ─── Modals ────────────────────────────────────────────────────────────────────
+
+const newFlowModal: SchemaNode = formModal({
+  open: { $: 'local.newFlowOpen' },
+  close: { $setLocal: 'newFlowOpen', value: false },
+  title: 'New flow',
+  size: 'sm',
+  localState: {
+    flowLabel: { type: 'string', initial: '' },
+    flowPreset: { type: 'string', initial: 'proposal' },
+  },
+  children: [
+    {
+      type: 'we-input',
+      props: {
+        label: 'Name',
+        value: { $: 'local.flowLabel' },
+        onChange: { $setLocal: 'flowLabel', value: { $: 'event.detail' } },
+      },
+    },
+    {
+      type: 'we-form-field',
+      props: { label: 'Start from' },
+      children: [
+        {
+          type: 'we-select',
+          props: {
+            value: { $: 'local.flowPreset' },
+            options: {
+              $: "[{ label: 'A proposal: discussed, voted on, adopted or rejected', value: 'proposal' }, { label: 'A review: drafted, checked, published', value: 'review' }, { label: 'Two steps, to build on', value: 'blank' }]",
+            },
+            onChange: { $setLocal: 'flowPreset', value: { $: 'event.detail' } },
+          },
+        },
+      ],
+    },
+  ],
+  disabled: { $: '!local.flowLabel' },
+  submitLabel: 'Start writing',
+  submit: {
+    $action: 'flowStore.newFlow',
+    args: [
+      { $: 'local.flowPreset' },
+      { $: 'local.flowLabel' },
+      { $: "local.flowPreset == 'proposal' ? ['TextBlock'] : ['TaskBlock']" },
+    ],
+  },
+});
+
+const addStepModal: SchemaNode = formModal({
+  open: { $: 'local.addStepLane >= 0' },
+  close: { $setLocal: 'addStepLane', value: -1 },
+  title: 'Add a step',
+  size: 'sm',
+  localState: { stepLabel: { type: 'string', initial: '' } },
+  children: [
+    {
+      type: 'we-input',
+      props: {
+        label: 'Name',
+        value: { $: 'local.stepLabel' },
+        onChange: { $setLocal: 'stepLabel', value: { $: 'event.detail' } },
+      },
+    },
+  ],
+  disabled: { $: '!local.stepLabel' },
+  submitLabel: 'Add',
+  submit: {
+    $action: 'flowStore.addStep',
+    args: [{ $: 'local.addStepLane' }, { $: 'local.stepLabel' }, { $: 'local.addStepAfter' }],
+  },
+});
+
+const branchModal: SchemaNode = formModal({
+  open: { $: 'local.branchFrom' },
+  close: { $setLocal: 'branchFrom', value: '' },
+  title: 'Branch from here',
+  size: 'sm',
+  localState: {
+    branchLabel: { type: 'string', initial: '' },
+    branchRejoins: { type: 'string', initial: '' },
+  },
+  children: [
+    {
+      type: 'we-input',
+      props: {
+        label: 'First step on the branch',
+        value: { $: 'local.branchLabel' },
+        onChange: { $setLocal: 'branchLabel', value: { $: 'event.detail' } },
+      },
+    },
+    {
+      type: 'we-form-field',
+      props: { label: 'Afterwards', description: 'More steps can be added to the branch once it exists.' },
+      children: [
+        {
+          type: 'we-select',
+          props: {
+            value: { $: 'local.branchRejoins' },
+            options: {
+              $: `distinct([{ label: 'It ends there', value: '' }], ${DRAFT}.steps.map(s, { label: 'It rejoins at ' + s.label, value: s.name }))`,
+            },
+            onChange: { $setLocal: 'branchRejoins', value: { $: 'event.detail' } },
+          },
+        },
+      ],
+    },
+  ],
+  disabled: { $: '!local.branchLabel' },
+  submitLabel: 'Add branch',
+  submit: {
+    $action: 'flowStore.addBranch',
+    args: [{ $: 'local.branchFrom' }, { $: 'local.branchLabel' }, { $: 'local.branchRejoins' }],
+  },
+});
+
+/** The step being edited, read out of the draft's lanes. */
+const EDITING = `${DRAFT}.steps.find(s, s.name == local.editStep)`;
+
+const editStepModal: SchemaNode = formModal({
+  open: { $: 'local.editStep' },
+  close: { $setLocal: 'editStep', value: '' },
+  title: 'Edit step',
+  size: 'sm',
+  localState: {
+    stepName: { type: 'string', initial: { $: `${EDITING}.label` } },
+    stepHint: { type: 'string', initial: { $: `${EDITING}.hint` } },
+    stepApprovals: { type: 'number', initial: { $: `${EDITING}.approvals ?? 1` } },
+    stepKind: { type: 'string', initial: { $: `${EDITING}.approverKind ?? ''` } },
+  },
+  children: [
+    {
+      type: 'we-input',
+      props: {
+        label: 'Name',
+        value: { $: 'local.stepName' },
+        onChange: { $setLocal: 'stepName', value: { $: 'event.detail' } },
+      },
+    },
+    {
+      type: 'we-input',
+      props: {
+        label: 'What being here means',
+        value: { $: 'local.stepHint' },
+        onChange: { $setLocal: 'stepHint', value: { $: 'event.detail' } },
+      },
+    },
+    {
+      type: 'we-form-field',
+      props: {
+        label: 'Approvals needed to enter it',
+        description: 'At 1, one person asking moves it.',
+      },
+      children: [
+        {
+          type: 'we-number-input',
+          props: {
+            value: { $: 'local.stepApprovals' },
+            min: 1,
+            max: 20,
+            step: 1,
+            onChange: { $setLocal: 'stepApprovals', value: { $: 'event.detail' } },
+          },
+        },
+      ],
+    },
+    {
+      type: 'we-form-field',
+      props: {
+        label: 'Whose approval counts',
+        description: 'Only people holding this part in the record being moved.',
+      },
+      children: [
+        {
+          type: 'we-select',
+          props: {
+            options: {
+              $: "distinct([{ label: 'Any member', value: '' }], spaceStore.offeredInvolvementTypes.filter(k, !k.reflexive).map(k, { label: k.name, value: k.slug }))",
+            },
+            value: { $: 'local.stepKind' },
+            onChange: { $setLocal: 'stepKind', value: { $: 'event.detail' } },
+          },
+        },
+      ],
+    },
+    {
+      type: 'Column',
+      props: { gap: '100' },
+      children: [
+        text('What must be there first', { variant: 'label' }),
+        {
+          type: '$each',
+          props: { items: { $: `${EDITING}.guards ?? []` }, as: 'guard' },
+          children: [
+            {
+              type: 'Row',
+              props: { gap: '200', ay: 'center' },
+              children: [
+                text({ $: 'guard.label' }, { variant: 'footnote' }),
+                iconButton('x', 'Remove', {
+                  $action: 'flowStore.removeGuard',
+                  args: [{ $: 'local.editStep' }, { $: 'index' }],
+                }),
+              ],
+            },
+          ],
+        },
+        {
+          type: 'we-button',
+          props: { size: 'sm', variant: 'ghost', onClick: { $setLocal: 'guardStep', value: { $: 'local.editStep' } } },
+          children: [text('Add something that must be there')],
+        },
+      ],
+    },
+  ],
+  disabled: { $: '!local.stepName' },
+  submitLabel: 'Save step',
+  submit: {
+    $action: 'flowStore.updateStep',
+    args: [
+      { $: 'local.editStep' },
+      {
+        label: { $: 'local.stepName' },
+        hint: { $: 'local.stepHint' },
+        approvals: { $: 'local.stepApprovals' },
+        kind: { $: 'local.stepKind' },
+      },
+    ],
+  },
+});
+
+const guardModal: SchemaNode = formModal({
+  open: { $: 'local.guardStep' },
+  close: { $setLocal: 'guardStep', value: '' },
+  title: 'Something that must be there',
+  size: 'sm',
+  localState: {
+    guardEntity: { type: 'string', initial: 'TextBlock' },
+    guardTie: { type: 'string', initial: 'responses' },
+    guardMin: { type: 'number', initial: 1 },
+  },
+  children: [
+    {
+      type: 'we-form-field',
+      props: { label: 'What' },
+      children: [
+        {
+          type: 'we-select',
+          props: {
+            value: { $: 'local.guardEntity' },
+            options: {
+              $: "[{ label: 'A note or comment', value: 'TextBlock' }, { label: 'A file', value: 'FileBlock' }, { label: 'A link', value: 'LinkBlock' }, { label: 'A task', value: 'TaskBlock' }, { label: 'An image', value: 'ImageBlock' }]",
+            },
+            onChange: { $setLocal: 'guardEntity', value: { $: 'event.detail' } },
+          },
+        },
+      ],
+    },
+    {
+      type: 'we-form-field',
+      props: { label: 'Where' },
+      children: [
+        {
+          type: 'we-select',
+          props: {
+            value: { $: 'local.guardTie' },
+            options: {
+              $: "[{ label: 'In response to the record', value: 'responses' }, { label: 'Anywhere in the space', value: '' }]",
+            },
+            onChange: { $setLocal: 'guardTie', value: { $: 'event.detail' } },
+          },
+        },
+      ],
+    },
+    {
+      type: 'we-form-field',
+      props: { label: 'At least' },
+      children: [
+        {
+          type: 'we-number-input',
+          props: {
+            value: { $: 'local.guardMin' },
+            min: 1,
+            max: 20,
+            step: 1,
+            onChange: { $setLocal: 'guardMin', value: { $: 'event.detail' } },
+          },
+        },
+      ],
+    },
+  ],
+  submitLabel: 'Add',
+  submit: {
+    $action: 'flowStore.addGuard',
+    args: [{ $: 'local.guardStep' }, { $: 'local.guardEntity' }, { $: 'local.guardTie' }, { $: 'local.guardMin' }],
+  },
+});
+
+// ─── The list ──────────────────────────────────────────────────────────────────
+
+const flowButton: SchemaNode = {
+  type: 'we-button',
+  props: {
+    variant: { $: `${OPEN}.name == flow.name && !${DRAFT} ? 'secondary' : 'ghost'` },
+    width: '100%',
+    onClick: [{ $action: 'flowStore.cancelDraft' }, { $action: 'flowStore.openFlow', args: [{ $: 'flow.name' }] }],
+  },
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '200', ay: 'center', width: '100%' },
+      children: [
+        { type: 'we-icon', props: { name: { $: "flow.managedBy ? 'kanban' : 'flow-arrow'" }, size: 'sm' } },
+        text({ $: 'flow.label' }, { truncate: true, flex: '1' }),
+        text({ $: 'flow.records' }, { variant: 'footnote', color: 'text-faint' }),
+      ],
+    },
+  ],
+};
+
+const flowList: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200', width: '240px', flexShrink: '0' },
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '200', ay: 'center' },
+      children: [
+        text('Flows', { variant: 'label', flex: '1' }),
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'flowStore.canEdit' },
+            then: iconButton('plus', 'New flow', { $setLocal: 'newFlowOpen', value: true }),
+          },
+        },
+      ],
+    },
+    {
+      type: '$each',
+      props: { items: { $: 'flowStore.flows.filter(f, !f.archived)' }, as: 'flow' },
+      children: [flowButton],
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: '!count(flowStore.flows)' },
+        then: text('No flows yet.', { variant: 'footnote', color: 'text-faint' }),
+      },
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'flowStore.flows.exists(f, f.archived)' },
+        then: {
+          type: 'Column',
+          props: { gap: '100' },
+          children: [
+            {
+              type: 'we-button',
+              props: { size: 'sm', variant: 'ghost', onClick: { $toggleLocal: 'showArchived' } },
+              children: [text({ $: "local.showArchived ? 'Hide archived' : 'Archived'" }, { variant: 'footnote' })],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'local.showArchived' },
+                then: {
+                  type: 'Column',
+                  props: { gap: '100' },
+                  children: [
+                    {
+                      type: '$each',
+                      props: { items: { $: 'flowStore.flows.filter(f, f.archived)' }, as: 'flow' },
+                      children: [flowButton],
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      },
+    },
+  ],
+};
+
+/**
+ * The page. `band` is the route's padding below the pinned chrome, which the workshop owns.
+ */
+export function flowsPage(band: Record<string, string>): SchemaNode {
+  return {
+    type: 'Column',
+    props: { width: '100%', minHeight: '100%', ax: 'center', px: '400' },
+    children: [
+      {
+        type: '$if',
+        props: {
+          condition: { $: 'flowStore.available' },
+          then: {
+            type: 'Row',
+            props: { width: '100%', maxWidth: 'var(--we-layout-lg)', gap: '600', ay: 'start', ...band },
+            children: [
+              flowList,
+              {
+                type: 'Column',
+                props: { flex: '1', minWidth: '0', gap: '400' },
+                children: [
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $: DRAFT },
+                      then: draftEditor,
+                      else: {
+                        type: '$if',
+                        props: {
+                          condition: { $: OPEN },
+                          then: openFlow,
+                          else: text('Choose a flow to see what is going through it.', { color: 'text-faint' }),
+                        },
+                      },
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+          else: {
+            type: 'Column',
+            props: { width: '100%', maxWidth: 'var(--we-layout-md)', ...band },
+            children: [text('Flows are not available in this space.', { color: 'text-faint' })],
+          },
+        },
+      },
+      newFlowModal,
+      addStepModal,
+      branchModal,
+      editStepModal,
+      guardModal,
+    ],
+  };
+}
+
+// ─── The inspector's section ───────────────────────────────────────────────────
+
+/**
+ * The flows a record is going through, in its inspector, and the one control that starts another.
+ *
+ * Shown wherever the space has flows. `row` is the record the inspector's loop binds, `type` the
+ * expression naming its entity. Where it stands in each is read from `flowStore.recordFlows`, which
+ * watches every startable flow, so a card and its inspector agree without either asking.
+ *
+ * "Open" goes to the Flows page with that flow open — the one place a record's moves are asked for
+ * and its history read, so the inspector does not grow a second copy of the stepper.
+ */
+export function flowsSection(opts: { type: string; open: { field: string }; flowsPath: SchemaProp }): SchemaNode {
+  const mine = 'flowStore.recordFlows[row.id] ?? []';
+  return {
+    type: '$if',
+    props: {
+      condition: {
+        $: 'flowStore.available && (count(flowStore.startable) || count(flowStore.recordFlows[row.id] ?? []))',
+      },
+      then: {
+        type: 'Column',
+        props: { gap: '100' },
+        children: [
+          foldingSectionLabel({
+            label: 'Flows',
+            count: `count(${mine})`,
+            open: opts.open,
+            action: {
+              type: 'DropdownMenu',
+              props: {
+                triggerIcon: 'flow-arrow',
+                triggerTitle: 'Start a flow on this',
+                triggerVariant: 'ghost',
+                size: 'xs',
+                itemSize: 'sm',
+                placement: 'bottom-end',
+                items: {
+                  $: `flowStore.startable.filter(f, (${opts.type} in f.subjects || !count(f.subjects)) && !(${mine}).exists(c, c.flow == f.name)).map(f, { id: f.name, label: f.label })`,
+                },
+                onSelect: { $action: 'flowStore.startFlow', args: [{ $: 'arg.id' }, { $: 'row.id' }] },
+              },
+            },
+          }),
+          foldingBody({
+            open: opts.open,
+            children: [
+              {
+                type: 'Column',
+                props: { gap: '200' },
+                children: [
+                  {
+                    type: '$each',
+                    props: { items: { $: mine }, as: 'inFlow' },
+                    children: [
+                      {
+                        type: 'Row',
+                        props: { gap: '200', ay: 'center', wrap: true },
+                        children: [
+                          { type: 'we-icon', props: { name: 'flow-arrow', size: 'sm' } },
+                          text({ $: 'inFlow.label' }, { variant: 'label' }),
+                          text(
+                            { $: "inFlow.stateLabel ? inFlow.stateLabel : 'Not placed yet'" },
+                            { variant: 'footnote', color: 'text-muted' },
+                          ),
+                          {
+                            type: '$if',
+                            props: {
+                              condition: { $: 'inFlow.waiting' },
+                              then: chip({ $: '`${inFlow.waiting} waiting`' }, 'warning-surface'),
+                            },
+                          },
+                          {
+                            type: '$if',
+                            props: { condition: { $: 'inFlow.stalled' }, then: chip('Stuck', 'warning-surface') },
+                          },
+                          { type: 'Row', props: { flex: '1' } },
+                          {
+                            type: 'we-button',
+                            props: {
+                              size: 'xs',
+                              variant: 'ghost',
+                              onClick: [
+                                { $action: 'flowStore.openFlow', args: [{ $: 'inFlow.flow' }] },
+                                { $action: 'routeStore.navigate', args: [opts.flowsPath] },
+                              ],
+                            },
+                            children: [text('Open')],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $: `!count(${mine})` },
+                      then: text('Not going through any flow.', { variant: 'footnote', color: 'text-faint' }),
+                    },
+                  },
+                ],
+              },
+            ],
+          }),
+        ],
+      },
+    },
+  };
+}

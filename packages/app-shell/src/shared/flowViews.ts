@@ -86,8 +86,8 @@ export interface FlowEditorView {
   fits: boolean;
   lanes: LaneView[];
   exceptions: ExceptionView[];
-  /** Every step, in order, for pickers. */
-  steps: { name: string; label: string }[];
+  /** Every step, in order — for pickers, and for finding one by name. */
+  steps: StepView[];
 }
 
 export interface FlowLabels {
@@ -180,7 +180,7 @@ export function editorView(
       toLabel: labels.state(m.to),
       name: m.name ?? '',
     })),
-    steps: definition.states.map((s) => ({ name: s.name, label: labels.state(s.name) })),
+    steps: definition.states.map((s) => stepView(definition, s.name, labels, finals)),
   };
 }
 

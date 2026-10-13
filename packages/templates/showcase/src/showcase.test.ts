@@ -863,13 +863,14 @@ describe('the workshop template’s call selection', () => {
     /*
       And the options come from a plain map.
 
-      A schema cannot prepend to a list. The interpolation that looks like it can — two lists inside
-      a template literal — evaluates to a *string*, so `options` receives "[object Object]" and the
-      select renders with nothing in it. That spelling was live in `recordForm`'s kind picker, which
-      is to say the picker never had any options; the unset state is the placeholder now, and the
-      way back to it is a button beside the select.
+      Two lists inside a template literal look like a prepend and are not: the interpolation
+      evaluates to a *string*, so `options` receives "[object Object]" and the select renders with
+      nothing in it. That spelling was live in `recordForm`'s kind picker, which is to say the picker
+      never had any options; the unset state is the placeholder now, and the way back to it is a
+      button beside the select. A real prepend is `distinct([{ … }], list.map(…))`, and a literal
+      list of options is just a list — so what is refused is the literal opening a template string.
     */
-    expect(json).not.toContain('[{ label: ');
+    expect(json).not.toContain('`[{ label: ');
     expect(json).toContain('local.relationshipKinds.map(item, { label: item.name, value: item.id, icon: item.icon })');
   });
 

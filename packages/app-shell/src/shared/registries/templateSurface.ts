@@ -1308,6 +1308,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     moveStep: ambient('view-state'),
     renameStep: ambient('view-state'),
     setStepHint: ambient('view-state'),
+    updateStep: ambient('view-state'),
     addBranch: ambient('view-state'),
     setBranchEnd: ambient('view-state'),
     setRule: ambient('view-state'),

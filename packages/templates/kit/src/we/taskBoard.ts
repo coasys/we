@@ -110,6 +110,12 @@ export interface TaskCardOptions {
    * would count and Withdraw for somebody who asked.
    */
   waiting?: string;
+  /**
+   * The flows the card's record is going through, other than the board's own, as an expression —
+   * `flowStore.recordFlows[card.id]`. One small chip each, naming the flow and where the record
+   * stands in it, so a card going through a review says so on the board. Omit for none.
+   */
+  flows?: string;
   /** Context key the card reads. Defaults to `'card'`, which is what {@link taskBoard} binds. */
   as?: string;
   /**
@@ -299,6 +305,7 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
         },
       },
       ...(opts.waiting ? [waitingLine(opts.waiting, as)] : []),
+      ...(opts.flows ? [flowChips(opts.flows)] : []),
       {
         type: 'Row',
         props: { gap: '200', ay: 'center' },
@@ -750,6 +757,8 @@ export interface TaskBoardOptions {
    * supplying its own `card` gets those two and draws the counts itself.
    */
   social?: boolean;
+  /** Draw a chip for each flow a card's record is going through — see {@link TaskCardOptions.flows}. */
+  flows?: boolean;
   /** Extra conditions on the pool — `{ kind: 'post' }` for a board of composed cards. */
   where?: Record<string, unknown>;
   /**
@@ -912,6 +921,51 @@ function draggable(card: SchemaNode, as: string): SchemaNode {
 
 /** The default card for a column of this board — see `taskCard`. */
 /**
+ * The flows a card's record is going through, one chip each — the flow, and where the record stands
+ * in it. Warning-toned when a move is waiting or the record is stuck, since those are what somebody
+ * might act on; quiet otherwise.
+ */
+function flowChips(flows: string): SchemaNode {
+  return {
+    type: '$if',
+    props: {
+      condition: { $: `count(${flows} ?? [])` },
+      then: {
+        type: 'Row',
+        props: { gap: '100', wrap: true },
+        children: [
+          {
+            type: '$each',
+            props: { items: { $: `${flows} ?? []` }, as: 'inFlow' },
+            children: [
+              {
+                type: 'Row',
+                props: {
+                  gap: '100',
+                  ay: 'center',
+                  r: 'full',
+                  px: '200',
+                  py: '100',
+                  bg: { $: "inFlow.waiting || inFlow.stalled ? 'warning-surface' : 'surface-sunken'" },
+                },
+                children: [
+                  { type: 'we-icon', props: { name: 'flow-arrow', size: 'xs' } },
+                  {
+                    type: 'we-text',
+                    props: { fontSize: '100' },
+                    children: [{ $: 'inFlow.stateLabel ? `${inFlow.label} · ${inFlow.stateLabel}` : inFlow.label' }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+}
+
+/**
  * What a card waiting on a move says: where it is asking to go, how many of the approvals it needs it
  * has, whose they are, and the one thing the viewer can do about it.
  *
@@ -1002,6 +1056,7 @@ function boardCard(opts: TaskBoardOptions, showState: string, from: string): Sch
         ...(opts.select ? { select: opts.select } : {}),
         ...(opts.people ? { peopleOf: opts.entity ?? 'TaskBlock' } : {}),
         ...(opts.social ? { social: true } : {}),
+        ...(opts.flows ? { flows: 'flowStore.recordFlows[card.id]' } : {}),
       });
 }
 
