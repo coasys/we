@@ -277,6 +277,8 @@ describe('transport and device lifetime', () => {
       settings?: Record<string, string>;
       /** What the machine has to capture with, for a test about choosing between them. */
       devices?: { deviceId: string; kind: 'audioinput' | 'videoinput'; label: string; groupId: string }[];
+      /** Makes the session the host hands over for each call, as the AD4M host does; its arguments land in `backendArgs`. */
+      backend?: () => unknown;
     } = {},
   ) {
     const signal = <T>(initial: T): [() => T, (next: T) => void] => {
@@ -337,11 +339,20 @@ describe('transport and device lifetime', () => {
     */
     const publishedMedia: (MediaStream | null)[] = [];
     const mic = fakeMicStream();
+    const backendArgs: unknown[][] = [];
     const store = createCallStore({
       signal,
       state: markState,
       action: markAction,
       settings: () => options.settings ?? {},
+      ...(options.backend
+        ? {
+            createBackend: async (...args: unknown[]) => {
+              backendArgs.push(args);
+              return options.backend!();
+            },
+          }
+        : {}),
       effect: (fn: () => void) => {
         effects.push(fn);
         fn();
@@ -420,6 +431,7 @@ describe('transport and device lifetime', () => {
       store,
       mic,
       configs,
+      backendArgs,
       signalling: published,
       published: publishedMedia,
       scopeDisposals: () => disposed,
@@ -869,6 +881,121 @@ describe('transport and device lifetime', () => {
 
     connectionBecomes('disconnected');
     expect(stateOf()?.connecting, 'a pair that dropped is not a pair on its way').toBe(false);
+  });
+
+  /*
+    A call the host runs through a session — the AD4M SDK's — rather than the module's own mesh.
+
+    The session's mesh reports per-pair connection state and repairs as events instead of callbacks.
+    A tile has to read them exactly as it reads the module's own mesh, or a call on the AD4M host
+    loses "Reconnecting…", the transport badge and the reconnect button that the mesh path has.
+  */
+  describe('through a session backend', () => {
+    function fakeSession() {
+      const handlers = new Map<string, ((...args: unknown[]) => void)[]>();
+      const reconnected: string[] = [];
+      const session = {
+        participants: [] as { agentDid: string; stream: MediaStream }[],
+        join: async () => {},
+        leave: async () => {},
+        destroy: async () => {},
+        replaceTrack: async () => {},
+        setQualityPreference: async () => {},
+        getState: () => 'active',
+        on: (event: string, cb: (...args: unknown[]) => void) => {
+          handlers.set(event, [...(handlers.get(event) ?? []), cb]);
+        },
+        off: () => {},
+        sendData: async () => {},
+        onData: () => () => {},
+        reconnect: (peerId: string) => void reconnected.push(peerId),
+        transportOf: async () => 'relay',
+      };
+      const fire = (event: string, ...args: unknown[]) => {
+        for (const cb of handlers.get(event) ?? []) cb(...args);
+      };
+      return { session, reconnected, fire };
+    }
+
+    async function inCallWith(peerId: string, settings?: Record<string, string>) {
+      // One session per call, as the host builds them; `fire` reaches the first.
+      const sessions: ReturnType<typeof fakeSession>[] = [];
+      const harness = callable({
+        backend: () => sessions[sessions.push(fakeSession()) - 1]!.session,
+        ...(settings ? { settings } : {}),
+      });
+      await harness.store.startCall();
+      await Promise.resolve();
+      harness.joinedBy(peerId);
+      const stateOf = () =>
+        harness.store.tileStates().find((tile: { id: string }) => tile.id === peerId) as
+          { connection?: string; retrying: boolean; transport: string } | undefined;
+      return { ...harness, ...sessions[0]!, sessions, stateOf };
+    }
+
+    it('hands the session the ICE servers the mesh would have used', async () => {
+      const { backendArgs } = await inCallWith('did:someone', {
+        iceServers: 'turn:alice:s3cret@relay.example.org:3478',
+      });
+
+      expect(backendArgs[0]?.[1]).toEqual({
+        iceServers: [{ urls: 'turn:relay.example.org:3478', username: 'alice', credential: 's3cret' }],
+      });
+    });
+
+    it('shows a repair the session attempts, and clears it once the pair connects', async () => {
+      const { fire, stateOf } = await inCallWith('did:someone');
+
+      fire('peer-state', 'did:someone', 'disconnected');
+      fire('peer-recovery', 'did:someone', { rung: 'ice-restart', attempts: 1 });
+      expect(stateOf()?.connection).toBe('disconnected');
+      expect(stateOf()?.retrying, 'a pair the session is repairing says so').toBe(true);
+
+      fire('peer-state', 'did:someone', 'connected');
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(stateOf()?.retrying).toBe(false);
+      expect(stateOf()?.transport, 'read from the session once the pair connects').toBe('relay');
+    });
+
+    it('reconnects a peer through the session', async () => {
+      const { store, reconnected, stateOf } = await inCallWith('did:someone');
+
+      store.reconnectPeer('did:someone');
+
+      expect(reconnected).toEqual(['did:someone']);
+      expect(stateOf()?.retrying).toBe(true);
+    });
+
+    it('follows a participant whose stream the session replaced', async () => {
+      // A rebuilt pair has a new stream object. Holding the old one renders a dead stream.
+      const { store, session, fire } = await inCallWith('did:someone');
+      const streamOf = () =>
+        store.tiles().find((tile: { id: string }) => tile.id === 'did:someone')?.stream as MediaStream | null;
+
+      const rebuilt = new MediaStream();
+      session.participants = [{ agentDid: 'did:someone', stream: rebuilt }];
+      fire('participant-updated', { did: 'did:someone', stream: rebuilt });
+
+      expect(streamOf()).toBe(rebuilt);
+    });
+
+    it('ignores a session still emitting after the call is left', async () => {
+      // Destroying a session closes its pairs, which it reports — into state the next call inherits.
+      const { store, fire, sessions, joinedBy, stateOf } = await inCallWith('did:someone');
+      await store.leave();
+      fire('peer-state', 'did:someone', 'failed');
+      fire('peer-recovery', 'did:someone', { rung: 'rebuild', attempts: 3 });
+
+      // The next call is a different session, so the old one's handlers no longer answer.
+      await store.startCall();
+      await Promise.resolve();
+      joinedBy('did:someone');
+      sessions[1]!.fire('peer-state', 'did:someone', 'connecting');
+
+      expect(stateOf()?.connection).toBe('connecting');
+      expect(stateOf()?.retrying, 'a repair the old session reported is not this call’s').toBe(false);
+    });
   });
 });
 

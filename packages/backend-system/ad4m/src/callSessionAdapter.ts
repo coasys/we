@@ -7,7 +7,7 @@
  * the host wires into the call module's `CallStoreDeps.createBackend` — so the module stays
  * backend-agnostic and the host does the AD4M-specific construction.
  */
-import type { PerspectiveProxy, Session, SessionTopology, SfuConfig, SfuMode } from '@coasys/ad4m';
+import type { IceServer, PerspectiveProxy, Session, SessionTopology, SfuConfig, SfuMode } from '@coasys/ad4m';
 import type { DatasetHandle } from '@we/backend-shared';
 
 /**
@@ -20,6 +20,15 @@ import type { DatasetHandle } from '@we/backend-shared';
  */
 function topologyFor(mode: SfuMode | undefined): SessionTopology {
   return mode === 'mesh' ? 'mesh' : 'auto';
+}
+
+/** The browser's ICE server shape, whose `urls` may be one string, as the SDK's, which is always a list. */
+function toIceServer(server: RTCIceServer): IceServer {
+  return {
+    urls: Array.isArray(server.urls) ? server.urls : [server.urls],
+    ...(server.username ? { username: server.username } : {}),
+    ...(typeof server.credential === 'string' && server.credential ? { credential: server.credential } : {}),
+  };
 }
 
 /**
@@ -47,8 +56,8 @@ export function createCallSessionFactory(
   _getBackendClient: () => unknown,
   getCurrentDataset: () => DatasetHandle | null,
   _getSelfId: () => string | null,
-): (callId: string) => Promise<Session> {
-  return async (callId: string) => {
+): (callId: string, options?: { iceServers?: RTCIceServer[] }) => Promise<Session> {
+  return async (callId: string, options?: { iceServers?: RTCIceServer[] }) => {
     const dataset = getCurrentDataset();
     if (!dataset) throw new Error('Cannot create call session — no active dataset');
 
@@ -69,6 +78,7 @@ export function createCallSessionFactory(
       neighbourhoodUrl,
       topology: topologyFor(sfuConfig?.mode),
       ...(sfuConfig ? { sfuConfig } : {}),
+      ...(options?.iceServers?.length ? { iceServers: options.iceServers.map(toIceServer) } : {}),
     });
   };
 }

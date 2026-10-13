@@ -104,6 +104,33 @@ describe('createCallSessionFactory', () => {
     });
   });
 
+  it('passes the ICE servers the call module chose, in the SDK shape', async () => {
+    // The browser's shape allows one URL as a string; the SDK's is always a list.
+    const ds = mockDataset();
+    (ds._nhProxy.sfuConfig as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('config unavailable'));
+    const factory = createCallSessionFactory(
+      () => null,
+      () => ds as never,
+      () => null,
+    );
+
+    await factory('call-5', {
+      iceServers: [
+        { urls: 'turn:relay.example.org:3478', username: 'alice', credential: 's3cret' },
+        { urls: ['stun:a.example.org', 'stun:b.example.org'] },
+      ],
+    });
+
+    expect(ds._nhProxy.createSession).toHaveBeenCalledWith('call-5', {
+      neighbourhoodUrl: 'neighbourhood://test-space',
+      topology: 'auto',
+      iceServers: [
+        { urls: ['turn:relay.example.org:3478'], username: 'alice', credential: 's3cret' },
+        { urls: ['stun:a.example.org', 'stun:b.example.org'] },
+      ],
+    });
+  });
+
   it('throws when no dataset exists', async () => {
     const factory = createCallSessionFactory(
       () => null,

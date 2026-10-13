@@ -89,6 +89,10 @@ export interface CallBackend {
   sendData(label: string, data: string, binary?: boolean): Promise<void>;
   /** Subscribe to data channel messages. Returns an unsubscribe function. */
   onData(cb: (message: BackendDataMessage) => void): () => void;
+  /** Rebuild one peer's connection, telling the peer to do the same. Mesh sessions only. */
+  reconnect?(peerId: string): void;
+  /** How a peer's media travels — `host`, `srflx` or `relay` — or `null`. Mesh sessions only. */
+  transportOf?(peerId: string): Promise<string | null>;
 }
 
 /**
@@ -1329,7 +1333,14 @@ export function createCallStore(deps: ModuleStoreDeps) {
     // A static `backend` serves tests and hosts that already hold a Session.
     if (deps.createBackend) {
       try {
-        backend = (await deps.createBackend(id)) as CallBackend;
+        // The same ICE servers the mesh path would use.
+        const created = (await deps.createBackend(id, { iceServers: iceServers() })) as CallBackend;
+        // Left while the session was being built: `teardown` has run and will not see this one.
+        if (controller !== started) {
+          created.destroy().catch((err) => console.error('call: backend destroy', err));
+          return;
+        }
+        backend = created;
       } catch (err) {
         console.error('call: createBackend failed', err);
         scope.dispose();
@@ -1346,30 +1357,56 @@ export function createCallStore(deps: ModuleStoreDeps) {
       //
       // The backend (Session from @coasys/ad4m) manages topology, signalling, roster polling,
       // and peer connections internally. The store only drives lifecycle and reads participants.
+      const session = backend;
+      // A session can still emit while it is being destroyed, after `teardown` has reset the state
+      // these handlers write — so each answers only while its session is the current one.
+      const on = (event: string, handler: (...args: unknown[]) => void) =>
+        session.on(event, (...args) => {
+          if (backend === session) handler(...args);
+        });
 
-      backend.on('participant-joined', () => {
-        remoteStreams = new Map(backend!.participants.map((p) => [p.agentDid, p.stream]));
+      const syncStreams = () => {
+        remoteStreams = new Map(session.participants.map((p) => [p.agentDid, p.stream]));
+        rebuildTiles();
+      };
+      // `participant-updated`: a rebuilt connection has a new stream object, and a track that stops
+      // receiving goes muted rather than ended — neither adds or removes a stream.
+      for (const event of [
+        'participant-joined',
+        'participant-left',
+        'stream-added',
+        'stream-removed',
+        'participant-updated',
+      ]) {
+        on(event, syncStreams);
+      }
+      // Per-peer connection state and repairs, kept as the mesh path keeps them (`onPeerStateChanged`).
+      on('peer-state', (peerId, state) => {
+        if (typeof peerId !== 'string') return;
+        peerStates.set(peerId, state as RTCPeerConnectionState);
+        if (state === 'connected') {
+          recovering.delete(peerId);
+          void session.transportOf?.(peerId).then((kind) => {
+            if (!kind || backend !== session) return;
+            transports.set(peerId, kind);
+            rebuildTiles();
+          });
+        }
+        if (state === 'closed') transports.delete(peerId);
         rebuildTiles();
       });
-      backend.on('participant-left', () => {
-        remoteStreams = new Map(backend!.participants.map((p) => [p.agentDid, p.stream]));
+      on('peer-recovery', (peerId, attempt) => {
+        if (typeof peerId !== 'string') return;
+        recovering.set(peerId, attempt as { rung: RecoveryRung; attempts: number });
         rebuildTiles();
       });
-      backend.on('stream-added', () => {
-        remoteStreams = new Map(backend!.participants.map((p) => [p.agentDid, p.stream]));
-        rebuildTiles();
-      });
-      backend.on('stream-removed', () => {
-        remoteStreams = new Map(backend!.participants.map((p) => [p.agentDid, p.stream]));
-        rebuildTiles();
-      });
-      backend.on('topology-changed', (topo: unknown) => {
+      on('topology-changed', (topo) => {
         if (topo === 'mesh' || topo === 'sfu') setTopology(topo);
       });
-      backend.on('error', (err: unknown) => console.error('call: backend error', err));
+      session.on('error', (err: unknown) => console.error('call: backend error', err));
 
       // Subscribe to data channel messages from other participants.
-      dataUnsubscribe = backend.onData((msg) => {
+      dataUnsubscribe = session.onData((msg) => {
         for (const cb of dataListeners) {
           try {
             cb(msg);
@@ -1387,12 +1424,13 @@ export function createCallStore(deps: ModuleStoreDeps) {
       await acquire();
       if (controller !== started) return;
       const localStream = started.displayStream() ?? started.localStream() ?? new MediaStream();
-      await backend.join(localStream);
+      await session.join(localStream);
+      // Left while joining: `teardown` has destroyed the session and nulled `backend`.
+      if (backend !== session) return;
       backendJoined = true;
 
       // Seed remote streams from anyone already in the room.
-      remoteStreams = new Map(backend.participants.map((p) => [p.agentDid, p.stream]));
-      rebuildTiles();
+      syncStreams();
     } else {
       // ── Mesh path (default — WE's built-in peer-to-peer mesh) ───────
       setTopology('mesh');
@@ -2467,11 +2505,13 @@ export function createCallStore(deps: ModuleStoreDeps) {
     dismissProblem: action(() => setProblem(null), 'Dismiss the problem message.', { ambient: true }),
 
     reconnectPeer: action((id: string) => {
-      if (!id || !mesh) return;
+      // A session backend repairs a peer only when it is a mesh session.
+      const target = mesh ?? backend;
+      if (!id || !target?.reconnect) return;
       if (id === (selfId?.() ?? null)) return;
       recovering.set(id, { rung: 'rebuild', attempts: 0 });
       transports.delete(id);
-      mesh.reconnect(id);
+      target.reconnect(id);
       rebuildTiles();
     }, "Build one peer's connection again from scratch, without leaving the call."),
 

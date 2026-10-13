@@ -650,8 +650,8 @@ export interface ModuleStoreDeps {
   kernels: Partial<ModuleKernels>;
 
   // ── SFU / call backend ports ──────────────────────────────────────────
-  /** Factory that creates a call backend for a specific call room. */
-  createBackend?: (callId: string) => Promise<unknown>;
+  /** Factory that creates a call backend for a specific call room, with the ICE servers to use. */
+  createBackend?: (callId: string, options?: { iceServers?: RTCIceServer[] }) => Promise<unknown>;
   /** Read the neighbourhood's call configuration (SFU topology defaults). */
   getCallConfig?: () => Promise<unknown>;
   /** Write the neighbourhood's call configuration. */
