@@ -936,6 +936,13 @@ export interface SpaceStore {
   /** Take back this agent's own vote on the move a task is waiting on. Never touches anybody else's. */
   withdrawTaskMove: (taskId: string) => Promise<void>;
   /**
+   * The flows this space has put away, by name (`Space.archivedFlows`). An archived flow keeps its
+   * records, which still show and can still finish, but is not offered for starting on anything new.
+   */
+  archivedFlows: Accessor<string[]>;
+  /** Put a flow away, or bring it back. Only whoever administers the space; rejects otherwise. */
+  setFlowArchived: (name: string, archived: boolean) => Promise<void>;
+  /**
    * Withdraw a state from use, or bring it back. Never touches the work sitting in it. By slug, which
    * is what a task and a screen both hold.
    */
@@ -3390,6 +3397,40 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
+  const archivedFlows = createMemo<string[]>(() => parseIdList(currentSpace()?.archivedFlows), [], {
+    equals: (a, b) => a.join('\u0000') === b.join('\u0000'),
+  });
+
+  /**
+   * Put a flow away or bring it back — persisted on the space, cached, and republished the way
+   * `writeEnabledViews` does it, for the reason it gives.
+   */
+  async function setFlowArchived(name: string, archived: boolean): Promise<void> {
+    const ds = datasetStore.currentDataset();
+    const space = currentSpace();
+    if (!ds || !space) return;
+    if (!canAdministerCurrentSpace()) throw new Error('Only whoever administers this space can archive its flows');
+    const current = parseIdList(space.archivedFlows);
+    const next = archived ? [...new Set([...current, name])] : current.filter((n) => n !== name);
+    if (next.join('\u0000') === current.join('\u0000')) return;
+    const archivedFlowsJson = next.length ? JSON.stringify(next) : '';
+    try {
+      await Space.update(ds.handle, space.id, { archivedFlows: archivedFlowsJson });
+    } catch (error) {
+      console.error('SpaceStore: could not persist archivedFlows', error);
+      toastService.error('Could not save this change for the space.');
+      throw error;
+    }
+    updateSpaceInCache(ds, { archivedFlows: archivedFlowsJson } as never);
+    setCurrentSpace((prev) =>
+      prev
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
+            archivedFlows: archivedFlowsJson,
+          }) as Space)
+        : prev,
+    );
+  }
+
   /** Take back this agent's vote on the move a task is waiting on. */
   async function withdrawTaskMove(taskId: string): Promise<void> {
     try {
@@ -5614,6 +5655,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateTaskState,
     setTaskStateRetired,
     taskFlowEnabled,
+    archivedFlows,
+    setFlowArchived,
     approveTaskMove,
     withdrawTaskMove,
     reorderTaskStates,

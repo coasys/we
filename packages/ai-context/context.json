@@ -4952,6 +4952,12 @@
           "type": "string",
           "predicate": "we://module_settings",
           "required": false
+        },
+        {
+          "name": "archivedFlows",
+          "type": "string",
+          "predicate": "we://archived_flows",
+          "required": false
         }
       ],
       "relations": [
@@ -6266,6 +6272,93 @@
       "destructive": ["deleteSession", "clearHistory"]
     },
     {
+      "name": "flowStore",
+      "state": {
+        "available": {
+          "type": "boolean"
+        },
+        "capabilities": {
+          "type": "object"
+        },
+        "canEdit": {
+          "type": "boolean"
+        },
+        "flows": {
+          "type": "array",
+          "properties": ["name", "label", "editable", "records", "managedBy", "archived"]
+        },
+        "startable": {
+          "type": "array",
+          "properties": ["name", "label", "subjects"]
+        },
+        "open": {
+          "type": "object"
+        },
+        "draft": {
+          "type": "object"
+        },
+        "recordFlows": {
+          "type": "object"
+        }
+      },
+      "actions": [
+        "refreshFlows",
+        "openFlow",
+        "closeFlow",
+        "loadHistory",
+        "startFlow",
+        "moveRecord",
+        "withdrawRecord",
+        "newFlow",
+        "editFlow",
+        "cancelDraft",
+        "saveDraft",
+        "deleteFlow",
+        "setDraftLabel",
+        "setDraftHint",
+        "setDraftSubjects",
+        "addStep",
+        "removeStep",
+        "moveStep",
+        "renameStep",
+        "setStepHint",
+        "addBranch",
+        "setBranchEnd",
+        "setRule",
+        "addException",
+        "removeException",
+        "setApprovals",
+        "addGuard",
+        "removeGuard"
+      ],
+      "ambient": [
+        "refreshFlows",
+        "openFlow",
+        "closeFlow",
+        "loadHistory",
+        "newFlow",
+        "editFlow",
+        "cancelDraft",
+        "setDraftLabel",
+        "setDraftHint",
+        "setDraftSubjects",
+        "addStep",
+        "removeStep",
+        "moveStep",
+        "renameStep",
+        "setStepHint",
+        "addBranch",
+        "setBranchEnd",
+        "setRule",
+        "addException",
+        "removeException",
+        "setApprovals",
+        "addGuard",
+        "removeGuard"
+      ],
+      "destructive": ["deleteFlow"]
+    },
+    {
       "name": "interpretationStore",
       "state": {
         "activity": {
@@ -7252,6 +7345,9 @@
         "taskFlowEnabled": {
           "type": "boolean"
         },
+        "archivedFlows": {
+          "type": "array"
+        },
         "canAdministerCurrentSpace": {
           "type": "boolean"
         }
@@ -7309,6 +7405,7 @@
         "updateTaskState",
         "approveTaskMove",
         "withdrawTaskMove",
+        "setFlowArchived",
         "setTaskStateRetired",
         "reorderTaskStates",
         "setInvolvement",
