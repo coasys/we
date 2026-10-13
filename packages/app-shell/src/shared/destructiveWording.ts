@@ -110,6 +110,13 @@ export function describeDestructive(
         body: 'Everything inside it will be removed for everyone in this space. This cannot be undone.',
       };
     }
+    case 'bundleStore.removeBundle':
+      // What stays matters as much as what goes: an app's record types hold what people made with
+      // it, in spaces other people share, and removing the app must not read as removing those.
+      return {
+        title: 'Remove this app?',
+        body: 'Its app, templates and theme go from your library. The kinds of record it added, and the sections a space was set up with, stay where they are — with everything people made with them.',
+      };
     case 'shapeStore.deleteShape':
       return {
         title: 'Delete this model?',
