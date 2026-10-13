@@ -13,7 +13,9 @@
  * workflow that uses the parser runs these itself.
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { parsePairing, pullRequestForBranch } from './ad4m-pairing.mjs';
 
@@ -33,6 +35,34 @@ describe('a pairing in the exact form', () => {
     const body = `<!-- how to fill this in -->\n\n${paired('#1193')}`;
     assert.deepEqual(parsePairing(body), { kind: 'pr', number: '1193' });
   });
+
+  it('reads the block as Prettier formats it, with a blank quote line before the heading', () => {
+    // Formatting on save rewrites the exact block this way; it renders the same.
+    const body = `${ALERT}\n>\n> ### Paired with: coasys/ad4m#1193\n\n## What\n\nA change.`;
+    assert.deepEqual(parsePairing(body), { kind: 'pr', number: '1193' });
+  });
+});
+
+describe('the block the docs show', () => {
+  /*
+    Somebody pairing for the first time copies the block from the docs. The docs are kept in
+    Prettier's formatting by `format:check`, so they hold whatever Prettier makes of the block —
+    which once was a form this parser refused, and every copy of it failed. Reading the docs'
+    own examples here means that whatever Prettier writes next, the parser is checked against it.
+  */
+  const docs = ['docs/contributing/ad4m-and-deploys.md', 'docs/contributing/pull-requests.md'];
+  for (const doc of docs) {
+    it(`accepts every pairing example in ${doc}`, () => {
+      const text = readFileSync(fileURLToPath(new URL(`../${doc}`, import.meta.url)), 'utf8');
+      const examples = [...text.matchAll(/^```markdown\n([\s\S]*?)^```/gm)]
+        .map(([, example]) => example)
+        .filter((example) => example.includes('Paired with:'));
+      assert.ok(examples.length, `${doc} shows no pairing block`);
+      for (const example of examples) {
+        assert.equal(parsePairing(example.replaceAll('<N>', '1193')).kind, 'pr', example);
+      }
+    });
+  }
 });
 
 describe('an unpaired description', () => {
@@ -59,6 +89,7 @@ describe('a near miss is refused, not ignored', () => {
     ['a lower heading level', `${ALERT}\n> ## Paired with: coasys/ad4m#1193`],
     ['the wrong alert', `> [!NOTE]\n> ### Paired with: coasys/ad4m#1193`],
     ['no alert at all', '### Paired with: coasys/ad4m#1193'],
+    ['words between the alert and the heading', `${ALERT}\n> Read this first.\n> ### Paired with: coasys/ad4m#1193`],
     ['a plain line', 'Paired with: coasys/ad4m#1193'],
     ['the old form', 'ad4m: coasys/ad4m#1193'],
     ['not first in the description', `## What\n\nA change.\n\n${ALERT}\n> ### Paired with: coasys/ad4m#1193`],
