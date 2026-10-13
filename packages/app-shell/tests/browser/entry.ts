@@ -29,6 +29,7 @@ import {
   EditingSectionBar,
   EditorHostProvider,
   EditorOverlay,
+  EditTargetSwitch,
   OwnerCard,
   PartCard,
   PartsPalette,
@@ -809,10 +810,11 @@ function ownerCardProbe(
       },
     },
     session: {
-      isReadOnly: () => false,
+      // WE's app is built in, so while it is the target the session cannot save in place.
+      isReadOnly: () => !!barApp(),
       pushSnapshot() {},
       commitEdit: async () => {},
-      startFork() {},
+      startFork: () => record('__probeForkStarted', true),
     },
     template: {
       get currentTemplate() {
@@ -922,7 +924,8 @@ function ownerCardProbe(
                 return createComponent(SuppliedPanelNote, { nodeId: 'bbbbbbbbbb' });
               if (kind.startsWith('copied-')) return createComponent(CopiedPartNote, { nodeId: 'vvvvvvvvvv' });
               if (kind === 'section-alone') return createComponent(SectionOnItsOwnBar, {});
-              if (kind === 'targets') return createComponent(EditingSectionBar, {});
+              if (kind === 'targets')
+                return [createComponent(EditTargetSwitch, {}), createComponent(EditingSectionBar, {})];
               if (kind === 'part-node')
                 return createComponent(OwnerCard, {
                   owner: {

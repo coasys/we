@@ -27,8 +27,9 @@ Reserve **rail** for the right-hand one and **sidebar** for the left, as the cod
 The sidebar and the rail are not drawn by the shell directly: they are **host parts** an **app
 template** places (`meta.role: 'app'`, `host.sidebar`, `host.rail`). WE's own app
 (`templates/shell/src/WeApp.schema.ts`) is today's arrangement written as data. An agent may choose
-an app of their own in Settings → Appearance, and edit it from the inspector ("Edit the app"); safe
-mode always draws WE's. Everything else here — the editor's panels and bar, the boot screen and its
+an app of their own in Settings → Appearance, and edit it where it is drawn: the editor bar's
+**Page | App** switch says which of the two the session edits, one at a time, and WE's app — built
+in — is forked from the bar the inspector shows while it is the target. Safe mode always draws WE's. Everything else here — the editor's panels and bar, the boot screen and its
 modals, module chrome, the safety prompts — the host draws whatever the app says.
 
 The geometry does not assume a sidebar. The app declares how much of each edge its chrome holds,

@@ -700,10 +700,12 @@ export function SectionOnItsOwnBar() {
 }
 
 /**
- * Where you are while a section is edited where its shell draws it, and the way out.
+ * Where you are while a section or the app is edited where it is drawn, and the way out.
  *
- * What the inspector shows and what the editor saves is the section's, not the shell's, and nothing
- * on the page changes to say so — the section looks exactly as it does when it is not being edited.
+ * What the inspector shows and what the editor saves is the section's or the app's, not the page's,
+ * and nothing on screen changes to say so — the section or the chrome looks exactly as it does when
+ * it is not being edited. WE's own app is built in, so the bar offers to fork it straight away rather
+ * than only after a change, which is what makes forking the app something you can set out to do.
  */
 export function EditingSectionBar() {
   const host = useEditorHost();
@@ -714,10 +716,7 @@ export function EditingSectionBar() {
     host.targets?.leave();
     visualEditor.onSelect(null);
   };
-  const enterApp = () => {
-    if (host.targets?.enterApp?.()) visualEditor.onSelect(null);
-  };
-  /** Where you are, in a sentence — or nothing, while it is the template on screen. */
+  /** Where you are, in a sentence — or nothing, while it is the page. */
   const where = () => {
     const on = section();
     if (on) return `Editing ${on.name}, a section of this space, where it is.`;
@@ -726,23 +725,7 @@ export function EditingSectionBar() {
     return null;
   };
   return (
-    <Show
-      when={where()}
-      fallback={
-        // The app is a template too, and the chrome surrounds everything, so there is nothing to press
-        // inside first: it is gone into from here.
-        <Show when={host.targets?.enterApp}>
-          <Row ax="between" ay="center" gap="300" mx="300" mb="200" px="300" flexShrink="0">
-            <we-text variant="footnote" color="text-muted">
-              The sidebar and rail around every space are an app you can change too.
-            </we-text>
-            <we-button size="xs" variant="ghost" onClick={enterApp}>
-              Edit the app
-            </we-button>
-          </Row>
-        </Show>
-      }
-    >
+    <Show when={where()}>
       {(sentence) => (
         <Row
           data-we-editing-section=""
@@ -758,11 +741,57 @@ export function EditingSectionBar() {
           flexShrink="0"
         >
           <we-text variant="footnote">{sentence()} Escape or a press outside it comes back out.</we-text>
-          <we-button size="xs" variant="secondary" onClick={leave}>
-            Done
-          </we-button>
+          <Row gap="200" flexShrink="0">
+            <Show when={app() && host.session.isReadOnly()}>
+              <we-button size="xs" variant="primary" onClick={() => host.session.startFork()}>
+                Fork
+              </we-button>
+            </Show>
+            <we-button size="xs" variant="secondary" onClick={leave}>
+              Done
+            </we-button>
+          </Row>
         </Row>
       )}
+    </Show>
+  );
+}
+
+/**
+ * What the session is editing: the page — the template on screen, and its sections — or the app
+ * around it. One at a time, and this is the way across in either direction.
+ *
+ * In the editor's bar rather than the inspector, so the app can be gone into without a page node
+ * selected first, and so the choice is on screen for the whole session. Absent where the host has no
+ * app to edit, as an editor embedded in somebody else's application has none.
+ */
+export function EditTargetSwitch() {
+  const host = useEditorHost();
+  const visualEditor = useVisualEditor();
+  const onApp = () => !!host.targets?.app?.();
+  const toPage = () => {
+    if (!onApp()) return;
+    host.targets?.leave();
+    visualEditor.onSelect(null);
+  };
+  const toApp = () => {
+    if (onApp()) return;
+    if (host.targets?.enterApp?.()) visualEditor.onSelect(null);
+  };
+  return (
+    <Show when={host.targets?.enterApp}>
+      <Row ay="center" gap="100" data-we-edit-target-switch="">
+        <we-tooltip content="Edit the template on screen" placement="bottom">
+          <we-button size="sm" variant={onApp() ? 'ghost' : 'secondary'} onClick={toPage}>
+            Page
+          </we-button>
+        </we-tooltip>
+        <we-tooltip content="Edit the app around every space: the sidebar, the rail" placement="bottom">
+          <we-button size="sm" variant={onApp() ? 'secondary' : 'ghost'} onClick={toApp}>
+            App
+          </we-button>
+        </we-tooltip>
+      </Row>
     </Show>
   );
 }

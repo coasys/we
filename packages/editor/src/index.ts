@@ -32,6 +32,7 @@ export { InspectorPanel } from './components/InspectorPanel';
 export {
   CopiedPartNote,
   EditingSectionBar,
+  EditTargetSwitch,
   OwnerCard,
   PartCard,
   PartsPalette,

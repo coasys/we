@@ -1,7 +1,8 @@
 /**
  * The app around every space is edited where it is drawn.
  *
- * The chrome surrounds everything, so it is gone into from the inspector rather than by a press;
+ * The chrome surrounds everything, so it is gone into from the editor bar's Page | App switch rather
+ * than by a press;
  * once in, a press inside the chrome selects the app's node, and a press in the page or Escape at the
  * app's top comes back out. While in it the page does not light up, and the press that leaves selects
  * nothing there.
@@ -14,14 +15,21 @@ export async function check({ call, clickAt, moveTo, key, count, recorded }) {
   const problems = [];
   const last = async (bag) => (await recorded(bag)).at(-1);
 
-  // The inspector's bar is the way in, and Done the way out.
+  // The editor bar's switch is the way in and back, the inspector's bar says where you are, and WE's
+  // app — built in — can be forked from there before anything is changed.
   await call('ownerCardProbe', 'targets');
   try {
-    if (!(await call('pressButton', 'Edit the app'))) problems.push('the inspector offers no way into the app');
+    if (await count('[data-we-editing-section]')) problems.push('the inspector says something is edited before it is');
+    if (!(await call('pressButton', 'App'))) problems.push('the editor offers no way into the app');
     if (!(await count('we-text:has-text("Editing WE, the app around every space")')))
       problems.push('the inspector does not say the app is being edited');
+    if (!(await call('pressButton', 'Fork'))) problems.push('editing WE’s app offers no Fork');
+    if (!(await recorded('__probeForkStarted')).length) problems.push('Fork does not start forking the app');
+    if (!(await call('pressButton', 'Page'))) problems.push('the editor offers no way back to the page');
+    if (!(await recorded('__probeLeft')).length) problems.push('Page does not leave the app');
+    await call('pressButton', 'App');
     if (!(await call('pressButton', 'Done'))) problems.push('editing the app offers no Done');
-    if (!(await recorded('__probeLeft')).length) problems.push('Done does not leave the app');
+    if ((await recorded('__probeLeft')).length < 2) problems.push('Done does not leave the app');
   } finally {
     await call('editorProbeDispose');
   }
