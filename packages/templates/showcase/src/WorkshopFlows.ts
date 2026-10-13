@@ -17,7 +17,7 @@
  * Task states" goes where it is edited.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { foldingBody, foldingSectionLabel, formModal } from '@we/template-kit';
+import { foldingBody, foldingSectionLabel, formModal, guardModal, stepRequirementFields } from '@we/template-kit';
 
 const OPEN = 'flowStore.open';
 const DRAFT = 'flowStore.draft';
@@ -1106,73 +1106,19 @@ const editStepModal: SchemaNode = formModal({
         onChange: { $setLocal: 'stepHint', value: { $: 'event.detail' } },
       },
     },
-    {
-      type: 'we-form-field',
-      props: {
-        label: 'Approvals needed to enter it',
-        description: 'At 1, one person asking moves it.',
+    // The same fields a task state's form shows — see `stepRequirementFields`.
+    ...stepRequirementFields({
+      approvals: {
+        value: { $: 'local.stepApprovals' },
+        onChange: { $setLocal: 'stepApprovals', value: { $: 'event.detail' } },
       },
-      children: [
-        {
-          type: 'we-number-input',
-          props: {
-            value: { $: 'local.stepApprovals' },
-            min: 1,
-            max: 20,
-            step: 1,
-            onChange: { $setLocal: 'stepApprovals', value: { $: 'event.detail' } },
-          },
-        },
-      ],
-    },
-    {
-      type: 'we-form-field',
-      props: {
-        label: 'Whose approval counts',
-        description: 'Only people holding this part in the record being moved.',
+      kind: { value: { $: 'local.stepKind' }, onChange: { $setLocal: 'stepKind', value: { $: 'event.detail' } } },
+      guards: {
+        items: `${EDITING}.guards ?? []`,
+        onRemove: { $action: 'flowStore.removeGuard', args: [{ $: 'local.editStep' }, { $: 'index' }] },
+        onAdd: { $setLocal: 'guardStep', value: { $: 'local.editStep' } },
       },
-      children: [
-        {
-          type: 'we-select',
-          props: {
-            options: {
-              $: "distinct([{ label: 'Any member', value: '' }], spaceStore.offeredInvolvementTypes.filter(k, !k.reflexive).map(k, { label: k.name, value: k.slug }))",
-            },
-            value: { $: 'local.stepKind' },
-            onChange: { $setLocal: 'stepKind', value: { $: 'event.detail' } },
-          },
-        },
-      ],
-    },
-    {
-      type: 'Column',
-      props: { gap: '100' },
-      children: [
-        text('What must be there first', { variant: 'label' }),
-        {
-          type: '$each',
-          props: { items: { $: `${EDITING}.guards ?? []` }, as: 'guard' },
-          children: [
-            {
-              type: 'Row',
-              props: { gap: '200', ay: 'center' },
-              children: [
-                text({ $: 'guard.label' }, { variant: 'footnote' }),
-                iconButton('x', 'Remove', {
-                  $action: 'flowStore.removeGuard',
-                  args: [{ $: 'local.editStep' }, { $: 'index' }],
-                }),
-              ],
-            },
-          ],
-        },
-        {
-          type: 'we-button',
-          props: { size: 'sm', variant: 'ghost', onClick: { $setLocal: 'guardStep', value: { $: 'local.editStep' } } },
-          children: [text('Add something that must be there')],
-        },
-      ],
-    },
+    }),
   ],
   disabled: { $: '!local.stepName' },
   submitLabel: 'Save step',
@@ -1190,71 +1136,13 @@ const editStepModal: SchemaNode = formModal({
   },
 });
 
-const guardModal: SchemaNode = formModal({
+const guardStepModal: SchemaNode = guardModal({
   open: { $: 'local.guardStep' },
   close: { $setLocal: 'guardStep', value: '' },
-  title: 'Something that must be there',
-  size: 'sm',
-  localState: {
-    guardEntity: { type: 'string', initial: 'TextBlock' },
-    guardTie: { type: 'string', initial: 'responses' },
-    guardMin: { type: 'number', initial: 1 },
-  },
-  children: [
-    {
-      type: 'we-form-field',
-      props: { label: 'What' },
-      children: [
-        {
-          type: 'we-select',
-          props: {
-            value: { $: 'local.guardEntity' },
-            options: {
-              $: "[{ label: 'A note or comment', value: 'TextBlock' }, { label: 'A file', value: 'FileBlock' }, { label: 'A link', value: 'LinkBlock' }, { label: 'A task', value: 'TaskBlock' }, { label: 'An image', value: 'ImageBlock' }]",
-            },
-            onChange: { $setLocal: 'guardEntity', value: { $: 'event.detail' } },
-          },
-        },
-      ],
-    },
-    {
-      type: 'we-form-field',
-      props: { label: 'Where' },
-      children: [
-        {
-          type: 'we-select',
-          props: {
-            value: { $: 'local.guardTie' },
-            options: {
-              $: "[{ label: 'In response to the record', value: 'responses' }, { label: 'Anywhere in the space', value: '' }]",
-            },
-            onChange: { $setLocal: 'guardTie', value: { $: 'event.detail' } },
-          },
-        },
-      ],
-    },
-    {
-      type: 'we-form-field',
-      props: { label: 'At least' },
-      children: [
-        {
-          type: 'we-number-input',
-          props: {
-            value: { $: 'local.guardMin' },
-            min: 1,
-            max: 20,
-            step: 1,
-            onChange: { $setLocal: 'guardMin', value: { $: 'event.detail' } },
-          },
-        },
-      ],
-    },
-  ],
-  submitLabel: 'Add',
-  submit: {
+  submit: ({ entity, tie, min }) => ({
     $action: 'flowStore.addGuard',
-    args: [{ $: 'local.guardStep' }, { $: 'local.guardEntity' }, { $: 'local.guardTie' }, { $: 'local.guardMin' }],
-  },
+    args: [{ $: 'local.guardStep' }, entity, tie, min],
+  }),
 });
 
 // ─── The list ──────────────────────────────────────────────────────────────────
@@ -1416,7 +1304,7 @@ export function flowsPage(band: Record<string, string>): SchemaNode {
       addStepModal,
       branchModal,
       editStepModal,
-      guardModal,
+      guardStepModal,
     ],
   };
 }

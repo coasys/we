@@ -38,14 +38,17 @@
 import type {
   DatasetHandle,
   FlowDefinition,
+  FlowGuard,
   FlowMoveResult,
   FlowPort,
+  FlowRequirement,
   FlowStateDefinition,
   FlowView,
   FlowWaitingMove,
 } from '@we/backend-shared';
-import { itemFor, trace, tracing } from '@we/backend-shared';
+import { allowedMoves, itemFor, trace, tracing } from '@we/backend-shared';
 
+import { toDefinition } from './flowLanes';
 import { involvementRole } from './flowViews';
 
 /** The flow's name in the dataset. One per space: the space's own task states. */
@@ -60,6 +63,50 @@ export interface TaskStateRule {
   approvals?: number;
   /** The slug of the InvolvementType whose holders' approval counts; empty for anybody's. */
   approverKind?: string;
+  /** What must be there before a task enters it — see `TaskState.guards`. */
+  guards?: FlowGuard[];
+}
+
+/** How a task may move between the space's states, in their order — see `Space.taskFlowRule`. */
+export type TaskFlowRule = '' | 'next' | 'next-and-back';
+
+/**
+ * `TaskState.guards` as stored — a JSON list of `{ entity, tie?, min? }` — read into guards. Anything
+ * unreadable is no guard at all rather than an error: a state a peer wrote badly still has to load.
+ */
+export function parseTaskStateGuards(json: string | null | undefined): FlowGuard[] {
+  if (!json) return [];
+  try {
+    const parsed: unknown = JSON.parse(json);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((raw): FlowGuard[] => {
+      const entry = raw as { entity?: unknown; tie?: unknown; min?: unknown };
+      if (typeof entry.entity !== 'string' || !entry.entity) return [];
+      const min = typeof entry.min === 'number' && entry.min >= 1 ? Math.floor(entry.min) : undefined;
+      return [
+        {
+          kind: 'guard',
+          entity: entry.entity,
+          ...(typeof entry.tie === 'string' && entry.tie ? { tie: { relation: entry.tie } } : {}),
+          ...(min && min !== 1 ? { min } : {}),
+        },
+      ];
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** Guards as `TaskState.guards` stores them. Empty for none, so a state without any stores nothing. */
+export function storeTaskStateGuards(guards: readonly { entity: string; tie?: string; min?: number }[]): string {
+  const kept = guards
+    .filter((g) => g.entity)
+    .map((g) => ({
+      entity: g.entity,
+      ...(g.tie ? { tie: g.tie } : {}),
+      ...(g.min && g.min > 1 ? { min: g.min } : {}),
+    }));
+  return kept.length ? JSON.stringify(kept) : '';
 }
 
 /** A state's approvals, normalised: a whole number from 1 to {@link MAX_APPROVALS}. */
@@ -68,42 +115,53 @@ export function approvalsOf(state: TaskStateRule | undefined): number {
   return Number.isFinite(n) ? Math.min(MAX_APPROVALS, Math.max(1, n)) : 1;
 }
 
-/** Whether a drop into this state waits for agreement rather than moving the card. */
+/**
+ * Whether a drop into this state may not simply move the card: it waits for agreement, or it is
+ * refused until what the state asks for is there. Either way nothing is drawn ahead of the answer.
+ */
 export function needsAgreement(state: TaskStateRule | undefined): boolean {
-  return approvalsOf(state) > 1 || Boolean(state?.approverKind);
+  return approvalsOf(state) > 1 || Boolean(state?.approverKind) || Boolean(state?.guards?.length);
 }
 
 /**
- * The space's task states as a flow, or `null` when no state asks for agreement.
+ * The space's task states as a flow, or `null` when nothing asks for one: no state asks for agreement
+ * or for something to be there, and the rule lets a card go anywhere.
+ *
+ * Compiled as one lane through `toDefinition`, the same compiler a flow written in the editor goes
+ * through — so "next and back" on a board means exactly what it means in a flow, a final state
+ * included.
  *
  * Deterministic in the order and content of what it is given, because two members installing the
  * same states must install the same definition — see the flow port's note on rival rules.
  */
-export function compileTaskFlow(states: readonly TaskStateRule[]): FlowDefinition | null {
+export function compileTaskFlow(states: readonly TaskStateRule[], rule: TaskFlowRule = ''): FlowDefinition | null {
   const slugs = [...new Set(states.map((s) => s.slug).filter(Boolean))];
-  if (!slugs.length || !states.some(needsAgreement)) return null;
+  if (!slugs.length || (!rule && !states.some(needsAgreement))) return null;
   const bySlug = new Map(states.map((s) => [s.slug, s]));
-  return {
-    name: TASK_FLOW,
-    subjects: ['TaskBlock'],
-    hint: "Where a task stands in this community's work.",
-    states: slugs.map((slug): FlowStateDefinition => {
-      const rule = bySlug.get(slug);
-      const count = approvalsOf(rule);
-      if (count === 1 && !rule?.approverKind) return { name: slug };
-      return {
-        name: slug,
-        requires: [
-          {
-            kind: 'approvals',
-            count,
-            ...(rule?.approverKind ? { from: involvementRole(rule.approverKind) } : {}),
-          },
-        ],
-      };
+  const settings = Object.fromEntries(
+    slugs.map((slug): [string, Omit<FlowStateDefinition, 'name'>] => {
+      const state = bySlug.get(slug);
+      const count = approvalsOf(state);
+      const requires: FlowRequirement[] = [
+        ...(count > 1 || state?.approverKind
+          ? [
+              {
+                kind: 'approvals' as const,
+                count,
+                ...(state?.approverKind ? { from: involvementRole(state.approverKind) } : {}),
+              },
+            ]
+          : []),
+        ...(state?.guards ?? []),
+      ];
+      return [slug, requires.length ? { requires } : {}];
     }),
-    transitions: slugs.flatMap((from) => slugs.filter((to) => to !== from).map((to) => ({ from, to }))),
-  };
+  );
+  return toDefinition(
+    { name: TASK_FLOW, subjects: ['TaskBlock'], hint: "Where a task stands in this community's work." },
+    { rule: rule || 'any', lanes: [{ states: slugs }], exceptions: [] },
+    settings,
+  );
 }
 
 // ─── Reading a view ─────────────────────────────────────────────────────────────
@@ -215,6 +273,8 @@ export interface TaskFlowDeps {
   port: () => FlowPort | undefined;
   /** The space's states, in its order. */
   states: () => readonly TaskStateRule[];
+  /** How a task may move between them — see `Space.taskFlowRule`. */
+  rule?: () => TaskFlowRule;
 }
 
 export interface TaskFlowActions {
@@ -232,7 +292,8 @@ export interface TaskFlowActions {
 }
 
 export function createTaskFlowActions(deps: TaskFlowDeps): TaskFlowActions {
-  const enabled = () => Boolean(deps.port() && compileTaskFlow(deps.states()));
+  const definition = () => compileTaskFlow(deps.states(), deps.rule?.() ?? '');
+  const enabled = () => Boolean(deps.port() && definition());
 
   function entryFor(to: string): string {
     const states = deps.states();
@@ -260,6 +321,13 @@ export function createTaskFlowActions(deps: TaskFlowDeps): TaskFlowActions {
     if (!port || !dataset || !enabled()) return null;
     const known = new Set(deps.states().map((s) => s.slug));
     if (!known.has(to)) throw new Error(`"${to}" is not one of this space's states`);
+    /*
+      A move the rule does not allow is refused here, before anything is sent: the rule is the
+      space's, every member holds it, and the answer would be the same after a round trip — which a
+      board would spend drawing the card in a column it is about to leave again.
+    */
+    const flow = definition();
+    if (flow && known.has(from) && from !== to && !allowedMoves(flow, from).includes(to)) return 'not-allowed';
     const result = await port.move(dataset, TASK_FLOW, taskId, to, { from: known.has(from) ? from : entryFor(to) });
     return readMoveResult(result);
   }

@@ -523,6 +523,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     withdrawTaskMove: action('content'),
     archivedFlows: state('content'),
     setFlowArchived: action('space-settings'),
+    taskFlowRule: state('content'),
+    setTaskFlowRule: action('space-settings'),
+    addTaskStateGuard: action('signals'),
+    removeTaskStateGuard: action('signals'),
     addTaskToColumn: action('content'),
 
     // ── signals ──
