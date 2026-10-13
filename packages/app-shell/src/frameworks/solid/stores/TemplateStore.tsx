@@ -1,4 +1,5 @@
 import { appSpaceTemplate, followedTemplateId } from '@shared/bundles/display';
+import { displaySourceOf, readInstalledBundles } from '@shared/bundles/installedBundles';
 import { appTemplateRegistry, DEFAULT_APP_ID, resolveAppTemplate } from '@shared/registries/appTemplates';
 import { withDerivedIds } from '@shared/registries/derivedIds';
 import { reservedTemplateIds } from '@shared/registries/reservedTemplateIds';
@@ -155,6 +156,11 @@ export interface TemplateStore {
   switchTemplate: (newTemplateId: string) => void;
   removeTemplate: () => Promise<void>;
   deleteTemplate: (templateId: string) => Promise<void>;
+  /**
+   * Write templates into the agent's library under the ids they carry, updating any already there,
+   * and mark them installed. How a bundle lands; throws if any write fails. Wiring, not template API.
+   */
+  writeLibraryTemplates: (templates: TemplateSchema[], origin: string) => Promise<void>;
   deleteRefusedTemplate: (recordId: string) => Promise<void>;
   installTemplate: (templateId: string) => Promise<void>;
   uninstallTemplate: (templateId: string) => Promise<void>;
@@ -416,14 +422,20 @@ export function TemplateStoreProvider(props: ParentProps) {
   });
   const appTemplateOptions = () => [
     ...Object.values(appTemplateRegistry).map((t) => appOption(t, false)),
-    ...ownApps().map((t) => appOption(t, true)),
+    // An app that came in a bundle is that bundle's — forked to change, and removed with it.
+    ...ownApps().map((t) => appOption(t, !t.source)),
   ];
   const appTemplateId = () => appTemplate().id ?? DEFAULT_APP_ID;
   /**
    * The space template the app the agent is in shows every space with, or undefined when spaces keep
    * their own — the app's display policy, from the bundle it came in. See `bundles/display.ts`.
    */
-  const appSpaceTemplateId = createMemo(() => appSpaceTemplate(appTemplateId(), seedBundlePieces));
+  const appSpaceTemplateId = createMemo(() =>
+    appSpaceTemplate(appTemplateId(), [
+      ...seedBundlePieces,
+      ...readInstalledBundles(datasetStore.agentSettings()?.installedBundles).map(displaySourceOf),
+    ]),
+  );
   function setAppTemplate(id: string): Promise<boolean> {
     return datasetStore.updateAgentSettings({ appTemplateId: id === DEFAULT_APP_ID ? '' : id });
   }
@@ -435,7 +447,8 @@ export function TemplateStoreProvider(props: ParentProps) {
       icon: t.meta?.icon || '',
       // From the unprefixed id: the prefix distinguishes a space's copy from your own for keying
       // rows, and is not part of any identity the template registry knows about.
-      editable: !isBuiltInTemplateId(t.id || ''),
+      // Not one an installed app brought, which is that app's: editing it means forking it.
+      editable: !isBuiltInTemplateId(t.id || '') && !t.source,
     }));
 
   // Grouped template data for the template switcher UI — flat name/icon fields allow $filter in schemas
@@ -1099,6 +1112,39 @@ export function TemplateStoreProvider(props: ParentProps) {
   }
 
   /** Write an already-inspected marketplace template into the agent's own library. */
+  async function writeLibraryTemplates(templates: TemplateSchema[], origin: string): Promise<void> {
+    const rootPerspective = datasetStore.rootDataset()?.handle;
+    if (!rootPerspective) throw new Error('Your library is not available yet');
+    const prefs = datasetStore.agentSettings();
+    for (const template of templates) {
+      const id = template.id;
+      if (!id) continue;
+      const schema = asFileField(encodeTemplateSchema(template));
+      const existing = savedTemplateMap.get(id);
+      if (existing) {
+        existing.schema = schema;
+        existing.name = template.meta.name;
+        existing.version = (existing.version || 1) + 1;
+        await existing.save();
+        continue;
+      }
+      const record = await Template.create(rootPerspective, {
+        name: template.meta.name,
+        description: template.meta.description,
+        icon: template.meta.icon,
+        origin,
+        slug: id,
+        version: 1,
+        schema,
+        role: roleOf(template),
+      });
+      savedTemplateMap.set(id, record);
+      if (prefs) await prefs.addInstalledTemplates(record);
+    }
+    setInstalledIds((prev) => new Set([...prev, ...templates.map((t) => t.id ?? '').filter(Boolean)]));
+    await loadSavedTemplates();
+  }
+
   async function performPersonalInstall(request: PendingInstall): Promise<void> {
     const rootPerspective = datasetStore.rootDataset()?.handle;
     if (!rootPerspective) {
@@ -1847,8 +1893,21 @@ export function TemplateStoreProvider(props: ParentProps) {
         isBuiltIn: isBuiltInTemplateId(t.id || ''),
         isInstalled: isBuiltInTemplateId(t.id || '') || installed.has(t.id || ''),
         isDefault: (t.id || '') === defaultId,
+        // The app it came with, when it came with one: removed with that app, never on its own.
+        fromApp: t.source ? (appNames().get(t.source.bundle) ?? t.source.bundle) : '',
       }));
   };
+
+  /** Installed and built-in apps' names by bundle id, for saying where a template came from. */
+  const appNames = createMemo(
+    () =>
+      new Map<string, string>([
+        ...seedBundlePieces.map((pieces) => [pieces.bundleId, pieces.name] as [string, string]),
+        ...readInstalledBundles(datasetStore.agentSettings()?.installedBundles).map(
+          (entry) => [entry.id, entry.name] as [string, string],
+        ),
+      ]),
+  );
 
   const store: TemplateStore = {
     provideSpaceLookup,
@@ -1872,6 +1931,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     switchTemplate,
     removeTemplate,
     deleteTemplate,
+    writeLibraryTemplates,
     deleteRefusedTemplate,
     installTemplate,
     uninstallTemplate,

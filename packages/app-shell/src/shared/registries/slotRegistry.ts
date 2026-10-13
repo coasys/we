@@ -29,6 +29,7 @@ import type { CoreSlotAnchor, SlotAnchor, SlotContribution } from '@we/module-sh
 import type { SchemaNode } from '@we/schema-shared';
 import {
   bootScreen,
+  bundlePrompt,
   chromeRail,
   consentPrompt,
   consentSecret,
@@ -196,6 +197,7 @@ export const PROTECTED_SLOTS: ReadonlySet<string> = new Set([
   'core:removeAccount',
   'core:screenSource',
   'core:installPrompt',
+  'core:bundlePrompt',
   'core:destructivePrompt',
 ]);
 
@@ -399,6 +401,9 @@ export function registerCoreSlots(): void {
     prompt merely became answerable. See InstallPrompt.schema.ts.
   */
   slotRegistry.register({ id: 'core:installPrompt', anchor: 'overlay', node: installPrompt, order: 8 });
+  // Its counterpart one level up: an app installed from a file. A safety prompt, so protected, and
+  // beside the template one because the two answer the same question for different things.
+  slotRegistry.register({ id: 'core:bundlePrompt', anchor: 'overlay', node: bundlePrompt, order: 8 });
   /*
     The host's own confirmation in front of anything a space template deletes.
 

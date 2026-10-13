@@ -12,7 +12,7 @@ import {
   modelToThemeData,
   Theme,
 } from '@we/entities';
-import type { ThemeOverrides } from '@we/schema-shared';
+import type { BundleTheme, ThemeOverrides } from '@we/schema-shared';
 import {
   applyThemeVars,
   parseOverrides,
@@ -191,6 +191,11 @@ export interface ThemeStore {
   saveEditingThemeAs: (name: string, icon: string) => Promise<ThemeData | null>;
   deleteTheme: (themeId: string) => Promise<void>;
   installFromMarketplace: (marketplaceThemeId: string) => Promise<void>;
+  /**
+   * Write a bundle's theme into the agent's library, updating the one an earlier install of the same
+   * bundle wrote. Resolves with the theme's id. Throws if the write fails. Wiring, not template API.
+   */
+  writeLibraryTheme: (theme: BundleTheme) => Promise<string>;
   /**
    * Copy a marketplace theme into the current space, so every member gets it — as opposed to
    * installing it for yourself. The counterpart to `templateStore.installToSpace`.
@@ -1491,6 +1496,46 @@ export function ThemeStoreProvider(props: ParentProps) {
     }
   }
 
+  async function writeLibraryTheme(theme: BundleTheme): Promise<string> {
+    const rootPerspective = datasetStore.rootDataset()?.handle;
+    if (!rootPerspective) throw new Error('Your library is not available yet');
+    const overrides = asFileField(
+      encodeToFileData(JSON.stringify(theme.overrides), 'overrides.json', 'application/json'),
+    );
+    const css = theme.css ? asFileField(encodeToFileData(theme.css, 'theme.css', 'text/css')) : null;
+    // By slug among the installed ones only — `themeRecordMap` also holds every space's themes, and an
+    // update must never land in a space. See `installFromMarketplace`.
+    const installedIds = new Set(installedThemes().map((t) => t.id));
+    const existing = [...themeRecordMap.values()].find(
+      (model) => installedIds.has(model.id) && model.slug === theme.id,
+    );
+    if (existing) {
+      existing.name = theme.name;
+      existing.icon = theme.icon ?? 'palette';
+      existing.version = (existing.version || 1) + 1;
+      existing.overrides = overrides;
+      existing.css = css;
+      await existing.save();
+      const updated = modelToThemeData(existing);
+      setInstalledThemes((prev) => prev.map((t) => (t.id === existing.id ? updated : t)));
+      return existing.id;
+    }
+    const model = await Theme.create(rootPerspective, {
+      name: theme.name,
+      icon: theme.icon ?? 'palette',
+      slug: theme.id,
+      origin: 'bundle',
+      version: 1,
+      overrides,
+      css,
+    });
+    themeRecordMap.set(model.id, model);
+    setInstalledThemes((prev) => [...prev, modelToThemeData(model)]);
+    const settings = datasetStore.agentSettings();
+    if (settings) await settings.addInstalledThemes(model);
+    return model.id;
+  }
+
   async function deleteMarketplaceTheme(themeId: string): Promise<void> {
     const marketplacePerspective = datasetStore.marketplaceDataset()?.handle;
     if (!marketplacePerspective) {
@@ -1764,6 +1809,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     saveEditingThemeAs,
     deleteTheme,
     installFromMarketplace,
+    writeLibraryTheme,
     installToSpace,
     uninstallTheme,
     deleteMarketplaceTheme,

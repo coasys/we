@@ -81,9 +81,14 @@ export function createEditTarget(templateStore: TemplateStore): EditTargetPort {
     },
     persist: () => templateStore.persistTemplate(template()),
     isBuiltIn: () => {
-      const id = template().id;
-      // WE's own app ships with the build as the built-in templates do, so editing it forks it too.
-      return !!id && (templateStore.isBuiltInTemplateId(id) || id in appTemplateRegistry);
+      const edited = template();
+      const id = edited.id;
+      /*
+        WE's own app ships with the build as the built-in templates do, so editing it forks it too.
+        And so does anything an installed app brought (`source`): it stays that app's, so a later
+        version can replace it and removing the app takes it — changing it means a copy of your own.
+      */
+      return !!id && (templateStore.isBuiltInTemplateId(id) || id in appTemplateRegistry || !!edited.source);
     },
     key: () => {
       const edited = template();

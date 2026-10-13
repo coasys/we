@@ -19,6 +19,8 @@ import {
 export interface BundlePieces {
   bundleId: string;
   version: string;
+  name: string;
+  icon: string;
   app?: TemplateSchema & { id: string };
   /** Space templates — whole interfaces a space renders with. */
   shells: Array<TemplateSchema & { id: string }>;
@@ -48,6 +50,8 @@ export function bundlePieces(bundle: Bundle): BundlePieces {
   return {
     bundleId: bundle.id,
     version: bundle.version,
+    name: bundle.name,
+    icon: bundle.icon || 'app-window',
     ...(bundle.app ? { app: land(bundle.app) } : {}),
     shells: templates.filter((t) => t.meta.role !== 'view'),
     sections: templates.filter((t) => t.meta.role === 'view'),

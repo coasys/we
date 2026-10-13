@@ -759,6 +759,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     confirmReplaceFields: state('space-settings'),
     cancelReplaceFields: ambient('space-settings'),
     saveShapeDraft: action('space-settings'),
+    addRecordTypes: WIRING,
     // Destructive in the "expensive to reverse" sense: the record goes, and although data and SDNA
     // remain, re-creating the model needs its definition re-authored.
     deleteShape: destructive('space-settings'),
@@ -920,6 +921,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     saveEditingThemeAs: action('editor'),
     deleteTheme: destructive('library'),
     installFromMarketplace: action('library'),
+    writeLibraryTheme: WIRING,
     // Into the space rather than into your account, which is why it sits a tier below its neighbour.
     installToSpace: action('space-settings'),
     uninstallTheme: destructive('library'),
@@ -961,6 +963,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     switchTemplate: action('appearance'),
     removeTemplate: destructive('library'),
     deleteTemplate: destructive('library'),
+    writeLibraryTemplates: WIRING,
     deleteRefusedTemplate: destructive('library'),
     installTemplate: action('library'),
     uninstallTemplate: action('library'),
@@ -1239,6 +1242,23 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     survives a refresh and none of it is queryable, so classifying it with the durable content a
     template reads would be claiming a permanence it does not have.
   */
+  /*
+    Apps installed as data. All `library`, so at the chrome tier only — the app a person is in, its
+    install prompt and its removal are theirs, never a space's. The prompt is host chrome for the
+    reason `templateStore.pendingInstall` is (a dialog vouching for an app must not be drawn by one), and
+    `setUpSpace` writes into the space on screen but checks for itself that whoever presses it runs it.
+  */
+  bundleStore: {
+    pendingInstall: state('library'),
+    installed: state('library'),
+    busy: state('library'),
+    installFromFile: action('library'),
+    confirmInstall: action('library'),
+    cancelInstall: ambient('library'),
+    setUpSpace: action('library'),
+    removeBundle: destructive('library'),
+  },
+
   interpretationStore: {
     // Not `presence` like the rest: this is a fact about the node, not about who is doing what on
     // it, and a template reads it for the same reason it reads any other "can this host do X" —

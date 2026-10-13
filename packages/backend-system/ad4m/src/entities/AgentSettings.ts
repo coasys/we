@@ -32,6 +32,17 @@ export class AgentSettings extends Ad4mModel {
   @Property({ through: 'we://app_template' })
   appTemplateId: string = '';
 
+  /**
+   * The bundles this agent installed, and what each wrote: JSON, a list of `InstalledBundle`
+   * (`app-shell/src/shared/bundles/installedBundles.ts`).
+   *
+   * Kept so an app can be recognised when a later version of it is installed, removed with
+   * everything it brought, and asked how it shows spaces — its display policy is read from here,
+   * so leaving the app is all it takes to stop it. A seed's bundles are built in and never here.
+   */
+  @Property({ through: 'we://installed_bundles' })
+  installedBundles: string = '';
+
   @Property({ through: 'we://current_theme' })
   currentThemeId: string = 'default';
 

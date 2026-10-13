@@ -25,6 +25,7 @@ import { type EntityManifest, extractableEntities, manifestEntries, validateMani
 import { toastService } from '@we/components/solid';
 import { asFileField, decodeFileAsJson, encodeJsonFileData, Shape } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
+import type { BundleRecordType } from '@we/schema-shared';
 import {
   Accessor,
   batch,
@@ -314,6 +315,12 @@ export interface ShapeStore {
   cancelDiscard: () => void;
   /** Validate, store and adopt the draft. Errors land in `draftErrors`; success closes the wizard. */
   saveShapeDraft: () => Promise<void>;
+  /**
+   * Write record types a bundle brings into the space on screen and adopt them, skipping any the space
+   * already has from the same bundle. Resolves with why each could not be added (empty when all were).
+   * The caller decides who may: this is wiring, not template API.
+   */
+  addRecordTypes: (bundleId: string, types: readonly BundleRecordType[]) => Promise<string[]>;
   /** Delete a shape record. Its SDNA and data remain in the space (uninstall semantics are deliberate). */
   deleteShape: (shapeRecordId: string) => Promise<void>;
 
@@ -1097,6 +1104,42 @@ export function ShapeStoreProvider(props: ParentProps) {
     }
   }
 
+  async function addRecordTypes(bundleId: string, types: readonly BundleRecordType[]): Promise<string[]> {
+    const dataset = handle();
+    if (!dataset || !schemas()) return ['There is no space open to add them to'];
+    const problems: string[] = [];
+    const present = new Map(spaceShapes().map((shape) => [shape.name, shape]));
+    const names = types.map((type) => type.name);
+    for (const type of types) {
+      // Recognised by where it came from, so a second install or set-up adds nothing twice.
+      const shapeId = `we://shapes/bundle/${bundleId}/${type.name}`;
+      const already = present.get(type.name);
+      if (already) {
+        if (already.shapeId !== shapeId) problems.push(`"${type.name}" is already a different kind of record here`);
+        continue;
+      }
+      const gate = validateManifest(type.manifest, {
+        externalEntities: [...knownEntityNames(), ...names.filter((name) => name !== type.name)],
+      });
+      if (!gate.valid) {
+        problems.push(`"${type.name}" is not a valid definition — ${gate.errors[0]?.message}`);
+        continue;
+      }
+      await Shape.create(dataset, {
+        name: type.name,
+        description: type.description ?? '',
+        icon: type.icon ?? 'shapes',
+        shapeId,
+        version: 1,
+        definition: asFileField(encodeJsonFileData(gate.manifest, 'shape-definition.json')),
+      });
+      // The record's own shapeId, as `loadShapes` adopts it on every later visit.
+      await adoptShape({ name: type.name, shapeId }, gate.manifest);
+    }
+    await loadShapes();
+    return problems;
+  }
+
   async function deleteShape(shapeRecordId: string): Promise<void> {
     const dataset = handle();
     if (!dataset) return;
@@ -1288,6 +1331,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     confirmDiscard,
     cancelDiscard,
     saveShapeDraft,
+    addRecordTypes,
     deleteShape,
     openHintEditor,
     closeHintEditor,

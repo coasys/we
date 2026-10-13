@@ -1,6 +1,7 @@
 import {
   AccountStoreProvider,
   AppStoreProvider,
+  BundleStoreProvider,
   ClockStoreProvider,
   DatasetStoreProvider,
   EditorStoreProvider,
@@ -67,7 +68,12 @@ export default function StoreProvider(props: ParentProps) {
                                       outlive the panel that started a pass — a call bar is still
                                       showing an extraction after the transcript panel closes. */}
                                     <InterpretationStoreProvider>
-                                      <EditorHostAdapter>{props.children}</EditorHostAdapter>
+                                      {/* Beneath every store an install writes through — templates,
+                                        themes, record types, modules, settings — none of which has
+                                        to know what a bundle is. */}
+                                      <BundleStoreProvider>
+                                        <EditorHostAdapter>{props.children}</EditorHostAdapter>
+                                      </BundleStoreProvider>
                                     </InterpretationStoreProvider>
                                   </PresenceStoreProvider>
                                 </SpaceStoreProvider>

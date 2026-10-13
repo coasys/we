@@ -2401,6 +2401,7 @@ AgentSettings extends Ad4mModel:
   - currentTemplateId: string = 'default' [we://current_template]
   - defaultTemplateId: string = 'default' [we://default_template]
   - appTemplateId: string [we://app_template]
+  - installedBundles: string [we://installed_bundles]
   - currentThemeId: string = 'default' [we://current_theme]
   - defaultThemeId: string = 'default' [we://default_theme]
   - systemLightThemeId: string [we://system_light_theme]
@@ -2859,6 +2860,18 @@ AppStore:
 - Actions:
   - activateApp(id: string): activates an app and switches to its view
   - deactivateApp(): deactivates the current app and returns to the template view
+
+BundleStore:
+- State:
+  - pendingInstall: { name, icon, version, author, fileName, updates, adds, capabilities, blocked, modulesToTurnOn, modulesNotInBuild, recordTypes, recordTypesHere, spaceName, display } | null — the app an install prompt is asking about, everything already in the words a person reads. `author` is what the file claims and nothing attests to it; `updates` is the version already installed, empty for a first install; `recordTypesHere` is `add` (added to the space on screen), `ask` (this agent does not run it) or `none`; `display` is `ours` (every space opens in the app’s template while it is in use) or `theirs`. Host chrome only: an app must never draw the prompt vouching for it
+  - installed: { id, name, icon, version, from, setUp }[] — the apps this agent has installed (`from: file`) and those built into the deployment (`from: deployment`, which cannot be removed). `setUp` says whether the space on screen has the record types and sections the app needs: `done`, `available` (you run it — offer setUpSpace), `ask` (someone else runs it) or `none`
+  - busy: boolean — an install, a set-up or a removal is in flight
+- Actions:
+  - installFromFile(file: File): reads an app from a file — a we-file-upload’s change event passes it as event.detail — and raises the install prompt, or a toast saying why it cannot be installed. Writes nothing
+  - confirmInstall(): installs what the prompt is showing — its app, templates and theme into this agent’s library, the modules it needs turned on, its record types added to the space on screen when this agent runs it — and makes its app the one in use. Host chrome only
+  - cancelInstall(): closes the install prompt without installing
+  - setUpSpace(bundleId: string): adds an app’s record types to the space on screen and switches its sections on. Only for whoever runs the space
+  - removeBundle(bundleId: string): removes an installed app: its app, templates and theme. Never its record types, which hold the records people made with it
 
 ClockStore:
 - State:
@@ -3444,7 +3457,7 @@ TemplateStore:
   - builtInTemplates: array of TemplateSchema objects — built-in system templates (always available)
   - myTemplates: array of TemplateSchema objects — user's installed custom templates only (excludes built-in and space templates)
   - allTemplates: array of TemplateSchema objects — union of built-in + personal + space templates
-  - templateManagementList: TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault)
+  - templateManagementList: TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault, fromApp). `fromApp` names the installed or built-in app a template came with, empty otherwise: such a template is removed with its app, never on its own
   - refusedTemplates: RefusedTemplate[] — templates in this agent's library that no longer validate, so they cannot be loaded (id, name, icon, reason). `reason` is the validator's first complaint with where it is. Listed so they can be seen and deleted; they are in no other list. `id` is the record's own, for deleteRefusedTemplate
   - switcherGroups: TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon, editable }[] }. Groups: "Space templates", "My templates", "Built-in". Use filter(group.items, { name: { contains: local.search } }) for search since items have a flat name field. `editable` says whether editing THAT row would open a session that can be saved — gate a per-row edit control on it rather than on editorStore.isReadOnly, which answers for whichever template is currently rendered and so gives every row the same verdict.
   - currentSwitcherId: string — the id the template switcher should show as selected. The switcher's own spelling of the current template: it differs from currentTemplate.id while a space override or a preview is in effect
