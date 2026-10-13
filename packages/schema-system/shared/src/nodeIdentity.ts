@@ -102,9 +102,16 @@ function namedPositions(node: SchemaNode): { group: string; nodes: SchemaNode[] 
   if (Array.isArray(node.children)) out.push({ group: 'c', nodes: nodesIn(node.children) });
   if (Array.isArray(node.routes)) out.push({ group: 'r', nodes: nodesIn(node.routes) });
   for (const [name, slot] of Object.entries(node.slots ?? {})) out.push({ group: `s:${name}`, nodes: nodesIn(slot) });
+  /*
+    A prop holds a node only where its type names something the renderer mounts — the test the id
+    walk (`forEachNode`) makes. The looser test the other positions use takes any object without a
+    `$` key, and here that gave a derived id to every transition, style, `hoverProps` object and
+    select option in a built-in, which a copy then carried into somebody's template.
+  */
+  const propsNodes = (value: unknown): SchemaNode[] =>
+    (Array.isArray(value) ? value : [value]).filter(isPropsSchemaNode);
   for (const [name, value] of Object.entries(node.props ?? {})) {
-    if (name === 'styles') continue;
-    const nodes = nodesIn(value);
+    const nodes = propsNodes(value);
     if (nodes.length) out.push({ group: `p:${name}`, nodes });
   }
   for (const panel of panelsOf(node) ?? []) {

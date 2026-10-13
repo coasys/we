@@ -33,10 +33,17 @@ describe('isPropsSchemaNode', () => {
     expect(isPropsSchemaNode({ type: '$if' })).toBe(true);
   });
 
+  it('accepts a native element a template may mount, as a $if’s then can hold', () => {
+    expect(isPropsSchemaNode({ type: 'div', children: [] })).toBe(true);
+    expect(isPropsSchemaNode({ type: 'span' })).toBe(true);
+  });
+
   it('rejects transition configs, arrays, and typeless objects', () => {
     expect(isPropsSchemaNode({ type: 'fade' })).toBe(false); // TransitionConfig
     expect(isPropsSchemaNode([{ type: 'Column' }])).toBe(false);
     expect(isPropsSchemaNode({ props: {} })).toBe(false);
+    for (const effect of ['fade', 'slide', 'scale', 'reveal', 'pulse'])
+      expect(isPropsSchemaNode({ type: effect })).toBe(false);
   });
 });
 
