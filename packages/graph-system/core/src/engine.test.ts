@@ -101,6 +101,26 @@ describe('GraphEngine', () => {
     expect(engine.getPositions().size).toBe(3);
   });
 
+  it('says a node can be opened only where an allowed expander claims it and it has more to give', async () => {
+    const registry = new PluginRegistry({ seeds: [seedOf(1)], expanders: [fanoutExpander(2)], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    expect(engine.canExpand('seed-0')).toBe(true);
+    expect(engine.canExpand('not-on-the-graph')).toBe(false);
+
+    await engine.expand('seed-0');
+    // Open, and the expander said nothing about more: a caret has nothing to open.
+    expect(engine.canExpand('seed-0')).toBe(false);
+
+    const narrowed = engineWith(
+      { seeds: { source: 'test' }, layout: { type: 'grid' }, expansion: { expanders: ['property'] } },
+      registry,
+    );
+    await narrowed.start();
+    // The only expander that claims it is one the spec does not allow.
+    expect(narrowed.canExpand('seed-0')).toBe(false);
+  });
+
   it('auto-expands to the requested depth', async () => {
     const registry = new PluginRegistry({ seeds: [seedOf(1)], expanders: [fanoutExpander(2)], layouts });
     const engine = engineWith(

@@ -8,6 +8,7 @@
  * than arithmetic.
  */
 import type { Layout, LayoutInput, LayoutResult, Placement, Point } from '@we/graph-protocol';
+import { CONTAINMENT_EDGE_TYPES } from '@we/graph-protocol';
 
 /** Roots are nodes nothing points at; failing that, the first node, so a cycle still draws. */
 function findRoots(input: LayoutInput): string[] {
@@ -439,6 +440,54 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
         const own = sizeOf(node);
         taken.push(boxAround(at, own.width, own.height));
       }
+      /*
+        A node opened out of another — a card's field, a bucket's member — goes beside it.
+
+        Parked in the tray, a field lands wherever the tray has room, which on a busy canvas is across
+        the view from the card it is a field of, and the line between them is all that says so. So a
+        node whose only way onto the canvas is a containment edge from a placed node is stacked in a
+        column to that node's right, one under the next, and falls back to the tray only when that
+        column would cover something. Placed in the order the graph holds them, which is the order the
+        expander returned, so a card's fields read top to bottom as its model declares them.
+      */
+      const containedBy = new Map<string, string>();
+      for (const edge of input.edges) {
+        if (CONTAINMENT_EDGE_TYPES.includes(edge.type) && !containedBy.has(edge.target))
+          containedBy.set(edge.target, edge.source);
+      }
+      const stacked = new Map<string, number>();
+      const stillToPark: LayoutInput['nodes'] = [];
+      const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
+      for (const node of toPark) {
+        const parentId = containedBy.get(node.id);
+        const parentAt = parentId ? positions.get(parentId) : undefined;
+        const parent = parentId ? nodeById.get(parentId) : undefined;
+        if (!parentId || !parentAt || !parent) {
+          stillToPark.push(node);
+          continue;
+        }
+        const own = sizeOf(node);
+        const parentSize = sizeOf(parent);
+        const gap = Math.max(12, margin || 16);
+        const index = stacked.get(parentId) ?? 0;
+        const at = {
+          x: parentAt.x + parentSize.width / 2 + gap + own.width / 2,
+          y: parentAt.y - parentSize.height / 2 + own.height / 2 + index * (own.height + gap / 2),
+        };
+        const box = boxAround(at, own.width, own.height);
+        if (taken.some((other) => overlaps(other, box))) {
+          stillToPark.push(node);
+          continue;
+        }
+        positions.set(node.id, { ...at, fixed: true });
+        taken.push(box);
+        stacked.set(parentId, index + 1);
+        parked.add(node.id);
+        unplaced += 1;
+      }
+      toPark.length = 0;
+      toPark.push(...stillToPark);
+
       const visible = input.visible;
       const viewColumns = Math.max(1, Math.floor((visible?.width ?? pitch.x * 5) / pitch.x));
       const columns = Math.max(viewColumns, Math.ceil(Math.sqrt(toPark.length)));

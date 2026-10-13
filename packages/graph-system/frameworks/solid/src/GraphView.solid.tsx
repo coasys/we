@@ -2135,6 +2135,67 @@ export function GraphView(props: GraphViewProps) {
     });
   }
 
+  /**
+   * What the caret on a card does — one control, three answers, so a reader has one way to look
+   * inside a card whatever is behind it:
+   *
+   * - **fold** — the card's children are already on the graph (a seed drew them): hide or show them.
+   *   Comes first, and a folded card always answers it, so nothing loaded is ever re-fetched.
+   * - **close** — the graph opened this card itself: drop what only it brought in.
+   * - **open** — nothing is under it yet, and an expander the spec allows claims it: fetch.
+   *
+   * The opening half is offered only to an interface listening on `onNodeOpen`, the bargain the fold
+   * makes: where the open set is kept is the interface's, and a caret that forgot on reload would be
+   * worse than none.
+   */
+  const caretSays = (entry: NodeEntry): { mode: 'fold' | 'close' | 'open' | null } => {
+    version();
+    if (entry.folded) return { mode: 'fold' };
+    if (props.onNodeOpen && engine.expansion.isExpanded(entry.node.id)) return { mode: 'close' };
+    if (foldSays(entry).show) return { mode: 'fold' };
+    if (props.onNodeOpen && engine.canExpand(entry.node.id)) return { mode: 'open' };
+    return { mode: null };
+  };
+
+  /** Open or close a card from its caret, and tell the interface so it can keep the open set. */
+  function toggleOpen(entry: NodeEntry, open: boolean): void {
+    const at = parseAddress(entry.node.id);
+    if (open) void engine.expand(entry.node.id, 'out');
+    else engine.collapse(entry.node.id);
+    props.onNodeOpen?.({
+      id: entry.node.id,
+      open,
+      ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+    });
+  }
+
+  /*
+    The open set, kept in step with the graph.
+
+    An address is opened once it is on the graph and not open yet — so a field opened under a field
+    comes back when the first has reopened, and a reload reopens everything that was open. Asked once
+    per address per arrival: an expansion that found nothing must not be retried on every redraw. One
+    taken out of the list is closed, but only if it was this list that opened it; a double-click's
+    expansion is the reader's, not the address's.
+  */
+  const openedFromProp = new Set<string>();
+  createEffect(() => {
+    version();
+    const wanted = new Set(props.open ?? []);
+    untrack(() => {
+      for (const id of wanted) {
+        if (openedFromProp.has(id) || !engine.store.node(id) || engine.expansion.isExpanded(id)) continue;
+        openedFromProp.add(id);
+        void engine.expand(id, 'out');
+      }
+      for (const id of [...openedFromProp]) {
+        if (wanted.has(id)) continue;
+        openedFromProp.delete(id);
+        if (engine.expansion.isExpanded(id)) engine.collapse(id);
+      }
+    });
+  });
+
   const status = createMemo(() => {
     statusVersion();
     return engine.getStatus();
@@ -4069,7 +4130,7 @@ export function GraphView(props: GraphViewProps) {
                   )}
                 </For>
               </Show>
-              <Show when={actionsFor(entry.node).length > 0 || foldSays(entry).show || props.carry}>
+              <Show when={actionsFor(entry.node).length > 0 || caretSays(entry).mode !== null || props.carry}>
                 {/*
                   `pointerdown` stopped, as well as the click — on the bar, once, for everything in
                   it. The canvas hit-tests in world space from a pointer press on the layer beneath,
@@ -4110,7 +4171,7 @@ export function GraphView(props: GraphViewProps) {
                       does not take the count away with the chip it replaces. Icons rather than words:
                       the caret points the way the contents are about to go.
                     */}
-                    <Show when={foldSays(entry).show}>
+                    <Show when={caretSays(entry).mode === 'fold'}>
                       <we-tooltip content={foldTitle(entry, foldSays(entry))}>
                         <we-button
                           variant="ghost"
@@ -4134,6 +4195,32 @@ export function GraphView(props: GraphViewProps) {
                               {String(entry.foldedCount)}
                             </we-text>
                           </Show>
+                        </we-button>
+                      </we-tooltip>
+                    </Show>
+                    {/*
+                      The same caret, for a card the graph opens itself rather than folds — see
+                      `caretSays`. Pointing right while closed and down while open, as the fold's does,
+                      so the one control reads the same whichever of the two is behind it.
+                    */}
+                    <Show when={caretSays(entry).mode === 'open' || caretSays(entry).mode === 'close'}>
+                      <we-tooltip
+                        content={
+                          caretSays(entry).mode === 'close'
+                            ? 'Close what is open under this card'
+                            : 'Open what is in this card'
+                        }
+                      >
+                        <we-button
+                          variant="ghost"
+                          size="md"
+                          square
+                          label={caretSays(entry).mode === 'close' ? 'Close' : 'Open'}
+                          color={caretSays(entry).mode === 'close' ? 'accent-text' : 'text-muted'}
+                          prop:hoverProps={{ color: caretSays(entry).mode === 'close' ? 'accent' : 'text' }}
+                          onClick={() => toggleOpen(entry, caretSays(entry).mode === 'open')}
+                        >
+                          <we-icon name={caretSays(entry).mode === 'close' ? 'caret-down' : 'caret-right'} />
                         </we-button>
                       </we-tooltip>
                     </Show>

@@ -30,6 +30,7 @@ export {
 } from './address';
 export { CARD_SILHOUETTES, cardSilhouette, metricKey, MORPH_OUTLINES, morphOutline } from './style';
 export type { GraphEdge, GraphFragment, GraphNode, GraphValue } from './graph';
+export { CONTAINMENT_EDGE_TYPES } from './graph';
 export type {
   EntityShape,
   Expander,

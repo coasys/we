@@ -152,6 +152,32 @@ describe('manual layout', () => {
     expect(result.positions.get('a')).not.toEqual(result.positions.get('b'));
   });
 
+  it('puts a field opened out of a card beside that card, one under the next, rather than in the tray', () => {
+    const contains = (target: string): GraphEdge => ({
+      id: `card->${target}`,
+      source: 'card',
+      target,
+      type: 'property',
+    });
+    const result = manualLayout({ gap: 100 }).init(
+      input([node('card', { x: 500, y: 500 }), node('f1'), node('f2')], [contains('f1'), contains('f2')]),
+    );
+    const f1 = result.positions.get('f1')!;
+    const f2 = result.positions.get('f2')!;
+    expect(f1.x).toBeGreaterThan(500 + 50);
+    expect(f2.x).toBe(f1.x);
+    expect(f2.y).toBeGreaterThan(f1.y);
+  });
+
+  it('falls back to the tray when the column beside the card is taken', () => {
+    const contains: GraphEdge = { id: 'card->f', source: 'card', target: 'f', type: 'property' };
+    const result = manualLayout({ gap: 100 }).init(
+      input([node('card', { x: 500, y: 500 }), node('neighbour', { x: 620, y: 500 }), node('f')], [contains]),
+    );
+    const f = result.positions.get('f')!;
+    expect(Math.abs(f.x - 620) < 100 && Math.abs(f.y - 500) < 100).toBe(false);
+  });
+
   it('keeps a dragged position over the stored one until it is written back', () => {
     // A drag is immediate; persisting it is the template's decision, so the layout has to hold the
     // new position in the meantime or the node snaps back on the next re-layout.
