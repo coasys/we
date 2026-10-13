@@ -96,10 +96,10 @@ export async function syncSpaceToParent(
   // Mirror location into the target dataset, scoped to this space's location relation.
   if (loc) {
     await schemas.ensure(targetP, LocationBlock);
-    // Always delete + recreate so setLocation updates the Space's we://location triple.
+    // Always delete + recreate so setLocation updates the Space's location.
     // Scoped to this space's location via parent query to avoid touching other spaces' blocks.
     const [existingLocInTarget] = await LocationBlock.findAll(targetP, {
-      parent: { id: target.id, predicate: 'we://location' },
+      parent: { id: target.id, relation: 'location', entity: 'Space' },
     });
     if (existingLocInTarget) await existingLocInTarget.delete();
     const newLoc = await LocationBlock.create(targetP, {
@@ -114,7 +114,7 @@ export async function syncSpaceToParent(
   } else if (options?.locationData === null && existing) {
     // Explicit removal — delete the location block from the target dataset
     const [locToRemove] = await LocationBlock.findAll(targetP, {
-      parent: { id: existing.id, predicate: 'we://location' },
+      parent: { id: existing.id, relation: 'location', entity: 'Space' },
     });
     if (locToRemove) await locToRemove.delete();
   }

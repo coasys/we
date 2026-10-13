@@ -119,7 +119,7 @@ interface Model {
   create(
     dataset: DatasetHandle,
     data?: Record<string, unknown>,
-    options?: { parent?: { id: string; predicate: string } },
+    options?: { parent?: { id: string; relation: string; entity?: string } },
   ): Promise<Instance>;
   update(dataset: DatasetHandle, id: string, data: Record<string, unknown>): Promise<unknown>;
   setRelation(dataset: DatasetHandle, id: string, relation: string, ids: readonly string[]): Promise<void>;
@@ -378,7 +378,7 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
 
       test(
         'relations.create-under-parent',
-        'creates a record inside its container, named by id and the containment predicate',
+        'creates a record inside its container, named by id and the relation it joins',
         async () => {
           // How a transcript line, a space's canvas and a post in a space are all made: inside their
           // container in one write, so there is no moment in which they are loose in the space.
@@ -387,7 +387,7 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           const made = await Collection.create(
             subject.dataset,
             { kind: 'canvas' },
-            { parent: { id: container.id, predicate: CONTAINMENT_PREDICATE } },
+            { parent: { id: container.id, relation: 'children' } },
           );
 
           const [row] = await reader('CollectionBlock').findAll(subject.dataset, {
@@ -400,17 +400,17 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
 
       test(
         'relations.read-under-parent',
-        'reads only what one container holds, newest first and bounded, given its id and the predicate',
+        'reads only what one container holds, newest first and bounded, given its id and the relation',
         async () => {
           /*
-            How one call's lines are paged: by the call's id and the containment predicate, ordered
+            How one call's lines are paged: by the call's id and its `children` relation, ordered
             and capped, so a page costs the same however long the space's history is. A backend that
             ignored the parent answered with every line in the space — right-looking, and wrong.
           */
           const Collection = model('CollectionBlock');
           const call = await Collection.create(subject.dataset, { kind: 'call' });
           const other = await Collection.create(subject.dataset, { kind: 'call' });
-          const parent = (id: string) => ({ parent: { id, predicate: CONTAINMENT_PREDICATE } });
+          const parent = (id: string) => ({ parent: { id, relation: 'children' } });
           const first = await Collection.create(subject.dataset, { kind: 'line-1' }, parent(call.id));
           await sleep(5);
           const second = await Collection.create(subject.dataset, { kind: 'line-2' }, parent(call.id));
@@ -442,13 +442,13 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           const reply = await Collection.create(
             subject.dataset,
             { kind: 'reply' },
-            { parent: { id: channel.id, predicate: CONTAINMENT_PREDICATE } },
+            { parent: { id: channel.id, relation: 'children' } },
           );
           await Collection.addRelation(subject.dataset, post.id, 'thread', reply.id);
           const kept = await Collection.create(
             subject.dataset,
             { kind: 'reply' },
-            { parent: { id: channel.id, predicate: CONTAINMENT_PREDICATE } },
+            { parent: { id: channel.id, relation: 'children' } },
           );
 
           await reply.delete();
@@ -464,7 +464,7 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
     describe('references', () => {
       test(
         'references.referrers',
-        'answers who links to a value through one predicate, newest first, across kinds of record',
+        'answers who holds a value through one relation, newest first, across kinds of record',
         async () => {
           /*
             How "messages that mention me" is asked: from the agent's end, through the mention relation,
@@ -481,10 +481,12 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           await model('TextBlock').addRelation(subject.dataset, line.id, 'mentions', did);
           await model('TextBlock').addRelation(subject.dataset, line.id, 'mentions', 'did:key:somebody-else');
 
-          const found = await references!.referrers(subject.dataset, 'we://mention', did);
+          const found = await references!.referrers(subject.dataset, { relation: 'mentions' }, did);
           expect(found.map((row) => row.id)).toEqual([line.id, post.id]);
           expect(
-            (await references!.referrers(subject.dataset, 'we://mention', did, { limit: 1 })).map((r) => r.id),
+            (await references!.referrers(subject.dataset, { relation: 'mentions' }, did, { limit: 1 })).map(
+              (r) => r.id,
+            ),
           ).toEqual([line.id]);
         },
       );

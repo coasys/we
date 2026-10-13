@@ -20,7 +20,7 @@
 */
 import '@we/graph-solid/styles';
 
-import type { EntityClass, QueryOptions, RendererStores } from '@we/backend-shared';
+import type { EntityClass, ParentRef, QueryOptions, RendererStores } from '@we/backend-shared';
 import { manifestEntries, trace } from '@we/backend-shared';
 import { BlockRenderer } from '@we/block-solid';
 import { Column, Row } from '@we/components/solid';
@@ -294,12 +294,11 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     return options;
   }
 
-  /** Resolve a neutral drill-down to the parent handle the ORM takes. Mirrors the query adapter. */
-  function parentFor(scope: ScopeRequest): { id: string; predicate: string } | undefined {
+  /** A neutral drill-down as the parent a read narrows to — the relation by name, on its entity. */
+  function parentFor(scope: ScopeRequest): ParentRef | undefined {
     const entry = manifest().find((m) => m.name === scope.anchor);
-    const property = entry?.properties.find((p) => p.name === scope.via);
-    if (!property) return undefined;
-    return { id: scope.anchorId, predicate: property.predicate };
+    if (!entry?.properties.some((p) => p.name === scope.via)) return undefined;
+    return { id: scope.anchorId, relation: scope.via, entity: scope.anchor };
   }
 
   /**

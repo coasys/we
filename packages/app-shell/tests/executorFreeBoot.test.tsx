@@ -1114,7 +1114,7 @@ describe('changing a reaction', () => {
 
     const mine = async () =>
       (await (Signal as never as typeof Space).findAll(handle, {
-        parent: { id: subject.id, predicate: 'we://signal' },
+        parent: { id: subject.id, relation: 'signals' },
         where: { signalTypeId: stars.id, author: 'did:test:james' },
       } as never)) as unknown as { id: string; value: number }[];
 
@@ -1406,19 +1406,19 @@ describe('a post and what was said under it', () => {
     const reply = (await stores.spaces.createPost(doc('a reply'), {
       kind: 'reply',
       parentId: post,
-      predicate: 'we://response',
+      relation: 'responses',
     }))!;
     const nested = (await stores.spaces.createPost(doc('and another'), {
       kind: 'reply',
       parentId: reply,
-      predicate: 'we://response',
+      relation: 'responses',
     }))!;
     // And a call held about the post — a response too, threaded the same way.
     const call = await CollectionBlock.create(
       handle,
       { kind: 'call', mode: 'feed' } as never,
       {
-        parent: { id: post, predicate: 'we://response' },
+        parent: { id: post, relation: 'responses' },
       } as never,
     );
     await completeResponse(handle, call.id, post);
@@ -1483,7 +1483,7 @@ describe('where a response was said', () => {
     const channel = await CollectionBlock.create(
       handle,
       { kind: 'channel', mode: 'feed' } as never,
-      { parent: { id: stores.spaces.root(), predicate: 'we://child' } } as never,
+      { parent: { id: stores.spaces.root(), relation: 'children', entity: 'CollectionBlock' } } as never,
     );
     const post = (await stores.spaces.createPost(doc('the post'), { parentId: channel.id }))!;
 
@@ -1493,7 +1493,7 @@ describe('where a response was said', () => {
     const comment = (await stores.spaces.createPost(doc('a comment'), {
       kind: 'reply',
       parentId: post,
-      predicate: 'we://response',
+      relation: 'responses',
     }))!;
 
     // In the post's thread, and a child of nothing: the channel holds the post alone.
@@ -1519,14 +1519,14 @@ describe('where a response was said', () => {
     const standup = await CollectionBlock.create(
       handle,
       { kind: 'call', mode: 'feed', title: 'Standup' } as never,
-      { parent: { id: root, predicate: 'we://child' } } as never,
+      { parent: { id: root, relation: 'children', entity: 'CollectionBlock' } } as never,
     );
     // A call held about a post is a response to the post — in its thread, and a child of nothing.
     const post = (await stores.spaces.createPost(doc('the post')))!;
     const about = await CollectionBlock.create(
       handle,
       { kind: 'call', mode: 'feed', title: 'About the post' } as never,
-      { parent: { id: post, predicate: 'we://response' } } as never,
+      { parent: { id: post, relation: 'responses' } } as never,
     );
     await completeResponse(handle, about.id, post);
     const TextBlock = getEntity('TextBlock') as unknown as {
@@ -1535,19 +1535,21 @@ describe('where a response was said', () => {
     const said = await TextBlock.create(
       handle,
       { text: 'morning all', source: 'spoken' },
-      { parent: { id: standup.id, predicate: 'we://child' } },
+      { parent: { id: standup.id, relation: 'children', entity: 'CollectionBlock' } },
     );
     const aside = await TextBlock.create(
       handle,
       { text: 'about that post', source: 'spoken' },
-      { parent: { id: about.id, predicate: 'we://child' } },
+      { parent: { id: about.id, relation: 'children', entity: 'CollectionBlock' } },
     );
 
     // The Feed's own read, through the host's mapping of a module's `within` onto `parent`
     // (TemplateProvider's `withinAsParent`).
     const find: FeedFind = async (entity, query) => {
       const { within, ...rest } = query as { within?: string } & Record<string, unknown>;
-      const options = within ? { ...rest, parent: { id: within, predicate: 'we://child' } } : rest;
+      const options = within
+        ? { ...rest, parent: { id: within, relation: 'children', entity: 'CollectionBlock' } }
+        : rest;
       return ((await getEntity(entity).findAll(handle, options as never)) ?? []) as never;
     };
     const { rows } = await readFeedWindow(find, { root, shown: 20, fromStart: true, activityTypes: [] });

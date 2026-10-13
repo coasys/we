@@ -24,7 +24,7 @@ import {
   type PassEntry,
   transcriptLine,
 } from '@shared/interpretation/callExport';
-import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
+import { gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
 import { involvementOptimism } from '@shared/involvementOptimism';
 import {
   createInvolvementActions,
@@ -126,7 +126,6 @@ import {
   InvolvementType,
   LocationBlock,
   MutedAgent,
-  PREDICATES,
   ReadMarker,
   RelationshipType,
   Signal,
@@ -391,10 +390,11 @@ export interface CreatePostOptions {
   /** Id of the node to attach to. Omit for a post, which sits in the space unattached. */
   parentId?: string;
   /**
-   * How it attaches. Defaults to `we://child` — containment, which is what a channel message
-   * wants. Pass `we://response` for a reply, which hangs off a node rather than sitting inside it.
+   * The relation it joins on that node. Defaults to `'children'` — containment, which is what a
+   * channel message wants. Pass `'responses'` for a reply, which hangs off a node rather than
+   * sitting inside it.
    */
-  predicate?: string;
+  relation?: string;
 }
 
 export interface FluxSubgroupMessage {
@@ -1734,7 +1734,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         const made = await Model.create(
           dataset,
           fields as never,
-          (parentId ? { parent: { id: parentId, predicate: PREDICATES.CHILDREN } } : {}) as never,
+          (parentId ? { parent: { id: parentId, relation: 'children', entity: 'CollectionBlock' } } : {}) as never,
         );
         return (made as { id: string }).id;
       },
@@ -2144,22 +2144,26 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!p) return;
 
     // The anchor is what makes one action serve every composed artifact. A post has none — it sits
-    // in the space. A message names its channel through `we://child`; a reply names whatever it
-    // answers through `we://response`. Both arrive from a schema as ids, which is all a template
+    // in the space. A message names its channel through `children`; a reply names whatever it
+    // answers through `responses`. Both arrive from a schema as ids, which is all a template
     // has, and both are `$each`/route values rather than anything the store could derive.
     // With no anchor named, a post goes in the space collection — the space's top level — rather than
     // nowhere. Read at the call, not destructured as a default, so a space entered after this store
     // was built still gets its own.
-    const { kind = 'post', predicate = PREDICATES.CHILDREN } = options;
+    const { kind = 'post', relation = 'children' } = options;
     const parentId = options.parentId ?? (spaceRoot() || undefined);
 
     // The action arrives from a schema as unknown; the composer produced it, so it is a content document.
     const root = await createBlocks(p, json as ContentInput, {
       kind,
-      ...(parentId && { anchor: { id: parentId, predicate } }),
+      // A message's parent is a collection; a reply's may be any record, and `responses` is the
+      // same relation on every one of them, so it needs no entity to say which.
+      ...(parentId && {
+        anchor: { id: parentId, relation, ...(relation === 'children' && { entity: 'CollectionBlock' }) },
+      }),
     });
     // A reply is linked into its thread, and is a child of nothing — see `@shared/responses`.
-    if (root?.id && parentId && predicate === PREDICATES.RESPONSE) void completeResponse(p, root.id, parentId);
+    if (root?.id && parentId && relation === 'responses') void completeResponse(p, root.id, parentId);
     return root?.id;
   }
 
@@ -2761,7 +2765,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         it rather than assuming it.
       */
       const mine = (await Signal.findAll(p, {
-        parent: { id: nodeId, predicate: 'we://signal' },
+        parent: { id: nodeId, relation: 'signals' },
         where: { signalTypeId, author: myDid },
       })) as Signal[];
 
@@ -2795,7 +2799,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       try {
         for (const signal of mine) await signal.delete();
         if (value !== null) {
-          await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
+          await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, relation: 'signals' } });
         }
         // The write is back. Not a release — what retires a hold is the data moving — but it ends
         // the hold's exemption from what the next draw says. See `@we/optimism`.
@@ -2843,18 +2847,11 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   async function callTranscript(p: DatasetProxy, callId: string) {
     const modelFor = (entity: string) => getEntityForDataset(entity, p);
-    const predicate = containmentPredicate(modelFor, datasetStore.currentDatasetEntities());
-    const turns = predicate
-      ? await gatherTranscriptTurns(
-          {
-            modelFor: (entity) => modelFor(entity) as TurnRecord | undefined,
-            handle: p,
-            containmentPredicate: predicate,
-          },
-          callId,
-        )
-      : [];
-    return { turns, predicate };
+    const turns = await gatherTranscriptTurns(
+      { modelFor: (entity) => modelFor(entity) as TurnRecord | undefined, handle: p },
+      callId,
+    );
+    return { turns };
   }
 
   /**
@@ -2955,12 +2952,13 @@ export function SpaceStoreProvider(props: ParentProps) {
           const amendments = (Array.isArray(row?.amendments) ? row.amendments : []) as AmendmentEntry[];
           if (!passes.length) return null;
 
-          const { turns, predicate } = await callTranscript(p, callId);
+          const { turns } = await callTranscript(p, callId);
           // Scoped to this call, as the review list is; best effort, since a log without the waiting
           // suggestions is still the log.
           const port = session.backendPorts()?.interpretation;
-          const proposals =
-            port && predicate ? await port.proposals(p, { parent: { id: callId, predicate } }).catch(() => []) : [];
+          const proposals = port
+            ? await port.proposals(p, { parent: { id: callId, relation: 'children' } }).catch(() => [])
+            : [];
           const authors = records.map((record) => (record as { author?: unknown }).author);
           const nameFor = await labelsFor(
             [
@@ -4579,7 +4577,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     setMentionRows(null);
     if (!ds || !did || !references) return;
     void references
-      .referrers(ds.handle, 'we://mention', did, { limit: 50 })
+      .referrers(ds.handle, { relation: 'mentions' }, did, { limit: 50 })
       .then((rows) => {
         if (datasetStore.currentDataset() !== ds) return;
         setMentionRows(rows.map((row) => ({ id: row.id, author: row.author, createdAt: Date.parse(row.at) || 0 })));

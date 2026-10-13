@@ -14,10 +14,16 @@
  * filtering, ordering, paging, relation hydration and count projections are the engine's semantics
  * rather than a second implementation of them.
  */
-import type { EntityStatic, IncludeExtras, IncludeOf, RecordInstance, TypedEntityQuery } from '@we/backend-shared';
+import type {
+  EntityStatic,
+  IncludeExtras,
+  IncludeOf,
+  ParentRef,
+  RecordInstance,
+  TypedEntityQuery,
+} from '@we/backend-shared';
 import {
   compileQuery,
-  CONTAINMENT_PREDICATE,
   type EntityManifest,
   type EntitySchema,
   executeQueryIR,
@@ -124,11 +130,7 @@ export interface EntityClassLike {
     dataset: unknown,
     query?: Q | AnyQuery,
   ): Promise<(InMemoryInstance & IncludeExtras<RecordInstance, IncludeOf<Q>>) | null>;
-  create(
-    dataset: unknown,
-    data?: Record<string, unknown>,
-    options?: { parent?: { id: string; predicate: string } },
-  ): Promise<InMemoryInstance>;
+  create(dataset: unknown, data?: Record<string, unknown>, options?: { parent?: ParentRef }): Promise<InMemoryInstance>;
   update(dataset: unknown, id: string, data: Record<string, unknown>): Promise<InMemoryInstance | null>;
   delete(dataset: unknown, id: string): Promise<unknown>;
   count(dataset: unknown, query?: AnyQuery): Promise<number>;
@@ -168,36 +170,33 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
   const classes: Record<string, EntityClassLike> = {};
 
   /*
-    A new record linked under a parent named by id and predicate — `create(…, { parent })`.
+    A new record linked under a parent named by id and relation — `create(…, { parent })`.
 
     AD4M writes that link with the record, which is what lets a transcript block or a space's canvas
-    be made inside its container with no window in which it is loose. This backend ignored the option,
-    so everything made that way arrived here unparented and a store tested against it never saw its
-    containment. The parent is found by id in whichever table holds it, and the relation by the
-    predicate a backend would store it under, so containment resolves the same way it does there.
+    be made inside its container with no window in which it is loose. The parent is found by id in
+    whichever table holds it, and the relation by its name on that entity — which is all a table
+    needs, and what the contract says.
   */
   /**
-   * The parent named by id and predicate, as the entity and relation holding it — what both a write
-   * under a parent and a read under one need. Null when no record has that id, or nothing it declares
-   * is stored under that predicate.
+   * The parent named by id and relation, as the entity and relation holding it — what both a write
+   * under a parent and a read under one need. Null when no record has that id, or its entity declares
+   * no such relation (or only reads it backwards).
    */
   const relationUnder = (
     dataset: DatasetEntry,
-    parent: { id: string; predicate: string },
+    parent: ParentRef,
   ): { entity: string; relation: string; row: AnyRow } | null => {
     for (const entityName of Object.keys(classes)) {
+      if (parent.entity && parent.entity !== entityName) continue;
       const row = tableOf(dataset, entityName).find((r) => r.id === parent.id);
       if (!row) continue;
-      const relation = Object.entries(resolved(entityName).relations).find(
-        ([, spec]) =>
-          !spec.reverseOf && (spec.containment ? CONTAINMENT_PREDICATE : spec.predicate) === parent.predicate,
-      )?.[0];
-      return relation ? { entity: entityName, relation, row } : null;
+      const spec = resolved(entityName).relations[parent.relation];
+      return spec && !spec.reverseOf ? { entity: entityName, relation: parent.relation, row } : null;
     }
     return null;
   };
 
-  const linkUnder = async (dataset: DatasetEntry, parent: { id: string; predicate: string }, childId: string) => {
+  const linkUnder = async (dataset: DatasetEntry, parent: ParentRef, childId: string) => {
     const under = relationUnder(dataset, parent);
     if (!under) return;
     const parentClass = classes[under.entity] as unknown as { hydrate(d: DatasetEntry, r: AnyRow): AnyRow };
@@ -409,13 +408,13 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         void properties;
         void rest;
         /*
-          A parent named by id and predicate — the ORM's `parent` — read as the drill-down it is. It
+          A parent named by id and relation — the ORM's `parent` — read as the drill-down it is. It
           used to fall into `rest` and be dropped, so "this call's lines" answered with every line in
-          the space. A parent nothing holds under that predicate has no children.
+          the space. A parent that holds nothing through that relation has no children.
         */
         let scope = query.scope;
         if (parent && typeof parent === 'object') {
-          const under = relationUnder(dataset, parent as { id: string; predicate: string });
+          const under = relationUnder(dataset, parent as ParentRef);
           if (!under) return [];
           scope = { anchor: under.entity, via: under.relation, anchorId: under.row.id };
         }
@@ -469,7 +468,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
       static async create(
         handle: unknown,
         data: Record<string, unknown> = {},
-        options?: { parent?: { id: string; predicate: string } },
+        options?: { parent?: ParentRef },
       ): Promise<Entity> {
         const dataset = datasetOf(handle);
         const now = new Date().toISOString();

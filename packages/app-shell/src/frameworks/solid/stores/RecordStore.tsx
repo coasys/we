@@ -30,6 +30,7 @@ import {
   formatRef,
   HERE,
   namePropertyOf,
+  type ParentRef,
 } from '@we/backend-shared';
 import { type ContentInput, copyableContent, createBlock, createBlocks, deleteBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
@@ -41,7 +42,6 @@ import {
   getEntity,
   getEntityForDataset,
   Placement,
-  PREDICATES,
   runEntityTransaction,
   TypeStyle,
 } from '@we/entities';
@@ -131,7 +131,7 @@ const DISPLAY_ONLY = [RELATIONSHIP] as const;
  */
 async function createPlacement(
   dataset: unknown,
-  parent: { id: string; predicate: string },
+  parent: ParentRef,
   nodeId: string,
   nodeType: string,
   at: { x: number; y: number },
@@ -207,11 +207,7 @@ type PlacementRow = { id: string; node?: string; tier?: string } & Record<string
  * peers tidying at once cannot each delete the other's survivor. Only rows at the survivor's own
  * tier go: a placement for another breakpoint is not a duplicate of it.
  */
-async function drawnPlacement(
-  dataset: unknown,
-  parent: { id: string; predicate: string },
-  nodeId: string,
-): Promise<PlacementRow | undefined> {
+async function drawnPlacement(dataset: unknown, parent: ParentRef, nodeId: string): Promise<PlacementRow | undefined> {
   const existing = (await Placement.findAll(
     dataset as never,
     { parent } as Record<string, unknown>,
@@ -1390,9 +1386,9 @@ export function RecordStoreProvider(props: ParentProps) {
   ): Promise<void> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !options.canvas) return;
-    const parent = { id: options.canvas, predicate: PREDICATES.CHILDREN };
+    const parent = { id: options.canvas, relation: 'children', entity: 'CollectionBlock' };
     // The card lives wherever this canvas's content lives; its placement is the canvas's own.
-    const home = { id: contentHome(options.canvas) ?? options.canvas, predicate: PREDICATES.CHILDREN };
+    const home = { id: contentHome(options.canvas) ?? options.canvas, relation: 'children', entity: 'CollectionBlock' };
 
     try {
       await runEntityTransaction(dataset.handle, async (tx) => {
@@ -1447,7 +1443,7 @@ export function RecordStoreProvider(props: ParentProps) {
   ): Promise<{ from: { x: number; y: number } | null; to: { x: number; y: number } } | null> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !canvas || !nodeId) return null;
-    const parent = { id: canvas, predicate: PREDICATES.CHILDREN };
+    const parent = { id: canvas, relation: 'children', entity: 'CollectionBlock' };
 
     /*
       Held before the read, not after it.
@@ -1828,7 +1824,7 @@ export function RecordStoreProvider(props: ParentProps) {
       }
 
       const placements = (await Placement.findAll(handle, {
-        parent: { id: canvas, predicate: PREDICATES.CHILDREN },
+        parent: { id: canvas, relation: 'children', entity: 'CollectionBlock' },
       } as Record<string, unknown>)) as unknown as { node?: string; rank?: number }[];
       const rankOf = new Map<string, number>();
       for (const row of placements) {
@@ -2177,7 +2173,11 @@ export function RecordStoreProvider(props: ParentProps) {
     // on the round trip. Dropped again below if the write turns out not to be possible.
     hold(nodeId, patch);
     try {
-      const already = await drawnPlacement(dataset.handle, { id: canvas, predicate: PREDICATES.CHILDREN }, nodeId);
+      const already = await drawnPlacement(
+        dataset.handle,
+        { id: canvas, relation: 'children', entity: 'CollectionBlock' },
+        nodeId,
+      );
       if (!already) {
         drop(nodeId, patch);
         toastService.error('Drag this onto the canvas first — how a card looks is saved with where it sits.');
@@ -2252,7 +2252,7 @@ export function RecordStoreProvider(props: ParentProps) {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !canvas || !event.recordId || !event.end) return;
     const side = typeof event.side === 'string' ? event.side : '';
-    const parent = { id: canvas, predicate: PREDICATES.CHILDREN };
+    const parent = { id: canvas, relation: 'children', entity: 'CollectionBlock' };
 
     try {
       const existing = (await EdgeRoute.findAll(dataset.handle, { parent } as Record<string, unknown>)) as {
@@ -2400,7 +2400,7 @@ export function RecordStoreProvider(props: ParentProps) {
     const event = (payload ?? {}) as { recordId?: string; points?: unknown };
     const dataset = datasetStore.currentDataset();
     if (!dataset || !canvas || !event.recordId || !Array.isArray(event.points)) return;
-    const parent = { id: canvas, predicate: PREDICATES.CHILDREN };
+    const parent = { id: canvas, relation: 'children', entity: 'CollectionBlock' };
     const points = JSON.stringify(event.points);
 
     try {
@@ -2519,7 +2519,7 @@ export function RecordStoreProvider(props: ParentProps) {
     // The same sentinel a card's own colour uses, and for the same reason: `''` cannot be stored, so
     // without it a type could be given a colour and never have it taken away.
     const value = typeof raw === 'string' && raw ? raw : PLACEMENT_UNSET;
-    const parent = { id: canvas, predicate: PREDICATES.CHILDREN };
+    const parent = { id: canvas, relation: 'children', entity: 'CollectionBlock' };
 
     try {
       // An upsert against the canvas's own children, exactly as a placement is: the parent link is
@@ -2625,7 +2625,7 @@ export function RecordStoreProvider(props: ParentProps) {
             const root = await createBlocks(here.handle, blocks as ContentInput, {
               kind: 'post',
               fields,
-              ...(home ? { anchor: { id: home, predicate: PREDICATES.CHILDREN } } : {}),
+              ...(home ? { anchor: { id: home, relation: 'children', entity: 'CollectionBlock' } } : {}),
             });
             return root?.id ? { id: root.id } : null;
           },
@@ -2633,7 +2633,11 @@ export function RecordStoreProvider(props: ParentProps) {
           writeBlock: into.canvas
             ? async (block) =>
                 (await createBlock(here.handle, block, {
-                  anchor: { id: contentHome(into.canvas) ?? into.canvas!, predicate: PREDICATES.CHILDREN },
+                  anchor: {
+                    id: contentHome(into.canvas) ?? into.canvas!,
+                    relation: 'children',
+                    entity: 'CollectionBlock',
+                  },
                 })) ?? null
             : undefined,
         },
@@ -2783,7 +2787,7 @@ export function RecordStoreProvider(props: ParentProps) {
     const value = typeof raw === 'string' ? raw : '';
     // The relation's own predicate, not `children`: a space is not a container and a key is not one
     // of its contents. It is what `Space.typeStyles` reads through.
-    const parent = { id: spaceId, predicate: PREDICATES.TYPE_STYLE };
+    const parent = { id: spaceId, relation: 'typeStyles', entity: 'Space' };
 
     try {
       const existing = (await TypeStyle.findAll(dataset.handle, { parent } as Record<string, unknown>)) as {
@@ -2830,7 +2834,7 @@ export function RecordStoreProvider(props: ParentProps) {
     if (!dataset || !canvas || !nodeId) return null;
     try {
       const existing = (await Placement.findAll(dataset.handle, {
-        parent: { id: canvas, predicate: PREDICATES.CHILDREN },
+        parent: { id: canvas, relation: 'children', entity: 'CollectionBlock' },
       } as Record<string, unknown>)) as unknown as PlacementRow[];
       const rows = existing.filter((placement) => placement.node === nodeId);
       if (!rows.length) return null;
@@ -2860,7 +2864,7 @@ export function RecordStoreProvider(props: ParentProps) {
   async function restorePlacement(canvas: string, nodeId: string, row: PlacementRow): Promise<void> {
     const dataset = datasetStore.currentDataset();
     if (!dataset) return;
-    const parent = { id: canvas, predicate: PREDICATES.CHILDREN };
+    const parent = { id: canvas, relation: 'children', entity: 'CollectionBlock' };
     const { id: _id, node: _node, ...fields } = row;
     try {
       /*
@@ -3027,7 +3031,7 @@ export function RecordStoreProvider(props: ParentProps) {
       const created = (await Model.create(
         dataset.handle,
         fields,
-        home ? { parent: { id: home, predicate: PREDICATES.CHILDREN } } : undefined,
+        home ? { parent: { id: home, relation: 'children', entity: 'CollectionBlock' } } : undefined,
       )) as {
         id?: string;
         setSource?: (value: string) => Promise<unknown>;

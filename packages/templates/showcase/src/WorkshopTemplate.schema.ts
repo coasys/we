@@ -4943,7 +4943,7 @@ const eventList: SchemaNode = {
             startDate: { $: "local.day + 'T' + local.draftTime" },
             description: { $: 'local.draftDescription' },
           },
-          { parent: { id: { $: 'spaceStore.root' }, predicate: 'we://child' } },
+          { parent: { id: { $: 'spaceStore.root' }, relation: 'children', entity: 'CollectionBlock' } },
         ],
       },
     }),

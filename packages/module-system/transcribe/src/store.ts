@@ -121,9 +121,6 @@ const TRANSCRIPT_FIRST_PAGE = 50;
  */
 const TRANSCRIPT_PAGE = 200;
 
-/** The predicate `CollectionBlock.children` is minted under — how an utterance attaches to its call. */
-export const CHILDREN_PREDICATE = 'we://child';
-
 /**
  * How a line in a transcript came to be — the three values of `TextBlock.source`.
  *
@@ -133,8 +130,6 @@ export const CHILDREN_PREDICATE = 'we://child';
  */
 export const SPOKEN = 'spoken';
 export const TYPED = 'typed';
-/** What a reply hangs off — the reply mechanism every record in WE shares. */
-export const REPLY_PREDICATE = 'we://response';
 export const CORRECTED = 'corrected';
 
 /**
@@ -1196,15 +1191,6 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     return allProposals();
   }
 
-  /**
-   * The predicate `CollectionBlock.amendments` is written under. See `ExtractionAmendment`.
-   *
-   * Spelled here rather than derived, the same way {@link OVERLAY_KIND_PREDICATE} is in the adapter:
-   * the records kernel parents by predicate, and a module cannot ask the manifest what a relation's
-   * predicate is without importing the entity layer it is deliberately not coupled to.
-   */
-  const AMENDMENT_PREDICATE = 'we://extraction_amendment';
-
   /** What a suggestion is called, for a sentence about it — its leading field, quoted. */
   function proposalName(id: string): string {
     const proposal = allProposals().find((p) => p.id === id);
@@ -1419,7 +1405,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
           {
             // Parented on creation, as every other write here is: unparented then linked leaves a
             // window in which a crash orphans the record into the space.
-            parent: { id: collection, predicate: AMENDMENT_PREDICATE },
+            parent: { id: collection, relation: 'amendments', entity: 'CollectionBlock' },
             // The call's space, exactly as the accept just used — a call outlives the space on screen.
             ...callTarget(),
           },
@@ -1664,7 +1650,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         // in this timeline is a person typing, and a transcript that cannot tell them apart claims
         // somebody said what they wrote. See `TextBlock.source`.
         { text, source: SPOKEN },
-        { parent: { id: slot.id, predicate: CHILDREN_PREDICATE }, ...(dataset ? { dataset } : {}) },
+        { parent: { id: slot.id, relation: 'children', entity: 'CollectionBlock' }, ...(dataset ? { dataset } : {}) },
       );
       await recordSelfParticipation(slot.id, dataset);
     } catch (cause) {
@@ -2720,7 +2706,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * the composer gave them, under whatever holds it.
    */
   async function writeMessage(
-    holder: { id: string; predicate: string },
+    holder: { id: string; relation: string; entity?: string },
     text: string,
     marks?: string,
     dataset?: string,
@@ -2768,7 +2754,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     interpretation,
     unconfirmedIds,
     // Into the space on screen: the Feed is about the space somebody is reading.
-    write: (collection, text, marks) => writeMessage({ id: collection, predicate: CHILDREN_PREDICATE }, text, marks),
+    write: (collection, text, marks) =>
+      writeMessage({ id: collection, relation: 'children', entity: 'CollectionBlock' }, text, marks),
   });
 
   return {
@@ -3655,7 +3642,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         the live one is running in, where the record it names does not exist.
       */
       const dataset = target === targetCollection() ? (myCall()?.datasetUri ?? undefined) : undefined;
-      await writeMessage({ id: target, predicate: CHILDREN_PREDICATE }, words, marks, dataset);
+      await writeMessage({ id: target, relation: 'children', entity: 'CollectionBlock' }, words, marks, dataset);
       /*
         Not awaited, because the composer is waiting on this promise to say it has finished.
 
@@ -3688,7 +3675,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         return;
       }
       const dataset = inCall ? callTarget()?.dataset : undefined;
-      await writeMessage({ id: parentId, predicate: REPLY_PREDICATE }, text, marks, dataset);
+      await writeMessage({ id: parentId, relation: 'responses' }, text, marks, dataset);
       replyTo(null);
     }, 'Answers one line with a typed line of its own, linked from it as a reply.'),
     replyingTo: state(
