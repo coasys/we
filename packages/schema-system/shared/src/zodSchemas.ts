@@ -443,6 +443,7 @@ export const zTemplateSchema: z.ZodType<TemplateSchema> = z
     schemaVersion: z.number().optional(),
     meta: zTemplateMeta,
     _fromSpace: z.boolean().optional(),
+    source: z.object({ bundle: z.string(), version: z.string(), piece: z.string() }).strict().optional(),
   })
   .strict();
 
