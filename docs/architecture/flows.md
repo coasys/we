@@ -95,4 +95,4 @@ moved on the board.
 
 - Flow-level AI context, a step's AI check (`semanticCheck`) and a final step's outputs with
   receipts — AD4M has all three; the contract does not carry them yet.
-- The board over any flow, with task states only its display details — see the flows plan.
+- The board over any flow, with task states only its display details.

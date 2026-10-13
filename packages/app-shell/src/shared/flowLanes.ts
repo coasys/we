@@ -39,6 +39,12 @@ export interface FlowLanes {
 
 const edge = (from: string, to: string) => `${from}\u0000${to}`;
 
+/**
+ * The last entry of a list. Spelt out rather than `.at(-1)`: the desktop host compiles this file
+ * against ES2020, which has neither `at` nor `findLast`.
+ */
+const lastOf = <T>(list: readonly T[]): T | undefined => list[list.length - 1];
+
 /** The moves lanes and a rule make, before exceptions — in a fixed order, so one model always writes the same definition. */
 function laneMoves(model: FlowLanes): FlowTransitionDefinition[] {
   const all = model.lanes.flatMap((lane) => lane.states);
@@ -58,7 +64,7 @@ function laneMoves(model: FlowLanes): FlowTransitionDefinition[] {
   const final = new Set(
     model.lanes
       .filter((lane, i) => i === 0 || !lane.rejoins)
-      .map((lane) => lane.states.at(-1)!)
+      .map((lane) => lastOf(lane.states)!)
       .filter(Boolean),
   );
   model.lanes.forEach((lane, i) => {
@@ -67,7 +73,7 @@ function laneMoves(model: FlowLanes): FlowTransitionDefinition[] {
       const next = lane.states[j + 1];
       if (next) add(state, next);
     });
-    if (i > 0 && lane.rejoins && lane.states.length) add(lane.states.at(-1)!, lane.rejoins);
+    if (i > 0 && lane.rejoins && lane.states.length) add(lastOf(lane.states)!, lane.rejoins);
     if (model.rule === 'next-and-back') {
       lane.states.forEach((state, j) => {
         const before = j === 0 ? (i > 0 ? lane.leaves : undefined) : lane.states[j - 1];
@@ -121,7 +127,7 @@ function readLanes(definition: FlowDefinition, rule: FlowSequenceRule): FlowLane
   while (i < order.length) {
     const lane: FlowLane = { states: [order[i]] };
     i += 1;
-    while (i < order.length && has(lane.states.at(-1)!, order[i])) {
+    while (i < order.length && has(lastOf(lane.states)!, order[i])) {
       lane.states.push(order[i]);
       i += 1;
     }
@@ -136,10 +142,10 @@ function readLanes(definition: FlowDefinition, rule: FlowSequenceRule): FlowLane
         other way round — so it takes the latest: a fork tends to come late, a shortcut from earlier.
         Either reading compiles to the same definition; only how it is drawn differs.
       */
-      const leaves = order.findLast((s) => placed.has(s) && has(s, lane.states[0]));
+      const leaves = lastOf(order.filter((s) => placed.has(s) && has(s, lane.states[0])));
       if (!leaves) return null;
       lane.leaves = leaves;
-      const last = lane.states.at(-1)!;
+      const last = lastOf(lane.states)!;
       const out = order.filter((s) => !lane.states.includes(s) && has(last, s));
       // Under `next-and-back` a one-state branch's way back to where it left is the rule's own move,
       // not a rejoin; anything else it leads to is where it rejoins.
