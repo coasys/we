@@ -1,77 +1,79 @@
 /**
- * Flows in memory — enough of the semantics to test a surface that asks a group to agree, with no
- * process to start.
+ * Flows in memory — the contract as a plain state machine, the way a backend with one authority
+ * would hold it.
  *
- * What it keeps: a run starts in its flow's first state; a move happens once the state it enters
- * has as many distinct approvals, from agents its role counts, as the state asks for; approvals are
- * counted per move rather than per proposal, so twins add up; a move that happened consumes the
- * proposals that made it, so a later visit to the same state asks again; withdrawing the vote that
- * completed a move undoes it, because state is derived from the votes present every time it is read.
+ * Each record going through a flow has a state, the asks waiting on it, and the moves it has made. An
+ * ask is recorded against the move it asks for; when enough people who count have asked, and the
+ * state's guards hold, the record moves and every ask out of the state it left is closed — a question
+ * about a situation that no longer exists. Nothing is derived from votes after the fact, so a move
+ * that happened stays happened, and two moves agreed at once cannot both be: the first to be agreed
+ * is the move ({@link FlowCapabilities.contention} `first`).
  *
- * What it does not: eligibility is judged against the role records as they are *now*, where a real
- * backend judges each vote as of the moment it was cast; and it never reports a run as stuck, because
- * it never refuses to choose between two moves — the earlier one wins. Both are simplifications a
- * test of a surface does not need, and reproducing them would make this a second engine to keep in
- * step with the first. Anything that depends on them belongs in a test against the real backend.
+ * What it does not do: eligibility and guards are judged against the records as they are at the
+ * moment of the ask, and evidence is a list of ids rather than a seal over their content. Both are
+ * what a central backend would do too.
  */
 import type {
   DatasetHandle,
+  FlowCapabilities,
   FlowDefinition,
-  FlowMove,
+  FlowGuard,
+  FlowItem,
+  FlowMoveResult,
   FlowPort,
-  FlowProposal,
-  FlowProposeResult,
-  FlowRun,
-  FlowSnapshot,
+  FlowRole,
+  FlowStep,
+  FlowSummary,
+  FlowView,
 } from '@we/backend-shared';
-import { runFor } from '@we/backend-shared';
+import { allowedMoves, approvalsFor, guardsFor, validateFlowDefinition } from '@we/backend-shared';
 import { getEntityForDataset } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 
-interface StoredProposal {
-  id: string;
-  run: string;
-  from: string;
-  to: string;
-  proposer: string;
-  /** Voter and the tick they voted at, the proposer first. */
-  votes: { did: string; at: number }[];
-  rationale?: string;
-  proposedAt: number;
+interface Ask {
+  /** Voter and the tick they asked at, the first asker first. */
+  voters: { did: string; at: number }[];
+  askedAt: number;
+  note?: string;
 }
 
-interface StoredRun {
-  id: string;
-  flow: string;
+interface Item {
   subject: string;
-  startedAt: number;
+  state: string;
+  since: number;
+  /** Waiting moves out of `state`, by the state they ask for. */
+  asks: Map<string, Ask>;
+  history: FlowStep[];
 }
 
 interface FlowStore {
   flows: Map<string, FlowDefinition>;
-  runs: StoredRun[];
-  proposals: StoredProposal[];
+  /** By flow, then by subject. */
+  items: Map<string, Map<string, Item>>;
   listeners: Set<() => void>;
 }
 
-interface Derived {
-  state: string;
-  /** Proposals consumed by a move that happened, in the order the moves happened. */
-  settled: Set<string>;
-  moves: FlowMove[];
-}
+type Row = Record<string, unknown> & { id?: string };
+type Finder = { findAll(dataset: unknown, query?: Record<string, unknown>): Promise<Row[]> };
+
+export const IN_MEMORY_FLOW_CAPABILITIES: FlowCapabilities = {
+  requirements: ['approvals', 'guard'],
+  enforcement: 'server',
+  sealedEvidence: false,
+  contention: 'first',
+};
 
 export function createInMemoryFlowPort(selfId: () => string | undefined): FlowPort {
   const stores = new WeakMap<object, FlowStore>();
   // A tick rather than the clock: two writes in the same millisecond must still have an order.
   let tick = 0;
-  let serial = 0;
   const now = () => ++tick;
 
   const storeFor = (dataset: DatasetHandle): FlowStore => {
     const key = dataset as object;
     let store = stores.get(key);
     if (!store) {
-      store = { flows: new Map(), runs: [], proposals: [], listeners: new Set() };
+      store = { flows: new Map(), items: new Map(), listeners: new Set() };
       stores.set(key, store);
     }
     return store;
@@ -87,16 +89,19 @@ export function createInMemoryFlowPort(selfId: () => string | undefined): FlowPo
     for (const listener of [...store.listeners]) listener();
   };
 
-  const runById = (store: FlowStore, id: string): StoredRun => {
-    const run = store.runs.find((r) => r.id === id);
-    if (!run) throw new Error(`flows: no run ${id}`);
-    return run;
+  const flowOf = (store: FlowStore, name: string): FlowDefinition => {
+    const flow = store.flows.get(name);
+    if (!flow) throw new Error(`flows: flow "${name}" is not installed`);
+    return flow;
   };
 
-  const flowOf = (store: FlowStore, run: StoredRun): FlowDefinition => {
-    const flow = store.flows.get(run.flow);
-    if (!flow) throw new Error(`flows: flow "${run.flow}" is not installed`);
-    return flow;
+  const itemsOf = (store: FlowStore, flow: string): Map<string, Item> => {
+    let items = store.items.get(flow);
+    if (!items) {
+      items = new Map();
+      store.items.set(flow, items);
+    }
+    return items;
   };
 
   // A to-one relation arrives as an id, a hydrated row, or a one-element list of either — the last
@@ -106,193 +111,212 @@ export function createInMemoryFlowPort(selfId: () => string | undefined): FlowPo
     return typeof one === 'string' ? one : ((one as { id?: string } | null)?.id ?? undefined);
   };
 
-  /** Everyone the state's role counts, for this run's subject. `null` when anybody counts. */
-  async function eligible(dataset: DatasetHandle, flow: FlowDefinition, to: string, subject: string) {
-    const role = flow.states.find((s) => s.name === to)?.role;
+  const matches = (row: Row, where: Record<string, string | number | boolean> | undefined) =>
+    !where || Object.entries(where).every(([key, value]) => row[key] === value);
+
+  const finder = (entity: string, dataset: DatasetHandle) => getEntityForDataset(entity, dataset) as Finder | undefined;
+
+  /** Every concrete entity WE declares — where a flow over any record looks for one. */
+  const entityNames = () =>
+    Object.entries(CORE_MANIFEST.entities)
+      .filter(([, schema]) => !schema.abstract)
+      .map(([name]) => name);
+
+  /** Everyone the role counts, for this subject. `null` when anybody counts. */
+  async function eligible(dataset: DatasetHandle, role: FlowRole | undefined, subject: string) {
     if (!role) return null;
-    const Entity = getEntityForDataset(role.entity, dataset) as
-      { findAll(dataset: unknown): Promise<Record<string, unknown>[]> } | undefined;
+    const Entity = finder(role.entity, dataset);
     if (!Entity) return new Set<string>();
-    const rows = await Entity.findAll(dataset);
     const dids = new Set<string>();
-    for (const row of rows) {
+    for (const row of await Entity.findAll(dataset)) {
       if (role.subjectField && idOf(row[role.subjectField]) !== subject) continue;
-      if (role.where && Object.entries(role.where).some(([key, value]) => row[key] !== value)) continue;
+      if (!matches(row, role.where)) continue;
       const did = row[role.agentField];
       if (typeof did === 'string' && did) dids.add(did);
     }
     return dids;
   }
 
-  /**
-   * Where a run stands: walk from the first state, taking whichever open move reached its approvals
-   * earliest, until none has.
-   */
-  async function derive(dataset: DatasetHandle, store: FlowStore, run: StoredRun): Promise<Derived> {
-    const flow = flowOf(store, run);
-    let state = flow.states[0]?.name ?? '';
-    const settled = new Set<string>();
-    const moves: FlowMove[] = [];
-    const roles = new Map<string, Set<string> | null>();
-    const countedFor = async (to: string) => {
-      if (!roles.has(to)) roles.set(to, await eligible(dataset, flow, to, run.subject));
-      return roles.get(to)!;
-    };
-    const proposals = store.proposals.filter((p) => p.run === run.id);
-
-    // Bounded by the proposals: every step consumes at least one, so the walk cannot cycle forever.
-    for (let step = 0; step <= proposals.length; step++) {
-      let best: { to: string; at: number; voters: string[]; ids: string[] } | undefined;
-      const edges = new Set(flow.transitions.filter((t) => t.from === state).map((t) => t.to));
-      const byTarget = new Map<string, StoredProposal[]>();
-      for (const p of proposals) {
-        if (settled.has(p.id) || p.from !== state || !edges.has(p.to)) continue;
-        byTarget.set(p.to, [...(byTarget.get(p.to) ?? []), p]);
-      }
-      for (const [to, twins] of byTarget) {
-        const needs = Math.max(1, flow.states.find((s) => s.name === to)?.approvals ?? 1);
-        const counted = await countedFor(to);
-        // Every counted vote across the twins, in the order it was cast; the first `needs` distinct
-        // agents make the move, and only the proposals their votes sit on are consumed by it. A
-        // proposal nobody needed survives to answer the next visit to this state — the real
-        // backend's rule, and the reason a card sent back and forth is not asked twice.
-        const pooled = twins
-          .flatMap((p) => p.votes.map((vote) => ({ ...vote, proposal: p.id })))
-          .filter((vote) => !counted || counted.has(vote.did))
-          .sort((a, b) => a.at - b.at || (a.did < b.did ? -1 : 1));
-        const voters: string[] = [];
-        const ids: string[] = [];
-        let at: number | undefined;
-        for (const vote of pooled) {
-          if (voters.includes(vote.did)) continue;
-          voters.push(vote.did);
-          if (!ids.includes(vote.proposal)) ids.push(vote.proposal);
-          if (voters.length >= needs) {
-            at = vote.at;
-            break;
-          }
-        }
-        if (at === undefined) continue;
-        if (!best || at < best.at || (at === best.at && to < best.to)) best = { to, at, voters, ids };
-      }
-      if (!best) break;
-      for (const id of best.ids) settled.add(id);
-      moves.push({ from: state, to: best.to, voters: best.voters });
-      state = best.to;
+  /** The entity a subject is a record of, among those the flow names — or any entity, for a flow over any record. */
+  async function entityOf(dataset: DatasetHandle, definition: FlowDefinition, subject: string) {
+    const candidates = definition.subjects.length ? definition.subjects : entityNames();
+    for (const name of candidates) {
+      const rows = await finder(name, dataset)?.findAll(dataset, { where: { id: subject } });
+      if (rows?.length) return name;
     }
-    return { state, settled, moves };
+    return undefined;
   }
 
-  async function snapshot(dataset: DatasetHandle, store: FlowStore, flow: string): Promise<FlowSnapshot> {
-    const runs: FlowRun[] = [];
-    const proposals: FlowProposal[] = [];
-    for (const run of store.runs.filter((r) => r.flow === flow)) {
-      const derived = await derive(dataset, store, run);
-      runs.push({ id: run.id, subject: run.subject, state: derived.state, startedAt: run.startedAt });
-      for (const p of store.proposals.filter((q) => q.run === run.id)) {
-        proposals.push({
-          id: p.id,
-          run: p.run,
-          from: p.from,
-          to: p.to,
-          proposer: p.proposer,
-          voters: p.votes.map((v) => v.did),
-          ...(p.rationale ? { rationale: p.rationale } : {}),
-          proposedAt: p.proposedAt,
-          settled: derived.settled.has(p.id),
-        });
-      }
+  /** The records meeting one guard for this subject. */
+  async function guardMatches(
+    dataset: DatasetHandle,
+    definition: FlowDefinition,
+    guard: FlowGuard,
+    subject: string,
+  ): Promise<string[]> {
+    const Entity = finder(guard.entity, dataset);
+    if (!Entity) return [];
+    let rows: Row[];
+    if (guard.tie && 'relation' in guard.tie) {
+      // Read as the drill-down it is: the subject's own relation, by name, never by how it is stored.
+      const anchor = await entityOf(dataset, definition, subject);
+      if (!anchor) return [];
+      rows = await Entity.findAll(dataset, { scope: { anchor, via: guard.tie.relation, anchorId: subject } });
+    } else {
+      rows = await Entity.findAll(dataset);
     }
-    return { runs, proposals };
+    const field = guard.tie && 'field' in guard.tie ? guard.tie.field : undefined;
+    return rows
+      .filter((row) => matches(row, guard.where) && (!field || idOf(row[field]) === subject))
+      .map((row) => String(row.id ?? ''))
+      .filter(Boolean);
+  }
+
+  /** Whether every guard on a state holds for this subject, and the records that make them hold. */
+  async function guardsHold(dataset: DatasetHandle, definition: FlowDefinition, guards: FlowGuard[], subject: string) {
+    const evidence: string[] = [];
+    for (const guard of guards) {
+      const ids = await guardMatches(dataset, definition, guard, subject);
+      const min = guard.min ?? 1;
+      if (ids.length < min || (guard.max !== undefined && ids.length > guard.max)) return { ok: false, evidence };
+      evidence.push(...ids);
+    }
+    return { ok: true, evidence };
+  }
+
+  const view = (item: Item): FlowItem => ({
+    subject: item.subject,
+    state: item.state,
+    since: item.since,
+    waiting: [...item.asks.entries()]
+      .sort(([, a], [, b]) => a.askedAt - b.askedAt)
+      .map(([to, ask]) => ({
+        to,
+        voters: ask.voters.map((v) => v.did),
+        askedAt: ask.askedAt,
+        ...(ask.note ? { note: ask.note } : {}),
+      })),
+    stalled: false,
+  });
+
+  /** The subject's item, entering it into the flow first — at `at` when that is one of its states. */
+  function enter(store: FlowStore, definition: FlowDefinition, subject: string, at?: string): Item {
+    const items = itemsOf(store, definition.name);
+    const existing = items.get(subject);
+    if (existing) return existing;
+    const start = at && definition.states.some((s) => s.name === at) ? at : definition.states[0]?.name;
+    if (!start) throw new Error(`flows: flow "${definition.name}" has no states`);
+    const item: Item = { subject, state: start, since: now(), asks: new Map(), history: [] };
+    items.set(subject, item);
+    return item;
   }
 
   return {
+    capabilities: IN_MEMORY_FLOW_CAPABILITIES,
+
     async install(dataset, definition) {
+      const problems = validateFlowDefinition(definition, IN_MEMORY_FLOW_CAPABILITIES);
+      if (problems.length) throw new Error(`flows: ${problems.join(' ')}`);
       const store = storeFor(dataset);
       store.flows.set(definition.name, structuredClone(definition));
       notify(store);
     },
 
-    async start(dataset, flow, subject) {
+    async list(dataset) {
       const store = storeFor(dataset);
-      if (!store.flows.has(flow)) throw new Error(`flows: flow "${flow}" is not installed`);
-      const existing = runFor(
-        store.runs.filter((r) => r.flow === flow).map((r) => ({ ...r, state: '' })),
-        subject,
-      );
-      const stored = existing
-        ? runById(store, existing.id)
-        : (() => {
-            const run = { id: `inmemory://flow-run/${++serial}`, flow, subject, startedAt: now() };
-            store.runs.push(run);
-            return run;
-          })();
-      if (!existing) notify(store);
-      const derived = await derive(dataset, store, stored);
-      return { id: stored.id, subject, state: derived.state, startedAt: stored.startedAt };
+      return [...store.flows.keys()].map((name): FlowSummary => ({
+        name,
+        editable: true,
+        records: store.items.get(name)?.size ?? 0,
+      }));
     },
 
-    async propose(dataset, runId, to, rationale) {
-      const store = storeFor(dataset);
-      const did = me();
-      const run = runById(store, runId);
-      const flow = flowOf(store, run);
-      const before = await derive(dataset, store, run);
-      if (!flow.transitions.some((t) => t.from === before.state && t.to === to)) {
-        throw new Error(`\`${to}\` is not reachable from \`${before.state}\``);
-      }
-      let target = store.proposals.find(
-        (p) => p.run === runId && p.from === before.state && p.to === to && !before.settled.has(p.id),
-      );
-      let opened = false;
-      let voted = false;
-      if (!target) {
-        const at = now();
-        target = {
-          id: `inmemory://flow-proposal/${++serial}`,
-          run: runId,
-          from: before.state,
-          to,
-          proposer: did,
-          votes: [{ did, at }],
-          ...(rationale ? { rationale } : {}),
-          proposedAt: at,
-        };
-        store.proposals.push(target);
-        opened = true;
-        voted = true;
-      } else if (!target.votes.some((v) => v.did === did)) {
-        target.votes.push({ did, at: now() });
-        voted = true;
-      }
-      const after = await derive(dataset, store, run);
-      if (opened || voted) notify(store);
-      const result: FlowProposeResult = {
-        proposal: target.id,
-        opened,
-        voted,
-        moves: after.moves.slice(before.moves.length),
-        state: after.state,
-        stalled: false,
-      };
-      return result;
+    async read(dataset, name) {
+      const flow = storeFor(dataset).flows.get(name);
+      return flow ? structuredClone(flow) : null;
     },
 
-    async withdraw(dataset, proposalId) {
+    async remove(dataset, name) {
       const store = storeFor(dataset);
-      const did = me();
-      const proposal = store.proposals.find((p) => p.id === proposalId);
-      if (!proposal) throw new Error(`flows: no proposal ${proposalId}`);
-      if (proposal.proposer === did) {
-        store.proposals = store.proposals.filter((p) => p !== proposal);
-        notify(store);
-        return proposal.votes.length;
-      }
-      const kept = proposal.votes.filter((v) => v.did !== did);
-      if (kept.length === proposal.votes.length) throw new Error('flows: nothing of yours to withdraw here');
-      const withdrawn = proposal.votes.length - kept.length;
-      proposal.votes = kept;
+      const records = store.items.get(name)?.size ?? 0;
+      if (records) throw new Error(`flows: "${name}" still has ${records} record(s) going through it`);
+      store.flows.delete(name);
+      store.items.delete(name);
       notify(store);
+    },
+
+    async start(dataset, flow, subject, opts) {
+      const store = storeFor(dataset);
+      const before = itemsOf(store, flow).has(subject);
+      const item = enter(store, flowOf(store, flow), subject, opts?.at);
+      if (!before) notify(store);
+      return view(item);
+    },
+
+    async move(dataset, flow, subject, to, opts): Promise<FlowMoveResult> {
+      const store = storeFor(dataset);
+      const did = me();
+      const definition = flowOf(store, flow);
+      const fresh = !itemsOf(store, flow).has(subject);
+      const item = enter(store, definition, subject, opts?.from);
+      if (item.state === to) {
+        if (fresh) notify(store);
+        return { outcome: 'moved', state: to, steps: [] };
+      }
+      if (!allowedMoves(definition, item.state).includes(to)) {
+        if (fresh) notify(store);
+        return { outcome: 'refused', reason: 'not-allowed', state: item.state };
+      }
+      const target = definition.states.find((s) => s.name === to);
+      const guards = await guardsHold(dataset, definition, guardsFor(target), subject);
+      if (!guards.ok) {
+        if (fresh) notify(store);
+        return { outcome: 'refused', reason: 'unmet', state: item.state };
+      }
+
+      let ask = item.asks.get(to);
+      if (!ask) {
+        ask = { voters: [], askedAt: now(), ...(opts?.note ? { note: opts.note } : {}) };
+        item.asks.set(to, ask);
+      }
+      const voted = !ask.voters.some((v) => v.did === did);
+      if (voted) ask.voters.push({ did, at: now() });
+
+      const { count, from } = approvalsFor(target);
+      const counted = await eligible(dataset, from, subject);
+      const agreed = ask.voters.map((v) => v.did).filter((v) => !counted || counted.has(v));
+      if (agreed.length < count) {
+        notify(store);
+        return { outcome: 'waiting', state: item.state, to, voted, voters: ask.voters.map((v) => v.did) };
+      }
+      const step: FlowStep = {
+        from: item.state,
+        to,
+        voters: agreed.slice(0, count),
+        at: ask.askedAt,
+        evidence: guards.evidence,
+        ...(ask.note ? { note: ask.note } : {}),
+      };
+      item.history.push(step);
+      item.state = to;
+      item.asks.clear();
+      notify(store);
+      return { outcome: 'moved', state: to, steps: [step] };
+    },
+
+    async withdraw(dataset, flow, subject) {
+      const store = storeFor(dataset);
+      const did = me();
+      const item = itemsOf(store, flow).get(subject);
+      if (!item) return 0;
+      let withdrawn = 0;
+      for (const [to, ask] of item.asks) {
+        const kept = ask.voters.filter((v) => v.did !== did);
+        withdrawn += ask.voters.length - kept.length;
+        if (kept.length) ask.voters = kept;
+        else item.asks.delete(to);
+      }
+      if (withdrawn) notify(store);
       return withdrawn;
     },
 
@@ -300,8 +324,11 @@ export function createInMemoryFlowPort(selfId: () => string | undefined): FlowPo
       const store = storeFor(dataset);
       let stopped = false;
       const push = () => {
-        void snapshot(dataset, store, flow).then((s) => {
-          if (!stopped) onChange(s);
+        const current: FlowView = { flow, items: [...itemsOf(store, flow).values()].map(view) };
+        // Asynchronously, as a backend that notifies over a socket would: a caller must not depend
+        // on hearing about its own write before the call that made it returns.
+        queueMicrotask(() => {
+          if (!stopped) onChange(current);
         });
       };
       store.listeners.add(push);
@@ -310,6 +337,11 @@ export function createInMemoryFlowPort(selfId: () => string | undefined): FlowPo
         stopped = true;
         store.listeners.delete(push);
       };
+    },
+
+    async history(dataset, flow, subject) {
+      const item = itemsOf(storeFor(dataset), flow).get(subject);
+      return item ? structuredClone(item.history) : [];
     },
   };
 }

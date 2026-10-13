@@ -205,19 +205,34 @@ export type {
   LanguageModelPort,
   LanguageModelStatus,
 } from './languageModel';
-export { openMoves, readProposeResult, runFor } from './flows';
+export {
+  allowedMoves,
+  approvalsFor,
+  asksForMore,
+  guardsFor,
+  isFinalState,
+  itemFor,
+  validateFlowDefinition,
+} from './flows';
 export type {
+  FlowApprovals,
+  FlowCapabilities,
   FlowDefinition,
-  FlowMove,
+  FlowGuard,
+  FlowItem,
+  FlowMoveOptions,
+  FlowMoveResult,
   FlowPort,
-  FlowProposal,
-  FlowProposeResult,
+  FlowRequirement,
+  FlowRequirementKind,
   FlowRole,
-  FlowRun,
-  FlowSnapshot,
   FlowStateDefinition,
+  FlowStep,
+  FlowSummary,
+  FlowTie,
   FlowTransitionDefinition,
-  OpenMove,
+  FlowView,
+  FlowWaitingMove,
 } from './flows';
 export type {
   TranscriptionModelOffer,

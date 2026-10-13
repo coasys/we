@@ -231,8 +231,8 @@ export interface BackendPorts {
    */
   interpretation?: InterpretationPort;
   /**
-   * Group decisions over a record's state. Optional: a backend that cannot derive a state from votes
-   * omits it, and a surface that would have asked for agreement falls back to writing the state.
+   * Rules over a record's state, and moves made under them. Optional: a backend that cannot enforce
+   * rules omits it, and a surface that would have asked for agreement falls back to writing the state.
    */
   flows?: FlowPort;
   /**
