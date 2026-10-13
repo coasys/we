@@ -24,6 +24,7 @@ import {
   type BackendPorts,
   CONTAINMENT_PREDICATE,
   type DatasetHandle,
+  type FlowSnapshot,
   RECORD_TYPE_KEY,
   type RendererDataBindings,
 } from '@we/backend-shared';
@@ -84,6 +85,7 @@ export const CONFORMANCE_CASES = [
   'live.identical-queries-independent',
   'ephemeral.no-echo',
   'references.referrers',
+  'flows.watch-follows-a-move',
 ] as const;
 
 /** Every case a harness can name in `knownGaps` — the per-case ones above and the template queries. */
@@ -633,6 +635,39 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           await eventually(() => expect(names(second.pushes.at(-1))).toEqual(['Seen']), settle);
         },
       );
+    });
+
+    describe('flows', () => {
+      test('flows.watch-follows-a-move', 'reports a move and the proposal that made it', async () => {
+        // The state and what settled are the backend's to derive, and a backend may keep them
+        // somewhere a link query cannot see. A port that still looked for them where they used to
+        // be would compile and pass every other case, while every board showed nothing settling.
+        const flows = subject.ports.flows;
+        if (!flows) return;
+        const task = await model('TaskBlock').create(subject.dataset, { title: 'Ship it' });
+        await flows.install(subject.dataset, {
+          name: 'Conformance',
+          subjects: ['TaskBlock'],
+          states: [{ name: 'todo' }, { name: 'done' }],
+          transitions: [{ from: 'todo', to: 'done' }],
+        });
+        const run = await flows.start(subject.dataset, 'Conformance', task.id);
+        expect(run.state).toBe('todo');
+
+        const snapshots: FlowSnapshot[] = [];
+        const stop = await flows.watch(subject.dataset, 'Conformance', (snapshot) => void snapshots.push(snapshot));
+        try {
+          const result = await flows.propose(subject.dataset, run.id, 'done');
+          expect(result.moves.map((move) => move.to)).toEqual(['done']);
+          await eventually(() => {
+            const last = snapshots.at(-1);
+            expect(last?.runs.find((r) => r.id === run.id)?.state).toBe('done');
+            expect(last?.proposals.find((p) => p.id === result.proposal)?.settled).toBe(true);
+          }, settle);
+        } finally {
+          stop();
+        }
+      });
     });
 
     describe('ephemeral', () => {
