@@ -1,5 +1,5 @@
 /**
- * Reading a collection's children back as a transcript.
+ * Reading a collection's children, and the replies to them, back as a transcript.
  *
  * This is the host's job rather than the module's, and that is a consequence of the module contract
  * rather than a preference: `createEntity` and `linkEntity` are its entire data surface, with no read
@@ -9,7 +9,7 @@
  * turns and the module asks for a collection by id.
  *
  * That split is also the honest one. Only the host knows how a WE collection is laid out; a module
- * that assembled turns itself would be hard-coding `we://children` and the block vocabulary, which
+ * that assembled turns itself would be hard-coding `we://child` and the block vocabulary, which
  * is precisely the backend knowledge modules are kept away from.
  *
  * Every agent transcribes only their own microphone, so a child's author *is* its speaker and no
@@ -44,6 +44,18 @@ export interface GatherTurnsDeps {
 
 /** Entities whose instances can be a turn. Only TextBlock today; a list so a caller can widen it. */
 const DEFAULT_TURN_ENTITIES = ['TextBlock'];
+
+/**
+ * What counts as input: what a person said or wrote, by the `source` WE stamps on every message it
+ * writes — said aloud, typed, or a spoken line somebody corrected.
+ *
+ * Everything else is left out, and that is the point rather than a side effect. A bot writing into a
+ * space does not know the field, so its replies, digests and summaries arrive with none — and bot
+ * output read back in as input loops: a summary that mentions three tasks is extracted into three
+ * more, which paraphrase past exact-match de-duplication. People bring raw material in; a bot that
+ * wants to make a record writes the record.
+ */
+export const INPUT_SOURCES = ['spoken', 'typed', 'corrected'] as const;
 
 /** The shape statics this reads off a model class, narrowed so a caller passes an ORM class as-is. */
 interface ShapeBearing {
@@ -94,8 +106,27 @@ function isoTimestamp(value: unknown): string | null {
   return null;
 }
 
+/** A page's rows and every member of their threads, each once — the replies said under each line. */
+function withThreads(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  const seen = new Set<string>();
+  const out: Record<string, unknown>[] = [];
+  const add = (row: unknown) => {
+    if (!row || typeof row !== 'object') return;
+    const record = row as Record<string, unknown>;
+    const id = typeof record.id === 'string' ? record.id : '';
+    if (id && seen.has(id)) return;
+    if (id) seen.add(id);
+    out.push(record);
+  };
+  for (const row of rows) {
+    add(row);
+    if (Array.isArray(row.thread)) for (const member of row.thread) add(member);
+  }
+  return out;
+}
+
 /**
- * Gather a collection's children as ordered transcript turns.
+ * Gather a collection's children, and the replies in their threads, as ordered transcript turns.
  *
  * Ordered by timestamp here rather than left to the caller, because the order turns are read in is
  * an artefact of storage and the order they were *said* in is the only one an LLM can reason about.
@@ -118,10 +149,19 @@ export async function gatherTranscriptTurns(
     const model = deps.modelFor(entity);
     if (!model) continue;
 
-    const rows = await model.findAll(deps.handle, {
-      parent: { id: collectionId, predicate },
-      ...(options.limit !== undefined ? { limit: options.limit } : {}),
-    });
+    /*
+      Replies come with the lines they answer. A reply is a child of nothing — it is in the `thread`
+      of the line it answers (see `@shared/responses`) — so each line is read with its thread, and
+      the two together are everything said in the conversation. A call held about a line is in its
+      thread too; it carries no text, so the checks below leave it out.
+    */
+    const rows = withThreads(
+      (await model.findAll(deps.handle, {
+        parent: { id: collectionId, predicate },
+        include: { thread: true },
+        ...(options.limit !== undefined ? { limit: options.limit } : {}),
+      })) as Record<string, unknown>[],
+    );
 
     for (const row of rows) {
       const text = typeof row.text === 'string' ? row.text.trim() : '';
@@ -133,7 +173,9 @@ export async function gatherTranscriptTurns(
       // contributes. A consumer that renders these is asserting somebody's words; this is what lets
       // it say which of them were spoken aloud.
       const source = typeof row.source === 'string' ? row.source : '';
-      turns.push({ speaker, text, timestamp, ...(source ? { source } : {}) });
+      // Only what a person said or wrote — see `INPUT_SOURCES`.
+      if (!(INPUT_SOURCES as readonly string[]).includes(source)) continue;
+      turns.push({ speaker, text, timestamp, source });
     }
   }
 

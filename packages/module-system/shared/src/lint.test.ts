@@ -213,3 +213,97 @@ describe('lintModule — one module reaching another', () => {
     expect(lint.problems.some((p) => p.includes('modules.call.callId'))).toBe(true);
   });
 });
+
+/*
+  A part is placed by people who did not write it, so the names it needs from around it have to be
+  said. These are the reads a placement would otherwise discover by watching the part render empty.
+*/
+describe('a part that reads from its parents', () => {
+  const withPart = (part: unknown) =>
+    ({
+      manifest: { id: 'demo', name: 'Demo' },
+      contributes: { parts: { row: part } },
+    }) as unknown as Parameters<typeof lintModule>[0];
+
+  it('is warned about when it does not declare the name', () => {
+    const lint = lintModule(withPart({ type: 'we-text', children: [{ $: 'tile.name' }] }));
+    expect(lint.warnings.some((w) => w.includes('"tile"'))).toBe(true);
+  });
+
+  it('is fine once it declares it', () => {
+    const lint = lintModule(
+      withPart({
+        node: { type: 'we-text', children: [{ $: 'tile.name' }] },
+        inputs: { tile: { description: 'the participant this tile shows' } },
+      }),
+    );
+    expect(lint.warnings).toEqual([]);
+  });
+
+  it('is not warned about for what it binds itself', () => {
+    const lint = lintModule(
+      withPart({
+        type: '$each',
+        props: { items: { $: 'modules.demo.rows' }, as: 'row' },
+        children: [{ type: 'we-text', children: [{ $: 'row.name' }, { $: 'local.open' }] }],
+        $localState: { open: { type: 'boolean', initial: false } },
+      }),
+    );
+    expect(lint.warnings).toEqual([]);
+  });
+
+  it('is warned about for a local nothing inside it declares', () => {
+    const lint = lintModule(withPart({ type: 'we-text', children: [{ $: 'local.selected' }] }));
+    expect(lint.warnings.some((w) => w.includes('local "selected"'))).toBe(true);
+  });
+
+  it('is warned about for an input it declares and never reads', () => {
+    const lint = lintModule(withPart({ node: { type: 'we-text' }, inputs: { tile: { description: 'x' } } }));
+    expect(lint.warnings.some((w) => w.includes('never reads'))).toBe(true);
+  });
+});
+
+describe('a panel or part that pastes in a part instead of placing it', () => {
+  const meter = { type: 'we-progress-bar' };
+  const feed = { type: 'Column', children: [meter] };
+
+  it('is warned about in a panel, with the placement to write instead', () => {
+    const lint = lintModule(
+      mod({
+        contributes: {
+          parts: { meter: { node: meter, label: 'Meter' } },
+          panels: [{ name: 'main', title: 'Main', node: { type: 'Column', children: [meter] } }],
+        },
+      }),
+    );
+    expect(lint.warnings).toHaveLength(1);
+    expect(lint.warnings[0]).toContain('panel "main" pastes in the node part "meter" publishes');
+    expect(lint.warnings[0]).toContain("id: 'demo.meter'");
+  });
+
+  it('is warned about in a part, which opening would copy', () => {
+    const lint = lintModule(mod({ contributes: { parts: { meter, feed } } }));
+    expect(lint.warnings).toEqual([expect.stringContaining('part "feed" pastes in the node part "meter" publishes')]);
+  });
+
+  it('is fine placed, and a lookalike that is not the part is not the part', () => {
+    const lint = lintModule(
+      mod({
+        contributes: {
+          parts: { meter },
+          panels: [
+            {
+              name: 'main',
+              title: 'Main',
+              node: {
+                type: 'Column',
+                children: [{ type: '$part', props: { id: 'demo.meter' } }, { type: 'we-progress-bar' }],
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(lint.warnings).toEqual([]);
+  });
+});

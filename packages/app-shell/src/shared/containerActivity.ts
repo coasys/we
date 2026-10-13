@@ -14,12 +14,20 @@ import type { TypedEntityQuery } from '@we/backend-shared';
 import type { CollectionBlock } from '@we/entities';
 
 /**
- * The one read. `$latestChild` is what the unread comparison looks at. Typed against the record, so a
- * field named here that the entity does not declare is a compile error rather than an empty column.
+ * The one read. Typed against the record, so a field named here that the entity does not declare is
+ * a compile error rather than an empty column.
+ *
+ * Two things say a container has something new in it. `$latestChild` is the newest thing said in it
+ * at the top level. `$latestReply` is the newest response under a node — a comment on a post — which
+ * is a child of nothing: where it was said is derived, from the container its subject is part of. So
+ * each row also carries `partOf`, and a reply is credited to its subject's container.
  */
 export const CONTAINER_ACTIVITY_QUERY: TypedEntityQuery<CollectionBlock> = {
-  properties: ['author', 'createdAt', 'mentions'],
-  include: { $latestChild: { from: 'children', order: { createdAt: 'DESC' }, limit: 1 } },
+  properties: ['author', 'createdAt', 'mentions', 'partOf'],
+  include: {
+    $latestChild: { from: 'children', order: { createdAt: 'DESC' }, limit: 1 },
+    $latestReply: { from: 'thread', order: { createdAt: 'DESC' }, limit: 1 },
+  },
 };
 
 export interface ContainerActivity {
@@ -27,11 +35,25 @@ export interface ContainerActivity {
   author?: string;
   createdAt?: unknown;
   mentions?: unknown;
+  partOf?: unknown;
   $latestChild?: unknown;
+  $latestReply?: unknown;
 }
 
+const idOf = (value: unknown): string => {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return idOf(value[0]);
+  return (value as { id?: string } | undefined)?.id ?? '';
+};
+
+const createdAtOf = (value: unknown): string => {
+  const at = (value as { createdAt?: unknown } | undefined)?.createdAt;
+  return typeof at === 'string' ? at : '';
+};
+
 /**
- * Containers holding something newer than this agent's marker for them.
+ * Containers holding something newer than this agent's marker for them — said in them directly, or
+ * in reply to something that is.
  *
  * A container with *no* marker counts as unread — it has never been opened, so everything in it is
  * new. That case has to be written down rather than falling out of the comparison, because `>`
@@ -43,12 +65,21 @@ export function unreadContainerIds(
   markers: readonly { nodeId: string; lastReadAt: string }[],
 ): string[] {
   const lastReadOf = new Map(markers.map((m) => [m.nodeId, m.lastReadAt]));
+  // The newest reply under anything in each container, credited to that container.
+  const replyIn = new Map<string, string>();
+  for (const node of containers) {
+    const at = createdAtOf(node.$latestReply);
+    const home = idOf(node.partOf);
+    if (at && home && at > (replyIn.get(home) ?? '')) replyIn.set(home, at);
+  }
   return containers
     .filter((container) => {
-      const latest = container.$latestChild as { createdAt?: string } | undefined;
-      if (!latest?.createdAt) return false;
+      const child = createdAtOf(container.$latestChild);
+      const reply = replyIn.get(container.id) ?? '';
+      const latest = child > reply ? child : reply;
+      if (!latest) return false;
       const marker = lastReadOf.get(container.id);
-      return marker === undefined || latest.createdAt > marker;
+      return marker === undefined || latest > marker;
     })
     .map((container) => container.id);
 }

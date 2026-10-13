@@ -150,9 +150,11 @@ Per-system docs live with the code: every `packages/<system>/` directory has a R
 - [VISION.md](./VISION.md) — why WE exists, and who contributes what
 - [docs/architecture/](./docs/architecture/) — how it's designed and why
 
-Documents under `docs/internal/` are working notes for maintainers. Each plan carries a **Status**
-line saying whether it is shipped, in progress, aspirational or superseded — check it before treating
-a plan as a description of the code. Anything under `internal/old/` has been superseded.
+- [docs/architecture/decisions/](./docs/architecture/decisions/README.md) — the choices every later
+  change has to respect, and what each one rejected
+
+Working notes — plans, research, drafts of PR descriptions — are kept outside the repo. Never commit
+one; see [docs/contributing/pull-requests.md](./docs/contributing/pull-requests.md#drafts).
 
 ---
 

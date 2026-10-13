@@ -84,10 +84,9 @@ export const role = {
    * had to invert and so needed a `DARK_SURFACES` pin to say so. That pin never fired: the pins are
    * applied by `surfacesForPolarity`, which runs when a theme *changes* polarity in the editor, and
    * a built-in dark preset ships its own parameters and never goes through it. So every dark theme
-   * fell through to the parametric default and drew the chrome *lighter* than the content — the
-   * exact disagreement between the two mechanisms that
-   * `docs/internal/plans/prs/SURFACE_STACK_DERIVATION.md` is about. Stated as one direction, there
-   * is nothing left to disagree with.
+   * fell through to the parametric default and drew the chrome *lighter* than the content: two
+   * mechanisms describing the surface stack, and disagreeing. Stated as one direction, there is
+   * nothing left to disagree with.
    *
    * ## The anchor, and the offset that is not here
    *

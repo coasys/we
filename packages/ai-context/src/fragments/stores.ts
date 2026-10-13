@@ -373,21 +373,23 @@ export const storeEntries: StoreEntry[] = [
       },
       taskStates: {
         type: 'array',
-        properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'defined', 'approvals', 'approverKind'],
+        properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'approvals', 'approverKind'],
       },
       offeredTaskStates: {
         type: 'array',
-        properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'defined', 'approvals', 'approverKind'],
+        properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'approvals', 'approverKind'],
       },
       taskStatesLoaded: { type: 'boolean' },
+      root: { type: 'string' },
+      roles: { type: 'object' },
       taskFlowEnabled: { type: 'boolean' },
       involvementTypes: {
         type: 'array',
-        properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired', 'defined'],
+        properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired'],
       },
       offeredInvolvementTypes: {
         type: 'array',
-        properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired', 'defined'],
+        properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired'],
       },
       involvementTypesLoaded: { type: 'boolean' },
       unreadNodeIds: { type: 'array' },
@@ -1035,7 +1037,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setDefaultTemplate:
           "(templateId: string): sets the agent's preferred default template (persists to AgentSettings.defaultTemplateId)",
         saveTemplateAs:
-          "(schema: TemplateSchema, destination?: 'root' | 'space'): saves a schema as a new template in your library or in the current space. Resolves true on success. The editor's fork path; prefer editorStore.startFork from chrome",
+          "(schema: TemplateSchema, destination?: 'root' | 'space', options?: { activate?: boolean; rename?: boolean }): saves a schema as a new template in your library or in the current space, and makes it the template on screen unless activate is false. A copy saved beside the built-in it came from is named (yours) unless rename is false. Resolves true on success. The editor's fork path; prefer editorStore.startFork from chrome",
         publishToSpace:
           '(perspectiveUuid: string, spaceName: string): copies the current template into that space, so its members get it. Resolves true on success',
         deleteMarketplaceTemplate:
@@ -1071,9 +1073,12 @@ export function generateStoresText(entries: StoreEntry[]): string {
         unreadNodeIds:
           "string[] — ids of the containers in this space holding something newer than this agent's marker for them, or never read. What an unread dot reads: { $: 'channel.id in spaceStore.unreadNodeIds' }. Ids rather than counts, since a count needs every child's timestamp",
         myMentions:
-          '{ id, author, createdAt }[] — nodes in this space that mention this agent, newest first. createdAt is the backend’s comparable timestamp. Filtered client-side, so right for a space and wrong for an inbox across many',
+          '{ id, author, createdAt }[] — messages in this space that mention this agent — posts and transcript or Feed lines alike — newest first, the fifty most recent. createdAt is the backend’s comparable timestamp. Asked from the agent’s end through the backend’s references, one lookup per space',
+        root: "string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one",
+        roles:
+          "Record<name, id> — the records this space names by role, e.g. spaceStore.roles.canvas is the space's canvas. Written by the space's starter at creation. A role can be absent — a space can switch template and a template must never assume what another set up — so guard every read",
         autoInterpret:
-          'boolean — whether this space has calls interpreted (extracted into records) as they happen. A community decision, off by default. Readable by every member; writing it is space-settings',
+          'boolean — whether a NEW collection here (a call, a channel) starts out extracted into records as it grows. A community default, copied onto each collection when it is made — a conversation already under way keeps its own answer, read with autoExtractFor. Readable by every member; writing it is space-settings',
         spaceModuleSettings:
           "SettingRow[] — what each capability that declares settings is set to FOR THIS COMMUNITY, as rows a screen renders directly: { group, groupLabel, key, label, description, type, options, value, source, set, locked, lockedBy }. `value` is already resolved across every level that had an opinion; `source` names the level that decided it ('default' when nobody did); `set` says whether THIS level holds an opinion, so a reset has something to undo; `locked` says a level that BINDS this one has forced it and the control must be disabled rather than springing back — a member's private refusal does not bind the community, so it never locks this list. Built from what modules declare, so a module that adds a setting gets a control with nothing to register",
         myModuleSettings:
@@ -1081,7 +1086,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         agentModuleSettings:
           'SettingRow[] — the same rows, for what THIS AGENT has decided everywhere. Private. Render it in global settings, where the question is what you want in every space',
         extractionTargets:
-          "string[] — the models a call in this space starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a call begins with, and the call's own participants add or remove from there (modules.transcribe.extractionTargets). Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings",
+          'string[] — the models a NEW collection here starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a new conversation begins with, and each collection then holds its own list, which its participants change (modules.transcribe.extractionFor[id].targets). A default, copied when a collection is made. Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings',
         personalSpaces: 'array of Space objects (local/personal spaces; all Space fields)',
         sharedSpaces: 'array of Space objects (shared/neighbourhood spaces; all Space fields)',
         spacePath:
@@ -1114,17 +1119,17 @@ export function generateStoresText(entries: StoreEntry[]): string {
         installedModules:
           'string[] — ids of the feature modules THIS AGENT wants available anywhere. Personal, held in the root dataset; unset means "not decided" and falls back to every registered module',
         taskStates:
-          '{ id, name, slug, semantic, color, retired, defined, approvals, approverKind }[] — the states this community\u2019s work moves through, its own if it has defined any and otherwise the defaults ("unset" means not decided, never none). Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community\u2019s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `defined` is false for a default the space has never written down — a virtual state, which becomes a record the first time somebody reorders it, withdraws it, or names a state with its slug. `approvals` is how many distinct people must agree before a task enters the state (1 is a plain drop) and `approverKind` the involvement kind whose holders\u2019 agreement counts (empty: anybody\u2019s) — see taskFlowEnabled',
+          '{ id, name, slug, semantic, color, retired, approvals, approverKind }[] — the states this community\u2019s work moves through: its TaskState records, which a new space\u2019s starter writes. A space with none has none. Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community\u2019s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `approvals` is how many distinct people must agree before a task enters the state (1 is a plain drop) and `approverKind` the involvement kind whose holders\u2019 agreement counts (empty: anybody\u2019s) — see taskFlowEnabled',
         offeredTaskStates:
-          '{ id, name, slug, semantic, color, retired, defined, approvals, approverKind }[] — the same list without the withdrawn ones. What a state picker or a new board column should offer',
+          '{ id, name, slug, semantic, color, retired, approvals, approverKind }[] — the same list without the withdrawn ones. What a state picker or a new board column should offer',
         taskStatesLoaded:
           'boolean — the space has been asked for its states. An empty list is otherwise indistinguishable from "not fetched yet"; gate an empty state on it',
         taskFlowEnabled:
           'boolean — this space\u2019s task states ask for agreement: some state needs more than one approval, or names whose approval counts. Where true, a card dragged into such a state waits instead of moving, and arrangedBoard(…).flow[card.id] describes what it is waiting on. Gate an explanation of the waiting on it; the board needs nothing else',
         involvementTypes:
-          '{ id, name, slug, semantic, reflexive, appliesTo, icon, color, retired, defined }[] — the kinds of part a person can have in a record: "Assigned" and "Reviewing" on a task, "Going", "Maybe" and "Not going" on an event, plus whatever this community has named. Its own if it has named any, otherwise those defaults. `slug` is what Involvement.kind holds. `semantic` is the closed meaning underneath the name — responsible, reviewing, committed, interested, declined — so a board still finds the assignee after "Assigned" is renamed. `reflexive` kinds are an agent\u2019s own answer, which nobody else may give, and an agent holds one per record. `appliesTo` is the entity names the kind is offered on, empty for all — filter with `\'TaskBlock\' in kind.appliesTo || !count(kind.appliesTo)`. Includes withdrawn kinds; offer offeredInvolvementTypes. Read who holds them through the `involvement` host function',
+          '{ id, name, slug, semantic, reflexive, appliesTo, icon, color, retired }[] — the kinds of part a person can have in a record: "Assigned" and "Reviewing" on a task, "Going", "Maybe" and "Not going" on an event, plus whatever this community has named: its InvolvementType records, which a new space\u2019s starter writes. `slug` is what Involvement.kind holds. `semantic` is the closed meaning underneath the name — responsible, reviewing, committed, interested, declined — so a board still finds the assignee after "Assigned" is renamed. `reflexive` kinds are an agent\u2019s own answer, which nobody else may give, and an agent holds one per record. `appliesTo` is the entity names the kind is offered on, empty for all — filter with `\'TaskBlock\' in kind.appliesTo || !count(kind.appliesTo)`. Includes withdrawn kinds; offer offeredInvolvementTypes. Read who holds them through the `involvement` host function',
         offeredInvolvementTypes:
-          '{ id, name, slug, semantic, reflexive, appliesTo, icon, color, retired, defined }[] — the same list without the withdrawn ones. What an assign menu or an RSVP control should offer',
+          '{ id, name, slug, semantic, reflexive, appliesTo, icon, color, retired }[] — the same list without the withdrawn ones. What an assign menu or an RSVP control should offer',
         involvementTypesLoaded: 'boolean — the space has been asked for its kinds of involvement',
         templateOverrideOptions:
           '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
@@ -1158,13 +1163,15 @@ export function generateStoresText(entries: StoreEntry[]): string {
         markRead:
           '(nodeId: string, spaceUuid?): marks a node read as of now, so it leaves unreadNodeIds. Silent on failure — a lost marker is a stale dot, not an error',
         setAutoInterpret:
-          '(enabled: boolean, spaceUuid?): turns automatic call interpretation on or off for a space. Omit spaceUuid for the space on screen',
+          '(enabled: boolean, spaceUuid?): sets whether a NEW collection in a space starts out extracted as it grows. A default: conversations already under way keep their own answer. Omit spaceUuid for the space on screen',
         setThreadMode:
           "(mode: 'fractal' | 'flat', spaceUuid?): sets how deep conversations go here — whether a reply may itself be replied to. A decision about what may be ADDED, never about what is stored: replies are a tree either way, so switching to flat leaves existing threads drawn as they are and switching back restores the button that grows them. Read it back as spaceStore.currentSpace.threadMode; anything but 'flat' means fractal, so a space that predates the setting reads as fractal. Omit spaceUuid for the space on screen",
-        autoInterpretForCall:
-          "(collectionId): whether ONE CALL is extracted as it happens — its participants' answer if they gave one, else the space's. A function rather than a value because the answer is per call, like canAdministerSpace",
-        setAutoInterpretForCall:
-          "(collectionId, on) => turns automatic extraction on or off for ONE CALL, for everyone in it. A participant's decision, unlike setAutoInterpret, which administers the space — and it leaves the space's default alone. Does not stop a pass already running: those tokens are spent",
+        autoExtractFor:
+          "(collectionId): whether ONE COLLECTION — a call, a channel, the space collection (spaceStore.root) — is extracted as it grows: its own answer, copied from the space's default when it was made. A function rather than a value because the answer is per collection, like canAdministerSpace. False until the collection has been read",
+        setAutoExtractFor:
+          "(collectionId, on): turns automatic extraction on or off for ONE COLLECTION, for everyone in it. A call's participants decide for their call; the space collection is the community's, so only somebody who administers the space can change it — check canSetExtractionFor first. Leaves the space's default alone. Does not stop a pass already running: those tokens are spent",
+        canSetExtractionFor:
+          '(collectionId): whether this agent may change what one collection extracts — anyone for a call or channel, only an administrator for the space collection. Gate the switch on it rather than letting the store refuse the press',
         setSpaceModuleSetting:
           "(group: string, key: string, value?, spaceUuid?): sets one of a capability's settings for everyone in a space — `group` is the module id and `key` the setting's key, both off the row. **Omit `value` to clear it**, which returns the level to having no opinion: a stored value that happens to equal the default goes on overruling everything less specific while its control reads as untouched. Omit spaceUuid for the space on screen",
         setMyModuleSetting:
@@ -1172,7 +1179,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setAgentModuleSetting:
           '(group: string, key: string, value?): the same, for this agent in every space. Private, and global, so there is no space to name. Omitting `value` clears it',
         setExtractionTarget:
-          "(entity: string, on: boolean, spaceUuid?): adds or removes one model from what this space's calls start out extracting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. The community's decision; a call's participants override it per call",
+          '(entity: string, on: boolean, spaceUuid?): adds or removes one model from what a NEW collection here starts out extracting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. A default: each collection holds its own list afterwards',
         setViewEnabled:
           '(viewId: string, enabled: boolean, spaceUuid?): adds or removes a section from a space. The community’s decision — every member sees it. Omit spaceUuid for the space on screen',
         reorderViews:
@@ -1221,11 +1228,11 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setSignalTypeRetired:
           '(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given and re-creating one with the same slug does not restore them. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves',
         createTaskState:
-          '(config: { name, semantic?, color?, icon? }): names a state this community\u2019s work moves through — "Blocked", "In review". The counterpart to createSignalType one concept along. The defaults stay virtual beside it; a name whose slug matches a default adopts that default rather than sitting beside it. The space\u2019s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards',
+          '(config: { name, semantic?, color?, icon? }): names a state this community\u2019s work moves through — "Blocked", "In review". The counterpart to createSignalType one concept along. A slug the space already has is refused. The space\u2019s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards',
         updateTaskState:
-          '(slug: string, updates: { name?, icon?, color?, semantic?, approvals?, approverKind? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made: the three defaults ship without one. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. `approvals` (a whole number, 1–20) and `approverKind` (an involvement kind\u2019s slug, or empty) set what agreement the state asks for — the first state that asks for any turns the space\u2019s states into a flow, see taskFlowEnabled. By slug, so editing a default adopts it',
+          '(slug: string, updates: { name?, icon?, color?, semantic?, approvals?, approverKind? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. `approvals` (a whole number, 1–20) and `approverKind` (an involvement kind\u2019s slug, or empty) set what agreement the state asks for — the first state that asks for any turns the space\u2019s states into a flow, see taskFlowEnabled. By slug, which is what a task and a screen both hold',
         setTaskStateRetired:
-          '(slug: string, retired: boolean): withdraws a state from use, or brings it back. Never touches the work sitting in it — a task names its state by slug, so deleting the state would leave the work holding a word nothing defines. The same decision setSignalTypeRetired makes. By slug, so a default can be withdrawn: doing so writes its record, which is the moment a default becomes the community\u2019s own',
+          '(slug: string, retired: boolean): withdraws a state from use, or brings it back. Never touches the work sitting in it — a task names its state by slug, so deleting the state would leave the work holding a word nothing defines. The same decision setSignalTypeRetired makes. By slug, which is what a task and a screen both hold',
         approveTaskMove:
           '(taskId: string): agrees with the move a task is waiting on — the same as dragging the card there yourself, so it counts toward the state\u2019s approvals when the agent is one whose approval counts. Offer it where arrangedBoard(…).flow[card.id].canApprove',
         withdrawTaskMove:
@@ -1235,13 +1242,13 @@ export function generateStoresText(entries: StoreEntry[]): string {
         respondTo:
           '(nodeId: string, kind: string): gives this agent\u2019s own answer to a record — "going", "maybe", "not-going" — replacing any other answer it held there, in one transaction. Pass an empty kind to withdraw the answer. Refuses a kind that is not reflexive. Shown on the click, before the write lands',
         createInvolvementType:
-          '(config: { name, semantic?, reflexive?, appliesTo?, icon?, color? }): names a kind of part a person can have — "Shepherd", "Second pair of eyes". `appliesTo` is entity names joined with commas. `reflexive` is fixed once made. A name whose slug matches a default adopts it',
+          '(config: { name, semantic?, reflexive?, appliesTo?, icon?, color? }): names a kind of part a person can have — "Shepherd", "Second pair of eyes". `appliesTo` is entity names joined with commas. `reflexive` is fixed once made. A slug the space already has is refused',
         updateInvolvementType:
-          '(slug: string, updates: { name?, icon?, color?, semantic?, appliesTo? }): changes a kind the community already has. The slug and `reflexive` are absent — every involvement stores the one, and changing the other would rewrite who said what. An empty string clears a field. By slug, so editing a default adopts it',
+          '(slug: string, updates: { name?, icon?, color?, semantic?, appliesTo? }): changes a kind the community already has. The slug and `reflexive` are absent — every involvement stores the one, and changing the other would rewrite who said what. An empty string clears a field',
         setInvolvementTypeRetired:
           '(slug: string, retired: boolean): withdraws a kind from use, or brings it back, without touching anybody who holds it',
         reorderTaskStates:
-          '(orderedSlugs: string[]): sets the order this community reads its states in — which is the order of a board\u2019s columns. An ordered relation rather than a number on each state, so two people reordering at once converge instead of one write discarding the other. A state the order does not mention still appears, after the ones it does. Slugs, because a default has no id until it is placed in an order, which adopts it. Key the rows by slug and pair with we-sortable\u2019s onReorder, passing { $: "arg.detail" }',
+          '(orderedSlugs: string[]): sets the order this community reads its states in — which is the order of a board\u2019s columns. An ordered relation rather than a number on each state, so two people reordering at once converge instead of one write discarding the other. A state the order does not mention still appears, after the ones it does. Slugs, which is what a screen holds. Key the rows by slug and pair with we-sortable\u2019s onReorder, passing { $: "arg.detail" }',
         unreadNodeIds:
           'string[] — ids of containers in this space holding something newer than your read marker. The read side of `ReadMarker`: use it for unread dots with `{ "$": "channel.id in spaceStore.unreadNodeIds" }` rather than recomputing a `$latestChild` projection and a comparison per row',
         myMentions:
@@ -1403,7 +1410,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         aiAvailable: 'boolean — AI model generation is available (the agent has a Claude API key configured)',
         generating: 'boolean — an AI generation is in flight',
         extractionCandidates:
-          "string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a call actually looks for is two layers down (spaceStore.extractionTargets, then the call's own participants). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off",
+          "string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a collection actually looks for is two layers down (spaceStore.extractionTargets, the default a new collection copies, then the collection's own list). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off",
         extractionNeedsIdentity:
           'boolean — the open draft would be extracted into and has no field to recognise what it already wrote, so every pass duplicates everything. A warning to put beside the switch, not a refusal: the wizard saves either way',
         hintEditorDirty:

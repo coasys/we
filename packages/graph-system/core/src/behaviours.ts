@@ -37,6 +37,13 @@ export function panZoomBehaviour(rawOptions?: Record<string, unknown>): Behaviou
     id: 'pan-zoom',
     description: 'Drag the background to pan, wheel to zoom about the pointer.',
     onPointerDown(input, ctx) {
+      /*
+        Not on the secondary button. A right-press opens the context menu — the browser's, or the
+        devtools' "Inspect" — and the menu takes the release, so a pan started here never heard it end
+        and the canvas followed the pointer when it came back. The primary button pans, and so does
+        the middle one, which is what a middle-drag means on most canvases.
+      */
+      if (input.buttons & 2) return;
       if (ctx.hitTest(ctx.toWorld(input.at)).length) return;
       panning = true;
       last = input.at;
@@ -44,6 +51,12 @@ export function panZoomBehaviour(rawOptions?: Record<string, unknown>): Behaviou
     },
     onPointerMove(input, ctx) {
       if (!panning) return;
+      // The guard every drag carries: no button held means no gesture, whatever this one thinks — a
+      // release that went to a menu, another window or the devtools ends the pan here instead.
+      if (input.buttons === 0) {
+        panning = false;
+        return;
+      }
       ctx.pan(input.at.x - last.x, input.at.y - last.y);
       last = input.at;
       return true;
@@ -568,7 +581,7 @@ export interface ArrangeNodesOptions {
    * Fields of a connection that keep a card in its tree. A drag into the unconnected zone is refused for a card
    * whose connection to its parent holds a value in any of them — and shown refused, rather than shown
    * happening and then turned down. Which connections are worth keeping is the host's to say: WE passes
-   * `['commentsCount', 'signalsCount']`, because it will not delete a connection people have discussed.
+   * `['responsesCount', 'signalsCount']`, because it will not delete a connection people have discussed.
    */
   keep?: string[];
   /** What the preview says when it refuses for that reason. */

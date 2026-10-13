@@ -138,7 +138,7 @@ reactive primitives, but a store factory is arbitrary code with the host's ports
 model covers what a schema may *name*, not what code may *do*.
 
 Three of nineteen surfaces (templates, themes, views) have an out-of-repo path. Do not describe the
-marketplace as though it covers the rest. \`docs/internal/plans/module-marketplace.md\` places every
+marketplace as though it covers the rest. \`docs/architecture/module-marketplace.md\` places every
 surface on a **distribution ladder** — pure data, declared data + fragments, sandboxed embed,
 host-provided capability kernels, code — and says which rung each can reach. Nothing \`import()\`s a
 bundle from an expression, at any rung; a contribution that needs code merges here.

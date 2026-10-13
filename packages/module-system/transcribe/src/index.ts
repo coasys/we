@@ -27,8 +27,8 @@
  * ## Where the transcript goes
  *
  * Into a `CollectionBlock` with `kind: 'call'` — one per call, holding the utterances as children and
- * the roster as `participants`, and attached to whatever node the call was anchored to via
- * `WeNode.calls`. Blocks used to be written loose into the space with `tag: 'transcript'`, which
+ * the roster as `participants`, and a response to whatever node the call was about
+ * (`WeNode.responses`). Blocks used to be written loose into the space with `tag: 'transcript'`, which
  * collided with the Lexical tag field and left transcripts showing up in the Cards route's Text list
  * next to authored prose.
  *
@@ -68,6 +68,7 @@
 import { defineModule, type ModuleHost, type ModuleStoreDeps } from '@we/module-shared';
 
 import { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
+import { feedPanel } from './Feed.schema';
 import {
   captureMeter,
   captureStatus,
@@ -82,10 +83,13 @@ import {
   transcriptLines,
 } from './Panel.schema';
 import { createTranscribeStore, TRANSCRIBE_ACTIVITY } from './store';
+import { threadLinesFunction } from './thread';
 import { tiedDecisionModals } from './TiedDecision.schema';
 
 export { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
 export { extractionActivity } from './ExtractionStatus.schema';
+export { type FeedFind, readFeedWindow } from './feed';
+export { lineComposer } from './lineComposer';
 export {
   captureMeter,
   captureStatus,
@@ -184,17 +188,46 @@ export const transcribeModule = defineModule({
         here would match nothing and a `subject` would silently do nothing, which is the failure mode
         this map exists to avoid.
       */
-      transcriptFeed: { node: transcriptFeed, subject: SUBJECT_EXPR },
-      transcriptLines: { node: transcriptLines, subject: 'modules.transcribe.collectionId' },
-      // Bare nodes rather than `{ node }`: the wrapper exists to name a subject, and these have none.
-      // The composer writes into the live call by construction — it is about this agent typing now,
-      // not about whichever call is being read — so there is no subject to point elsewhere.
-      transcriptComposer,
-      captureMeter,
-      captureStatus,
-      coverage,
-      extractionTargets,
-      pendingUtterance,
+      transcriptFeed: {
+        node: transcriptFeed,
+        subject: SUBJECT_EXPR,
+        label: 'Transcript',
+        description: 'Everything said in a call, scrolling as it is said.',
+      },
+      transcriptLines: {
+        node: transcriptLines,
+        subject: 'modules.transcribe.collectionId',
+        label: 'Transcript lines',
+        description: 'The lines of a transcript alone, without the controls around them.',
+      },
+      // No subject: the composer writes into the live call by construction — it is about this agent
+      // typing now, not about whichever call is being read — so there is nothing to point elsewhere.
+      transcriptComposer: {
+        node: transcriptComposer,
+        label: 'Write into the transcript',
+        description: 'A box for typing a line into the call’s transcript.',
+      },
+      captureMeter: { node: captureMeter, label: 'Microphone level', description: 'How loud your microphone is.' },
+      captureStatus: {
+        node: captureStatus,
+        label: 'Recording status',
+        description: 'Whether your microphone is being transcribed, and why not.',
+      },
+      coverage: {
+        node: coverage,
+        label: 'Who is recorded',
+        description: 'Who in the call is being transcribed and who is not.',
+      },
+      extractionTargets: {
+        node: extractionTargets,
+        label: 'What to extract',
+        description: 'Which kinds of thing a call is turned into.',
+      },
+      pendingUtterance: {
+        node: pendingUtterance,
+        label: 'Being heard',
+        description: 'What has been said and is not in the transcript yet.',
+      },
     },
 
     slots: [
@@ -300,7 +333,26 @@ export const transcribeModule = defineModule({
         close: 'closeExtractionPanel',
         order: 91,
       },
+      /*
+        Everything said in the space, in one stream — every call, what was typed outside calls, bot
+        replies — with what was found in it. Its own panel because it is about the space rather than
+        one conversation: no record button, no extraction controls. See `Feed.schema.ts`.
+      */
+      {
+        name: 'feed',
+        title: 'Feed',
+        icon: 'chats-circle',
+        node: feedPanel,
+        bid: { edge: 'right', size: 'md' },
+        open: 'feedOpen',
+        show: 'openFeed',
+        close: 'closeFeed',
+        order: 92,
+      },
     ],
+
+    // Lines with their replies flattened in, for any template drawing a conversation — see `thread.ts`.
+    functions: [threadLinesFunction],
 
     /**
      * What a space, and an agent, may decide about recording.
@@ -327,6 +379,23 @@ export const transcribeModule = defineModule({
         default: true,
         levels: ['deployment', 'agent', 'space', 'agent-in-space'],
         resolution: 'restrict',
+      },
+      /*
+        Which way round this reader draws the transcript and the feed. Theirs alone, everywhere: how a
+        list reads is a reading preference, and one member's choice must not turn a room's chat
+        upside down for everybody else.
+      */
+      {
+        key: 'timelineOrder',
+        label: 'Newest messages',
+        description: 'Where the newest line of a transcript or the feed is drawn.',
+        type: 'enum',
+        options: [
+          { label: 'At the bottom', value: 'newestBottom' },
+          { label: 'At the top', value: 'newestTop' },
+        ],
+        default: 'newestBottom',
+        levels: ['agent'],
       },
     ],
 

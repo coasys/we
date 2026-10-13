@@ -32,7 +32,7 @@ const SRC = import.meta.dirname;
  * unnoticed a second time. Prose about operators will always contain operators.
  *
  * Line comments are stripped only when they begin a line or follow a space, so the `//` in
- * `we://children` survives.
+ * `we://child` survives.
  */
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1');

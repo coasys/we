@@ -11,7 +11,7 @@
  * and compared at registration), a set of {@link ModuleContributions} (what it puts in front of a
  * person — data the host fans out to its registries), and an optional `createStore` (the one piece
  * that is code). They have different lifetimes, different readers and different trust levels, and the
- * distribution ladder in `docs/internal/plans/module-marketplace.md` already draws exactly this line:
+ * distribution ladder in `docs/architecture/module-marketplace.md` already draws exactly this line:
  * the first two are data, the third is code. The contract used to hold all three in one flat
  * interface grown a field per bug, and the shape here is what that interface was trying to be.
  *
@@ -263,6 +263,26 @@ export interface ModulePart {
   node: SchemaNode;
   /** The expression this part is about, e.g. `modules.transcribe.collectionId`. */
   subject?: string;
+  /** What the part is called where somebody picks one — the editor's parts palette. Its name otherwise. */
+  label?: string;
+  /** One sentence on what it shows or does, for the same place. */
+  description?: string;
+  /**
+   * Names the part reads that something around it must bind — the row a tile is drawn for, the block
+   * a card shows. Keyed by the name the part's own expressions use.
+   *
+   * A part may lean on its parents; what it may not do is lean on them silently. Declared, the editor
+   * can say what a placement still has to provide and a placement can bind one (`$part`'s `inputs`
+   * prop); undeclared, the part renders empty anywhere but its home and nothing says why. `lintModule`
+   * warns about a name a part reads that it neither binds nor declares.
+   */
+  inputs?: Record<string, PartInput>;
+}
+
+/** One name a part needs from where it is placed. */
+export interface PartInput {
+  /** What it is, in the words a person placing the part reads: "the participant this tile shows". */
+  description: string;
 }
 
 /**
@@ -523,6 +543,14 @@ export interface DatasetTarget {
 export interface CreateEntityOptions extends DatasetTarget {
   /** The record to link this one under, by id and predicate. Creating it parented leaves no window where a crash orphans it. */
   parent?: { id: string; predicate: string };
+  /**
+   * File the record at the space's top level — inside its space collection, where everything
+   * top-level in a space lives. For a record that belongs to the space rather than to anything in
+   * it: a call nobody started from a record, say. Ignored when `parent` is given, and where the
+   * dataset has no space collection the record is simply made unparented, as it was before spaces
+   * had one.
+   */
+  topLevel?: boolean;
 }
 
 /** The slice of the host's identity directory a module may read. */

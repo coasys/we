@@ -29,6 +29,21 @@ describe('unread containers', () => {
     );
     expect(unreadContainerIds(rows, later)).toEqual([]);
   });
+
+  it('counts a reply to something in a container as new in that container', () => {
+    // A comment is a child of nothing: it is in its post's thread, and the post is in the channel.
+    const channel = [
+      { id: 'channel', $latestChild: { createdAt: '2026-09-01T00:00:00Z' } },
+      { id: 'post', partOf: 'channel', $latestReply: { createdAt: '2026-09-03T00:00:00Z' } },
+    ];
+    const read = [
+      { nodeId: 'channel', lastReadAt: '2026-09-02T00:00:00Z' },
+      { nodeId: 'post', lastReadAt: '2026-09-04T00:00:00Z' },
+    ];
+    expect(unreadContainerIds(channel, read)).toEqual(['channel']);
+    // And read again after it, nothing is new.
+    expect(unreadContainerIds(channel, [{ nodeId: 'channel', lastReadAt: '2026-09-04T00:00:00Z' }])).toEqual([]);
+  });
 });
 
 describe('mentions', () => {

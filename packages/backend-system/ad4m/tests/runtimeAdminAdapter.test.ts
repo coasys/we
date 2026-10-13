@@ -6,6 +6,7 @@
  * node is offered nothing that administers that node, and the guard on system languages lives here
  * rather than only in the template that hides the button.
  */
+import { ExceptionType } from '@coasys/ad4m';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createAd4mRuntimeAdmin } from '../src/runtimeAdminAdapter';
@@ -21,7 +22,7 @@ function stubClient(overrides: Record<string, unknown> = {}) {
       remove: vi.fn(async () => true),
       byAddress: vi.fn(async () => ({})),
     },
-    runtime: { addExceptionCallback: vi.fn() },
+    on: vi.fn(() => () => {}),
     agent: { getApps: vi.fn(async () => []) },
     ...overrides,
   };
@@ -36,6 +37,8 @@ describe('what a connection is allowed to administer', () => {
     expect(port.languages).toBeDefined();
     expect(port.aiModels).toBeDefined();
     expect(port.authorizedApps).toBeDefined();
+    expect(port.onConsentRequest).toBeDefined();
+    expect(port.approve).toBeDefined();
   });
 
   it('does not offer a network restart the executor does not perform', () => {
@@ -59,9 +62,12 @@ describe('what a connection is allowed to administer', () => {
     expect(port.restartNetwork).toBeUndefined();
     expect(port.languages).toBeUndefined();
 
-    // Consent is raised at *this* session, so it survives being a guest.
-    expect(port.onConsentRequest).toBeDefined();
-    expect(port.approve).toBeDefined();
+    // Answering consent changes the node: granting an app needs AGENT PERMIT, and the trusted-agent
+    // list is the node's. The executor refuses both to a user session, so a prompt here would offer
+    // a guest buttons that cannot work.
+    expect(port.onConsentRequest).toBeUndefined();
+    expect(port.approve).toBeUndefined();
+    expect(port.deny).toBeUndefined();
   });
 
   it('withholds the app list from a guest, because it is not theirs to see', () => {
@@ -246,5 +252,36 @@ describe('remote models', () => {
   it('offers no listing on a client that predates it', () => {
     const { client } = aiClient();
     expect(createAd4mRuntimeAdmin(client, { capabilities: null }).discoverAiModels).toBeUndefined();
+  });
+});
+
+describe('consent requests', () => {
+  /** A client whose `exception-occurred` events the test fires, and which counts live handlers. */
+  function exceptionClient() {
+    const handlers = new Set<(event: unknown) => void>();
+    const on = vi.fn((type: string, handler: (event: unknown) => void) => {
+      if (type === 'exception-occurred') handlers.add(handler);
+      return () => handlers.delete(handler);
+    });
+    const emit = (exception: unknown) => {
+      for (const h of handlers) h({ exception });
+    };
+    return { client: stubClient({ on }), emit, handlers };
+  }
+
+  it('hands on a trust request, and stops listening when the caller unsubscribes', () => {
+    const { client, emit, handlers } = exceptionClient();
+    const port = createAd4mRuntimeAdmin(client);
+    const heard: unknown[] = [];
+
+    const stop = port.onConsentRequest!((request) => heard.push(request));
+    emit({ type: ExceptionType.AgentIsUntrusted, title: 'Untrusted', message: 'who?', addon: 'did:key:zPeer' });
+    stop();
+    emit({ type: ExceptionType.AgentIsUntrusted, title: 'Untrusted', message: 'again', addon: 'did:key:zPeer' });
+
+    expect(heard).toEqual([
+      { kind: 'trust', title: 'Untrusted', message: 'who?', peerId: 'did:key:zPeer', payload: 'did:key:zPeer' },
+    ]);
+    expect(handlers.size).toBe(0);
   });
 });

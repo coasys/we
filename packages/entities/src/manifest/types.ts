@@ -66,12 +66,6 @@ export interface CalloutBlockRecord extends WeNodeRecord {
   version: number;
 }
 
-export interface CallExtractionRecord extends WeNodeRecord {
-  callId: string;
-  entities: string;
-  auto: string;
-}
-
 export interface ChatMessageRecord extends WeNodeRecord {
   role: string;
   content: string;
@@ -94,23 +88,25 @@ export interface CodeBlockRecord extends WeNodeRecord {
 }
 
 export interface CollectionBlockRecord extends WeNodeRecord {
-  editorState: string | null;
-  type: string;
   kind: string;
   mode: string;
   title: string;
-  slug: string;
   description: string;
-  version: number;
+  slug: string;
+  editorState: string | null;
   textContent: string;
+  version: number;
   sourceRef: string;
   sourceName: string;
+  autoExtract?: boolean;
+  extractionTargets: string;
   children: string[];
   arranges: string[];
   gathers?: string;
   board?: CollectionBlockRecord;
   extractionPasses: string[];
   extracted: string[];
+  recognised: string[];
   amendments: string[];
   addChildren(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeChildren(value: string | { id: string }, batch?: string): Promise<unknown>;
@@ -311,14 +307,15 @@ export interface SpaceRecord extends WeNodeRecord {
   threadMode: string;
   moduleSettings: string;
   location?: LocationBlockRecord;
-  board?: CollectionBlockRecord;
   taskStates: string[];
   typeStyles: string[];
+  root?: CollectionBlockRecord;
+  roles: string[];
   setLocation(value: Pick<LocationBlockRecord, 'id'>): Promise<unknown>;
-  setBoard(value: Pick<CollectionBlockRecord, 'id'>): Promise<unknown>;
   addTaskStates(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeTaskStates(value: string | { id: string }, batch?: string): Promise<unknown>;
   setTaskStates(values: (string | { id: string })[], batch?: string): Promise<unknown>;
+  setRoot(value: Pick<CollectionBlockRecord, 'id'>): Promise<unknown>;
 }
 
 export interface SpacePreferenceRecord extends WeNodeRecord {
@@ -328,6 +325,11 @@ export interface SpacePreferenceRecord extends WeNodeRecord {
   hiddenViews: string;
   templateId: string;
   themeId: string;
+}
+
+export interface SpaceRoleRecord extends RecordInstance {
+  name: string;
+  node?: string;
 }
 
 export interface SpaceTemplatePreferenceRecord extends WeNodeRecord {

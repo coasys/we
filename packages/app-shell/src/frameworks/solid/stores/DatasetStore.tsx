@@ -23,7 +23,7 @@ import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
 import { isSystemDataset, SYSTEM_DATASET_NAMES, SYSTEM_DATASETS } from '@shared/systemDatasets';
 import { createCallConfigAccessors, createCallSessionFactory } from '@we/backend-ad4m';
-import { datasetKey, type DatasetRef, type EntityManifestEntry, trace } from '@we/backend-shared';
+import { type DatasetHandle, datasetKey, type DatasetRef, type EntityManifestEntry, trace } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { AgentSettings, type DatasetProxy, ExtractionPass, getEntityForDataset } from '@we/entities';
 import { Accessor, batch, createContext, createMemo, createSignal, onCleanup, ParentProps, useContext } from 'solid-js';
@@ -46,6 +46,13 @@ const EXTRACTION_PASS_PREDICATE = 'we://extraction_pass_record';
  * deciding what a relation in somebody else's graph is called.
  */
 const EXTRACTED_PREDICATE = 'we://extracted';
+
+/**
+ * Where a record a pass recognised rather than made is linked from — `CollectionBlock.recognised`.
+ * A pass over this conversation that matches something already in the space links it here, so the
+ * conversation's own view can say "already in the space" rather than claiming it as made here.
+ */
+const RECOGNISED_PREDICATE = 'we://recognised';
 
 export type { EntityManifestEntry, EntityManifestProperty } from '@we/backend-shared';
 
@@ -197,28 +204,38 @@ export interface DatasetStore {
   /** SpaceStore supplies "does this space want calls interpreted automatically". Unset reads off. */
   provideAutoInterpretGate: (gate: () => boolean) => () => void;
   /**
+   * Keep a standing extraction watch on one conversation, filing what it finds into the space
+   * collection. What a module's `watchCollection` reaches; also the space's own, for its loose
+   * messages. Rejects where the watch cannot be registered, with the reason.
+   */
+  watchConversation: (collectionId: string, dataset?: DatasetHandle) => Promise<void>;
+  /** Stop it. Safe when none was registered. */
+  unwatchConversation: (collectionId: string, dataset?: DatasetHandle) => Promise<void>;
+  /**
    * ShapeStore supplies "which entities *could* be extracted here" — core vocabulary that declares
    * itself extractable, plus this space's adopted shapes. Unset reads as none.
    */
   provideExtractionCandidates: (candidates: () => string[]) => () => void;
   /**
-   * SpaceStore supplies the two layers under that: what one call extracts, and how to change it.
+   * SpaceStore supplies what one collection extracts, and how to change it.
    *
-   * Both take a collection id, because the answer is per call — `forCall` resolves the call's own
-   * list if its participants set one, else the space's default. Injected for the reason
-   * `provideAutoInterpretGate` is: the answer lives on `Space` and on a record in the space, and
-   * SpaceStore mounts below this one.
+   * Every member takes a collection id, because the answer is the collection's own — copied from
+   * the space's defaults when it was made. Injected for the reason `provideAutoInterpretGate` is:
+   * the answer lives on records this store does not read, and SpaceStore mounts below this one.
    *
-   * Unset, `forCall` reads as the candidates — which keeps a host that has not wired this yet
+   * Unset, `targetsFor` reads as the candidates — which keeps a host that has not wired this yet
    * behaving as it did rather than silently extracting nothing.
    */
-  provideCallExtraction: (access: {
-    forCall: (collectionId: string) => string[];
-    setForCall: (collectionId: string, entity: string, on: boolean) => Promise<void>;
-    /** Whether *this call* is extracted as it happens — its own answer, else the space's. */
-    autoForCall: (collectionId: string) => boolean;
-    setAutoForCall: (collectionId: string, on: boolean) => Promise<void>;
-  }) => () => void;
+  provideCollectionExtraction: (access: CollectionExtractionAccess) => () => void;
+}
+
+/** What SpaceStore lends this store about one collection's extraction settings. */
+export interface CollectionExtractionAccess {
+  targetsFor: (collectionId: string) => string[];
+  setTargetFor: (collectionId: string, entity: string, on: boolean) => Promise<void>;
+  /** Whether this collection is extracted as it grows — its own answer. */
+  autoFor: (collectionId: string) => boolean;
+  setAutoFor: (collectionId: string, on: boolean) => Promise<void>;
 }
 
 const DatasetContext = createContext<DatasetStore>();
@@ -282,18 +299,13 @@ export function DatasetStoreProvider(props: ParentProps) {
   const extractionCandidatesGate = hostSlot<() => string[]>();
 
   /*
-    What one call extracts, and how to change it — the two layers below candidacy.
+    What one collection extracts, and how to change it — the layer below candidacy.
 
-    Injected from SpaceStore, which owns `Space.extractionTargets` and the `CallExtraction` records
-    and mounts below this store. Unset, `forCall` falls back to the candidates rather than to
-    nothing: a host that has not wired this in should behave as it did before the layer existed.
+    Injected from SpaceStore, which reads the collections' own settings and mounts below this
+    store. Unset, `targetsFor` falls back to the candidates rather than to nothing: a host that has
+    not wired this in should behave as it did before the layer existed.
   */
-  const callExtraction = hostSlot<{
-    forCall: (collectionId: string) => string[];
-    setForCall: (collectionId: string, entity: string, on: boolean) => Promise<void>;
-    autoForCall: (collectionId: string) => boolean;
-    setAutoForCall: (collectionId: string, on: boolean) => Promise<void>;
-  }>();
+  const collectionExtraction = hostSlot<CollectionExtractionAccess>();
 
   /**
    * The class list one pass over this collection should ask for.
@@ -349,7 +361,7 @@ export function DatasetStoreProvider(props: ParentProps) {
 
   const targetsForCollection = (collectionId: string): string[] => {
     const candidates = extractionCandidatesGate.get()?.() ?? [];
-    const chosen = callExtraction.get()?.forCall(collectionId);
+    const chosen = collectionExtraction.get()?.targetsFor(collectionId);
     if (!chosen) return candidates;
     return candidates.filter((entity) => chosen.includes(entity));
   };
@@ -443,11 +455,11 @@ export function DatasetStoreProvider(props: ParentProps) {
       },
 
       /*
-        What this call extracts, and what else it could — for a module that offers the choice.
+        What this collection extracts, and what else it could — for a module that offers the choice.
 
         One list of `{ entity, selected }` rather than two arrays, because the surface that renders it
         is a row of toggles and a schema cannot join two lists to decide which are ticked. The module
-        never sees the resolution: candidacy, the space's default and the call's own list are three
+        never sees the resolution: candidacy, the space's default and the collection's own list are
         questions it has no business knowing about, and it is handed the answer.
       */
       extractionTargets: (collectionId: string) => {
@@ -458,14 +470,14 @@ export function DatasetStoreProvider(props: ParentProps) {
         }));
       },
       setAutoInterpret: async (collectionId: string, on: boolean) => {
-        const extraction = callExtraction.get();
-        if (!extraction) throw new Error('interpretation: this host cannot record a call’s extraction settings');
-        await extraction.setAutoForCall(collectionId, on);
+        const extraction = collectionExtraction.get();
+        if (!extraction) throw new Error('interpretation: this host cannot record a collection’s extraction settings');
+        await extraction.setAutoFor(collectionId, on);
       },
       setExtractionTarget: async (collectionId: string, entity: string, on: boolean) => {
-        const extraction = callExtraction.get();
-        if (!extraction) throw new Error('interpretation: this host cannot record a call’s extraction targets');
-        await extraction.setForCall(collectionId, entity, on);
+        const extraction = collectionExtraction.get();
+        if (!extraction) throw new Error('interpretation: this host cannot record a collection’s extraction targets');
+        await extraction.setTargetFor(collectionId, entity, on);
       },
 
       // Gathering the turns is the host's half of the job: the port takes turns, and a module has no
@@ -499,8 +511,9 @@ export function DatasetStoreProvider(props: ParentProps) {
         try {
           const result = await port.interpret(dataset.handle, turns, {
             classes,
-            parent: { id: collectionId, predicate },
+            parent: await filedUnder(dataset.handle, collectionId, predicate),
             provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
+            recognised: { id: collectionId, predicate: RECOGNISED_PREDICATE },
           });
           await recordPass(dataset.handle, collectionId, {
             // Nothing to look for is not a failure and not a quiet meeting — it is a call whose
@@ -559,7 +572,11 @@ export function DatasetStoreProvider(props: ParentProps) {
         // Unscoped rather than empty when containment cannot be named here: too many suggestions is
         // a nuisance, none is a review surface that looks broken.
         if (!predicate) return port.proposals(dataset);
-        return port.proposals(dataset, { parent: { id: collectionId, predicate } });
+        return port.proposals(dataset, {
+          parent: await filedUnder(dataset, collectionId, predicate),
+          // The conversation, which is what narrows once every call files into one collection.
+          provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
+        });
       },
 
       /*
@@ -576,43 +593,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         than two. The engine reads its processors out of the perspective graph, so this is idempotent
         in the place it matters: whichever peer registers first wins and the rest write the same row.
       */
-      watchCollection: async (collectionId) => {
-        const port = session.backendPorts()?.interpretation;
-        if (!port?.watch) throw new Error('interpretation: this backend cannot run a standing watch');
-        // The community's decision, read through a gate SpaceStore supplies — this store sits below
-        // it and cannot reach a Space. Absent (no gate provided yet, or no space) reads as off, which
-        // is the right way round for something that spends somebody's LLM budget.
-        /*
-          Asked about *this call*, not about the space.
-
-          The space's switch is still the answer for a call whose participants have not decided —
-          `autoForCall` resolves that — but a call that has been turned off has to stay off, and a
-          gate that could only see the space would re-register the watch on the next tick. Falls back
-          to the space-wide gate where the call layer has not been wired, which keeps a host that
-          predates it behaving as it did.
-        */
-        const auto = callExtraction.get()?.autoForCall(collectionId) ?? autoInterpretGate.get()?.();
-        if (!auto) throw new Error('interpretation: automatic extraction is off for this call');
-        const dataset = currentDataset();
-        if (!dataset) throw new Error('interpretation: no dataset to interpret into');
-
-        const modelFor = (entity: string) => getEntityForDataset(entity, dataset.handle);
-        const predicate = containmentPredicate(modelFor, currentDatasetEntities());
-        if (!predicate)
-          throw new Error('interpretation: this space has no collection schema to read a transcript from');
-
-        const classes = targetsForCollection(collectionId);
-        // Refused rather than registered empty: the executor rejects a processor with no classes, and
-        // "this space has marked nothing for extraction" is a sentence worth saying in its own words.
-        if (!classes.length) throw new Error('interpretation: nothing in this space is marked for AI extraction');
-
-        await port.watch(dataset.handle, {
-          watchId: watchIdFor(collectionId),
-          classes,
-          parent: { id: collectionId, predicate },
-          provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
-        });
-      },
+      watchCollection: watchConversation,
 
       /*
         Repair anything a standing pass minted without an edge.
@@ -632,20 +613,107 @@ export function DatasetStoreProvider(props: ParentProps) {
 
         return port.reconcile(dataset.handle, {
           classes: targetsForCollection(collectionId),
-          parent: { id: collectionId, predicate },
+          parent: await filedUnder(dataset.handle, collectionId, predicate),
+          provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
+          recognised: { id: collectionId, predicate: RECOGNISED_PREDICATE },
         });
       },
 
-      unwatchCollection: async (collectionId) => {
-        const port = session.backendPorts()?.interpretation;
-        const dataset = currentDataset();
-        // Silent rather than thrown: this runs while tearing a call down, and a host that never
-        // registered anything is not a failure worth interrupting that with.
-        if (!port?.unwatch || !dataset) return;
-        await port.unwatch(dataset.handle, watchIdFor(collectionId));
-      },
+      unwatchCollection: unwatchConversation,
     }),
   );
+
+  /*
+    A standing watch over one conversation — a call, or the space collection's loose messages.
+
+    Named functions rather than members of the module services above, because the space itself
+    registers one too: the watch over its loose messages belongs to the space, not to any module.
+  */
+  async function watchConversation(collectionId: string, target?: DatasetHandle): Promise<void> {
+    const port = session.backendPorts()?.interpretation;
+    if (!port?.watch) throw new Error('interpretation: this backend cannot run a standing watch');
+    // The community's decision, read through a gate SpaceStore supplies — this store sits below
+    // it and cannot reach a Space. Absent (no gate provided yet, or no space) reads as off, which
+    // is the right way round for something that spends somebody's LLM budget.
+    /*
+      Asked about *this collection*, not about the space.
+
+      A collection holds its own answer, and one that has been turned off has to stay off — a gate
+      that could only see the space would re-register the watch on the next tick. Falls back to the
+      space's default where the collection layer has not been wired, which keeps a host that
+      predates it behaving as it did.
+    */
+    const auto = collectionExtraction.get()?.autoFor(collectionId) ?? autoInterpretGate.get()?.();
+    if (!auto) throw new Error('interpretation: automatic extraction is off for this collection');
+    /*
+      The caller's dataset, not `currentDataset()`: a call outlives the space on screen, and a watch
+      registered wherever the reader had wandered to interprets the call into a perspective that
+      does not hold it — and is then removed from the wrong one too, so it never stops.
+    */
+    const handle = target ?? currentDataset()?.handle;
+    if (!handle) throw new Error('interpretation: no dataset to interpret into');
+
+    const modelFor = (entity: string) => getEntityForDataset(entity, handle);
+    const predicate = containmentPredicate(modelFor, currentDatasetEntities());
+    if (!predicate) throw new Error('interpretation: this space has no collection schema to read a transcript from');
+
+    const classes = targetsForCollection(collectionId);
+    // Refused rather than registered empty: the executor rejects a processor with no classes, and
+    // "this space has marked nothing for extraction" is a sentence worth saying in its own words.
+    if (!classes.length) throw new Error('interpretation: nothing in this space is marked for AI extraction');
+
+    await port.watch(handle, {
+      watchId: watchIdFor(collectionId),
+      classes,
+      parent: await filedUnder(handle, collectionId, predicate),
+      provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
+      recognised: { id: collectionId, predicate: RECOGNISED_PREDICATE },
+    });
+  }
+
+  async function unwatchConversation(collectionId: string, target?: DatasetHandle): Promise<void> {
+    const port = session.backendPorts()?.interpretation;
+    // The caller's dataset, for the reason `watchCollection` gives.
+    const handle = target ?? currentDataset()?.handle;
+    // Silent rather than thrown: this runs while tearing a call down, and a host that never
+    // registered anything is not a failure worth interrupting that with.
+    if (!port?.unwatch || !handle) return;
+    await port.unwatch(handle, watchIdFor(collectionId));
+  }
+
+  /*
+    Where a pass files what it finds: the space collection, whatever conversation it read.
+
+    Extracted items are the space's top-level content, so they live where everything top-level does
+    — in the collection the space's feed, canvas and boards all read — and a call is only where they
+    came from (the provenance link, written beside this one). Filed under the call, every
+    space-wide view would have had to gather from every call; filed here, deleting a call leaves
+    what it found in place.
+
+    A dataset with no space collection — one made before spaces had one — files under the
+    conversation itself, which is what every pass did before. Read once per dataset and kept: the
+    collection is written at creation and never changes.
+  */
+  const spaceRoots = new WeakMap<object, string>();
+  async function filedUnder(
+    handle: unknown,
+    conversation: string,
+    predicate: string,
+  ): Promise<{ id: string; predicate: string }> {
+    let root = spaceRoots.get(handle as object);
+    if (root === undefined) {
+      try {
+        const SpaceModel = getEntityForDataset('Space', handle) as
+          { findOne(h: unknown, q: unknown): Promise<{ root?: { id?: string } } | null> } | undefined;
+        const space = await SpaceModel?.findOne(handle, { include: { root: true } });
+        root = space?.root?.id ?? '';
+      } catch {
+        root = '';
+      }
+      if (root) spaceRoots.set(handle as object, root);
+    }
+    return { id: root || conversation, predicate };
+  }
 
   /*
   One collection, one watch.
@@ -1230,8 +1298,10 @@ export function DatasetStoreProvider(props: ParentProps) {
       });
     },
     provideAutoInterpretGate: autoInterpretGate.provide,
+    watchConversation,
+    unwatchConversation,
     provideExtractionCandidates: extractionCandidatesGate.provide,
-    provideCallExtraction: callExtraction.provide,
+    provideCollectionExtraction: collectionExtraction.provide,
   };
 
   return <DatasetContext.Provider value={store}>{props.children}</DatasetContext.Provider>;

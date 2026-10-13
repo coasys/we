@@ -59,14 +59,19 @@ export const Space: CoreEntityDef = {
        * volunteering to run its extraction.
        */
       /**
-       * Which candidate models this community's calls start out extracting, as a JSON array of
-       * entity names.
+       * Which candidate models a new collection here starts out extracting — a call, a channel, the
+       * space's own collection — as a JSON array of entity names.
        *
        * The middle of three layers. `EntitySchema.extractable` says what is a candidate at all —
        * a question about whether an LLM *could* mint one, answered by the codebase; this says which
-       * of them a call here begins with, which is a question about what this community's
-       * conversations are about and is nobody else's to answer. A call may then add or remove for
-       * itself (`CallExtraction`).
+       * of them a new conversation here begins with, which is a question about what this community
+       * talks about and is nobody else's to answer. Each collection then holds its own list
+       * (`CollectionBlock.extractionTargets`), copied from this when it is made.
+       *
+       * **A default, not a live setting.** Changing it changes what the *next* collection starts
+       * with; a call already under way keeps the list its participants have, so nobody's meeting
+       * changes underneath them because somebody edited the space. A collection that was made
+       * without a copy (by an app that did not know to write one) falls back to this at read time.
        *
        * **Empty means "not decided", not "none"** — the `enabledModules` rule, and it matters more
        * here than anywhere: reading empty as none would make every space that predates this field
@@ -80,7 +85,9 @@ export const Space: CoreEntityDef = {
        */
       extractionTargets: { type: 'string', predicate: 'we://extraction_targets', default: '' },
       /**
-       * Whether calls in this space are interpreted as they happen.
+       * Whether a new collection here is interpreted as it grows — a call as it happens, a channel as
+       * messages arrive. A default, copied onto each collection when it is made
+       * (`CollectionBlock.autoExtract`), for the reason `extractionTargets` gives.
        *
        * On by default. It was off, on the reasoning that a pass spends somebody's LLM budget and a
        * community should opt in — which reads well and played badly: extraction is the feature, and
@@ -98,7 +105,7 @@ export const Space: CoreEntityDef = {
        * the record itself may be).
        *
        * **A reading, not a shape.** Replies are always stored as a tree — a reply hangs off whatever
-       * it answers through `we://comment`, which is true of a post, a block, a drawn connection and
+       * it answers through `we://response`, which is true of a post, a block, a drawn connection and
        * another reply alike. This says only what may be *added*, so a community that switches to
        * flat keeps showing the nesting it already has rather than silently redrawing a hierarchy as
        * a list, and switching back loses nothing. Nothing migrates, because nothing about the data
@@ -107,7 +114,7 @@ export const Space: CoreEntityDef = {
        * A field here rather than a `ModuleSetting`, and the distinction is the one `moduleSettings`
        * draws below: that field exists so a *module* stops adding columns to this entity on its own
        * behalf, and setting groups are built from what registered modules declare. Threads are not a
-       * module — `comments` is on `WeNode`, so every record in WE has them whatever is installed —
+       * module — `responses` is on `WeNode`, so every record in WE has them whatever is installed —
        * so there is no group to hang this on and nothing to uninstall it with. It sits beside
        * `autoInterpret` for the same reason: a core capability whose scope is the community's to
        * decide.
@@ -137,11 +144,11 @@ export const Space: CoreEntityDef = {
        *
        * This field replaced the *shape*, not the instances of it. This resolver answers along one axis, **who is asking**: deployment → agent
        * everywhere → community here → agent here, most specific wins. `autoInterpret` and
-       * `extractionTargets` carry a second axis it has no concept of, **which call** — a per-call
-       * decision belonging to that call's participants rather than to the space's administrator,
-       * held in `CallExtraction` and read through `spaceStore.autoInterpretForCall(collectionId)`,
-       * which is a function rather than a value for exactly that reason. Migrating them here as-is
-       * would typecheck, pass, and silently drop the layer where participants overrule the space.
+       * `extractionTargets` are not answers along that axis at all: they are the defaults a new
+       * collection copies, and the decision that matters is then the collection's own — held on the
+       * collection (`CollectionBlock.autoExtract`) and belonging to whoever is in that conversation.
+       * Migrating them here would typecheck, pass, and silently turn a starting point into a setting
+       * that overrules every conversation.
        *
        * What was worth fixing is fixed: a capability that wants a setting today declares a
        * `ModuleSetting` and gets a resolved value and a rendered control, so there is no fourth
@@ -152,14 +159,6 @@ export const Space: CoreEntityDef = {
     },
     relations: {
       location: { target: 'LocationBlock', cardinality: 'one', predicate: 'we://location' },
-      /**
-       * This space's own board — "Everything", the one that gathers all of the community's work.
-       *
-       * The counterpart of `CollectionBlock.board` one level up, and the same reasoning: which board
-       * is *the* space's is a fact about the space. It is also what makes curating every other board
-       * safe, since this is the catch-all nothing can hide from — see `docs/architecture/boards.md`.
-       */
-      board: { target: 'CollectionBlock', cardinality: 'one', predicate: 'we://board' },
       /**
        * The order this community reads its task states in — and only the order.
        *
@@ -193,6 +192,28 @@ export const Space: CoreEntityDef = {
        * The predicate is the record's own flag value, as `we://signal` is for a node's signals.
        */
       typeStyles: { target: 'TypeStyle', cardinality: 'many', predicate: 'we://type_style' },
+      /**
+       * The space collection: the one collection everything top-level in this space hangs off.
+       *
+       * Calls, loose messages, posts, channels, extracted items and the canvas record are its
+       * children, so "what is in this space" is one containment walk rather than "every record with
+       * no parent" — which cannot tell top-level content from an orphan, and has no polymorphic read.
+       *
+       * The host makes it in every space, in `createSpace`, before anything else. It is a
+       * `CollectionBlock` (`kind: 'space'`) rather than containment on this record because the
+       * machinery extraction needs — passes, `extracted`, a board, `mode` — already lives there, and
+       * because this record is identity and settings and is copied to the discovery space, which the
+       * space's contents must never be.
+       *
+       * Its own relation rather than a role (`roles`), because it is structural rather than chosen:
+       * queries scope through it, and no starter can remove it.
+       */
+      root: { target: 'CollectionBlock', cardinality: 'one', predicate: 'we://root' },
+      /**
+       * The records this space names by role — its canvas, say. One `SpaceRole` per role. Read
+       * through `spaceStore.roles`; see `SpaceRole` for why it is shaped this way.
+       */
+      roles: { target: 'SpaceRole', cardinality: 'many', predicate: 'we://space_role' },
     },
   },
 };

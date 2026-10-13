@@ -18,6 +18,7 @@ import {
 } from '../src/shared/involvements';
 import { applyPendingInvolvements, involvement } from '../src/shared/sources/involvement';
 import { involvementMenu } from '../src/shared/sources/involvementMenu';
+import { SEEDED_INVOLVEMENT_TYPES } from './seededVocabulary';
 
 const ME = 'did:key:me';
 const ANA = 'did:key:ana';
@@ -31,30 +32,32 @@ const kind = (over: Partial<InvolvementTypeView> & { slug: string }): Involvemen
   icon: '',
   color: '',
   retired: false,
-  defined: true,
   ...over,
 });
 
 describe('the vocabulary', () => {
-  it('stands in with the defaults until a space names its own', () => {
-    const kinds = resolveInvolvementTypes([]);
+  it('is nothing at all for a space with no kinds — there are no defaults standing in', () => {
+    expect(resolveInvolvementTypes([])).toEqual([]);
+  });
+
+  it('starts a new space with the kinds its starter writes', () => {
+    const kinds = SEEDED_INVOLVEMENT_TYPES;
     expect(kinds.map((k) => k.slug)).toEqual(['assignee', 'reviewer', 'going', 'maybe', 'not-going']);
-    expect(kinds.every((k) => !k.defined)).toBe(true);
-    // The defaults keep "Going" out of a task's assign menu, and assignment out of an RSVP.
+    // These keep "Going" out of a task's assign menu, and assignment out of an RSVP.
     expect(kinds.find((k) => k.slug === 'assignee')?.appliesTo).toEqual(['TaskBlock']);
     expect(kinds.find((k) => k.slug === 'going')?.reflexive).toBe(true);
   });
 
-  it('lets a record with a default slug replace that default rather than sit beside it', () => {
-    const owner = kind({ slug: 'assignee', name: 'Owner' });
-    const kinds = resolveInvolvementTypes([owner]);
-    expect(kinds.filter((k) => k.slug === 'assignee')).toEqual([owner]);
+  it('collapses two records with one slug to the first, since to everybody holding it they are one kind', () => {
+    const first = kind({ slug: 'assignee', name: 'Owner' });
+    const kinds = resolveInvolvementTypes([first, kind({ slug: 'assignee', name: 'Doer' })]);
+    expect(kinds.filter((k) => k.slug === 'assignee')).toEqual([first]);
   });
 
-  it('orders by what each kind means, the community’s own first among kinds meaning the same', () => {
+  it('orders by what each kind means, in the order written among kinds meaning the same', () => {
     const shepherd = kind({ slug: 'shepherd', semantic: 'reviewing' });
-    const kinds = resolveInvolvementTypes([shepherd]);
-    expect(kinds.map((k) => k.slug).slice(0, 3)).toEqual(['assignee', 'shepherd', 'reviewer']);
+    const kinds = resolveInvolvementTypes([...SEEDED_INVOLVEMENT_TYPES, shepherd]);
+    expect(kinds.map((k) => k.slug).slice(0, 3)).toEqual(['assignee', 'reviewer', 'shepherd']);
   });
 
   it('reads the stored entity list, and an empty one as every entity', () => {
@@ -65,7 +68,7 @@ describe('the vocabulary', () => {
 });
 
 describe('who is on each record', () => {
-  const types = resolveInvolvementTypes([]);
+  const types = SEEDED_INVOLVEMENT_TYPES;
   const rows = [
     { id: 'i1', node: 't1', agent: ANA, kind: 'assignee' },
     { id: 'i2', node: ['t1'], agent: ME, kind: 'reviewer' },
@@ -237,7 +240,7 @@ describe('the writes', () => {
     },
   };
 
-  const types = resolveInvolvementTypes([]);
+  const types = SEEDED_INVOLVEMENT_TYPES;
   const actions = () =>
     createInvolvementActions({
       dataset: () => ({}),
@@ -314,7 +317,7 @@ describe('the writes', () => {
 });
 
 describe('the people on a card, as faces and as a picker', () => {
-  const types = resolveInvolvementTypes([]);
+  const types = SEEDED_INVOLVEMENT_TYPES;
   const members = [
     { did: 'did:key:zed', name: 'Zed' },
     { did: ANA, name: 'Ana', avatar: 'ana.png' },
@@ -394,7 +397,7 @@ describe('the people on a card, as faces and as a picker', () => {
 });
 
 describe('the person a conversation named', () => {
-  const types = resolveInvolvementTypes([]);
+  const types = SEEDED_INVOLVEMENT_TYPES;
   const members = [
     { did: 'did:key:jw', name: 'James Weir' },
     { did: 'did:key:jb', name: 'James Brown' },

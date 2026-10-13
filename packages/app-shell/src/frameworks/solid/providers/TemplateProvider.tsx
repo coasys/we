@@ -1,13 +1,16 @@
 import { boardOptimism } from '@shared/boardOptimism';
+import { withExtractionDefaults } from '@shared/collectionExtraction';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
 import { involvementOptimism } from '@shared/involvementOptimism';
+import { linkNewMentions, type MentionWriter, prepareMentionUpdate } from '@shared/lineMentions';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegistry';
 import { provideChromeBag, provideTemplateBag } from '@shared/registries/templateBag';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
+import { completeResponse, respondsThrough } from '@shared/responses';
 import { installRenderSettleOnExit, installSafeModeShortcut } from '@shared/safeMode';
 import { hostSourceBag } from '@shared/sources';
 import { flowStateOf } from '@shared/taskFlow';
@@ -48,13 +51,13 @@ import { type ContentInput, copyableContent, createBlocks, deleteBlocks, reconci
 import { BlockDisplayOverrides, BlockHostProvider, colorFor } from '@we/block-solid';
 import { toastService } from '@we/components/solid';
 import type { DatasetProxy } from '@we/entities';
-import { CollectionBlock, getEntity } from '@we/entities';
+import { CollectionBlock, getEntity, PREDICATES, Space } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import type { DocumentAccess } from '@we/module-shared';
 import { holdTopLayer, installTopLayerGuard } from '@we/primitives/top-layer';
 import type { TemplateSchema } from '@we/schema-shared';
 import { expandViewRoutes, hasViewsMarker, installGestureTracking, SPACE_ROUTE_PATH } from '@we/schema-shared';
-import type { VisualEditorContextValue } from '@we/schema-solid';
+import type { OwnerRef, VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
 import { CHROME_RAIL_WIDTH } from '@we/template-shell';
 import { RECORD_ROUTE_PATH, recordPage } from '@we/template-views';
@@ -127,10 +130,13 @@ export default function TemplateProvider() {
   // with the dataset injected. Pass `{ dataset: 'store.path' }` in options to target a
   // different one (e.g. 'datasetStore.rootDataset' for we-root entities like AgentSettings).
   const recordActions = {
-    create: (entity: string, data: Record<string, unknown> = {}, options?: Record<string, unknown>) => {
+    create: async (entity: string, data: Record<string, unknown> = {}, options?: Record<string, unknown>) => {
       const [Entity, p] = resolve(entity, options as { dataset?: string });
       const rest = Object.fromEntries(Object.entries(options ?? {}).filter(([k]) => k !== 'dataset'));
-      return Entity.create(p, data, Object.keys(rest).length ? rest : undefined);
+      const fields = await withCollectionDefaults(entity, data, p as DatasetProxy);
+      const created = await Entity.create(p, fields, Object.keys(rest).length ? rest : undefined);
+      threadResponse(p as DatasetProxy, created as { id?: string } | undefined, rest);
+      return created;
     },
     update: (entity: string, id: string, data: Record<string, unknown>, options?: { dataset?: string }) => {
       const [Entity, p] = resolve(entity, options);
@@ -163,14 +169,77 @@ export default function TemplateProvider() {
     return found.handle;
   }
 
+  /**
+   * The space collection of a dataset — where its top-level records live. The space on screen
+   * answers from the store; any other is read, since a call can outlive the view of its space.
+   */
+  async function spaceRootOf(perspective: DatasetProxy): Promise<string> {
+    if (perspective === datasetStore.currentDataset()?.handle && spaceStore.root()) return spaceStore.root();
+    try {
+      const space = await Space.findOne(perspective, { include: { root: true } });
+      return space?.root?.id ?? '';
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * A module's `within` as the ORM's `parent`: the container, by containment, which is one predicate
+   * on every backend. See `RecordQuery.within`.
+   */
+  function withinAsParent(query: unknown): Record<string, unknown> {
+    const { within, ...rest } = (query ?? {}) as { within?: unknown } & Record<string, unknown>;
+    return typeof within === 'string' && within
+      ? { ...rest, parent: { id: within, predicate: PREDICATES.CHILDREN } }
+      : rest;
+  }
+
+  /**
+   * A new feed starts with its space's extraction defaults — written onto it, not inherited.
+   *
+   * Every collection that conversations happen in holds its own answer to "is this extracted as it
+   * grows, and for what", copied from the space when it is made; see `@shared/collectionExtraction`
+   * for why a copy. Done here because this is where both of the ways a new one arrives meet: a
+   * template's `record.create` (a channel) and a module's write (a call). Anything the caller
+   * already said wins, and a dataset with no space gets nothing, which leaves the collection unset.
+   *
+   * Feeds only. A document is one author's artifact and is not extracted as it grows; stamping
+   * every post would be two links on each for an answer nobody asks.
+   */
+  async function withCollectionDefaults(
+    entity: string,
+    fields: Record<string, unknown>,
+    perspective: DatasetProxy | undefined,
+  ): Promise<Record<string, unknown>> {
+    if (entity !== 'CollectionBlock' || fields.mode !== 'feed' || 'autoExtract' in fields || !perspective)
+      return fields;
+    const space =
+      perspective === datasetStore.currentDataset()?.handle
+        ? spaceStore.currentSpace()
+        : await Space.findOne(perspective).catch(() => null);
+    return withExtractionDefaults(entity, fields, space);
+  }
+
+  /**
+   * A record written as a response is linked into its thread — see `@shared/responses`. Not awaited:
+   * the response exists, and the press that wrote it should not wait on the thread link.
+   */
+  function threadResponse(perspective: DatasetProxy, created: { id?: string } | undefined, options: unknown): void {
+    const subject = respondsThrough(options);
+    if (subject && created?.id) void completeResponse(perspective, created.id, subject);
+  }
+
   /** `record.create`, against a resolved handle rather than a store path. */
-  function createInDataset(
+  async function createInDataset(
     entity: string,
     fields: Record<string, unknown>,
     perspective: DatasetProxy,
     rest: Record<string, unknown>,
   ) {
-    return getEntity(entity).create(perspective, fields, Object.keys(rest).length ? rest : undefined);
+    const stamped = await withCollectionDefaults(entity, fields, perspective);
+    const created = await getEntity(entity).create(perspective, stamped, Object.keys(rest).length ? rest : undefined);
+    threadResponse(perspective, created as { id?: string } | undefined, rest);
+    return created;
   }
 
   /**
@@ -241,8 +310,22 @@ export default function TemplateProvider() {
       createEntity: async (entity, fields, options) => {
         const perspective = moduleTarget(options?.dataset);
         if (!perspective) return null;
-        const rest = Object.fromEntries(Object.entries(options ?? {}).filter(([key]) => key !== 'dataset'));
+        const { dataset: _dataset, topLevel, ...rest } = (options ?? {}) as Record<string, unknown>;
+        if (topLevel && !rest.parent) {
+          const root = await spaceRootOf(perspective);
+          if (root) rest.parent = { id: root, predicate: PREDICATES.CHILDREN };
+        }
         const created = (await createInDataset(entity, fields, perspective, rest)) as { id?: string } | undefined;
+        // A line written with marks mentions whoever they name — see `lineMentions`.
+        if (created?.id) {
+          await linkNewMentions(
+            getEntity(entity) as unknown as MentionWriter,
+            perspective,
+            entity,
+            created.id,
+            fields,
+          ).catch((error: unknown) => console.warn('module host: could not link the mentions in a new line', error));
+        }
         return created?.id ?? null;
       },
 
@@ -306,6 +389,15 @@ export default function TemplateProvider() {
         }
         await (add as (v: string) => Promise<void>).call(instance, value);
       },
+      // The counterpart, through the registered class's own removal — see `RecordsKernel.unlink`.
+      unlinkEntity: async (entity, id, relation, value, options) => {
+        const p = moduleTarget(options?.dataset);
+        if (!p) return;
+        const Model = getEntity(entity) as unknown as {
+          removeRelation: (dataset: unknown, id: string, relation: string, targetId: string) => Promise<void>;
+        };
+        await Model.removeRelation(p, id, relation, value);
+      },
 
       // The scalar counterpart of `linkEntity`, resolved the same way `createEntity` is: a module
       // names a dataset by URI, and an unresolvable name refuses rather than writing to whatever is
@@ -314,7 +406,18 @@ export default function TemplateProvider() {
       updateEntity: async (entity, id, fields, options) => {
         const p = moduleTarget(options?.dataset);
         if (!p) return;
-        await updateInDataset(entity, id, fields, p);
+        // A line's words changing carries its marks over and moves its mentions — see `lineMentions`.
+        const mentions = await prepareMentionUpdate(
+          getEntity(entity) as unknown as MentionWriter,
+          p,
+          entity,
+          id,
+          fields,
+        );
+        await updateInDataset(entity, id, mentions.fields, p);
+        await mentions
+          .after()
+          .catch((error: unknown) => console.warn('module host: could not move the mentions in an edited line', error));
       },
 
       removeEntity: async (entity, id, options) => {
@@ -338,7 +441,7 @@ export default function TemplateProvider() {
         const Model = getEntity(entity) as unknown as {
           findAll: (perspective: unknown, opts: unknown) => Promise<Record<string, unknown>[]>;
         };
-        return (await Model.findAll(p, query ?? {})) ?? [];
+        return (await Model.findAll(p, withinAsParent(query))) ?? [];
       },
       subscribeEntities: (entity, query, cb, options) => {
         const p = moduleTarget(options?.dataset);
@@ -349,7 +452,7 @@ export default function TemplateProvider() {
             opts: unknown,
           ) => { subscribe: (cb: (rows: Record<string, unknown>[]) => void) => Promise<unknown>; dispose: () => void };
         };
-        const subscription = Model.query(p, query ?? {});
+        const subscription = Model.query(p, withinAsParent(query));
         void subscription.subscribe(cb).then(
           (rows) => cb(rows as Record<string, unknown>[]),
           (error: unknown) => {
@@ -1275,12 +1378,14 @@ export default function TemplateProvider() {
   // reactive scope rather than as JSX components with their own Solid owner boundary.
   const [hoveredNodeId, setHoveredNodeId] = createSignal<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = createSignal<string | null>(null);
+  const [selectedOwner, setSelectedOwner] = createSignal<OwnerRef | null>(null);
   const nodeRegistry = new Map<string, HTMLElement>();
   const isVisualMode = () => editorStore.contentMode() === 'visual' && editorStore.isEditingTemplate();
 
   createEffect(() => {
     if (!isVisualMode()) {
       setSelectedNodeId(null);
+      setSelectedOwner(null);
       setHoveredNodeId(null);
     }
   });
@@ -1292,7 +1397,16 @@ export default function TemplateProvider() {
     hoveredId: hoveredNodeId,
     selectedId: selectedNodeId,
     onHover: setHoveredNodeId,
-    onSelect: setSelectedNodeId,
+    // One selection at a time: a node of the template, or a region somebody else provides.
+    onSelect: (id) => {
+      setSelectedNodeId(id);
+      if (id) setSelectedOwner(null);
+    },
+    selectedOwner,
+    onSelectOwner: (owner) => {
+      setSelectedOwner(owner);
+      if (owner) setSelectedNodeId(null);
+    },
     registerNode: (id, el) => {
       nodeRegistry.set(id, el);
       return () => nodeRegistry.delete(id);
@@ -1306,13 +1420,24 @@ export default function TemplateProvider() {
   return (
     <BlockHostProvider
       dataset={() => (datasetStore.currentDataset()?.handle as never) ?? null}
-      // Who a composer here can @mention: the members of the space on screen. The host's
-      // knowledge, provided once, so no template names a store to get it.
-      mentions={() =>
-        spaceStore
-          .members()
-          .map((m) => ({ did: m.did, name: m.name || m.handle || m.did, avatar: m.avatar || undefined }))
-      }
+      /*
+        Who a composer here can @mention: every member of the space on screen. The host's knowledge,
+        provided once, so no template names a store to get it.
+
+        Every member, not only those whose profile has arrived: `members` drops anybody without a
+        cached profile, and an agent — a bot like Data — often has none, so it could never be picked
+        and a mention of it could only ever be a name in the text. A member with no profile is offered
+        under a shortened DID until its profile lands.
+      */
+      mentions={() => {
+        const profiles = new Map(spaceStore.members().map((m) => [m.did, m]));
+        return spaceStore.memberDids().map((did) => {
+          const m = profiles.get(did);
+          return m
+            ? { did, name: m.name || m.handle || did, avatar: m.avatar || undefined }
+            : { did, name: did.length > 20 ? `${did.slice(0, 12)}…${did.slice(-4)}` : did };
+        });
+      }}
       // A live co-editing session rides the ephemeral port of the space on screen — null in a
       // personal space, where there is nobody to share with, and the composer edits alone.
       collab={(nodeId) => {
@@ -1343,6 +1468,12 @@ export default function TemplateProvider() {
         const profile = profileStore.profiles().find((entry) => entry.did === did);
         if (!profile) void profileStore.fetchProfile(did);
         return profile?.name || undefined;
+      }}
+      // Who a mention names, for its hover card: the face beside the name, by the same cache.
+      person={(did) => {
+        const profile = profileStore.profiles().find((entry) => entry.did === did);
+        if (!profile) void profileStore.fetchProfile(did);
+        return profile ? { name: profile.name || undefined, avatar: profile.avatar || undefined } : undefined;
       }}
     >
       <BlockDisplayOverrides overrides={moduleBlockDisplays()}>

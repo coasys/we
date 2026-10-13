@@ -235,4 +235,26 @@ export interface BackendPorts {
    * omits it, and a surface that would have asked for agreement falls back to writing the state.
    */
   flows?: FlowPort;
+  /**
+   * Who points at a value through one predicate — every message that mentions an agent. Optional: a
+   * backend that cannot answer omits it, and a surface asking falls back to what it can read.
+   */
+  references?: ReferencePort;
+}
+
+/**
+ * The records that link to one value through one predicate, newest first.
+ *
+ * The question a query cannot ask: "which messages mention this agent" is a relation whose target
+ * is a DID rather than a record, so "has a linked record matching…" has nothing to match against.
+ * Asked from the target's end it is one lookup on a store indexed by link, however many messages the
+ * space holds — which is what makes a mentions inbox affordable rather than a scan.
+ */
+export interface ReferencePort {
+  referrers(
+    dataset: DatasetHandle,
+    predicate: string,
+    target: string,
+    opts?: { limit?: number },
+  ): Promise<{ id: string; author: string; at: string }[]>;
 }

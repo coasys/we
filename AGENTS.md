@@ -321,7 +321,7 @@ reactive primitives, but a store factory is arbitrary code with the host's ports
 model covers what a schema may *name*, not what code may *do*.
 
 Three of nineteen surfaces (templates, themes, views) have an out-of-repo path. Do not describe the
-marketplace as though it covers the rest. `docs/internal/plans/module-marketplace.md` places every
+marketplace as though it covers the rest. `docs/architecture/module-marketplace.md` places every
 surface on a **distribution ladder** — pure data, declared data + fragments, sandboxed embed,
 host-provided capability kernels, code — and says which rung each can reach. Nothing `import()`s a
 bundle from an expression, at any rung; a contribution that needs code merges here.
@@ -521,7 +521,7 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     last(items) — The last entry of a list, or undefined when it is empty.  e.g. last(item.messages).text
     reverse(items) — The entries of a list, back to front. A new list — the one given is untouched, so a store array or a query result can be reversed without disturbing anything else reading it.  e.g. reverse(local.utterances)
     split(text, separator?) — The text cut into a list at each `separator` (default ','), each piece trimmed, empty pieces left out — so an empty string is an empty list. The inverse of `join`, for a list held in one string, such as a URL parameter.  e.g. split(routeStore.params.hide).filter(k, k != kind)
-    sum(items) — The numbers in a list added together. Anything that is not a number counts as 0, and anything that is not a list sums to 0.  e.g. sum(local.replies.map(r, count(r.comments)))
+    sum(items) — The numbers in a list added together. Anything that is not a number counts as 0, and anything that is not a list sums to 0.  e.g. sum(local.replies.map(r, count(r.responses)))
   Text:
     contains(text, needle) — Whether the text contains `needle`, ignoring case — the same test the where-object `contains` makes.  e.g. contains(item.name, local.search)
     endsWith(text, suffix) — Whether the text ends with `suffix`, case-sensitively.  e.g. endsWith(item.url, '.png')
@@ -574,9 +574,9 @@ values may be expressions (in an expression) or tokens (in a $query):
   { OR: [ {…}, {…} ] }  { AND: [ … ] }  { NOT: {…} }   — combinators; sibling keys are implicitly ANDed
 
 "some" and "none" ask about LINKED RECORDS rather than a field's value, and are the only way to do
-so: "posts with no comments", "nodes carrying a relationship of this kind". Without them the caller
+so: "posts with no replies", "nodes carrying a relationship of this kind". Without them the caller
 fetched everything with its children and counted client-side. An empty clause means "any", so
-{ comments: { some: {} } } is "has at least one". They nest — the clause inside one may itself
+{ responses: { some: {} } } is "has at least one". They nest — the clause inside one may itself
 contain a quantifier — and they run natively in a $query, so nothing is fetched to count.
 
 A key is read as a quantifier because it carries "some" or "none", not because the model says it is
@@ -813,7 +813,7 @@ post's text blocks, images and tasks together, each with its own fields. Every m
 type, so a card can pick a display per row rather than assuming one.
 
 That makes include the right tool for a FEED, where the alternative is one drill-down per parent:
-{ "$query": { "entity": "CollectionBlock", "where": { "type": "root" }, "include": { "children": true } } }
+{ "$query": { "entity": "CollectionBlock", "where": { "kind": "post" }, "include": { "children": true } } }
 
 A scope drill-down is still right on a DETAIL route, where the parent is fixed and its children are
 the whole subject — it is a narrower question, not a worse one. For external models, check the
@@ -838,14 +838,14 @@ Reading a TREE rather than one record's children — the same scope, with one mo
   anchorId may be a LIST, which asks the same question of every anchor at once. One query for a
   whole level of a tree rather than one per parent, which also means one subscription instead of
   one per parent.
-  { "scope": { "anchor": "CollectionBlock", "via": "comments", "anchorId": { "$": "local.replies.map(r, r.id)" } } }
+  { "scope": { "anchor": "CollectionBlock", "via": "responses", "anchorId": { "$": "local.replies.map(r, r.id)" } } }
 
   "levels": [10, 5, 3] walks the relation depth by depth — ten children, five under each of those,
   three under each of THOSE — and the backend answers once. This is how to read a comment thread, a
   knowledge map's neighbourhood, or any nested containment: bounded at every depth and one request,
   where asking level by level from the template costs a round trip each and draws the tree a layer
   at a time.
-  { "scope": { "anchor": "CollectionBlock", "via": "comments", "anchorId": { "$": "card.id" }, "levels": [10, 5, 3] } }
+  { "scope": { "anchor": "CollectionBlock", "via": "responses", "anchorId": { "$": "card.id" }, "levels": [10, 5, 3] } }
 
   "transitive": true is the same walk with no bound — every descendant, however deep. Right for a
   count, and for a small tree you mean to draw whole; wrong as a default, since it fetches a subtree
@@ -860,17 +860,33 @@ Reading a TREE rather than one record's children — the same scope, with one mo
 
 A walked or transitive result is FLAT and does not describe its own shape — a row says it is under
 the anchor, never where. Include the inverse relation to rebuild the tree: every WeNode carries
-inReplyTo, the reverse of comments, so a row names its own parent.
-  "include": { "inReplyTo": true }
+respondsTo, the reverse of responses, so a row names its own parent.
+  "include": { "respondsTo": true }
 Then each level is a filter over the one result:
-  { "$": "local.threadRows.filter(r, r.inReplyTo.id == (card.id))" }
+  { "$": "local.threadRows.filter(r, r.respondsTo.id == (card.id))" }
 PARENTHESISE the anchor when it is anything but a plain path — `==` binds tighter than `?:`, so a
 ternary spliced in bare turns the predicate into its own result, which is truthy for every row.
 
-A count over a whole subtree is the same idea in a projection:
-  "include": { "$descendants": { "from": "comments", "count": true, "transitive": true } }
-It rides in the read already being made, so "42 replies" on a collapsed branch costs no extra query
-— where count(row.comments) is the direct children only and would say 3.
+Responses and threads. Everything made in response to a record — a reply, a call about it, a channel
+spun off from it — is in its "responses" (direct ones only), and each names what it answers through
+"respondsTo". A record ALSO carries "thread": every response under it at any depth, flattened, one
+link each — so the whole discussion under a post, and its total, are one read with no walk:
+  "include": { "$replies": { "from": "thread", "count": true, "where": { "kind": "reply" } } }
+FILTER BY WHAT A RESPONSE IS. A call held about a post is in its responses and its thread too, so a
+reply count or a thread list says which responses it means — a reply is a CollectionBlock of kind
+'reply'. A thread lives on its SUBJECT, the first record above that is not
+itself a response, so a reply's own "thread" is empty; to count under a reply, walk it:
+  "include": { "$descendants": { "from": "responses", "count": true, "transitive": true } }
+— where count(row.responses) is the direct responses only and would say 3.
+
+A response is NEVER a child of anything. A reply to a line in a call is in the line's thread, not
+the call's children; a comment on a post is in the post's thread, not the channel's. Where it was
+said is derived — its thread's subject, and the container that subject is part of. So everything
+said in a room is its children PLUS THEIR THREADS: read the children with
+  "include": { "thread": true }
+and draw each row's thread beside it (threadLines does this for a transcript or a feed). Children
+alone are the top-level items, with no filter needed. The same three links — child, response,
+thread — hold for a single chat feed and for a forum of channels; only the arrangement differs.
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
@@ -1560,7 +1576,7 @@ when `relative` is enabled.
 - AudioDisplay
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | undefined, duration: number | undefined, albumArt: string | undefined
 - BlockComposer (DesignSystemElement)
-  Props: editorState?: EditorStateInput, dataset?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string, autoFocus?: boolean, handles?: boolean
+  Props: editorState?: EditorStateInput, dataset?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; submit: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string, autoFocus?: boolean, handles?: boolean, compact?: boolean, onSubmit?: ((line: { text: string; marks: string; }) => void), placeholder?: string
 - BlockRenderer (DesignSystemElement)
   Props: editorState?: EditorStateInput, dataset?: unknown, blockDrag?: BlockDragSource, rootClass?: string
 - CalloutDisplay
@@ -1797,7 +1813,7 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - pending: string[] — Record ids whose card stands for a suggestion nobody has agreed to yet — an extraction pass can stage a whole record, so it is on the canvas and answers every query the accepted ones do. Read onto the matching node as `data.pending`, for a style rule or a node action to pick up with `{ when: { "data.pending": true } }` — the `data.` prefix is required, since a bare key reads a node field rather than seeded data, and matches nothing here. Ids rather than a query because only the capability that staged them knows which they are.
   - changed: string[] — Record ids that are agreed but carry a suggested change — a staged edit to something a person already owns. Read onto the matching node as `data.changed`. Separate from `pending` because it wants the opposite drawing: the record is settled, so mark it rather than fade it.
   - hidden: string[] — Record ids to leave off the canvas entirely — no card, and no connection to or from one. For narrowing what is shown (hiding suggestions nobody has agreed to), where an opacity rule would still leave the card pressable and its lines drawn.
-  - counts: string[] — Relations to count on each card, read onto its data as `<name>Count` — `["signals", "comments"]` for "what have people made of this". The projections ride in the read the seed already makes, so a canvas of three hundred cards pays nothing extra; a query per card would be three hundred subscriptions. A type that does not declare the relation is asked for no count rather than refusing the read, since a refusal would take that whole type off the canvas. Absent for a count of zero, like every other unset field, so a rule can ask whether it is there.
+  - counts: string[] — Relations to count on each card, read onto its data as `<name>Count` — `["signals", "responses"]` for "what have people made of this". The projections ride in the read the seed already makes, so a canvas of three hundred cards pays nothing extra; a query per card would be three hundred subscriptions. A type that does not declare the relation is asked for no count rather than refusing the read, since a refusal would take that whole type off the canvas. Absent for a count of zero, like every other unset field, so a rule can ask whether it is there.
   - weigh: { signalTypeId: string; aggregate?: string; mode?: string; rangeMin?: number; rangeMax?: number; step?: number; excludeAuthors?: string[]; me?: string } — Weigh each card by one reaction type, read onto its data as `weight` (with `weightCount`, `weightMine` — what `me` gave — and `weightType`). Read the way every reaction surface reads the type: a toggle counts, a vote nets out, a rating or slider averages, and the community's own `aggregate` where the mode can express it. Absent for a vote or rating nobody has given; zero for a count. What a forest's `sortBy: 'weight'` and a heat rule read. Pass the type's `rangeMin`, `rangeMax` and `step` too, so the pretend people a development build can add answer within its range.
   - weights: string — How much each person's voice counts in `weigh` — `did=50,did=0` in whole percent, anyone not named in full; 0 leaves them out. Applied to the answers already read, so changing it re-weighs the canvas with no query — a slider can drive it. The seed reports who answered as `onSeedSummary`'s `voices`: `{ author, cards, mean }`, the busiest first.
   - limit: number — Rows per type. Default 200.
@@ -1929,7 +1945,7 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - Example: `{ "type": "drag-node", "options": { "pin": true } }`
 - `arrange-nodes` — Drag a card to another place in a hierarchy, with the tree showing the result as you go — emitting onNodeArrange when it is dropped. One rule — the place whose ghost would be nearest the card: every place it could go (each gap in each row, the level beneath a card with no children, its own place) is asked of the layout, and the one that would draw it closest to the middle of the card in the hand, on its level, is the one shown — so the gap always opens under the card, however the tree reshuffles to make room and wherever the card was picked up; where the end of one family and the start of the next land at one spot, just left of it is the first and just right the second; between levels the last place shown holds; in the unconnected zone it comes out of its tree; over its own place or off the tree it goes back where it was and nothing is emitted. A place it would land is drawn as a dashed ghost with the line it would have, and its own place as a faint hole with no line, so ‘nothing will happen’ never looks like a destination; on release the card travels into it and is held there until the write comes back, so the drop is one movement. The preview needs a layout that reports its hierarchy (forest); on one that does not, the gesture reports CHILD, SIBLING or LOOSE from where it is dropped, with no preview. Writes nothing: what a hierarchy is differs per graph, so the template decides. The alternative to drag-node rather than an addition to it — listing both has them fight for the same press.
   - reorder: boolean — Whether a drag may change the order of siblings. Default true. Set it false while siblings are ordered by something a drag cannot change — a date, a tally — so a card can still move under another parent, and lands where that order puts it, but is never shown sliding into a place it would not keep.
-  - keep: string[] — Fields of a connection that keep a card in its tree: dragging into the unconnected zone is refused for a card whose connection to its parent holds a value in any of them, and the preview says why before it is let go. WE passes ['commentsCount', 'signalsCount'] with the canvas seed's `counts`, because it will not delete a connection people have discussed.
+  - keep: string[] — Fields of a connection that keep a card in its tree: dragging into the unconnected zone is refused for a card whose connection to its parent holds a value in any of them, and the preview says why before it is let go. WE passes ['responsesCount', 'signalsCount'] with the canvas seed's `counts`, because it will not delete a connection people have discussed.
   - keepReason: string — What the preview says when `keep` refuses a drop.
   - reach: number — Without a hierarchy to preview against: how far from a card, in world units, a drop still counts as beside it. Default 240.
   - band: number — Without a hierarchy to preview against: how tall the band searched for siblings is. Defaults to the dragged card's own height.
@@ -2414,12 +2430,6 @@ CalloutBlock extends WeNode:
   - icon: string [we://icon]
   - version: number [we://version]
 
-CallExtraction extends WeNode:
-  Fields:
-  - callId: string [we://call_id]
-  - entities: string [we://extraction_targets]
-  - auto: string [we://auto_interpret]
-
 ChatMessage extends WeNode:
   Fields:
   - role: string [we://role]
@@ -2441,24 +2451,26 @@ CodeBlock extends WeNode:
 
 CollectionBlock extends WeNode:
   Fields:
-  - editorState: string = null [we://editor_state]
-  - type: string [we://type]
   - kind: string [we://kind]
   - mode: string [we://mode]
   - title: string [we://title]
-  - slug: string [we://slug]
   - description: string [we://description]
-  - version: number [we://version]
+  - slug: string [we://slug]
+  - editorState: string = null [we://editor_state]
   - textContent: string [we://text_content]
+  - version: number [we://version]
   - sourceRef: string [we://source_ref]
   - sourceName: string [we://source_name]
+  - autoExtract: boolean [we://auto_extract]
+  - extractionTargets: string [we://extraction_targets]
   Relations:
-  - children: HasMany [we://children]
+  - children: HasMany [we://child]
   - arranges: HasMany [we://arranges]
   - gathers: HasOne [we://gathers]
   - board: HasOne → CollectionBlock [we://board]
   - extractionPasses: HasMany → ExtractionPass [we://extraction_pass_record]
   - extracted: HasMany [we://extracted]
+  - recognised: HasMany [we://recognised]
   - amendments: HasMany → ExtractionAmendment [we://extraction_amendment]
 
 DividerBlock extends WeNode:
@@ -2657,9 +2669,10 @@ Space extends WeNode:
   - moduleSettings: string [we://module_settings]
   Relations:
   - location: HasOne → LocationBlock [we://location]
-  - board: HasOne → CollectionBlock [we://board]
   - taskStates: HasMany → TaskState [we://task_state_order]
   - typeStyles: HasMany → TypeStyle [we://type_style]
+  - root: HasOne → CollectionBlock [we://root]
+  - roles: HasMany → SpaceRole [we://space_role]
 
 SpacePreference extends WeNode:
   Fields:
@@ -2669,6 +2682,12 @@ SpacePreference extends WeNode:
   - hiddenViews: string [we://hidden_views]
   - templateId: string [we://template_id]
   - themeId: string [we://theme_id]
+
+SpaceRole extends Ad4mModel:
+  Fields:
+  - name: string [we://role_name]
+  Relations:
+  - node: HasOne [we://role_node]
 
 SpaceTemplatePreference extends WeNode:
   Fields:
@@ -2786,11 +2805,14 @@ VideoBlock extends WeNode:
 
 WeNode extends Ad4mModel:
   Relations:
-  - comments: HasMany [we://comment]
-  - inReplyTo: HasOne [we://comment]
+  - responses: HasMany [we://response]
+  - respondsTo: HasOne [we://response]
+  - thread: HasMany [we://thread]
+  - inThread: HasOne [we://thread]
+  - partOf: HasOne [we://child]
+  - extractedFrom: HasOne [we://extracted]
   - signals: HasMany → Signal [we://signal]
-  - participants: HasMany [we://participants]
-  - calls: HasMany [we://call]
+  - participants: HasMany [we://participant]
   - mentions: HasMany [we://mention]
 
 ---
@@ -3163,7 +3185,7 @@ ShapeStore:
   - aiAvailable: boolean — AI model generation is available (the agent has a Claude API key configured)
   - generating: boolean — an AI generation is in flight
   - hintEntities: { entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock, Relationship) plus the space's own shapes
-  - extractionCandidates: string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a call actually looks for is two layers down (spaceStore.extractionTargets, then the call's own participants). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off
+  - extractionCandidates: string[] — entity names an extraction pass COULD write here: core vocabulary that declares itself extractable, plus every adopted shape that does. Candidacy, not a decision — which of these a collection actually looks for is two layers down (spaceStore.extractionTargets, the default a new collection copies, then the collection's own list). Read it to offer a choice, and to display findings: a card should show a record somebody extracted an hour ago even if the target has since been switched off
   - relationshipTargets: { label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent
   - identityOptions: { label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can map options but cannot prepend one
   - nameOptions: { label, value }[] — "Work it out" plus every named property of the open draft, for the naming-field picker. A different first entry from identityOptions on purpose: no identity means no dedup key, where no naming field means the name is DERIVED (a property called name or title, else whichever string is required or first) — there is no such thing as a record with no name
@@ -3301,11 +3323,11 @@ SpaceStore:
   - orderedSidebarItems: array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged
   - foreignSpacePrefill: { name, description, avatar } | null — detected from a foreign app's own model (e.g. Flux's Community) for prefilling the "Initialize as WE space" gate; null once the dataset is a WE space or no recognized foreign model is found
   - enabledModules: string[] — ids of the feature modules THIS SPACE has turned on: the community’s decision, shared with every member. An unset value means "not decided", not "none": it falls back to every registered module, so spaces predating the setting keep the chrome they had
-  - taskStates: { id, name, slug, semantic, color, retired, defined, approvals, approverKind }[] — the states this community’s work moves through, its own if it has defined any and otherwise the defaults ("unset" means not decided, never none). Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community’s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `defined` is false for a default the space has never written down — a virtual state, which becomes a record the first time somebody reorders it, withdraws it, or names a state with its slug. `approvals` is how many distinct people must agree before a task enters the state (1 is a plain drop) and `approverKind` the involvement kind whose holders’ agreement counts (empty: anybody’s) — see taskFlowEnabled
-  - offeredTaskStates: { id, name, slug, semantic, color, retired, defined, approvals, approverKind }[] — the same list without the withdrawn ones. What a state picker or a new board column should offer
+  - taskStates: { id, name, slug, semantic, color, retired, approvals, approverKind }[] — the states this community’s work moves through: its TaskState records, which a new space’s starter writes. A space with none has none. Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community’s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `approvals` is how many distinct people must agree before a task enters the state (1 is a plain drop) and `approverKind` the involvement kind whose holders’ agreement counts (empty: anybody’s) — see taskFlowEnabled
+  - offeredTaskStates: { id, name, slug, semantic, color, retired, approvals, approverKind }[] — the same list without the withdrawn ones. What a state picker or a new board column should offer
   - taskStatesLoaded: boolean — the space has been asked for its states. An empty list is otherwise indistinguishable from "not fetched yet"; gate an empty state on it
-  - involvementTypes: { id, name, slug, semantic, reflexive, appliesTo, icon, color, retired, defined }[] — the kinds of part a person can have in a record: "Assigned" and "Reviewing" on a task, "Going", "Maybe" and "Not going" on an event, plus whatever this community has named. Its own if it has named any, otherwise those defaults. `slug` is what Involvement.kind holds. `semantic` is the closed meaning underneath the name — responsible, reviewing, committed, interested, declined — so a board still finds the assignee after "Assigned" is renamed. `reflexive` kinds are an agent’s own answer, which nobody else may give, and an agent holds one per record. `appliesTo` is the entity names the kind is offered on, empty for all — filter with `'TaskBlock' in kind.appliesTo || !count(kind.appliesTo)`. Includes withdrawn kinds; offer offeredInvolvementTypes. Read who holds them through the `involvement` host function
-  - offeredInvolvementTypes: { id, name, slug, semantic, reflexive, appliesTo, icon, color, retired, defined }[] — the same list without the withdrawn ones. What an assign menu or an RSVP control should offer
+  - involvementTypes: { id, name, slug, semantic, reflexive, appliesTo, icon, color, retired }[] — the kinds of part a person can have in a record: "Assigned" and "Reviewing" on a task, "Going", "Maybe" and "Not going" on an event, plus whatever this community has named: its InvolvementType records, which a new space’s starter writes. `slug` is what Involvement.kind holds. `semantic` is the closed meaning underneath the name — responsible, reviewing, committed, interested, declined — so a board still finds the assignee after "Assigned" is renamed. `reflexive` kinds are an agent’s own answer, which nobody else may give, and an agent holds one per record. `appliesTo` is the entity names the kind is offered on, empty for all — filter with `'TaskBlock' in kind.appliesTo || !count(kind.appliesTo)`. Includes withdrawn kinds; offer offeredInvolvementTypes. Read who holds them through the `involvement` host function
+  - offeredInvolvementTypes: { id, name, slug, semantic, reflexive, appliesTo, icon, color, retired }[] — the same list without the withdrawn ones. What an assign menu or an RSVP control should offer
   - involvementTypesLoaded: boolean — the space has been asked for its kinds of involvement
   - templateOverrideOptions: { label, value }[] — options for the per-space template override picker: "Use the space’s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way
   - themeOverrideOptions: { label, value }[] — the same, for themes
@@ -3326,12 +3348,14 @@ SpaceStore:
   - mutedAgents: MutedAgent[] — the full mute records (did, description), for a settings list that wants the note as well as the DID
   - readMarkers: { nodeId, lastReadAt }[] — when this agent last read each node. No row means never read, so everything is unread. Read with find(spaceStore.readMarkers, { nodeId: item.id }); a keyed map would not be indexable by a row
   - unreadNodeIds: string[] — ids of the containers in this space holding something newer than this agent's marker for them, or never read. What an unread dot reads: { $: 'channel.id in spaceStore.unreadNodeIds' }. Ids rather than counts, since a count needs every child's timestamp
-  - myMentions: { id, author, createdAt }[] — nodes in this space that mention this agent, newest first. createdAt is the backend’s comparable timestamp. Filtered client-side, so right for a space and wrong for an inbox across many
+  - myMentions: { id, author, createdAt }[] — messages in this space that mention this agent — posts and transcript or Feed lines alike — newest first, the fifty most recent. createdAt is the backend’s comparable timestamp. Asked from the agent’s end through the backend’s references, one lookup per space
   - spaceModuleSettings: SettingRow[] — what each capability that declares settings is set to FOR THIS COMMUNITY, as rows a screen renders directly: { group, groupLabel, key, label, description, type, options, value, source, set, locked, lockedBy }. `value` is already resolved across every level that had an opinion; `source` names the level that decided it ('default' when nobody did); `set` says whether THIS level holds an opinion, so a reset has something to undo; `locked` says a level that BINDS this one has forced it and the control must be disabled rather than springing back — a member's private refusal does not bind the community, so it never locks this list. Built from what modules declare, so a module that adds a setting gets a control with nothing to register
   - myModuleSettings: SettingRow[] — the same rows, for what THIS AGENT has decided in THIS space. Private, held in the root dataset. The most specific of the four levels
   - agentModuleSettings: SettingRow[] — the same rows, for what THIS AGENT has decided everywhere. Private. Render it in global settings, where the question is what you want in every space
-  - autoInterpret: boolean — whether this space has calls interpreted (extracted into records) as they happen. A community decision, off by default. Readable by every member; writing it is space-settings
-  - extractionTargets: string[] — the models a call in this space starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a call begins with, and the call's own participants add or remove from there (modules.transcribe.extractionTargets). Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings
+  - autoInterpret: boolean — whether a NEW collection here (a call, a channel) starts out extracted into records as it grows. A community default, copied onto each collection when it is made — a conversation already under way keeps its own answer, read with autoExtractFor. Readable by every member; writing it is space-settings
+  - root: string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one
+  - roles: Record<name, id> — the records this space names by role, e.g. spaceStore.roles.canvas is the space's canvas. Written by the space's starter at creation. A role can be absent — a space can switch template and a template must never assume what another set up — so guard every read
+  - extractionTargets: string[] — the models a NEW collection here starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a new conversation begins with, and each collection then holds its own list, which its participants change (modules.transcribe.extractionFor[id].targets). A default, copied when a collection is made. Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings
   - taskFlowEnabled: boolean — this space’s task states ask for agreement: some state needs more than one approval, or names whose approval counts. Where true, a card dragged into such a state waits instead of moving, and arrangedBoard(…).flow[card.id] describes what it is waiting on. Gate an explanation of the waiting on it; the board needs nothing else
   - canAdministerCurrentSpace: boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space
 - Actions:
@@ -3364,11 +3388,12 @@ SpaceStore:
   - setSpaceModuleSetting(group: string, key: string, value?, spaceUuid?): sets one of a capability's settings for everyone in a space — `group` is the module id and `key` the setting's key, both off the row. **Omit `value` to clear it**, which returns the level to having no opinion: a stored value that happens to equal the default goes on overruling everything less specific while its control reads as untouched. Omit spaceUuid for the space on screen
   - setMyModuleSetting(group: string, key: string, value?, spaceUuid?): the same, for this agent in one space. Private — written to the root dataset, never to the space. Omitting `value` clears it
   - setAgentModuleSetting(group: string, key: string, value?): the same, for this agent in every space. Private, and global, so there is no space to name. Omitting `value` clears it
-  - autoInterpretForCall(collectionId): whether ONE CALL is extracted as it happens — its participants' answer if they gave one, else the space's. A function rather than a value because the answer is per call, like canAdministerSpace
-  - setAutoInterpretForCall(collectionId, on) => turns automatic extraction on or off for ONE CALL, for everyone in it. A participant's decision, unlike setAutoInterpret, which administers the space — and it leaves the space's default alone. Does not stop a pass already running: those tokens are spent
-  - setAutoInterpret(enabled: boolean, spaceUuid?): turns automatic call interpretation on or off for a space. Omit spaceUuid for the space on screen
+  - autoExtractFor(collectionId): whether ONE COLLECTION — a call, a channel, the space collection (spaceStore.root) — is extracted as it grows: its own answer, copied from the space's default when it was made. A function rather than a value because the answer is per collection, like canAdministerSpace. False until the collection has been read
+  - setAutoExtractFor(collectionId, on): turns automatic extraction on or off for ONE COLLECTION, for everyone in it. A call's participants decide for their call; the space collection is the community's, so only somebody who administers the space can change it — check canSetExtractionFor first. Leaves the space's default alone. Does not stop a pass already running: those tokens are spent
+  - canSetExtractionFor(collectionId): whether this agent may change what one collection extracts — anyone for a call or channel, only an administrator for the space collection. Gate the switch on it rather than letting the store refuse the press
+  - setAutoInterpret(enabled: boolean, spaceUuid?): sets whether a NEW collection in a space starts out extracted as it grows. A default: conversations already under way keep their own answer. Omit spaceUuid for the space on screen
   - setThreadMode(mode: 'fractal' | 'flat', spaceUuid?): sets how deep conversations go here — whether a reply may itself be replied to. A decision about what may be ADDED, never about what is stored: replies are a tree either way, so switching to flat leaves existing threads drawn as they are and switching back restores the button that grows them. Read it back as spaceStore.currentSpace.threadMode; anything but 'flat' means fractal, so a space that predates the setting reads as fractal. Omit spaceUuid for the space on screen
-  - setExtractionTarget(entity: string, on: boolean, spaceUuid?): adds or removes one model from what this space's calls start out extracting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. The community's decision; a call's participants override it per call
+  - setExtractionTarget(entity: string, on: boolean, spaceUuid?): adds or removes one model from what a NEW collection here starts out extracting. Writes the resolved list, so the first toggle also pins whatever was on by fallback. A default: each collection holds its own list afterwards
   - setModuleInstalled(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it
   - setModuleVisible(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `event.detail` bare — wrapping it in another token would evaluate at render time and send a constant
   - setViewEnabled(viewId: string, enabled: boolean, spaceUuid?): adds or removes a section from a space. The community’s decision — every member sees it. Omit spaceUuid for the space on screen
@@ -3382,16 +3407,16 @@ SpaceStore:
   - createSignalType(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank
   - createRelationshipType(config: Partial<RelationshipType>): names a kind of connection this community makes — "contradicts", "came out of". The counterpart to createSignalType; slug derived from name if blank
   - setSignalTypeRetired(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given and re-creating one with the same slug does not restore them. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves
-  - createTaskState(config: { name, semantic?, color?, icon? }): names a state this community’s work moves through — "Blocked", "In review". The counterpart to createSignalType one concept along. The defaults stay virtual beside it; a name whose slug matches a default adopts that default rather than sitting beside it. The space’s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards
-  - updateTaskState(slug: string, updates: { name?, icon?, color?, semantic?, approvals?, approverKind? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made: the three defaults ship without one. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. `approvals` (a whole number, 1–20) and `approverKind` (an involvement kind’s slug, or empty) set what agreement the state asks for — the first state that asks for any turns the space’s states into a flow, see taskFlowEnabled. By slug, so editing a default adopts it
+  - createTaskState(config: { name, semantic?, color?, icon? }): names a state this community’s work moves through — "Blocked", "In review". The counterpart to createSignalType one concept along. A slug the space already has is refused. The space’s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards
+  - updateTaskState(slug: string, updates: { name?, icon?, color?, semantic?, approvals?, approverKind? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. `approvals` (a whole number, 1–20) and `approverKind` (an involvement kind’s slug, or empty) set what agreement the state asks for — the first state that asks for any turns the space’s states into a flow, see taskFlowEnabled. By slug, which is what a task and a screen both hold
   - approveTaskMove(taskId: string): agrees with the move a task is waiting on — the same as dragging the card there yourself, so it counts toward the state’s approvals when the agent is one whose approval counts. Offer it where arrangedBoard(…).flow[card.id].canApprove
   - withdrawTaskMove(taskId: string): takes back this agent’s own vote on the move a task is waiting on, never anybody else’s. Offer it where arrangedBoard(…).flow[card.id].mine
-  - setTaskStateRetired(slug: string, retired: boolean): withdraws a state from use, or brings it back. Never touches the work sitting in it — a task names its state by slug, so deleting the state would leave the work holding a word nothing defines. The same decision setSignalTypeRetired makes. By slug, so a default can be withdrawn: doing so writes its record, which is the moment a default becomes the community’s own
-  - reorderTaskStates(orderedSlugs: string[]): sets the order this community reads its states in — which is the order of a board’s columns. An ordered relation rather than a number on each state, so two people reordering at once converge instead of one write discarding the other. A state the order does not mention still appears, after the ones it does. Slugs, because a default has no id until it is placed in an order, which adopts it. Key the rows by slug and pair with we-sortable’s onReorder, passing { $: "arg.detail" }
+  - setTaskStateRetired(slug: string, retired: boolean): withdraws a state from use, or brings it back. Never touches the work sitting in it — a task names its state by slug, so deleting the state would leave the work holding a word nothing defines. The same decision setSignalTypeRetired makes. By slug, which is what a task and a screen both hold
+  - reorderTaskStates(orderedSlugs: string[]): sets the order this community reads its states in — which is the order of a board’s columns. An ordered relation rather than a number on each state, so two people reordering at once converge instead of one write discarding the other. A state the order does not mention still appears, after the ones it does. Slugs, which is what a screen holds. Key the rows by slug and pair with we-sortable’s onReorder, passing { $: "arg.detail" }
   - setInvolvement(nodeId: string, agent: string, kind: string, on: boolean): puts somebody on a record as a kind one member says about another — assigning a task, asking for a review — or takes them off. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick it shows and a double press cannot undo itself. Every copy of the pair goes on removal. A reflexive kind is routed to respondTo, and refused for anybody but the agent it is about. Pair with a DropdownMenu of toggle entries: `onSelect: { $action: "spaceStore.setInvolvement", args: [{ $: "card.id" }, { $: "arg.id" }, "assignee", { $: "!arg.checked" }] }`
   - respondTo(nodeId: string, kind: string): gives this agent’s own answer to a record — "going", "maybe", "not-going" — replacing any other answer it held there, in one transaction. Pass an empty kind to withdraw the answer. Refuses a kind that is not reflexive. Shown on the click, before the write lands
-  - createInvolvementType(config: { name, semantic?, reflexive?, appliesTo?, icon?, color? }): names a kind of part a person can have — "Shepherd", "Second pair of eyes". `appliesTo` is entity names joined with commas. `reflexive` is fixed once made. A name whose slug matches a default adopts it
-  - updateInvolvementType(slug: string, updates: { name?, icon?, color?, semantic?, appliesTo? }): changes a kind the community already has. The slug and `reflexive` are absent — every involvement stores the one, and changing the other would rewrite who said what. An empty string clears a field. By slug, so editing a default adopts it
+  - createInvolvementType(config: { name, semantic?, reflexive?, appliesTo?, icon?, color? }): names a kind of part a person can have — "Shepherd", "Second pair of eyes". `appliesTo` is entity names joined with commas. `reflexive` is fixed once made. A slug the space already has is refused
+  - updateInvolvementType(slug: string, updates: { name?, icon?, color?, semantic?, appliesTo? }): changes a kind the community already has. The slug and `reflexive` are absent — every involvement stores the one, and changing the other would rewrite who said what. An empty string clears a field
   - setInvolvementTypeRetired(slug: string, retired: boolean): withdraws a kind from use, or brings it back, without touching anybody who holds it
   - upsertSignal(nodeId: string, signalTypeId: string, value: number | null): gives a reaction on a node, or changes one. `null` WITHDRAWS it; a zero is an ordinary value and is stored like any other. Spelling a withdrawal as 0 is what made a 0–100 slider dragged to the bottom indistinguishable from an unanswered one — pass the control's own emitted value straight through (`{ $: 'arg' }`) and both cases are right
   - withdrawSignal(nodeId: string, signalTypeId: string): takes back this agent's reaction of one type on one record. The named form of `upsertSignal(node, type, null)`, for a control that only clears
@@ -3436,7 +3461,7 @@ TemplateStore:
   - toggleInstalled(templateId: string): installs or uninstalls by id — what the settings list’s switch calls. Prefer installTemplate/uninstallTemplate where the switch can pass its value
   - setDefaultTemplate(templateId: string): sets the agent's preferred default template (persists to AgentSettings.defaultTemplateId)
   - saveTemplate(name: string): saves the current template
-  - saveTemplateAs(schema: TemplateSchema, destination?: 'root' | 'space'): saves a schema as a new template in your library or in the current space. Resolves true on success. The editor's fork path; prefer editorStore.startFork from chrome
+  - saveTemplateAs(schema: TemplateSchema, destination?: 'root' | 'space', options?: { activate?: boolean; rename?: boolean }): saves a schema as a new template in your library or in the current space, and makes it the template on screen unless activate is false. A copy saved beside the built-in it came from is named (yours) unless rename is false. Resolves true on success. The editor's fork path; prefer editorStore.startFork from chrome
   - publishToSpace(perspectiveUuid: string, spaceName: string): copies the current template into that space, so its members get it. Resolves true on success
   - deleteMarketplaceTemplate(templateId: string): removes a template this agent published from the marketplace. Only its author may
   - publishToMarketplace(options: { name, description, icon?, themeId?, slug?, screenshots: File[] }): publishes the current template to the marketplace under those details. Resolves true on success
@@ -3578,7 +3603,7 @@ Needs: kernels records, presence, ephemeral, media, peerConnection; permissions 
   - toggleScreenShare — Start or stop sharing this agent’s screen; sharing replaces the camera until it stops.
   - toggleSolo — Hide everyone but the spotlight, or bring them back; does nothing while nobody is focused.
   - toggleVideo — Turn this agent’s camera on or off, reporting through problem when it is refused.
-- Parts: `call.anchoredCallButton`, `call.continueCallButton`, `call.deviceSettings`, `call.startCallButton`, `call.tile`
+- Parts: `call.anchoredCallButton` (needs node — the record the call is about — anything with an id), `call.continueCallButton`, `call.deviceSettings`, `call.startCallButton`, `call.tile` (needs tile — the participant to show — one of modules.call.tiles)
 - Panels (`meta.panels[].dock`): `stage` "Call" (module-owned openness)
 - Settings: `iceServers` (string; deployment, space, agent) — ICE servers
 - Presence activities: `call` { id: string, anchor: object, media: object, record: string, continued: boolean }
@@ -3587,7 +3612,7 @@ Needs: kernels records, presence, ephemeral, media, peerConnection; permissions 
 Turns what is said in a call into text blocks in the space.
 Needs: kernels records, presence, media, transcription, interpretation; permissions microphone.
 - State (read in an expression as `modules.transcribe.<name>`):
-  - autoExtract — Whether this call is extracted as it happens — its participants’ answer, else the space’s.
+  - autoExtract — Whether the call this agent is in is extracted as it happens — its own answer.
   - autoJoined — Recording was started by the call rather than by this agent pressing record.
   - available — There is audio to listen to — a microphone the host is capturing.
   - callAgents — Everyone in this call, recording or not — the denominator of coverage; empty outside a call.
@@ -3605,10 +3630,16 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - extractedId — The collection the last finished pass ran on, or empty.
   - extractError — Why the last pass failed; empty otherwise.
   - extractingId — The collection a pass is running on right now, or empty.
-  - extractionFor — What one call can extract, by record id — { targets, canChoose, canExtract }, read as extractionFor[id].
+  - extractionFor — What one collection can extract, by record id — { targets, canChoose, canExtract, auto }, read as extractionFor[id].
   - extractionOpen — Whether the extraction panel is open.
   - extractStatus — How the last one-shot extraction pass went — idle, running, done or error.
   - extractTurns — How many transcript turns the last pass read.
+  - feedFromStart — Whether the Feed is read from the beginning rather than the live end.
+  - feedHasMore — Whether there is more of the space beyond the Feed’s window.
+  - feedLoaded — Whether the Feed has answered for this space yet.
+  - feedOpen — Whether the Feed panel is open.
+  - feedRoot — The space collection the Feed reads, and writes typed messages into.
+  - feedRows — The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.
   - heard — Something has been said that the record does not hold yet — buffered, being written or still with the model.
   - inCall — Whether this agent is in a call right now.
   - installError — Why the last model install failed; empty otherwise.
@@ -3633,11 +3664,13 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - proposals — Suggestions staged on the live call — prefer proposalsFor with the call named.
   - proposalsFor — Suggestions staged on one conversation, by record id — read as proposalsFor[id].
   - reconnecting — The link to the speech model dropped and is being re-established; what is said meanwhile is held.
+  - replyingTo — The line a reply is being written to — { id, text, author, surface } — or null. `surface` is 'transcript' or 'feed': the list it was started from, whose composer sends it.
   - speaking — Whether the microphone level currently counts as speech.
   - status — What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error.
   - thresholdPercent — The speech-onset threshold as a CSS width, to mark on the same meter.
   - tiedBusy — Whether a confirmed tied decision is still being written.
   - tiedDecision — A decision waiting on confirmation because it decides others too — { kind, title, body, detail, confirmLabel } — or null.
+  - timelineOrientation — Which way round this reader draws a timeline — 'newestBottom' or 'newestTop'. Their own setting.
   - transcribers — Everyone recording this call, this agent included — the numerator of coverage.
   - transcribing — Speech has gone to the model and its text has not come back yet.
   - transcriptFromStart — Whether the transcript is being read from its beginning rather than following the live end.
@@ -3646,11 +3679,13 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - watchProblem — Why the standing extraction watch is not running here; empty when it is.
 - Actions (`{ "$action": "modules.transcribe.<name>" }`):
   - acceptProposal — Keeps a suggestion, as proposed or as edited.
-  - addMessage — Writes something a person typed into a transcript, as a typed line.
+  - addMessage — Writes something a person typed into a transcript, as a typed line — with its marks, when the composer gave any.
   - applyChange — Applies one suggested change to an agreed record.
   - cancelProposalEdit — Closes the open draft, discarding what was typed.
+  - cancelReply — Puts a reply down without sending it.
   - cancelTiedDecision — Puts the decision waiting in tiedDecision down without making it.
   - closeExtractionPanel — Closes the extraction panel.
+  - closeFeed — Closes the Feed panel.
   - closePanel — Closes the transcript panel.
   - confirmTiedDecision — Carries out the decision waiting in tiedDecision, with everything tied to it.
   - dismissChange — Dismisses one suggested change, leaving the record as it was.
@@ -3661,20 +3696,29 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - flushNow — Writes what has been heard so far without waiting for the buffer to fill.
   - installModel — Installs the model the backend offers and resumes recording that was waiting on one.
   - openExtractionPanel — Opens the extraction panel.
+  - openFeed — Opens the Feed panel.
   - openPanel — Opens the transcript panel.
+  - readFeedFromStart — Re-anchors the Feed at the beginning of the space.
+  - readFeedLive — Re-anchors the Feed at the newest message.
   - readTranscriptFromStart — Shows the beginning of the transcript, to be read forwards.
   - readTranscriptLive — Goes back to following the end of the transcript.
   - refreshProposals — Re-reads what is staged on a call, or on the live one.
   - rejectProposal — Drops a suggestion.
+  - reply — Answers one line with a typed line of its own, linked from it as a reply.
+  - sendToFeed — Writes a message straight into the space, outside any call — with its marks, when the composer gave any.
   - setProposalField — Sets one field of the open draft, by property name.
+  - showMoreFeed — Grows the Feed’s window by a page.
   - showMoreTranscript — Loads one more page of the transcript, in whichever direction it is being read.
+  - startReply — Starts a reply to one line — pass { id, text, author, surface } — which that surface's composer then sends as a reply. `surface` is 'transcript' (the default) or 'feed'.
   - toggle — Starts or stops recording this agent’s microphone into the call, and opens the transcript when starting.
-  - toggleAutoExtract — Turns automatic extraction on or off for this call, for everyone in it.
+  - toggleAutoExtract — Turns automatic extraction on or off for one collection, for everyone in it; defaults to the live call.
   - toggleExtractionTarget — Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call.
 - Parts: `transcribe.transcriptFeed` (subject: routeStore.params.call ? routeStore.params.call : modules.transcribe.collectionId), `transcribe.transcriptLines` (subject: modules.transcribe.collectionId), `transcribe.transcriptComposer`, `transcribe.captureMeter`, `transcribe.captureStatus`, `transcribe.coverage`, `transcribe.extractionTargets`, `transcribe.pendingUtterance`
-- Panels (`meta.panels[].dock`): `transcript` "Transcript" (module-owned openness), `extraction` "Extraction" (module-owned openness)
-- Settings: `recordCalls` (boolean; deployment, agent, space, agent-in-space) — Record calls automatically
+- Panels (`meta.panels[].dock`): `transcript` "Transcript" (module-owned openness), `extraction` "Extraction" (module-owned openness), `feed` "Feed" (module-owned openness)
+- Settings: `recordCalls` (boolean; deployment, agent, space, agent-in-space) — Record calls automatically; `timelineOrder` (enum; agent) — Newest messages
 - Presence activities: `transcribe` { id: string, recording: boolean, anchor: object, collection: string }
+- Functions:
+  - threadLines(options) — A page of a conversation’s lines with every reply to them, each once, in time order — newest first when `newestFirst` is true. A reply is a child of nothing: it is in the `thread` of the line it answers, so read the page with `include: { thread: true }` and this flattens each line’s thread in beside it, leaving out any call held about a line. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, and a line with marks carries `content` — the one block a BlockRenderer draws it from. Options: rows (the page), newestFirst (boolean).  e.g. threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })
 
 ### Live presence (`live`)
 See each other’s cursors, and follow one person’s screen.
@@ -3754,7 +3798,7 @@ Needs: kernels records.
   - voting — The id of the poll a vote is being written for, or empty.
 - Actions (`{ "$action": "modules.polls.<name>" }`):
   - vote — Casts this agent’s vote on a poll, or changes it — one vote per person per poll.
-- Parts: `polls.pollCard`, `polls.pollComposer`
+- Parts: `polls.pollCard` (needs block — the Poll record to show), `polls.pollComposer`
 - Settings: `revealBeforeVoting` (boolean; space) — Show counts before voting
 - Functions:
   - tally(options) — Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices), pending (modules.polls.pendingVote[<poll id>] — this agent’s vote written and not yet read back, counted in place of their stored one so the bars move on the press).  e.g. tally({ votes: local.votes, options: block.options, pending: modules.polls.pendingVote[block.id] })
@@ -4162,7 +4206,7 @@ array, a missing model).
 {
   "type": "Column",
   "props": { "width": "100%" },
-  "$queries": { "postRows": { "entity": "CollectionBlock", "where": { "type": "root" }, "limit": 20 } },
+  "$queries": { "postRows": { "entity": "CollectionBlock", "where": { "kind": "post" }, "limit": 20 } },
   "children": [
     {
       "type": "$if",
@@ -5103,8 +5147,19 @@ over a call somebody opened from a link rather than the one being recorded:
 { "type": "$part", "props": { "id": "transcribe.transcriptFeed", "subject": { "$": "routeStore.params.call" } } }
 ```
 
-A part naming a module nobody has installed renders nothing and reports itself, the same way a
-contribution to an unprovided anchor does. Placing the module's *whole* panel is still
+Some parts draw one thing out of a list — a call tile draws one participant, a poll card one poll —
+and read it under a name the list binds. The module lists those as what a part **needs** (see Feature
+Modules). Place such a part inside an `$each` that binds the name, or give it with `inputs`:
+
+```json
+{ "type": "$part", "props": { "id": "call.tile", "inputs": { "tile": { "$": "first(modules.call.tiles)" } } } }
+```
+
+A part whose module is not here — not in this build, turned off by the person, or off in the space —
+draws a small marker in its place, which says why and links to the setting that turns it back on. Do
+not leave room for it or design around it: it is the size of a control, whatever the part would have
+been. Declare the modules a template places
+parts from in `meta.requires.modules`. Placing the module's *whole* panel is still
 `{ "module": "<id>" }` in `meta.panels`; parts are for building something else out of it.
 
 **Supplying a module's panel yourself.** A `meta.panels` entry carrying **both** `module` and
@@ -5319,8 +5374,8 @@ diff/compare against `dev` (e.g. `git diff dev...HEAD`, `git log dev..HEAD`) —
 never `main`, even though it exists.
 
 **PR summary convention:** a PR description follows `docs/contributing/pull-requests.md`. When
-asked to write one for a branch, create `PR_<DESCRIPTIVE_NAME>.md` at the repo root, based on
-`git diff dev...<branch>` and the branch's commit log, with these sections:
+asked to write one for a branch, base it on `git diff dev...<branch>` and the branch's commit
+log, with these sections:
 
 - **What** — what merging it changes, in a few bullets.
 - **Why** — the problem, and why this is the right fix for it.
@@ -5334,14 +5389,14 @@ asked to write one for a branch, create `PR_<DESCRIPTIVE_NAME>.md` at the repo r
   so a box nobody intends to tick makes that number wrong on every PR, and a number that is always
   wrong is one everybody learns to ignore. `scripts/pr-tasks.mjs` fails CI on an unticked box.
 
-The file is the description and nothing else — no title heading above the sections, since it is
+The description is the body and nothing else — no title heading above the sections, since it is
 passed as `gh pr create --body-file` and anything above a pairing block (below) breaks it. Give
 the **title** alongside it, for `--title`, in Conventional Commits form: `type(scope):
 description`, the type lowercase (`feat`, `fix`, `refactor`, `perf`, `docs`, `test`,
 `ci`, `chore`), the scope optional, and the description short — under 60 characters, naming the
 change rather than explaining it: `ci: pair PRs with an ad4m alert block`.
 
-**If the branch needs an ad4m change that has not been published yet**, the file must START with
+**If the branch needs an ad4m change that has not been published yet**, the description must START with
 this block, exactly — the preview builds against it and a check tests the PR there, and
 anything close (no colon, another heading or alert, lower down) fails rather than pairing:
 
@@ -5356,7 +5411,13 @@ paired, import the new SDK API directly; never redeclare its types or feature-ch
 compile against the pin. The PR cannot merge until the block is removed. The rules are in
 `docs/contributing/ad4m-and-deploys.md`.
 
-**Never commit `PR_*.md` files.** They're scratch documents for the PR description.
+**Never commit a draft written for GitHub.** A PR description, an issue body or a review reply is
+not part of the repo: keep the draft outside the repo, wherever you keep notes, or delete it before
+committing. Nothing in `.gitignore` catches one, whatever it is called.
+
+**Record a decision when one is made.** When a change settles something every later change has to
+respect, add a record to `docs/architecture/decisions/` in the same PR — the bar and the format are
+in that folder's README. Most PRs make no such decision; a few a month is the expected rate.
 
 ---
 
@@ -5796,7 +5857,7 @@ const space = await Space.create(perspective, { uuid: crypto.randomUUID(), name:
 ### Watching the graph from `@we/backend-ad4m`
 
 To hear that something changed in a perspective, subscribe on the executor with `subscribeQuery`
-rather than `addListener('link-added' | 'link-removed')`. A link listener receives every link of a
+rather than `perspective.on('link-added' | 'link-removed')`. A link listener receives every link of a
 peer-sync burst in JS and filters there. The executor re-runs a subscription only for a diff that
 touches one of its predicates, and pushes only when the result changes.
 

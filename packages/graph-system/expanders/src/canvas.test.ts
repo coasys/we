@@ -22,7 +22,7 @@ const SHAPES: EntityShape[] = [
     // has none, which is the case that must not take a type off the canvas.
     relations: [
       { name: 'signals', target: 'Signal', cardinality: 'many' },
-      { name: 'comments', target: '', cardinality: 'many' },
+      { name: 'responses', target: '', cardinality: 'many' },
     ],
   },
   { name: 'TaskBlock', identityProperty: 'title', properties: [{ name: 'title', type: 'string' }], relations: [] },
@@ -66,7 +66,7 @@ const SHAPES: EntityShape[] = [
       { name: 'source', target: '', cardinality: 'one' },
       { name: 'target', target: '', cardinality: 'one' },
       { name: 'signals', target: 'Signal', cardinality: 'many' },
-      { name: 'comments', target: '', cardinality: 'many' },
+      { name: 'responses', target: '', cardinality: 'many' },
     ],
   },
   {
@@ -196,12 +196,12 @@ describe('canvasSeed', () => {
     // which is the difference between a canvas of three hundred cards loading and not.
     const { context: ctx } = context({
       Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
-      CollectionBlock: [{ id: 'c1', title: 'Idea', $signalsCount: 3, $commentsCount: 2 }],
+      CollectionBlock: [{ id: 'c1', title: 'Idea', $signalsCount: 3, $responsesCount: 2 }],
     });
 
-    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'comments'] }, ctx);
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'responses'] }, ctx);
 
-    expect(nodes[0].data).toMatchObject({ signalsCount: 3, commentsCount: 2 });
+    expect(nodes[0].data).toMatchObject({ signalsCount: 3, responsesCount: 2 });
   });
 
   it('counts what people made of a connection too, so a gesture can tell a discussed line from a bare one', async () => {
@@ -221,31 +221,31 @@ describe('canvasSeed', () => {
           sourceType: 'CollectionBlock',
           target: 'c2',
           targetType: 'CollectionBlock',
-          $commentsCount: 2,
+          $responsesCount: 2,
           $signalsCount: 0,
         },
       ],
     });
 
     const { edges } = await canvasSeed().seed(
-      { canvas: 'b1', connections: 'Relationship', counts: ['signals', 'comments'] },
+      { canvas: 'b1', connections: 'Relationship', counts: ['signals', 'responses'] },
       ctx,
     );
 
-    expect(edges[0].data).toMatchObject({ commentsCount: 2 });
+    expect(edges[0].data).toMatchObject({ responsesCount: 2 });
     expect(edges[0].data?.signalsCount).toBeUndefined();
   });
 
   it('leaves a zero out, so a card can ask whether the field is there', async () => {
     const { context: ctx } = context({
       Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
-      CollectionBlock: [{ id: 'c1', title: 'Idea', $signalsCount: 0, $commentsCount: 0 }],
+      CollectionBlock: [{ id: 'c1', title: 'Idea', $signalsCount: 0, $responsesCount: 0 }],
     });
 
-    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'comments'] }, ctx);
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'responses'] }, ctx);
 
     expect(nodes[0].data?.signalsCount).toBeUndefined();
-    expect(nodes[0].data?.commentsCount).toBeUndefined();
+    expect(nodes[0].data?.responsesCount).toBeUndefined();
   });
 
   it('asks a type for no count it cannot answer, rather than losing the type to a refused query', async () => {
@@ -266,7 +266,7 @@ describe('canvasSeed', () => {
       return query(request);
     };
 
-    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'comments'] }, ctx);
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'responses'] }, ctx);
 
     expect(asked.find((q) => q.entity === 'CollectionBlock')?.include).toMatchObject({
       $signalsCount: { from: 'signals', count: true },
@@ -1247,5 +1247,95 @@ describe('canvas seed — what a card carries for ordering', () => {
     const { nodes } = await canvasSeed().seed({ canvas: 'b1' }, ctx);
 
     expect(nodes[0].data?.createdAt).toBe('2026-03-04T10:00:00Z');
+  });
+});
+
+/**
+ * A canvas whose members live somewhere else — a space's canvas, over everything top-level in it.
+ *
+ * Two things can quietly go wrong. Placements read from the members' record would mix the canvas's
+ * arrangement into the space's feed, and members read from the canvas would find nothing at all,
+ * since nothing is contained by a space canvas. And the list of unplaced cards beside the canvas
+ * must be the canvas's own answer, or the two can disagree about what is waiting to be placed.
+ */
+describe('a canvas over another record’s members', () => {
+  const shapes: EntityShape[] = [
+    ...SHAPES.filter((shape) => shape.name !== 'TaskBlock'),
+    {
+      name: 'TaskBlock',
+      identityProperty: 'title',
+      properties: [{ name: 'title', type: 'string' }],
+      relations: [{ name: 'extractedFrom', target: '', cardinality: 'one' }],
+    },
+  ];
+
+  function spaceContext() {
+    const asked: { entity: string; anchor?: string; via?: string; include?: unknown }[] = [];
+    const ctx = {
+      query: async (request: ExpanderQuery) => {
+        asked.push({
+          entity: request.entity,
+          anchor: request.scope?.anchorId,
+          via: request.scope?.via,
+          include: request.include,
+        });
+        const where = request.where as { id?: string[] } | undefined;
+        if (request.entity === 'Placement' && request.scope?.anchorId === 'canvas-1') {
+          return [{ id: 'p1', node: 't1', nodeType: 'TaskBlock', x: 5, y: 6 }];
+        }
+        if (request.entity === 'TaskBlock' && where?.id) {
+          return [{ id: 't1', title: 'Placed', extractedFrom: 'call-2' }];
+        }
+        if (request.entity === 'TaskBlock' && request.scope?.anchorId === 'root' && request.scope.via === 'children') {
+          return [
+            { id: 't1', title: 'Placed', extractedFrom: 'call-2' },
+            { id: 't2', title: 'Loose', extractedFrom: { id: 'call-1' } },
+          ];
+        }
+        return [];
+      },
+      defaultDataset: () => 'ds',
+      models: () => shapes,
+      warn: () => {},
+    } as ExpanderContext;
+    return { asked, ctx };
+  }
+
+  const options = {
+    canvas: 'canvas-1',
+    members: { id: 'root', via: 'children' },
+    contains: ['TaskBlock'],
+    origin: 'extractedFrom',
+  };
+
+  it('reads the members from the record named, and the placements from the canvas itself', async () => {
+    const { asked, ctx } = spaceContext();
+    const { nodes } = await canvasSeed().seed(options, ctx);
+
+    expect(nodes.map((n) => [n.label, n.data?.x, n.data?.origin])).toEqual([
+      ['Placed', 5, 'call-2'],
+      ['Loose', undefined, 'call-1'],
+    ]);
+    expect(asked.filter((a) => a.entity === 'Placement').map((a) => a.anchor)).toEqual(['canvas-1']);
+    // Where each came from rides in the read the canvas makes anyway.
+    expect(asked.find((a) => a.anchor === 'root')?.include).toMatchObject({ extractedFrom: true });
+  });
+
+  it('says which cards are waiting to be placed, and where each came from', async () => {
+    const { ctx } = spaceContext();
+    const seed = canvasSeed();
+    const fragment = await seed.seed(options, ctx);
+    const { summary } = seed.derive!(fragment, options);
+
+    expect(summary).toEqual({
+      unplaced: [{ id: 't2', type: 'TaskBlock', label: 'Loose', origin: 'call-1', pending: false }],
+    });
+  });
+
+  it('keeps only one conversation’s cards when asked, and nothing that came from nowhere', async () => {
+    const { ctx } = spaceContext();
+    const { nodes } = await canvasSeed().seed({ ...options, onlyFrom: 'call-1' }, ctx);
+
+    expect(nodes.map((n) => n.label)).toEqual(['Loose']);
   });
 });

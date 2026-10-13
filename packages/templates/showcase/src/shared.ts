@@ -38,7 +38,7 @@ export const KIND = {
   message: 'message',
   /** A composed post. Document. */
   post: 'post',
-  /** A response, hung off any node through `we://comment`. Document. */
+  /** A response, hung off any node through `we://response`. Document. */
   reply: 'reply',
   /** A kanban board holding columns. Feed. */
   board: 'board',
@@ -68,7 +68,7 @@ export function composerModal(opts: {
   kind: string;
   /** Id of the node to attach to. Omit for a post, which sits loose in the space. */
   parentId?: SchemaProp;
-  /** `we://children` (inside a container) or `we://comment` (a reply). */
+  /** `we://child` (inside a container) or `we://response` (a reply). */
   predicate?: string;
   saveLabel?: string;
   /**
@@ -137,10 +137,11 @@ export function newContainerModal(opts: {
         {
           kind: opts.kind,
           mode: MODE.feed,
-          type: 'collection',
           title: { $: 'local.name' },
         },
-        ...(opts.parentId !== undefined ? [{ parent: { id: opts.parentId, predicate: 'we://children' } }] : []),
+        // Inside the container named, or else at the space's top level — its collection — so a new
+        // channel is one of the space's children rather than a record nothing contains.
+        { parent: { id: opts.parentId ?? { $: 'spaceStore.root' }, predicate: 'we://child' } },
       ],
       ...(opts.navigateTo && {
         onSuccess: [{ $action: 'routeStore.navigate', args: [expr`${opts.navigateTo} + result.id`] }],

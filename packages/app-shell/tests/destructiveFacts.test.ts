@@ -1,6 +1,6 @@
 /**
  * What a delete takes with it, counted by the host before it asks — against the in-memory backend,
- * so the walk runs over real records and real `comments` links rather than a fake that agrees with it.
+ * so the walk runs over real records and real `responses` links rather than a fake that agrees with it.
  */
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { getEntity } from '@we/entities';
@@ -10,7 +10,7 @@ import { collectionFacts } from '../src/shared/destructiveFacts';
 
 interface Node {
   id: string;
-  addComments(child: unknown): Promise<void>;
+  addResponses(child: unknown): Promise<void>;
 }
 const Collection = () =>
   getEntity('CollectionBlock') as unknown as { create(dataset: unknown, data: Record<string, unknown>): Promise<Node> };
@@ -27,7 +27,7 @@ beforeEach(async () => {
 
 async function reply(to: Node): Promise<Node> {
   const node = await Collection().create(dataset, { kind: 'comment' });
-  await to.addComments(node);
+  await to.addResponses(node);
   return node;
 }
 

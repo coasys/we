@@ -48,8 +48,12 @@ describeBackendConformance('AD4M', {
   knownGaps: {
     'live.included-child-edit':
       "a model subscription re-runs only for its own class's predicates; an included record's are not in its trigger set",
-    'live.identical-queries-independent':
-      'identical subscriptions share one server-side id with no holder count, so disposing one ends both',
+    'queries.reply-total-leaves-calls-out':
+      "a count's `where` resolves property names through the relation's target class, and an untyped relation has none, so `kind` is skipped and every response is counted (build_projection_where_patterns)",
+    'queries.newest-in-a-channel':
+      "a projection's `order` honours only `id`/`base` and drops any other key, so `createdAt` is ignored and the member returned is whichever SPARQL yields first (build_projection_order_clause)",
+    'queries.newest-reply-under-a-post':
+      "a projection's `order` honours only `id`/`base` and drops any other key, so `createdAt` is ignored and the member returned is whichever SPARQL yields first (build_projection_order_clause)",
   },
   knownIntermittent: {
     // Seen in 3 of 10 runs, only ever on the first post in a fresh perspective: the first two

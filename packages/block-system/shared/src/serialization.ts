@@ -12,7 +12,7 @@ import {
   toPortableText,
   walkBlocks,
 } from './content';
-import { mentionedDids, parseMarks, serializeMarks } from './marks';
+import { mentionChanges, mentionedDids, parseMarks, serializeMarks } from './marks';
 import type { CollectionMode } from './modes';
 import { isReconcilable } from './modes';
 import { getBlockRegistration, getRegisteredBlockEntities } from './registry';
@@ -276,15 +276,15 @@ function hasChildren(block: RecordInstance): block is BlockWithChildren {
 }
 
 /**
- * The replies hanging off a record — `WeNode.comments`, as ids.
+ * The replies hanging off a record — `WeNode.responses`, as ids.
  *
- * Read structurally rather than through a class, because what is on the other end of `we://comment`
+ * Read structurally rather than through a class, because what is on the other end of `we://response`
  * is whatever somebody replied with, and the relation is declared on `WeNode` rather than on any
  * one model.
  */
-function commentsOf(block: RecordInstance): string[] {
-  const comments = (block as { comments?: unknown }).comments;
-  return Array.isArray(comments) ? comments.filter((uri): uri is string => typeof uri === 'string') : [];
+function responsesOf(block: RecordInstance): string[] {
+  const responses = (block as { responses?: unknown }).responses;
+  return Array.isArray(responses) ? responses.filter((uri): uri is string => typeof uri === 'string') : [];
 }
 
 /** Returns true if a value looks like a FileData object (data_base64 + file_type). */
@@ -480,6 +480,50 @@ function hasMentions(model: unknown): model is RecordInstance & NodeWithMentions
  * for the mentions it kept — each removed link is a network write, and an unchanged edge should
  * cost nothing.
  */
+/**
+ * Write what a composition's root stores about its document: the encoded document a renderer draws
+ * from, its plain text, and a mention link per person it names.
+ *
+ * All three are projections of the blocks, so every path that changes the blocks ends here — a
+ * composer's create, an edit's reconcile, and a composition written record by record
+ * (`refreshComposition`). One place, so they cannot come to disagree about what a document stores.
+ * The mention links after the save: `addMentions` writes links, a separate operation from the
+ * property write, with nothing to add to that round trip.
+ */
+async function writeCompositionState(
+  root: RecordInstance,
+  blocks: readonly ContentBlock[],
+  batchId?: string,
+): Promise<void> {
+  const record = root as RecordInstance & Record<string, unknown>;
+  if ('editorState' in record) {
+    record.editorState = asFileField(encodeEditorState(blocks));
+    record.textContent = extractTextContent(blocks);
+  }
+  await root.save(batchId);
+  await writeMentions(root, blocks, batchId);
+}
+
+/**
+ * Derive a composition's stored document from the blocks already inside it.
+ *
+ * For a composition written record by record rather than through `createBlocks` — a space
+ * starter's posts, say, which arrive as a `CollectionBlock` and the blocks it contains. Until this
+ * runs the root stores no document, and a renderer, which draws from the stored document alone for
+ * speed, shows it empty. Answers whether there was a composition to write.
+ */
+export async function refreshComposition(
+  perspective: BlockDataset,
+  rootUri: string,
+  options: { batchId?: string } = {},
+): Promise<boolean> {
+  const resolved = await resolveBlockInstance(perspective, rootUri);
+  if (!resolved) return false;
+  const blocks = await childrenToBlocks(perspective, resolved.model);
+  await writeCompositionState(resolved.model, blocks, options.batchId);
+  return true;
+}
+
 async function writeMentions(root: RecordInstance, blocks: readonly ContentBlock[], batchId?: string): Promise<void> {
   if (!hasMentions(root)) return;
 
@@ -487,8 +531,7 @@ async function writeMentions(root: RecordInstance, blocks: readonly ContentBlock
   const current = Array.isArray(root.mentions) ? root.mentions : [];
   if (!wanted.length && !current.length) return;
 
-  const added = wanted.filter((did) => !current.includes(did));
-  const removed = current.filter((did) => !wanted.includes(did));
+  const { add: added, remove: removed } = mentionChanges(current, wanted);
 
   if (added.length) await root.addMentions(added, batchId);
   if (removed.length) await root.removeMentions(removed, batchId);
@@ -500,8 +543,8 @@ async function writeMentions(root: RecordInstance, blocks: readonly ContentBlock
  * Where a newly-created composition attaches, as a raw predicate link.
  *
  * A predicate rather than a relation name because the two anchors that matter mean different
- * things and live on different models: `we://children` puts a message *inside* a channel
- * (composition — what a container is made of), `we://comment` hangs a reply *off* any `WeNode`
+ * things and live on different models: `we://child` puts a message *inside* a channel
+ * (composition — what a container is made of), `we://response` hangs a reply *off* any `WeNode`
  * (discourse — what was said about it). A relation-name API would have to resolve the name against
  * the anchor's class, which the block system does not have and should not need: it is persisting a
  * document, and where that document belongs is the caller's knowledge.
@@ -509,7 +552,7 @@ async function writeMentions(root: RecordInstance, blocks: readonly ContentBlock
 export interface BlockAnchor {
   /** Id of the existing node the new root links from. */
   id: string;
-  /** The predicate to link through — `'we://children'`, `'we://comment'`. */
+  /** The predicate to link through — `'we://child'`, `'we://response'`. */
   predicate: string;
 }
 
@@ -553,16 +596,10 @@ export interface CreateBlocksOptions {
  * Parent-child relationships are established via the `children` relation on the root and on any
  * nested collection.
  *
- * `kind` stamps the semantic type onto the root — `'post'` for a post. Optional and supplied by the
- * caller rather than assumed here, because not every root composition is a post: the block system
- * knows how to persist a document, not what the document is for.
- *
- * Why it exists at all: `type: 'root'` has been doing double duty as *the* post discriminator,
- * which conflates the editor's node type with what the collection means. Writing `kind` on new
- * roots starts the changeover without a backfill — reads still key on `type: 'root'`, and can
- * switch once the legacy set stops mattering. There is no coordinated migration point in a P2P
- * system, so a bulk rewrite is not available; converging one record at a time as they are created
- * is.
+ * `kind` stamps what the collection is onto the root — `'post'` for a post. Supplied by the caller
+ * rather than assumed here, because not every root composition is a post: the block system knows
+ * how to persist a document, not what the document is for. It is the only discriminator a reader
+ * has, so a caller writing something it means to be found should always pass one.
  *
  * Mutates the blocks handed in: every persisted block gets its `_key` stamped, so a caller holding
  * the document can reconcile against it later.
@@ -583,12 +620,14 @@ export async function createBlocks(
       // The file store wants addresses, not payloads; upload before anything is written so the
       // records and the blob agree about every asset.
       const uploaded = await preUploadFileAssets(perspective, blocks);
-      // `type: 'root'` is what identifies a post to every reader that predates `kind`.
-      const rootData: Record<string, unknown> = { type: 'root' };
-      const root = (await registration.model.create(perspective, rootData, {
-        batchId: tx.batchId,
-        ...(anchor && { parent: { id: anchor.id, predicate: anchor.predicate } }),
-      })) as BlockRecord;
+      const root = (await registration.model.create(
+        perspective,
+        {},
+        {
+          batchId: tx.batchId,
+          ...(anchor && { parent: { id: anchor.id, predicate: anchor.predicate } }),
+        },
+      )) as BlockRecord;
 
       // Models are written from the author's blocks (file payloads), the blob from the uploaded
       // copies (file addresses); the two walk in lockstep so every key lands on both.
@@ -602,15 +641,7 @@ export async function createBlocks(
         if (value && name in root) root[name] = value;
       }
 
-      if ('editorState' in root) {
-        root.editorState = asFileField(encodeEditorState(uploaded));
-        root.textContent = extractTextContent(uploaded);
-      }
-      await root.save(tx.batchId);
-
-      // After the save: `addMentions` writes links, which is a separate operation from the property
-      // write above and has nothing to add to that round trip.
-      await writeMentions(root, uploaded, tx.batchId);
+      await writeCompositionState(root, uploaded, tx.batchId);
       return root;
     },
     { batchId },
@@ -740,19 +771,24 @@ export async function childrenToBlocks(perspective: BlockDataset, collection: Re
  *
  * ## Why replies go too
  *
- * A reply is a composition hanging off `we://comment` rather than `we://children`, which is what
+ * A reply is a composition hanging off `we://response` rather than `we://child`, which is what
  * makes threads fractal — the two relations say different things, and keeping them apart is the
  * whole design (see `commentThread`). This walk followed only `children`, so deleting a post left
  * every reply to it in the perspective: reachable by nothing, rendered by nothing, and counted by
- * `count(post.comments)` on a post that no longer exists.
+ * `count(post.responses)` on a post that no longer exists.
  *
  * That was survivable while a thread was one level a person had to open a modal to write into. It
  * is not now that a reply can be replied to, because the orphan is a whole subtree.
  *
  * So a delete takes the conversation with it, which is also what a reader means by it: a reply
  * whose subject is gone cannot be read, let alone answered. Anything on the relation that is not a
- * block resolves to nothing and is skipped, and the cycle guard and depth limit cover `comments`
+ * block resolves to nothing and is skipped, and the cycle guard and depth limit cover `responses`
  * exactly as they cover `children` — both are multi-writer link sets.
+ *
+ * **Replies, not every response.** A call held about a post, or a channel spun off from one, is a
+ * response too — but it is a feed, with its own participants, transcript and extracted records, and
+ * it lives in a room of its own. Deleting the post it was about does not delete that conversation;
+ * it stays where it lives, about something that is gone.
  */
 export async function deleteBlocks(perspective: BlockDataset, rootUri: string): Promise<void> {
   await runEntityTransaction(perspective, async (tx) => {
@@ -767,7 +803,11 @@ export async function deleteBlocks(perspective: BlockDataset, rootUri: string): 
       if (hasChildren(resolved.model)) {
         for (const childUri of resolved.model.children) await deleteNode(childUri, depth + 1);
       }
-      for (const replyUri of commentsOf(resolved.model)) await deleteNode(replyUri, depth + 1);
+      for (const replyUri of responsesOf(resolved.model)) {
+        const response = await resolveBlockInstance(perspective, replyUri);
+        if ((response?.model as { mode?: unknown } | undefined)?.mode === 'feed') continue;
+        await deleteNode(replyUri, depth + 1);
+      }
       await resolved.model.delete(tx.batchId);
     }
     await deleteNode(rootUri, 0);
@@ -961,16 +1001,9 @@ export async function reconcileBlocks(
       if (!claimed.has(id) && base.has(id)) await resolved.model.delete(tx.batchId);
     }
 
-    const blobBlocks = withFinalChildren(uploaded, existingRoot);
-    const rootRecord = existingRoot as BlockWithChildren & Record<string, unknown>;
-    rootRecord.editorState = asFileField(encodeEditorState(blobBlocks));
-    rootRecord.textContent = extractTextContent(blobBlocks);
-    await existingRoot.save(tx.batchId);
-
-    // Edits add and remove mentions like any other content, so the edge set is reconciled here for
-    // the same reason `textContent` is rewritten: both are projections of the document that just
-    // changed.
-    await writeMentions(existingRoot, blobBlocks, tx.batchId);
+    // Edits add and remove mentions like any other content, so the edge set is reconciled with the
+    // stored document and its text: all three are projections of the document that just changed.
+    await writeCompositionState(existingRoot, withFinalChildren(uploaded, existingRoot), tx.batchId);
     return existingRoot;
 
     /** The blocks a parent ends up with, kept additions included, recursively. */

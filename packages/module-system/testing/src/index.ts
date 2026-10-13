@@ -83,7 +83,7 @@ function matches(row: Record<string, unknown>, where: Record<string, unknown> | 
 }
 
 function select(rows: FakeRow[], query: RecordQuery | undefined): FakeRow[] {
-  let out = rows.filter((row) => matches(row, query?.where));
+  let out = rows.filter((row) => matches(row, query?.where) && (!query?.within || row.__parent === query.within));
   const order = Object.entries(query?.order ?? {})[0];
   if (order) {
     const [field, direction] = order;
@@ -146,7 +146,12 @@ export function fakeDocuments(options: { datasetKey?: string } = {}) {
 export function fakeRecords(options: { author?: string; datasetKey?: string } = {}) {
   const author = options.author ?? 'did:test:me';
   const rows: FakeRow[] = [];
-  const writes: { op: 'create' | 'update' | 'remove' | 'link'; entity: string; id?: string; dataset?: string }[] = [];
+  const writes: {
+    op: 'create' | 'update' | 'remove' | 'link' | 'unlink';
+    entity: string;
+    id?: string;
+    dataset?: string;
+  }[] = [];
   const subscriptions = new Set<() => void>();
   let next = 0;
   const notify = () => {
@@ -158,7 +163,13 @@ export function fakeRecords(options: { author?: string; datasetKey?: string } = 
   const kernel: RecordsKernel = {
     create: async (entity, fields, options) => {
       const id = `${entity}-${++next}`;
-      rows.push({ ...fields, id, author, __entity: entity });
+      rows.push({
+        ...fields,
+        id,
+        author,
+        __entity: entity,
+        ...(options?.parent ? { __parent: options.parent.id } : {}),
+      });
       writes.push({ op: 'create', entity, id, dataset: options?.dataset });
       notify();
       return id;
@@ -167,6 +178,12 @@ export function fakeRecords(options: { author?: string; datasetKey?: string } = 
       const row = rows.find((r) => r.id === id);
       if (row) row[relation] = [...((row[relation] as unknown[]) ?? []), value];
       writes.push({ op: 'link', entity, id, dataset: target?.dataset });
+      notify();
+    },
+    unlink: async (entity, id, relation, value, target) => {
+      const row = rows.find((r) => r.id === id);
+      if (row) row[relation] = ((row[relation] as unknown[]) ?? []).filter((v) => v !== value);
+      writes.push({ op: 'unlink', entity, id, dataset: target?.dataset });
       notify();
     },
     update: async (entity, id, fields, target) => {

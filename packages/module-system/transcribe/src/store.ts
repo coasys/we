@@ -1,7 +1,8 @@
 import { activitiesOfType } from '@we/backend-shared';
-import type { ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
+import type { DatasetTarget, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 import { namespace } from '@we/schema-shared';
 
+import { createFeed } from './feedStore';
 import { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
 
 /**
@@ -121,7 +122,7 @@ const TRANSCRIPT_FIRST_PAGE = 50;
 const TRANSCRIPT_PAGE = 200;
 
 /** The predicate `CollectionBlock.children` is minted under — how an utterance attaches to its call. */
-export const CHILDREN_PREDICATE = 'we://children';
+export const CHILDREN_PREDICATE = 'we://child';
 
 /**
  * How a line in a transcript came to be — the three values of `TextBlock.source`.
@@ -132,6 +133,8 @@ export const CHILDREN_PREDICATE = 'we://children';
  */
 export const SPOKEN = 'spoken';
 export const TYPED = 'typed';
+/** What a reply hangs off — the reply mechanism every record in WE shares. */
+export const REPLY_PREDICATE = 'we://response';
 export const CORRECTED = 'corrected';
 
 /**
@@ -620,6 +623,15 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   /** Keys already asked about, so a read in a render loop is one fetch and not one per frame. */
   const proposalsRequested = new Set<string>();
   /**
+   * The key the space on screen's suggestions are kept under, beside the per-call ones.
+   *
+   * Whether a record is still a suggestion is a fact about the record, and a space-wide surface — a
+   * canvas holding every call's finds — draws records from calls nobody has asked about. Marking
+   * them from the per-call lists alone left every card from a call not yet opened looking agreed
+   * after a reload. Never a record id, so no reader can ask for it as a call.
+   */
+  const SPACE_KEY = '\u0000space';
+  /**
    * Which suggestion is being edited, and what has been typed into it.
    *
    * ## Why the draft lives here and not in the panel's `$localState`
@@ -1052,7 +1064,11 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       // The call's space, for the same reason the writes use it: a call outlives the space on
       // screen, so "proposals here" was answering about wherever the reader had wandered to. The
       // collection narrows it from that space to one conversation.
-      const staged = await interpretation.proposals(callTarget(), key);
+      // The space-wide key asks the host about the space on screen, with no conversation named.
+      const staged =
+        key === SPACE_KEY
+          ? await interpretation.proposals(undefined, undefined)
+          : await interpretation.proposals(callTarget(), key);
       const rows = staged.map((p) => {
         const fields = fieldsOf(p.values);
         return { id: p.id, kind: p.kind, entity: p.entity ?? '', fields, summary: summarise(fields) };
@@ -1103,7 +1119,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * Only ever loses an entry when it is genuinely resolved, so nothing here can un-mark a card that
    * is still waiting.
    */
-  const pendingIds = (): string[] => allProposals().map((p) => p.id);
+  const pendingIds = (): string[] => markedProposals().map((p) => p.id);
 
   /**
    * Records a pass **made** that nobody has kept yet — `create` proposals, by id.
@@ -1113,7 +1129,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * should look provisional, or be shown at all, is this question.
    */
   const unconfirmedIds = (): string[] =>
-    allProposals()
+    markedProposals()
       .filter((p) => p.kind === 'create')
       .map((p) => p.id);
 
@@ -1125,16 +1141,16 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * fading them, and a "hide suggestions" never hides one.
    */
   const changedIds = (): string[] =>
-    allProposals()
+    markedProposals()
       .filter((p) => p.kind === 'update')
       .map((p) => p.id);
 
   /**
    * Take one resolved field off a suggestion, and the suggestion with it once nothing is left.
    *
-   * Locally rather than by re-reading, for `forgetProposal`'s reason. Fields a surface never showed
-   * — a proposed value equal to what the record already holds — stay on the row, so the record keeps
-   * its marker until the whole suggestion is applied or dismissed; see `applyAllChanges`.
+   * Locally rather than by re-reading, for `forgetProposal`'s reason. A proposed value equal to what
+   * the record already holds never reaches this list: the backend adapter leaves it off, and leaves
+   * off a change that has nothing else in it.
    */
   function forgetField(id: string, field: string): void {
     const next: Record<string, ProposalView[]> = {};
@@ -1163,7 +1179,22 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * What `acceptProposal` looks an id up in: the id arrives from a card, and which key that card was
    * rendered under is not something the action is told.
    */
-  const allProposals = (): ProposalView[] => Object.values(proposalsByCall()).flat();
+  const allProposals = (): ProposalView[] => {
+    // A suggestion is listed under its call and under the space, so once each.
+    const seen = new Set<string>();
+    return Object.values(proposalsByCall())
+      .flat()
+      .filter((p) => !seen.has(p.id) && Boolean(seen.add(p.id)));
+  };
+
+  /**
+   * The suggestions a card's marker is answered from: everything known, with the space on screen
+   * asked about on first read — see `SPACE_KEY`.
+   */
+  function markedProposals(): ProposalView[] {
+    if (interpretation && !proposalsRequested.has(SPACE_KEY)) void loadProposals(SPACE_KEY);
+    return allProposals();
+  }
 
   /**
    * The predicate `CollectionBlock.amendments` is written under. See `ExtractionAmendment`.
@@ -2140,6 +2171,16 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   let watched: string | null = null;
 
   /**
+   * The dataset {@link watched} was registered in — the call's, captured at registration.
+   *
+   * Kept rather than re-read at teardown, because teardown is usually *leaving the call*, and by then
+   * the call's own activity, which is where its dataset is published, is already gone from the roster.
+   * Re-reading it then answered "the space on screen", which removed the watch from a perspective
+   * that never held it and left the real one polling forever.
+   */
+  let watchedTarget: DatasetTarget | undefined;
+
+  /**
    * Tell the host a pass has settled on this collection, so it can do whatever follows.
    *
    * Two moments make a pass known to this client and they cover opposite orderings, so both call
@@ -2167,11 +2208,11 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * three separate paths, and an effect that missed any of them would leave a watch pointed at a
    * call that is over. Pairing the two here makes that structural rather than remembered.
    */
-  function useCollection(next: string | null): void {
+  function useCollection(next: string | null, options?: { keepWatch?: boolean }): void {
     // Nothing to reset: what a call extracts is recorded beside the call, so a different
     // conversation reads its own list — or the space's, when nobody has touched it.
     setCollectionId(next);
-    void syncWatch(next);
+    void syncWatch(next, options);
     // Tell the host a pass may have settled here while nobody was watching — see `passSettled`.
     // Adopting a collection is the moment somebody is about to look at it.
     if (next && typeof interpretation?.passSettled === 'function') {
@@ -2210,7 +2251,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   let warnedEmpty: string | null = null;
 
   /**
-   * Whether this community has automatic extraction on.
+   * Whether one collection is extracted as it grows — its own answer, which the host reads.
    *
    * Feature-tested like every other interpretation call — the host publishes a forwarding wrapper
    * that is always present, so `interpretation?.` only answers "is there a wrapper". A host that
@@ -2220,7 +2261,11 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   const autoEnabled = (collection?: string): boolean =>
     typeof interpretation?.autoEnabled === 'function' ? interpretation.autoEnabled(collection) : true;
 
-  async function syncWatch(next: string | null): Promise<void> {
+  /**
+   * `keepWatch` lets go of the watch without removing it — for leaving a call somebody else is still
+   * in. See the leave effect below.
+   */
+  async function syncWatch(next: string | null, options?: { keepWatch?: boolean }): Promise<void> {
     // Keyed on what this call currently extracts, so a group changing it mid-call moves the watch.
     // The host owns the list; this only has to notice when the answer changed.
     const key = next
@@ -2244,9 +2289,11 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       is the only way to change what a running watch looks for.
     */
     const reregistering = previous !== null && previous === next;
+    const previousTarget = watchedTarget;
     watched = next;
     watchedClasses = next ? key : '';
     watchedAuto = auto;
+    watchedTarget = next ? callTarget() : undefined;
 
     /*
       Two independent attempts, and that separation is the whole point.
@@ -2260,9 +2307,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       Feature-tested per method rather than per object: the host publishes a forwarding wrapper that
       is always present, so `interpretation?.` only answers "is there a wrapper".
     */
-    if (previous && typeof interpretation?.unwatchCollection === 'function') {
+    if (previous && !options?.keepWatch && typeof interpretation?.unwatchCollection === 'function') {
       try {
-        await interpretation.unwatchCollection(previous);
+        await interpretation.unwatchCollection(previous, previousTarget);
       } catch (error) {
         // A watch left running keeps interpreting a call that is over, which costs an LLM call per
         // pass — worth a warning, and worth not letting it block what comes next.
@@ -2307,7 +2354,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
 
     if (next && key && typeof interpretation?.watchCollection === 'function') {
       try {
-        await interpretation.watchCollection(next);
+        await interpretation.watchCollection(next, watchedTarget);
         setWatchProblem('');
         // `debug` is filtered out of most consoles by default, so this said nothing to the person
         // it was for. Watching is worth one line: it is the moment auto-extraction starts.
@@ -2412,12 +2459,52 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     announce(call.id, enabled(), call.recordId);
   });
 
+  /**
+   * Leaving a call: let go of its record, and stop its watch only if nobody else is left in it.
+   *
+   * ## Why not always
+   *
+   * The watch is one registration the whole call shares, keyed on the record. Every agent in the call
+   * converges on it, so removing it is a decision about everyone's extraction, not this agent's. It
+   * used to be removed by whoever left *first*: everyone else's `syncWatch` saw nothing change and
+   * never re-registered, so one person stepping out stopped extraction for the rest of the meeting.
+   *
+   * So the watch lives as long as the call has anybody in it, and the last one out removes it.
+   * Counted over everyone in the call rather than over the recorders: somebody who stays without
+   * recording is still in the conversation, and may start again.
+   *
+   * ## Why every leaver checks, not only the ones that adopted the record
+   *
+   * A record is adopted on the first flush, so an agent who never spoke never adopted it — and if
+   * that agent is the last one out, nobody else is left to remove the watch. So the call is
+   * remembered while this agent is in it, record and dataset included, and the check runs on the way
+   * out whether or not anything was adopted. Removing a watch that was never registered is a no-op.
+   *
+   * Two agents leaving in the same moment can each see the other still there, and leave the watch
+   * behind. Nothing on this side can settle that race; the engine's own expiry is the backstop.
+   */
+  let lastCall: { id: string; recordId: string | null; datasetUri: string | null } | null = null;
   effect?.(() => {
-    const current = myCall()?.id ?? null;
-    if (!collectionCallId || current === collectionCallId) return;
-    presence?.clearActivity(TRANSCRIBE_ACTIVITY);
-    useCollection(null);
-    collectionCallId = null;
+    const call = myCall();
+    const left = lastCall && lastCall.id !== call?.id ? lastCall : null;
+    lastCall = call ? { id: call.id, recordId: call.recordId, datasetUri: call.datasetUri } : null;
+    if (!left) return;
+
+    const me = selfId?.() ?? null;
+    const othersRemain = agentsInCall(left.id).some((agent) => agent !== me);
+
+    if (collectionCallId === left.id) {
+      presence?.clearActivity(TRANSCRIBE_ACTIVITY);
+      useCollection(null, { keepWatch: othersRemain });
+      collectionCallId = null;
+      return;
+    }
+    if (!othersRemain && left.recordId && typeof interpretation?.unwatchCollection === 'function') {
+      const target = left.datasetUri ? { dataset: left.datasetUri } : undefined;
+      void interpretation.unwatchCollection(left.recordId, target).catch((error: unknown) => {
+        console.warn('[transcribe] could not stop the watch on the call this agent left', error);
+      });
+    }
   });
 
   /**
@@ -2546,6 +2633,19 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * and a backend transcription stream, with nothing able to close them.
    */
   onDispose?.(() => {
+    /*
+      Stop the watch too, on the same rule as leaving: only when nobody else is in the call.
+
+      Without this a module unregistered mid-call left its watch behind with nobody to remove it, and
+      an orphaned watch is polled by every peer for as long as the space exists. Best-effort — a
+      teardown cannot wait on the round trip, and app close never reaches here at all.
+    */
+    const live = watched;
+    if (live && typeof interpretation?.unwatchCollection === 'function') {
+      const me = selfId?.() ?? null;
+      const othersRemain = lastCall ? agentsInCall(lastCall.id).some((agent) => agent !== me) : false;
+      if (!othersRemain) void interpretation.unwatchCollection(live, watchedTarget).catch(() => {});
+    }
     setEnabled(false);
     setAutoJoined(false);
     if (modelPoll) clearTimeout(modelPoll);
@@ -2612,7 +2712,67 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     if (context) void stop();
   });
 
+  /**
+   * Write one typed line into a collection — a transcript, or the space itself — with its marks.
+   *
+   * The one way a typed message is written, so the transcript's composer, the Feed's and a reply
+   * cannot drift apart about what a message is: a `TextBlock` with `source: typed`, its marks as
+   * the composer gave them, under whatever holds it.
+   */
+  async function writeMessage(
+    holder: { id: string; predicate: string },
+    text: string,
+    marks?: string,
+    dataset?: string,
+  ): Promise<string | null> {
+    const words = String(text ?? '').trim();
+    if (!words || !createEntity) return null;
+    return createEntity(
+      'TextBlock',
+      { text: words, source: TYPED, ...(marks ? { marks } : {}) },
+      { parent: holder, ...(dataset ? { dataset } : {}) },
+    );
+  }
+
+  /*
+    The line a reply is being written to — the store's rather than a local, because a list's lines and
+    its composer are separate parts of a panel with no scope in common.
+
+    With the list it was started from, because the transcript and the Feed draw the same lines and
+    can both be open: a reply started in one is offered, and sent, only by that one's composer.
+
+    A transcript's reply is put down when the call on screen changes — it belongs to the conversation
+    it was started in. A Feed's is not: the Feed is the whole space, whichever call is on screen. The
+    surface is kept beside the signal so that effect does not read, and so follow, the reply itself.
+  */
+  type ReplyTarget = { id: string; text: string; author: string; surface: 'transcript' | 'feed' };
+  const [replyingTo, setReplyingTo] = signal<ReplyTarget | null>(null);
+  let replySurface: ReplyTarget['surface'] | '' = '';
+  const replyTo = (target: ReplyTarget | null) => {
+    replySurface = target?.surface ?? '';
+    setReplyingTo(target);
+  };
+  effect?.(() => {
+    void deps.callOnScreen?.();
+    if (replySurface !== 'feed') replyTo(null);
+  });
+
+  const feed = createFeed({
+    signal,
+    effect,
+    state,
+    action,
+    onDispose,
+    dataset,
+    records,
+    interpretation,
+    unconfirmedIds,
+    // Into the space on screen: the Feed is about the space somebody is reading.
+    write: (collection, text, marks) => writeMessage({ id: collection, predicate: CHILDREN_PREDICATE }, text, marks),
+  });
+
   return {
+    ...feed,
     // ── State ────────────────────────────────────────────────────────────────
     status: state(
       status,
@@ -2982,11 +3142,17 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
                  */
                 canExtract:
                   hasTranscript(collection) && (interpretation?.available() ?? false) && hasTargets(collection),
+                /**
+                 * Whether this collection is extracted as it grows — its own answer, copied from the
+                 * space's default when it was made. What the panel's switch binds to, whichever
+                 * collection the panel is showing: the call on screen, or the messages outside calls.
+                 */
+                auto: Boolean(collection) && autoEnabled(collection),
               };
             }
           }
         }),
-      'What one call can extract, by record id — { targets, canChoose, canExtract }, read as extractionFor[id].',
+      'What one collection can extract, by record id — { targets, canChoose, canExtract, auto }, read as extractionFor[id].',
     ),
     /**
      * Include or exclude one model from what **this call** extracts, for everyone in it.
@@ -3013,14 +3179,15 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       }
     }, 'Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call.'),
     /**
-     * Whether this call is extracted as it happens — its participants' answer, else the space's.
+     * Whether the call this agent is in is extracted as it happens — its own answer. For any other
+     * collection, read `extractionFor[id].auto`.
      *
-     * What a switch in the extraction panel binds to. Absent a call it answers for the space, which
-     * is the honest reading of "does this happen here" when there is no conversation to be about.
+     * Absent a call it answers with the space's default, which is the honest reading of "does this
+     * happen here" when there is no conversation to be about.
      */
     autoExtract: state(
       () => autoEnabled(collectionId() ?? myCall()?.recordId ?? undefined),
-      'Whether this call is extracted as it happens — its participants’ answer, else the space’s.',
+      'Whether the call this agent is in is extracted as it happens — its own answer.',
     ),
     /**
      * Whether any pass is running right now, this node's or a peer's — what the rail's Extraction
@@ -3037,19 +3204,22 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       'Whether any extraction pass is running right now, this node’s or a peer’s.',
     ),
     /**
-     * Turn it on or off for **this call**, for everyone in it.
+     * Turn it on or off for **one collection**, for everyone in it — the one named, or the call this
+     * agent is in.
      *
-     * A group decision beside the call, like `toggleExtractionTarget` — the standing watch is one
-     * registration the whole neighbourhood shares. It leaves the space's own default alone, so a
+     * A group decision on the collection, like `toggleExtractionTarget` — the standing watch is one
+     * registration the whole neighbourhood shares. It leaves the space's default alone, so a
      * conversation that has wandered somewhere nobody wants records of can be stopped without the
-     * community changing its mind about every future call.
+     * community changing its mind about every future one. The host refuses the space's own
+     * collection to anybody who does not administer the space.
      *
-     * Refused quietly where there is no call to record it against, in the same shape and for the
-     * same reason as `toggleExtractionTarget` — pair it with `canChooseTargets`, which answers the
-     * same question about the same record.
+     * Refused quietly where there is nothing to record it against, in the same shape and for the
+     * same reason as `toggleExtractionTarget`.
      */
-    toggleAutoExtract: action(async () => {
-      const live = collectionId() ?? myCall()?.recordId ?? '';
+    toggleAutoExtract: action(async (collection?: unknown) => {
+      // A string only: an `$action` written without `args` hands the click event over in its place.
+      const named = typeof collection === 'string' ? collection : '';
+      const live = named || collectionId() || myCall()?.recordId || '';
       if (!live || typeof interpretation?.setAuto !== 'function') return;
       const next = !autoEnabled(live);
       // Switching it on shows what it makes, once — the same rule `toggle` follows for recording,
@@ -3060,9 +3230,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       try {
         await interpretation.setAuto(live, next);
       } catch (error) {
-        console.warn('[transcribe] could not change whether this call extracts as it happens', error);
+        console.warn('[transcribe] could not change whether this is extracted as it happens', error);
       }
-    }, 'Turns automatic extraction on or off for this call, for everyone in it.'),
+    }, 'Turns automatic extraction on or off for one collection, for everyone in it; defaults to the live call.'),
     /** True when the backend could interpret but there is no transcript yet — a waiting state. */
     extractable: state(
       () => interpretation?.available() ?? false,
@@ -3120,6 +3290,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * See {@link pendingIds} for why this is a union across calls rather than keyed by one.
      */
     unconfirmedIds: state(unconfirmedIds, 'Records a pass made that nobody has kept yet, by id.'),
+    timelineOrientation: state(
+      () => (settings?.().timelineOrder === 'newestTop' ? 'newestTop' : 'newestBottom'),
+      "Which way round this reader draws a timeline — 'newestBottom' or 'newestTop'. Their own setting.",
+    ),
     /**
      * An accept or discard that would decide other suggestions too, waiting on a confirmation — or
      * `null`. Drawn by the module's own overlay; see `TiedDecision`.
@@ -3467,7 +3641,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * second, since a message does not need somebody to have spoken first and `collectionId` is
      * null until they have.
      */
-    addMessage: action(async (collection: string, text: string) => {
+    addMessage: action(async (collection: string, text: string, marks?: string) => {
       const words = String(text ?? '').trim();
       if (!words || !createEntity) return;
       const target = collection || targetCollection();
@@ -3481,11 +3655,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         the live one is running in, where the record it names does not exist.
       */
       const dataset = target === targetCollection() ? (myCall()?.datasetUri ?? undefined) : undefined;
-      await createEntity(
-        'TextBlock',
-        { text: words, source: TYPED },
-        { parent: { id: target, predicate: CHILDREN_PREDICATE }, ...(dataset ? { dataset } : {}) },
-      );
+      await writeMessage({ id: target, predicate: CHILDREN_PREDICATE }, words, marks, dataset);
       /*
         Not awaited, because the composer is waiting on this promise to say it has finished.
 
@@ -3502,7 +3672,46 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         clears the guard so the next message retries.
       */
       void recordSelfParticipation(target, dataset);
-    }, 'Writes something a person typed into a transcript, as a typed line.'),
+    }, 'Writes something a person typed into a transcript, as a typed line — with its marks, when the composer gave any.'),
+    /**
+     * Answer one line — in a transcript or the Feed — with a typed line of its own.
+     *
+     * Linked from the line it answers through `responses`, the one reply mechanism WE has, rather
+     * than contained by the conversation: a reply is about a line, and the transcript and the Feed
+     * draw it inline, after what it answers, quoting it. `inCall` writes into the call's space, for
+     * a reply made from a transcript of a call running somewhere else.
+     */
+    reply: action(async (parentId: string, text: string, marks?: string, inCall?: boolean) => {
+      // Said rather than swallowed: a reply with nothing to answer used to resolve as though sent.
+      if (!parentId) {
+        console.warn('[transcribe] a reply has no line to answer, so it was not sent');
+        return;
+      }
+      const dataset = inCall ? callTarget()?.dataset : undefined;
+      await writeMessage({ id: parentId, predicate: REPLY_PREDICATE }, text, marks, dataset);
+      replyTo(null);
+    }, 'Answers one line with a typed line of its own, linked from it as a reply.'),
+    replyingTo: state(
+      replyingTo,
+      "The line a reply is being written to — { id, text, author, surface } — or null. `surface` is 'transcript' or 'feed': the list it was started from, whose composer sends it.",
+    ),
+    startReply: action(
+      (line: { id?: unknown; text?: unknown; author?: unknown; surface?: unknown }) =>
+        replyTo(
+          // A line with no id is nothing a reply can hang off: refused here, not after it is typed.
+          typeof line?.id === 'string' && line.id
+            ? {
+                id: line.id,
+                text: String(line.text ?? ''),
+                author: String(line.author ?? ''),
+                surface: line.surface === 'feed' ? 'feed' : 'transcript',
+              }
+            : null,
+        ),
+      "Starts a reply to one line — pass { id, text, author, surface } — which that surface's composer then sends as a reply. `surface` is 'transcript' (the default) or 'feed'.",
+      { ambient: true },
+    ),
+    cancelReply: action(() => replyTo(null), 'Puts a reply down without sending it.', { ambient: true }),
     /**
      * Fix the words on a line of the transcript.
      *

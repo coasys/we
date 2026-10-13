@@ -11,7 +11,7 @@ import { transcriptScopeQuery } from '@we/backend-ad4m';
 import { describe, expect, it } from 'vitest';
 
 const CALL = 'we://collection/abc-123';
-const query = () => transcriptScopeQuery(CALL, 'we://children');
+const query = () => transcriptScopeQuery(CALL, 'we://child');
 
 describe('transcriptScopeQuery', () => {
   it('binds all three variables the gather requires', () => {
@@ -35,7 +35,8 @@ describe('transcriptScopeQuery', () => {
   });
 
   it('scopes to one call, so a watch cannot read another call transcript', () => {
-    expect(query()).toContain(`<${CALL}> <we://children> ?m`);
+    expect(query()).toContain(`{ <${CALL}> <we://child> ?m . }`);
+    expect(query()).toContain(`{ <${CALL}> <we://child> ?line . ?line <we://thread> ?m . }`);
   });
 
   it('takes turns only from text blocks', () => {
@@ -51,5 +52,22 @@ describe('transcriptScopeQuery', () => {
   it('uses the predicate it is given rather than assuming containment', () => {
     // A foreign container reaches its children through its own predicate; the caller resolves it.
     expect(transcriptScopeQuery(CALL, 'flux://messages')).toContain(`<${CALL}> <flux://messages> ?m`);
+    expect(transcriptScopeQuery(CALL, 'flux://messages')).not.toContain('we://child');
+  });
+
+  it('reads the replies through each line’s thread, one hop, not by following them down', () => {
+    // A reply is a child of nothing: it is in the thread of the line it answers, which holds every
+    // reply under that line at any depth. Walking `we://response` instead would need a path of
+    // unbounded length to reach the same rows.
+    expect(query()).toContain('UNION');
+    expect(query()).not.toContain('we://response');
+    // Written out in full, never as a `?` path — the executor reads the predicates from the text.
+    expect(query()).not.toMatch(/>\?/);
+  });
+
+  it('reads only what a person said or wrote', () => {
+    // A bot's reply carries no source; read back in, its summary would be extracted again.
+    expect(query()).toContain('?m <we://text_source> ?source');
+    expect(query()).toContain('FILTER(?source IN ("spoken", "typed", "corrected"))');
   });
 });

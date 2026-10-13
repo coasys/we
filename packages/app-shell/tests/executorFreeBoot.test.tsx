@@ -14,7 +14,9 @@ import { render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
 import { createBlocks, registerCoreBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
-import { AgentSettings, CollectionBlock, getEntity, Space } from '@we/entities';
+import { AgentSettings, CollectionBlock, getEntity, Space, SpaceRole } from '@we/entities';
+import { type FeedFind, readFeedWindow } from '@we/module-transcribe';
+import { createEffect, createRoot, createSignal } from 'solid-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
@@ -112,7 +114,11 @@ import { type SessionStore, SessionStoreProvider, useSessionStore } from '../src
 import { ShapeStoreProvider } from '../src/frameworks/solid/stores/ShapeStore';
 import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
 import { type SpaceStore, SpaceStoreProvider, useSpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
+import { withExtractionDefaults } from '../src/shared/collectionExtraction';
+import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
+import { completeResponse } from '../src/shared/responses';
 import { provideSeed } from '../src/shared/seedRegistry';
+import { writeSpaceRole } from '../src/shared/spaceRoles';
 
 provideSeed({ name: 'test', modules: [] } as never);
 
@@ -710,6 +716,81 @@ describe('what the stores actually wrote', () => {
     expect(spaces[0].author).toBe('did:test:james');
   }, 10000);
 
+  it('gives a new space its collection, and writes the starter under it', async () => {
+    /*
+      The space collection is the host's and is made whatever the starter says; the canvas, its role
+      and the settings are the starter's. Both halves are written at the create press, and nothing on
+      screen says when either is missing — a space simply arrives without its canvas.
+    */
+    provideSeed({
+      name: 'test',
+      modules: [],
+      spaceStarters: [
+        {
+          id: 'test',
+          settings: { defaultTemplateId: 'workshop' },
+          records: [{ $id: 'canvas', entity: 'CollectionBlock', fields: { kind: 'canvas' }, in: '$root' }],
+          roles: { canvas: '$canvas' },
+          input: true,
+        },
+      ],
+    } as never);
+    try {
+      const stores = mountShell();
+      await ready(stores);
+
+      await stores.spaces.createSpace('Structured', 'x', 'personal', 'hidden');
+      const ref = (await lifecycle.list()).find((d) => d.name === 'Structured')!;
+
+      const [space] = await Space.findAll(ref.handle as never, { include: { root: true } });
+      expect(space.defaultTemplateId).toBe('workshop');
+      const root = (space as unknown as { root?: { id: string; kind: string } }).root;
+      expect(root?.kind).toBe('space');
+      // The starter's `input` lands on the space collection itself, where the messages typed outside
+      // calls are decided — not on the space, which holds only what new collections start with.
+      const rootRecord = await CollectionBlock.findOne(ref.handle as never, { where: { id: root!.id } } as never);
+      expect((rootRecord as unknown as { autoExtract?: boolean }).autoExtract).toBe(true);
+
+      const holder = await CollectionBlock.findOne(
+        ref.handle as never,
+        {
+          where: { id: root!.id },
+          include: { children: true },
+        } as never,
+      );
+      const contained = (holder as unknown as { children?: { id: string; kind: string }[] })?.children ?? [];
+      expect(contained.map((c) => c.kind)).toEqual(['canvas']);
+
+      const roles = await SpaceRole.findAll(ref.handle as never);
+      expect(roles.map((r) => [r.name, Array.isArray(r.node) ? r.node[0] : r.node])).toEqual([
+        ['canvas', contained[0].id],
+      ]);
+    } finally {
+      provideSeed({ name: 'test', modules: [] } as never);
+    }
+  }, 10000);
+
+  it('hears a role written after the space was entered', async () => {
+    /*
+      Roles were read once, on entering. A space entered while its starter was still writing — or
+      one whose board a peer made afterwards — showed "make a board" beside a board that existed.
+    */
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.spaces.createSpace('Late Roles', 'x', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Late Roles')!;
+    await stores.datasets.switchDataset(ref.id);
+    await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
+    expect(stores.spaces.roles().board).toBeUndefined();
+
+    const [space] = await Space.findAll(ref.handle as never);
+    const board = await CollectionBlock.create(ref.handle as never, { kind: 'board', title: 'Board' } as never);
+    await writeSpaceRole(ref.handle as never, space.id, 'board', board.id);
+
+    await vi.waitFor(() => expect(stores.spaces.roles().board).toBe(board.id));
+  }, 10000);
+
   it('persists sidebar order as settings, not just as store state', async () => {
     const stores = mountShell();
     await ready(stores);
@@ -1112,4 +1193,368 @@ describe('a card’s presentation, drawn before it is stored', () => {
     stores.records.confirmPending(['card-3']);
     expect(stores.records.pendingCardStyle()['card-3']).toBeUndefined();
   }, 10000);
+});
+
+// ── Extraction settings, on the collection ────────────────────────────────────
+
+describe('what a collection extracts', () => {
+  /**
+   * The interpretation port's standing-watch half, recording what was registered and removed.
+   *
+   * And the one fact a watch needs that only the AD4M classes report: which predicate a collection's
+   * children are under, read off the class's SHACL. In-memory classes generate none, so it is stood
+   * in for here — the same `we://child` every backend stores containment under.
+   */
+  function watchPort() {
+    const watched: string[] = [];
+    const removed: string[] = [];
+
+    onPorts = (ports) => {
+      (ports as unknown as { interpretation: unknown }).interpretation = {
+        watch: async (_dataset: unknown, args: { watchId: string; classes: string[] }) => {
+          watched.push(args.watchId);
+        },
+        unwatch: async (_dataset: unknown, watchId: string) => {
+          removed.push(watchId);
+        },
+      };
+    };
+    return { watched, removed };
+  }
+  /** Installed after boot: the backend registers its classes afresh each time it starts. */
+  function standInContainmentShape() {
+    const Collection = getEntity('CollectionBlock') as unknown as { generateSHACL?: unknown };
+    Collection.generateSHACL = () => ({ shape: { properties: [{ name: 'children', path: 'we://child' }] } });
+  }
+  const watchId = (collection: string) => `we-call-${collection.replace(/[^a-zA-Z0-9]+/g, '-')}`;
+
+  /** The interpretation kernel exactly as a module store is handed it — what transcribe calls. */
+  function kernel() {
+    const deps = createRoot(() =>
+      createModuleStoreDeps({
+        signal: <T,>(initial: T) => createSignal(initial) as unknown as [() => T, (next: T) => void],
+        effect: createEffect,
+      }),
+    );
+    return deps.kernels.interpretation!;
+  }
+  const looksFor = (k: ReturnType<typeof kernel>, collection: string, entity: string) =>
+    k.targets(collection).find((t) => t.entity === entity)?.selected;
+
+  async function enterSpace(stores: Stores, name: string, access: 'personal' | 'shared' = 'personal') {
+    standInContainmentShape();
+    await stores.spaces.createSpace(name, 'x', access, 'hidden');
+    const space = (await lifecycle.list()).find((d) => d.name === name)!;
+    await stores.spaces.navigateToSpace(space.id);
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(space.id));
+    await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
+    return space.handle as never;
+  }
+
+  /** A record's stored extraction fields, as the next reader sees them. */
+  const stored = async (handle: never, id: string) =>
+    (await CollectionBlock.findOne(handle, { where: { id } } as never)) as unknown as {
+      autoExtract?: boolean;
+      extractionTargets?: string;
+    };
+
+  it('runs the messages outside calls on the space collection’s own switch', async () => {
+    const port = watchPort();
+    const stores = mountShell();
+    await ready(stores);
+    const handle = await enterSpace(stores, 'Outside');
+    const root = stores.spaces.root();
+
+    // Made with the space's default — on — and watched for it.
+    expect((await stored(handle, root)).autoExtract).toBe(true);
+    await vi.waitFor(() => expect(port.watched).toContain(watchId(root)));
+
+    // Off, for this collection: stored on it, and the watch removed.
+    await stores.spaces.setAutoExtractFor(root, false);
+    expect((await stored(handle, root)).autoExtract).toBe(false);
+    await vi.waitFor(() => expect(port.removed).toContain(watchId(root)));
+    expect(stores.spaces.autoExtractFor(root)).toBe(false);
+    // The space's default — what the next collection starts with — is untouched.
+    expect(stores.spaces.autoInterpret()).toBe(true);
+
+    // And back on.
+    port.watched.length = 0;
+    await stores.spaces.setAutoExtractFor(root, true);
+    await vi.waitFor(() => expect(port.watched).toContain(watchId(root)));
+  }, 15000);
+
+  it('refuses the space collection to a member who does not administer the space, but not a call', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    const handle = await enterSpace(stores, 'Theirs', 'shared');
+    const root = stores.spaces.root();
+    const call = await CollectionBlock.create(handle, { kind: 'call', mode: 'feed', autoExtract: true } as never);
+
+    // Somebody else's shared space: its author is who administers it. Rewritten in place — no write
+    // path lets one agent sign as another.
+    const space = stores.spaces.currentSpace()!;
+    const row = (handle as unknown as { tables: Record<string, { id: string; author?: string }[]> }).tables.Space.find(
+      (r) => r.id === space.id,
+    )!;
+    row.author = 'did:test:somebody-else';
+    // And the store's own copy of the space list, which is re-read only when the datasets change —
+    // the state a member who joined somebody else's space starts in.
+    const listed = stores.spaces.mySpaces().find((s) => s.id === space.id) as unknown as { author: string };
+    listed.author = 'did:test:somebody-else';
+    expect(stores.spaces.canAdministerCurrentSpace()).toBe(false);
+
+    expect(stores.spaces.canSetExtractionFor(root)).toBe(false);
+    expect(stores.spaces.canSetExtractionFor(call.id)).toBe(true);
+
+    const refused = vi.spyOn(toastService, 'error');
+    await stores.spaces.setAutoExtractFor(root, false);
+    expect(refused).toHaveBeenCalled();
+    // Refused before anything was written.
+    expect((await stored(handle, root)).autoExtract).toBe(true);
+
+    // A call is its participants' to decide.
+    await stores.spaces.setAutoExtractFor(call.id, false);
+    expect((await stored(handle, call.id)).autoExtract).toBe(false);
+    refused.mockRestore();
+  }, 15000);
+
+  it('gives a new call the defaults as they stand, and leaves a call already made with its own', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    const handle = await enterSpace(stores, 'Defaults');
+    const k = kernel();
+
+    // Made the way the host makes a new feed: the space's defaults as they stand, copied in.
+    const before = await CollectionBlock.create(
+      handle,
+      withExtractionDefaults('CollectionBlock', { kind: 'call', mode: 'feed' }, stores.spaces.currentSpace()) as never,
+    );
+    await vi.waitFor(() => expect(looksFor(k, before.id, 'TaskBlock')).toBe(true));
+
+    // The community changes its defaults.
+    await stores.spaces.setAutoInterpret(false);
+    await stores.spaces.setExtractionTarget('TaskBlock', false);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.autoInterpret).toBe(false));
+
+    const after = await CollectionBlock.create(
+      handle,
+      withExtractionDefaults('CollectionBlock', { kind: 'call', mode: 'feed' }, stores.spaces.currentSpace()) as never,
+    );
+
+    await vi.waitFor(() => expect(stores.spaces.autoExtractFor(before.id)).toBe(true));
+    await vi.waitFor(() => expect(stores.spaces.autoExtractFor(after.id)).toBe(false));
+    // The one already made keeps what it started with; the new one starts with the new list.
+    await vi.waitFor(() => expect(looksFor(k, after.id, 'TaskBlock')).toBe(false));
+    expect(looksFor(k, before.id, 'TaskBlock')).toBe(true);
+  }, 15000);
+
+  it('a call’s switch and chips, through the module’s own kernel, change that call and no other', async () => {
+    const port = watchPort();
+    const stores = mountShell();
+    await ready(stores);
+    const handle = await enterSpace(stores, 'Calls');
+    const make = () =>
+      CollectionBlock.create(
+        handle,
+        withExtractionDefaults(
+          'CollectionBlock',
+          { kind: 'call', mode: 'feed' },
+          stores.spaces.currentSpace(),
+        ) as never,
+      );
+    const [a, b] = [await make(), await make()];
+
+    // What transcribe holds: the interpretation kernel, exactly as a module store is handed it.
+    const interpretation = kernel();
+
+    // A chip: TaskBlock off for call A only.
+    await interpretation.setTarget(a.id, 'TaskBlock', false);
+    await vi.waitFor(() =>
+      expect(interpretation.targets(a.id).find((t) => t.entity === 'TaskBlock')?.selected).toBe(false),
+    );
+    expect(interpretation.targets(b.id).find((t) => t.entity === 'TaskBlock')?.selected).toBe(true);
+    expect(stores.spaces.extractionTargets()).toContain('TaskBlock');
+
+    // The switch: call A off. Its watch is refused from then on; call B's is still registered.
+    await interpretation.setAuto(a.id, false);
+    await vi.waitFor(() => expect(stores.spaces.autoExtractFor(a.id)).toBe(false));
+    await expect(interpretation.watchCollection(a.id)).rejects.toThrow('automatic extraction is off');
+    await interpretation.watchCollection(b.id);
+    expect(port.watched).toContain(watchId(b.id));
+    expect(port.watched).not.toContain(watchId(a.id));
+    expect(stores.spaces.autoExtractFor(b.id)).toBe(true);
+  }, 15000);
+});
+
+// ── Responses, filed and deleted ──────────────────────────────────────────────
+
+describe('a post and what was said under it', () => {
+  it('a delete takes the replies, at any depth, and leaves a call about it', async () => {
+    registerCoreBlocks();
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Threads', 'x', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Threads')!;
+    await stores.spaces.navigateToSpace(ref.id);
+    await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
+    const handle = ref.handle as never;
+    const root = stores.spaces.root();
+    const doc = (text: string) => [{ _type: 'block', style: 'normal', children: [{ _type: 'span', text }] }];
+
+    // A post, a reply, a reply to the reply — written the way the discussion writes them.
+    const post = (await stores.spaces.createPost(doc('the post')))!;
+    const reply = (await stores.spaces.createPost(doc('a reply'), {
+      kind: 'reply',
+      parentId: post,
+      predicate: 'we://response',
+    }))!;
+    const nested = (await stores.spaces.createPost(doc('and another'), {
+      kind: 'reply',
+      parentId: reply,
+      predicate: 'we://response',
+    }))!;
+    // And a call held about the post — a response too, threaded the same way.
+    const call = await CollectionBlock.create(
+      handle,
+      { kind: 'call', mode: 'feed' } as never,
+      {
+        parent: { id: post, predicate: 'we://response' },
+      } as never,
+    );
+    await completeResponse(handle, call.id, post);
+
+    const row = async (id: string) =>
+      (await CollectionBlock.findOne(handle, { where: { id } } as never)) as unknown as {
+        thread?: string[];
+        children?: string[];
+      } | null;
+    // Before the delete: all three in the post's thread, and none of them a child of anything — the
+    // space collection holds the post and nothing that was said under it.
+    await vi.waitFor(async () =>
+      expect((await row(post))?.thread ?? []).toEqual(expect.arrayContaining([reply, nested, call.id])),
+    );
+    const before = (await row(root))?.children ?? [];
+    expect(before).toContain(post);
+    for (const id of [reply, nested, call.id]) expect(before).not.toContain(id);
+
+    await stores.spaces.deleteCollection(post);
+
+    expect(await row(post)).toBeNull();
+    expect(await row(reply)).toBeNull();
+    expect(await row(nested)).toBeNull();
+    // Nothing left pointing at the post from where it lived.
+    expect((await row(root))?.children ?? []).not.toContain(post);
+    // The call is a conversation of its own, and outlives what it was about.
+    expect(await row(call.id)).not.toBeNull();
+  }, 15000);
+});
+
+/*
+  The three links, end to end: a response is in its subject's thread and a child of nothing, and the
+  surfaces that ask "what was said in this room" derive the answer from the subject.
+*/
+describe('where a response was said', () => {
+  const doc = (text: string) => [{ _type: 'block', style: 'normal', children: [{ _type: 'span', text }] }];
+  const row = async (handle: never, id: string) =>
+    (await CollectionBlock.findOne(handle, { where: { id } } as never)) as unknown as {
+      thread?: string[];
+      children?: string[];
+    } | null;
+
+  async function enter(stores: Stores, name: string) {
+    await stores.spaces.createSpace(name, 'x', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === name)!;
+    await stores.spaces.navigateToSpace(ref.id);
+    await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
+    return ref;
+  }
+
+  it('a comment on a post in a channel is in the post’s thread, not the channel, and marks the channel unread', async () => {
+    registerCoreBlocks();
+    const stores = mountShell();
+    await ready(stores);
+    const ref = await enter(stores, 'Forum');
+    const other = await enter(stores, 'Elsewhere');
+    await stores.spaces.navigateToSpace(ref.id);
+    await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
+    const handle = ref.handle as never;
+
+    // A channel in the space, and a post in the channel — written the way the app writes them.
+    const channel = await CollectionBlock.create(
+      handle,
+      { kind: 'channel', mode: 'feed' } as never,
+      { parent: { id: stores.spaces.root(), predicate: 'we://child' } } as never,
+    );
+    const post = (await stores.spaces.createPost(doc('the post'), { parentId: channel.id }))!;
+
+    // This member reads the channel, then somebody comments on the post.
+    await stores.spaces.markRead(channel.id);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const comment = (await stores.spaces.createPost(doc('a comment'), {
+      kind: 'reply',
+      parentId: post,
+      predicate: 'we://response',
+    }))!;
+
+    // In the post's thread, and a child of nothing: the channel holds the post alone.
+    await vi.waitFor(async () => expect((await row(handle, post))?.thread ?? []).toEqual([comment]));
+    expect((await row(handle, channel.id))?.children ?? []).toEqual([post]);
+
+    // The space's activity is read once per entry, so leave and come back to read it again.
+    await stores.spaces.navigateToSpace(other.id);
+    await stores.spaces.navigateToSpace(ref.id);
+    // Where it was said is derived — the post is in the channel — so the channel has something new.
+    await vi.waitFor(() => expect(stores.spaces.unreadNodeIds()).toContain(channel.id));
+  }, 15000);
+
+  it('the Feed draws a call about nothing and leaves out a call held about a post', async () => {
+    registerCoreBlocks();
+    const stores = mountShell();
+    await ready(stores);
+    const ref = await enter(stores, 'Calls');
+    const handle = ref.handle as never;
+    const root = stores.spaces.root();
+
+    // A call started from the rail is a child of the space collection.
+    const standup = await CollectionBlock.create(
+      handle,
+      { kind: 'call', mode: 'feed', title: 'Standup' } as never,
+      { parent: { id: root, predicate: 'we://child' } } as never,
+    );
+    // A call held about a post is a response to the post — in its thread, and a child of nothing.
+    const post = (await stores.spaces.createPost(doc('the post')))!;
+    const about = await CollectionBlock.create(
+      handle,
+      { kind: 'call', mode: 'feed', title: 'About the post' } as never,
+      { parent: { id: post, predicate: 'we://response' } } as never,
+    );
+    await completeResponse(handle, about.id, post);
+    const TextBlock = getEntity('TextBlock') as unknown as {
+      create(h: never, d: Record<string, unknown>, o: Record<string, unknown>): Promise<{ id: string }>;
+    };
+    const said = await TextBlock.create(
+      handle,
+      { text: 'morning all', source: 'spoken' },
+      { parent: { id: standup.id, predicate: 'we://child' } },
+    );
+    const aside = await TextBlock.create(
+      handle,
+      { text: 'about that post', source: 'spoken' },
+      { parent: { id: about.id, predicate: 'we://child' } },
+    );
+
+    // The Feed's own read, through the host's mapping of a module's `within` onto `parent`
+    // (TemplateProvider's `withinAsParent`).
+    const find: FeedFind = async (entity, query) => {
+      const { within, ...rest } = query as { within?: string } & Record<string, unknown>;
+      const options = within ? { ...rest, parent: { id: within, predicate: 'we://child' } } : rest;
+      return ((await getEntity(entity).findAll(handle, options as never)) ?? []) as never;
+    };
+    const { rows } = await readFeedWindow(find, { root, shown: 20, fromStart: true, activityTypes: [] });
+    const ids = rows.map((r) => r.id);
+
+    expect(ids).toContain(said.id);
+    expect(rows.find((r) => r.id === said.id)).toMatchObject({ call: standup.id, callTitle: 'Standup' });
+    expect(ids).not.toContain(aside.id);
+  }, 15000);
 });

@@ -4,7 +4,7 @@
  * The template that exercises the most substrate — containment two levels deep, per-agent read
  * state, presence, and the call module — and mints nothing to do it. A channel is a
  * `CollectionBlock` with `kind: 'channel'`; a category is one holding channels; a message is a
- * composed document anchored into a channel through `we://children`. Drop this template on a space
+ * composed document anchored into a channel through `we://child`. Drop this template on a space
  * that has been collecting posts for a year and it works retroactively, because there is no schema
  * to install.
  *

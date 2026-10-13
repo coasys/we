@@ -283,10 +283,9 @@ Done:
 5. The design-system counterpart: arrangement-in-code components deleted, the
    one-vocabulary-two-grammars policy in `design-system/CONVENTIONS.md`.
 
-Next: the component explorer and fragment palette
-(`docs/internal/plans/prs/COMPONENT_EXPLORER_AND_FRAGMENT_PALETTE_PLAN.md`) — node insertion for
-the editor and the AI through one checked pipeline, whose fragment manifests are the substrate the
-provenance system lands on.
+Next, not started: a component explorer and fragment palette — node insertion for the editor and
+the AI through one checked pipeline, whose fragment manifests are the substrate the provenance
+system lands on.
 
 The property worth protecting at every step: **the artifact is always plain JSON, so no step commits
 you to the next one.**

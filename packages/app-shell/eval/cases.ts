@@ -58,7 +58,7 @@ const TEMPLATES: Record<EvalTemplate, SchemaNode> = {
     type: 'Column',
     meta: { name: 'Feed', description: 'A list of posts', icon: 'newspaper' },
     props: { bg: 'page', minHeight: '100%', p: '500', gap: '400' },
-    $queries: { posts: { entity: 'CollectionBlock', where: { type: 'root' }, limit: 20 } },
+    $queries: { posts: { entity: 'CollectionBlock', where: { kind: 'post' }, limit: 20 } },
     children: [
       {
         type: 'Row',

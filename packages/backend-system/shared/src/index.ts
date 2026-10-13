@@ -71,6 +71,7 @@ export type { TraceSink } from './trace';
 
 export {
   blockableEntities,
+  CONTAINMENT_PREDICATE,
   extractableEntities,
   getEntity,
   getProperty,
@@ -157,6 +158,7 @@ export type {
   DataBindingDeps,
   EntityHintState,
   ProfileDirectoryPort,
+  ReferencePort,
   SchemaPort,
 } from './backendPorts';
 export type {

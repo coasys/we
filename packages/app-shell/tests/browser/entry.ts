@@ -13,14 +13,38 @@
  * Exposes `window.__harness` for the runner to drive.
  */
 import '@we/primitives';
+// The block system's stylesheet, as the app imports it (`@solid/index.ts`): a composer or a
+// renderer measured without it is measured without its padding, its placeholder and its field.
+import '@we/block-solid/styles';
 
 import { buildTemplateBag, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
+import { MissingMarker, PresentPart } from '@solid/components/PartFrame';
 import { injectDSInteropStyles } from '@solid/dsInterop';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import { createInMemoryBackend } from '@we/backend-inmemory';
-import { EditorHostProvider, EditorOverlay } from '@we/editor';
-import { EDIT_SURFACE_ATTR, installGestureTracking } from '@we/schema-shared';
+import { BlockHostProvider } from '@we/block-solid';
+import {
+  CopiedPartNote,
+  EditorHostProvider,
+  EditorOverlay,
+  OwnerCard,
+  PartCard,
+  PartsPalette,
+  SectionOnItsOwnBar,
+  SuppliedPanelNote,
+} from '@we/editor';
+import {
+  EDIT_SURFACE_ATTR,
+  installGestureTracking,
+  OWNER_ATTR,
+  OWNER_NAME_ATTR,
+  PART_ATTR,
+  PART_NODE_ATTR,
+  partForkPrint,
+  VIEW_BOUNDARY_ATTR,
+  VIEW_BOUNDARY_NAME_ATTR,
+} from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { VisualEditorProvider } from '@we/schema-solid';
 import { createComponent, createSignal } from 'solid-js';
@@ -125,8 +149,22 @@ function mount(name: string, width: number, scale?: number): void {
   };
   // A scenario about the trust boundary renders against what a space template is actually handed.
   const bag = scenario.bag === 'space' ? buildTemplateBag(stores, { grants: SPACE_TIER, gesture: 'enforce' }) : stores;
+  /*
+    The block host, as the app gives one (`TemplateProvider`): who a mention names, from the same
+    profiles the scenario seeds. Without it a mention's hover card has nobody to show.
+  */
+  const person = (did: string) => {
+    const known = identityOf[did] as { name?: string; avatar?: string } | undefined;
+    return known ? { name: known.name, avatar: known.avatar } : undefined;
+  };
   disposeMount = render(
-    () => RenderSchema({ node: scenario.node, stores: bag, registry: componentRegistry } as never) as never,
+    () =>
+      createComponent(BlockHostProvider, {
+        person,
+        get children() {
+          return RenderSchema({ node: scenario.node, stores: bag, registry: componentRegistry } as never) as never;
+        },
+      }),
     host,
   );
 }
@@ -421,6 +459,44 @@ function editorProbe(): void {
   content.setAttribute(EDIT_SURFACE_ATTR, '');
   content.style.cssText = 'position: fixed; left: 0; top: 0; width: 400px; height: 400px; z-index: 1;';
   content.append(node('n-content', 'content'));
+  /*
+    A section, as the shell's `$views` mounts one: a boundary naming the view, and inside it the
+    view's own nodes — which carry ids of their own, derived for a built-in, that the template being
+    edited does not contain.
+  */
+  const section = document.createElement('div');
+  section.setAttribute(VIEW_BOUNDARY_ATTR, 'about');
+  section.setAttribute(VIEW_BOUNDARY_NAME_ATTR, 'About');
+  section.append(node('n-view-inner', 'section'));
+  content.append(section);
+  /*
+    A part the template placed: the placement is the template's node, and inside it the part's own
+    nodes, which are the module's — one of them stamped with an id of its own.
+  */
+  const placed = document.createElement('div');
+  placed.setAttribute('data-we-node-id', 'n-part');
+  const frame = document.createElement('div');
+  frame.style.display = 'contents';
+  frame.setAttribute(PART_ATTR, 'call.tile');
+  frame.setAttribute(PART_NODE_ATTR, 'n-part');
+  frame.append(node('n-part-inner', 'part'));
+  placed.append(frame);
+  content.append(placed);
+  // A row of a list: the template's node, inside a `$each`, so a first press selects the list.
+  content.append(node('n-row', 'row'));
+
+  // A panel a module draws itself: an edit surface the editor can reach, owned by the module, inside
+  // the dock's content box — which holds the surface rather than sitting in one, as the real dock's does.
+  const owned = document.createElement('div');
+  owned.setAttribute('data-we-dock-content', '');
+  owned.style.cssText = 'position: fixed; left: 0; top: 460px; width: 200px; height: 80px; z-index: 1;';
+  const ownedBody = document.createElement('div');
+  ownedBody.setAttribute(EDIT_SURFACE_ATTR, '');
+  ownedBody.setAttribute(OWNER_ATTR, 'panel:call:stage');
+  ownedBody.setAttribute(OWNER_NAME_ATTR, 'Call');
+  ownedBody.append(node('n-owned-inner', 'owned'));
+  owned.append(ownedBody);
+  document.body.append(owned);
 
   // A panel, painted where the dock registry paints them: above the content's whole context.
   const panel = document.createElement('div');
@@ -436,7 +512,49 @@ function editorProbe(): void {
   body.append(node('n-panel', 'panel'));
   panel.append(titlebar, body);
 
-  document.body.append(content, panel);
+  /*
+    A tall node in a scroller, scrolled to its end — a transcript feed. The scroller lives in a shadow
+    root, as `we-scroll-area`'s does, so what clips the node is only found by following its slot.
+  */
+  const scrolled = document.createElement('div');
+  scrolled.setAttribute(EDIT_SURFACE_ATTR, '');
+  scrolled.style.cssText = 'position: fixed; left: 210px; top: 460px; width: 100px; height: 100px; z-index: 1;';
+  const scrollHost = document.createElement('div');
+  scrollHost.id = 'probe-scroll-host';
+  scrollHost.style.cssText = 'display: block; width: 100px; height: 100px;';
+  const shadow = scrollHost.attachShadow({ mode: 'open' });
+  const scroller = document.createElement('div');
+  scroller.style.cssText = 'overflow: auto; height: 100%;';
+  scroller.append(document.createElement('slot'));
+  shadow.append(scroller);
+  const long = node('n-long', 'long');
+  Object.assign((long.firstElementChild as HTMLElement).style, { height: '400px', width: '80px' });
+  scrollHost.append(long);
+  scrolled.append(scrollHost);
+
+  /*
+    A list drawing one node three times — every comment's avatar is one node — and a copy of it, a
+    second node drawn as many times, as copying a node inside a part leaves behind.
+  */
+  const list = document.createElement('div');
+  list.setAttribute(EDIT_SURFACE_ATTR, '');
+  list.style.cssText =
+    'position: fixed; left: 0; top: 570px; width: 400px; height: 100px; z-index: 1; display: flex; gap: 8px;';
+  const instance = (id: string, i: number) => {
+    const wrapper = document.createElement('div');
+    wrapper.setAttribute('data-we-node-id', id);
+    const button = document.createElement('button');
+    button.id = `probe-${id}-${i}`;
+    button.textContent = `${id} ${i}`;
+    button.style.cssText = 'width: 60px; height: 40px';
+    wrapper.append(button);
+    return wrapper;
+  };
+  for (let i = 0; i < 3; i++) list.append(instance('n-item', i));
+  for (let i = 0; i < 3; i++) list.append(instance('n-copy', i));
+
+  document.body.append(content, panel, scrolled, list);
+  scroller.scrollTop = 300;
   // The scenario mounted beside this one autofocuses a field, and a key typed there is typing — which
   // the editor rightly ignores. Nothing here should have focus to begin with.
   (document.activeElement as HTMLElement | null)?.blur();
@@ -448,25 +566,44 @@ function editorProbe(): void {
     children: [
       { id: 'n-content', type: 'we-button' },
       { id: 'n-panel', type: 'we-button' },
+      { id: 'n-part', type: '$part', props: { id: 'call.tile' } },
+      { id: 'n-long', type: 'we-button' },
+      { id: 'n-list', type: '$each', props: { items: [1] }, children: [{ id: 'n-row', type: 'we-button' }] },
+      { id: 'n-items', type: '$each', props: { items: [1, 2, 3] }, children: [{ id: 'n-item', type: 'we-button' }] },
+      { id: 'n-copies', type: '$each', props: { items: [1, 2, 3] }, children: [{ id: 'n-copy', type: 'we-button' }] },
     ],
   };
   const [selected, setSelected] = createSignal<string | null>(null);
   const [hovered, setHovered] = createSignal<string | null>(null);
+  const [owner, setOwner] = createSignal<{ kind: string; id: string; name: string } | null>(null);
   const visual = {
     enabled: true,
     hoveredId: hovered,
     selectedId: selected,
     onHover: setHovered,
+    // One selection at a time, as the app's provider keeps it: selecting a node clears the owner, and
+    // the overlay has to survive that happening under an outline that is still drawn.
     onSelect: (id: string | null) => {
       setSelected(id);
+      if (id) setOwner(null);
       record('__probeSelected', id);
+    },
+    selectedOwner: owner,
+    onSelectOwner: (next: { kind: string; id: string } | null) => {
+      setOwner(next as never);
+      if (next) setSelected(null);
+      record('__probeOwner', next ? `${next.kind}:${next.id}` : null);
     },
     registerNode: () => () => {},
     getNodeElement: (id: string) => document.querySelector(`[data-we-node-id="${id}"]`) as HTMLElement | null,
   };
+  // A selection made for somebody rather than by a press — what copying a node inside a part does.
+  probeSelect = (id: string | null) => visual.onSelect(id);
   const host = {
     session: { contentMode: () => 'visual', isStreaming: () => false, pushSnapshot() {}, commitEdit: async () => {} },
     template: { currentTemplate: template, updateTemplate: () => record('__probeUpdated', true) },
+    // Only what a ring asks about a part: what it is called and whose it is.
+    owners: { part: (id: string) => ({ id, label: 'Tile', moduleName: 'Calls' }) },
   };
 
   const root = document.createElement('div');
@@ -474,6 +611,9 @@ function editorProbe(): void {
   // Taken down by `editorProbeDispose`, so the next case on this page meets none of it.
   probeDisposers.push(() => {
     content.remove();
+    scrolled.remove();
+    list.remove();
+    owned.remove();
     panel.remove();
     root.remove();
   });
@@ -496,6 +636,229 @@ function editorProbe(): void {
 }
 
 /**
+ * The inspector's card for a region somebody else provides, mounted against a host whose owners port
+ * answers for one part and one module panel. What each route writes lands in `__probeTemplates`, as
+ * the template it handed `updateTemplate`, so a case can read what taking a region over did.
+ */
+function ownerCardProbe(
+  kind:
+    | 'part'
+    | 'panel'
+    | 'palette'
+    | 'view'
+    | 'view-blocked'
+    | 'arranged'
+    | 'arranged-placed'
+    | 'part-node'
+    | 'copied-clean'
+    | 'copied-inner'
+    | 'copied-outer'
+    | 'section-alone',
+): void {
+  const record = (key: string, value: unknown) => {
+    const bag = globalThis as unknown as Record<string, unknown[]>;
+    (bag[key] ??= []).push(value);
+  };
+  let template: Record<string, unknown> = {
+    id: 'probe',
+    type: 'Column',
+    meta: { name: 'Probe', description: '', icon: '', panels: [{ id: 'stage', module: 'call', snap: 'right' }] },
+    children: [{ id: 'aaaaaaaaaa', type: '$part', props: { id: 'demo.box', subject: { $: 'local.chosen' } } }],
+  };
+  // A module's panel this template has arranged: by arranging alone, or on an entry that also places it.
+  if (kind === 'arranged' || kind === 'arranged-placed') {
+    const arranged = { id: 'call-stage', module: 'call', dock: 'stage', node: { id: 'bbbbbbbbbb', type: 'Column' } };
+    (template.meta as Record<string, unknown>).panels = [
+      kind === 'arranged' ? arranged : { ...arranged, snap: 'right' },
+    ];
+  }
+  /*
+    A feed copied with the lines inside it — two copied levels, each fingerprinted as the copy makes
+    them — then left alone, changed inside the lines (the avatar), or changed in the feed's own nodes.
+  */
+  if (kind.startsWith('copied-')) {
+    const lines: Record<string, unknown> = {
+      id: 'llllllllll',
+      type: 'Column',
+      forkedFrom: 'part:demo.lines',
+      forkedPart: { placement: { id: 'demo.lines' }, print: '' },
+      children: [{ id: 'vvvvvvvvvv', type: 'we-avatar', props: { size: 'sm' } }],
+    };
+    const feed: Record<string, unknown> = {
+      id: 'ffffffffff',
+      type: 'Column',
+      forkedFrom: 'part:demo.feed',
+      forkedPart: { placement: { id: 'demo.feed', subject: { $: 'local.chosen' } }, print: '' },
+      children: [{ id: 'hhhhhhhhhh', type: 'we-text', children: ['Transcript'] }, lines],
+    };
+    (lines.forkedPart as { print: string }).print = partForkPrint(lines as never);
+    (feed.forkedPart as { print: string }).print = partForkPrint(feed as never);
+    if (kind === 'copied-inner')
+      ((lines.children as Record<string, unknown>[])[0].props as Record<string, unknown>).size = 'lg';
+    if (kind === 'copied-outer')
+      ((feed.children as Record<string, unknown>[])[0].children as string[])[0] = 'What was said';
+    template.children = [feed];
+  }
+  const host = {
+    session: {
+      isReadOnly: () => false,
+      pushSnapshot() {},
+      commitEdit: async () => {},
+      startFork() {},
+    },
+    template: {
+      get currentTemplate() {
+        return template;
+      },
+      updateTemplate: (next: Record<string, unknown>) => {
+        template = next;
+        record('__probeTemplates', JSON.parse(JSON.stringify(next)));
+      },
+    },
+    owners: {
+      part: (id: string) => ({
+        id,
+        label: ({ 'demo.feed': 'Feed', 'demo.lines': 'Lines' } as Record<string, string>)[id] ?? 'Box',
+        moduleId: 'demo',
+        moduleName: 'Demo',
+        inputs: [],
+        missing: '',
+      }),
+      parts: () => [
+        {
+          id: 'demo.box',
+          label: 'Box',
+          description: 'A box.',
+          moduleId: 'demo',
+          moduleName: 'Demo',
+          inputs: [],
+          missing: '',
+        },
+      ],
+      // The path to a node inside the part: the part opened a level, the node somebody pressed in it,
+      // and a piece beside the path that stays the module's.
+      openPath: () => {
+        const target = { id: 'cccccccccc', type: 'we-avatar' };
+        return {
+          node: {
+            type: 'Column',
+            forkedFrom: 'part:demo.box',
+            children: [target, { type: '$part', props: { id: 'demo.inner' } }],
+          },
+          target,
+          parts: ['demo.box'],
+        };
+      },
+      // As the real port does, each level opened says which part it was and which placement it replaced.
+      openPart: (placement: { props?: Record<string, unknown> }, depth: 'one' | 'all') => ({
+        type: 'Column',
+        forkedFrom: 'part:demo.box',
+        forkedPart: { placement: placement.props ?? {}, print: '' },
+        children:
+          depth === 'one'
+            ? [{ type: '$part', props: { id: 'demo.inner' } }]
+            : [{ type: 'we-text', children: ['inner'] }],
+      }),
+      panel: () => ({
+        dockId: 'call:stage',
+        moduleId: 'call',
+        moduleName: 'Calls',
+        dock: 'stage',
+        title: 'Call',
+        composed: true,
+        placed: ['Tile'],
+      }),
+      panelNode: () => ({ type: 'Column', children: [{ type: '$part', props: { id: 'call.tile' } }] }),
+      view: () => ({
+        id: 'about',
+        name: 'About',
+        source: 'built into WE',
+        forkBlocked: kind === 'view-blocked' ? 'Only whoever runs this space can replace its sections.' : '',
+      }),
+      forkView: async (id: string) => {
+        record('__probeForked', id);
+        return 'about-yours';
+      },
+      openTemplate: (id: string) => record('__probeOpened', id),
+      sectionOnItsOwn: () =>
+        kind === 'section-alone'
+          ? { section: 'About (yours)', shell: { name: 'My shell', back: () => record('__probeBack', true) } }
+          : null,
+    },
+  };
+  const visual = {
+    enabled: true,
+    selectedId: () => null,
+    hoveredId: () => null,
+    onHover() {},
+    onSelect: (id: string | null) => record('__probeSelected', id),
+    selectedOwner: () => null,
+    onSelectOwner() {},
+    registerNode: () => () => {},
+    getNodeElement: () => null,
+  };
+  const root = document.createElement('div');
+  root.style.cssText = 'position: fixed; left: 0; top: 0; width: 320px;';
+  document.body.append(root);
+  probeDisposers.push(() => root.remove());
+  const dispose = render(
+    () =>
+      createComponent(EditorHostProvider, {
+        value: host as never,
+        get children() {
+          return createComponent(VisualEditorProvider, {
+            value: visual as never,
+            get children() {
+              if (kind === 'palette') return createComponent(PartsPalette, { node: template as never });
+              if (kind === 'arranged' || kind === 'arranged-placed')
+                return createComponent(SuppliedPanelNote, { nodeId: 'bbbbbbbbbb' });
+              if (kind.startsWith('copied-')) return createComponent(CopiedPartNote, { nodeId: 'vvvvvvvvvv' });
+              if (kind === 'section-alone') return createComponent(SectionOnItsOwnBar, {});
+              if (kind === 'part-node')
+                return createComponent(OwnerCard, {
+                  owner: {
+                    kind: 'part-node',
+                    id: 'cccccccccc',
+                    name: 'Avatar',
+                    chain: ['aaaaaaaaaa'],
+                    parts: ['demo.box'],
+                  },
+                });
+              if (kind === 'view' || kind === 'view-blocked')
+                return createComponent(OwnerCard, { owner: { kind: 'view', id: 'about', name: 'About' } });
+              return kind === 'part'
+                ? createComponent(PartCard, { node: (template.children as Record<string, unknown>[])[0] as never })
+                : createComponent(OwnerCard, { owner: { kind: 'panel', id: 'call:stage', name: 'Call' } });
+            },
+          });
+        },
+      }),
+    root,
+  );
+  probeDisposers.unshift(dispose);
+}
+
+/**
+ * Press the button in the probe whose words are these — what a route's button says. Answers whether
+ * there was one to press, and a disabled one counts as none: it would not have done anything either.
+ */
+function pressButton(words: string): boolean {
+  const button = [...document.querySelectorAll('we-button')].find((b) => b.textContent?.trim() === words) as
+    (HTMLElement & { disabled?: boolean }) | undefined;
+  if (!button || button.disabled) return false;
+  button.click();
+  return true;
+}
+
+/** Press the last "Give back" — the one that returns only what was not changed. */
+function pressGiveBackUnchanged(): boolean {
+  const buttons = [...document.querySelectorAll('we-button')].filter((b) => b.textContent?.trim() === 'Give back');
+  const last = buttons.at(-1) as HTMLElement | undefined;
+  last?.click();
+  return !!last;
+}
+
+/**
  * A page over the template, standing in for settings opened mid-edit: a fixed sheet above the content,
  * as the shell's own view is.
  */
@@ -510,16 +873,132 @@ function editorProbeCover(on: boolean): void {
   probeDisposers.push(() => cover.remove());
 }
 
+/**
+ * Records where one element's top edge is on every frame for `ms`, into `globalThis[key]` — for a
+ * case about motion, which a measurement after the fact cannot see. Returns at once, so the case can
+ * start the gesture that causes the motion while the frames are being counted.
+ */
+function sampleTop(selector: string, key: string, ms: number): void {
+  const bag = globalThis as unknown as Record<string, number[]>;
+  const samples: number[] = (bag[key] = []);
+  const until = performance.now() + ms;
+  const frame = () => {
+    const el = document.querySelector(selector);
+    if (el) samples.push(Math.round(el.getBoundingClientRect().top));
+    if (performance.now() < until) requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
+
 const probeDisposers: (() => void)[] = [];
+
+/**
+ * A placed part that draws nothing right now — a microphone meter outside a call — mounted in the
+ * real frame, with whether the template is being edited and whether the part draws anything driven
+ * from the case.
+ */
+let setPartEditing: (on: boolean) => void = () => {};
+let setPartDraws: (on: boolean) => void = () => {};
+function emptyPartProbe(): void {
+  const [editing, setEditing] = createSignal(true);
+  const [draws, setDraws] = createSignal(false);
+  setPartEditing = setEditing;
+  setPartDraws = setDraws;
+  const root = document.createElement('div');
+  root.style.cssText = 'position: fixed; left: 0; top: 0; width: 320px;';
+  document.body.append(root);
+  probeDisposers.push(() => root.remove());
+  const dispose = render(
+    () =>
+      createComponent(PresentPart, {
+        part: 'transcribe.captureMeter',
+        at: 'pppppppppp',
+        get editing() {
+          return editing();
+        },
+        get children() {
+          const content = document.createElement('div');
+          content.id = 'probe-part-content';
+          content.style.height = '20px';
+          content.style.display = draws() ? 'block' : 'none';
+          return content;
+        },
+      }),
+    root,
+  );
+  probeDisposers.unshift(dispose);
+}
+/**
+ * What stands where a part's module is off: the real marker, editing or not, with a fix to offer or
+ * none — which is what somebody who cannot turn the module on gets.
+ */
+function missingPartProbe(mode: 'editing' | 'fixable' | 'unfixable'): void {
+  const record = (key: string, value: unknown) => {
+    const bag = globalThis as unknown as Record<string, unknown[]>;
+    (bag[key] ??= []).push(value);
+  };
+  const root = document.createElement('div');
+  root.id = 'probe-missing-row';
+  root.style.cssText = 'position: fixed; left: 0; top: 0; width: 320px; display: flex; align-items: center; gap: 8px;';
+  document.body.append(root);
+  probeDisposers.push(() => root.remove());
+  const dispose = render(
+    () =>
+      createComponent(MissingMarker, {
+        label: 'Continue call',
+        reason: 'Calls is turned off in this space.',
+        editing: mode === 'editing',
+        ...(mode === 'unfixable'
+          ? {}
+          : { fix: { label: 'Open space settings', go: () => record('__probeFixed', true) } }),
+      }),
+    root,
+  );
+  probeDisposers.unshift(dispose);
+}
+
+function emptyPartEditing(on: boolean): void {
+  setPartEditing(on);
+}
+function emptyPartDraws(on: boolean): void {
+  setPartDraws(on);
+}
+let probeSelect: (id: string | null) => void = () => {};
+function editorProbeSelect(id: string | null): void {
+  probeSelect(id);
+}
 function editorProbeDispose(): void {
   for (const dispose of probeDisposers.splice(0)) dispose();
 }
 
 injectDSInteropStyles();
+/** The compact composer's own box: its edge and its height, and the send button's height beside it. */
+function composerFrame(): { border: string; height: number; button: number } | null {
+  const box = document.querySelector('.we-block-composer--compact');
+  const button = document.querySelector('we-button');
+  if (!box) return null;
+  const cs = getComputedStyle(box);
+  return {
+    border: `${cs.borderTopWidth} ${cs.borderTopStyle}`,
+    height: Math.round(box.getBoundingClientRect().height),
+    button: Math.round(button?.getBoundingClientRect().height ?? 0),
+  };
+}
+
 (window as unknown as Record<string, unknown>).__harness = {
+  composerFrame,
   editorProbe,
   editorProbeCover,
+  ownerCardProbe,
+  pressButton,
+  pressGiveBackUnchanged,
   editorProbeDispose,
+  editorProbeSelect,
+  emptyPartProbe,
+  missingPartProbe,
+  emptyPartEditing,
+  emptyPartDraws,
+  sampleTop,
   mount,
   profile,
   resizeMount,

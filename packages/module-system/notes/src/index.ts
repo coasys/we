@@ -61,7 +61,9 @@ export const notesModule: ModuleDefinition = defineModule({
     // Installed into the personal space, beside the notes it describes.
     entities: { manifest: NOTES_MANIFEST, scope: 'agent' },
 
-    parts: { toggleButton },
+    parts: {
+      toggleButton: { node: toggleButton, label: 'Notes button', description: 'Opens and closes your notes.' },
+    },
 
     /**
      * The panel. The host holds whether it is open, draws its rail button from `icon` and `title`, and

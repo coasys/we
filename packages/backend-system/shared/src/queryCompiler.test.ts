@@ -119,6 +119,18 @@ describe('compileQuery', () => {
     });
     expect(ir.include!.$recentLikes).not.toHaveProperty('first');
   });
+
+  it('reads the ORM’s upper-case direction in a projection as well as at the top', () => {
+    // A projection's order is not normalised by its caller; an unread `DESC` sorted ascending, and
+    // "the newest child" answered with the oldest.
+    const { ir } = compileQuery({
+      entity: 'CollectionBlock',
+      order: { createdAt: 'DESC' as never },
+      include: { $latestChild: { from: 'children', order: { createdAt: 'DESC' }, limit: 1 } },
+    });
+    expect(ir.sort).toEqual([{ by: 'createdAt', dir: 'desc' }]);
+    expect(ir.include).toMatchObject({ $latestChild: { sort: [{ by: 'createdAt', dir: 'desc' }] } });
+  });
 });
 
 describe('irToFlatQuery', () => {
@@ -242,9 +254,9 @@ describe('lowering a where clause back to the flat dialect', () => {
     // than an explicit AND — the most ordinary query shape there is, and the one a backend handles
     // natively. This used to matter for a sort degradation that is now gone; the merge itself is
     // still what keeps a round trip lossless.
-    const where = { type: 'root', textContent: { contains: 'x' } };
+    const where = { kind: 'post', textContent: { contains: 'x' } };
     expect(irOf(where).filter).toHaveProperty('and');
-    expect(flatOf(where)).toMatchObject({ where: { type: 'root', textContent: { contains: 'x' } } });
+    expect(flatOf(where)).toMatchObject({ where: { kind: 'post', textContent: { contains: 'x' } } });
   });
 
   it('emits an explicit AND when the branches collide on a key', () => {

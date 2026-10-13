@@ -128,10 +128,14 @@ Almost every entity extends `WeNode`, which in turn extends `Ad4mModel`.
 
 `WeNode` provides:
 
-- `comments: string[]` — HasMany relation for comment IDs
+- `responses: string[]` — what was made in response to the node: replies, a call about it (`we://response`)
+- `thread` / `inThread` — every response under a thread's subject, at any depth (`we://thread`)
+- `partOf` — the collection the node is part of (`we://child` read backwards). Empty on a response:
+  a response is a child of nothing, and where it was said is its thread subject's `partOf`. See
+  `docs/architecture/relations.md`
 - `signals: string[]` — HasMany relation for signal IDs
 
-These are always present on every model instance but are only surfaced in the UI where contextually appropriate (e.g. a `LocationBlock` pin on a map might not show a comments thread, but the data is there if needed in future).
+These are always present on every model instance but are only surfaced in the UI where contextually appropriate (e.g. a `LocationBlock` pin on a map might not show a thread of responses, but the data is there if needed in future).
 
 ---
 

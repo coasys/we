@@ -1124,15 +1124,18 @@ const callSettingsSection: SchemaNode = {
 };
 
 /**
- * Automatic extraction — a community decision, and priced like one.
+ * Whether new conversations here start out extracted automatically — a community default, and
+ * priced like one.
+ *
+ * A default and only that: each call or channel holds its own answer, copied from this when it is
+ * made, and is changed from the Extraction panel by whoever is in it. Said in the copy, because the
+ * obvious reading of a switch in settings is that it governs everything now, and a community that
+ * flipped it expecting a meeting under way to stop would see nothing happen.
  *
  * Its own section rather than a row in Modules, because it is not a module: it is what one of them
  * is allowed to do while nobody is watching. Worded to say who pays, since the cost is the part
  * that is easy to miss — a standing watch spends an LLM call on whichever member's node wins the
  * election, and writes what it finds into everyone's copy of the space.
- *
- * Administer-only for the same reason the right-hand module switch is, and off by default: joining
- * a space should not be the same act as volunteering to run its extraction.
  */
 const autoInterpretSection: SchemaNode = {
   type: 'Column',
@@ -1146,7 +1149,7 @@ const autoInterpretSection: SchemaNode = {
           type: 'Column',
           props: { gap: '100', flex: '1' },
           children: [
-            { type: 'we-text', props: { variant: 'label' }, children: ['Extract from calls automatically'] },
+            { type: 'we-text', props: { variant: 'label' }, children: ['Extract new calls automatically'] },
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-faint' },
@@ -1158,7 +1161,7 @@ const autoInterpretSection: SchemaNode = {
                     marked for it — including any the community defined — so the sentence names the
                     act rather than enumerating a list that is no longer fixed.
                   */
-                  $: "space.canAdminister ? 'Whatever this space’s models are marked for is written down as a call happens, without anyone pressing Extract. Runs on a member’s node and costs them an AI call each time.' : 'What this space’s models are marked for is written down as a call happens. Changing this needs someone who administers the space.'",
+                  $: "space.canAdminister ? 'Where a new call or channel starts. Whatever it is set to look for is written down as the conversation happens, without anyone pressing Extract. Each conversation can then be changed in the Extraction panel. Runs on a member’s node and costs them an AI call each time.' : 'Where a new call or channel starts. Each conversation can be changed in the Extraction panel by whoever is in it. Changing this default needs someone who administers the space.'",
                 },
               ],
             },
@@ -1250,12 +1253,12 @@ const threadModeSection: SchemaNode = {
 };
 
 /**
- * Which models this community's calls extract into.
+ * Which models a new conversation here starts out extracting.
  *
- * The middle of three layers, and the only one a community owns. The codebase decides what is a
- * *candidate* — an entity earns that by having AI hints, a dedup key and no required field a model
- * cannot satisfy, which is why no image or file block is one. This decides which candidates a call
- * here starts with. A call's participants then add or remove for that conversation.
+ * The middle of three layers. The codebase decides what is a *candidate* — an entity earns that by
+ * having AI hints, a dedup key and no required field a model cannot satisfy, which is why no image
+ * or file block is one. This decides which candidates a new call or channel here starts with, as a
+ * copy. Each conversation then holds its own list, changed from the Extraction panel.
  *
  * That middle layer exists because the alternative is WE asserting what every community's calls are
  * about. Tasks and events as a fixed default is an assumption about meeting culture; a space that
@@ -1276,13 +1279,13 @@ const extractionTargetsSection: SchemaNode = {
       type: 'Column',
       props: { gap: '100' },
       children: [
-        { type: 'we-text', props: { variant: 'label' }, children: ['What calls extract'] },
+        { type: 'we-text', props: { variant: 'label' }, children: ['What new calls look for'] },
         {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint' },
           children: [
             {
-              $: "space.canAdminister ? 'The models a call in this space starts out looking for. Participants can add or remove them for one call. Every model named costs tokens on every pass, so keep the list to what this community actually talks about.' : 'The models a call in this space starts out looking for. Changing this needs someone who administers the space.'",
+              $: "space.canAdminister ? 'The models a new call or channel starts out looking for. Each conversation can then add or remove them in the Extraction panel. Every model named costs tokens on every pass, so keep the list to what this community actually talks about.' : 'The models a new call or channel starts out looking for. Changing this default needs someone who administers the space.'",
             },
           ],
         },

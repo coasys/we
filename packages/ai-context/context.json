@@ -2213,7 +2213,7 @@
         },
         {
           "name": "onReady",
-          "type": "((api: { save: () => void; }) => void)",
+          "type": "((api: { save: () => void; submit: () => void; }) => void)",
           "optional": true
         },
         {
@@ -2239,6 +2239,21 @@
         {
           "name": "handles",
           "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "compact",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "onSubmit",
+          "type": "((line: { text: string; marks: string; }) => void)",
+          "optional": true
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
           "optional": true
         }
       ],
@@ -3759,32 +3774,6 @@
       "relations": []
     },
     {
-      "name": "CallExtraction",
-      "className": "CallExtraction",
-      "extends": "WeNode",
-      "fields": [
-        {
-          "name": "callId",
-          "type": "string",
-          "predicate": "we://call_id",
-          "required": false
-        },
-        {
-          "name": "entities",
-          "type": "string",
-          "predicate": "we://extraction_targets",
-          "required": false
-        },
-        {
-          "name": "auto",
-          "type": "string",
-          "predicate": "we://auto_interpret",
-          "required": false
-        }
-      ],
-      "relations": []
-    },
-    {
       "name": "ChatMessage",
       "className": "ChatMessage",
       "extends": "WeNode",
@@ -3869,19 +3858,6 @@
       "extends": "WeNode",
       "fields": [
         {
-          "name": "editorState",
-          "type": "string",
-          "predicate": "we://editor_state",
-          "required": false,
-          "default": "null"
-        },
-        {
-          "name": "type",
-          "type": "string",
-          "predicate": "we://type",
-          "required": false
-        },
-        {
           "name": "kind",
           "type": "string",
           "predicate": "we://kind",
@@ -3900,27 +3876,34 @@
           "required": false
         },
         {
-          "name": "slug",
-          "type": "string",
-          "predicate": "we://slug",
-          "required": false
-        },
-        {
           "name": "description",
           "type": "string",
           "predicate": "we://description",
           "required": false
         },
         {
-          "name": "version",
-          "type": "number",
-          "predicate": "we://version",
+          "name": "slug",
+          "type": "string",
+          "predicate": "we://slug",
           "required": false
+        },
+        {
+          "name": "editorState",
+          "type": "string",
+          "predicate": "we://editor_state",
+          "required": false,
+          "default": "null"
         },
         {
           "name": "textContent",
           "type": "string",
           "predicate": "we://text_content",
+          "required": false
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "predicate": "we://version",
           "required": false
         },
         {
@@ -3934,13 +3917,25 @@
           "type": "string",
           "predicate": "we://source_name",
           "required": false
+        },
+        {
+          "name": "autoExtract",
+          "type": "boolean",
+          "predicate": "we://auto_extract",
+          "required": false
+        },
+        {
+          "name": "extractionTargets",
+          "type": "string",
+          "predicate": "we://extraction_targets",
+          "required": false
         }
       ],
       "relations": [
         {
           "name": "children",
           "kind": "HasMany",
-          "predicate": "we://children"
+          "predicate": "we://child"
         },
         {
           "name": "arranges",
@@ -3968,6 +3963,11 @@
           "name": "extracted",
           "kind": "HasMany",
           "predicate": "we://extracted"
+        },
+        {
+          "name": "recognised",
+          "kind": "HasMany",
+          "predicate": "we://recognised"
         },
         {
           "name": "amendments",
@@ -4956,12 +4956,6 @@
           "target": "LocationBlock"
         },
         {
-          "name": "board",
-          "kind": "HasOne",
-          "predicate": "we://board",
-          "target": "CollectionBlock"
-        },
-        {
           "name": "taskStates",
           "kind": "HasMany",
           "predicate": "we://task_state_order",
@@ -4972,6 +4966,18 @@
           "kind": "HasMany",
           "predicate": "we://type_style",
           "target": "TypeStyle"
+        },
+        {
+          "name": "root",
+          "kind": "HasOne",
+          "predicate": "we://root",
+          "target": "CollectionBlock"
+        },
+        {
+          "name": "roles",
+          "kind": "HasMany",
+          "predicate": "we://space_role",
+          "target": "SpaceRole"
         }
       ]
     },
@@ -5018,6 +5024,26 @@
         }
       ],
       "relations": []
+    },
+    {
+      "name": "SpaceRole",
+      "className": "SpaceRole",
+      "extends": "Ad4mModel",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "predicate": "we://role_name",
+          "required": false
+        }
+      ],
+      "relations": [
+        {
+          "name": "node",
+          "kind": "HasOne",
+          "predicate": "we://role_node"
+        }
+      ]
     },
     {
       "name": "SpaceTemplatePreference",
@@ -5589,14 +5615,34 @@
       "fields": [],
       "relations": [
         {
-          "name": "comments",
+          "name": "responses",
           "kind": "HasMany",
-          "predicate": "we://comment"
+          "predicate": "we://response"
         },
         {
-          "name": "inReplyTo",
+          "name": "respondsTo",
           "kind": "HasOne",
-          "predicate": "we://comment"
+          "predicate": "we://response"
+        },
+        {
+          "name": "thread",
+          "kind": "HasMany",
+          "predicate": "we://thread"
+        },
+        {
+          "name": "inThread",
+          "kind": "HasOne",
+          "predicate": "we://thread"
+        },
+        {
+          "name": "partOf",
+          "kind": "HasOne",
+          "predicate": "we://child"
+        },
+        {
+          "name": "extractedFrom",
+          "kind": "HasOne",
+          "predicate": "we://extracted"
         },
         {
           "name": "signals",
@@ -5607,12 +5653,7 @@
         {
           "name": "participants",
           "kind": "HasMany",
-          "predicate": "we://participants"
-        },
-        {
-          "name": "calls",
-          "kind": "HasMany",
-          "predicate": "we://call"
+          "predicate": "we://participant"
         },
         {
           "name": "mentions",
@@ -7094,44 +7135,22 @@
         },
         "taskStates": {
           "type": "array",
-          "properties": ["id", "name", "slug", "semantic", "color", "retired", "defined", "approvals", "approverKind"]
+          "properties": ["id", "name", "slug", "semantic", "color", "retired", "approvals", "approverKind"]
         },
         "offeredTaskStates": {
           "type": "array",
-          "properties": ["id", "name", "slug", "semantic", "color", "retired", "defined", "approvals", "approverKind"]
+          "properties": ["id", "name", "slug", "semantic", "color", "retired", "approvals", "approverKind"]
         },
         "taskStatesLoaded": {
           "type": "boolean"
         },
         "involvementTypes": {
           "type": "array",
-          "properties": [
-            "id",
-            "name",
-            "slug",
-            "semantic",
-            "reflexive",
-            "appliesTo",
-            "icon",
-            "color",
-            "retired",
-            "defined"
-          ]
+          "properties": ["id", "name", "slug", "semantic", "reflexive", "appliesTo", "icon", "color", "retired"]
         },
         "offeredInvolvementTypes": {
           "type": "array",
-          "properties": [
-            "id",
-            "name",
-            "slug",
-            "semantic",
-            "reflexive",
-            "appliesTo",
-            "icon",
-            "color",
-            "retired",
-            "defined"
-          ]
+          "properties": ["id", "name", "slug", "semantic", "reflexive", "appliesTo", "icon", "color", "retired"]
         },
         "involvementTypesLoaded": {
           "type": "boolean"
@@ -7213,6 +7232,12 @@
         "autoInterpret": {
           "type": "boolean"
         },
+        "root": {
+          "type": "string"
+        },
+        "roles": {
+          "type": "object"
+        },
         "extractionTargets": {
           "type": "array"
         },
@@ -7253,8 +7278,9 @@
         "setSpaceModuleSetting",
         "setMyModuleSetting",
         "setAgentModuleSetting",
-        "autoInterpretForCall",
-        "setAutoInterpretForCall",
+        "autoExtractFor",
+        "setAutoExtractFor",
+        "canSetExtractionFor",
         "setAutoInterpret",
         "setThreadMode",
         "setExtractionTarget",
@@ -7295,7 +7321,8 @@
         "removeSpaceFromGlobal"
       ],
       "ambient": [
-        "autoInterpretForCall",
+        "autoExtractFor",
+        "canSetExtractionFor",
         "navigateToSpace",
         "openRecordRef",
         "canAdministerSpace",
@@ -7510,6 +7537,7 @@
     "EditorInspectorPanel",
     "EditorThemePanel",
     "PanelLane",
+    "PartFrame",
     "TemplateCard",
     "TemplatePanelBody",
     "WeCube"
@@ -7921,7 +7949,13 @@
       ],
       "parts": [
         {
-          "name": "anchoredCallButton"
+          "name": "anchoredCallButton",
+          "inputs": [
+            {
+              "name": "node",
+              "description": "the record the call is about — anything with an id"
+            }
+          ]
         },
         {
           "name": "continueCallButton"
@@ -7933,7 +7967,13 @@
           "name": "startCallButton"
         },
         {
-          "name": "tile"
+          "name": "tile",
+          "inputs": [
+            {
+              "name": "tile",
+              "description": "the participant to show — one of modules.call.tiles"
+            }
+          ]
         }
       ],
       "panels": [
@@ -8003,7 +8043,7 @@
         {
           "name": "addMessage",
           "kind": "action",
-          "doc": "Writes something a person typed into a transcript, as a typed line."
+          "doc": "Writes something a person typed into a transcript, as a typed line — with its marks, when the composer gave any."
         },
         {
           "name": "applyChange",
@@ -8013,7 +8053,7 @@
         {
           "name": "autoExtract",
           "kind": "state",
-          "doc": "Whether this call is extracted as it happens — its participants’ answer, else the space’s."
+          "doc": "Whether the call this agent is in is extracted as it happens — its own answer."
         },
         {
           "name": "autoJoined",
@@ -8047,6 +8087,12 @@
           "ambient": true
         },
         {
+          "name": "cancelReply",
+          "kind": "action",
+          "doc": "Puts a reply down without sending it.",
+          "ambient": true
+        },
+        {
           "name": "cancelTiedDecision",
           "kind": "action",
           "doc": "Puts the decision waiting in tiedDecision down without making it.",
@@ -8071,6 +8117,12 @@
           "name": "closeExtractionPanel",
           "kind": "action",
           "doc": "Closes the extraction panel.",
+          "ambient": true
+        },
+        {
+          "name": "closeFeed",
+          "kind": "action",
+          "doc": "Closes the Feed panel.",
           "ambient": true
         },
         {
@@ -8158,7 +8210,7 @@
         {
           "name": "extractionFor",
           "kind": "state",
-          "doc": "What one call can extract, by record id — { targets, canChoose, canExtract }, read as extractionFor[id]."
+          "doc": "What one collection can extract, by record id — { targets, canChoose, canExtract, auto }, read as extractionFor[id]."
         },
         {
           "name": "extractionOpen",
@@ -8174,6 +8226,36 @@
           "name": "extractTurns",
           "kind": "state",
           "doc": "How many transcript turns the last pass read."
+        },
+        {
+          "name": "feedFromStart",
+          "kind": "state",
+          "doc": "Whether the Feed is read from the beginning rather than the live end."
+        },
+        {
+          "name": "feedHasMore",
+          "kind": "state",
+          "doc": "Whether there is more of the space beyond the Feed’s window."
+        },
+        {
+          "name": "feedLoaded",
+          "kind": "state",
+          "doc": "Whether the Feed has answered for this space yet."
+        },
+        {
+          "name": "feedOpen",
+          "kind": "state",
+          "doc": "Whether the Feed panel is open."
+        },
+        {
+          "name": "feedRoot",
+          "kind": "state",
+          "doc": "The space collection the Feed reads, and writes typed messages into."
+        },
+        {
+          "name": "feedRows",
+          "kind": "state",
+          "doc": "The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }."
         },
         {
           "name": "flushNow",
@@ -8267,6 +8349,12 @@
           "ambient": true
         },
         {
+          "name": "openFeed",
+          "kind": "action",
+          "doc": "Opens the Feed panel.",
+          "ambient": true
+        },
+        {
           "name": "openPanel",
           "kind": "action",
           "doc": "Opens the transcript panel.",
@@ -8313,6 +8401,18 @@
           "doc": "Suggestions staged on one conversation, by record id — read as proposalsFor[id]."
         },
         {
+          "name": "readFeedFromStart",
+          "kind": "action",
+          "doc": "Re-anchors the Feed at the beginning of the space.",
+          "ambient": true
+        },
+        {
+          "name": "readFeedLive",
+          "kind": "action",
+          "doc": "Re-anchors the Feed at the newest message.",
+          "ambient": true
+        },
+        {
           "name": "readTranscriptFromStart",
           "kind": "action",
           "doc": "Shows the beginning of the transcript, to be read forwards.",
@@ -8341,9 +8441,30 @@
           "doc": "Drops a suggestion."
         },
         {
+          "name": "reply",
+          "kind": "action",
+          "doc": "Answers one line with a typed line of its own, linked from it as a reply."
+        },
+        {
+          "name": "replyingTo",
+          "kind": "state",
+          "doc": "The line a reply is being written to — { id, text, author, surface } — or null. `surface` is 'transcript' or 'feed': the list it was started from, whose composer sends it."
+        },
+        {
+          "name": "sendToFeed",
+          "kind": "action",
+          "doc": "Writes a message straight into the space, outside any call — with its marks, when the composer gave any."
+        },
+        {
           "name": "setProposalField",
           "kind": "action",
           "doc": "Sets one field of the open draft, by property name.",
+          "ambient": true
+        },
+        {
+          "name": "showMoreFeed",
+          "kind": "action",
+          "doc": "Grows the Feed’s window by a page.",
           "ambient": true
         },
         {
@@ -8356,6 +8477,12 @@
           "name": "speaking",
           "kind": "state",
           "doc": "Whether the microphone level currently counts as speech."
+        },
+        {
+          "name": "startReply",
+          "kind": "action",
+          "doc": "Starts a reply to one line — pass { id, text, author, surface } — which that surface's composer then sends as a reply. `surface` is 'transcript' (the default) or 'feed'.",
+          "ambient": true
         },
         {
           "name": "status",
@@ -8378,6 +8505,11 @@
           "doc": "A decision waiting on confirmation because it decides others too — { kind, title, body, detail, confirmLabel } — or null."
         },
         {
+          "name": "timelineOrientation",
+          "kind": "state",
+          "doc": "Which way round this reader draws a timeline — 'newestBottom' or 'newestTop'. Their own setting."
+        },
+        {
           "name": "toggle",
           "kind": "action",
           "doc": "Starts or stops recording this agent’s microphone into the call, and opens the transcript when starting."
@@ -8385,7 +8517,7 @@
         {
           "name": "toggleAutoExtract",
           "kind": "action",
-          "doc": "Turns automatic extraction on or off for this call, for everyone in it."
+          "doc": "Turns automatic extraction on or off for one collection, for everyone in it; defaults to the live call."
         },
         {
           "name": "toggleExtractionTarget",
@@ -8463,6 +8595,12 @@
           "title": "Extraction",
           "icon": "sparkle",
           "hostOwned": false
+        },
+        {
+          "name": "feed",
+          "title": "Feed",
+          "icon": "chats-circle",
+          "hostOwned": false
         }
       ],
       "launchers": [],
@@ -8473,6 +8611,13 @@
           "description": "Transcription starts when a call does, without anyone pressing record. Leaving a recording, or stopping it by hand, still only affects your own microphone for that call.",
           "type": "boolean",
           "levels": ["deployment", "agent", "space", "agent-in-space"]
+        },
+        {
+          "key": "timelineOrder",
+          "label": "Newest messages",
+          "description": "Where the newest line of a transcript or the feed is drawn.",
+          "type": "enum",
+          "levels": ["agent"]
         }
       ],
       "activities": {
@@ -8484,7 +8629,14 @@
         }
       },
       "components": [],
-      "functions": [],
+      "functions": [
+        {
+          "name": "threadLines",
+          "params": ["options"],
+          "doc": "A page of a conversation’s lines with every reply to them, each once, in time order — newest first when `newestFirst` is true. A reply is a child of nothing: it is in the `thread` of the line it answers, so read the page with `include: { thread: true }` and this flattens each line’s thread in beside it, leaving out any call held about a line. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, and a line with marks carries `content` — the one block a BlockRenderer draws it from. Options: rows (the page), newestFirst (boolean).",
+          "example": "threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })"
+        }
+      ],
       "views": [],
       "blocks": [],
       "entities": []
@@ -9074,7 +9226,13 @@
       ],
       "parts": [
         {
-          "name": "pollCard"
+          "name": "pollCard",
+          "inputs": [
+            {
+              "name": "block",
+              "description": "the Poll record to show"
+            }
+          ]
         },
         {
           "name": "pollComposer"

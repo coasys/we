@@ -309,9 +309,7 @@ The seed white-labels the shell through `host.theme` (colour and font overrides)
 [Seed System](./seed-system.md), and `packages/app-shell/src/types/seed.ts` for the shape.
 
 > The wider surface this section used to describe — `launcherUIRegistry`, `seed.host.ui.appSettings`,
-> `enableTemplateSwitching` — was removed. The archived design is at
-> [`internal/old/launcher-ui-customization.md`](../internal/old/launcher-ui-customization.md);
-> it documents nothing that exists.
+> `enableTemplateSwitching` — was removed.
 
 ### Seed System
 

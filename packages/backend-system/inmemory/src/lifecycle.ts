@@ -32,6 +32,7 @@ import { CORE_MANIFEST } from '@we/entities/manifest';
 import { compileEntities, type EntityRuntime } from './entities';
 import { createInMemoryFlowPort } from './flows';
 import { inMemoryQueryAdapter } from './queryAdapter';
+import { createInMemoryReferencePort } from './references';
 
 export interface InMemoryDatasetSeed {
   id: string;
@@ -510,6 +511,7 @@ export function createInMemoryBackendPorts(
     schemas,
     profiles: createInMemoryProfileDirectory(ctx, opts.profiles),
     flows: createInMemoryFlowPort(ctx.selfId),
+    references: createInMemoryReferencePort(CORE_MANIFEST),
     ephemeral,
     dataBindings: (deps) => ({
       $currentDataset: deps.currentDataset,

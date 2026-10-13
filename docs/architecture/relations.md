@@ -16,6 +16,66 @@ cost all matter, but they are consequences of this distinction rather than the t
 the same distinction decides where a _position_ lives, which is why `Placement` exists rather than
 `x`/`y` on a block.
 
+## Three links every record can have: structure, what it answers, and its thread
+
+Before the tiers below, the connections every record makes are fixed, and there are three of them.
+
+| Link                                                                    | Question                       | Rule                                                                                                                                                 |
+| ----------------------------------------------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `we://child` — `CollectionBlock.children`, read back as `WeNode.partOf` | **What is it a part of?**      | Structure, and nothing else. At most one container. `mode` on the collection governs it: who owns its parts, and whether re-saving may rewrite them. |
+| `we://response` — `WeNode.responses`, read back as `respondsTo`         | **What does it answer?**       | Optional, open to anyone whatever `mode` says, on every node: a reply, a comment, a call held about it, a channel spun off from it.                  |
+| `we://thread` — `WeNode.thread`, read back as `inThread`                | **Which discussion is it in?** | An index, written by the host: from a thread's subject to every response under it, at any depth.                                                     |
+
+**A response is never a child of anything.** A reply to a line in a call answers the line and is in
+the line's thread; a comment on a post answers the post and is in the post's thread. Neither is one
+of the call's or the channel's children.
+
+**Where a response was said is derived, not stored**: its thread's subject, and the container that
+subject is part of — `inThread`, then `partOf`. A comment on a post was said in the post's channel
+because the post is in that channel, and moves with the post if the post moves. Storing it as well
+would be the same fact twice, and the copy goes stale on the first move.
+
+| Responding to                            | Its thread           | Where it was said (derived)                 |
+| ---------------------------------------- | -------------------- | ------------------------------------------- |
+| a line in a call                         | the line             | the call                                    |
+| a block inside a post                    | the block            | the post                                    |
+| a post                                   | the post             | the post's channel, or the space collection |
+| a task, or a message typed outside calls | that task or message | the space collection                        |
+| a call itself                            | the call             | wherever the call is                        |
+
+**A thread belongs to its subject**: the first record above a response that is not itself a
+response. A reply to a block is in the block's thread and a reply to the post in the post's, so the
+two discussions stay apart. The thread link makes the whole discussion under a post, its total and
+what a delete takes with it one read rather than a walk. The child axis has no such link on purpose:
+parts move between collections, and a stored root would have to be rewritten for a whole subtree on
+every move. Responses never change what they answer.
+
+**So everything said in a room is its children plus their threads.** A transcript reads a call's
+lines with `include: { thread: true }`; unread credits a reply to the container its subject is part
+of. One read, at any depth, without a walk.
+
+### Why three, and why the same three at every scale
+
+A small community runs as one feed — a chat. A large one runs as channels of posts with discussions
+under them — a forum. The links are the same in both: what changes is how the space is arranged
+(how many containers, how deep) and how the interface draws it. A chat draws each line's thread
+inline beneath it; a forum draws a post's thread on the post's page. A community that grows from one
+into the other changes its arrangement and its template, never its data.
+
+A fourth link — a room's index of everything said in it, `we://room` — would make "everything in
+this room" one hop rather than two. It is not built: the two-hop read is bounded and cheap, and an
+index that has to be rewritten when a post moves is exactly the stale copy the rule above avoids.
+Add it if a room-wide read measurably needs it.
+
+One relation holds every kind of response, so **surfaces filter by what a response is**: a thread
+list or a reply count says `kind: 'reply'` (what the discussion composer writes), and a listing of
+calls says `kind: 'call'`. The host writes the thread link — `completeResponse` in
+`app-shell/src/shared/responses.ts` runs for every write made with the response predicate — so no
+template or module writes it itself.
+
+A space is its own dataset, so "a space made in response to a post" cannot be a link in either. That
+one is a stored reference, like `sourceRef`.
+
 ## The three tiers
 
 |                        | Authored by               | Cost to add                         | Query by it                     | Carries its own data | Visible as a kind |
@@ -145,7 +205,7 @@ staged as a suggestion, and context described as a query. They are not workaroun
 | ------------------------------------ | --------------------------------- | ----------------------------------------------------------------------------------------- |
 | `CollectionBlock.children`           | declared (untyped)                | Structural, written by the composer per block, queried constantly.                        |
 | `Space.location`                     | declared                          | A fact about the class, one per space, nothing to dispute.                                |
-| `WeNode.comments`                    | declared (untyped)                | Written by code on every reply; the _comment_ carries the provenance, not the link.       |
+| `WeNode.responses`                   | declared (untyped)                | Written by code on every response; the _response_ carries the provenance, not the link.   |
 | "This contradicts that"              | reified + kind                    | A claim, arguable, authored, and the vocabulary is the community's.                       |
 | "This card sits here on this canvas" | reified (`Placement`)             | A fact about the pair — the same note sits elsewhere on another canvas.                   |
 | A reaction                           | reified (`Signal` + `SignalType`) | Per agent, per node, with a vocabulary the community names. Already this shape.           |

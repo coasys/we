@@ -96,11 +96,30 @@ export interface InterpretationRequest {
    * Named by the caller rather than known here, for the reason `parent` is: the predicate is the
    * host's vocabulary, and an interpretation port that hard-coded one would be a backend deciding
    * what a relation in somebody else's graph is called. Omit it and nothing extra is written.
+   *
+   * **It is also the conversation.** Where it is given, `provenance` names what a pass reads and
+   * what it is *about* — a standing watch reads that node's children, and the instances it mints
+   * are namespaced under it — while `parent` is only where they are filed. The two are the same node
+   * when a pass files into what it read, and different when every conversation in a space files into
+   * one shared collection: each call is still read on its own and still tells its items apart from
+   * every other call's. Absent, `parent` is both.
    */
   provenance?: { id: string; predicate: string };
   /**
+   * Where a record the pass *recognised* — already in the space, made by another conversation or by
+   * hand — is linked from, instead of `provenance`.
+   *
+   * Only what a pass made here is its provenance. A pass that matches something already written
+   * touches it without making it, and naming it as produced here is how a review surface came to
+   * list last week's task as accepted in this call, and how a record ended up with two conversations
+   * claiming to have produced it. Named by the caller for `provenance`'s reason. Omit it and a
+   * recognised record is linked as `provenance`, as before.
+   */
+  recognised?: { id: string; predicate: string };
+  /**
    * URI namespace new instances are minted under. Backend-specific and usually best left to the
-   * adapter, which derives one from `parent` so a call's extractions are confined to that call.
+   * adapter, which derives one from the conversation (`provenance`, else `parent`) so a call's
+   * extractions are confined to that call.
    */
   basePrefix?: string;
 }
@@ -150,6 +169,15 @@ export interface InterpretationResult {
  */
 export interface InterpretationScope {
   parent: { id: string; predicate: string };
+  /**
+   * The conversation the suggestions came from, where it is not the node they were filed in.
+   *
+   * When every conversation files into one shared collection, containment says nothing about which
+   * call a suggestion came from — every call's are its children. So a caller narrowing to one
+   * conversation names it here, and a backend narrows by this link (and by the namespace it minted
+   * under) instead of by containment.
+   */
+  provenance?: { id: string; predicate: string };
 }
 
 /** A staged suggestion waiting on a human. */

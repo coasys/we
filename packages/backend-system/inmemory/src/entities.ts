@@ -17,6 +17,7 @@
 import type { EntityStatic, IncludeExtras, IncludeOf, RecordInstance, TypedEntityQuery } from '@we/backend-shared';
 import {
   compileQuery,
+  CONTAINMENT_PREDICATE,
   type EntityManifest,
   type EntitySchema,
   executeQueryIR,
@@ -123,7 +124,11 @@ export interface EntityClassLike {
     dataset: unknown,
     query?: Q | AnyQuery,
   ): Promise<(InMemoryInstance & IncludeExtras<RecordInstance, IncludeOf<Q>>) | null>;
-  create(dataset: unknown, data?: Record<string, unknown>): Promise<InMemoryInstance>;
+  create(
+    dataset: unknown,
+    data?: Record<string, unknown>,
+    options?: { parent?: { id: string; predicate: string } },
+  ): Promise<InMemoryInstance>;
   update(dataset: unknown, id: string, data: Record<string, unknown>): Promise<InMemoryInstance | null>;
   delete(dataset: unknown, id: string): Promise<unknown>;
   count(dataset: unknown, query?: AnyQuery): Promise<number>;
@@ -161,6 +166,45 @@ export type AssertEntityClassSatisfiesContract = Satisfies<EntityClassLike, Enti
  */
 export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime): Record<string, EntityClassLike> {
   const classes: Record<string, EntityClassLike> = {};
+
+  /*
+    A new record linked under a parent named by id and predicate — `create(…, { parent })`.
+
+    AD4M writes that link with the record, which is what lets a transcript block or a space's canvas
+    be made inside its container with no window in which it is loose. This backend ignored the option,
+    so everything made that way arrived here unparented and a store tested against it never saw its
+    containment. The parent is found by id in whichever table holds it, and the relation by the
+    predicate a backend would store it under, so containment resolves the same way it does there.
+  */
+  /**
+   * The parent named by id and predicate, as the entity and relation holding it — what both a write
+   * under a parent and a read under one need. Null when no record has that id, or nothing it declares
+   * is stored under that predicate.
+   */
+  const relationUnder = (
+    dataset: DatasetEntry,
+    parent: { id: string; predicate: string },
+  ): { entity: string; relation: string; row: AnyRow } | null => {
+    for (const entityName of Object.keys(classes)) {
+      const row = tableOf(dataset, entityName).find((r) => r.id === parent.id);
+      if (!row) continue;
+      const relation = Object.entries(resolved(entityName).relations).find(
+        ([, spec]) =>
+          !spec.reverseOf && (spec.containment ? CONTAINMENT_PREDICATE : spec.predicate) === parent.predicate,
+      )?.[0];
+      return relation ? { entity: entityName, relation, row } : null;
+    }
+    return null;
+  };
+
+  const linkUnder = async (dataset: DatasetEntry, parent: { id: string; predicate: string }, childId: string) => {
+    const under = relationUnder(dataset, parent);
+    if (!under) return;
+    const parentClass = classes[under.entity] as unknown as { hydrate(d: DatasetEntry, r: AnyRow): AnyRow };
+    const instance = parentClass.hydrate(dataset, under.row);
+    const add = instance[`add${under.relation.charAt(0).toUpperCase()}${under.relation.slice(1)}`];
+    if (typeof add === 'function') await (add as (id: string) => Promise<void>).call(instance, childId);
+  };
 
   /**
    * Everything an entity declares, including whatever it inherits — from the core vocabulary when
@@ -218,12 +262,12 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
   }
 
   /*
-    The reverse relations, by the forward relation they read back: `comments` → `inReplyTo`.
+    The reverse relations, by the forward relation they read back: `responses` → `respondsTo`.
 
     A reverse relation (`reverseOf`) is the same link read from the other end, so nothing writes it
-    directly — and nothing here derived it either, so `inReplyTo` was empty on every record. Every
+    directly — and nothing here derived it either, so `respondsTo` was empty on every record. Every
     comment thread rebuilds its tree from it, and the feeds leave replies out with
-    `inReplyTo: { none: {} }`, so on this backend a reply showed up as a post of its own and a thread
+    `respondsTo: { none: {} }`, so on this backend a reply showed up as a post of its own and a thread
     had no shape. The forward write now stamps the parent on the child under the reverse relation's
     name, which is where the query engine reads a to-one link from.
   */
@@ -240,6 +284,31 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
       if (linked) child[reverse] = parentId;
       // Only if it still points here: a child since linked under another parent keeps that one.
       else if (child[reverse] === parentId) delete child[reverse];
+    }
+  };
+
+  /*
+    A deleted record takes every link to it with it, as it does on AD4M — `Ad4mModel.delete` removes
+    the incoming links as well as its own, so a parent's `children` never names a record that is
+    gone. Here a link is a relation field on a row (a forward list, or a to-one under its own or its
+    reverse name), so forgetting one is taking the id out of every relation field that holds it.
+    Relation fields only: a property that happens to hold the id as text (`ReadMarker.nodeId`) is a
+    value, not a link, and AD4M leaves it too.
+  */
+  const relationNames = new Map<string, string[]>();
+  for (const name of Object.keys(manifest.entities)) {
+    relationNames.set(name, Object.keys(resolved(name).relations));
+  }
+  const forgetLinksTo = (dataset: DatasetEntry, id: string) => {
+    for (const [entity, rows] of Object.entries(dataset.tables)) {
+      const names = relationNames.get(entity) ?? [];
+      for (const row of rows as AnyRow[]) {
+        for (const key of names) {
+          const value = row[key];
+          if (Array.isArray(value) && value.includes(id)) row[key] = value.filter((v) => v !== id);
+          else if (value === id) delete row[key];
+        }
+      }
     }
   };
 
@@ -300,6 +369,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         const rows = tableOf(dataset, name);
         const index = rows.findIndex((r) => r.id === (this as unknown as AnyRow).id);
         if (index >= 0) rows.splice(index, 1);
+        forgetLinksTo(dataset, (this as unknown as AnyRow).id as string);
         notify(dataset);
       }
 
@@ -335,9 +405,20 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
 
       static rowsFor(dataset: DatasetEntry, query: Record<string, unknown> = {}): AnyRow[] {
         // `select` is the template dialect; `properties` is the record contract's name for the same list.
-        const { where, order, limit, offset, include, select = query.properties, scope, properties, ...rest } = query;
+        const { where, order, limit, offset, include, select = query.properties, properties, parent, ...rest } = query;
         void properties;
         void rest;
+        /*
+          A parent named by id and predicate — the ORM's `parent` — read as the drill-down it is. It
+          used to fall into `rest` and be dropped, so "this call's lines" answered with every line in
+          the space. A parent nothing holds under that predicate has no children.
+        */
+        let scope = query.scope;
+        if (parent && typeof parent === 'object') {
+          const under = relationUnder(dataset, parent as { id: string; predicate: string });
+          if (!under) return [];
+          scope = { anchor: under.entity, via: under.relation, anchorId: under.row.id };
+        }
         const { ir, unsupported } = compileQuery({
           entity: name,
           ...(where ? { where: where as Record<string, unknown> } : {}),
@@ -385,7 +466,11 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         return found[0] ?? null;
       }
 
-      static async create(handle: unknown, data: Record<string, unknown> = {}): Promise<Entity> {
+      static async create(
+        handle: unknown,
+        data: Record<string, unknown> = {},
+        options?: { parent?: { id: string; predicate: string } },
+      ): Promise<Entity> {
         const dataset = datasetOf(handle);
         const now = new Date().toISOString();
         const row: AnyRow = {
@@ -423,6 +508,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
             if (typeof id === 'string' && id) await (add as (target: string) => Promise<void>).call(instance, id);
           }
         }
+        if (options?.parent) await linkUnder(dataset, options.parent, row.id as string);
         return instance;
       }
 
@@ -510,6 +596,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         const rows = tableOf(dataset, name);
         const index = rows.findIndex((r) => r.id === id);
         if (index >= 0) rows.splice(index, 1);
+        forgetLinksTo(dataset, id);
         notify(dataset);
       }
 
@@ -663,6 +750,13 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           if (row) row[relation.name] = next;
           notify(dataset);
         };
+      } else {
+        /*
+          A to-one relation is pointed rather than listed, and AD4M's `@HasOne` offers `set<Name>` for
+          it — `space.setBoard(board)`, `space.setRoot(collection)`. Without the same accessor here, a
+          store written against that worked on one backend and threw on the other.
+        */
+        proto[`set${suffix}`] = proto[`add${suffix}`];
       }
     }
 

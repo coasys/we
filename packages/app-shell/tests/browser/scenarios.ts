@@ -5,8 +5,8 @@
  * than restated — plus the rows a seeded backend should answer with. Nothing here describes layout;
  * the assertions live beside the cases, so one scenario can be measured several ways.
  */
-import { transcriptLines } from '@we/module-transcribe';
-import { cardShell, panelScroll } from '@we/schema-kit';
+import { lineComposer, transcriptLines } from '@we/module-transcribe';
+import { cardShell, panelScroll, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 import { discussionSection, foldingSectionLabel, signalDisplay } from '@we/template-kit';
 import { CALL_CHROME_BAND, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
@@ -36,16 +36,16 @@ export interface Scenario {
 const discussionThread = (): Scenario => ({
   node: {
     type: '$each',
-    props: { items: [{ id: 'card-1', comments: ['r1'] }], as: 'row' },
+    props: { items: [{ id: 'card-1', responses: ['r1'] }], as: 'row' },
     $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
     children: [discussionSection({ record: 'row' })],
   },
   /*
-    `comments` is seeded on each row as well as being derivable from `parentId`, and that is a
+    `responses` is seeded on each row as well as being derivable from `parentId`, and that is a
     fidelity fix rather than belt and braces.
 
     On AD4M a relation's own ids arrive whether or not the query included it — a relation IS a link,
-    so reading `count(row.comments)` costs nothing and every thread does it. The in-memory engine
+    so reading `count(row.responses)` costs nothing and every thread does it. The in-memory engine
     resolves a declared relation on demand and leaves no ids on the row, so `count` read zero, the
     nested level never rendered, and the harness quietly showed a one-reply thread while asserting
     about it. Seeded here so a scenario matches what the app is handed.
@@ -53,7 +53,7 @@ const discussionThread = (): Scenario => ({
   tables: {
     SignalType: [],
     CollectionBlock: [
-      { id: 'card-1', parentId: null, author: 'did:me', createdAt: '2026-09-01T09:00:00Z', comments: ['r1'] },
+      { id: 'card-1', parentId: null, author: 'did:me', createdAt: '2026-09-01T09:00:00Z', responses: ['r1'] },
       /*
         The reply is the VIEWER'S OWN, which is what puts the edit and delete controls on the line —
         they are gated on `author == me.did`, and faded rather than unmounted, so they take their
@@ -62,12 +62,14 @@ const discussionThread = (): Scenario => ({
       */
       {
         id: 'r1',
+        // What the discussion composer writes, and what a thread draws.
+        kind: 'reply',
         parentId: 'card-1',
         author: 'did:me',
         createdAt: '2026-09-01T10:00:00Z',
         editorState: [{ _type: 'block', style: 'normal', text: 'A reply with something under it' }],
         textContent: 'A reply with something under it',
-        comments: ['r2'],
+        responses: ['r2'],
       },
       /*
         Childless, and the reason this scenario has a third row: folding is offered on every comment
@@ -78,6 +80,8 @@ const discussionThread = (): Scenario => ({
       */
       {
         id: 'r2',
+        // What the discussion composer writes, and what a thread draws.
+        kind: 'reply',
         parentId: 'r1',
         author: 'did:them',
         createdAt: '2026-09-01T11:00:00Z',
@@ -91,14 +95,14 @@ const discussionThread = (): Scenario => ({
         */
         editorState: [{ _type: 'block', style: 'normal', text: 'A reply with nothing under it at all' }],
         textContent: 'A reply with nothing under it at all',
-        comments: [],
+        responses: [],
       },
     ],
   },
   relations: {
     CollectionBlock: {
-      comments: { type: 'hasMany', target: 'CollectionBlock', foreignKey: 'parentId' },
-      inReplyTo: { type: 'hasOne', target: 'CollectionBlock', foreignKey: 'parentId' },
+      responses: { type: 'hasMany', target: 'CollectionBlock', foreignKey: 'parentId' },
+      respondsTo: { type: 'hasOne', target: 'CollectionBlock', foreignKey: 'parentId' },
     },
   },
   stores: {
@@ -193,7 +197,7 @@ const countControls = (): Scenario => ({
           id: 'card-1',
           // Used, so `compact` draws it — see the reaction scenario for why it is seeded here.
           signals: [{ signalTypeId: 'st-like', value: 1, author: 'did:them' }],
-          $commentCount: 3,
+          $responseCount: 3,
           $myComments: 0,
         },
       ],
@@ -210,7 +214,7 @@ const countControls = (): Scenario => ({
             type: 'CountMark',
             props: {
               icon: 'chat-circle',
-              count: { $: 'row.$commentCount' },
+              count: { $: 'row.$responseCount' },
               mine: { $: 'row.$myComments > 0' },
               label: 'Show the conversation',
             },
@@ -610,6 +614,165 @@ const pinnedPage = (rows: number) => (): Scenario => ({
     ],
   },
   tables: {},
+});
+
+/**
+ * A timeline, in one of its four readings — anchored at the newest or the oldest end, drawn with the
+ * newest at the bottom or the top. The rows are what a query would answer: newest-first while
+ * following the live end, oldest-first from the start. The first of them is the row nearest the
+ * anchor, and is findable; so are the "more is coming" markers, at whichever edge they land.
+ */
+/** The same node, findable by the case. */
+const withId = (node: SchemaNode, id: string): SchemaNode => ({ ...node, props: { ...(node.props ?? {}), id } });
+
+const timelineReading = (fromStart: boolean, orientation: 'newestBottom' | 'newestTop') => (): Scenario => {
+  const rows = Array.from({ length: 80 }, (_, i) => ({
+    id: `row-${i}`,
+    text: `Line ${i} — something somebody said that runs on for long enough to wrap`,
+  }));
+  const queried = fromStart ? rows : [...rows].reverse();
+  const marker = (end: 'start' | 'end'): SchemaNode => ({
+    type: '$if',
+    props: {
+      condition: { $: timelineMoreAt(end, 'local.fromStart', 'local.orientation') },
+      then: { type: 'Row', props: { id: `more-${end}`, 'data-we-more': end, py: '200' }, children: ['more…'] },
+    },
+  });
+  const feed = timeline({
+    fromStart: 'local.fromStart',
+    orientation: 'local.orientation',
+    onLoadOlder: { $setLocal: 'fromStart', value: { $: 'local.fromStart' } },
+    onLoadNewer: { $setLocal: 'fromStart', value: { $: 'local.fromStart' } },
+    onJumpNewest: { $setLocal: 'fromStart', value: false },
+    onJumpOldest: { $setLocal: 'fromStart', value: true },
+    children: [
+      {
+        type: 'Column',
+        props: { gap: '300', p: '300' },
+        children: [
+          marker('start'),
+          {
+            type: '$each',
+            props: { items: { $: timelineOrder('local.rows', 'local.fromStart', 'local.orientation') }, as: 'row' },
+            children: [
+              {
+                type: 'we-text',
+                props: {
+                  variant: 'body',
+                  // The row nearest the anchor — the first the query answered with.
+                  id: { $: `row.id == '${queried[0].id}' ? 'anchor-row' : ''` },
+                },
+                children: [{ $: 'row.text' }],
+              },
+            ],
+          },
+          marker('end'),
+        ],
+      },
+    ],
+  });
+  return {
+    node: {
+      type: 'Column',
+      props: { height: '320px', width: '100%' },
+      $localState: {
+        fromStart: { type: 'boolean', initial: fromStart },
+        orientation: { type: 'string', initial: orientation },
+        rows: { type: 'array', initial: queried },
+      },
+      children: [withId(feed, 'feed')],
+    },
+    tables: {},
+  };
+};
+
+/**
+ * The block composer in its one-line mode, sending into a local the case can read back — the
+ * transcript's and the Feed's input.
+ */
+const compactComposer = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { width: '100%', gap: '300', p: '300' },
+    $localState: { sent: { type: 'string', initial: '' }, sends: { type: 'number', initial: 0 } },
+    children: [
+      {
+        type: 'BlockComposer',
+        props: {
+          compact: true,
+          autoFocus: false,
+          handles: false,
+          onSubmit: [
+            { $setLocal: 'sent', value: { $: 'event.text' } },
+            { $setLocal: 'sends', value: { $: 'local.sends + 1' } },
+          ],
+        },
+      },
+      { type: 'we-text', props: { id: 'sent' }, children: [{ $: 'local.sent' }] },
+      { type: 'we-text', props: { id: 'sends' }, children: [{ $: "'' + local.sends" }] },
+    ],
+  },
+  tables: {},
+});
+
+/**
+ * The transcript's and the Feed's input as they place it: the compact composer framed as a field,
+ * with a send button beside it.
+ */
+const lineComposerScenario = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { width: '100%', gap: '300', p: '300', bg: 'chrome' },
+    $localState: {
+      sending: { type: 'boolean', initial: false },
+      sent: { type: 'string', initial: '' },
+      sends: { type: 'number', initial: 0 },
+    },
+    children: [
+      lineComposer({
+        placeholder: 'Type a message…',
+        sendLabel: 'Send it',
+        onSubmit: [
+          { $setLocal: 'sent', value: { $: 'event.text' } },
+          { $setLocal: 'sends', value: { $: 'local.sends + 1' } },
+        ],
+      }),
+      { type: 'we-text', props: { id: 'sent' }, children: [{ $: 'local.sent' }] },
+      { type: 'we-text', props: { id: 'sends' }, children: [{ $: "'' + local.sends" }] },
+    ],
+  },
+  tables: {},
+});
+
+/**
+ * Rendered words holding a mention, with the person it names known to the host under a newer name
+ * than the chip was written with — so a card showing the chip's own words is told apart from one
+ * showing the person.
+ */
+const mentionCard = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { width: '100%', p: '300' },
+    children: [
+      {
+        type: 'BlockRenderer',
+        props: {
+          editorState: [
+            {
+              _type: 'block',
+              style: 'normal',
+              text: 'Thanks @Ann for this',
+              marks: [{ start: 7, end: 11, type: 'mention', did: 'did:test:ann' }],
+            },
+          ],
+        },
+      },
+      // Somewhere else to move the pointer to.
+      { type: 'we-text', props: { id: 'elsewhere', p: '400' }, children: ['Elsewhere'] },
+    ],
+  },
+  tables: {},
+  stores: { profileStore: { profiles: [{ did: 'did:test:ann', name: 'Ann Okafor', avatar: '' }] } },
 });
 
 const pinnedShortContent = (): Scenario => ({
@@ -1051,6 +1214,66 @@ const codeInTemplate = (): Scenario => {
 };
 
 /**
+ * A template reading the page through what a handler hands it (coasys/we#282).
+ *
+ * The page holds a secret in storage and a cookie, as a signed-in app holds its session token. One
+ * press tries every route to them that once worked — the event's target, a node kept in a local and
+ * read later, and `pick()` — and writes whatever came back where the case can read it. `clicked` is
+ * there so a handler that never ran cannot pass as one that found nothing.
+ */
+const pageThroughEvent = (): Scenario => {
+  localStorage.setItem('we-reach-secret', 'TOP-SECRET');
+  document.cookie = 'we-reach=SESSION-COOKIE';
+  const page = 'event.target.ownerDocument';
+  return {
+    node: {
+      type: 'Column',
+      $localState: {
+        clicked: { type: 'boolean', initial: false },
+        node: { type: 'object', initial: null },
+        leaked: { type: 'string', initial: '' },
+      },
+      props: { width: '100%', gap: '200' },
+      children: [
+        {
+          type: 'button',
+          props: {
+            id: 'reach',
+            onClick: [
+              { $setLocal: 'clicked', value: true },
+              { $setLocal: 'node', value: { $: 'event.target' } },
+              {
+                $setLocal: 'leaked',
+                // `+` joins as text and reads an absent value as '', so a clean run leaves '|||'.
+                value: {
+                  $: [
+                    `${page}.cookie`,
+                    `${page}.defaultView.localStorage['we-reach-secret']`,
+                    'local.node.ownerDocument.cookie',
+                    "pick(event.target, ['ownerDocument']).ownerDocument.cookie",
+                  ].join(" + '|' + "),
+                },
+              },
+            ],
+          },
+          children: ['Reach'],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'local.clicked' },
+            then: { type: 'span', props: { id: 'reach-ran' }, children: ['ran'] },
+          },
+        },
+        { type: 'span', props: { id: 'reach-leaked' }, children: [{ $: 'local.leaked' }] },
+      ],
+    },
+    tables: {},
+    bag: 'space',
+  };
+};
+
+/**
  * Sliders with labelled marks, one at each size the thumb differs at, so a mark's place can be
  * checked against where the thumb really goes rather than against the arithmetic that placed it.
  */
@@ -1079,10 +1302,37 @@ const sliderMarks = (): Scenario => ({
   tables: {},
 });
 
+/**
+ * A section folded and unfolded in place by `$animate` with a reveal — how a rail group's rows
+ * open — with a line under it whose position says how open the section is.
+ */
+const foldingSection = (): Scenario => ({
+  node: {
+    type: 'Column',
+    $localState: { open: { type: 'boolean', initial: true } },
+    props: { width: '100%', gap: '200' },
+    children: [
+      { type: 'we-button', props: { id: 'fold-toggle', onClick: { $toggleLocal: 'open' } }, children: ['Toggle'] },
+      {
+        type: '$animate',
+        props: {
+          condition: { $: 'local.open' },
+          enterTransition: [{ type: 'reveal', duration: 300, easing: 'ease-in-out' }],
+          exitTransition: [{ type: 'reveal', duration: 300, easing: 'ease-in-out' }],
+        },
+        children: [{ type: 'Column', props: { height: '200px', bg: 'surface-sunken' } }],
+      },
+      { type: 'we-text', props: { id: 'below-fold' }, children: ['Below'] },
+    ],
+  },
+  tables: {},
+});
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:slider-marks': sliderMarks,
   'security:self-firing-events': selfFiringEvents,
   'security:code-in-template': codeInTemplate,
+  'security:page-through-event': pageThroughEvent,
   'canvas:tree-strip': treeStripOverCanvas,
   'canvas:voices': voicesPopover,
   'perf:transcript': (scale) => transcriptAt(scale ?? 100),
@@ -1100,7 +1350,15 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:pinned-page': pinnedPage(120),
   'ds:pinned-short': pinnedPage(20),
   'ds:pinned-empty': pinnedShortContent,
+  'composer:compact': compactComposer,
+  'composer:line': lineComposerScenario,
+  'mention:card': mentionCard,
+  'timeline:live-newest-bottom': timelineReading(false, 'newestBottom'),
+  'timeline:live-newest-top': timelineReading(false, 'newestTop'),
+  'timeline:start-newest-bottom': timelineReading(true, 'newestBottom'),
+  'timeline:start-newest-top': timelineReading(true, 'newestTop'),
   'panel:sections': panelSections,
   'cards:collapse': collapsingCard,
   'ds:unshrinkable-box': unshrinkableBox,
+  'ds:folding-section': foldingSection,
 };

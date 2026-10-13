@@ -14,7 +14,12 @@
  * metadata for forms and prompts — not compiled, since SHACL carries no enum the executor reads.
  */
 import { Ad4mModel, fileToDataUri, Flag, HasMany, HasOne, Model, Property } from '@coasys/ad4m';
-import { type EntityManifest, type EntitySchema, resolvesPolymorphically } from '@we/backend-shared';
+import {
+  CONTAINMENT_PREDICATE,
+  type EntityManifest,
+  type EntitySchema,
+  resolvesPolymorphically,
+} from '@we/backend-shared';
 import { FILE_STORAGE_LANGUAGE } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
@@ -143,12 +148,10 @@ export function buildEntityFromEntry(
       }
       Property({
         through: p.predicate,
-        // Stated rather than left to inference: AD4M infers a datatype from a field's initial value,
-        // and a compiled entry has one only when it declares a default — so a boolean without one
-        // would be shaped as a string, where the hand-written `flag: boolean = false` is not.
-        // Decimal rather than integer for numbers, as AD4M infers: a `= 0` must not refuse 0.5.
-        ...(p.type === 'boolean' ? { datatype: 'xsd://boolean' } : {}),
+        // AD4M infers a property's datatype from the value a constructed instance holds, and a
+        // declaration with no default leaves that value unset — so number and boolean say so.
         ...(p.type === 'number' ? { datatype: 'xsd://decimal' } : {}),
+        ...(p.type === 'boolean' ? { datatype: 'xsd://boolean' } : {}),
         ...(p.required ? { required: true } : {}),
         ...(p.writable === false ? { readOnly: true } : {}),
         ...(p.resolveLanguage !== undefined ? { resolveLanguage: p.resolveLanguage } : {}),
@@ -237,7 +240,9 @@ export function manifestToEntries(manifest: EntityManifest, opts: CompileManifes
         })),
         ...Object.entries(entity.relations).map(([relName, spec]) => ({
           name: relName,
-          predicate: spec.predicate ?? resolvePredicate(name, relName),
+          // Containment is one predicate on every backend, whatever a manifest spelled — see
+          // `RelationSchema.containment`.
+          predicate: spec.containment ? CONTAINMENT_PREDICATE : (spec.predicate ?? resolvePredicate(name, relName)),
           type: 'uri' as const,
           isCollection: spec.cardinality === 'many',
           required: false,

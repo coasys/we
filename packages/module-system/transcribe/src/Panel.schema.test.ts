@@ -16,6 +16,7 @@ import { evaluateExpression, markReactive, namespace, parseCached, type SchemaNo
 import { describe, expect, it } from 'vitest';
 
 import { extractionActivity } from './ExtractionStatus.schema';
+import { feedPanel } from './Feed.schema';
 import { transcribeModule } from './index';
 import {
   captureMeter,
@@ -87,7 +88,7 @@ describe('the module declaration', () => {
     const panels = transcribeModule.contributes?.panels ?? [];
     const surface = storeSurface(bareStore());
 
-    expect(panels.map((p) => p.name)).toEqual(['transcript', 'extraction']);
+    expect(panels.map((p) => p.name)).toEqual(['transcript', 'extraction', 'feed']);
     for (const p of panels) {
       expect(p.icon).toBeTruthy();
       expect(surface[p.open ?? '']?.kind).toBe('state');
@@ -241,8 +242,13 @@ describe('a transcript with nothing in it', () => {
    * speaker grouping: it asks whether a line is by the same person as the one before it, and in a
    * reversed list `prev` is the line *after*.
    */
-  it('renders the live window oldest-first', () => {
-    expect(linesJson).toContain('reverse(local.utterances)');
+  it('draws the window the reader’s way round, with the replies flattened in', () => {
+    // Reversed exactly when the anchored end is the bottom — see `timelineOrder` in the schema kit.
+    expect(linesJson).toContain(
+      '? reverse(threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })) :',
+    );
+    // Each line arrives with its thread: a reply is a child of nothing, so this is where it comes from.
+    expect(linesJson).toContain('"include":{"thread":true}');
   });
 
   /**
@@ -400,10 +406,11 @@ describe('what belongs to the live microphone only', () => {
     // All three are about the microphone this agent is running now, which says nothing about a
     // meeting somebody opened from a link. A bar moving beside it would measure the wrong thing.
     const live = '{"$":"!routeStore.params.call || routeStore.params.call == modules.transcribe.callId"}';
-    const meter = panelJson.indexOf('"Microphone"');
-    const coverage = panelJson.indexOf('"Coverage"');
-    // Any of the status notes will do as the marker; this is the first of them.
-    const status = panelJson.indexOf('Nothing to listen to');
+    // Placed as parts, so a template arranging the panel keeps them the module's — found by the ids
+    // they are placed under.
+    const meter = panelJson.indexOf('"transcribe.captureMeter"');
+    const coverage = panelJson.indexOf('"transcribe.coverage"');
+    const status = panelJson.indexOf('"transcribe.captureStatus"');
 
     // All three inside one gate rather than three of their own: they answer one question between
     // them, and that question is not asked at all of a meeting somebody is reading back.
@@ -639,6 +646,10 @@ describe('which call is live', () => {
   });
 });
 
+/** The timeline's one question for this panel: whether the anchored end is the bottom one. */
+const ANCHORED_AT_BOTTOM =
+  "((modules.transcribe.transcriptFromStart) == ((modules.transcribe.timelineOrientation) == 'newestTop'))";
+
 describe('the feed', () => {
   it('keeps the unsaved line inside the scroll region, with the rows', () => {
     /*
@@ -648,7 +659,10 @@ describe('the feed', () => {
     */
     expect(feedJson).toContain('pin');
     expect(feedJson).toContain('transcribe.transcriptLines');
-    expect(feedJson.indexOf('transcribe.transcriptLines')).toBeLessThan(feedJson.indexOf('Not saved yet'));
+    // Placed after the rows, as a part, so opening the feed keeps the unsaved line the module's.
+    expect(feedJson.indexOf('transcribe.transcriptLines')).toBeLessThan(
+      feedJson.indexOf('transcribe.pendingUtterance'),
+    );
   });
 
   /**
@@ -659,7 +673,9 @@ describe('the feed', () => {
    * what they asked to read every time somebody speaks.
    */
   it('follows the live end only while the transcript is anchored to it', () => {
-    expect(feedJson).toContain('"pin":{"$":"modules.transcribe.transcriptFromStart ? \'\' : \'end\'"}');
+    // Pinned at the anchored end, which is the bottom when following the live end newest-at-bottom
+    // or reading from the start newest-at-top — see `timeline` in the schema kit.
+    expect(feedJson).toContain(`"pin":{"$":"${ANCHORED_AT_BOTTOM} ? 'end' : ''"}`);
   });
 
   /**
@@ -709,8 +725,10 @@ describe('the feed', () => {
     expect(feedJson).toContain('"nearStart":400');
     expect(feedJson).toContain('"nearEnd":400');
     expect(feedJson).toContain('modules.transcribe.showMoreTranscript');
-    // Each guarded on the anchor it belongs to, so only one of them can answer at a time.
-    expect(feedJson).toContain('!modules.transcribe.transcriptFromStart');
+    // Each edge guarded on whether it is the one away from the anchor, so only one can answer at a
+    // time — and which direction it grows decided by the anchor.
+    expect(feedJson).toContain(`"on:nearstart":{"$if":{"condition":{"$":"${ANCHORED_AT_BOTTOM}"}`);
+    expect(feedJson).toContain(`"on:nearend":{"$if":{"condition":{"$":"!${ANCHORED_AT_BOTTOM}"}`);
     expect(feedJson).toContain('"condition":{"$":"modules.transcribe.transcriptFromStart"}');
   });
 
@@ -941,6 +959,9 @@ describe('the extraction panel', () => {
     expect(EXTRACTION_SUBJECT_EXPR).toContain('routeStore.params.call');
     expect(EXTRACTION_SUBJECT_EXPR).toContain('modules.transcribe.callId');
     expect(EXTRACTION_SUBJECT_EXPR).not.toContain('collectionId');
+    // And outside any call, the space's own collection — the messages typed there — so the panel is
+    // always about something and never asks somebody to join a call first.
+    expect(EXTRACTION_SUBJECT_EXPR.endsWith('spaceStore.root)')).toBe(true);
   });
 
   it('runs a pass over that call rather than over the one this agent is in', () => {
@@ -948,27 +969,43 @@ describe('the extraction panel', () => {
     expect(json).not.toContain('"$action":"modules.transcribe.extract"');
   });
 
-  it('keeps "as it happens" to the live call, where it is the only thing that means anything', () => {
-    // A meeting somebody opened from a link is not happening. Everything else here follows the call
-    // on screen; this one cannot.
-    const live = '{"$":"!routeStore.params.call || routeStore.params.call == modules.transcribe.callId"}';
-    expect(json.indexOf(live)).toBeLessThan(json.indexOf('Auto extract: on'));
+  it('offers the switch on any call, not only the one this agent is in', () => {
+    // The answer is stored on the call, so a call opened from a link can be decided too — it is what
+    // applies when the call is next live. Only the read-back gate on everything else stays.
+    const header = JSON.stringify((extractionPanel.children as SchemaNode[])[0]);
+    expect(header).toContain('"$action":"modules.transcribe.toggleAutoExtract"');
+    expect(header).not.toContain(VIEWING_LIVE_EXPR);
   });
 
-  it('says what the two header controls do, and for whom', () => {
+  it('gives the messages outside calls the same switch as a call, for administrators only', () => {
     /*
-      The auto control was a `we-switch` whose `label` is only an aria-label — an unlabelled toggle
-      beside a button reading "Extract", with nothing on screen to say which did what. Both name
-      themselves now, and the auto one says it is everybody's, since the record button one panel
-      over looks the same and is only this agent's microphone.
+      One control for every collection: the press writes the collection on screen, never the space's
+      default — that is what the next conversation starts from, and lives in space settings. The
+      messages outside calls are the community's, so the switch is off-limits to anybody who does
+      not administer the space.
     */
-    expect(json).not.toContain('"we-switch"');
-    expect(json).toContain('Auto extract: on');
-    expect(json).toContain('Auto extract: off');
+    expect(json).not.toContain('"spaceStore.setAutoInterpret"');
+    expect(json).toContain(
+      `"onChange":{"$action":"modules.transcribe.toggleAutoExtract","args":[{"$":"${EXTRACTION_SUBJECT_EXPR}"}]}`,
+    );
+    expect(json).toContain('!spaceStore.canAdministerCurrentSpace');
+    expect(json).toContain('Set by whoever administers this space');
+  });
+
+  it('says what the header switch does, and for whom', () => {
+    /*
+      A `we-switch`'s `label` is only an aria-label, so on its own it is an unlabelled toggle beside
+      a button reading "Extract now". The words beside it say what it does and to what, and the
+      tooltip says it is everybody's, since the record button one panel over looks similar and is
+      only this agent's microphone.
+    */
+    expect(json).toContain('"we-switch"');
+    expect(json).toContain('Auto-extract this call');
+    expect(json).toContain('Auto-extract outside calls');
     expect(json).toContain('for everyone in it');
     expect(json).toContain('Extract now');
-    // Accent, not red: red is the transcript's word for a live microphone.
-    expect(json).toContain(`modules.transcribe.autoExtract ? 'primary' : 'ghost'`);
+    // The collection's own answer, read for the collection on screen.
+    expect(json).toContain(`modules.transcribe.extractionFor[${EXTRACTION_SUBJECT_EXPR}].auto`);
   });
 
   it('says the node has no model, rather than that nothing has been said', () => {
@@ -1263,8 +1300,6 @@ describe('the extraction panel', () => {
       as unavailable rather than as unnecessary.
     */
     expect(json).not.toContain("modules.transcribe.autoExtract ? 'ghost' : 'secondary'");
-    // The auto button still carries its own state in its variant — that one is a toggle.
-    expect(json).toContain("modules.transcribe.autoExtract ? 'primary' : 'ghost'");
   });
 
   it('names the chips, then puts the press that acts on them underneath', () => {
@@ -1422,7 +1457,10 @@ describe('the extraction panel', () => {
       fragment also brings the delayed fade, which stops a placeholder asserting emptiness on the
       frame before a query answers.
     */
-    expect(json).toContain('Join a call to start extracting things.');
+    // Only where there is no collection at all: the panel otherwise falls back to the messages
+    // outside calls, so "join a call" is never the thing it has to say.
+    expect(json).toContain('This space has nothing to extract from.');
+    expect(json).not.toContain('Join a call to start extracting');
     expect(json).not.toContain('Start a call.');
     // `emptyState`'s own shape: the larger padding, no `variant` on the sentence, and the delay.
     expect(json).toContain('"p":"600"');
@@ -1518,6 +1556,64 @@ describe('the panel’s reads reach the store', () => {
 
   it('resolves the subject to the call in the address', () => {
     expect(run(EXTRACTION_SUBJECT_EXPR, storeBag(['TaskBlock']))).toBe(CALL);
+  });
+
+  /**
+   * The switch outside calls, for a member and for an administrator — its own expressions,
+   * evaluated, against a store answering as it does with no call on screen.
+   */
+  it('outside calls, disables the switch for a member and says why, and not for an administrator', () => {
+    const find = (node: unknown, type: string): Record<string, unknown> | undefined => {
+      if (Array.isArray(node)) return node.map((n) => find(n, type)).find(Boolean);
+      if (!node || typeof node !== 'object') return undefined;
+      const fields = node as Record<string, unknown>;
+      if (fields.type === type) return fields;
+      return Object.values(fields)
+        .map((v) => find(v, type))
+        .find(Boolean);
+    };
+    const header = (extractionPanel.children as SchemaNode[])[0];
+    const toggle = find(header, 'we-switch')!.props as { disabled: { $: string } };
+    // The tooltip round the switch, not the first one in the header (the help's).
+    const tooltips: Record<string, unknown>[] = [];
+    const collect = (node: unknown): void => {
+      if (Array.isArray(node)) return node.forEach(collect);
+      if (!node || typeof node !== 'object') return;
+      const fields = node as Record<string, unknown>;
+      if (fields.type === 'we-tooltip' && find(fields.children, 'we-switch')) tooltips.push(fields);
+      Object.values(fields).forEach(collect);
+    };
+    collect(header);
+    const tooltip = tooltips[0]!.props as { content: { $: string } };
+
+    const outsideCalls = (admin: boolean) => ({
+      modules: namespace((id) =>
+        id === 'transcribe'
+          ? namespace((member) =>
+              member === 'callId'
+                ? markReactive(() => '')
+                : member === 'extractionFor'
+                  ? markReactive(() =>
+                      namespace(() => ({ targets: [], canChoose: true, canExtract: false, auto: true })),
+                    )
+                  : undefined,
+            )
+          : undefined,
+      ),
+      routeStore: namespace((member) => (member === 'params' ? markReactive(() => ({})) : undefined)),
+      spaceStore: namespace((member) =>
+        member === 'root'
+          ? markReactive(() => 'the-space-collection')
+          : member === 'canAdministerCurrentSpace'
+            ? markReactive(() => admin)
+            : undefined,
+      ),
+    });
+
+    expect(run(EXTRACTION_SUBJECT_EXPR, outsideCalls(false))).toBe('the-space-collection');
+    expect(run(toggle.disabled.$, outsideCalls(false))).toBe(true);
+    expect(run(tooltip.content.$, outsideCalls(false))).toBe('Set by whoever administers this space');
+    expect(run(toggle.disabled.$, outsideCalls(true))).toBe(false);
   });
 
   it('finds that call’s targets, which is what the chips count', () => {
@@ -2035,55 +2131,134 @@ describe('the extraction chips say what they are', () => {
  * admits a write is happening rather than merely refusing the click.
  */
 describe('the composer', () => {
-  const button = findNode(transcriptComposer, (n) => n.type === 'we-button') as
+  const composer = findNode(transcriptComposer, (n) => n.type === 'BlockComposer') as
     { props: Record<string, unknown> } | undefined;
-  const textarea = findNode(transcriptComposer, (n) => n.type === 'we-textarea') as
-    { props: Record<string, unknown> } | undefined;
+  const holder = findNode(transcriptComposer, (n) => Boolean((n.$localState as Record<string, unknown>)?.sending));
 
-  it('declares the in-flight flag beside the draft, and keeps it out of the URL', () => {
+  it('appears only with a call on screen, and writes into that call — never the space', () => {
     /*
-      A plain field on purpose. `syncParam` would put "a write is happening" in a link, and `persist`
-      would restore, on the next launch, a composer that believes it is still writing — with no
-      write to finish and so nothing to ever bring it back down.
+      The extraction subject falls back to the space collection outside any call, so the extraction
+      panel can show loose messages. The composer used to share it, which put a box under "start or
+      join a call" that wrote whatever was typed into the space. Messages typed outside a call are
+      the Feed's.
     */
-    const holder = findNode(transcriptComposer, (n) => Boolean((n.$localState as Record<string, unknown>)?.sending));
+    const gate = findNode(
+      transcriptComposer,
+      (n) => n.type === '$if' && String((n.props as { condition?: { $?: string } })?.condition?.$).includes('callId'),
+    ) as { props: { condition: { $: string } } } | undefined;
+    const condition = gate?.props.condition.$ ?? '';
+    expect(condition).toContain('routeStore.params.call');
+    expect(condition).toContain('modules.transcribe.callId');
+    expect(condition).not.toContain('spaceStore.root');
+    const send = (composer?.props.onSubmit as { $if: { then: Record<string, unknown>[] } }).$if.then;
+    const branch = (send.find((step) => '$if' in step) as { $if: { else: { args: { $: string }[] } } }).$if;
+    expect(branch.else.args[0].$).toBe(condition);
+  });
+
+  it('is the block composer in its one-line mode, so a line is written with its marks', () => {
+    // The `@` typeahead, links and formatting come with it, rather than a second input with its own
+    // idea of a mention. Enter sends; it is not a document, so no gutter and no focus on mount.
+    expect(composer?.props).toMatchObject({ compact: true, autoFocus: false, handles: false });
+  });
+
+  it('sends from a button as well as Enter, through the same send', () => {
+    /*
+      The compact composer is an editor with no chrome of its own, so on its own the box had no
+      outline and no way to send but Enter. The button presses the composer's own submit, which
+      goes through onSubmit as Enter does — so the in-flight guard there covers both.
+    */
+    expect(composer?.props.onReady).toEqual({ $setLocal: 'sendLine', value: { $: 'event.submit' } });
+    const send = findNode(
+      transcriptComposer,
+      (n) => n.type === 'we-button' && JSON.stringify(n.props).includes('sendLine'),
+    ) as { props: Record<string, unknown> } | undefined;
+    expect(send?.props.onClick).toEqual({ $callLocal: 'sendLine' });
+    expect(send?.props.disabled).toEqual({ $: 'local.sending' });
+  });
+
+  it('declares the in-flight flag, and keeps it out of the URL', () => {
     const declared = (holder?.$localState as Record<string, Record<string, unknown>> | undefined)?.sending;
     expect(declared).toEqual({ type: 'boolean', initial: false });
-    expect((holder?.$localState as Record<string, unknown>)?.message).toBeDefined();
   });
 
-  it('runs the very same handler from the button and from Enter, so the guard cannot cover one only', () => {
-    // Identity, not equality: two copies that happen to match today are two copies, and the next
-    // edit changes one of them. This is what stops the flag being raised on one path and not the other.
-    const enter = textarea?.props['on:submit'] as { $if?: { then?: unknown } } | undefined;
-    expect(enter?.$if?.then).toBe(button?.props.onClick);
+  it('refuses a second send while one is going', () => {
+    // Enter twice during a slow write is the easy mistake, and nothing here can delete a line once
+    // it is written.
+    const submit = composer?.props.onSubmit as { $if?: { condition?: unknown; then?: unknown } } | undefined;
+    expect(submit?.$if?.condition).toEqual({ $: '!local.sending' });
   });
 
-  it('refuses a second send while one is going, on both paths', () => {
-    expect(button?.props.disabled).toEqual({ $: '!trim(local.message) || local.sending' });
-    /*
-      The field is guarded by a condition rather than by `disabled`, and that asymmetry is
-      deliberate: disabling what somebody is typing into takes the focus away mid-sentence, which is
-      a worse interruption than the bug. So the condition has to restate both halves of what
-      `disabled` says on the button — there are words, and nothing is already in flight.
-    */
-    const enter = textarea?.props['on:submit'] as { $if?: { condition?: unknown } } | undefined;
-    expect(enter?.$if?.condition).toEqual({ $: 'trim(local.message) && !local.sending' });
-  });
-
-  it('says a write is happening rather than only refusing the click', () => {
-    // The half that answers the actual report. `disabled` alone stops the duplicate and still leaves
-    // a composer that looks broken for a second, which is what produced the second press.
-    expect(button?.props.loading).toEqual({ $: 'local.sending' });
-  });
-
-  it('lowers the flag however the write ends, and keeps the words unless it succeeded', () => {
-    const send = button?.props.onClick as Record<string, unknown>[];
-    const write = send.find((step) => '$action' in step) as Record<string, unknown>;
-    // `onFinally`, not `onSuccess`: a box that could never be sent again because one write failed
-    // would be a worse bug than the one this fixes.
-    expect(write.onFinally).toEqual([{ $setLocal: 'sending', value: false }]);
-    expect(write.onSuccess).toEqual([{ $setLocal: 'message', value: '' }]);
+  it('sends a reply or a line, with the text and marks the composer gave, and lowers the flag however it ends', () => {
+    const send = (composer?.props.onSubmit as { $if: { then: Record<string, unknown>[] } }).$if.then;
     expect(send[0]).toEqual({ $setLocal: 'sending', value: true });
+    const branch = (
+      send.find((step) => '$if' in step) as {
+        $if: { then: Record<string, unknown>; else: Record<string, unknown> };
+      }
+    ).$if;
+    expect(branch.then.$action).toBe('modules.transcribe.reply');
+    expect(branch.else.$action).toBe('modules.transcribe.addMessage');
+    expect(branch.else.args).toEqual([
+      { $: 'routeStore.params.call ? routeStore.params.call : modules.transcribe.callId' },
+      { $: 'event.text' },
+      { $: 'event.marks' },
+    ]);
+    for (const write of [branch.then, branch.else]) {
+      // `onFinally`, not `onSuccess`: a box that could never be sent again because one write failed
+      // would be a worse bug than the one this fixes.
+      expect(write.onFinally).toEqual([{ $setLocal: 'sending', value: false }]);
+    }
+  });
+});
+
+/*
+  The transcript and the Feed draw one line, and a reply goes back to the list it was started from.
+
+  The Feed used to draw a line of its own, which drifted from the transcript's (a text badge for a
+  typed line, Reply always showing, no Edit) and kept its reply in a local the transcript knew nothing
+  of. Both now draw `messageLine` and hold the reply in the store, tagged with where it was started.
+*/
+describe('one line, two lists', () => {
+  const feed = JSON.stringify(feedPanel);
+  const transcript = JSON.stringify(transcribeModule);
+
+  it("gives the Feed the transcript's line, Edit and the typed mark included", () => {
+    expect(feed).toContain('"$action":"modules.transcribe.editUtterance"');
+    expect(feed).toContain('"name":"keyboard"');
+    // The text badge the Feed's own line drew for a typed message is gone.
+    expect(feed).not.toContain("row.source == '' ? 'bot' : 'typed'");
+  });
+
+  it('starts a reply tagged with its list, and each composer sends only its own', () => {
+    expect(feed).toContain("surface: 'feed'");
+    expect(transcript).toContain("surface: 'transcript'");
+    expect(feed).toContain(`"condition":{"$":"modules.transcribe.replyingTo.surface == 'feed'"}`);
+    expect(transcript).toContain(`"condition":{"$":"modules.transcribe.replyingTo.surface == 'transcript'"}`);
+    // And no reply of the Feed's own, held where the transcript cannot see it.
+    expect(feed).not.toContain('local.replyingTo');
+  });
+});
+
+/*
+  What a conversation recognised is not what it made.
+
+  A pass that matched a record already in the space used to link it as `extracted`, so the panel
+  listed last week's task under "Accepted" as though somebody had just kept it. Recognised records
+  are linked as `recognised` now, and drawn in their own section, saying where they were first found.
+*/
+describe('records a conversation recognised', () => {
+  const panelJson = JSON.stringify(extractionPanel);
+
+  it('reads them beside what it made, and lists them apart from Accepted', () => {
+    expect(panelJson).toContain('"recognised":{"order":{"createdAt":"desc"}}');
+    expect(panelJson).toContain('Already in the space');
+    // Accepted is still only what this conversation made.
+    expect(panelJson).toContain(
+      'first(local.extractedFrom).extracted.filter(r, !(r.id in modules.transcribe.unconfirmedIds))',
+    );
+  });
+
+  it('names the conversation that made each one, by asking which one extracted it', () => {
+    expect(panelJson).toContain('"where":{"extracted":{"some":{"id":{"$":"item.id"}}}}');
   });
 });

@@ -8,15 +8,21 @@ nothing enforces any of it.
 ```
 CollectionBlock                    ← one call's transcript
   kind: 'call'                     ← what sort of collection this is
-  type: 'collection'
   mode: 'feed'                     ← many agents append here; never reconcile
   children:  [TextBlock, …]        ← the utterances, in order
                 each carries: text, author (who said it), createdAt
+                and `thread`: every reply typed to it, at any depth
   participants: [did, …]           ← who was present, including people who never spoke
-  ↑ parented to the call's anchor node through `we://call` (WeNode.calls)
+  ↑ a response to the node the call was about, through `we://response` (WeNode.responses), and in
+    that node's thread — or, for a call about nothing, a child of the space collection
 ```
 
-Created by `@we/module-call`, which owns `CALL_KIND` and `CALL_PREDICATE` in its `protocol.ts`;
+A reply to a line is a child of nothing: it answers the line and is in the line's `thread`. So the
+whole transcript is the call's children plus their threads, read as one page with
+`include: { thread: true }` — the transcript panel, the Feed, the extraction gather and the watch's
+SPARQL all read it that way. See `docs/architecture/relations.md`.
+
+Created by `@we/module-call`, which owns `CALL_KIND` and `RESPONSE_PREDICATE` in its `protocol.ts`;
 the utterances inside it are written by `@we/module-transcribe`.
 
 ## The three behaviours that are not in the shape
@@ -79,21 +85,21 @@ this page is the contract, and a change to the shape means changing every row ab
 
 ## Reading it
 
-Drill down from the collection; do not use `include`. `CollectionBlock.children` is an **untyped**
-to-many, so `include` will crash at runtime — the ids arrive and cannot render themselves.
+Drill down from the collection, and include each line's thread — the replies are there, not among
+the children:
 
 ```ts
 {
   $query: {
     entity: 'TextBlock',
     scope: { anchor: 'CollectionBlock', via: 'children', anchorId: <collection id> },
-    order: { createdAt: 'asc' },   // a transcript read backwards is not a transcript
+    order: { createdAt: 'desc' },  // the newest page, turned back the right way up when drawn
+    limit: <window>,
+    include: { thread: true },     // every reply to each line, at any depth
   }
 }
 ```
 
-There is deliberately no windowing. A single call's transcript is bounded by the length of the call,
-and "the last N, oldest first" is not currently expressible — `order: desc` with a `limit` returns
-the newest N _newest-first_, and there is no reverse. When the expression layer's function library
-lands, that is where the answer goes; adding a value operator for it is ruled out by the
-architecture plan.
+Then `threadLines({ rows, newestFirst })` flattens the threads in, sorts by when each line was said,
+and gives each reply the quote of what it answers. The transcript panel reads exactly this, windowed
+by `modules.transcribe.transcriptShown`; see `Panel.schema.ts`.

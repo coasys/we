@@ -11,7 +11,7 @@
  * for — which is what lets a content type be manifest + fragments all the way down, and cross the
  * trust boundary as data.
  *
- * That is the second rung of the distribution ladder in `docs/internal/plans/module-marketplace.md`,
+ * That is the second rung of the distribution ladder in `docs/architecture/module-marketplace.md`,
  * and this is its first step: the derivation. The manifest grows `display` hints for what a form
  * does not need — which property is the title, which the summary, which the picture — and this
  * guesses sensibly without them.

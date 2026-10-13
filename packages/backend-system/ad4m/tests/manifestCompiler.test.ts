@@ -9,7 +9,7 @@
  * compile path mints its own type flag; models needing the rest stay decorated).
  */
 import type { Ad4mModel, SHACLShape } from '@coasys/ad4m';
-import type { EntityManifest } from '@we/backend-shared';
+import { CONTAINMENT_PREDICATE, type EntityManifest } from '@we/backend-shared';
 import { FILE_STORAGE_LANGUAGE, getEntityPredicates } from '@we/entities';
 import { describe, expect, it } from 'vitest';
 
@@ -180,6 +180,25 @@ describe('compileManifest — module-declared entities', () => {
     expect(byName.attachments).toBe('we://module/notes/attachments');
   });
 
+  it('stores a containment relation as the one containment predicate, whatever it would have minted', () => {
+    // Containment is how anything reading the graph finds a record's context, so it cannot live in
+    // a module's own subtree the way its other relations do.
+    const entries = manifestToEntries(
+      {
+        version: '1',
+        entities: {
+          Folder: {
+            properties: {},
+            relations: { items: { target: '', cardinality: 'many' as const, containment: true } },
+          },
+        },
+      },
+      { moduleId: 'notes' },
+    );
+    const folder = entries.find((e) => e.name === 'Folder')!;
+    expect(folder.properties.find((p) => p.name === 'items')!.predicate).toBe(CONTAINMENT_PREDICATE);
+  });
+
   it('shares a core predicate when the declaration asks for it', () => {
     // Opting in is what makes generic UI keyed on `we://name` work against a module's entity.
     const entries = manifestToEntries(manifest, {
@@ -245,7 +264,7 @@ describe('a manifest extending the core vocabulary', () => {
     const [entry] = manifestToEntries(shape, { moduleId: 'shape/abc' });
     const byName = Object.fromEntries(entry.properties.map((p) => [p.name, p.predicate]));
     expect(byName.species).toBe('we://shape/abc/species');
-    expect(byName.comments).toBe('we://comment');
+    expect(byName.responses).toBe('we://response');
     expect(byName.signals).toBe('we://signal');
   });
 });

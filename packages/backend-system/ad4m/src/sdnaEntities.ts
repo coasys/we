@@ -4,7 +4,6 @@ import { type EntityClass, getEntityPredicates, getEntityTargetClass } from '@we
 import {
   AgentSettings,
   AudioBlock,
-  CallExtraction,
   CalloutBlock,
   ChatMessage,
   ChatSession,
@@ -32,6 +31,7 @@ import {
   SignalType,
   Space,
   SpacePreference,
+  SpaceRole,
   SpaceTemplatePreference,
   TagBlock,
   TaskBlock,
@@ -153,7 +153,7 @@ export interface StoredShape {
    *
    * A set of paths cannot tell one property on a predicate from two, and two is a real shape: a
    * relation and its `reverseOf` inverse are one link read from both ends, so they share a
-   * predicate by construction. `WeNode` gained `inReplyTo` beside `comments` on `we://comment` and
+   * predicate by construction. `WeNode` gained `respondsTo` beside `responses` on `we://response` and
    * every existing space read as fresh — the set was unchanged — so the new relation never reached
    * them and the reverse include silently found nothing to hydrate.
    */
@@ -650,14 +650,14 @@ export const SPACE_MODELS = [
   // And how a board draws each kind of thing — the board's own vocabulary of colour, which is
   // shared for exactly the reason its arrangement is.
   TypeStyle,
+  // Which record plays which part in this space — its canvas, say. Shared: a role is how every
+  // member's template finds the same record, so one held privately would point each member at a
+  // different canvas.
+  SpaceRole,
   // How a board draws its connections. Shared with the arrangement it is part of: a line somebody
   // routed clear of the cards is tidying everyone can see, and a board where each member's
   // connectors take a different path is the same non-board as one where the cards move per member.
   EdgeRoute,
-  // What one call extracts, where its participants wanted something other than the space default.
-  // Shared, and it has to be: a standing watch is one registration the whole neighbourhood runs, so
-  // two members holding different lists would each re-register over the other's.
-  CallExtraction,
   /*
     That a call was read, and how it went.
 

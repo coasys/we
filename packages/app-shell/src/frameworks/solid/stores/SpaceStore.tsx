@@ -1,12 +1,13 @@
 import { boardOptimism } from '@shared/boardOptimism';
 import { createBoardActions, type CreateBoardOptions } from '@shared/boards';
 import {
+  collectionExtractionDefaults,
   LEGACY_EXTRACTION_TARGETS,
   parseEntityList,
-  resolveCallAutoInterpret,
-  resolveCallExtractionTargets,
+  resolveCollectionAutoExtract,
+  resolveCollectionExtractionTargets,
   resolveSpaceExtractionTargets,
-} from '@shared/callExtraction';
+} from '@shared/collectionExtraction';
 import {
   CONTAINER_ACTIVITY_QUERY,
   type ContainerActivity,
@@ -53,8 +54,17 @@ import {
   moduleSurface,
 } from '@shared/registries/moduleRegistry';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
+import { completeResponse } from '@shared/responses';
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
+import { readSpaceRoles, writeSpaceRole } from '@shared/spaceRoles';
+import {
+  applyStarterRecords,
+  defaultSpaceStarter,
+  SPACE_COLLECTION_KIND,
+  type SpaceStarter,
+  starterSettings,
+} from '@shared/spaceStarter';
 import {
   isSpaceSelf,
   type LocationData,
@@ -85,7 +95,7 @@ import {
   routableSections,
   viewSettings,
 } from '@shared/viewResolution';
-import type { AgentProfileSummary, DatasetRef, FlowSnapshot, NewRecord } from '@we/backend-shared';
+import type { AgentProfileSummary, DatasetRef, FlowSnapshot } from '@we/backend-shared';
 import { displayName, trace } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
@@ -95,17 +105,16 @@ import {
   deleteBlocks,
   isContentDocument,
   reconcileBlocks,
+  refreshComposition,
 } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { saveFile, type SaveOutcome } from '@we/design-utils';
 import {
   AGENT_DEFAULT,
-  CallExtraction,
   CollectionBlock,
   compressImageToFileData,
   type DatasetProxy,
   dataURIToFileData,
-  DEFAULT_TASK_STATES,
   type FileData,
   FOLLOW_SPACE,
   getEntityForDataset,
@@ -120,11 +129,11 @@ import {
   SignalType,
   Space,
   SpacePreference,
+  SpaceRole,
   TaskState,
 } from '@we/entities';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
 import { hasViewsMarker } from '@we/schema-shared';
-import { DEFAULT_SIGNAL_TYPE } from '@we/template-kit';
 import {
   Accessor,
   createContext,
@@ -231,9 +240,9 @@ export interface SpaceListEntry {
 }
 
 /*
-  The extraction-settings resolution — `LEGACY_EXTRACTION_TARGETS`, `parseEntityList` and the two
-  `*ForCall` resolvers below — lives in `@shared/callExtraction` so it can be tested without
-  mounting this provider. See that module for why the per-call level is the part worth guarding.
+  The extraction-settings resolution — `LEGACY_EXTRACTION_TARGETS`, `parseEntityList` and the
+  per-collection resolvers below — lives in `@shared/collectionExtraction` so it can be tested
+  without mounting this provider. See that module for why a collection holds a copy.
 */
 
 /**
@@ -335,15 +344,8 @@ export interface ModuleSetting {
   active: boolean;
 }
 
-/**
- * A state this space's work can be in, as a screen reads it.
- *
- * `defined` is the one field with no counterpart on the record: false means this is a default the
- * space has never written down — a virtual state, which becomes a record the first time somebody
- * reorders it, withdraws it, or names a state with its slug. See `adoptTaskState`.
- */
+/** A state this space's work can be in, as a screen reads it — one `TaskState` record. */
 export interface TaskStateView {
-  /** Empty for a default the space has not written down. */
   id: string;
   name: string;
   /** What `TaskBlock.status` holds. */
@@ -354,7 +356,6 @@ export interface TaskStateView {
   /** The community's own icon, empty where it has not chosen one. */
   icon: string;
   retired: boolean;
-  defined: boolean;
   /** How many distinct people must agree before a task enters this state. 1 is a plain drop. */
   approvals: number;
   /** The involvement kind whose holders' agreement counts, or empty for any member's. */
@@ -381,8 +382,8 @@ export interface CreatePostOptions {
   /** Id of the node to attach to. Omit for a post, which sits in the space unattached. */
   parentId?: string;
   /**
-   * How it attaches. Defaults to `we://children` — containment, which is what a channel message
-   * wants. Pass `we://comment` for a reply, which hangs off a node rather than sitting inside it.
+   * How it attaches. Defaults to `we://child` — containment, which is what a channel message
+   * wants. Pass `we://response` for a reply, which hangs off a node rather than sitting inside it.
    */
   predicate?: string;
 }
@@ -553,8 +554,8 @@ export interface SpaceStore {
    *  spaces that predate the setting keep the chrome they had. */
   enabledModules: Accessor<string[]>;
   /**
-   * The states this community's work moves through — its own if it has defined any, otherwise the
-   * defaults. Ordered open, then active, then done. Includes withdrawn states, so a task sitting in
+   * The states this community's work moves through: its `TaskState` records, which a new space's
+   * starter writes. Ordered by the community's own order, else open, then active, then done. Includes withdrawn states, so a task sitting in
    * one still resolves; use `offeredTaskStates` for anything a person picks from.
    */
   taskStates: Accessor<TaskStateView[]>;
@@ -563,8 +564,8 @@ export interface SpaceStore {
   /** The space has been asked for its states. An empty list is otherwise "not fetched yet". */
   taskStatesLoaded: Accessor<boolean>;
   /**
-   * The kinds of part a person can have in a record — assigned, reviewing, going, maybe — the
-   * space's own where it has named any, otherwise the defaults. Includes withdrawn kinds, so an
+   * The kinds of part a person can have in a record — assigned, reviewing, going, maybe: the space's
+   * `InvolvementType` records, which a new space's starter writes. Includes withdrawn kinds, so an
    * involvement somebody still holds resolves; offer `offeredInvolvementTypes` instead.
    */
   involvementTypes: Accessor<InvolvementTypeView[]>;
@@ -686,7 +687,7 @@ export interface SpaceStore {
   updatePost: (postId: string, json: unknown) => Promise<void>;
   /**
    * Move a child between two collections — a card between kanban columns. A relink of the two
-   * `we://children` edges; the child itself is untouched.
+   * `we://child` edges; the child itself is untouched.
    */
   moveChild: (childId: string, fromId: string, toId: string) => Promise<void>;
   /** Make a board — a collection whose ordered children are its columns, seeded from the vocabulary. */
@@ -766,10 +767,10 @@ export interface SpaceStore {
    * model's own docstring says the edge exists precisely so that "posts mentioning me" can be a
    * query, and no query existed. This is that query.
    *
-   * Filtered here rather than pushed down, and that is a real limit worth naming: matching on the
-   * contents of a to-many relation is a relation filter, which both adapters declare they cannot do
-   * (`AdapterCapabilities.relationFilters`). So this reads the space's nodes and filters them, which
-   * is fine for a space and wrong for an inbox spanning many. Pushdown is the fix, not pagination.
+   * Asked from the agent's end through the backend's references — one lookup, and it finds a
+   * mention in a transcript line or a Feed message as well as in a post. Newest first, the fifty
+   * most recent. A backend without references falls back to filtering the space's containers, which
+   * misses lines.
    */
   /** `createdAt` is the backend's comparable timestamp (epoch millis in the AD4M lane). */
   myMentions: Accessor<{ id: string; author: string; createdAt: number }[]>;
@@ -821,26 +822,44 @@ export interface SpaceStore {
   setMyModuleSetting: (group: string, key: string, value?: SettingValue, spaceUuid?: string) => Promise<void>;
   /** The same, for this agent everywhere. */
   setAgentModuleSetting: (group: string, key: string, value?: SettingValue) => Promise<void>;
-  /** Whether this space has calls interpreted as they happen. A community decision; defaults off. */
+  /**
+   * Whether a new collection here — a call, a channel — starts out extracted as it grows. A
+   * community default, copied onto each collection when it is made; see `autoExtractFor` for the
+   * answer that counts.
+   */
   autoInterpret: Accessor<boolean>;
   /**
-   * Whether one call is extracted as it happens: its participants' answer, else the space's.
-   *
-   * The counterpart of `extractionTargetsForCall`, and the same three states behind two — a call
-   * with no record of its own has not decided, and follows the space.
+   * The id of this space's collection — the one everything top-level hangs off (`Space.root`). Empty
+   * outside a space, and in a space made before spaces had one.
    */
-  autoInterpretForCall: (collectionId: string) => boolean;
-  /** Turn it on or off for one call, for everyone in it. A participant's decision, not an admin's. */
-  setAutoInterpretForCall: (collectionId: string, on: boolean) => Promise<void>;
+  root: Accessor<string>;
+  /**
+   * The records this space names by role, as name → id: `roles.canvas` is the space's canvas. A role
+   * the space never named is simply absent, and a template must handle that, since a space can
+   * switch template and a template must never assume what another set up.
+   */
+  roles: Accessor<Record<string, string>>;
+  /**
+   * Whether one collection — a call, a channel, the space's own — is extracted as it grows: its own
+   * answer, copied from the space's default when it was made. False until it has been read.
+   */
+  autoExtractFor: (collectionId: string) => boolean;
+  /**
+   * Turn it on or off for one collection, for everyone in it. A call's participants decide for their
+   * call; the space collection is the community's, so only somebody who administers the space can.
+   */
+  setAutoExtractFor: (collectionId: string, on: boolean) => Promise<void>;
+  /** Whether this agent may change what one collection extracts — see `setAutoExtractFor`. */
+  canSetExtractionFor: (collectionId: string) => boolean;
   setAutoInterpret: (enabled: boolean, spaceUuid?: string) => Promise<void>;
   setThreadMode: (mode: string, spaceUuid?: string) => Promise<void>;
   /**
-   * Which models this community's calls start out extracting.
+   * Which models a new collection here starts out extracting.
    *
    * The middle of three layers: the codebase says what is a *candidate*
-   * (`shapeStore.extractionCandidates`), this says which of them a call here begins with, and a
-   * call's participants may add or remove for themselves. Always intersected with the candidates,
-   * so a model since deleted cannot reach a pass and fail it.
+   * (`shapeStore.extractionCandidates`), this says which of them a new conversation begins with, and
+   * each collection then holds its own list, which its participants change. Always intersected with
+   * the candidates, so a model since deleted cannot reach a pass and fail it.
    *
    * A community decision, readable by every member; writing it is space-settings. Unset falls back
    * to the two classes that were hardcoded before the setting existed, so nothing regresses.
@@ -881,8 +900,8 @@ export interface SpaceStore {
   /** Withdraw a signal type from use, or bring it back. Never removes the signals given with it. */
   setSignalTypeRetired: (signalTypeId: string, retired: boolean) => Promise<void>;
   /**
-   * Name a state this community's work moves through. The defaults stay virtual beside it; one with
-   * a default's slug adopts that default. The space's own board gains a column for it.
+   * Name a state this community's work moves through. Refused for a slug the space already has.
+   * The space's own board gains a column for it.
    */
   createTaskState: (config: {
     name: string;
@@ -893,7 +912,7 @@ export interface SpaceStore {
   /**
    * Change what a state is called, how it is drawn, or what it counts as — for everyone in the
    * space. By slug, which is the one thing it cannot change: tasks store it. An empty string clears
-   * a field, so a colour or an icon can be taken back off. A default is adopted by editing it.
+   * a field, so a colour or an icon can be taken back off.
    */
   updateTaskState: (
     slug: string,
@@ -917,14 +936,14 @@ export interface SpaceStore {
   /** Take back this agent's own vote on the move a task is waiting on. Never touches anybody else's. */
   withdrawTaskMove: (taskId: string) => Promise<void>;
   /**
-   * Withdraw a state from use, or bring it back. Never touches the work sitting in it. By slug: a
-   * default has no record until this, or a reorder, adopts it.
+   * Withdraw a state from use, or bring it back. Never touches the work sitting in it. By slug, which
+   * is what a task and a screen both hold.
    */
   setTaskStateRetired: (slug: string, retired: boolean) => Promise<void>;
   /**
    * Set the order this community reads its states in — the order of a board's columns. An ordered
    * relation, so two people reordering at once converge rather than one write discarding the other.
-   * By slug, since a default has no id until it is placed in an order, which adopts it.
+   * By slug, which is what a task and a screen both hold.
    */
   reorderTaskStates: (orderedSlugs: string[]) => Promise<void>;
   /**
@@ -935,7 +954,7 @@ export interface SpaceStore {
   setInvolvement: (nodeId: string, agent: string, kind: string, on: boolean) => Promise<void>;
   /** This agent's own answer to a record — going, maybe, not going — replacing any other; `''` withdraws it. */
   respondTo: (nodeId: string, kind: string) => Promise<void>;
-  /** Name a kind of part people can have. One with a default's slug adopts that default. */
+  /** Name a kind of part people can have. Refused for a slug the space already has. */
   createInvolvementType: (config: {
     name: string;
     semantic?: InvolvementSemantic;
@@ -1643,6 +1662,73 @@ export function SpaceStoreProvider(props: ParentProps) {
     return readBack ?? (spaceRecord as Space);
   }
 
+  /**
+   * The structure every space has, and then what the starter adds to it.
+   *
+   * The **space collection** first: the one collection everything top-level in the space hangs off
+   * (`Space.root`). The host makes it in every space, whatever the starter says, because where
+   * top-level content lives is not an opinion — and it is made here, at the create press, so there is
+   * exactly one. Anything that finds a space's collection reads `Space.root`, never "the first
+   * collection of this kind", which is how a second one would split the space's content.
+   *
+   * Then the starter's records, each contained by the collection unless it names another, and a
+   * `SpaceRole` per role. A starter record that fails is reported and skipped: everything above has
+   * been written, and the person's space exists.
+   */
+  async function writeSpaceStructure(dataset: DatasetProxy, space: Space, starter?: SpaceStarter): Promise<void> {
+    /*
+      Made with the space's extraction defaults like any new collection, unless the starter says
+      otherwise about the messages typed outside calls (`input`).
+    */
+    const defaults = collectionExtractionDefaults(space);
+    const root = await CollectionBlock.create(dataset, {
+      kind: SPACE_COLLECTION_KIND,
+      // A feed: every member adds to it, so no one member's editor may ever reconcile it, and a
+      // response to anything that lives in it lives in it too.
+      mode: 'feed',
+      title: '',
+      ...defaults,
+      ...(starter?.input !== undefined && { autoExtract: starter.input }),
+    });
+    await space.setRoot({ id: root.id } as CollectionBlock);
+
+    const target = {
+      rootId: root.id,
+      spaceId: space.id,
+      space: { name: space.name ?? '', description: space.description ?? '' },
+    };
+    await applyStarterRecords(starter, target, {
+      create: async (entity, fields, parentId) => {
+        const Model = getEntityForDataset(entity, dataset);
+        if (!Model) throw new Error(`no ${entity} in this space's schema`);
+        const made = await Model.create(
+          dataset,
+          fields as never,
+          (parentId ? { parent: { id: parentId, predicate: PREDICATES.CHILDREN } } : {}) as never,
+        );
+        return (made as { id: string }).id;
+      },
+      role: (name, nodeId) => writeSpaceRole(dataset, space.id, name, nodeId),
+      linkSpace: async (relations) => {
+        // A list is written in order, which is what an ordered relation (the space's task states)
+        // keeps; a single id is the same thing with one entry.
+        for (const [relation, value] of Object.entries(relations)) {
+          for (const id of Array.isArray(value) ? value : [value]) {
+            await Space.addRelation(dataset, space.id, relation, id);
+          }
+        }
+      },
+      /*
+        A post is seeded as the blocks inside it, and its stored document is derived from those here,
+        unless the starter wrote one itself. Anything else has nothing to derive.
+      */
+      compose: async (id, entity, fields) => {
+        if (entity !== 'CollectionBlock' || fields.kind !== 'post' || fields.editorState) return;
+        await refreshComposition(dataset, id);
+      },
+    });
+  }
+
   async function createSpace(
     name: string,
     description: string,
@@ -1689,14 +1775,16 @@ export function SpaceStoreProvider(props: ParentProps) {
       const coverImageData = coverImageFile ? await compressImageToFileData(coverImageFile, 'space-cover') : undefined;
 
       // Assemble Space + optional location data — used for both own and parent datasets
+      const starter = defaultSpaceStarter(getSeed()?.spaceStarters);
       const spaceData = {
         uuid: spaceRef.id,
         url: publishedSharedId,
         name,
         description,
         discovery,
-        defaultTemplateId: 'default',
-        defaultThemeId: 'dark',
+        // The deployment's defaults for a new space — template, theme, extraction — are its starter's,
+        // not this file's. A seed with none leaves every setting at its declared default.
+        ...(starterSettings(starter) as Partial<SpaceInput>),
         ...(avatarData && { avatar: avatarData }),
         ...(coverImageData && { coverImage: coverImageData }),
       };
@@ -1707,28 +1795,14 @@ export function SpaceStoreProvider(props: ParentProps) {
       trace('space', 'created', { id: spaceRecord.id });
 
       /*
-        One reaction to start with, so a new space is not mute.
+        The space collection, and then the starter: the like reaction, the canvas, the roles.
 
-        A community names its own vocabulary and nothing here decides what it should be — but
-        arriving with NONE is not neutrality, it is a blank: every reaction surface in the app draws
-        nothing, and the only way to learn that a space names its own is to find Settings →
-        Vocabulary unprompted. A like is the one starting point nobody has to be taught, and it is
-        adapted or retired in two presses.
-
-        It pays off in code that already exists. The cards feed resolves the slug for its
-        `$likeCount` projection and for sorting by it; in a fresh space that quietly counted nothing.
-        Both sides read `DEFAULT_SIGNAL_TYPE`, since two files naming the same string is how they
-        come apart.
-
-        At creation, which is the only place a default belongs. Not on read: a space that has since
-        retired everything must not have a heart conjured back by a renderer, and `setSignalTypeRetired`
-        exists precisely so a type can be withdrawn without stranding the signals given with it.
+        The like used to be written here by name, on the argument that a space arriving with no
+        reaction is a blank rather than a neutral start. The argument holds and now lives with the
+        starter, which is where every other "a new space begins with" belongs — and where a
+        deployment that wants different defaults can say so without editing this file.
       */
-      await SignalType.create(spaceHandle, { ...DEFAULT_SIGNAL_TYPE }).catch((error: unknown) => {
-        // A space with no reaction is worse than a space, and a space nobody could create is worse
-        // than both. Reported rather than thrown: everything above this has already been written.
-        console.error('createSpace: could not seed the default signal type', error);
-      });
+      await writeSpaceStructure(spaceHandle, spaceRecord, starter);
 
       // Sync to global discovery space when the user opted in.
       // Space.create returns relations unhydrated, so we pass avatarData, coverImageData,
@@ -1795,18 +1869,20 @@ export function SpaceStoreProvider(props: ParentProps) {
       avatarData = dataURIToFileData(avatarValue, 'space-avatar');
     }
 
+    const starter = defaultSpaceStarter(getSeed()?.spaceStarters);
     const spaceData: SpaceInput = {
       uuid: ds.id,
       url: ds.sharedId,
       name,
       description,
       discovery: 'hidden',
-      defaultTemplateId: 'default',
-      defaultThemeId: 'dark',
+      ...(starterSettings(starter) as Partial<SpaceInput>),
       ...(avatarData && { avatar: avatarData }),
     };
 
     const spaceRecord = await addSpaceToDataset(ds.handle, spaceData);
+    // A space made from a foreign perspective is still a new WE space, so it gets the same structure.
+    await writeSpaceStructure(ds.handle as DatasetProxy, spaceRecord, starter);
 
     if (!mySpaces().some((s) => s.uuid === spaceRecord.uuid)) {
       setMySpaces((prev) => [...prev, spaceRecord]);
@@ -2037,21 +2113,23 @@ export function SpaceStoreProvider(props: ParentProps) {
     const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
 
-    // `kind` is written alongside the `type: 'root'` that already identifies a post, not instead of
-    // it: reads still key on `type`, so existing posts stay in the feed and nothing needs
-    // backfilling. See `createBlocks`.
-    //
     // The anchor is what makes one action serve every composed artifact. A post has none — it sits
-    // in the space. A message names its channel through `we://children`; a reply names whatever it
-    // answers through `we://comment`. Both arrive from a schema as ids, which is all a template
+    // in the space. A message names its channel through `we://child`; a reply names whatever it
+    // answers through `we://response`. Both arrive from a schema as ids, which is all a template
     // has, and both are `$each`/route values rather than anything the store could derive.
-    const { kind = 'post', parentId, predicate = PREDICATES.CHILDREN } = options;
+    // With no anchor named, a post goes in the space collection — the space's top level — rather than
+    // nowhere. Read at the call, not destructured as a default, so a space entered after this store
+    // was built still gets its own.
+    const { kind = 'post', predicate = PREDICATES.CHILDREN } = options;
+    const parentId = options.parentId ?? (spaceRoot() || undefined);
 
     // The action arrives from a schema as unknown; the composer produced it, so it is a content document.
     const root = await createBlocks(p, json as ContentInput, {
       kind,
       ...(parentId && { anchor: { id: parentId, predicate } }),
     });
+    // A reply is linked into its thread, and is a child of nothing — see `@shared/responses`.
+    if (root?.id && parentId && predicate === PREDICATES.RESPONSE) void completeResponse(p, root.id, parentId);
     return root?.id;
   }
 
@@ -2086,7 +2164,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * Move a child from one collection to another — a kanban card between columns, a post between
    * channels.
    *
-   * A relink, not an edit: the child is untouched and only the two `we://children` edges change.
+   * A relink, not an edit: the child is untouched and only the two `we://child` edges change.
    * That is what makes containment a usable way to express status (see the `kanbanBoard`
    * fragment) — the card carries no column field that could disagree with where it actually is.
    *
@@ -2151,6 +2229,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     ...boardOptimism.ports,
     offeredStates: () => offeredTaskStates(),
     notify: (message) => toastService.error(message),
+    rolesChanged: () => void reloadSpaceStructure(),
     // Wrapped for `offeredStates`' reason: the flow is worked out from the states, further down.
     flow: {
       enabled: () => taskFlow.enabled(),
@@ -2868,9 +2947,9 @@ export function SpaceStoreProvider(props: ParentProps) {
             callTitle: row?.title,
             spaceName: currentSpace()?.name,
             exportedAt,
-            callTargets: extractionTargetsForCall(callId),
+            callTargets: extractionTargetsFor(callId),
             spaceTargets: extractionTargets(),
-            autoInterpret: autoInterpretForCall(callId),
+            autoInterpret: autoExtractFor(callId),
             transcript: turns,
             passes,
             records,
@@ -2889,6 +2968,68 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   const [currentSpace, setCurrentSpace] = createSignal<Space | null>(null);
 
+  /*
+    ── The space's structure ────────────────────────────────────────────────────────────────────
+
+    Its collection and its roles, read on entering the space. Both are written once, at the create
+    press, so there is nothing to follow live: a role somebody adds later is picked up on the next
+    entry. `root` is read through the relation and never by looking for "the collection of kind
+    space", which is the read a second one would silently split.
+
+    Two roles of one name are not prevented — roles are written at creation, by one person — and the
+    newest wins. A role whose record has since been deleted still reads here; a template reading it
+    finds nothing at that id and treats it as absent, which is what it must do for a missing role
+    anyway.
+  */
+  const [spaceRoot, setSpaceRoot] = createSignal('');
+  const [spaceRoles, setSpaceRoles] = createSignal<Record<string, string>>({});
+  /** Read the space collection and the roles again — after an action made a record the space's. */
+  async function reloadSpaceStructure(): Promise<void> {
+    const dataset = datasetStore.currentDataset()?.handle;
+    const uuid = datasetStore.currentDataset()?.id;
+    if (!dataset || !datasetStore.isWeSpace()) return;
+    try {
+      const space = await Space.findOne(dataset, { include: { root: true } });
+      const roles = await readSpaceRoles(dataset);
+      if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
+      // Roles first: `root` is what says the read has answered, so a template asking "is there a
+      // board?" never hears "no" in the frame between the two.
+      setSpaceRoles(roles);
+      setSpaceRoot(space?.root?.id ?? '');
+    } catch (error) {
+      console.warn('SpaceStore: could not read the space’s collection and roles', error);
+    }
+  }
+  /*
+    Read on entering the space, then follow its roles.
+
+    Read once, a role written after entering never arrived: a space entered while its starter was
+    still writing showed "make a board" beside the board the starter had just made, and a board a
+    peer made reached nobody until they switched space. Task states are followed for the same reason.
+  */
+  createEffect(() => {
+    const dataset = datasetStore.currentDataset()?.handle;
+    const weSpace = datasetStore.isWeSpace();
+    let stopped = false;
+    let watch: { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+    onCleanup(() => {
+      stopped = true;
+      watch?.dispose();
+    });
+    setSpaceRoot('');
+    setSpaceRoles({});
+    void untrack(reloadSpaceStructure).then(() => {
+      if (stopped || !dataset || !weSpace) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      watch = (SpaceRole as any).query(dataset, {}) as typeof watch;
+      watch
+        ?.subscribe(() => void (!stopped && reloadSpaceStructure()))
+        .catch((error: unknown) => {
+          console.warn('SpaceStore: could not watch the space’s roles', error);
+        });
+    });
+  });
+
   /**
    * Which modules this space has on.
    *
@@ -2901,22 +3042,15 @@ export function SpaceStoreProvider(props: ParentProps) {
   /*
     ── Task states ──────────────────────────────────────────────────────────────────────────────
 
-    The states this community's work moves through, resolved the way `enabledModules` resolves: a
-    space that has defined none gets the defaults, because "unset" means *not decided* rather than
-    *none*. Reading an empty list as "no states" would empty every board in every space that existed
-    before the vocabulary did.
+    The states this community's work moves through: its `TaskState` records, and nothing else.
 
-    The defaults are **virtual**. They are never written down as a set: a default becomes a record of
-    the community's own only when somebody does something to it that needs a record — reorders it,
-    withdraws it, or names a state with its slug. Materialising all three on the first create was the
-    alternative, and it had the race this branch treats as decisive everywhere else: two members
-    naming their first state on two nodes each wrote the three defaults, and the slug check read a
-    local memo that could not see the other node. Adopting one state at a time, on demand, makes the
-    race one duplicate at worst — and duplicates collapse on read, by slug, so even that is harmless.
+    A new space's starter writes the first ones, once, at the create press — so they are the
+    community's own from the start, and editing "To do" is an edit like any other. There are no
+    defaults standing in for records: a space with no states has none, and its boards have no
+    columns, which is what a starter that seeds none asked for.
 
-    Loaded per space rather than queried in a template — unlike signal types, which templates resolve
-    by slug through a hoisted `$query`. The difference is the fallback: a template can filter a list
-    it was handed, and cannot substitute a list it was not.
+    Loaded per space rather than queried in a template, because every board, picker and key reads the
+    same ordered list, and the order is the community's (`Space.taskStates`).
   */
   const [ownTaskStates, setOwnTaskStates] = createSignal<TaskStateView[]>([]);
   const [taskStatesLoaded, setTaskStatesLoaded] = createSignal(false);
@@ -2925,9 +3059,9 @@ export function SpaceStoreProvider(props: ParentProps) {
   /**
    * One record per slug, the earliest written winning.
    *
-   * Two nodes adopting the same default at the same moment produce two records with one slug, and a
-   * task names its state by slug — so to every task they are one state, and the list should say so
-   * too. The earliest is kept because it is the one most peers already hold; the later one is
+   * Two members naming the same state at the same moment on two nodes produce two records with one
+   * slug, and a task names its state by slug — so to every task they are one state, and the list
+   * should say so too. The earliest is kept because it is the one most peers already hold; the later one is
    * inert, never offered and never listed, and costs nothing.
    */
   function dedupeBySlug(records: TaskState[]): TaskState[] {
@@ -2975,7 +3109,6 @@ export function SpaceStoreProvider(props: ParentProps) {
           color: r.color || '',
           icon: r.icon || '',
           retired: Boolean(r.retired),
-          defined: true,
           // A record written before these existed has neither: one approval, from anybody.
           approvals: approvalsOf({ slug: '', approvals: r.approvals }),
           approverKind: r.approverKind || '',
@@ -3071,18 +3204,13 @@ export function SpaceStoreProvider(props: ParentProps) {
     a.color === b.color &&
     a.icon === b.icon &&
     a.retired === b.retired &&
-    a.defined === b.defined &&
     a.approvals === b.approvals &&
     a.approverKind === b.approverKind;
 
   /**
-   * The states this space uses — its own records, and beneath them every default nobody has
-   * overridden.
+   * The states this space uses, as screens read them.
    *
-   * A record with a default's slug *is* that default, adopted: it replaces the virtual one, and
-   * whatever the community wrote on it — a name, an icon, a colour, `retired` — is what the state now
-   * is. So "To do" renamed to "Backlog" is one state with one slug, and every task holding `todo`
-   * follows it.
+   * "To do" renamed to "Backlog" is one state with one slug, and every task holding `todo` follows it.
    *
    * Ordered by the community's own arrangement where it has one, and otherwise by semantic — what is
    * coming, what is happening, what is stuck, what is finished, what was dropped. That is the only
@@ -3090,26 +3218,13 @@ export function SpaceStoreProvider(props: ParentProps) {
    * scalar two people editing at once break — see the note on `TaskState`.
    */
   const taskStates = createMemo<TaskStateView[]>(() => {
-    const own = ownTaskStates();
-    const overridden = new Set(own.map((state) => state.slug));
-    const virtual: TaskStateView[] = DEFAULT_TASK_STATES.filter((d) => !overridden.has(d.slug)).map((d) => ({
-      ...d,
-      icon: '',
-      id: '',
-      semantic: d.semantic as TaskStateView['semantic'],
-      retired: false,
-      defined: false,
-      approvals: 1,
-      approverKind: '',
-    }));
-    const states = [...own, ...virtual];
+    const states = [...ownTaskStates()];
     /*
       The community's own order where it has one, and what a state *counts as* where it has not.
 
       Position hints over a membership, one more time: a state the order does not mention is not
       dropped, it follows the ones it does — which is what lets a newly named state appear at all
-      without anybody having to arrange the columns first. A virtual default has no id and so no
-      position; reordering adopts it.
+      without anybody having to arrange the columns first.
     */
     const chosen = taskStateOrder();
     // Reading order for a state nobody has positioned: what is coming, what is happening, what is
@@ -3117,7 +3232,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // outstanding work, which is where something nobody can read belongs.
     const rank: Record<string, number> = { open: 0, active: 1, blocked: 2, done: 3, cancelled: 4 };
     const at = (state: TaskStateView) => {
-      const i = state.id ? chosen.indexOf(state.id) : -1;
+      const i = chosen.indexOf(state.id);
       return i === -1 ? Number.POSITIVE_INFINITY : i;
     };
     const sorted = states.sort((a, b) => {
@@ -3298,6 +3413,18 @@ export function SpaceStoreProvider(props: ParentProps) {
     Injected rather than read, for the reason `provideAutoInterpretGate` is: this lives on records in
     the space, and RecordStore mounts above this one.
   */
+  /*
+    Where content lives: the space collection, for anything made on the space's own canvas and for
+    anything made with no other home. See `provideContentHomes` — injected for the reason the
+    vocabularies are, since RecordStore mounts above this one.
+  */
+  onCleanup(
+    recordStore.provideContentHomes({
+      forCanvas: (canvas) => (canvas === spaceRoles().canvas && spaceRoot() ? spaceRoot() : canvas),
+      root: () => spaceRoot(),
+    }),
+  );
+
   onCleanup(
     recordStore.provideVocabularies((vocabulary) =>
       vocabulary === 'taskState' ? offeredTaskStates().map((state) => state.slug) : undefined,
@@ -3362,37 +3489,17 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
-  /**
-   * The record for a state, making one from the default where the community has never written it.
-   *
-   * The one place a default becomes a record. Called by whatever needs a record to act on — a
-   * withdrawal, a reorder — so the act that adopts a default is always one a person took on that
-   * state, and never a side effect of naming a different one. Answers null for a slug that is
-   * neither a record nor a default.
-   */
-  // `NewRecord`, because a caller wants a record to *act on* — rename it, withdraw it, put it in an
-  // order — and one of the two ways this answers is a create, which carries no relations. Nothing
-  // here reads one; `save` and `delete` survive, being the record's own and not a relation's.
-  async function adoptTaskState(p: DatasetProxy, slug: string): Promise<NewRecord<TaskState> | null> {
+  /** The record behind a state, by the slug a task and a screen both hold — or null when there is none. */
+  async function taskStateRecord(p: DatasetProxy, slug: string): Promise<TaskState | null> {
     const existing = await TaskState.findAll(p, { where: { slug } }).catch(() => [] as TaskState[]);
-    if (existing.length) return dedupeBySlug(existing)[0] ?? null;
-    const fallback = DEFAULT_TASK_STATES.find((d) => d.slug === slug);
-    if (!fallback) return null;
-    return await TaskState.create(p, {
-      name: fallback.name,
-      slug: fallback.slug,
-      semantic: fallback.semantic,
-      color: fallback.color,
-    });
+    return dedupeBySlug(existing)[0] ?? null;
   }
 
   /**
    * Name a state this community's work moves through.
    *
-   * Nothing else is written. The defaults stay virtual, and a state whose slug matches one — "To do"
-   * given an icon, say — *is* that default adopted, replacing it in the list rather than sitting
-   * beside it. A slug matching a state the community already wrote is refused, since two records
-   * with one slug are one state to every task holding it.
+   * A slug matching a state the community already has is refused, since two records with one slug
+   * are one state to every task holding it.
    *
    * The space's own board — Everything, the catch-all — gains a column for the new state in the same
    * act, so the one board whose job is to show all the work never lags the vocabulary. Boards people
@@ -3434,8 +3541,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * Change a state the community already has — its name, its colour, its glyph, or what it counts as.
    *
    * The counterpart `createTaskState` had no pair for: a state could be named and withdrawn and
-   * nothing else, so a colour was settable exactly once, at creation, and the three defaults — which
-   * ship with none — could never have one at all. Everything a key or a board draws a state with was
+   * nothing else, so a colour was settable exactly once, at creation. Everything a key or a board draws a state with was
    * therefore whichever fallback the rendering surface happened to hold.
    *
    * **The slug is not in the update.** It is what every task stores, so changing it would leave the
@@ -3452,7 +3558,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * **An empty string clears**, rather than being skipped — see `clearOnEmpty` in the AD4M adapter.
    * That is what makes a reset back to the template's default possible without deleting the state.
    *
-   * By slug, like its two neighbours: editing a default is the act that adopts it.
+   * By slug, like its two neighbours: it is what a task and a screen both hold.
    */
   async function updateTaskState(
     slug: string,
@@ -3468,7 +3574,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const p = datasetStore.currentDataset()?.handle;
     if (!p || !slug || !updates) return;
     try {
-      const record = await adoptTaskState(p, slug);
+      const record = await taskStateRecord(p, slug);
       if (!record) return;
       // Only what was passed: an absent key leaves the field alone, where `''` is a deliberate clear.
       if (updates.name !== undefined && updates.name.trim()) record.name = updates.name.trim();
@@ -3501,9 +3607,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * discards the first. It is the same reason a card's position lives on the board rather than on
    * the task, and the capability the model layer gained for exactly this.
    *
-   * Takes slugs, because a default has no id until somebody does this to it: putting a default in an
-   * order is the act that adopts it, so every state the order names becomes a record here, and the
-   * relation is then written over their ids.
+   * Takes slugs, which is what a screen holds; the relation is written over the records' ids.
    */
   async function reorderTaskStates(orderedSlugs: string[]): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
@@ -3515,7 +3619,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     try {
       const ids: string[] = [];
       for (const slug of slugs) {
-        const record = await adoptTaskState(p, slug);
+        const record = await taskStateRecord(p, slug);
         if (record?.id) ids.push(record.id);
       }
       const record = await Space.findOne(p, { where: { id: space.id } });
@@ -3539,14 +3643,13 @@ export function SpaceStoreProvider(props: ParentProps) {
    * defines. Retiring stops it being offered and leaves everything readable, and un-retiring puts
    * it back exactly as it was.
    *
-   * Takes a slug rather than an id, because withdrawing a default is the act that adopts it — it has
-   * no record until it does.
+   * Takes a slug rather than an id, which is what a task and a screen both hold.
    */
   async function setTaskStateRetired(slug: string, retired: boolean): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
     if (!p || !slug) return;
     try {
-      const record = await adoptTaskState(p, slug);
+      const record = await taskStateRecord(p, slug);
       if (!record) return;
       record.retired = retired;
       await record.save();
@@ -3561,8 +3664,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   /*
     ── Involvements ─────────────────────────────────────────────────────────────────────────────
 
-    Who is on what. The vocabulary is loaded here, virtual defaults and all, for the reason task
-    states are: a template can filter a list it was handed and cannot substitute one it was not. The
+    Who is on what. The vocabulary is loaded here, for the reason task states are: a template can filter a list it was handed and cannot substitute one it was not. The
     involvements themselves are not — they change with every click anybody makes, so a template holds
     them in a live query and reads them through the `involvement` host function. What a write *means*
     lives in `involvements.ts`.
@@ -3600,7 +3702,6 @@ export function SpaceStoreProvider(props: ParentProps) {
             icon: r.icon || '',
             color: r.color || '',
             retired: Boolean(r.retired),
-            defined: true,
           })),
       );
     } catch (error) {
@@ -3635,24 +3736,10 @@ export function SpaceStoreProvider(props: ParentProps) {
     ...involvementOptimism.ports,
   });
 
-  /**
-   * The record behind a kind, writing a default down first if that is all it is — `adoptTaskState`'s
-   * rule: editing or withdrawing a default is the act that makes it the community's own.
-   */
-  async function adoptInvolvementType(p: DatasetProxy, slug: string): Promise<InvolvementType | null> {
+  /** The record behind a kind, by slug — or null when there is none. See `taskStateRecord`. */
+  async function involvementTypeRecord(p: DatasetProxy, slug: string): Promise<InvolvementType | null> {
     const existing = (await InvolvementType.findAll(p, { where: { slug } }).catch(() => [])) as InvolvementType[];
-    if (existing.length) return existing[0];
-    const fallback = involvementTypes().find((kind) => kind.slug === slug && !kind.defined);
-    if (!fallback) return null;
-    return (await InvolvementType.create(p, {
-      name: fallback.name,
-      slug: fallback.slug,
-      semantic: fallback.semantic,
-      reflexive: fallback.reflexive,
-      appliesTo: fallback.appliesTo.join(','),
-      icon: fallback.icon,
-      color: fallback.color,
-    })) as InvolvementType;
+    return existing[0] ?? null;
   }
 
   /**
@@ -3705,7 +3792,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const p = datasetStore.currentDataset()?.handle;
     if (!p || !slug || !updates) return;
     try {
-      const record = await adoptInvolvementType(p, slug);
+      const record = await involvementTypeRecord(p, slug);
       if (!record) return;
       if (updates.name !== undefined && updates.name.trim()) record.name = updates.name.trim();
       if (updates.icon !== undefined) record.icon = updates.icon;
@@ -3727,7 +3814,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const p = datasetStore.currentDataset()?.handle;
     if (!p || !slug) return;
     try {
-      const record = await adoptInvolvementType(p, slug);
+      const record = await involvementTypeRecord(p, slug);
       if (!record) return;
       record.retired = retired;
       await record.save();
@@ -3849,18 +3936,20 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /*
-    Does this space want its calls interpreted as they happen.
+    What a new collection here starts with — whether it is extracted as it grows.
 
     Read off the space rather than stored here, so it answers for whichever space is on screen, and
-    handed down to DatasetStore — which owns the watch registration and sits below this store, so it
-    cannot reach a `Space` itself. Absent space reads false: a decision nobody has made is not a
-    decision to spend somebody's LLM budget.
+    handed down to DatasetStore for a watch whose collection has not been read yet. Absent space
+    reads false: a decision nobody has made is not a decision to spend somebody's LLM budget.
+
+    A default and nothing more. Each collection holds its own answer, copied from this when it was
+    made (`CollectionBlock.autoExtract`); see `@shared/collectionExtraction` for why a copy.
   */
   const autoInterpret = createMemo<boolean>(() => currentSpace()?.autoInterpret === true);
   onCleanup(datasetStore.provideAutoInterpretGate(() => autoInterpret()));
 
   /*
-    Which candidates this space's calls start with.
+    Which candidates a new collection here starts with.
 
     Intersected with the candidates rather than trusted as stored, and that is load bearing: a name
     the perspective has no shape for fails `assertShapesInstalled` and takes the whole pass down, so
@@ -3875,102 +3964,200 @@ export function SpaceStoreProvider(props: ParentProps) {
   );
 
   /**
-   * What one call extracts, where its participants asked for something other than the default.
+   * Each asked-about collection's own extraction settings, as stored on it, by id.
    *
-   * One subscription for the space rather than a read per call: a list of calls asks this question
-   * once per card, and the records are few — one per call that has been customised. Same shape as
-   * `readMarkers`.
+   * Read on demand rather than for every collection in the space: a space holds a call for every
+   * meeting it ever had, and only the ones on screen are asked about — the call somebody is in, the
+   * one a panel names, and the space's own collection. Followed while asked, so a participant
+   * switching a call off is seen by everybody in it.
+   *
+   * `loaded` is separate from the settings, because an answer that has not arrived must not be
+   * mistaken for "made without a copy" — which defers to the space, and would register a standing
+   * watch for a call its participants had switched off for the moment it took to read.
    */
-  const [callExtractions, setCallExtractions] = createSignal<CallExtraction[]>([]);
+  const [collectionSettings, setCollectionSettings] = createSignal<
+    Record<string, { autoExtract?: boolean; extractionTargets?: string }>
+  >({});
+  const [loadedCollections, setLoadedCollections] = createSignal<ReadonlySet<string>>(new Set());
+  const [askedCollections, setAskedCollections] = createSignal<string[]>([]);
+
+  /*
+    Asking is a read, and reads happen inside computations. Writing the asked list there would be a
+    signal written while it is being read, so the request is posted for after the read instead.
+  */
+  function askCollection(collectionId: string): void {
+    if (!collectionId || untrack(askedCollections).includes(collectionId)) return;
+    queueMicrotask(() => {
+      if (!askedCollections().includes(collectionId)) setAskedCollections((ids) => [...ids, collectionId]);
+    });
+  }
 
   createEffect(() => {
-    const dataset = datasetStore.currentDataset();
-    if (!dataset || !datasetStore.isWeSpace()) {
-      setCallExtractions([]);
-      return;
-    }
-    void CallExtraction.findAll(dataset.handle)
-      .then(setCallExtractions)
-      .catch(() => setCallExtractions([]));
+    const handle = datasetStore.currentDataset()?.handle;
+    const weSpace = datasetStore.isWeSpace();
+    // A new space's collections are a different set: what was asked about the last one says nothing here.
+    setCollectionSettings({});
+    setLoadedCollections(new Set<string>());
+    setAskedCollections([]);
+    if (!handle || !weSpace) return;
+    const root = spaceRoot();
+    if (root) askCollection(root);
+  });
+
+  createEffect(() => {
+    const handle = datasetStore.currentDataset()?.handle;
+    const ids = askedCollections();
+    if (!handle || !datasetStore.isWeSpace() || !ids.length) return;
+    let stopped = false;
+    let watch: { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+    onCleanup(() => {
+      stopped = true;
+      watch?.dispose();
+    });
+    const read = async () => {
+      try {
+        const rows = await CollectionBlock.findAll(handle, { where: { id: ids } });
+        if (stopped) return;
+        setCollectionSettings((current) => {
+          const next = { ...current };
+          for (const row of rows) {
+            next[row.id] = { autoExtract: row.autoExtract, extractionTargets: row.extractionTargets };
+          }
+          return next;
+        });
+      } catch (error) {
+        console.warn('SpaceStore: could not read what these collections extract', error);
+      } finally {
+        if (!stopped) setLoadedCollections(new Set(ids));
+      }
+    };
+    void read().then(() => {
+      if (stopped) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      watch = (CollectionBlock as any).query(handle, { where: { id: ids } }) as typeof watch;
+      watch
+        ?.subscribe(() => void (!stopped && read()))
+        .catch((error: unknown) => {
+          console.warn('SpaceStore: could not follow what these collections extract', error);
+        });
+    });
   });
 
   /**
-   * The models one call extracts: its own list if it has one, else the space's default.
-   *
-   * A record with `entities: '[]'` is a group that turned everything off, and answers `[]`. A call
-   * with no record has not been touched and answers the space's list — which is exactly the
-   * distinction the record exists to make, and why this cannot be a set of links.
+   * Whether one collection is extracted as it grows: its own answer, or — for a collection made
+   * without one — the space's default. False until its settings have been read.
    */
-  /**
-   * Whether one call is extracted as it happens: its own answer if it has one, else the space's.
-   *
-   * The same shape as `extractionTargetsForCall` and the same absent-means-undecided rule — but
-   * stored as `'on'` / `'off'` / `''` rather than a boolean, because a boolean has two states and
-   * this needs three. A record is created the moment somebody narrows the *targets*, so an untouched
-   * auto flag on it must not read as a refusal of the space's default.
-   *
-   * A participant's decision, unlike `Space.autoInterpret`, which administers the space. Stopping a
-   * standing pass mid-meeting is about this conversation, and needing whoever owns the space to be
-   * in the room for it makes the honest response "leave the call".
-   */
-  const autoInterpretForCall = (collectionId: string): boolean =>
-    resolveCallAutoInterpret(autoInterpret(), callExtractions().find((row) => row.callId === collectionId)?.auto);
+  const autoExtractFor = (collectionId: string): boolean => {
+    if (!collectionId) return false;
+    askCollection(collectionId);
+    if (!loadedCollections().has(collectionId)) return false;
+    return resolveCollectionAutoExtract(autoInterpret(), collectionSettings()[collectionId]?.autoExtract);
+  };
 
-  /**
-   * Turn automatic extraction on or off for one call, for everyone in it.
-   *
-   * Writes the decision rather than a diff, and writes it even when it agrees with the space — the
-   * point of the record is that it *has* decided, so a space that later changes its default does not
-   * silently change this call's mind mid-conversation.
-   */
-  async function setAutoInterpretForCall(collectionId: string, on: boolean): Promise<void> {
-    const dataset = datasetStore.currentDataset();
-    if (!dataset || !collectionId) return;
-    const auto = on ? 'on' : 'off';
-    const existing = callExtractions().find((row) => row.callId === collectionId);
-    try {
-      if (existing) await CallExtraction.update(dataset.handle, existing.id, { auto });
-      else await CallExtraction.create(dataset.handle, { callId: collectionId, auto });
-      setCallExtractions(await CallExtraction.findAll(dataset.handle));
-    } catch (error) {
-      console.error('SpaceStore: could not save whether this call extracts as it happens', error);
-      toastService.error('Could not save whether this call extracts as it happens.');
-      throw error;
-    }
-  }
-
-  const extractionTargetsForCall = (collectionId: string): string[] =>
-    resolveCallExtractionTargets(
+  /** The models one collection extracts: its own list, else the space's default, narrowed to the candidates. */
+  const extractionTargetsFor = (collectionId: string): string[] => {
+    askCollection(collectionId);
+    return resolveCollectionExtractionTargets(
       shapeStore.extractionCandidates(),
       currentSpace()?.extractionTargets,
-      callExtractions().find((row) => row.callId === collectionId)?.entities,
+      collectionSettings()[collectionId]?.extractionTargets,
     );
+  };
 
   /**
-   * Add or remove one model from what a call extracts, for everyone in it.
+   * Whether this agent may change what one collection extracts.
    *
-   * Writes the *resolved* list rather than a diff, so the first toggle also pins whatever the space
-   * default was at that moment — a model added to the space's defaults later does not silently join
-   * a call whose participants have already decided. The same rule `setModuleEnabled` follows.
+   * A call's participants decide for their call, which is everybody who can see it. The space's own
+   * collection is the community's — the messages typed outside any call — so it is whoever
+   * administers the space, exactly as its defaults are.
    */
-  async function setCallExtractionTarget(collectionId: string, entity: string, on: boolean): Promise<void> {
+  const canSetExtractionFor = (collectionId: string): boolean =>
+    Boolean(collectionId) && (collectionId !== spaceRoot() || canAdministerCurrentSpace());
+
+  async function writeCollectionSettings(
+    collectionId: string,
+    fields: { autoExtract?: boolean; extractionTargets?: string },
+    what: string,
+  ): Promise<void> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !collectionId) return;
-    const next = new Set(extractionTargetsForCall(collectionId));
-    if (on) next.add(entity);
-    else next.delete(entity);
-    const entities = JSON.stringify([...next]);
-    const existing = callExtractions().find((row) => row.callId === collectionId);
+    if (!canSetExtractionFor(collectionId)) {
+      toastService.error(`Only someone who administers this space can change ${what} outside calls.`);
+      return;
+    }
+    const before = collectionSettings()[collectionId];
+    // Shown on the press: the subscription answers a moment later, and a switch that waits for it
+    // reads as one that did not take.
+    setCollectionSettings((current) => ({ ...current, [collectionId]: { ...current[collectionId], ...fields } }));
     try {
-      if (existing) await CallExtraction.update(dataset.handle, existing.id, { entities });
-      else await CallExtraction.create(dataset.handle, { callId: collectionId, entities });
-      setCallExtractions(await CallExtraction.findAll(dataset.handle));
+      await CollectionBlock.update(dataset.handle, collectionId, fields);
     } catch (error) {
-      console.error('SpaceStore: could not save what this call extracts', error);
-      toastService.error('Could not save what this call extracts.');
+      setCollectionSettings((current) => ({ ...current, [collectionId]: before ?? {} }));
+      console.error(`SpaceStore: could not save ${what}`, error);
+      toastService.error(`Could not save ${what}.`);
       throw error;
     }
   }
+
+  /**
+   * Turn automatic extraction on or off for one collection, for everyone in it. Leaves the space's
+   * default alone — that is where the *next* conversation starts, and this is about this one.
+   * Does not stop a pass already running: those tokens are spent.
+   */
+  const setAutoExtractFor = (collectionId: string, on: boolean): Promise<void> =>
+    writeCollectionSettings(collectionId, { autoExtract: on }, 'whether this is extracted as it happens');
+
+  /**
+   * Add or remove one model from what a collection extracts, for everyone in it.
+   *
+   * Writes the resolved list rather than a diff, so a collection made without a copy pins whatever
+   * the space's default was at that moment — the same rule `setModuleEnabled` follows.
+   */
+  async function setExtractionTargetFor(collectionId: string, entity: string, on: boolean): Promise<void> {
+    const next = new Set(extractionTargetsFor(collectionId));
+    if (on) next.add(entity);
+    else next.delete(entity);
+    await writeCollectionSettings(collectionId, { extractionTargets: JSON.stringify([...next]) }, 'what this extracts');
+  }
+
+  /*
+    The space's own standing watch: the messages typed straight into it, outside any call.
+
+    Calls are watched by the transcribe module for as long as somebody is in them. This one belongs
+    to the space, so it is the space collection's own setting that decides it. Registered by every
+    member who enters, which is one registration — it is keyed on the collection, and the engine
+    keeps one row per key in the shared perspective. Removed when the setting is switched off while
+    somebody is here to see it change; a member arriving later to a space with it off has nothing
+    to remove.
+
+    What it reads and where it files are the same rules every pass follows: what a person wrote, and
+    the space collection — with the collection itself as the provenance, so items from the feed are
+    told apart from items from a call. Its passes batch, by the engine's defaults: a few messages, or
+    a quiet spell, or two minutes at the most.
+  */
+  let looseWatchOn: { root: string; handle: unknown } | null = null;
+  createEffect(() => {
+    const root = spaceRoot();
+    const handle = datasetStore.currentDataset()?.handle;
+    const wanted = Boolean(root && handle && autoExtractFor(root));
+    // Read so a change to what it extracts re-registers: the watch's class list is fixed at
+    // registration, and the port replaces it when the list differs.
+    if (root) void extractionTargetsFor(root);
+    if (wanted) {
+      looseWatchOn = { root, handle };
+      void datasetStore.watchConversation(root, handle).catch((error: unknown) => {
+        console.info('SpaceStore: the space’s loose messages cannot be watched here', error);
+      });
+      return;
+    }
+    const was = looseWatchOn;
+    looseWatchOn = null;
+    // Only on the way from on to off, and only for the space it was on in: leaving a space is not
+    // switching its watch off.
+    if (was && was.root === root && was.handle === handle) {
+      void datasetStore.unwatchConversation(was.root, was.handle).catch(() => {});
+    }
+  });
 
   /*
     ShapeStore already lends the candidates downward — this store passed the very same accessor a
@@ -3979,11 +4166,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     lends it.
   */
   onCleanup(
-    datasetStore.provideCallExtraction({
-      forCall: extractionTargetsForCall,
-      setForCall: setCallExtractionTarget,
-      autoForCall: autoInterpretForCall,
-      setAutoForCall: setAutoInterpretForCall,
+    datasetStore.provideCollectionExtraction({
+      targetsFor: extractionTargetsFor,
+      setTargetFor: setExtractionTargetFor,
+      autoFor: autoExtractFor,
+      setAutoFor: setAutoExtractFor,
     }),
   );
   /*
@@ -4253,9 +4440,36 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   const unreadNodeIds = createMemo(() => unreadContainerIds(activityRows(), readMarkers()));
 
-  /** Nodes in this space naming this agent. See the interface for why the filter is not pushed down. */
+  /*
+    Messages in this space naming this agent — posts and transcript lines alike, newest first.
+
+    Asked from the agent's end, through the backend's references (`we://mention` to this DID): one
+    lookup however many messages the space holds, and it finds a mention in a transcript line, which
+    the container read below it never could. Read again on entering the space and whenever its
+    containers' activity changes — a new line in a running call is not one of those, and is found on
+    the next. A backend that cannot answer falls back to filtering the container read, which is what
+    this was.
+  */
+  const [mentionRows, setMentionRows] = createSignal<{ id: string; author: string; createdAt: number }[] | null>(null);
+  createEffect(() => {
+    const ds = datasetStore.currentDataset();
+    const did = session.me()?.did;
+    const references = session.backendPorts()?.references;
+    void activityRows();
+    setMentionRows(null);
+    if (!ds || !did || !references) return;
+    void references
+      .referrers(ds.handle, 'we://mention', did, { limit: 50 })
+      .then((rows) => {
+        if (datasetStore.currentDataset() !== ds) return;
+        setMentionRows(rows.map((row) => ({ id: row.id, author: row.author, createdAt: Date.parse(row.at) || 0 })));
+      })
+      .catch((error: unknown) => console.warn('SpaceStore: could not read who mentions this agent', error));
+  });
   const myMentions = createMemo(() => {
     const did = session.me()?.did;
+    const found = mentionRows();
+    if (found) return found;
     return did ? mentionsOf(activityRows(), did) : [];
   });
 
@@ -4770,7 +4984,8 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Turn automatic extraction on or off for a space.
+   * Whether a new collection in a space starts out extracted as it grows. A default: a conversation
+   * already under way keeps its own answer.
    *
    * Takes the value rather than toggling, so a `we-switch` can pass `$event.detail` straight
    * through — the same reason `setThemeScopeGlobal` does. Same failure handling as
@@ -5363,8 +5578,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSpaceDefaultTheme,
     setModuleEnabled,
     autoInterpret,
-    autoInterpretForCall,
-    setAutoInterpretForCall,
+    root: spaceRoot,
+    roles: spaceRoles,
+    autoExtractFor,
+    setAutoExtractFor,
+    canSetExtractionFor,
     spaceModuleSettings,
     myModuleSettings,
     agentModuleSettings,

@@ -20,8 +20,15 @@
  * backend that gets it wrong every time; what it cannot do is say when the gap closes, so the reason
  * should name where the fix is being tracked.
  */
-import { type BackendPorts, type DatasetHandle, RECORD_TYPE_KEY, type RendererDataBindings } from '@we/backend-shared';
+import {
+  type BackendPorts,
+  CONTAINMENT_PREDICATE,
+  type DatasetHandle,
+  RECORD_TYPE_KEY,
+  type RendererDataBindings,
+} from '@we/backend-shared';
 import { getEntity } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { describeTemplateQueries, TEMPLATE_QUERY_CASES, type TemplateQueryCase } from './templateQueries';
@@ -62,6 +69,10 @@ export const CONFORMANCE_CASES = [
   'records.not-excludes-absent',
   'schema.module-entity',
   'schema.hints-round-trip',
+  'schema.containment-predicate',
+  'relations.create-under-parent',
+  'relations.read-under-parent',
+  'relations.delete-takes-links-to-it',
   'relations.ordered-read',
   'relations.create-links-one',
   'relations.create-links-many',
@@ -72,6 +83,7 @@ export const CONFORMANCE_CASES = [
   'live.included-child-edit',
   'live.identical-queries-independent',
   'ephemeral.no-echo',
+  'references.referrers',
 ] as const;
 
 /** Every case a harness can name in `knownGaps` — the per-case ones above and the template queries. */
@@ -94,9 +106,15 @@ interface LiveQuery {
 
 /** The write half: a registered entity class, as the shell's record actions resolve one. */
 interface Model {
-  create(dataset: DatasetHandle, data?: Record<string, unknown>): Promise<Instance>;
+  findAll(dataset: DatasetHandle, query?: Record<string, unknown>): Promise<Row[]>;
+  create(
+    dataset: DatasetHandle,
+    data?: Record<string, unknown>,
+    options?: { parent?: { id: string; predicate: string } },
+  ): Promise<Instance>;
   update(dataset: DatasetHandle, id: string, data: Record<string, unknown>): Promise<unknown>;
   setRelation(dataset: DatasetHandle, id: string, relation: string, ids: readonly string[]): Promise<void>;
+  addRelation(dataset: DatasetHandle, id: string, relation: string, targetId: string): Promise<void>;
 }
 
 /** The read half: what `$getEntity` hands a template. */
@@ -309,6 +327,154 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
         await subject.ports.schemas.resetInterpretationHints(subject.dataset, NOTE);
         expect(await hints()).toMatchObject({ classHint: 'A note somebody wrote', customized: false });
       });
+    });
+
+    describe('containment', () => {
+      /*
+        Containment is the one relation every backend stores under the same predicate, so a space has
+        one graph shape whatever holds it, and anything walking up from a record finds its context.
+        A backend that minted its own would still pass every relation case above — reads by name do
+        not care what the link is called — and would quietly hand a space a different shape.
+      */
+      test(
+        'schema.containment-predicate',
+        'stores containment under the one containment predicate, for the core schema and a module alike',
+        async () => {
+          const declared = {
+            version: '1',
+            entities: {
+              ConformanceFolder: {
+                properties: {},
+                relations: { items: { target: '', cardinality: 'many', containment: true } },
+              },
+            },
+          } as unknown as Parameters<BackendPorts['schemas']['entries']>[0];
+          const moduleEntries = subject.ports.schemas.entries(declared, { moduleId: 'conformance' });
+          const items = moduleEntries
+            .find((e) => e.name === 'ConformanceFolder')
+            ?.properties.find((p) => p.name === 'items');
+          expect(items?.predicate).toBe(CONTAINMENT_PREDICATE);
+
+          const coreEntries = subject.ports.schemas.entries(CORE_MANIFEST, { moduleId: 'conformance' });
+          const children = coreEntries
+            .find((e) => e.name === 'CollectionBlock')
+            ?.properties.find((p) => p.name === 'children');
+          expect(children?.predicate).toBe(CONTAINMENT_PREDICATE);
+        },
+      );
+
+      test(
+        'relations.create-under-parent',
+        'creates a record inside its container, named by id and the containment predicate',
+        async () => {
+          // How a transcript line, a space's canvas and a post in a space are all made: inside their
+          // container in one write, so there is no moment in which they are loose in the space.
+          const Collection = model('CollectionBlock');
+          const container = await Collection.create(subject.dataset, { kind: 'space' });
+          const made = await Collection.create(
+            subject.dataset,
+            { kind: 'canvas' },
+            { parent: { id: container.id, predicate: CONTAINMENT_PREDICATE } },
+          );
+
+          const [row] = await reader('CollectionBlock').findAll(subject.dataset, {
+            where: { id: container.id },
+            include: { children: true },
+          });
+          expect(((row?.children ?? []) as Row[]).map((child) => child.id)).toEqual([made.id]);
+        },
+      );
+
+      test(
+        'relations.read-under-parent',
+        'reads only what one container holds, newest first and bounded, given its id and the predicate',
+        async () => {
+          /*
+            How one call's lines are paged: by the call's id and the containment predicate, ordered
+            and capped, so a page costs the same however long the space's history is. A backend that
+            ignored the parent answered with every line in the space — right-looking, and wrong.
+          */
+          const Collection = model('CollectionBlock');
+          const call = await Collection.create(subject.dataset, { kind: 'call' });
+          const other = await Collection.create(subject.dataset, { kind: 'call' });
+          const parent = (id: string) => ({ parent: { id, predicate: CONTAINMENT_PREDICATE } });
+          const first = await Collection.create(subject.dataset, { kind: 'line-1' }, parent(call.id));
+          await sleep(5);
+          const second = await Collection.create(subject.dataset, { kind: 'line-2' }, parent(call.id));
+          await Collection.create(subject.dataset, { kind: 'elsewhere' }, parent(other.id));
+
+          const page = await Collection.findAll(subject.dataset, {
+            ...parent(call.id),
+            order: { createdAt: 'DESC' },
+            limit: 1,
+          });
+          expect(page.map((row) => row.id)).toEqual([second.id]);
+          const all = await Collection.findAll(subject.dataset, parent(call.id));
+          expect(all.map((row) => row.id).sort()).toEqual([first.id, second.id].sort());
+        },
+      );
+
+      test(
+        'relations.delete-takes-links-to-it',
+        'a deleted record leaves no link to it behind, in its container or in a thread',
+        async () => {
+          /*
+            A post's replies live in its channel and in its thread. Deleting one has to take the
+            links to it as well as the record, or the channel goes on naming a child that is gone
+            and a thread goes on counting a reply nobody can read.
+          */
+          const Collection = model('CollectionBlock');
+          const channel = await Collection.create(subject.dataset, { kind: 'channel', mode: 'feed' });
+          const post = await Collection.create(subject.dataset, { kind: 'post' });
+          const reply = await Collection.create(
+            subject.dataset,
+            { kind: 'reply' },
+            { parent: { id: channel.id, predicate: CONTAINMENT_PREDICATE } },
+          );
+          await Collection.addRelation(subject.dataset, post.id, 'thread', reply.id);
+          const kept = await Collection.create(
+            subject.dataset,
+            { kind: 'reply' },
+            { parent: { id: channel.id, predicate: CONTAINMENT_PREDICATE } },
+          );
+
+          await reply.delete();
+
+          const [holder] = await Collection.findAll(subject.dataset, { where: { id: channel.id } });
+          expect(holder?.children).toEqual([kept.id]);
+          const [subjectRow] = await Collection.findAll(subject.dataset, { where: { id: post.id } });
+          expect(subjectRow?.thread ?? []).toEqual([]);
+        },
+      );
+    });
+
+    describe('references', () => {
+      test(
+        'references.referrers',
+        'answers who links to a value through one predicate, newest first, across kinds of record',
+        async () => {
+          /*
+            How "messages that mention me" is asked: from the agent's end, through the mention relation,
+            whatever kind of message holds it — a post or one line of a transcript. A query cannot ask it,
+            because the relation's target is a DID rather than a record.
+          */
+          const references = subject.ports.references;
+          expect(references, 'the backend answers references').toBeDefined();
+          const did = 'did:key:mentioned';
+          const post = await model('CollectionBlock').create(subject.dataset, { kind: 'post' });
+          await model('CollectionBlock').addRelation(subject.dataset, post.id, 'mentions', did);
+          await sleep(5);
+          const line = await model('TextBlock').create(subject.dataset, { text: '@Ann can you?' });
+          await model('TextBlock').addRelation(subject.dataset, line.id, 'mentions', did);
+          await model('TextBlock').addRelation(subject.dataset, line.id, 'mentions', 'did:key:somebody-else');
+
+          const found = await references!.referrers(subject.dataset, 'we://mention', did);
+          expect(found.map((row) => row.id)).toEqual([line.id, post.id]);
+          expect(
+            (await references!.referrers(subject.dataset, 'we://mention', did, { limit: 1 })).map((r) => r.id),
+          ).toEqual([line.id]);
+        },
+      );
     });
 
     describe('relations', () => {

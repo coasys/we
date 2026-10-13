@@ -8,7 +8,6 @@
  */
 export * from './AgentSettings';
 export * from './AudioBlock';
-export * from './CallExtraction';
 export * from './CalloutBlock';
 export * from './ChatMessage';
 export * from './ChatSession';
@@ -36,6 +35,7 @@ export * from './Signal';
 export * from './SignalType';
 export * from './Space';
 export * from './SpacePreference';
+export * from './SpaceRole';
 export * from './SpaceTemplatePreference';
 export * from './TagBlock';
 export * from './TaskBlock';

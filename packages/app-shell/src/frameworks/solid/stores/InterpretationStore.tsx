@@ -243,6 +243,9 @@ export function InterpretationStoreProvider(props: ParentProps) {
     // Back to optimistic, not to the previous space's answer: a personal space and a hosted one can
     // sit behind different executors, so the last node's capabilities say nothing about this one's.
     setCapable(true);
+    // The suggestions on screen are a different set in a different space, so say so: a surface that
+    // asked about the space on screen asks again rather than marking this one's cards from the last.
+    setProposalsRevision((n) => n + 1);
 
     if (!handle || !ports?.interpretation) return;
 
@@ -471,14 +474,13 @@ export function InterpretationStoreProvider(props: ParentProps) {
         auto-extraction was unavailable until everybody left and rejoined. Published here, a module's
         watch effect depends on it and follows the toggle.
 
-        Asked about a *call* now, with the space's answer underneath it. Participants can stop a
-        standing pass on this conversation without the community changing its mind about every future
-        one — and without needing whoever administers the space to be in the room, which was the only
-        way to stop one before. Called with no id, it answers for the space, which is what a surface
-        asking "does this space do this at all" wants.
+        Asked about a *collection*: each holds its own answer, copied from the space's default when
+        it was made, so participants can stop a standing pass on their conversation without the
+        community changing its mind about every future one. Called with no id, it answers with the
+        space's default, which is what a surface asking "does this space do this at all" wants.
       */
       autoInterpretEnabled: (collectionId?: string) =>
-        collectionId ? spaceStore.autoInterpretForCall(collectionId) : spaceStore.autoInterpret(),
+        collectionId ? spaceStore.autoExtractFor(collectionId) : spaceStore.autoInterpret(),
     }),
   );
 

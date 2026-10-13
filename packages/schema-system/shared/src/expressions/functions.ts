@@ -24,6 +24,7 @@
  * it.
  */
 import type { LocalMetaMap } from '../propResolvers/local';
+import { readField } from './reach';
 import { matchesWhere } from './where';
 
 export type FunctionCategory = 'list' | 'text' | 'number' | 'object' | 'form';
@@ -121,7 +122,7 @@ defineFunction({
   category: 'list',
   params: ['items'],
   doc: 'The numbers in a list added together. Anything that is not a number counts as 0, and anything that is not a list sums to 0.',
-  example: 'sum(local.replies.map(r, count(r.comments)))',
+  example: 'sum(local.replies.map(r, count(r.responses)))',
   impl: ([items]) => asList(items).reduce((total: number, value) => total + asNumber(value), 0),
 });
 
@@ -348,7 +349,10 @@ defineFunction({
     const out: Record<string, unknown> = {};
     for (const key of asList(keys)) {
       const name = asText(key);
-      if (name in object) out[name] = object[name];
+      // `readField`, not `name in object`: the keys are the template's, so this is a property read
+      // like `a.b` and stops at the page the same way.
+      const value = readField(object, name);
+      if (value !== undefined) out[name] = value;
     }
     return out;
   },

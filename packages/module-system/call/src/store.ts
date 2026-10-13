@@ -39,7 +39,7 @@ import { devPeers, devPeersAvailable, readDevPeerCount, stopDevPeers, writeDevPe
 import { parseIceServers } from './iceServers';
 import { createMediaController, type MediaController } from './media';
 import { type CallMesh, createCallMesh, DEFAULT_ICE_SERVERS, type RecoveryRung } from './mesh';
-import { CALL_KIND, CALL_PREDICATE, CALL_PROTOCOL_VERSION, recordCallId } from './protocol';
+import { CALL_KIND, CALL_PROTOCOL_VERSION, recordCallId, RESPONSE_PREDICATE } from './protocol';
 import { solveStrip } from './strip';
 
 // ── Session backend ──────────────────────────────────────────────────
@@ -1113,8 +1113,10 @@ export function createCallStore(deps: ModuleStoreDeps) {
         'CollectionBlock',
         // Feed mode: every participant's transcriber appends to this one record, so it has no single
         // authoring agent and must never be reconciled.
-        { kind: CALL_KIND, type: 'collection', mode: 'feed' },
-        anchorNodeId ? { parent: { id: anchorNodeId, predicate: CALL_PREDICATE } } : undefined,
+        { kind: CALL_KIND, mode: 'feed' },
+        // A call about a record is a response to it, filed by the host where that record lives; any
+        // other call is the space's own.
+        anchorNodeId ? { parent: { id: anchorNodeId, predicate: RESPONSE_PREDICATE } } : { topLevel: true },
       );
     } catch (cause) {
       console.error('call: could not create the call record', cause);
@@ -2248,7 +2250,10 @@ export function createCallStore(deps: ModuleStoreDeps) {
 
     /** Start a new call here, whether or not one is already running. Resolves once it is joined. */
     startCall: action(
-      (anchorNodeId?: string) => startCall(anchorNodeId),
+      // Only an id is an anchor. A button wired without `args` hands over the click, and taking that
+      // for the record the call is about sent an event to the backend, which refused the write.
+      (anchorNodeId?: unknown) =>
+        startCall(typeof anchorNodeId === 'string' && anchorNodeId ? anchorNodeId : undefined),
       'Start a new call in the space on screen, optionally about the record whose id is given; resolves once joined.',
     ),
 

@@ -21,19 +21,15 @@ import { field, formModal, sectionCard, stateFill, stateFillFor, stateIcon } fro
  * table on `TaskState.semantic` — and the picker says what each is *for* rather than what it is
  * called, since the whole point is that the name is the community's and the meaning is shared.
  *
- * ## Why the defaults are shown but not stored
+ * ## Every state listed is a record
  *
- * A space starts with three states it has never written down. They are listed here as "default"
- * because they are real — every task in a new space holds one of their slugs — but nothing is
- * written until somebody acts on one: dragging it into an order, withdrawing it, or naming a state
- * with its slug. That act adopts it. Writing all three down the moment anybody added a fourth was
- * the alternative, and two members doing so on two nodes at once wrote six.
+ * A new space's starter writes its first states, so everything listed here is the community's own
+ * from the start, and editing "To do" is an edit like any other.
  *
  * ## What can be changed afterwards, and the one thing that cannot
  *
  * Everything except the slug. A state could be named and withdrawn and nothing else until now, which
- * meant a colour was settable exactly once — at creation — and the three states a space starts with,
- * which ship without one, could never have one at all. A name typed in a hurry, a semantic picked
+ * meant a colour was settable exactly once — at creation. A name typed in a hurry, a semantic picked
  * wrongly, a glyph nobody likes: each was fixable only by withdrawing the state and making another,
  * which strands every task sitting in it.
  *
@@ -390,24 +386,6 @@ const stateRow: SchemaNode = {
                 },
               },
             },
-            {
-              /*
-                A state the space has never written down.
-
-                Worth showing rather than hiding: it is honest about the fallback — these three are
-                what a space has until it decides otherwise — and it says what will happen: acting on
-                one makes it the community's own.
-              */
-              type: '$if',
-              props: {
-                condition: { $: '!state.defined' },
-                then: {
-                  type: 'we-text',
-                  props: { variant: 'footnote', color: 'text-faint' },
-                  children: ['default'],
-                },
-              },
-            },
           ],
         },
         {
@@ -447,8 +425,7 @@ const stateRow: SchemaNode = {
       children: [
         {
           /*
-        Withdraw, not delete. By slug, so a default can be withdrawn too: the store adopts it — writes
-        the record — as part of the same act, which is the only moment a default becomes one.
+        Withdraw, not delete — see `setTaskStateRetired`.
       */
           type: 'we-button',
           props: {
@@ -490,8 +467,7 @@ export const taskStatesSection: SchemaNode = sectionCard({
         people reordering at once converge instead of one write discarding the other. That is the
         same reason a card's position lives on the board rather than on the task.
 
-        The rows are keyed by slug rather than id, because a default has no id until it is placed in
-        an order — and placing it is what adopts it.
+        The rows are keyed by slug, which is what the store's reorder takes.
       */
       type: 'we-sortable',
       props: {
