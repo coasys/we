@@ -78,6 +78,7 @@ export const CONFORMANCE_CASES = [
   'relations.create-links-many',
   'relations.replace-whole',
   'relations.member-type',
+  'relations.member-counts',
   'live.pushes-writes',
   'live.dispose-stops',
   'live.included-child-edit',
@@ -96,6 +97,7 @@ interface Row {
 
 interface Instance extends Row {
   addChildren(child: unknown): Promise<void>;
+  addSignals(signal: unknown): Promise<void>;
   delete(): Promise<void>;
 }
 
@@ -576,6 +578,28 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           include: { children: true },
         });
         expect((row.children as Row[])[0][RECORD_TYPE_KEY]).toBe('TaskBlock');
+      });
+
+      test('relations.member-counts', 'counts on each member of a heterogeneous relation', async () => {
+        // A card brought by its placement, a post's blocks: records read through a relation that
+        // names no type, each with what people made of it. Counted in the read that brings them,
+        // rather than asked again per member.
+        const Collection = model('CollectionBlock');
+        const post = await Collection.create(subject.dataset, { kind: 'post' });
+        const liked = await model('TextBlock').create(subject.dataset, { text: 'liked' });
+        const quiet = await Collection.create(subject.dataset, { kind: 'text' });
+        await post.addChildren(liked);
+        await post.addChildren(quiet);
+        for (let i = 0; i < 2; i++) {
+          await liked.addSignals(await model('Signal').create(subject.dataset, { signalTypeId: 'like', value: 1 }));
+        }
+
+        const [row] = await reader('CollectionBlock').findAll(subject.dataset, {
+          where: { id: post.id },
+          include: { children: { include: { $likes: { from: 'signals', count: true } } } },
+        });
+        const likes = Object.fromEntries((row.children as Row[]).map((child) => [child.id, child.$likes ?? 0]));
+        expect(likes).toEqual({ [liked.id]: 2, [quiet.id]: 0 });
       });
     });
 

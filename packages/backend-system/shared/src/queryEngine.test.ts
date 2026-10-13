@@ -244,6 +244,64 @@ describe('untyped relations', () => {
     expect((rows[0].$cover as { id: string }).id).toBe('i1');
     expect((rows[1].$cover as { id: string }).id).toBe('i2');
   });
+
+  /**
+   * A count on each member, worked out against the member's own class. One whose class has no such
+   * relation carries no value at all — "an image has no comments" is not "nobody commented".
+   */
+  it('counts on each member as its own class, and leaves the count off a class without the relation', () => {
+    const withComments = {
+      tables: {
+        ...data.tables,
+        Comment: [
+          { id: 'c1', textId: 't1' },
+          { id: 'c2', textId: 't1' },
+        ],
+      },
+      relations: {
+        ...data.relations,
+        TextBlock: { comments: { target: 'Comment', cardinality: 'many' as const, foreignKey: 'textId' } },
+      },
+    };
+    const [first] = executeQueryIR(
+      {
+        irVersion: 1,
+        entity: 'Post',
+        filter: { field: 'id', op: 'eq', value: 'p1' },
+        include: { children: { aggregate: [{ as: '$commentCount', over: 'comments', fn: 'count' }] } },
+      },
+      withComments,
+    );
+    const children = Object.fromEntries((first.children as any[]).map((c) => [c.id, c]));
+    expect(children.t1.$commentCount).toBe(2);
+    expect(children.i1).not.toHaveProperty('$commentCount');
+  });
+});
+
+describe('a count on included records', () => {
+  it('puts the count on each included record, and orders them by it', () => {
+    const [ada] = executeQueryIR(
+      {
+        irVersion: 1,
+        entity: 'Agent',
+        filter: { field: 'id', op: 'eq', value: 'a1' },
+        include: {
+          posts: {
+            aggregate: [{ as: '$likes', over: 'signals', fn: 'count' }],
+            sort: [{ by: '$likes', dir: 'desc' }],
+          },
+        },
+      },
+      {
+        ...data,
+        tables: { ...data.tables, Signal: [...data.tables.Signal, { id: 's5', postId: 'p3', value: 1 }] },
+      },
+    );
+    expect((ada.posts as any[]).map((p) => [p.id, p.$likes])).toEqual([
+      ['p1', 2],
+      ['p3', 1],
+    ]);
+  });
 });
 
 describe('an ordered relation', () => {
