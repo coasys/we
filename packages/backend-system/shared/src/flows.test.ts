@@ -1,98 +1,117 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  type FlowProposal,
-  type FlowProposeResult,
-  type FlowRun,
-  type FlowSnapshot,
-  openMoves,
-  readProposeResult,
-  runFor,
+  allowedMoves,
+  approvalsFor,
+  asksForMore,
+  type FlowCapabilities,
+  type FlowDefinition,
+  guardsFor,
+  isFinalState,
+  validateFlowDefinition,
 } from './flows';
 
-const run = (id: string, subject: string, startedAt?: number, state = 'todo'): FlowRun => ({
-  id,
-  subject,
-  state,
-  ...(startedAt !== undefined ? { startedAt } : {}),
-});
+const PROPOSAL: FlowDefinition = {
+  name: 'Proposal',
+  subjects: ['TextBlock'],
+  states: [
+    { name: 'draft' },
+    { name: 'discussion' },
+    { name: 'vote' },
+    { name: 'adopted', requires: [{ kind: 'approvals', count: 3 }] },
+    { name: 'rejected', requires: [{ kind: 'approvals', count: 3 }] },
+  ],
+  transitions: [
+    { from: 'draft', to: 'discussion' },
+    { from: 'discussion', to: 'vote' },
+    { from: 'vote', to: 'adopted' },
+    { from: 'vote', to: 'rejected' },
+  ],
+};
 
-const proposal = (over: Partial<FlowProposal> & Pick<FlowProposal, 'id' | 'to'>): FlowProposal => ({
-  run: 'r1',
-  from: 'todo',
-  proposer: 'did:a',
-  voters: ['did:a'],
-  settled: false,
-  ...over,
-});
+const SERVER: FlowCapabilities = {
+  requirements: ['approvals'],
+  enforcement: 'server',
+  sealedEvidence: false,
+  contention: 'first',
+};
 
-describe('runFor', () => {
-  it('picks the earliest started run of the subject, whoever asks', () => {
-    const runs = [run('r2', 'task', 20), run('r1', 'task', 10), run('r3', 'other', 1)];
-    expect(runFor(runs, 'task')?.id).toBe('r1');
-    expect(runFor([...runs].reverse(), 'task')?.id).toBe('r1');
+describe('validateFlowDefinition', () => {
+  it('finds nothing wrong with a sound definition', () => {
+    expect(validateFlowDefinition(PROPOSAL)).toEqual([]);
   });
 
-  it('breaks a tie on the id, so two readers holding the same runs agree', () => {
-    expect(runFor([run('b', 'task', 5), run('a', 'task', 5)], 'task')?.id).toBe('a');
+  it('refuses a state name the backend keeps for itself, and one used twice', () => {
+    const problems = validateFlowDefinition({
+      ...PROPOSAL,
+      states: [...PROPOSAL.states, { name: '_entry' }, { name: 'draft' }],
+    });
+    expect(problems.some((p) => p.includes('"_entry"'))).toBe(true);
+    expect(problems.some((p) => p.includes('Two states are called "draft"'))).toBe(true);
   });
 
-  it('prefers a run with a start time over one without', () => {
-    expect(runFor([run('a', 'task'), run('b', 'task', 5)], 'task')?.id).toBe('b');
+  it('refuses a move naming a state the flow does not have', () => {
+    const problems = validateFlowDefinition({ ...PROPOSAL, transitions: [{ from: 'draft', to: 'published' }] });
+    expect(problems).toEqual(['A move names "published", which is not a state of this flow.']);
   });
 
-  it('answers nothing for a subject with no run', () => {
-    expect(runFor([run('a', 'task', 1)], 'nope')).toBeUndefined();
+  it('refuses two approval rules on one state, and a count below one', () => {
+    const problems = validateFlowDefinition({
+      ...PROPOSAL,
+      states: [
+        {
+          name: 'draft',
+          requires: [
+            { kind: 'approvals', count: 2 },
+            { kind: 'approvals', count: 0 },
+          ],
+        },
+        ...PROPOSAL.states.slice(1),
+      ],
+    });
+    expect(problems.some((p) => p.includes('asks for approvals twice'))).toBe(true);
+    expect(problems.some((p) => p.includes('asks for 0 approvals'))).toBe(true);
   });
-});
 
-describe('openMoves', () => {
-  const current = run('r1', 'task', 1, 'todo');
-
-  it('merges twin proposals for one move and keeps every voter once, in the order they asked', () => {
-    const snapshot: FlowSnapshot = {
-      runs: [current],
-      proposals: [
-        proposal({ id: 'p2', to: 'done', proposer: 'did:b', voters: ['did:b', 'did:a'], proposedAt: 20 }),
-        proposal({ id: 'p1', to: 'done', proposer: 'did:a', voters: ['did:a', 'did:c'], proposedAt: 10 }),
+  it('refuses a requirement the backend says it cannot enforce', () => {
+    const guarded: FlowDefinition = {
+      ...PROPOSAL,
+      states: [
+        { name: 'draft', requires: [{ kind: 'guard', entity: 'Comment', tie: { relation: 'responses' } }] },
+        ...PROPOSAL.states.slice(1),
       ],
     };
-    expect(openMoves(snapshot, current)).toEqual([
-      { to: 'done', proposals: ['p1', 'p2'], voters: ['did:a', 'did:c', 'did:b'], proposer: 'did:a', proposedAt: 10 },
+    expect(validateFlowDefinition(guarded)).toEqual([]);
+    expect(validateFlowDefinition(guarded, SERVER)).toEqual([
+      '"draft" requires guard, which this backend cannot enforce.',
     ]);
   });
-
-  it('leaves out settled proposals, proposals from a state the run has left, and other runs', () => {
-    const snapshot: FlowSnapshot = {
-      runs: [current],
-      proposals: [
-        proposal({ id: 'settled', to: 'doing', settled: true }),
-        proposal({ id: 'stale', to: 'done', from: 'doing' }),
-        proposal({ id: 'elsewhere', to: 'done', run: 'r9' }),
-        proposal({ id: 'open', to: 'blocked' }),
-      ],
-    };
-    expect(openMoves(snapshot, current).map((m) => m.to)).toEqual(['blocked']);
-  });
 });
 
-describe('readProposeResult', () => {
-  const base: FlowProposeResult = {
-    proposal: 'p',
-    opened: true,
-    voted: true,
-    moves: [],
-    state: 'todo',
-    stalled: false,
-  };
-
-  it('reads the four cases a surface tells apart', () => {
-    expect(readProposeResult({ ...base, moves: [{ from: 'todo', to: 'done', voters: ['did:a'] }] })).toBe('moved');
-    expect(readProposeResult(base)).toBe('waiting');
-    expect(readProposeResult({ ...base, opened: false, voted: false })).toBe('already-voted');
+describe('readings', () => {
+  it('offers the moves out of where a record stands, and only the first state to a record with none', () => {
+    expect(allowedMoves(PROPOSAL, 'vote')).toEqual(['adopted', 'rejected']);
+    expect(allowedMoves(PROPOSAL, null)).toEqual(['draft']);
   });
 
-  it('says a stuck run is stuck, even when the call also recorded a vote', () => {
-    expect(readProposeResult({ ...base, stalled: true })).toBe('stalled');
+  it('calls a state no move leaves final', () => {
+    expect(isFinalState(PROPOSAL, 'adopted')).toBe(true);
+    expect(isFinalState(PROPOSAL, 'vote')).toBe(false);
+  });
+
+  it('reads one ask from anybody where a state says nothing', () => {
+    expect(approvalsFor(PROPOSAL.states[0])).toEqual({ count: 1 });
+    expect(approvalsFor(PROPOSAL.states[3])).toEqual({ count: 3 });
+    expect(asksForMore(PROPOSAL.states[0])).toBe(false);
+    expect(asksForMore(PROPOSAL.states[3])).toBe(true);
+  });
+
+  it('counts a guard alone as asking for more', () => {
+    const state = {
+      name: 'review',
+      requires: [{ kind: 'guard' as const, entity: 'Document', tie: { relation: 'responses' } }],
+    };
+    expect(guardsFor(state)).toHaveLength(1);
+    expect(asksForMore(state)).toBe(true);
   });
 });

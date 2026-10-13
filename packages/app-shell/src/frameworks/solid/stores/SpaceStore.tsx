@@ -95,7 +95,7 @@ import {
   routableSections,
   viewSettings,
 } from '@shared/viewResolution';
-import type { AgentProfileSummary, DatasetRef, FlowSnapshot } from '@we/backend-shared';
+import type { AgentProfileSummary, DatasetRef, FlowView } from '@we/backend-shared';
 import { displayName, trace } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
@@ -3270,14 +3270,12 @@ export function SpaceStoreProvider(props: ParentProps) {
   const taskFlowDefinition = createMemo(() => compileTaskFlow(taskFlowRules()));
   const taskFlowEnabled = (): boolean =>
     Boolean(taskFlowDefinition() && session.backendPorts()?.flows && datasetStore.isWeSpace());
-  const [taskFlowSnapshot, setTaskFlowSnapshot] = createSignal<FlowSnapshot | null>(null);
+  const [taskFlowView, setTaskFlowView] = createSignal<FlowView | null>(null);
 
   const taskFlow = createTaskFlowActions({
     dataset: () => datasetStore.currentDataset()?.handle,
     port: () => (taskFlowEnabled() ? session.backendPorts()?.flows : undefined),
     states: () => taskFlowRules(),
-    snapshot: () => taskFlowSnapshot(),
-    me: () => session.me()?.did,
   });
 
   /*
@@ -3299,7 +3297,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   });
   createEffect(() => {
     const key = taskFlowKey();
-    setTaskFlowSnapshot(null);
+    setTaskFlowView(null);
     if (!key) return;
     const port = session.backendPorts()?.flows;
     const dataset = datasetStore.currentDataset()?.handle;
@@ -3322,8 +3320,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       }
       if (cancelled) return;
       try {
-        const unsubscribe = await port.watch(dataset, TASK_FLOW, (snapshot) => {
-          if (!cancelled) setTaskFlowSnapshot(snapshot);
+        const unsubscribe = await port.watch(dataset, TASK_FLOW, (view) => {
+          if (!cancelled) setTaskFlowView(view);
         });
         if (cancelled) unsubscribe();
         else stop = unsubscribe;
@@ -3333,16 +3331,16 @@ export function SpaceStoreProvider(props: ParentProps) {
     })();
   });
 
-  // What the board draws from — the snapshot and the rules, together, or nothing.
+  // What the board draws from — the view and the rules, together, or nothing.
   createEffect(() => {
-    const snapshot = taskFlowSnapshot();
+    const view = taskFlowView();
     const rules = Object.fromEntries(
       taskFlowRules().map((rule) => [
         rule.slug,
         { approvals: approvalsOf(rule), approverKind: rule.approverKind ?? '' },
       ]),
     );
-    taskFlowLive.set(taskFlowKey() && snapshot ? { snapshot, rules } : null);
+    taskFlowLive.set(taskFlowKey() && view ? { view, rules } : null);
   });
   onCleanup(() => taskFlowLive.set(null));
 
@@ -3381,6 +3379,10 @@ export function SpaceStoreProvider(props: ParentProps) {
         // Not a failure: the vote is usually counted after the call gives up waiting, and the board
         // moves the card when it is.
         toastService.info('The node is still counting your approval — the card will move when it has');
+      } else if (outcome === 'unmet') {
+        toastService.error('Not yet — what that column asks for is not there');
+      } else if (outcome === 'not-allowed') {
+        toastService.error('That card cannot move there from where it is');
       }
     } catch (error) {
       console.error('SpaceStore: could not agree with that move', error);
