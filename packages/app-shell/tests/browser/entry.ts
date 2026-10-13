@@ -559,11 +559,42 @@ function editorProbe(): void {
   for (let i = 0; i < 3; i++) list.append(instance('n-item', i));
   for (let i = 0; i < 3; i++) list.append(instance('n-copy', i));
 
-  // The app's chrome, as the host draws it: an edit surface only while the app is being edited.
+  /*
+    The app's chrome, as the host draws it: a box-less wrapper that is an edit surface only while the
+    app is being edited, holding pieces that each position themselves — one node of the app's own, and
+    the sidebar as a host part, whose frame has no box, inside which a Column sized to nothing holds a
+    fixed, clipped column at the chrome's layer, as WE's sidebar is.
+  */
   const appChrome = document.createElement('div');
   appChrome.setAttribute('data-we-app-chrome', '');
-  appChrome.style.cssText = 'position: fixed; left: 0; top: 680px; width: 160px; height: 40px; z-index: 1;';
-  appChrome.append(node('n-app-inner', 'app'));
+  appChrome.style.display = 'contents';
+  const appOwn = document.createElement('div');
+  appOwn.style.cssText = 'position: fixed; left: 0; top: 680px; width: 160px; height: 40px; z-index: 1;';
+  appOwn.append(node('n-app-inner', 'app'));
+  const sidebarPlaced = document.createElement('div');
+  sidebarPlaced.setAttribute('data-we-node-id', 'n-sidebar');
+  sidebarPlaced.style.display = 'contents';
+  const sidebarFrame = document.createElement('div');
+  sidebarFrame.style.display = 'contents';
+  sidebarFrame.setAttribute(PART_ATTR, 'host.sidebar');
+  sidebarFrame.setAttribute(PART_NODE_ATTR, 'n-sidebar');
+  const sidebarRoot = document.createElement('div');
+  sidebarRoot.setAttribute('data-we-node-id', 'n-sidebar-root');
+  sidebarRoot.style.display = 'contents';
+  const sidebarBox = document.createElement('div');
+  sidebarBox.style.cssText =
+    'position: fixed; left: 170px; top: 680px; width: 80px; height: 40px; overflow: hidden; z-index: 250; display: flex; flex-direction: column;';
+  const sidebarItem = node('n-sidebar-item', 'side');
+  (sidebarItem.firstElementChild as HTMLElement).style.width = '60px';
+  sidebarBox.append(sidebarItem);
+  // The Column the sidebar's root draws: a box of its own, sized to nothing, since all it holds is fixed.
+  const sidebarColumn = document.createElement('div');
+  sidebarColumn.style.cssText = 'display: flex; flex-direction: column;';
+  sidebarColumn.append(sidebarBox);
+  sidebarRoot.append(sidebarColumn);
+  sidebarFrame.append(sidebarRoot);
+  sidebarPlaced.append(sidebarFrame);
+  appChrome.append(appOwn, sidebarPlaced);
 
   document.body.append(content, panel, scrolled, list, appChrome);
   scroller.scrollTop = 300;
@@ -592,7 +623,10 @@ function editorProbe(): void {
     id: 'my-app',
     type: 'Column',
     meta: { name: 'My app', role: 'app' },
-    children: [{ id: 'n-app-inner', type: 'we-button' }],
+    children: [
+      { id: 'n-app-inner', type: 'we-button' },
+      { id: 'n-sidebar', type: '$part', props: { id: 'host.sidebar' } },
+    ],
   };
   createEffect(() =>
     editingApp() ? appChrome.setAttribute(EDIT_SURFACE_ATTR, '') : appChrome.removeAttribute(EDIT_SURFACE_ATTR),

@@ -149,8 +149,18 @@ function surfaceOf(el: Element | null): Element | null {
 function seenAt(el: Element, rect: DOMRect): boolean {
   const surface = surfaceOf(el);
   if (!surface) return false;
-  const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-  return !!hit && (surface.contains(hit) || hit.contains(surface));
+  const x = rect.left + rect.width / 2;
+  const y = rect.top + rect.height / 2;
+  const hit = document.elementFromPoint(x, y);
+  if (hit && (surface.contains(hit) || hit.contains(surface))) return true;
+  /*
+    A surface with no box of its own — the app's, which wraps chrome that positions itself — is never
+    the hit: with its contents taking no pointer the test falls through the sidebar to whatever is
+    under it. Asked again with the contents hit-testable, it answers with the node itself, or with
+    whatever covers it. Only on a miss, so the ordinary case still costs one hit-test a frame.
+  */
+  const under = templateElementAt(x, y);
+  return !!under && surface.contains(under);
 }
 
 /*
@@ -355,9 +365,16 @@ const boundsOf = (el: Element): Element => el.firstElementChild ?? el;
  * A placed part is framed box-less — `display: contents`, so it lays out as though nothing wrapped it
  * — and a box-less element measures as nothing, which drew a ring of no size round a selected part.
  * Its children's boxes together are where it is.
+ *
+ * So is a box with no area that holds something positioned out of its flow. WE's sidebar is a fixed
+ * column inside a Column that, holding only that, is as wide as the page and no height at all — and
+ * taking that as where the sidebar is drew no ring at all on hovering it.
  */
 function boxOf(el: Element): DOMRect {
-  if (getComputedStyle(el).display !== 'contents') return el.getBoundingClientRect();
+  if (getComputedStyle(el).display !== 'contents') {
+    const own = el.getBoundingClientRect();
+    if ((own.width && own.height) || !el.firstElementChild) return own;
+  }
   let left = Infinity;
   let top = Infinity;
   let right = -Infinity;
