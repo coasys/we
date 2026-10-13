@@ -42,6 +42,7 @@ import {
   type FlowEditorView,
   type FlowLabels,
   historyView,
+  kindOf,
   type RecordView,
   recordView,
   type StepHistoryView,
@@ -153,6 +154,11 @@ export interface FlowStore {
   moveStep: (name: string, by: number) => void;
   renameStep: (name: string, label: string) => void;
   setStepHint: (name: string, hint: string) => void;
+  /**
+   * A step's name, hint and approvals at once — what a step's edit form saves. Applied as one edit,
+   * so a refusal (a name already used) leaves the step exactly as it was.
+   */
+  updateStep: (name: string, changes: { label?: string; hint?: string; approvals?: number; kind?: string }) => void;
   addBranch: (from: string, label: string, rejoins?: string) => void;
   setBranchEnd: (lane: number, rejoins: string) => void;
   setRule: (rule: FlowSequenceRule) => void;
@@ -637,6 +643,22 @@ export function FlowStoreProvider(props: ParentProps) {
     moveStep: (name, by) => edit((d) => draftEdits.moveStep(d, name, by < 0 ? -1 : 1)),
     renameStep: (name, label) => edit((d) => draftEdits.renameStep(d, name, label)),
     setStepHint: (name, hint) => edit((d) => draftEdits.setStepHint(d, name, hint)),
+    updateStep: (name, changes) =>
+      edit((d) => {
+        let next: DraftEdit = d;
+        if (changes.hint !== undefined) next = draftEdits.setStepHint(next, name, changes.hint);
+        if (!isRefusal(next) && (changes.approvals !== undefined || changes.kind !== undefined)) {
+          const current = next.states[name]?.requires ?? [];
+          const before = current.find((r) => r.kind === 'approvals');
+          const count = changes.approvals ?? (before?.kind === 'approvals' ? before.count : 1);
+          const rule = approvalsRule(count, changes.kind ?? (before?.kind === 'approvals' ? kindOf(before.from) : ''));
+          const rest = current.filter((r) => r.kind !== 'approvals');
+          next = draftEdits.setRequirements(next, name, rule ? [rule, ...rest] : rest);
+        }
+        // Renamed last: everything above names the step as it was.
+        if (!isRefusal(next) && changes.label !== undefined) next = draftEdits.renameStep(next, name, changes.label);
+        return next;
+      }),
     addBranch: (from, label, rejoins) => edit((d) => draftEdits.addBranch(d, from, label, rejoins || undefined)),
     setBranchEnd: (lane, rejoins) => edit((d) => draftEdits.setBranchEnd(d, lane, rejoins || undefined)),
     setRule: (rule) => edit((d) => draftEdits.setRule(d, rule)),

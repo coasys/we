@@ -634,6 +634,7 @@ export const storeEntries: StoreEntry[] = [
       'moveStep',
       'renameStep',
       'setStepHint',
+      'updateStep',
       'addBranch',
       'setBranchEnd',
       'setRule',
@@ -1857,6 +1858,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         moveStep: '(name: string, by: number): moves a step one place along its lane: -1 earlier, 1 later',
         renameStep: '(name: string, label: string): renames a step everywhere it is named',
         setStepHint: '(name: string, hint: string): one sentence on what being at that step means',
+        updateStep:
+          "(name: string, changes: { label?, hint?, approvals?, kind? }): a step's name, hint and approvals at once — what a step's edit form saves. `kind` is the involvement kind whose holders' approval counts, '' for anybody's. All or nothing: a name already used refuses the lot",
         addBranch:
           '(from: string, label: string, rejoins?: string): a new branch leaving the step `from`, with one step on it, ending there unless `rejoins` names where it comes back',
         setBranchEnd: "(lane: number, rejoins: string): where a branch comes back, or '' for a branch that ends",

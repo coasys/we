@@ -211,6 +211,12 @@ never delete its cards, and why the link state can be inconsistent after a parti
 still renders one answer. The same doc records where new per-column state goes, so the entity does
 not accrete a scalar per feature.
 
+**Before changing anything about flows, read docs/architecture/flows.md.** `FlowPort` speaks in
+rules and moves — a state's `requires`, `move` answering moved, waiting, refused, stalled or pending —
+and never in how a backend enforces them: runs, proposals and an entry state stay in the AD4M
+adapter, and where backends differ they say so in `FlowPort.capabilities`. A flow is edited as lanes
+that are read back out of the stored definition, never stored themselves.
+
 ---
 
 ## Contribution Surfaces (codebase work — not for JSON schema authoring)
@@ -2999,6 +3005,7 @@ FlowStore:
   - moveStep(name: string, by: number): moves a step one place along its lane: -1 earlier, 1 later
   - renameStep(name: string, label: string): renames a step everywhere it is named
   - setStepHint(name: string, hint: string): one sentence on what being at that step means
+  - updateStep(name: string, changes: { label?, hint?, approvals?, kind? }): a step's name, hint and approvals at once — what a step's edit form saves. `kind` is the involvement kind whose holders' approval counts, '' for anybody's. All or nothing: a name already used refuses the lot
   - addBranch(from: string, label: string, rejoins?: string): a new branch leaving the step `from`, with one step on it, ending there unless `rejoins` names where it comes back
   - setBranchEnd(lane: number, rejoins: string): where a branch comes back, or '' for a branch that ends
   - setRule(rule: 'next' | 'next-and-back' | 'any'): how steps move along a lane — on only, on and back, or anywhere to anywhere (no branches then)

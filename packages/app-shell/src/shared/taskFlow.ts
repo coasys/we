@@ -46,6 +46,8 @@ import type {
 } from '@we/backend-shared';
 import { itemFor, trace, tracing } from '@we/backend-shared';
 
+import { involvementRole } from './flowViews';
+
 /** The flow's name in the dataset. One per space: the space's own task states. */
 export const TASK_FLOW = 'TaskStates';
 
@@ -95,16 +97,7 @@ export function compileTaskFlow(states: readonly TaskStateRule[]): FlowDefinitio
           {
             kind: 'approvals',
             count,
-            ...(rule?.approverKind
-              ? {
-                  from: {
-                    entity: 'Involvement',
-                    agentField: 'agent',
-                    where: { kind: rule.approverKind },
-                    subjectField: 'node',
-                  },
-                }
-              : {}),
+            ...(rule?.approverKind ? { from: involvementRole(rule.approverKind) } : {}),
           },
         ],
       };

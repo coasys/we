@@ -317,8 +317,8 @@ A task state can ask for agreement before work enters it: `TaskState.approvals` 
 people) and `TaskState.approverKind` (an involvement kind whose holders on the task are the only ones
 who count — its reviewers, say). The first state that asks for any turns the space's states into a
 **flow**, and the rest of this section is what changes when it does. The mechanism is the backend's
-flow port (`FlowPort` in `@we/backend-shared`); what task states mean as a flow is
-`packages/app-shell/src/shared/taskFlow.ts`.
+flow port (`FlowPort` in `@we/backend-shared`; see [flows.md](./flows.md)); what task states mean as a
+flow is `packages/app-shell/src/shared/taskFlow.ts`.
 
 **A drop asks rather than writes.** Into a state that asks for nothing, it moves the card as before,
 drawn ahead of the round trip. Into a state that asks for agreement, nothing is written and nothing
