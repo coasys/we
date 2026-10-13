@@ -357,6 +357,14 @@ interface PeerSlot {
    * the transport, and only ICE has anything to say about that.
    */
   everConnected: boolean;
+  /**
+   * When this side sent an offer that has had no answer yet, or 0.
+   *
+   * Tracked apart from the connection state because a pair renegotiates after it connects: the
+   * answerer's media travels in an offer of its own, sent once the pair is up. See the connected
+   * case in {@link dueForRepair}.
+   */
+  offeredAt: number;
   /** When this slot was created or last rebuilt — where the handshake deadline counts from. */
   since: number;
   /** When the last repair was attempted, so rungs are spaced rather than fired in a burst. */
@@ -492,6 +500,7 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
       lastSent: null,
       lastResent: null,
       everConnected: false,
+      offeredAt: 0,
       since: now(),
       lastAttempt: 0,
       attempts: 0,
@@ -510,6 +519,7 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
           // difference between the second rung of the ladder and the third: the peer connection is
           // intact and only the message was dropped, so nothing needs rebuilding.
           slot.lastSent = { type: pc.localDescription.type, sdp: pc.localDescription.sdp };
+          if (pc.localDescription.type === 'offer') slot.offeredAt = now();
           sendFrom(peerId, slot, { kind: 'description', description: pc.localDescription });
         }
       } catch (error) {
@@ -798,6 +808,10 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
         if (slot.ignoreOffer) return;
 
         await slot.pc.setRemoteDescription(description);
+        // An answer settles this side's offer, and accepting the peer's offer rolled it back. Either
+        // way none is pending, and a connected pair that settles has nothing left to repair.
+        slot.offeredAt = 0;
+        if (slot.pc.connectionState === 'connected') slot.attempts = 0;
         /*
           Candidates become applicable exactly here, and not before.
 
@@ -928,7 +942,8 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
       would be destroying working state. Bounded to one attempt per description by `lastResent`, so
       it escalates rather than repeating.
     */
-    if (!slot.everConnected && slot.lastSent && slot.lastSent.sdp !== slot.lastResent) {
+    const unanswered = slot.offeredAt > 0 && slot.pc.signalingState === 'have-local-offer';
+    if ((!slot.everConnected || unanswered) && slot.lastSent && slot.lastSent.sdp !== slot.lastResent) {
       slot.lastResent = slot.lastSent.sdp ?? null;
       sendFrom(peerId, slot, { kind: 'description', description: slot.lastSent });
       options.onPeerRecovery?.(peerId, { rung: 'resend', attempts });
@@ -943,8 +958,22 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
   /** Whether this pair has been given long enough, and whether it is this side's turn to act. */
   function dueForRepair(slot: PeerSlot, at: number): boolean {
     const state = slot.pc.connectionState;
-    if (state === 'connected') return false;
     if (slot.attempts >= MAX_RECOVERY_ATTEMPTS) return false;
+
+    /*
+      Connected, with an offer of this side's never answered.
+
+      A pair renegotiates after it connects — the answerer's media travels in its own offer — and on
+      an unordered transport that offer can reach an impolite peer before the answer it follows. The
+      impolite peer is still waiting on its own offer, reads the new one as glare, and ignores it.
+      The answer then lands, the pair reads `connected`, and the media in that direction never
+      arrives, because nothing revisited a connected pair. Only this side can see the offer is still
+      pending, so it acts without the polite wait.
+    */
+    if (state === 'connected') {
+      if (!slot.offeredAt || slot.pc.signalingState !== 'have-local-offer') return false;
+      return at - Math.max(slot.offeredAt, slot.lastAttempt) >= RECOVERY_INTERVAL_MS;
+    }
 
     /*
       The impolite peer repairs first; the polite one waits twice as long.

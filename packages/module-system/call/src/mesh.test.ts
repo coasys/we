@@ -1042,6 +1042,100 @@ describe('recovering a pair that did not connect', () => {
   });
 });
 
+describe('a connected pair whose renegotiation went unanswered', () => {
+  let bus: InMemoryBus;
+  const dataset = { id: 'space-1' };
+  const callId = recordCallId('rec-abc');
+
+  beforeEach(() => {
+    bus = new InMemoryBus();
+  });
+
+  /** Alice and Bob, negotiated and connected, with Bob's sends droppable from here on. */
+  async function connectedPair() {
+    const clock = makeClock();
+    const bobLoses = { description: false };
+    const alice = makeMesh(bus, dataset, 'did:alice', callId, { now: clock.now });
+    const bob = makeMesh(bus, dataset, 'did:bob', callId, {
+      now: clock.now,
+      drop: (payload) => bobLoses.description && (payload as { kind?: string }).kind === 'description',
+    });
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    bob.mesh.setRoster(['did:alice', 'did:bob']);
+    for (let i = 0; i < 4; i += 1) await settle();
+    alice.live().setConnectionState('connected');
+    bob.live().setConnectionState('connected');
+    expect(alice.live().signalingState).toBe('stable');
+    expect(bob.live().signalingState).toBe('stable');
+    return { clock, alice, bob, bobLoses };
+  }
+
+  it('resends an offer that never got its answer, though the pair reads connected', async () => {
+    /*
+      The answerer's media travels in an offer of its own, sent once the pair is up. Reordered behind
+      the answer it follows, it reaches an impolite peer still waiting on its own offer, which reads
+      it as glare and ignores it; lost outright, it never arrives. Either way the pair says
+      `connected` and that direction carries nothing, and the ladder never looked at a connected
+      pair. Found by running three meshes on libwebrtc over a reordering channel.
+    */
+    const { clock, alice, bob, bobLoses } = await connectedPair();
+
+    bobLoses.description = true;
+    bob.live().restartIce();
+    await settle();
+    await settle();
+    expect(bob.live().signalingState).toBe('have-local-offer');
+    expect(alice.live().signalingState, 'alice never heard it').toBe('stable');
+
+    bobLoses.description = false;
+    clock.advance(RECOVERY_INTERVAL_MS - 1);
+    bob.mesh.tick();
+    expect(bob.recoveries, 'not before the interval').toEqual([]);
+
+    clock.advance(1);
+    bob.mesh.tick();
+    for (let i = 0; i < 3; i += 1) await settle();
+
+    expect(bob.recoveries.map((r) => r.rung)).toEqual(['resend']);
+    expect(bob.connections, 'a resend, not a rebuild').toHaveLength(1);
+    expect(bob.live().signalingState).toBe('stable');
+    expect(alice.errors).toEqual([]);
+    expect(bob.errors).toEqual([]);
+  });
+
+  it('leaves a connected pair alone while nothing it offered is pending', async () => {
+    const { clock, alice, bob } = await connectedPair();
+
+    clock.advance(RECOVERY_INTERVAL_MS * 4);
+    alice.mesh.tick();
+    bob.mesh.tick();
+    await settle();
+
+    expect(alice.recoveries).toEqual([]);
+    expect(bob.recoveries).toEqual([]);
+  });
+
+  it('rebuilds the pair when the resent offer goes unanswered too', async () => {
+    const { clock, bob, bobLoses } = await connectedPair();
+
+    bobLoses.description = true;
+    bob.live().restartIce();
+    await settle();
+    await settle();
+
+    clock.advance(RECOVERY_INTERVAL_MS);
+    bob.mesh.tick();
+    await settle();
+    // The resend is lost as well, so a second interval later the ladder escalates.
+    clock.advance(RECOVERY_INTERVAL_MS);
+    bob.mesh.tick();
+    await settle();
+
+    expect(bob.recoveries.map((r) => r.rung)).toEqual(['resend', 'rebuild']);
+    expect(kinds(bob.sent)).toContain('reset');
+  });
+});
+
 describe('what a call is told about its own connections', () => {
   let bus: InMemoryBus;
   const dataset = { id: 'space-1' };
