@@ -33,6 +33,7 @@ import {
   useClockStore,
   useDatasetStore,
   useEditorStore,
+  useFlowStore,
   useInterpretationStore,
   usePresenceStore,
   useProfileStore,
@@ -99,6 +100,7 @@ export default function TemplateProvider() {
   const presenceStore = usePresenceStore();
   const interpretationStore = useInterpretationStore();
   const clockStore = useClockStore();
+  const flowStore = useFlowStore();
 
   // Set CSS custom properties on :root so position:fixed elements (e.g. CesiumGlobe canvas)
   // can consume the shell's own furniture without hard-coding it.
@@ -499,6 +501,7 @@ export default function TemplateProvider() {
     presenceStore,
     interpretationStore,
     clockStore,
+    flowStore,
     // Always present, even with no modules registered: a read of `modules.x` resolves through the
     // single-segment path, which indexes the store object without a guard and would throw on a
     // missing `modules` key rather than returning undefined.
