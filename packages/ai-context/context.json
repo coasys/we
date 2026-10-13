@@ -3513,6 +3513,16 @@
           "optional": true
         },
         {
+          "name": "open",
+          "type": "string[]",
+          "optional": true
+        },
+        {
+          "name": "onNodeOpen",
+          "type": "((payload: { id: string; recordId?: string; recordType?: string; open: boolean; }) => void)",
+          "optional": true
+        },
+        {
           "name": "onDeleteSelection",
           "type": "((payload: { recordId?: string; recordType?: string; kind?: \"node\" | \"edge\"; count: number; records?: { recordId: string; recordType: string; }[]; }) => void)",
           "optional": true
@@ -6285,7 +6295,7 @@
         },
         "flows": {
           "type": "array",
-          "properties": ["name", "label", "editable", "records", "managedBy", "archived"]
+          "properties": ["name", "label", "editable", "records", "managedBy", "archived", "steps", "moves"]
         },
         "startable": {
           "type": "array",
@@ -9494,6 +9504,10 @@
           "category": "seed"
         },
         {
+          "id": "vocabulary",
+          "category": "seed"
+        },
+        {
           "id": "dataset",
           "category": "seed"
         },
@@ -9510,7 +9524,23 @@
           "category": "expander"
         },
         {
+          "id": "schema-instances",
+          "category": "expander"
+        },
+        {
+          "id": "schema-properties",
+          "category": "expander"
+        },
+        {
+          "id": "vocabulary",
+          "category": "expander"
+        },
+        {
           "id": "property",
+          "category": "expander"
+        },
+        {
+          "id": "property-values",
           "category": "expander"
         },
         {

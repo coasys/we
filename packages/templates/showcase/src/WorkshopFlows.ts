@@ -34,6 +34,7 @@ export const FLOWS_LOCALS = {
   excTo: { type: 'string', initial: '' },
   historyOf: { type: 'string', initial: '' },
   showArchived: { type: 'boolean', initial: false },
+  flowAsGraph: { type: 'boolean', initial: false },
 } as const;
 
 const text = (content: string | { $: string }, props: Record<string, SchemaProp> = {}): SchemaNode => ({
@@ -620,13 +621,86 @@ const openHeader: SchemaNode = {
   ],
 };
 
+/** The open flow's steps and moves, as `flowStore.flows` holds them once its definition is read. */
+const OPEN_DEFINITION = `flowStore.flows.find(f, f.name == ${OPEN}.name)`;
+
+/**
+ * The open flow as a graph: one node per step, a line per move, laid out as a tree from the first.
+ *
+ * Read-only, and a second way of looking rather than a second editor: lanes are where a flow is
+ * written. What a graph shows that lanes do not is a flow that does not fit them — one written by
+ * another app, all moves and no line — and the shape of the wiring at a glance.
+ */
+const flowGraph: SchemaNode = {
+  type: 'Column',
+  props: { width: '100%', height: '420px', r: 'card', border: '1px solid border', overflow: 'hidden' },
+  children: [
+    {
+      type: 'GraphView',
+      props: {
+        seeds: {
+          literal: true,
+          nodes: {
+            $: `(${OPEN_DEFINITION}.steps ?? []).map(s, { id: 'step:' + s.name, kind: 'cluster', type: 'flow-step', label: s.label, data: { final: s.final } })`,
+          },
+          edges: {
+            $: `(${OPEN_DEFINITION}.moves ?? []).map(m, { id: m.from + '>' + m.to, source: 'step:' + m.from, target: 'step:' + m.to, type: 'move' })`,
+          },
+        },
+        layout: { type: 'tree', options: { direction: 'right' } },
+        nodeStyle: [
+          { style: { shape: 'card', width: 150, height: 52, color: 'surface-raised' } },
+          { when: { 'data.final': true }, style: { borderColor: 'accent-text', borderWidth: 2 } },
+        ],
+        edgeStyle: [{ style: { color: 'accent-text' } }],
+        controls: ['zoom-in', 'zoom-out', 'fit'],
+        behaviours: ['pan-zoom'],
+      },
+    },
+  ],
+};
+
 const openFlow: SchemaNode = {
   type: 'Column',
   props: { gap: '500', width: '100%' },
   children: [
     openHeader,
-    lanes(OPEN, false),
-    exceptions(OPEN, false),
+    {
+      type: 'Row',
+      props: { gap: '200' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            size: 'sm',
+            variant: { $: "local.flowAsGraph ? 'ghost' : 'secondary'" },
+            onClick: { $setLocal: 'flowAsGraph', value: false },
+          },
+          children: [text('Lanes')],
+        },
+        {
+          type: 'we-button',
+          props: {
+            size: 'sm',
+            variant: { $: "local.flowAsGraph ? 'secondary' : 'ghost'" },
+            onClick: { $setLocal: 'flowAsGraph', value: true },
+          },
+          children: [text('Graph')],
+        },
+      ],
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'local.flowAsGraph' },
+        then: flowGraph,
+        else: {
+          type: 'Column',
+          props: { gap: '500', width: '100%' },
+          children: [lanes(OPEN, false), exceptions(OPEN, false)],
+        },
+      },
+    },
     { type: 'we-divider' },
     {
       type: 'Row',

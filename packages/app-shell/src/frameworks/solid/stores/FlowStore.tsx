@@ -78,6 +78,10 @@ export interface FlowSummaryView {
   /** What writes it, when something other than this editor does. Empty otherwise. */
   managedBy: '' | 'task-states';
   archived: boolean;
+  /** Its steps, in order — empty until its definition has been read. */
+  steps: { name: string; label: string; final: boolean }[];
+  /** The moves between them. */
+  moves: { from: string; to: string }[];
 }
 
 /** The flow on screen, and the records going through it. */
@@ -238,7 +242,11 @@ export function FlowStoreProvider(props: ParentProps) {
       return;
     }
     try {
-      setSummaries(await p.list(h));
+      const listed = await p.list(h);
+      setSummaries(listed);
+      // Every definition, once: the list says which flows there are, and a map of the space's flows
+      // draws their steps — a handful of flows, each read once and kept until the space changes.
+      for (const summary of listed) void definitionOfFlow(summary.name).catch(() => {});
     } catch (error) {
       console.warn('FlowStore: could not list the flows', error);
     }
@@ -253,9 +261,13 @@ export function FlowStoreProvider(props: ParentProps) {
 
   const flows = createMemo<FlowSummaryView[]>(() => {
     const archived = new Set(spaceStore.archivedFlows());
+    const defs = definitions();
     return summaries()
       .map((s) => {
         const managedBy = s.name === TASK_FLOW ? ('task-states' as const) : ('' as const);
+        const definition = defs[s.name];
+        const labels = labelsFor(s.name);
+        const leaving = new Set(definition?.transitions.map((t) => t.from) ?? []);
         return {
           name: s.name,
           label: flowLabelOf(s.name),
@@ -263,6 +275,12 @@ export function FlowStoreProvider(props: ParentProps) {
           records: s.records,
           managedBy,
           archived: archived.has(s.name),
+          steps: (definition?.states ?? []).map((state) => ({
+            name: state.name,
+            label: labels.state(state.name),
+            final: !leaving.has(state.name),
+          })),
+          moves: (definition?.transitions ?? []).map((t) => ({ from: t.from, to: t.to })),
         };
       })
       .sort((a, b) => Number(Boolean(b.managedBy)) - Number(Boolean(a.managedBy)) || a.label.localeCompare(b.label));
