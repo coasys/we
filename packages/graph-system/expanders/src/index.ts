@@ -11,6 +11,8 @@
  * - {@link collectionExpander} — an untyped to-many relation, via the drill-down path.
  * - {@link propertyExpander} — the level below an entity: its own fields, and shared value nodes.
  * - {@link schemaExpander} — the level *above* an entity: a type node, opened into its instances.
+ * - {@link schemaPropertiesExpander} — a type node opened into what it *is*: its fields, and a Records node.
+ * - {@link vocabularyPlugins} — what a space has defined, in buckets: its words, its models, its flows.
  * - {@link querySeed} / {@link schemaSeed} / {@link datasetSeed} / {@link canvasSeed} — where a graph starts.
  */
 export { collectionExpander } from './collection';
@@ -20,7 +22,17 @@ export type { EntityExpanderOptions } from './entity';
 export { edgeId, labelProperty, placeholder, rowToNode } from './nodes';
 export { propertyExpander } from './property';
 export type { PropertyExpanderOptions } from './property';
-export { SCHEMA_TYPE, schemaExpander } from './schema';
+export { INSTANCES_TYPE, SCHEMA_TYPE, schemaExpander } from './schema';
+export { schemaPropertiesExpander } from './schemaProperties';
+export {
+  FLOW_STEP_TYPE,
+  FLOW_TYPE,
+  VOCABULARY_TYPE,
+  type VocabularyBucket,
+  type VocabularyFlow,
+  vocabularyPlugins,
+  type VocabularySeedOptions,
+} from './vocabulary';
 export type { SchemaExpanderOptions } from './schema';
 export {
   DEFAULT_REIFIED_EDGES,
@@ -58,8 +70,10 @@ import { collectionExpander } from './collection';
 import { entityExpander } from './entity';
 import { propertyExpander } from './property';
 import type { ReifiedEdgeMap } from './reified';
-import { schemaExpander } from './schema';
+import { INSTANCES_TYPE, schemaExpander } from './schema';
+import { schemaPropertiesExpander } from './schemaProperties';
 import { datasetSeed, querySeed, schemaSeed } from './seeds';
+import { vocabularyPlugins } from './vocabulary';
 
 /**
  * The default set, ready to register.
@@ -68,13 +82,21 @@ import { datasetSeed, querySeed, schemaSeed } from './seeds';
  * stateless today, and a shared mutable one would be a bug that only appears with two graphs on a page.
  */
 export function defaultExpanders(options: { reified?: ReifiedEdgeMap } = {}) {
+  const vocabulary = vocabularyPlugins();
   return {
     expanders: [
       entityExpander({ reified: options.reified }),
       collectionExpander(),
       schemaExpander(),
+      // A model's Records node, opened into its instances — named apart so a graph that opens a model
+      // into its properties does not also open it into every record it has.
+      schemaExpander({ id: 'schema-instances', types: [INSTANCES_TYPE] }),
+      schemaPropertiesExpander(),
       propertyExpander(),
+      // The same, with values promoted to shared nodes — for a map where convergence is the point.
+      propertyExpander({ id: 'property-values', valueNodes: true }),
+      vocabulary.expander,
     ],
-    seeds: [querySeed({ reified: options.reified }), schemaSeed(), datasetSeed(), canvasSeed()],
+    seeds: [querySeed({ reified: options.reified }), schemaSeed(), datasetSeed(), canvasSeed(), vocabulary.seed],
   };
 }
