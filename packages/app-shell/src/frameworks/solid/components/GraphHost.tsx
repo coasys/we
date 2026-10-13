@@ -21,7 +21,7 @@
 import '@we/graph-solid/styles';
 
 import type { EntityClass, QueryOptions, RendererStores } from '@we/backend-shared';
-import { manifestEntries, trace } from '@we/backend-shared';
+import { manifestEntries, trace, unionByFanOut } from '@we/backend-shared';
 import { BlockRenderer } from '@we/block-solid';
 import { Column, Row } from '@we/components/solid';
 import { CORE_MANIFEST } from '@we/entities/manifest';
@@ -258,7 +258,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     return [...core, ...shapes, ...datasetStore.currentDatasetEntities().filter((entry) => !known.has(entry.name))];
   });
 
-  function modelFor(entity: string, dataset?: string): EntityClass | undefined {
+  function modelFor(entity: string | string[], dataset?: string): EntityClass | undefined {
     const bound = bindings();
     if (!bound) return undefined;
     // Dataset-scoped resolution first: a foreign shape only exists as a class synthesised for the
@@ -268,7 +268,21 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       dataset && dataset !== datasetStore.currentDataset()?.id
         ? datasetStore.datasets().find((d) => d.id === dataset || d.sharedId === dataset)?.handle
         : datasetStore.currentDataset()?.handle;
-    return bound.$getEntityForDataset?.(entity, handle) ?? bound.$getEntity?.(entity);
+    const one = (name: string) => bound.$getEntityForDataset?.(name, handle) ?? bound.$getEntity?.(name);
+    if (typeof entity === 'string') return one(entity);
+    /*
+      Several: one read where the backend answers that, and one per entity where it does not — the
+      same rows either way, so a seed asking for a list need not know which it got.
+    */
+    const native = bound.$getEntitiesForDataset?.(entity, handle);
+    if (native) return native;
+    const parts = entity.flatMap((name) => {
+      const Model = one(name);
+      const entry = manifest().find((m) => m.name === name);
+      const relations = new Set(entry ? toEntityShape(entry).relations.map((r) => r.name) : []);
+      return Model ? [{ entity: name, Model, relations }] : [];
+    });
+    return parts.length ? unionByFanOut(parts) : undefined;
   }
 
   /**
@@ -595,7 +609,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
 
     async query(request) {
       const { entity, dataset, scope, where, order, limit, offset, include } = request as {
-        entity: string;
+        entity: string | string[];
         dataset?: string;
         scope?: ScopeRequest;
         where?: Record<string, unknown>;
@@ -611,7 +625,12 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       if (scope?.direction === 'in') {
         // The graph collects warnings through its own context; throwing here would take down the
         // whole expansion for a lookup that is legitimately unavailable on some backends.
-        return reverseLookup(entity, scope, dataset, (message) => console.warn(`[graph] ${message}`));
+        const warn = (message: string) => console.warn(`[graph] ${message}`);
+        if (typeof entity !== 'string') {
+          warn('cannot read what points at a record from several entities at once');
+          return [];
+        }
+        return reverseLookup(entity, scope, dataset, warn);
       }
 
       const model = modelFor(entity, dataset);

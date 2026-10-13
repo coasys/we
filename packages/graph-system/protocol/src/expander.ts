@@ -120,7 +120,14 @@ export interface ExpanderContext {
 
 /** A read an expander asks for, in neutral terms. */
 export interface ExpanderQuery {
-  entity: string;
+  /**
+   * The entity to read — or several, for one read over all of them: one round trip, and one watch,
+   * where a read per entity costs one of each. Every row then carries the entity it was read as
+   * under `NODE_TYPE_KEY`; `where`, `order` and `limit` apply once over the whole; a record two of
+   * them answer comes back once; and an `include` or count over a relation one of them lacks is
+   * left off that entity's rows rather than refusing the read.
+   */
+  entity: string | string[];
   dataset?: string;
   where?: Record<string, unknown>;
   order?: Record<string, 'asc' | 'desc'>;
