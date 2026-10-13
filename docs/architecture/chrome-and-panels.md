@@ -30,9 +30,10 @@ template** places (`meta.role: 'app'`, `host.sidebar`, `host.rail`). WE's own ap
 an app of their own — in Settings → Appearance, or in the template picker's App section, which sits
 above the templates and offers to edit or fork each — and edit it where it is drawn: the editor bar's
 **Page | App** switch says which of the two the session edits, one at a time, and WE's app — built
-in — is forked from the bar the inspector shows while it is the target. Safe mode always draws
-WE's. Everything else here — the editor's panels and bar, the boot screen and its modals, module
-chrome, the safety prompts — the host draws whatever the app says.
+in — is forked from the bar the inspector shows while it is the target. An app of your own is
+deleted in Settings → Appearance, which puts you back in WE's if it was the one you were in. Safe
+mode always draws WE's. Everything else here — the editor's panels and bar, the boot screen and its
+modals, module chrome, the safety prompts — the host draws whatever the app says.
 
 The geometry does not assume a sidebar. The app declares how much of each edge its chrome holds,
 `meta.frame: { left, right, top, bottom }`, and that is the frame (`AppFrame` in `dockGeometry.ts`,

@@ -975,6 +975,11 @@ export function TemplateStoreProvider(props: ParentProps) {
       return next;
     });
 
+    // An app of the agent's own is deleted from the same library. If it was the app they are in, they
+    // are back in WE's: the chrome already falls back once the record is gone, and the choice is put
+    // back with it, so nothing goes on naming an app that no longer exists.
+    if (datasetStore.agentSettings()?.appTemplateId === templateId) await setAppTemplate(DEFAULT_APP_ID);
+
     // If we deleted the current template, switch to the default
     if (currentTemplate.id === templateId) {
       const fallback = allTemplates().find((t) => t.id === 'default') || allTemplates()[0] || emptyTemplate;
