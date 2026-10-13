@@ -1073,24 +1073,17 @@ describe('moving between spaces', () => {
 });
 
 describe('changing a reaction', () => {
-  it('replaces the record rather than editing it, because an edit notifies nobody', async () => {
+  it('edits the record in place, so a change keeps the reaction it changes', async () => {
     /*
-      A rating moved from three stars to four did nothing anybody could see, the author included.
+      A changed rating is the same person's same reaction, differently weighted, so it keeps its id
+      and its `createdAt`. It used to be removed and re-created, because an edit to a record read
+      through `include` reached no subscriber — the price was a flicker, the rating passing through
+      "nobody has rated this" on its way from three stars to four. A subscription now follows what
+      its query includes, so the edit is the write.
 
-      The write landed. What did not happen was the re-read. Every surface fetches reactions as
-      `include: { signals: true }` on the record, so the live query is over the RECORD's class, and
-      the executor builds that subscription's trigger from `build_model_trigger_predicates` — the
-      predicates of the subscribed class's own shape, plus the parent predicate. It does not walk
-      `include`. `we://signal` is in that set, so adding or removing a reaction fires it; `we://value`,
-      which belongs to the Signal, is not. An in-place edit changes the store and wakes no reader.
-
-      So the shape IS the requirement: a change has to touch `we://signal`, which means removing and
-      adding. The test asserts the record's identity changed, because that is the observable
-      difference between the two implementations — and the obvious tidy-up, one write instead of
-      two, is exactly what broke it.
-
-      The rest of the assertion is what a naive delete-then-create could still get wrong: one
-      reaction of this type by this agent, holding the new value, not two.
+      The rest is what an edit could still get wrong: one reaction of this type by this agent,
+      holding the new value — and a pair written twice heals on the next change instead of staying
+      doubled.
     */
     const stores = mountShell();
     await ready(stores);
@@ -1128,8 +1121,20 @@ describe('changing a reaction', () => {
     // One reaction, the new value — not two rows where the reader finds the stale one first.
     expect(second).toHaveLength(1);
     expect(second[0].value).toBe(4);
-    // And a different record, which is what touching `we://signal` twice amounts to.
-    expect(second[0].id).not.toBe(first[0].id);
+    // And the same record, edited.
+    expect(second[0].id).toBe(first[0].id);
+
+    // A pair somebody managed to write twice comes back to one on the next change.
+    await (Signal as never as typeof Space).create(
+      handle,
+      { signalTypeId: stars.id, value: 2 } as never,
+      { parent: { id: subject.id, predicate: 'we://signal' } } as never,
+    );
+    expect(await mine()).toHaveLength(2);
+    await stores.spaces.upsertSignal(subject.id, stars.id, 5);
+    const healed = await mine();
+    expect(healed).toHaveLength(1);
+    expect(healed[0].value).toBe(5);
 
     /*
       A zero is an ordinary value now, and is stored.

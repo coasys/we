@@ -46,8 +46,6 @@ describeBackendConformance('AD4M', {
   },
   timing: { settle: 10_000, quiet: 2_000 },
   knownGaps: {
-    'live.included-child-edit':
-      "a model subscription re-runs only for its own class's predicates; an included record's are not in its trigger set",
     'queries.reply-total-leaves-calls-out':
       "a count's `where` resolves property names through the relation's target class, and an untyped relation has none, so `kind` is skipped and every response is counted (build_projection_where_patterns)",
     'queries.newest-in-a-channel':
