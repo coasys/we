@@ -1334,6 +1334,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     confirmPicker: action('editor'),
     cancelPicker: ambient('editor'),
     enterTemplateEditing: action('editor'),
+    editApp: action('editor'),
+    forkApp: action('editor'),
     exitTemplateEditing: action('editor'),
     toggle: ambient('editor'),
     open: ambient('editor'),

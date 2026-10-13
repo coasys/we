@@ -394,9 +394,16 @@ export function TemplateStoreProvider(props: ParentProps) {
     });
     return draftOf(found) ?? found;
   });
+  /** The apps on offer: what a we-select needs, and what a picker row needs — its icon, and whether it can be edited in place. */
+  const appOption = (t: TemplateSchema, editable: boolean) => ({
+    label: t.meta?.name ?? t.id ?? '',
+    value: t.id ?? '',
+    icon: t.meta?.icon ?? '',
+    editable,
+  });
   const appTemplateOptions = () => [
-    ...Object.values(appTemplateRegistry).map((t) => ({ label: t.meta?.name ?? t.id ?? '', value: t.id ?? '' })),
-    ...ownApps().map((t) => ({ label: t.meta?.name ?? t.id ?? '', value: t.id ?? '' })),
+    ...Object.values(appTemplateRegistry).map((t) => appOption(t, false)),
+    ...ownApps().map((t) => appOption(t, true)),
   ];
   const appTemplateId = () => appTemplate().id ?? DEFAULT_APP_ID;
   function setAppTemplate(id: string): Promise<boolean> {

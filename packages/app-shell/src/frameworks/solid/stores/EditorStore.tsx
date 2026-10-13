@@ -133,6 +133,10 @@ export interface EditorStore {
   isEditingTemplate: Accessor<boolean>;
   editAction: Accessor<'edit' | 'fork' | 'fresh' | null>;
   enterTemplateEditing: (action?: 'edit' | 'fork' | 'fresh') => void;
+  /** Opens a visual editing session on the app — the one named, made the agent's app first, or the one they are in. */
+  editApp: (id?: string) => Promise<void>;
+  /** The same, then asks for a name for a copy of it: how WE's own app, which is built in, is made one's own. */
+  forkApp: (id?: string) => Promise<void>;
   exitTemplateEditing: () => void;
 
   // --- Panel control (AI chat) ---
@@ -671,6 +675,24 @@ export function EditorStoreProvider(props: ParentProps) {
     setCodePanelOpen(false);
     setContentModeSignal('preview');
     setThemePanelOpen(false);
+  }
+
+  /*
+    The app is a template, but not the one on screen: it is the chrome around every space, and which
+    one is drawn is the agent's choice rather than the page's. So it is gone into from wherever the
+    choice is offered — the template picker's App section — straight to editing where it is drawn,
+    with no page node to select first.
+  */
+  async function editApp(id?: string) {
+    if (id && id !== templateStore.appTemplateId()) await templateStore.setAppTemplate(id);
+    if (!isEditingTemplate()) enterTemplateEditing('edit');
+    setContentMode('visual');
+    edit.enterApp(templateStore.appTemplate());
+  }
+
+  async function forkApp(id?: string) {
+    await editApp(id);
+    startFork();
   }
 
   function exitTemplateEditing() {
@@ -1371,6 +1393,8 @@ export function EditorStoreProvider(props: ParentProps) {
     isEditingTemplate,
     editAction,
     enterTemplateEditing,
+    editApp,
+    forkApp,
     exitTemplateEditing,
 
     // Theme editing

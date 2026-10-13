@@ -91,17 +91,25 @@ export function pickerRow(opts: PickerRowOptions): SchemaNode {
             children: [
               { type: 'we-icon', props: { name: opts.icon, size: 'sm', color: 'text-muted' } },
               { type: 'we-text', props: { color: 'text', truncate: true, flex: '1' }, children: [opts.label] },
-              {
-                type: '$if',
-                props: {
-                  condition: opts.isDefault ?? false,
-                  then: {
-                    type: 'we-tooltip',
-                    props: { content: "This space's default", placement: 'top' },
-                    children: [{ type: 'we-icon', props: { name: 'star', weight: 'fill', color: 'warning-text' } }],
-                  },
-                },
-              },
+              // Only where a row can be a space's default: an app is the agent's, never a space's, and
+              // a condition that can only be false is not a condition the validator accepts.
+              ...(opts.isDefault === undefined
+                ? []
+                : [
+                    {
+                      type: '$if',
+                      props: {
+                        condition: opts.isDefault,
+                        then: {
+                          type: 'we-tooltip',
+                          props: { content: "This space's default", placement: 'top' },
+                          children: [
+                            { type: 'we-icon', props: { name: 'star', weight: 'fill', color: 'warning-text' } },
+                          ],
+                        },
+                      },
+                    },
+                  ]),
             ],
           },
         ],

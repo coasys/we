@@ -2948,6 +2948,8 @@ EditorStore:
   - confirmPicker(name: string, icon: string, destination: 'personal' | 'space'): creates the fork or fresh template and enters editing on it
   - cancelPicker(): closes the picker without creating anything
   - enterTemplateEditing(action?: 'edit' | 'fork' | 'fresh'): opens a template editing session on the template on screen. Omit action to edit in place; a read-only template buffers its edits
+  - editApp(id?: string): opens a visual editing session on the app — the chrome around every space — made the agent's app first when an id is given. WE's own app is built in, so its edits buffer and the session offers Fork
+  - forkApp(id?: string): the same, then opens the picker to name a copy of it. The copy becomes the agent's app, in every space, and stays the one being edited
   - exitTemplateEditing(): ends the template session. Buffered changes to a read-only template are dropped
   - toggle(): toggles the AI chat panel open/closed
   - open(): opens the AI chat panel
@@ -3451,7 +3453,7 @@ TemplateStore:
   - defaultTemplateId: string — id of the agent's preferred default template, used where no space or override decides. Persisted to AgentSettings.defaultTemplateId
   - pendingInstall: the template an install dialog is showing ({ marketplaceId, destination, name, icon, version, capabilities, blocked }), or null when none is open. `capabilities` is already in the words a person reads. Host chrome renders it: a dialog vouching for a template must not be drawn by a template
   - appTemplateId: string — id of the app this agent is in: the template WE's own chrome is drawn from (the sidebar, the module rail, and whatever an app of their own arranges around every space). Not a space's template, and chosen by the agent alone
-  - appTemplateOptions: { label, value }[] — the apps this agent can be in, ready for a we-select: WE’s own, then their own copies
+  - appTemplateOptions: { label, value, icon, editable }[] — the apps this agent can be in, ready for a we-select: WE’s own, then their own copies. `editable` is false for one that ships with WE, which is forked rather than edited — editorStore.editApp and forkApp take the value
   - safeMode: { on, reason, template } — whether this tab is in safe mode, where WE's own templates and themes are drawn in place of the chosen ones. reason is 'asked' (the ?safe address, the key or the menu) or 'unfinished-render' (a template did not finish loading last time — template is its id). Decided before anything rendered; fixed for the page
   - operationLoading: string | null — the id of the template operation in flight, namespaced by kind ('marketplace-install:<id>', 'space-install:<id>'), or null. A key rather than a boolean so one row's spinner does not appear on every row
 - Actions:

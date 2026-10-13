@@ -2314,6 +2314,8 @@ export const contextData: ContextData = {
         'confirmPicker',
         'cancelPicker',
         'enterTemplateEditing',
+        'editApp',
+        'forkApp',
         'exitTemplateEditing',
         'toggle',
         'open',

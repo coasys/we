@@ -6227,6 +6227,8 @@
         "confirmPicker",
         "cancelPicker",
         "enterTemplateEditing",
+        "editApp",
+        "forkApp",
         "exitTemplateEditing",
         "toggle",
         "open",
