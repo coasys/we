@@ -172,6 +172,8 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
   its data binding lives at \`packages/app-shell/src/frameworks/solid/components/GraphHost.tsx\`.
 - App chrome and module panels (the sidebar, the module rail, floating vs displacing, who moves for
   whom) → \`packages/app-shell/src/shared/dockGeometry.ts\` (see docs/architecture/chrome-and-panels.md).
+- A whole app as data — a bundle's format, building one into a deployment, installing one from a
+  file, and which of its pieces belong to a person and which to a space → docs/architecture/apps-as-data.md.
 - What no template may replace — the password field, the safety prompts, safe mode — and the one
   place each is enforced → docs/architecture/protected-pieces.md. Read it before touching the boot
   screen, a confirmation the host raises, or how a template becomes the live one.

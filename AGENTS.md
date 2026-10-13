@@ -170,6 +170,8 @@ that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/pack
   its data binding lives at `packages/app-shell/src/frameworks/solid/components/GraphHost.tsx`.
 - App chrome and module panels (the sidebar, the module rail, floating vs displacing, who moves for
   whom) → `packages/app-shell/src/shared/dockGeometry.ts` (see docs/architecture/chrome-and-panels.md).
+- A whole app as data — a bundle's format, building one into a deployment, installing one from a
+  file, and which of its pieces belong to a person and which to a space → docs/architecture/apps-as-data.md.
 - What no template may replace — the password field, the safety prompts, safe mode — and the one
   place each is enforced → docs/architecture/protected-pieces.md. Read it before touching the boot
   screen, a confirmation the host raises, or how a template becomes the live one.
@@ -240,6 +242,7 @@ The spine of every one of these decisions is a single rule, from `packages/templ
 | A new source of nodes, or arrangement, in a graph | **Graph plugin** |
 | A new kind of thing that gets stored | **Entity** |
 | State or an action a template needs to reach | **Store** |
+| A whole app — its chrome, templates, theme and record types — to ship or install as one | **Bundle** |
 | A differently-shaped deployment | **Seed** (write nothing — select what exists) |
 
 Three distinctions that have each been got wrong at least once:
@@ -291,11 +294,12 @@ the seed's list is correct code that never appears.
 | Feature module | `module-system/<id>/` (or any package exporting `createModule`) | `docs/guides/writing-a-module.md`, then `module-system/shared/src/module.ts` | seed `modules` — the registry is generated from it by `--filter @we/app-shell generate-modules` | `--filter @we/module-shared test`, `validate:schemas`, then `generate-context` |
 | Graph plugin | `graph-system/expanders/src/`, `layouts/src/` | `graph-system/CONVENTIONS.md` | package index **and** `GRAPH_PLUGIN_CATALOG` in `module-system/graph/src/catalog.ts` | `--filter @we/graph-core test`, then `generate-context` |
 | Globe layer | `module-system/globe/layers/src/` | its `README.md` / `EXAMPLES.md` | export from `index.ts`, `layerKinds` in `module-system/globe/module/src/layers.ts`, `maplibreLayerKinds` in `module-system/globe/layers/src/maplibre/index.ts` **and** `GLOBE_LAYER_CATALOG` in `module-system/globe/module/src/catalog.ts` | `--filter @we/app-shell test` (`globeModule`), then `generate-context` |
+| Bundle | `bundles/<id>.bundle.json` | `docs/architecture/apps-as-data.md` | seed `bundles` + `--filter @we/app-shell generate-bundles` to build one in; or installed from a file in Settings | `pnpm validate:seed`, `--filter @we/app-shell test` (`realBundles`) |
 | Seed | `we-seed.json` | `docs/getting-started/seed-system.md` | — | `pnpm validate:seed` |
 | Backend adapter | `backend-system/<name>/` | `backend-system/shared/README.md` | entity proxy registry | `describeBackendConformance` from `@we/backend-conformance` |
 | Platform host | `apps/<name>/` | — | — | `--filter <app> build` |
 
-Widgets (`design-system/5-widgets`) are the nineteenth and are **currently empty by design**: the one
+Widgets (`design-system/5-widgets`) are the twentieth and are **currently empty by design**: the one
 widget there was retired once template-kit's rail fragments replaced it, and feature widgets live
 with their module family. Treat that as a strong prior that what you have is a fragment or a module.
 
@@ -313,7 +317,7 @@ the generated context, and so no LLM could author a globe template until it got 
 
 ### Distribution — what is real
 
-**Templates and themes install at runtime**, from a stranger, through a real trust boundary:
+**Templates, themes and whole apps install at runtime**, from a stranger, through a real trust boundary:
 `templateSurface.ts` allowlists what a template may name (grouped into capabilities written in the
 words a person reads at install time; anything not granted is *absent* rather than blocked, leaving
 no error channel to probe), and `templateAcceptance.ts` refuses structurally broken schemas outright
@@ -324,7 +328,8 @@ dynamically loaded, and the reason is trust, not reactivity: `createStore(deps)`
 reactive primitives, but a store factory is arbitrary code with the host's ports, and the capability
 model covers what a schema may *name*, not what code may *do*.
 
-Three of nineteen surfaces (templates, themes, views) have an out-of-repo path. Do not describe the
+Four surfaces (templates, themes, views, and bundles, which are apps composed of the first three plus
+record types) have an out-of-repo path. Do not describe the
 marketplace as though it covers the rest. `docs/architecture/module-marketplace.md` places every
 surface on a **distribution ladder** — pure data, declared data + fragments, sandboxed embed,
 host-provided capability kernels, code — and says which rung each can reach. Nothing `import()`s a
