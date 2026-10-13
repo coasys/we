@@ -8,12 +8,15 @@
 import type { TemplateSchema } from '@we/schema-shared';
 import { weApp } from '@we/template-shell';
 
-import { withDerivedIds } from './derivedIds';
+import { withDerivedIds, withDerivedIdsAll } from './derivedIds';
+import { seedBundleApps } from './seedBundles';
 
 export const DEFAULT_APP_ID = 'we-app';
 
 export const appTemplateRegistry: Readonly<Record<string, TemplateSchema>> = {
   [DEFAULT_APP_ID]: withDerivedIds({ ...weApp, id: DEFAULT_APP_ID }, DEFAULT_APP_ID),
+  // The apps the seed's bundles bring, built in beside WE's own.
+  ...withDerivedIdsAll(seedBundleApps),
 };
 
 /**

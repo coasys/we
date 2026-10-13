@@ -1,6 +1,8 @@
+import { appSpaceTemplate, followedTemplateId } from '@shared/bundles/display';
 import { appTemplateRegistry, DEFAULT_APP_ID, resolveAppTemplate } from '@shared/registries/appTemplates';
 import { withDerivedIds } from '@shared/registries/derivedIds';
 import { reservedTemplateIds } from '@shared/registries/reservedTemplateIds';
+import { seedBundleAppId, seedBundlePieces } from '@shared/registries/seedBundles';
 import { templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
 import { getSeed } from '@shared/seedRegistry';
@@ -25,7 +27,17 @@ import {
 import type { RouteSchema, SchemaNode, StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { createStoredTemplate, ensureNodeIds, hasViewsMarker } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
-import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
+import {
+  Accessor,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  on,
+  ParentProps,
+  untrack,
+  useContext,
+} from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
 import { CHROME_TIER, SPACE_TIER } from '../../../shared/registries/templateSurface';
@@ -390,7 +402,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     const found = resolveAppTemplate({
       safe: safe.on,
       chosen: datasetStore.agentSettings()?.appTemplateId,
-      seed: getSeed().host?.ui?.app,
+      seed: getSeed().host?.ui?.app || seedBundleAppId,
       own: ownApps(),
     });
     return draftOf(found) ?? found;
@@ -407,6 +419,11 @@ export function TemplateStoreProvider(props: ParentProps) {
     ...ownApps().map((t) => appOption(t, true)),
   ];
   const appTemplateId = () => appTemplate().id ?? DEFAULT_APP_ID;
+  /**
+   * The space template the app the agent is in shows every space with, or undefined when spaces keep
+   * their own — the app's display policy, from the bundle it came in. See `bundles/display.ts`.
+   */
+  const appSpaceTemplateId = createMemo(() => appSpaceTemplate(appTemplateId(), seedBundlePieces));
   function setAppTemplate(id: string): Promise<boolean> {
     return datasetStore.updateAgentSettings({ appTemplateId: id === DEFAULT_APP_ID ? '' : id });
   }
@@ -681,10 +698,11 @@ export function TemplateStoreProvider(props: ParentProps) {
     if (spaceTemplateCache.has(perspective.id)) {
       // Templates were pre-loaded by navigateToSpace — apply synchronously
       const cachedSpace = resolveSpaceFromPerspective(perspective);
-      if (cachedSpace?.defaultTemplateId) {
+      const followed = followedTemplateId(cachedSpace?.defaultTemplateId, untrack(appSpaceTemplateId));
+      if (followed) {
         const template =
-          allTemplates().find((t) => t.id === cachedSpace.defaultTemplateId && t._fromSpace) ||
-          allTemplates().find((t) => t.id === cachedSpace.defaultTemplateId);
+          allTemplates().find((t) => t.id === followed && t._fromSpace) ||
+          allTemplates().find((t) => t.id === followed);
         if (template) replaceTemplate(template);
       }
       setTemplateResolvedFor(perspective.id);
@@ -738,7 +756,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     return templateId;
   }
 
-  async function applySpaceTemplate(perspective: AppDataset): Promise<void> {
+  async function applySpaceTemplate(perspective: AppDataset, fallback?: string): Promise<void> {
     // preloadSpaceTemplates handles cache hit (sync restore) or miss (AD4M fetch)
     await preloadSpaceTemplates(perspective);
 
@@ -756,7 +774,10 @@ export function TemplateStoreProvider(props: ParentProps) {
     // including when the space set no default at all, which the community-default path cannot act
     // on. `AGENT_DEFAULT` means "whatever my default is", so leave whatever is already applied.
     if (templateOverride === AGENT_DEFAULT) return;
-    const spaceTemplateId = templateOverride === FOLLOW_SPACE ? cachedSpace?.defaultTemplateId : templateOverride;
+    const spaceTemplateId =
+      (templateOverride === FOLLOW_SPACE
+        ? followedTemplateId(cachedSpace?.defaultTemplateId, appSpaceTemplateId())
+        : templateOverride) ?? fallback;
     if (!spaceTemplateId) return;
 
     const spaceTemplate =
@@ -776,6 +797,23 @@ export function TemplateStoreProvider(props: ParentProps) {
       toastService.info(`Viewing with this space's template. Open its settings to use your own.`, 7000);
     }
   }
+
+  /*
+    Changing app changes how the space on screen is shown when the app has a display policy, so the
+    space's template is chosen again. Deferred: on first run the space effect above has just chosen it.
+  */
+  createEffect(
+    on(
+      appSpaceTemplateId,
+      () => {
+        const perspective = untrack(datasetStore.currentDataset);
+        // A space with no template of its own falls back to the agent's default, so leaving an app
+        // that showed it its own way does not leave that app's template on screen.
+        if (perspective) void applySpaceTemplate(perspective, untrack(defaultTemplateId));
+      },
+      { defer: true },
+    ),
+  );
 
   // Restore persisted template choice on boot (runs once, then stops)
   let initialRestoreDone = false;

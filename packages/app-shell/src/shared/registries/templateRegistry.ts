@@ -32,9 +32,13 @@
  */
 import { bundledTemplates } from './bundledTemplates.generated';
 import { withDerivedIdsAll } from './derivedIds';
+import { seedBundleShells } from './seedBundles';
 
-/** With the ids each template's nodes have in every build — see `derivedIds.ts`. */
-export const templateRegistry = withDerivedIdsAll(bundledTemplates);
+/**
+ * With the ids each template's nodes have in every build — see `derivedIds.ts`. And with the space
+ * templates of every bundle the seed builds in (see `seedBundles.ts`), under ids no template here has.
+ */
+export const templateRegistry = withDerivedIdsAll({ ...bundledTemplates, ...seedBundleShells });
 
 export type TemplateId = keyof typeof templateRegistry;
 

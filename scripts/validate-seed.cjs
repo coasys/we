@@ -272,6 +272,7 @@ function main() {
   });
 
   validateSpaceStarter(seed);
+  validateBundles(seed);
 
   /*
     Content sources: the same check the build makes, so a bad entry fails here first.
@@ -434,6 +435,38 @@ function validateSpaceStarter(seed) {
     const counts = Object.entries(uncontained).map(([entity, n]) => `${n} ${entity}`);
     if (counts.length) console.log(`   uncontained in "${starter.id}": ${counts.join(', ')}`);
   });
+}
+
+/*
+  The bundles a deployment builds in: each id names `bundles/<id>.bundle.json`, which must be a bundle
+  of the format this build reads, under the id the seed gave it. What is inside — whether its templates
+  draw, whether its record types are valid — is checked by the app's tests, not here.
+*/
+function validateBundles(seed) {
+  if (seed.bundles === undefined) return;
+  console.log('\n📦 Checking bundles...');
+  if (!Array.isArray(seed.bundles)) {
+    error('bundles: must be a list of bundle ids');
+    return;
+  }
+  for (const id of seed.bundles) {
+    const file = path.join(WORKSPACE_ROOT, 'bundles', `${id}.bundle.json`);
+    if (!fs.existsSync(file)) {
+      error(`bundles: "${id}" names no file — expected bundles/${id}.bundle.json`);
+      continue;
+    }
+    let bundle;
+    try {
+      bundle = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch (err) {
+      error(`bundles/${id}.bundle.json is not valid JSON: ${err.message}`);
+      continue;
+    }
+    if (bundle.format !== 'we-bundle' || bundle.formatVersion !== 1)
+      error(`bundles/${id}.bundle.json is not a we-bundle 1`);
+    else if (bundle.id !== id) error(`bundles/${id}.bundle.json says its id is "${bundle.id}"`);
+    else success(`bundle ${id} ${bundle.version}`);
+  }
 }
 
 function summarise() {
