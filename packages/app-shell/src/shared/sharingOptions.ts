@@ -1,7 +1,7 @@
-import type { LinkLanguageTemplate } from '@we/backend-shared';
+import type { SharingOption } from '@we/backend-shared';
 
 /** One entry in the create-space picker for how a shared space syncs. */
-export interface LinkLanguageOption {
+export interface SharingPickerOption {
   label: string;
   value: string;
   icon: string;
@@ -9,7 +9,7 @@ export interface LinkLanguageOption {
   description: string;
 }
 
-const ICONS: Record<LinkLanguageTemplate['kind'], string> = {
+const ICONS: Record<SharingOption['kind'], string> = {
   'peer-to-peer': 'share-network',
   server: 'hard-drives',
 };
@@ -25,14 +25,15 @@ function serverHost(url: string | undefined): string {
 }
 
 /**
- * Picker entries for the templates a backend offers, in the backend's order (its default first).
+ * Picker entries for the ways a backend can share a space, in the backend's order (its default
+ * first).
  *
- * Labelled by how a space syncs rather than by the template's own name, which is a package name
+ * Labelled by how a space syncs rather than by the option's own name, which is a package name
  * nobody choosing one would recognise. The technical name only appears in a label when two
- * templates would otherwise read the same.
+ * options would otherwise read the same.
  */
-export function linkLanguageOptions(templates: readonly LinkLanguageTemplate[]): LinkLanguageOption[] {
-  const baseLabel = (t: LinkLanguageTemplate) => {
+export function sharingPickerOptions(templates: readonly SharingOption[]): SharingPickerOption[] {
+  const baseLabel = (t: SharingOption) => {
     const host = serverHost(t.serverUrl);
     return t.kind === 'server' ? (host ? `Server (${host})` : 'Server') : 'Peer-to-peer';
   };
@@ -43,7 +44,7 @@ export function linkLanguageOptions(templates: readonly LinkLanguageTemplate[]):
     const base = baseLabel(t);
     const host = serverHost(t.serverUrl);
     return {
-      value: t.address,
+      value: t.id,
       label: (counts.get(base) ?? 0) > 1 ? `${base} · ${t.name}` : base,
       icon: ICONS[t.kind],
       description:

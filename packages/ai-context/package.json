@@ -27,6 +27,7 @@
     "@we/cli": "workspace:*",
     "@we/module-call": "workspace:*",
     "@we/module-globe": "workspace:*",
+    "@we/module-flux": "workspace:*",
     "@we/module-graph": "workspace:*",
     "@we/module-live": "workspace:*",
     "@we/module-notes": "workspace:*",

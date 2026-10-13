@@ -1,5 +1,5 @@
 import { Ad4mClient, Link, LinkExpression, Literal } from '@coasys/ad4m';
-import type { AgentProfileSummary, PublishProfileFields } from '@we/backend-shared';
+import type { AgentProfileSummary, PublishProfileFields, UploadFile } from '@we/backend-shared';
 
 export { isProfileEmpty } from '@we/backend-shared';
 export type { AgentProfileSummary, PublishProfileFields } from '@we/backend-shared';
@@ -299,32 +299,32 @@ export async function publishProfileToPublicPerspective(
   }
 
   // Avatar
-  if ('avatarExpressionUrl' in fields) {
+  if ('avatarUrl' in fields) {
     removals.push(
       ...existingLinks.filter((l) => l.data.source === WE_PROFILE_SOURCE && l.data.predicate === 'we://profile_image'),
     );
-    if (fields.avatarExpressionUrl) {
+    if (fields.avatarUrl) {
       additions.push(
         new Link({
           source: WE_PROFILE_SOURCE,
           predicate: 'we://profile_image',
-          target: fields.avatarExpressionUrl,
+          target: fields.avatarUrl,
         }),
       );
     }
   }
 
   // Cover image
-  if ('coverImageExpressionUrl' in fields) {
+  if ('coverImageUrl' in fields) {
     removals.push(
       ...existingLinks.filter((l) => l.data.source === WE_PROFILE_SOURCE && l.data.predicate === 'we://cover_image'),
     );
-    if (fields.coverImageExpressionUrl) {
+    if (fields.coverImageUrl) {
       additions.push(
         new Link({
           source: WE_PROFILE_SOURCE,
           predicate: 'we://cover_image',
-          target: fields.coverImageExpressionUrl,
+          target: fields.coverImageUrl,
         }),
       );
     }
@@ -436,7 +436,9 @@ export async function ensureFileStorageLanguage(backendClient: unknown): Promise
  * Store a serialized file payload as an expression in the file-storage language and return its
  * expression URL. Thin adapter wrapper so the shell never touches the client directly.
  */
-export async function createFileExpression(backendClient: unknown, serialized: string): Promise<string> {
+/** Store a file as a file-storage expression, in the shape that language reads. */
+export async function createFileExpression(backendClient: unknown, file: UploadFile): Promise<string> {
   const client = backendClient as Ad4mClient;
-  return client.expression.create(serialized, FILE_STORAGE_LANGUAGE);
+  const payload = { data_base64: file.base64, name: file.name, file_type: file.mimeType };
+  return client.expression.create(JSON.stringify(payload), FILE_STORAGE_LANGUAGE);
 }

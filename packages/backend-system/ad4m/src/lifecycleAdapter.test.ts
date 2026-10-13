@@ -44,13 +44,13 @@ const templateData = (client: ReturnType<typeof mockClient>) =>
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
-describe('linkLanguageTemplates', () => {
+describe('sharingOptions', () => {
   it('hides a template needing a server when no link server is configured', async () => {
     const client = mockClient([HOLOCHAIN, SERVER]);
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
 
-    expect(await lifecycle.linkLanguageTemplates?.()).toEqual([
-      { address: HOLOCHAIN.address, name: HOLOCHAIN.name, kind: 'peer-to-peer' },
+    expect(await lifecycle.sharingOptions?.()).toEqual([
+      { id: HOLOCHAIN.address, name: HOLOCHAIN.name, kind: 'peer-to-peer' },
     ]);
   });
 
@@ -62,9 +62,9 @@ describe('linkLanguageTemplates', () => {
       linkServerUrl: 'https://links.example.org',
     });
 
-    expect(await lifecycle.linkLanguageTemplates?.()).toEqual([
-      { address: HOLOCHAIN.address, name: HOLOCHAIN.name, kind: 'peer-to-peer' },
-      { address: SERVER.address, name: SERVER.name, kind: 'server', serverUrl: 'https://links.example.org' },
+    expect(await lifecycle.sharingOptions?.()).toEqual([
+      { id: HOLOCHAIN.address, name: HOLOCHAIN.name, kind: 'peer-to-peer' },
+      { id: SERVER.address, name: SERVER.name, kind: 'server', serverUrl: 'https://links.example.org' },
     ]);
   });
 
@@ -72,7 +72,7 @@ describe('linkLanguageTemplates', () => {
     const client = mockClient([UNDECLARED]);
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
 
-    expect(await lifecycle.linkLanguageTemplates?.()).toHaveLength(1);
+    expect(await lifecycle.sharingOptions?.()).toHaveLength(1);
   });
 });
 
@@ -83,7 +83,7 @@ describe('publish', () => {
       linkServerUrl: 'https://links.example.org',
     });
 
-    await lifecycle.publish?.('dataset-1', HOLOCHAIN.address);
+    await lifecycle.publish?.('dataset-1', { sharing: HOLOCHAIN.address });
 
     const data = templateData(client);
     expect(Object.keys(data).sort()).toEqual(['name', 'uid']);
@@ -96,8 +96,8 @@ describe('publish', () => {
       linkServerUrl: 'https://links.example.org',
     });
 
-    await lifecycle.publish?.('dataset-1', SERVER.address);
-    await lifecycle.publish?.('dataset-2', SERVER.address);
+    await lifecycle.publish?.('dataset-1', { sharing: SERVER.address });
+    await lifecycle.publish?.('dataset-2', { sharing: SERVER.address });
 
     const [first, second] = client.languages.applyTemplateAndPublish.mock.calls.map(
       (call) => JSON.parse(call[1]) as Record<string, string>,
@@ -111,7 +111,7 @@ describe('publish', () => {
     const client = mockClient([HOLOCHAIN, SERVER]);
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
 
-    await expect(lifecycle.publish?.('dataset-1', SERVER.address)).rejects.toThrow(/SERVER_URL, ROOM_ID/);
+    await expect(lifecycle.publish?.('dataset-1', { sharing: SERVER.address })).rejects.toThrow(/SERVER_URL, ROOM_ID/);
     expect(client.languages.applyTemplateAndPublish).not.toHaveBeenCalled();
   });
 
@@ -119,7 +119,7 @@ describe('publish', () => {
     const client = mockClient([SERVER, HOLOCHAIN]);
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
 
-    await lifecycle.publish?.('dataset-1', '');
+    await lifecycle.publish?.('dataset-1', { sharing: '' });
 
     expect(client.languages.applyTemplateAndPublish.mock.calls[0][0]).toBe(HOLOCHAIN.address);
   });
@@ -146,8 +146,8 @@ describe('development registration', () => {
     const client = mockClient([HOLOCHAIN]);
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient, devOptions('/ad4m/bundle.js'));
 
-    const templates = await lifecycle.linkLanguageTemplates?.();
-    await lifecycle.linkLanguageTemplates?.();
+    const templates = await lifecycle.sharingOptions?.();
+    await lifecycle.sharingOptions?.();
 
     expect(client.languages.publish).toHaveBeenCalledTimes(1);
     expect(client.languages.publish.mock.calls[0]).toEqual([
@@ -155,7 +155,7 @@ describe('development registration', () => {
       expect.objectContaining({ possibleTemplateParams: expect.arrayContaining(['SERVER_URL', 'ROOM_ID']) }),
     ]);
     expect(client.runtime.addKnownLinkLanguageTemplates).toHaveBeenCalledWith(['Qm-dev-server']);
-    expect(templates?.map((t) => t.address)).toEqual([HOLOCHAIN.address, 'Qm-dev-server']);
+    expect(templates?.map((t) => t.id)).toEqual([HOLOCHAIN.address, 'Qm-dev-server']);
   });
 
   it('does not register a build the language store holds under other parameters', async () => {
@@ -168,7 +168,7 @@ describe('development registration', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient, devOptions('/ad4m/bundle.js'));
 
-    await lifecycle.linkLanguageTemplates?.();
+    await lifecycle.sharingOptions?.();
 
     expect(client.runtime.addKnownLinkLanguageTemplates).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('linkServerUrl'));
@@ -179,19 +179,19 @@ describe('development registration', () => {
     const client = mockClient([HOLOCHAIN, SERVER]);
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient, devOptions('/ad4m/bundle.js'));
 
-    await lifecycle.linkLanguageTemplates?.();
+    await lifecycle.sharingOptions?.();
 
     expect(client.languages.publish).not.toHaveBeenCalled();
   });
 
   it('does nothing without a bundle or without a link server', async () => {
     const noBundle = mockClient([HOLOCHAIN]);
-    await createAd4mDatasetLifecycle(noBundle as unknown as Ad4mClient, devOptions(null)).linkLanguageTemplates?.();
+    await createAd4mDatasetLifecycle(noBundle as unknown as Ad4mClient, devOptions(null)).sharingOptions?.();
 
     const noServer = mockClient([HOLOCHAIN]);
     await createAd4mDatasetLifecycle(noServer as unknown as Ad4mClient, {
       devLinkLanguageBundle: async () => '/ad4m/bundle.js',
-    }).linkLanguageTemplates?.();
+    }).sharingOptions?.();
 
     expect(noBundle.languages.publish).not.toHaveBeenCalled();
     expect(noServer.languages.publish).not.toHaveBeenCalled();
@@ -203,8 +203,8 @@ describe('development registration', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient, devOptions('/ad4m/bundle.js'));
 
-    expect(await lifecycle.linkLanguageTemplates?.()).toHaveLength(1);
-    await lifecycle.linkLanguageTemplates?.();
+    expect(await lifecycle.sharingOptions?.()).toHaveLength(1);
+    await lifecycle.sharingOptions?.();
 
     expect(client.languages.publish).toHaveBeenCalledTimes(2);
     warn.mockRestore();

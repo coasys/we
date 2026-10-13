@@ -33,7 +33,6 @@ import {
   parseAppliesTo,
   resolveInvolvementTypes,
 } from '@shared/involvements';
-import { type LinkLanguageOption, linkLanguageOptions } from '@shared/linkLanguageOptions';
 import {
   clearSetting,
   type LevelValues,
@@ -58,6 +57,7 @@ import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry'
 import { completeResponse } from '@shared/responses';
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
+import { type SharingPickerOption, sharingPickerOptions } from '@shared/sharingOptions';
 import { readSpaceRoles, writeSpaceRole } from '@shared/spaceRoles';
 import {
   applyStarterRecords,
@@ -89,6 +89,7 @@ import {
 } from '@shared/taskFlow';
 import { taskFlowLive } from '@shared/taskFlowLive';
 import { resolveSpaceTheme, type ThemeResolutionInput } from '@shared/themeResolution';
+import { uploadOf } from '@shared/uploadOf';
 import { copyText, deriveSlug } from '@shared/utils';
 import type { ViewSetting } from '@shared/viewResolution';
 import {
@@ -397,13 +398,6 @@ export interface CreatePostOptions {
   relation?: string;
 }
 
-export interface FluxSubgroupMessage {
-  id: string;
-  author: string;
-  timestamp: string;
-  body: string;
-}
-
 // Space.avatar/coverImage are typed as string (resolved data URI on read) but accept FileData on write.
 // This input type reflects the actual write-path contract.
 type SpaceInput = Omit<Partial<Space>, 'avatar' | 'coverImage'> & {
@@ -651,9 +645,9 @@ export interface SpaceStore {
   /** The same list as a nav strip reads it — one source, so routes and nav cannot disagree. */
   viewNav: Accessor<{ id: string; segment: string; label: string; icon: string; path: string }[]>;
   /** How a shared space can sync, as picker entries: label, icon and a description per template. */
-  linkLanguageTemplateOptions: Accessor<LinkLanguageOption[]>;
+  sharingOptions: Accessor<SharingPickerOption[]>;
   /** Address of the link language template publishing uses when none is chosen. */
-  defaultLinkLanguageTemplate: Accessor<string>;
+  defaultSharing: Accessor<string>;
 
   // Actions
   createSpace: (
@@ -664,7 +658,7 @@ export interface SpaceStore {
     avatarFile?: File,
     coverImageFile?: File,
     location?: LocationData | null,
-    linkLanguageTemplate?: string,
+    sharing?: string,
   ) => Promise<void>;
   /**
    * Join a shared dataset. `focus` defaults to true; pass false to join without navigating to it.
@@ -1014,7 +1008,6 @@ export interface SpaceStore {
   copyShareLink: (uuid: string) => Promise<void>;
   /** Copy a guest invite link — auto-creates account, auto-joins the space. No-op without a host. */
   copyGuestLink: (uuid: string) => Promise<void>;
-  getSubgroupMessages: (subgroupId: string) => Promise<FluxSubgroupMessage[]>;
   /**
    * Write a call's transcript to a `.txt` file and download it.
    *
@@ -1631,7 +1624,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         .filter((s): s is Space => !!s)
         .sort((a, b) => Number(a.createdAt) - Number(b.createdAt));
       setMySpaces(filteredSpaces);
-      void loadLinkLanguageTemplates();
+      void loadSharingOptions();
     } catch (error) {
       console.error('SpaceStore: loadSpaces error', error);
     }
@@ -1646,20 +1639,20 @@ export function SpaceStoreProvider(props: ParentProps) {
     void templateStore.preloadSpaceTemplates(ds).catch(() => {});
   }
 
-  const [linkLanguageTemplateOptions, setLinkLanguageTemplateOptions] = createSignal<LinkLanguageOption[]>([]);
-  const [defaultLinkLanguageTemplate, setDefaultLinkLanguageTemplate] = createSignal('');
+  const [sharingOptions, setSharingOptions] = createSignal<SharingPickerOption[]>([]);
+  const [defaultSharing, setDefaultSharing] = createSignal('');
 
-  async function loadLinkLanguageTemplates(): Promise<void> {
+  async function loadSharingOptions(): Promise<void> {
     const lifecycle = session.lifecycle();
-    if (!lifecycle?.linkLanguageTemplates) return;
+    if (!lifecycle?.sharingOptions) return;
     try {
-      const templates = await lifecycle.linkLanguageTemplates();
+      const options = await lifecycle.sharingOptions();
       // The backend lists its default first — what publishing uses unprompted — and the picker
       // keeps that order, so the default is also the first option.
-      setDefaultLinkLanguageTemplate(templates[0]?.address ?? '');
-      setLinkLanguageTemplateOptions(linkLanguageOptions(templates));
+      setDefaultSharing(options[0]?.id ?? '');
+      setSharingOptions(sharingPickerOptions(options));
     } catch (e) {
-      console.error('SpaceStore: loadLinkLanguageTemplates error', e);
+      console.error('SpaceStore: loadSharingOptions error', e);
     }
   }
 
@@ -1767,7 +1760,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     avatarFile?: File,
     coverImageFile?: File,
     location?: LocationData | null,
-    linkLanguageTemplate?: string,
+    sharing?: string,
   ): Promise<void> {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return;
@@ -1787,7 +1780,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       // (the dataset handle's own sharedUrl is not updated in-place).
       if (access === 'shared') {
         if (!lifecycle.publish) throw new Error('This backend cannot publish shared datasets.');
-        const published = await lifecycle.publish(spaceRef.id, linkLanguageTemplate);
+        const published = await lifecycle.publish(spaceRef.id, { sharing });
         publishedSharedId = published.sharedId;
         // Patch the ref so trackDataset sees the sharedId — the proxy's sharedUrl is not
         // updated in-place by publish, so the ref captured at create time would otherwise
@@ -2823,20 +2816,6 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   async function withdrawSignal(nodeId: string, signalTypeId: string): Promise<void> {
     await upsertSignal(nodeId, signalTypeId, null);
-  }
-
-  // Ecosystem dialect, feature-detected through the connector's interop surface — a backend
-  // without it simply returns nothing.
-  async function getSubgroupMessages(subgroupId: string): Promise<FluxSubgroupMessage[]> {
-    const ds = datasetStore.currentDataset();
-    const fetchMessages = session.backendPorts()?.interop?.fluxSubgroupMessages;
-    if (!ds || !fetchMessages) return [];
-    try {
-      return await fetchMessages(ds.handle, subgroupId);
-    } catch (err) {
-      console.error('SpaceStore: getSubgroupMessages failed', err);
-      return [];
-    }
   }
 
   /**
@@ -4615,7 +4594,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         : // Non-images go through unchanged. `dataURIToFileData` is the same decode the image path
           // ends with, so both arrive at the port in one shape.
           dataURIToFileData(await readAsDataURI(file), name ?? file.name);
-      return await profiles.uploadFile(JSON.stringify(fileData));
+      return await profiles.uploadFile(uploadOf(fileData));
     } catch (error) {
       console.error('SpaceStore: upload failed', error);
       toastService.error('Could not upload that file.');
@@ -5668,8 +5647,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     enabledViewIds,
     viewNav,
     foreignSpacePrefill,
-    linkLanguageTemplateOptions,
-    defaultLinkLanguageTemplate,
+    sharingOptions,
+    defaultSharing,
 
     // Actions
     createSpace,
@@ -5750,7 +5729,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     canAdministerCurrentSpace,
     copyShareLink,
     copyGuestLink,
-    getSubgroupMessages,
     exportCallTranscript,
     exportExtractionLog,
     removeSpaceFromGlobal,

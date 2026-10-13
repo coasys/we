@@ -37,6 +37,7 @@ import { readInterpretationHints, resetInterpretationHints, writeInterpretationH
 import { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './languageModelPort';
 import { type Ad4mLifecycleOptions, createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 import { compileManifest, manifestToEntries } from './manifestCompiler';
+import { createAd4mModelAdmin } from './modelAdminAdapter';
 import { installParentByRelation } from './parentByRelation';
 import { buildEntityClasses, buildEntityManifest, getForeignShacl } from './perspectiveHelpers';
 import { createAd4mReferencePort } from './referencePort';
@@ -56,7 +57,6 @@ import {
   warmSchemaReads,
   warmStoredShapes,
 } from './sdnaEntities';
-import { getFluxSubgroupMessages } from './syncHelpers';
 import { createAd4mTranscriptionPort } from './transcriptionAdapter';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
@@ -138,7 +138,7 @@ export function createAd4mProfileDirectory(backendClient: unknown): ProfileDirec
   return {
     get: (id) => getProfile(id, backendClient),
     publish: (fields) => publishProfileToPublicPerspective(fields, backendClient),
-    uploadFile: (serialized) => createFileExpression(backendClient, serialized),
+    uploadFile: (file) => createFileExpression(backendClient, file),
   };
 }
 
@@ -202,6 +202,7 @@ export function createAd4mBackendPorts(
     schemas: createAd4mSchemaPort(backendClient),
     profiles: createAd4mProfileDirectory(backendClient),
     runtime: createAd4mRuntimeAdmin(backendClient, options),
+    models: createAd4mModelAdmin(backendClient, options),
     transcription: createAd4mTranscriptionPort(backendClient, options),
     languageModel: createAd4mLanguageModelPort(backendClient, options.connection),
     // Takes no client: interpretation is entirely a per-dataset operation, and every call already
@@ -219,8 +220,5 @@ export function createAd4mBackendPorts(
         fetchAgent: deps.fetchProfile,
         ephemeralPort: deps.ephemeral,
       }),
-    interop: {
-      fluxSubgroupMessages: getFluxSubgroupMessages,
-    },
   };
 }
