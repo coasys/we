@@ -110,6 +110,7 @@ export const spaceVocabularySection: SchemaNode = {
         // The state being edited, by slug — a name per row is impossible when the rows come from
         // data, and only one can be open at a time. See `editModal` in TaskStatesSection.
         editTaskStateSlug: { type: 'string', initial: '' },
+        guardTaskStateSlug: { type: 'string', initial: '' },
         createInvolvementTypeOpen: { type: 'boolean', initial: false },
         editInvolvementTypeSlug: { type: 'string', initial: '' },
       },

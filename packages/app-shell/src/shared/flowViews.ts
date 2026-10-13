@@ -101,7 +101,8 @@ export const defaultLabels: FlowLabels = { state: stateLabelOf, kind: stateLabel
 
 const tieOf = (tie: FlowTie | undefined) => (!tie ? '' : 'relation' in tie ? tie.relation : tie.field);
 
-function guardLabel(guard: FlowGuard): string {
+/** A guard in words: "at least 1 TextBlock in response to it". */
+export function guardLabel(guard: FlowGuard): string {
   const min = guard.min ?? 1;
   const count = guard.max !== undefined ? `${min}–${guard.max}` : `at least ${min}`;
   const where =

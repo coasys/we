@@ -4968,6 +4968,12 @@
           "type": "string",
           "predicate": "we://archived_flows",
           "required": false
+        },
+        {
+          "name": "taskFlowRule",
+          "type": "string",
+          "predicate": "we://task_flow_rule",
+          "required": false
         }
       ],
       "relations": [
@@ -5225,6 +5231,12 @@
           "name": "approverKind",
           "type": "string",
           "predicate": "we://approver_kind",
+          "required": false
+        },
+        {
+          "name": "guards",
+          "type": "string",
+          "predicate": "we://guards",
           "required": false
         },
         {
@@ -7248,11 +7260,11 @@
         },
         "taskStates": {
           "type": "array",
-          "properties": ["id", "name", "slug", "semantic", "color", "retired", "approvals", "approverKind"]
+          "properties": ["id", "name", "slug", "semantic", "color", "retired", "approvals", "approverKind", "guards"]
         },
         "offeredTaskStates": {
           "type": "array",
-          "properties": ["id", "name", "slug", "semantic", "color", "retired", "approvals", "approverKind"]
+          "properties": ["id", "name", "slug", "semantic", "color", "retired", "approvals", "approverKind", "guards"]
         },
         "taskStatesLoaded": {
           "type": "boolean"
@@ -7354,6 +7366,9 @@
         "extractionTargets": {
           "type": "array"
         },
+        "taskFlowRule": {
+          "type": "string"
+        },
         "taskFlowEnabled": {
           "type": "boolean"
         },
@@ -7415,6 +7430,9 @@
         "setSignalTypeRetired",
         "createTaskState",
         "updateTaskState",
+        "setTaskFlowRule",
+        "addTaskStateGuard",
+        "removeTaskStateGuard",
         "approveTaskMove",
         "withdrawTaskMove",
         "setFlowArchived",

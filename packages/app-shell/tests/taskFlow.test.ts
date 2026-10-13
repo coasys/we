@@ -11,7 +11,9 @@ import {
   createTaskFlowActions,
   flowStateOf,
   needsAgreement,
+  parseTaskStateGuards,
   readMoveResult,
+  storeTaskStateGuards,
   TASK_FLOW,
   type TaskFlowActions,
   type TaskFlowView,
@@ -178,5 +180,57 @@ describe('readMoveResult', () => {
   it('reads an unanswered move as slow rather than failed', () => {
     expect(read({ outcome: 'pending' })).toBe('slow');
     expect(read({ outcome: 'stalled', state: 'vote' })).toBe('stalled');
+  });
+});
+
+describe('a rule over the states, and what must be there', () => {
+  it('runs the states as a flow under a rule even where no state asks for agreement', () => {
+    expect(compileTaskFlow(DEFAULTS)).toBeNull();
+    const flow = compileTaskFlow(DEFAULTS, 'next')!;
+    expect(flow.transitions).toEqual([
+      { from: 'todo', to: 'doing' },
+      { from: 'doing', to: 'done' },
+    ]);
+    const back = compileTaskFlow(DEFAULTS, 'next-and-back')!;
+    // The last state is final, as it is in any flow written as lanes: nothing leads back out of it.
+    expect(back.transitions.map((t) => `${t.from}>${t.to}`).sort()).toEqual(['doing>done', 'doing>todo', 'todo>doing']);
+  });
+
+  it('compiles a guard into the state it guards, and counts it as asking', () => {
+    const guards = parseTaskStateGuards(JSON.stringify([{ entity: 'TextBlock', tie: 'responses' }]));
+    expect(needsAgreement({ slug: 'done', guards })).toBe(true);
+    const flow = compileTaskFlow([{ slug: 'todo' }, { slug: 'done', guards }])!;
+    expect(flow.states[1]).toEqual({
+      name: 'done',
+      requires: [{ kind: 'guard', entity: 'TextBlock', tie: { relation: 'responses' } }],
+    });
+  });
+
+  it('stores guards compactly, reads them back, and reads anything unreadable as none', () => {
+    const stored = storeTaskStateGuards([{ entity: 'FileBlock', tie: 'responses', min: 2 }, { entity: '' }]);
+    expect(JSON.parse(stored)).toEqual([{ entity: 'FileBlock', tie: 'responses', min: 2 }]);
+    expect(parseTaskStateGuards(stored)).toEqual([
+      { kind: 'guard', entity: 'FileBlock', tie: { relation: 'responses' }, min: 2 },
+    ]);
+    expect(storeTaskStateGuards([])).toBe('');
+    expect(parseTaskStateGuards('{not json')).toEqual([]);
+  });
+
+  it('refuses a move the rule does not allow without asking the backend', async () => {
+    const port = createInMemoryFlowPort(() => ANA);
+    const dataset = {};
+    let asked = 0;
+    const counting = { ...port, move: (...args: Parameters<typeof port.move>) => ((asked += 1), port.move(...args)) };
+    const actions = createTaskFlowActions({
+      dataset: () => dataset,
+      port: () => counting,
+      states: () => DEFAULTS,
+      rule: () => 'next',
+    });
+    await port.install(dataset, compileTaskFlow(DEFAULTS, 'next')!);
+    expect(await actions.move('task', 'todo', 'done')).toBe('not-allowed');
+    expect(asked).toBe(0);
+    expect(await actions.move('task', 'todo', 'doing')).toBe('moved');
+    expect(asked).toBe(1);
   });
 });
