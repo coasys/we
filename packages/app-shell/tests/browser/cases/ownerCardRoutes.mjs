@@ -178,6 +178,18 @@ export async function check({ call, count, recorded }) {
     await call('editorProbeDispose');
   }
 
+  // Where the copy can be changed in place, copying goes straight into changing it.
+  await call('ownerCardProbe', 'view-editable');
+  try {
+    await call('pressButton', 'Copy');
+    await call('pressButton', 'Make the copy');
+    await call('idleFrames', 2);
+    if ((await recorded('__probeTarget')).at(-1) !== 'section:about-yours')
+      problems.push('a copy that can be changed in place was not gone into');
+  } finally {
+    await call('editorProbeDispose');
+  }
+
   await call('ownerCardProbe', 'view-blocked');
   try {
     if (await call('pressButton', 'Copy'))

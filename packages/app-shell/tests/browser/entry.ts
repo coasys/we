@@ -740,6 +740,7 @@ function ownerCardProbe(
     | 'palette'
     | 'view'
     | 'view-blocked'
+    | 'view-editable'
     | 'arranged'
     | 'arranged-placed'
     | 'part-node'
@@ -797,8 +798,12 @@ function ownerCardProbe(
   const host = {
     targets: {
       section: () => null,
-      canEditSection: () => false,
-      enterSection: () => false,
+      // Only the copy, and only where the shell draws it so it can be edited in place.
+      canEditSection: (id: string) => kind === 'view-editable' && id === 'about-yours',
+      enterSection: (id: string) => {
+        record('__probeTarget', `section:${id}`);
+        return true;
+      },
       app: barApp,
       enterApp: () => {
         setBarApp({ name: 'WE' });
@@ -936,7 +941,7 @@ function ownerCardProbe(
                     parts: ['demo.box'],
                   },
                 });
-              if (kind === 'view' || kind === 'view-blocked')
+              if (kind === 'view' || kind === 'view-blocked' || kind === 'view-editable')
                 return createComponent(OwnerCard, { owner: { kind: 'view', id: 'about', name: 'About' } });
               return kind === 'part'
                 ? createComponent(PartCard, { node: (template.children as Record<string, unknown>[])[0] as never })

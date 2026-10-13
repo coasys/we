@@ -33,7 +33,7 @@ import {
   type TemplateSchema,
 } from '@we/schema-shared';
 import { type OwnerRef, useVisualEditor } from '@we/schema-solid';
-import { createMemo, createSignal, For, type JSX, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, type JSX, Show } from 'solid-js';
 
 import { type OwnedPart, useEditorHost } from '../host';
 import { deepClone, lastOf } from '../utils';
@@ -488,6 +488,21 @@ function ViewCard(props: { id: string }) {
     setFailed(!id);
     setStep('idle');
   };
+
+  /*
+    A copy is made to be changed, so it is gone into as soon as it can be, as a forked template is
+    opened for editing. The question worth asking — replacing the section for everyone — was the
+    confirmation; going in commits nothing more. Watched rather than done after the await, because
+    the copy becomes editable when the template lists hear of it, which can be a moment later. A copy
+    that never can be — one this shell cannot reach — keeps the card's way to open it on its own.
+  */
+  let wentIn = false;
+  createEffect(() => {
+    const copy = made();
+    if (!copy || wentIn || !canChangeHere(copy)) return;
+    wentIn = true;
+    changeHere(copy);
+  });
 
   return (
     <Show when={info()}>

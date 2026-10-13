@@ -119,7 +119,9 @@ section whole, and a second press (or one with the modifier) makes it the editor
 (`stores/templateDrafts.ts`), which `SpaceStore.availableViews` prefers while it is open, so the shell
 draws each edit where it will be seen. One thing is edited at a time: while the section is the
 target nothing outside it lights up, and a press outside it only comes back out, selecting nothing.
-Escape at its top and Done come back out too. A built-in section is copied first ("Make your own copy"), and the copy is edited the same way.
+Escape at its top and Done come back out too. A built-in section is copied first ("Make your own
+copy"), and copying goes straight into editing the copy where it is drawn, as forking a template
+opens the fork.
 
 ## Where to look
 
