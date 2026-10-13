@@ -697,12 +697,12 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
   /**
    * One staged-suggestion watch per perspective, shared by every holder.
    *
-   * The executor hands identical subscriptions from one user the same server-side subscription, with
-   * no count of who holds it, so disposing one ends it for all. Two watches on a perspective are
-   * ordinary: a space switch away and back inside a round trip has the first watch finish starting
-   * after the second, and its late stop silenced the live one until the keepalive noticed. So the
-   * watch is shared here and disposed when its last holder lets go — after a grace, because a
-   * dispose racing a fresh subscribe with the same text can land after it and end that one too.
+   * Two watches on a perspective are ordinary — a space switch away and back inside a round trip has
+   * the first finish starting after the second — and the executor runs every subscription it holds on
+   * each change that matches, so two watches cost two runs for one answer. (They were shared first
+   * because the executor used to hand identical subscriptions one id with no count of its holders, so
+   * the late stop silenced the live watch.) So the watch is shared here and disposed when its last
+   * holder lets go — after a grace, so a remount does not stop one subscription and start another.
    */
   const proposalWatches = new Map<
     PerspectiveProxy,

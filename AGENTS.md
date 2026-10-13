@@ -762,13 +762,15 @@ Sub-query include — filter, sort, or limit the related records:
 
 Nested include — hydrate relations of relations:
 { "$query": { "entity": "Channel", "include": { "conversations": { "include": { "messages": true } } } } }
-Nesting can go as deep as needed. Each level adds one batched fetch (not N+1). Two limits, both silent
-rather than refused, so keep clear of them:
-- A $-prefixed projection (below) works only at the TOP level of include. Written inside a nested
-  include it is dropped: the query succeeds and the field is simply absent.
-- Below an UNTYPED relation (see "include works with an UNTYPED relation" below), only a TYPED
-  relation can be nested. Nesting another untyped one fails the whole query the moment any member has
-  something in it — so it works on an empty board and breaks on the first card.
+Nesting can go as deep as needed. Each level adds one batched fetch (not N+1).
+A $-prefixed projection (below) works at any level, so a count rides on each included record:
+{ "include": { "conversations": { "include": { "$messageCount": { "from": "messages", "count": true } } } } }
+Below an UNTYPED relation each member answers it for its own type, and a member whose type has no
+such relation simply carries no count.
+One limit, silent rather than refused, so keep clear of it: below an UNTYPED relation (see "include
+works with an UNTYPED relation" below), only a TYPED relation can be nested. Nesting another untyped
+one fails the whole query the moment any member has something in it — so it works on an empty board
+and breaks on the first card.
 
 Count projection — add a derived numeric field:
 { "$query": { "entity": "Post", "include": { "$likeCount": { "from": "likes", "count": true } } } }
@@ -1809,7 +1811,7 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - Example: `{ "source": "schema" }`
 - `canvas` — A container's contents at the positions somebody put them. Membership is ordinary containment, so a card composed onto the canvas is found like any child; position comes from Placement records parented to the same canvas, which is why the same note can sit on two canvases in two places. Pair with layout: manual and drag-node { pin: true }, and persist a drop through recordStore.placeOnCanvas. Loads nothing until a canvas is chosen.
   - canvas: string — Record id of the canvas (required).
-  - contains: string[] — Types the canvas may hold beyond whatever its placements name — one query each. Defaults to the block vocabulary; anything *placed* is loaded whether or not it is listed.
+  - contains: string[] — Types the canvas may hold beyond whatever its placements name — read together, in one query. Defaults to the block vocabulary; anything *placed* is loaded whether or not it is listed.
   - via: string — Relation holding the contents. Defaults to "children".
   - connections: string — Reified relation entity to draw as lines between the cards — e.g. "Relationship". Only pairs whose two ends are both on the canvas are drawn, since a line to something elsewhere would leave the canvas. Each line carries the record it stands for, so clicking one can open it. Omit for a canvas with no connections.
   - typeStyles: string — Entity holding this canvas's colour per kind of thing — WE passes "TypeStyle". Read onto every node as `canvasTypeColor`, for a style rule to pick up with `{ from: "data.canvasTypeColor" }`. This is what a canvas's key writes.
@@ -1817,7 +1819,7 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - pending: string[] — Record ids whose card stands for a suggestion nobody has agreed to yet — an extraction pass can stage a whole record, so it is on the canvas and answers every query the accepted ones do. Read onto the matching node as `data.pending`, for a style rule or a node action to pick up with `{ when: { "data.pending": true } }` — the `data.` prefix is required, since a bare key reads a node field rather than seeded data, and matches nothing here. Ids rather than a query because only the capability that staged them knows which they are.
   - changed: string[] — Record ids that are agreed but carry a suggested change — a staged edit to something a person already owns. Read onto the matching node as `data.changed`. Separate from `pending` because it wants the opposite drawing: the record is settled, so mark it rather than fade it.
   - hidden: string[] — Record ids to leave off the canvas entirely — no card, and no connection to or from one. For narrowing what is shown (hiding suggestions nobody has agreed to), where an opacity rule would still leave the card pressable and its lines drawn.
-  - counts: string[] — Relations to count on each card, read onto its data as `<name>Count` — `["signals", "responses"]` for "what have people made of this". The projections ride in the read the seed already makes, so a canvas of three hundred cards pays nothing extra; a query per card would be three hundred subscriptions. A type that does not declare the relation is asked for no count rather than refusing the read, since a refusal would take that whole type off the canvas. Absent for a count of zero, like every other unset field, so a rule can ask whether it is there.
+  - counts: string[] — Relations to count on each card, read onto its data as `<name>Count` — `["signals", "responses"]` for "what have people made of this". The projections ride in the read the seed already makes, so a canvas of three hundred cards pays nothing extra; a query per card would be three hundred subscriptions. A type that does not declare the relation carries no count rather than refusing the read, since a refusal would take that whole type off the canvas. Absent for a count of zero, like every other unset field, so a rule can ask whether it is there.
   - weigh: { signalTypeId: string; aggregate?: string; mode?: string; rangeMin?: number; rangeMax?: number; step?: number; excludeAuthors?: string[]; me?: string } — Weigh each card by one reaction type, read onto its data as `weight` (with `weightCount`, `weightMine` — what `me` gave — and `weightType`). Read the way every reaction surface reads the type: a toggle counts, a vote nets out, a rating or slider averages, and the community's own `aggregate` where the mode can express it. Absent for a vote or rating nobody has given; zero for a count. What a forest's `sortBy: 'weight'` and a heat rule read. Pass the type's `rangeMin`, `rangeMax` and `step` too, so the pretend people a development build can add answer within its range.
   - weights: string — How much each person's voice counts in `weigh` — `did=50,did=0` in whole percent, anyone not named in full; 0 leaves them out. Applied to the answers already read, so changing it re-weighs the canvas with no query — a slider can drive it. The seed reports who answered as `onSeedSummary`'s `voices`: `{ author, cards, mean }`, the busiest first.
   - limit: number — Rows per type. Default 200.
@@ -3907,8 +3909,8 @@ Example — Nested include (Conversations with their messages):
 }
 Each conversation in the result has a messages array of hydrated Message instances.
 Nesting works to any depth: "include": { "messages": { "include": { "reactions": true } } }
-— with two limits, listed under "Nested include" in the operators section: no $-projections below the
-top level, and no untyped relation nested below another.
+— and a $-projection works at any of them — with one limit, under "Nested include" in the operators
+section: no untyped relation nested below another.
 
 Relational drill-down (master-detail navigation across entity relations):
 Use routes + a $query `scope` when you navigate to a detail route and need only that record's children.
@@ -5870,11 +5872,12 @@ What the SDK and executor do around a subscription, so a watch can rely on it:
   the changes after it.
 - After a websocket reconnect, the SDK re-subscribes and hands the current result to every
   callback, so a watch hears a refresh rather than nothing.
-- The executor shares one server-side subscription between identical queries from the same user.
-  Disposing one ends it for the other too, until the other's 30-second keepalive fails and
-  re-subscribes. So hold one subscription per perspective and query, count its holders, and dispose
-  it a grace period after the last one lets go — `onProposalsChanged` shows how. The grace matters:
-  a dispose racing a fresh subscribe with the same text can land after it and end that one too.
+- A subscription belongs to the subscriber that opened it and to its socket: identical queries are
+  independent, and each ends when it is disposed or its socket closes. Independent is not free — the
+  executor evaluates every one of them on each change that matches — so still hold one subscription
+  per perspective and query, count its holders, and dispose it a grace period after the last one
+  lets go, so a surface remounting does not tear one down and open another. `onProposalsChanged`
+  shows how.
 
 ### Reading shapes from `@we/backend-ad4m`
 
