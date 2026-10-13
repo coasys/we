@@ -36,6 +36,18 @@ export interface GraphNode {
   source?: string;
 }
 
+/**
+ * Edge types that say one node is *inside* another, rather than related to it: a collection's member,
+ * a record's field, a field's value, a type's records.
+ *
+ * A layout reads these as parent links whatever else it has been told to follow, because a node an
+ * expansion brought in belongs beside what it was opened from — a field drawn in the unattached zone
+ * of a tree, or parked in a tray across a canvas, has lost the one thing that says what it is a field
+ * *of*. Named once here so the expanders that write these types and the layouts that read them cannot
+ * disagree.
+ */
+export const CONTAINMENT_EDGE_TYPES: readonly string[] = ['contains', 'property', 'value', 'instance'];
+
 export interface GraphEdge {
   /** Stable id. Convention: `<source>|<predicate>|<target>`, so re-expansion is idempotent. */
   id: string;

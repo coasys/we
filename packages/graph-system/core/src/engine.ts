@@ -1337,6 +1337,18 @@ export class GraphEngine {
     return held;
   }
 
+  /**
+   * Whether opening this node could bring anything in: a registered expander the spec allows claims
+   * it, it is not already open with nothing more to give, and the graph has room. What a caret asks
+   * before offering to open a card — asked, like `canFold`, of the selected card only.
+   */
+  canExpand(id: string): boolean {
+    const node = this.store.node(id);
+    if (!node || this.atBudget()) return false;
+    if (this.expansion.isExpanded(id) && !this.expansion.hasMore(id)) return false;
+    return this.registry.expandersFor(node.kind, node.type, this.spec.expansion?.expanders).length > 0;
+  }
+
   /** Whether folding this card would take anything away — see {@link foldableIds}. */
   canFold(id: string): boolean {
     if (this.foldedIds.has(id)) return true;

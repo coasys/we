@@ -54,6 +54,7 @@ import type {
   LayoutResult,
   Placement,
 } from '@we/graph-protocol';
+import { CONTAINMENT_EDGE_TYPES } from '@we/graph-protocol';
 
 /** Where cards that are on no tree go. */
 export type UnattachedPlacement = 'right' | 'bottom';
@@ -71,6 +72,14 @@ export interface ForestLayoutOptions {
    * field, not two.
    */
   spine?: { field: string; value: GraphValue };
+  /**
+   * Edge types that make a parent whatever the spine says — containment rather than relation. A field
+   * opened out of a card, a bucket's members, a type's records: each is *inside* what opened it, and a
+   * tree that left them in the unattached zone because they are not the chosen kind of connection
+   * would draw a card's own fields as strangers to it. Defaults to `CONTAINMENT_EDGE_TYPES`; `[]` for
+   * a forest that follows the spine and nothing else.
+   */
+  containment?: string[];
   /**
    * Node data field that decides the order of siblings, left to right.
    *
@@ -196,13 +205,14 @@ export function forestLayout(rawOptions?: Record<string, unknown>): Layout {
         for an empty value everywhere else in WE and the only reading of it that is any use.
       */
       const spine = options.spine?.field && options.spine.value !== '' ? options.spine : undefined;
+      const containment = new Set(options.containment ?? CONTAINMENT_EDGE_TYPES);
       /** The connections that make a parent a parent. */
       const links: SpineLink[] = [];
       for (const edge of input.edges) {
         // A line to something that is not on the graph cannot make a parent of anything. Filtered
         // here rather than trusted, because a seed drops hidden cards and keeps the edges they were on.
         if (!present.has(edge.source) || !present.has(edge.target) || edge.source === edge.target) continue;
-        if (spine && edgeField(edge, spine.field) !== spine.value) continue;
+        if (spine && edgeField(edge, spine.field) !== spine.value && !containment.has(edge.type)) continue;
         links.push({ id: edge.id, source: edge.source, target: edge.target });
       }
 
