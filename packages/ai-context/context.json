@@ -2737,7 +2737,7 @@
         },
         {
           "name": "onReady",
-          "type": "((api: { find: () => void; }) => void)",
+          "type": "((api: { find: () => void; goTo: (offset: number) => void; }) => void)",
           "optional": true
         },
         {
