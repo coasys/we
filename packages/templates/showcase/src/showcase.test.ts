@@ -2163,8 +2163,11 @@ describe('the workshop’s tree', () => {
     */
     expect(canvas).toContain("{ type: 'forest', options: { spine: { field: 'data.relationshipTypeId'");
     expect(canvas).toContain("{ type: 'manual', options: { size: { width: 180, height: 135 }");
-    // One layout prop, so there is exactly one place the mode is read.
-    expect(canvas.match(/"layout":/g)).toHaveLength(1);
+    // One layout prop on the canvas's graph, so there is exactly one place the mode is read. (The
+    // route also holds the vocabulary map, a different graph with a layout of its own.)
+    const route = (workshop.routes ?? []).find((entry) => entry.path === '/canvas') as unknown as SchemaNode;
+    const graph = JSON.stringify((route.children as SchemaNode[]).find((child) => child.type === 'GraphView'));
+    expect(graph.match(/"layout":/g)).toHaveLength(1);
   });
 
   it('orders siblings by the thing the picker names', () => {

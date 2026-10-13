@@ -130,6 +130,18 @@ import {
   TREE_WEIGHTS,
   treeStrip,
 } from './WorkshopTree.ts';
+import {
+  CANVAS_EXPANSION,
+  FIELD_NODE_RULE,
+  OPEN_FROM_GRAPH,
+  OPEN_NODES,
+  OPEN_QUERY,
+  VOCAB_ON,
+  VOCAB_QUERY,
+  vocabularyCanvas,
+  vocabularyEditLink,
+  vocabularyToggle,
+} from './WorkshopVocabulary.ts';
 
 /**
  * The call on screen — **named in the address**, or the one being recorded when it names none.
@@ -251,7 +263,11 @@ const pageWithCall = (callExpr: string): SchemaProp => ({
     that spelt only the call would turn the lens back to its default on every change of call.
   */
   $action: 'routeStore.navigate',
-  args: [{ $: `\`\${spaceStore.spacePath}/\${${PAGE_EXPR}}?call=\${${callExpr}}${LENS_QUERY}${FOLD_QUERY}\`` }],
+  args: [
+    {
+      $: `\`\${spaceStore.spacePath}/\${${PAGE_EXPR}}?call=\${${callExpr}}${LENS_QUERY}${FOLD_QUERY}${OPEN_QUERY}${VOCAB_QUERY}\``,
+    },
+  ],
 });
 
 /** Look at a call, wherever you are. */
@@ -330,7 +346,7 @@ const NAV = [
  * switch that spelt its query without it would silently put the colours back to the default.
  */
 const navPath = {
-  $: `\`\${spaceStore.spacePath}/\${nav.segment}?call=\${routeStore.params.call ?? ''}${LENS_QUERY}${FOLD_QUERY}${FROM_QUERY}${SCOPE_QUERY}\``,
+  $: `\`\${spaceStore.spacePath}/\${nav.segment}?call=\${routeStore.params.call ?? ''}${LENS_QUERY}${FOLD_QUERY}${OPEN_QUERY}${VOCAB_QUERY}${FROM_QUERY}${SCOPE_QUERY}\``,
 };
 
 /**
@@ -2831,6 +2847,8 @@ const inspectorPanel: SchemaNode = {
                     emptyFields,
                     // After the record's own fields and before its connections: who is on this record
                     // is about the record, and connections are about other records.
+                    // A vocabulary record is edited where the space's words are — see `WorkshopVocabulary`.
+                    vocabularyEditLink(CARD_TYPE),
                     peopleSection,
                     // Beside who is on it: which flows it is going through is also about this record.
                     flowsSection({
@@ -3508,8 +3526,14 @@ const canvas: SchemaNode = {
         weights: TREE_WEIGHTS,
       },
     },
-    // Nothing opens automatically: a card's own blocks are fragments of it, not more cards.
-    expansion: { defaultDepth: 0 },
+    /*
+      Nothing opens automatically: a card's own blocks are fragments of it, not more cards. The caret
+      on a selected card opens it into its fields, and the open set rides in the address beside the
+      fold — see `WorkshopVocabulary`.
+    */
+    expansion: { ...CANVAS_EXPANSION },
+    open: { $: OPEN_NODES },
+    onNodeOpen: OPEN_FROM_GRAPH,
     /*
       A card's size, so a card nobody has placed is parked in a slot it fits — the default slot was
       narrower than a card, which is why new suggestions arrived overlapping — and clear of the cards
@@ -3570,6 +3594,8 @@ const canvas: SchemaNode = {
         the order it is. See `TREE_CARD_STYLE`.
       */
       { style: TREE_CARD_STYLE },
+      // A field opened out of a card is not a record: no record content, no lens colour.
+      FIELD_NODE_RULE,
       /*
         Last, so it survives the card's own colour: a suggestion is faded whatever shade it is.
 
@@ -4260,9 +4286,15 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
   */
   children: [
     canvas,
+    /*
+      The map of what the space has defined, over the canvas rather than instead of it — see
+      `WorkshopVocabulary`. The canvas stays mounted underneath, so coming back finds its camera, its
+      selection and every card where it was, rather than a canvas built again from nothing.
+    */
+    { type: '$if', props: { condition: { $: VOCAB_ON }, then: vocabularyCanvas } },
     // How the canvas is read: the mode, and what the tree is made of. Over the canvas's own corner
     // rather than in a panel, because a panel can be closed and this is the only way out of the mode.
-    treeStrip({ below: CALL_CHROME_BAND.bottom, controls: [fromLensControl] }),
+    treeStrip({ below: CALL_CHROME_BAND.bottom, controls: [fromLensControl, vocabularyToggle] }),
     /*
       Where a connection is actually written down.
 
