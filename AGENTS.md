@@ -2948,7 +2948,7 @@ EditorStore:
   - confirmPicker(name: string, icon: string, destination: 'personal' | 'space'): creates the fork or fresh template and enters editing on it
   - cancelPicker(): closes the picker without creating anything
   - enterTemplateEditing(action?: 'edit' | 'fork' | 'fresh'): opens a template editing session on the template on screen. Omit action to edit in place; a read-only template buffers its edits
-  - editApp(id?: string): opens a visual editing session on the app — the chrome around every space — made the agent's app first when an id is given. WE's own app is built in, so its edits buffer and the session offers Fork
+  - editApp(id?: string): opens an editing session on the app — the chrome around every space — made the agent's app first when an id is given. Starts in preview, as a template's session does. WE's own app is built in, so its edits buffer and the session offers Fork
   - forkApp(id?: string): the same, then opens the picker to name a copy of it. The copy becomes the agent's app, in every space, and stays the one being edited
   - exitTemplateEditing(): ends the template session. Buffered changes to a read-only template are dropped
   - toggle(): toggles the AI chat panel open/closed

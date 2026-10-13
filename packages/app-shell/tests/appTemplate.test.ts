@@ -59,6 +59,17 @@ describe('WE’s chrome as host parts', () => {
     expect(rest).toHaveLength(slotRegistry.nodes().length - HOST_PART_SLOTS.size);
   });
 
+  /*
+    The editor names a fork in a dialog it opens from the app's own rail and from the inspector while
+    the app is the target. Drawn inside a host part, it is inert while the app is edited visually and
+    missing from an app that leaves that part out — so it has to be drawn by the host, beside them.
+  */
+  it('draws the dialog the editor names a fork in outside every piece an app places', () => {
+    const opensPicker = (node: unknown) => JSON.stringify(node ?? null).includes('editorStore.pickerOpen');
+    for (const slot of HOST_PART_SLOTS) expect(opensPicker(slotRegistry.nodeOf(slot))).toBe(false);
+    expect(slotRegistry.nodes({ except: HOST_PART_SLOTS }).some(opensPicker)).toBe(true);
+  });
+
   it('expands an app’s placements into the pieces, framed like any part', () => {
     const { meta: _meta, ...app } = builtIn;
     const expanded = resolveParts(app as SchemaNode) as SchemaNode;

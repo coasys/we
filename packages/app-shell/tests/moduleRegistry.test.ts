@@ -74,6 +74,7 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
       'core:removeAccount',
       'core:createSpace',
       'core:joinSpace',
+      'core:templateNameDialog',
       'core:screenSource',
       'core:namePrompt',
       'core:installPrompt',

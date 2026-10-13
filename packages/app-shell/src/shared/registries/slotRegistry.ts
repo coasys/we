@@ -42,6 +42,7 @@ import {
   screenSourcePrompt,
   sidebar,
   templateEditor,
+  templateNameDialog,
 } from '@we/template-shell';
 
 import { byOrderThenId, createRegistry } from './createRegistry';
@@ -372,6 +373,10 @@ export function registerCoreSlots(): void {
   // `shellStore.joinSpaceOpen`. The two are mutually exclusive in practice (one menu, two items),
   // so the order between them decides nothing; it sits next to the one it belongs with.
   slotRegistry.register({ id: 'core:joinSpace', anchor: 'overlay', node: joinSpaceModalMount, order: 5 });
+  // Naming a fork or a new template. Opened from the template picker, which is in the app's rail, and
+  // from the inspector while the app itself is edited — so it is drawn here, outside the app, where
+  // editing the app cannot make it inert and an app without the rail cannot leave it out.
+  slotRegistry.register({ id: 'core:templateNameDialog', anchor: 'overlay', node: templateNameDialog, order: 5 });
   // Last of the overlays, and deliberately: it is the only one raised by the app rather than by
   // something the user just did, so anything they *did* ask for belongs in front of it. Its own gate
   // (`profileStore.needsName`) is false until the app is ready and the profile fetch has answered,

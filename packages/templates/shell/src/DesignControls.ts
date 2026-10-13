@@ -539,24 +539,33 @@ export function templatePicker(): SchemaNode {
       }),
 
       saveLayoutDialog(),
-
-      nameDialog({
-        open: { $: 'editorStore.pickerOpen' },
-        close: { $action: 'editorStore.cancelPicker' },
-        title: { $: "editorStore.pickerAction == 'fresh' ? 'New template' : 'Fork template'" },
-        initialName: { $: 'editorStore.pickerDefaultName' },
-        initialIcon: { $: 'editorStore.pickerDefaultIcon' },
-        showDestination: { $: 'editorStore.pickerShowDestination' },
-        confirmLabel: { $: "editorStore.pickerAction == 'fresh' ? 'Create' : 'Fork'" },
-        confirm: ({ name, icon, destination }) => ({
-          $action: 'editorStore.confirmPicker',
-          args: [name, icon, destination],
-          onFinally: [{ $setLocal: 'saving', value: false }],
-        }),
-      }),
     ],
   };
 }
+
+/**
+ * Naming a fork or a new template: the dialog `editorStore.startFork` and `startFresh` open.
+ *
+ * The host's, drawn as an overlay of its own (`core:templateNameDialog`) rather than inside the
+ * template picker that opens it most often. The picker is in the module rail, which is a piece of the
+ * app — and so it is inert while the app is edited visually, absent from an app that leaves the rail
+ * out, and not the only thing that opens this: the inspector forks the app from its own bar. A dialog
+ * the editor depends on cannot live inside what the editor is editing.
+ */
+export const templateNameDialog: SchemaNode = nameDialog({
+  open: { $: 'editorStore.pickerOpen' },
+  close: { $action: 'editorStore.cancelPicker' },
+  title: { $: "editorStore.pickerAction == 'fresh' ? 'New template' : 'Fork template'" },
+  initialName: { $: 'editorStore.pickerDefaultName' },
+  initialIcon: { $: 'editorStore.pickerDefaultIcon' },
+  showDestination: { $: 'editorStore.pickerShowDestination' },
+  confirmLabel: { $: "editorStore.pickerAction == 'fresh' ? 'Create' : 'Fork'" },
+  confirm: ({ name, icon, destination }) => ({
+    $action: 'editorStore.confirmPicker',
+    args: [name, icon, destination],
+    onFinally: [{ $setLocal: 'saving', value: false }],
+  }),
+});
 
 // ── Themes ──────────────────────────────────────────────────────────────────────────────────────
 

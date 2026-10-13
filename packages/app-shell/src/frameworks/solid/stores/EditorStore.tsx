@@ -133,7 +133,7 @@ export interface EditorStore {
   isEditingTemplate: Accessor<boolean>;
   editAction: Accessor<'edit' | 'fork' | 'fresh' | null>;
   enterTemplateEditing: (action?: 'edit' | 'fork' | 'fresh') => void;
-  /** Opens a visual editing session on the app — the one named, made the agent's app first, or the one they are in. */
+  /** Opens an editing session on the app — the one named, made the agent's app first, or the one they are in. Starts in preview, as a template's does. */
   editApp: (id?: string) => Promise<void>;
   /** The same, then asks for a name for a copy of it: how WE's own app, which is built in, is made one's own. */
   forkApp: (id?: string) => Promise<void>;
@@ -685,8 +685,9 @@ export function EditorStoreProvider(props: ParentProps) {
   */
   async function editApp(id?: string) {
     if (id && id !== templateStore.appTemplateId()) await templateStore.setAppTemplate(id);
+    // In preview, as a template's session starts: visual editing is a step the person takes, and
+    // starting in it would make the chrome inert under whatever opened this.
     if (!isEditingTemplate()) enterTemplateEditing('edit');
-    setContentMode('visual');
     edit.enterApp(templateStore.appTemplate());
   }
 
