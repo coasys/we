@@ -966,7 +966,13 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
       it escalates rather than repeating.
     */
     const unanswered = slot.offeredAt > 0 && slot.pc.signalingState === 'have-local-offer';
-    if (state === 'connected') renegotiationRepairs.set(peerId, (renegotiationRepairs.get(peerId) ?? 0) + 1);
+    if (state === 'connected') {
+      renegotiationRepairs.set(peerId, (renegotiationRepairs.get(peerId) ?? 0) + 1);
+      // The offer being repaired may have gone out while the pair was still connecting — the
+      // answerer's own offer usually does — so it was never marked as a renegotiation. Mark it now,
+      // or its answer would not clear the budget and each such repair would spend it for good.
+      slot.renegotiating = true;
+    }
     if ((!slot.everConnected || unanswered) && slot.lastSent && slot.lastSent.sdp !== slot.lastResent) {
       slot.lastResent = slot.lastSent.sdp ?? null;
       sendFrom(peerId, slot, { kind: 'description', description: slot.lastSent });

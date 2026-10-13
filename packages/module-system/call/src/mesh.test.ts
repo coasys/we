@@ -1191,6 +1191,39 @@ describe('a connected pair whose renegotiation went unanswered', () => {
     }
   });
 
+  it('gives the budget back when the repaired offer went out before the pair connected', async () => {
+    /*
+      The answerer's own offer usually leaves while ICE is still connecting, so it is not marked as
+      a renegotiation when sent. Its repair happens once the pair reads connected, and the answer to
+      that repair has to clear the budget too — or every reconnect that hits the reordering spends
+      one attempt for good, and the fifth is left with no picture.
+    */
+    const clock = makeClock();
+    const bobLoses = { description: false };
+    const alice = makeMesh(bus, dataset, 'did:alice', callId, { now: clock.now });
+    const bob = makeMesh(bus, dataset, 'did:bob', callId, {
+      now: clock.now,
+      drop: (payload) => bobLoses.description && (payload as { kind?: string }).kind === 'description',
+    });
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    bob.mesh.setRoster(['did:alice', 'did:bob']);
+    for (let i = 0; i < 4; i += 1) await settle();
+
+    for (let round = 0; round < MAX_RECOVERY_ATTEMPTS + 1; round += 1) {
+      bobLoses.description = true;
+      bob.live().setConnectionState('connecting');
+      bob.live().restartIce();
+      for (let i = 0; i < 4; i += 1) await settle();
+      bob.live().setConnectionState('connected');
+      alice.live().setConnectionState('connected');
+      bobLoses.description = false;
+      clock.advance(RECOVERY_INTERVAL_MS);
+      bob.mesh.tick();
+      for (let i = 0; i < 4; i += 1) await settle();
+      expect(bob.live().signalingState, `round ${round} recovered`).toBe('stable');
+    }
+  });
+
   it('resends an offer that never got its answer, though the pair reads connected', async () => {
     /*
       The answerer's media travels in an offer of its own, sent once the pair is up. Reordered behind
