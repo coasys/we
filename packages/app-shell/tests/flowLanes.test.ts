@@ -84,6 +84,23 @@ describe('lanes', () => {
     expect(definition.transitions.at(-1)).toEqual({ from: 'discussion', to: 'rejected', name: 'withdraw' });
   });
 
+  it('reads the same lanes, exceptions in step order, whatever order the moves come back in', () => {
+    // A backend may answer with a flow's moves in any order; the editor must not see a different
+    // flow, or a list that reshuffles, because of it.
+    const model: FlowLanes = {
+      rule: 'next',
+      lanes: [{ states: ['draft', 'review', 'vote', 'done'] }],
+      exceptions: [
+        { from: 'draft', to: 'done' },
+        { from: 'review', to: 'draft' },
+      ],
+    };
+    const definition = toDefinition(base, model, {});
+    const reversed = { ...definition, transitions: [...definition.transitions].reverse() };
+    expect(toLanes(reversed).fits).toBe(true);
+    expect(toLanes(reversed).model).toEqual(model);
+  });
+
   it('reads a board that allows every move as `any`', () => {
     const definition = roundTrips({ rule: 'any', lanes: [{ states: ['todo', 'doing', 'done'] }], exceptions: [] });
     expect(definition.transitions).toHaveLength(6);

@@ -158,8 +158,12 @@ function readLanes(definition: FlowDefinition, rule: FlowSequenceRule): FlowLane
   const model: FlowLanes = { rule, lanes, exceptions: [] };
   const covered = new Set(laneMoves(model).map((m) => edge(m.from, m.to)));
   if ([...covered].some((key) => !moves.has(key))) return null;
+  // In step order, not the order the backend answered with: moves are a set, and a list that
+  // reshuffled between reads would look like an edit nobody made.
+  const at = (state: string) => order.indexOf(state);
   model.exceptions = definition.transitions
     .filter((t) => !covered.has(edge(t.from, t.to)))
+    .sort((a, b) => at(a.from) - at(b.from) || at(a.to) - at(b.to))
     .map((t) => ({ from: t.from, to: t.to, ...(t.name ? { name: t.name } : {}) }));
   return model;
 }

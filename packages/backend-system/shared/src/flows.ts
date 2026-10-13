@@ -130,7 +130,10 @@ export interface FlowDefinition {
    * already stands — see {@link FlowMoveOptions.from}.
    */
   states: FlowStateDefinition[];
-  /** The only moves anybody may ask for. A state with no move out of it is final. */
+  /**
+   * The only moves anybody may ask for. A state with no move out of it is final. A set: the order
+   * means nothing, and a backend may answer with them in any order.
+   */
   transitions: FlowTransitionDefinition[];
   /** One sentence on what the flow is about. */
   hint?: string;

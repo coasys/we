@@ -134,6 +134,13 @@ interface Reader {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** A definition with its moves in one order, since the contract gives them none. */
+function movesAsSet(definition: FlowDefinition | null): FlowDefinition | null {
+  if (!definition) return definition;
+  const key = (t: FlowDefinition['transitions'][number]) => `${t.from}\u0000${t.to}\u0000${t.name ?? ''}`;
+  return { ...definition, transitions: [...definition.transitions].sort((a, b) => key(a).localeCompare(key(b))) };
+}
+
 /**
  * Retry an assertion until it holds or `timeout` runs out, then throw its last failure. An assertion
  * that reads asynchronously is awaited, so its failure is retried like any other rather than escaping
@@ -698,7 +705,7 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           const flows = subject.ports.flows;
           if (!flows) return;
           await flows.install(subject.dataset, FLOW);
-          expect(await flows.read(subject.dataset, FLOW.name)).toEqual(FLOW);
+          expect(movesAsSet(await flows.read(subject.dataset, FLOW.name))).toEqual(movesAsSet(FLOW));
           expect(await flows.list(subject.dataset)).toEqual(
             expect.arrayContaining([{ name: FLOW.name, editable: true, records: 0 }]),
           );
@@ -711,7 +718,7 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           };
           await flows.install(subject.dataset, three);
           await eventually(async () => {
-            expect(await flows.read(subject.dataset, FLOW.name)).toEqual(three);
+            expect(movesAsSet(await flows.read(subject.dataset, FLOW.name))).toEqual(movesAsSet(three));
           }, settle);
         },
       );
