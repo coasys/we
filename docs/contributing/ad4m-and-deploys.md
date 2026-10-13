@@ -143,7 +143,8 @@ To try an ad4m change in WE with no WE change to go with it, open a draft WE PR 
 **The block goes first in the description, exactly as written** — `[!IMPORTANT]`, `###`, the colon.
 First because it changes what every check on the PR means, so it is the first thing a reviewer
 should read; exact so every paired PR looks the same. Blank lines, trailing spaces and HTML comments
-above it do not count. The PR template carries the block, commented out.
+above it do not count, and neither does a blank `>` line between its two lines, which Prettier adds
+when it formats the block. The PR template carries the block, commented out.
 
 Anything close is an error rather than ignored, because a near-miss read as "not paired" would look
 paired to whoever wrote it and quietly use the pin: no colon, another heading level or alert, the
