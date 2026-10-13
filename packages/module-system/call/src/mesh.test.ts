@@ -1051,11 +1051,16 @@ describe('a connected pair whose renegotiation went unanswered', () => {
     bus = new InMemoryBus();
   });
 
-  /** Alice and Bob, negotiated and connected, with Bob's sends droppable from here on. */
+  /** Alice and Bob, negotiated and connected, with Bob's descriptions and Alice's answers droppable from here on. */
   async function connectedPair() {
     const clock = makeClock();
     const bobLoses = { description: false };
-    const alice = makeMesh(bus, dataset, 'did:alice', callId, { now: clock.now });
+    const aliceLoses = { answer: false };
+    const alice = makeMesh(bus, dataset, 'did:alice', callId, {
+      now: clock.now,
+      drop: (payload) =>
+        aliceLoses.answer && (payload as { description?: { type?: string } }).description?.type === 'answer',
+    });
     const bob = makeMesh(bus, dataset, 'did:bob', callId, {
       now: clock.now,
       drop: (payload) => bobLoses.description && (payload as { kind?: string }).kind === 'description',
@@ -1067,8 +1072,124 @@ describe('a connected pair whose renegotiation went unanswered', () => {
     bob.live().setConnectionState('connected');
     expect(alice.live().signalingState).toBe('stable');
     expect(bob.live().signalingState).toBe('stable');
-    return { clock, alice, bob, bobLoses };
+    return { clock, alice, bob, bobLoses, aliceLoses };
   }
+
+  /** The descriptions a mesh has published, newest last. */
+  const descriptions = (sent: unknown[]) =>
+    sent.filter((payload) => (payload as { kind?: string }).kind === 'description');
+
+  /** Hand one of Bob's held messages to Alice, as though it had just arrived. */
+  const toAlice = (payload: unknown) => bus.deliver(bus.keyFor(dataset), 'rtc', 'did:bob', payload);
+
+  it('repairs a renegotiation reordered behind the answer it follows', async () => {
+    /*
+      The ordering the libwebrtc run found, pinned without timing. Bob answers Alice's offer, then
+      offers his own media. His offer reaches Alice first, while hers is still out; Alice is
+      impolite, so she reads it as glare and ignores it. Then the answer lands and the pair looks
+      settled, with Bob's offer never answered.
+    */
+    const { clock, alice, bob, bobLoses } = await connectedPair();
+    bobLoses.description = true;
+
+    alice.live().restartIce();
+    for (let i = 0; i < 4; i += 1) await settle();
+    expect(bob.live().signalingState, 'Bob answered Alice').toBe('stable');
+    bob.live().restartIce();
+    for (let i = 0; i < 4; i += 1) await settle();
+    const [answer, offer] = descriptions(bob.sent).slice(-2) as { description: { type: string } }[];
+    expect(answer.description.type).toBe('answer');
+    expect(offer.description.type).toBe('offer');
+
+    toAlice(offer);
+    for (let i = 0; i < 4; i += 1) await settle();
+    toAlice(answer);
+    for (let i = 0; i < 4; i += 1) await settle();
+    expect(alice.live().signalingState, 'Alice settled on the answer').toBe('stable');
+    expect(bob.live().signalingState, "and Bob's own offer was never answered").toBe('have-local-offer');
+
+    bobLoses.description = false;
+    clock.advance(RECOVERY_INTERVAL_MS);
+    bob.mesh.tick();
+    for (let i = 0; i < 4; i += 1) await settle();
+
+    expect(bob.recoveries.map((r) => r.rung)).toEqual(['resend']);
+    expect(bob.live().signalingState).toBe('stable');
+    expect(alice.errors).toEqual([]);
+    expect(bob.errors).toEqual([]);
+  });
+
+  it('drops a late duplicate answer instead of reporting an error', async () => {
+    // Slow rather than lost: the resend fires, the peer answers both copies, and the second answer
+    // arrives with nothing left to settle.
+    const { clock, alice, bob, aliceLoses } = await connectedPair();
+
+    aliceLoses.answer = true;
+    bob.live().restartIce();
+    for (let i = 0; i < 4; i += 1) await settle();
+    const late = descriptions(alice.sent).slice(-1)[0];
+    expect(bob.live().signalingState).toBe('have-local-offer');
+
+    aliceLoses.answer = false;
+    clock.advance(RECOVERY_INTERVAL_MS);
+    bob.mesh.tick();
+    for (let i = 0; i < 4; i += 1) await settle();
+    expect(bob.live().signalingState).toBe('stable');
+
+    bus.deliver(bus.keyFor(dataset), 'rtc', 'did:alice', late);
+    for (let i = 0; i < 4; i += 1) await settle();
+
+    expect(bob.errors).toEqual([]);
+    expect(bob.live().signalingState).toBe('stable');
+  });
+
+  it('stops repairing a peer that never answers a renegotiation, across rebuilds', async () => {
+    /*
+      Each rebuilt connection connects before it renegotiates, which resets a slot's own budget. The
+      renegotiation budget is the peer's, so resend → rebuild → connect → unanswered still runs out
+      rather than dropping both sides' media every interval for the rest of the call.
+    */
+    const { clock, bob, bobLoses } = await connectedPair();
+    bobLoses.description = true;
+
+    for (let round = 0; round < MAX_RECOVERY_ATTEMPTS + 2; round += 1) {
+      bob.live().setConnectionState('connected');
+      bob.live().restartIce();
+      for (let i = 0; i < 4; i += 1) await settle();
+      clock.advance(RECOVERY_INTERVAL_MS);
+      bob.mesh.tick();
+      for (let i = 0; i < 4; i += 1) await settle();
+    }
+    const spent = bob.recoveries.length;
+    expect(spent).toBeGreaterThan(0);
+
+    bob.live().setConnectionState('connected');
+    bob.live().restartIce();
+    for (let i = 0; i < 4; i += 1) await settle();
+    for (let n = 0; n < 4; n += 1) {
+      clock.advance(RECOVERY_INTERVAL_MS);
+      bob.mesh.tick();
+      for (let i = 0; i < 4; i += 1) await settle();
+    }
+
+    expect(bob.recoveries).toHaveLength(spent);
+  });
+
+  it('gives a peer its renegotiation budget back once one is answered', async () => {
+    const { clock, bob, bobLoses } = await connectedPair();
+
+    for (let round = 0; round < MAX_RECOVERY_ATTEMPTS + 1; round += 1) {
+      bobLoses.description = true;
+      bob.live().setConnectionState('connected');
+      bob.live().restartIce();
+      for (let i = 0; i < 4; i += 1) await settle();
+      bobLoses.description = false;
+      clock.advance(RECOVERY_INTERVAL_MS);
+      bob.mesh.tick();
+      for (let i = 0; i < 4; i += 1) await settle();
+      expect(bob.live().signalingState, `round ${round} recovered`).toBe('stable');
+    }
+  });
 
   it('resends an offer that never got its answer, though the pair reads connected', async () => {
     /*
