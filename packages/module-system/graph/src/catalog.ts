@@ -130,6 +130,22 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `{ "source": "canvas", "options": { "canvas": { "$": "local.canvasId" } } }`,
     },
     {
+      id: 'vocabulary',
+      category: 'seed',
+      description:
+        "What a space has DEFINED rather than what it holds — its signal types, task states, kinds of part, connection kinds, models and flows — drawn as buckets that open. These records are found by type, never by containment, so a canvas seeded from a space's collection cannot reach them; this is how a map of the vocabulary does. Each bucket opens through the `vocabulary` expander: a bucket of records into those records, a bucket of models into type nodes (which `schema-properties` opens into their fields), a bucket of flows into one node per flow and each flow into its steps and moves. Pair with layout: forest, buckets as roots.",
+      options: [
+        {
+          name: 'buckets',
+          type: '{ key, label, entity? | models? | flows? }[]',
+          description:
+            "The buckets, in order. `entity` names a record type whose records fill it; `models` is `[{ name, label? }]`; `flows` is `[{ name, label, steps: [{ name, label, final? }], moves: [{ from, to }] }]`. `key` must stay the same between loads — it is part of the bucket's address.",
+        },
+        { name: 'limit', type: 'number', description: 'Records read per entity bucket. Default 200.' },
+      ],
+      example: `{ "source": "vocabulary", "options": { "buckets": [{ "key": "signals", "label": "Signal types", "entity": "SignalType" }] } }`,
+    },
+    {
       id: 'dataset',
       category: 'seed',
       description: 'Seeds a single node for the current space — the starting point for exploring outward.',
@@ -170,15 +186,52 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `"seeds": { "source": "schema" }, "expansion": { "expanders": ["schema", "entity"] }`,
     },
     {
+      id: 'schema-instances',
+      category: 'expander',
+      description:
+        "Opens the Records node a model was opened into (by `schema-properties`) into that model's instances. The `schema` expander's question asked one click later, so opening a model shows what it is before it shows everything there is of it.",
+      options: [{ name: 'limit', type: 'number', description: 'Instances loaded. Default 25.' }],
+      example: `"expansion": { "expanders": ["schema-properties", "schema-instances"] }`,
+    },
+    {
+      id: 'schema-properties',
+      category: 'expander',
+      description:
+        'Opens a type node into what the type IS — one node per field, labelled with its kind, one per relation naming what it points at — and a Records node that `schema-instances` opens into its instances. The question a map of a vocabulary asks first.',
+      options: [],
+      example: `"expansion": { "expanders": ["vocabulary", "schema-properties", "schema-instances"] }`,
+    },
+    {
+      id: 'vocabulary',
+      category: 'expander',
+      description:
+        'Opens a bucket the `vocabulary` seed drew into what is in it, and a flow into its steps, with a line for each move between them.',
+      options: [],
+      example: `"seeds": { "source": "vocabulary", "options": { "buckets": [] } }, "expansion": { "expanders": ["vocabulary"] }`,
+    },
+    {
       id: 'property',
       category: 'expander',
       description:
         'Opens an instance out into its own scalar fields, and optionally into shared value nodes so instances converge on common values. The resolution level below an entity.',
       options: [
         { name: 'properties', type: 'string[]', description: 'Only show these fields.' },
-        { name: 'valueNodes', type: 'boolean', description: 'Promote values to shared nodes. Defaults to true.' },
+        {
+          name: 'valueNodes',
+          type: 'boolean',
+          description:
+            'Promote values to shared nodes. Defaults to false; name `property-values` instead for a map where instances converging on a value is the point.',
+        },
       ],
       example: `"expansion": { "expanders": ["property"] }`,
+    },
+    {
+      id: 'property-values',
+      category: 'expander',
+      description:
+        'The `property` expander with every value promoted to a shared node, so three tasks marked "blocked" meet at one "blocked" node. For a map where convergence is the point; a canvas of work wants `property`, whose fields are leaves.',
+      options: [{ name: 'properties', type: 'string[]', description: 'Only show these fields.' }],
+      example: `"expansion": { "expanders": ["property-values"] }`,
     },
 
     // ─── Layouts ───────────────────────────────────────────────────────────────
@@ -220,6 +273,12 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           type: '{ field: string; value: string | number | boolean }',
           description:
             'Which connections make a parent a parent — one field of a line and the value it must hold. `{ "field": "data.relationshipTypeId", "value": "<id>" }` follows one kind a community named. Absent follows every line, which is right only where they are all one kind. Every other line is still drawn; it simply does not decide where a card goes.',
+        },
+        {
+          name: 'containment',
+          type: 'string[]',
+          description:
+            'Line types that make a parent whatever the spine says — a card\'s opened fields, a bucket\'s members. Default ["contains", "property", "value", "instance"]; [] to follow the spine alone.',
         },
         {
           name: 'sortBy',

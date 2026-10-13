@@ -11,14 +11,24 @@
  * there. That is the resolution ladder the engine exists for, applied to the level above entities.
  */
 import type { Expander, GraphEdge, GraphNode } from '@we/graph-protocol';
-import { entityAddress, parseAddress } from '@we/graph-protocol';
+import { parseAddress } from '@we/graph-protocol';
 
 import { edgeId, rowToNode } from './nodes';
 
 /** The pseudo-type the schema seed gives its nodes. Shared so the two cannot drift apart. */
 export const SCHEMA_TYPE = '$schema';
 
+/**
+ * The pseudo-type of a type's "Records" node — what a model opened into its properties offers in
+ * place of its instances, so opening a model shows what it *is* and its records are one more click.
+ */
+export const INSTANCES_TYPE = '$instances';
+
 export interface SchemaExpanderOptions {
+  /** Registered id. Default `schema`. */
+  id?: string;
+  /** The pseudo-types it opens. Default the schema seed's type nodes; `schema-instances` opens a model's Records node. */
+  types?: string[];
   /** Instances to load per type. */
   limit?: number;
   /** Edge type drawn from the type node to each instance. */
@@ -29,9 +39,9 @@ export function schemaExpander(options: SchemaExpanderOptions = {}): Expander {
   const edgeType = options.edgeType ?? 'instance';
 
   return {
-    id: 'schema',
+    id: options.id ?? 'schema',
     kinds: ['entity'],
-    types: [SCHEMA_TYPE],
+    types: options.types ?? [SCHEMA_TYPE],
     // Above the entity expander, which would otherwise claim these nodes and find no shape for them.
     priority: 20,
     description: 'Opens an entity-type node from the schema map into instances of that type.',
@@ -63,7 +73,8 @@ export function schemaExpander(options: SchemaExpanderOptions = {}): Expander {
 
       const nodes: GraphNode[] = [];
       const edges: GraphEdge[] = [];
-      const typeNode = entityAddress(dataset, SCHEMA_TYPE, entity);
+      // Edges run from whichever node was opened — a type node, or a model's Records node.
+      const typeNode = request.id;
 
       for (const row of rows) {
         const node = rowToNode(row, entity, dataset, shape, 'schema');

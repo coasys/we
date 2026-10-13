@@ -19,22 +19,27 @@ import { literalAddress, parseAddress, propertyAddress } from '@we/graph-protoco
 import { edgeId, labelProperty } from './nodes';
 
 export interface PropertyExpanderOptions {
+  /** Registered id. Default `property`; a second instance with values on registers as `property-values`. */
+  id?: string;
   /** Properties to show. Absent means all scalars the shape declares. */
   properties?: string[];
   exclude?: string[];
   /**
    * Promote each value to its own shared node, so instances converge on common values.
    * Off means properties are leaves labelled `field: value`.
+   *
+   * Off by default. Convergence — three tasks meeting at one `blocked` node — is what earns a value a
+   * node of its own on a map of a vocabulary, and is clutter on a canvas of work, where a card's fields
+   * are read rather than compared. A graph that wants it names the `property-values` expander.
    */
   valueNodes?: boolean;
   /** Skip empty values rather than drawing a field with nothing in it. */
   hideEmpty?: boolean;
 }
 
-const ID = 'property';
-
 export function propertyExpander(options: PropertyExpanderOptions = {}): Expander {
-  const { valueNodes = true, hideEmpty = true } = options;
+  const { valueNodes = false, hideEmpty = true } = options;
+  const ID = options.id ?? 'property';
 
   return {
     id: ID,

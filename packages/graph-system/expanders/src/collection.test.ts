@@ -142,10 +142,10 @@ describe('collectionExpander', () => {
 describe('propertyExpander', () => {
   const TASK = entityAddress('ds', 'Task', 'task-1');
 
-  it('opens an instance into property nodes with shared literal values', async () => {
+  it('opens an instance into property nodes with shared literal values, when asked for values', async () => {
     const { context } = contextWith(() => [{ id: 'task-1', title: 'Ship it', status: 'blocked' }]);
 
-    const result = await propertyExpander().expand({ id: TASK, direction: 'out' }, context);
+    const result = await propertyExpander({ valueNodes: true }).expand({ id: TASK, direction: 'out' }, context);
 
     // `title` is the label property — already on the instance node, not repeated.
     const propertyNodes = result.nodes.filter((n) => n.kind === 'property');
@@ -159,7 +159,7 @@ describe('propertyExpander', () => {
   it('two instances converge on one literal node for the same value', async () => {
     const { context } = contextWith((request) => [{ id: String(request.where?.id), status: 'blocked' }]);
 
-    const expander = propertyExpander({ properties: ['status'] });
+    const expander = propertyExpander({ properties: ['status'], valueNodes: true });
     const first = await expander.expand({ id: entityAddress('ds', 'Task', 'a'), direction: 'out' }, context);
     const second = await expander.expand({ id: entityAddress('ds', 'Task', 'b'), direction: 'out' }, context);
 
@@ -178,12 +178,9 @@ describe('propertyExpander', () => {
     expect(result.nodes).toEqual([]);
   });
 
-  it('valueNodes: false collapses to leaf labels', async () => {
+  it('draws fields as leaf labels by default — values get nodes of their own only when asked', async () => {
     const { context } = contextWith(() => [{ id: 'task-1', status: 'open' }]);
-    const result = await propertyExpander({ properties: ['status'], valueNodes: false }).expand(
-      { id: TASK, direction: 'out' },
-      context,
-    );
+    const result = await propertyExpander({ properties: ['status'] }).expand({ id: TASK, direction: 'out' }, context);
     expect(result.nodes).toHaveLength(1);
     expect(result.nodes[0].label).toBe('status: open');
   });
