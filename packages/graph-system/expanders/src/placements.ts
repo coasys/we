@@ -59,12 +59,14 @@ function specificity(row: PlacementRow): number | undefined {
  * Group placement rows by the node each one positions.
  *
  * Rows naming no node are dropped: a placement whose node link never wrote names a type and points
- * at nothing, and the record it meant is not knowable from here.
+ * at nothing, and the record it meant is not knowable from here. The node is its id, or the record
+ * itself where the read included it.
  */
 export function placementsFor<T extends PlacementRow>(rows: readonly T[]): Map<string, T[]> {
   const byNode = new Map<string, T[]>();
   for (const row of rows) {
-    const node = typeof row.node === 'string' ? row.node : '';
+    const id = typeof row.node === 'string' ? row.node : (row.node as { id?: unknown } | null | undefined)?.id;
+    const node = typeof id === 'string' ? id : '';
     if (!node) continue;
     const list = byNode.get(node);
     if (list) list.push(row);
