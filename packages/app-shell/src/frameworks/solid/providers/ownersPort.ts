@@ -10,6 +10,7 @@ import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { createSignal } from 'solid-js';
 
 import { describeMissing, fixFor, whyMissing } from '../../../shared/partAvailability';
+import { HOST_PARTS } from '../../../shared/registries/hostParts';
 import { openPart, openPartPath } from '../../../shared/registries/moduleParts';
 import { moduleRegistry, type RegisteredPart } from '../../../shared/registries/moduleRegistry';
 import { viewRegistry } from '../../../shared/registries/viewRegistry';
@@ -54,6 +55,18 @@ export function createOwnersPort(deps: {
   const [cameFrom, setCameFrom] = createSignal<{ switcherId: string; name: string } | null>(null);
 
   const describe = (id: string, part?: RegisteredPart): OwnedPart => {
+    // WE's own chrome, placed by an app template: always here, and WE's.
+    const host = HOST_PARTS[id];
+    if (host)
+      return {
+        id,
+        label: host.label,
+        description: host.description,
+        moduleId: 'host',
+        moduleName: 'WE',
+        inputs: [],
+        missing: '',
+      };
     const moduleId = id.split('.')[0] ?? '';
     const moduleName = moduleRegistry.get(moduleId)?.definition.manifest.name ?? humanise(moduleId);
     const why = whyMissing({

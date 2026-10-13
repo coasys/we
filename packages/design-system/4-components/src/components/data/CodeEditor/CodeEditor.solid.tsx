@@ -318,7 +318,16 @@ export function CodeEditor(props: CodeEditorProps) {
       root: containerRef.ownerDocument,
     });
 
-    props.onReady?.({ find: () => view && cmSearch.openSearchPanel(view) });
+    props.onReady?.({
+      find: () => view && cmSearch.openSearchPanel(view),
+      goTo: (offset) => {
+        if (!view) return;
+        const length = view.state.doc.length;
+        const at = Math.max(0, Math.min(offset, length));
+        view.dispatch({ selection: { anchor: at, head: Math.min(at + 1, length) }, scrollIntoView: true });
+        view.focus();
+      },
+    });
   });
 
   // Sync external code changes (e.g. undo/redo from outside, node switching)

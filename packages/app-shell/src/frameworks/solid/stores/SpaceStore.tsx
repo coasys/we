@@ -1292,7 +1292,9 @@ export function SpaceStoreProvider(props: ParentProps) {
         }
         continue;
       }
-      out.set(template.id, template);
+      // A section being edited where it is drawn is drawn from its working copy, so the edit is seen
+      // in its shell as it is made. See `openDraft`.
+      out.set(template.id, templateStore.draftOf(template) ?? template);
     }
     return out;
   });

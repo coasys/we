@@ -175,3 +175,28 @@ describe('meta.panels and meta.requires', () => {
     expect(result.errors[0].message).toContain('"notes"');
   });
 });
+
+/*
+  WE's own chrome, placed by an app template. The vocabulary declares the pieces, and only an app
+  places one: a space's template placing the sidebar would draw a second.
+*/
+describe('host parts', () => {
+  const sidebar = { type: '$part', props: { id: 'host.sidebar' } };
+
+  it('accepts a known piece in an app template', () => {
+    expect(messages(validateSemantic(template(sidebar, { role: 'app' }), ctx))).toEqual([]);
+  });
+
+  it('refuses one placed by a space’s template', () => {
+    expect(messages(validateSemantic(template(sidebar), ctx))[0]).toContain('Only an app template');
+    expect(messages(validateSemantic(template(sidebar, { role: 'view' }), ctx))[0]).toContain('Only an app template');
+  });
+
+  it('refuses a piece WE does not have, and names the ones it does', () => {
+    const bad = messages(
+      validateSemantic(template({ type: '$part', props: { id: 'host.topbar' } }, { role: 'app' }), ctx),
+    );
+    expect(bad[0]).toContain('no chrome piece "host.topbar"');
+    expect(bad[0]).toContain('host.sidebar');
+  });
+});

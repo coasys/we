@@ -4,6 +4,8 @@ import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
 import { involvementOptimism } from '@shared/involvementOptimism';
 import { linkNewMentions, type MentionWriter, prepareMentionUpdate } from '@shared/lineMentions';
+import { appFrame, declareAppFrame } from '@shared/registries/appFrame';
+import { HOST_PART_SLOTS } from '@shared/registries/hostParts';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
@@ -55,11 +57,16 @@ import { CollectionBlock, getEntity, PREDICATES, Space } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import type { DocumentAccess } from '@we/module-shared';
 import { holdTopLayer, installTopLayerGuard } from '@we/primitives/top-layer';
-import type { TemplateSchema } from '@we/schema-shared';
-import { expandViewRoutes, hasViewsMarker, installGestureTracking, SPACE_ROUTE_PATH } from '@we/schema-shared';
+import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
+import {
+  EDIT_SURFACE_ATTR,
+  expandViewRoutes,
+  hasViewsMarker,
+  installGestureTracking,
+  SPACE_ROUTE_PATH,
+} from '@we/schema-shared';
 import type { OwnerRef, VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
-import { CHROME_RAIL_WIDTH } from '@we/template-shell';
 import { RECORD_ROUTE_PATH, recordPage } from '@we/template-views';
 import { createEffect, createMemo, createSignal, getOwner, onCleanup, onMount, Show, untrack } from 'solid-js';
 
@@ -67,7 +74,8 @@ import { createCollabSession } from '../collab/collabSession';
 import { moduleBlockDisplays } from '../components/moduleBlockDisplays';
 import { registerRecordGhost } from '../drag/recordGhost';
 import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
-import { SHELL_SIDEBAR_WIDTH, TemplateLayout } from '../layouts/TemplateLayout';
+import { TemplateLayout } from '../layouts/TemplateLayout';
+import { useEditTarget } from '../stores/editTarget';
 import { buildRoutes } from '../utils/buildRoutes';
 
 export default function TemplateProvider() {
@@ -84,6 +92,8 @@ export default function TemplateProvider() {
   const recordStore = useRecordStore();
   const themeStore = useThemeStore();
   const templateStore = useTemplateStore();
+  /** What the editor edits — the app is an edit surface only while it is the target. */
+  const editTarget = useEditTarget();
   const routeStore = useRouteStore();
   const shellStore = useShellStore();
   const presenceStore = usePresenceStore();
@@ -97,9 +107,16 @@ export default function TemplateProvider() {
   // in a package that cannot import the shell's templates, so the editing bar has no other way to
   // know how much of its edge the rail is holding. Its fallback is `0px`, which is the right answer
   // for an editor embedded somewhere with no WE rail at all.
-  onMount(() => {
-    document.documentElement.style.setProperty('--we-sidebar-width', SHELL_SIDEBAR_WIDTH);
-    document.documentElement.style.setProperty('--we-chrome-rail-width', CHROME_RAIL_WIDTH);
+  //
+  // Both follow the app's frame, which the app template declares (`meta.frame`): a frame with no rail
+  // publishes no rail width, so nothing keeps clear of a rail that is not there.
+  // The bands the app's chrome holds, as it declares them — what panels dock against.
+  createEffect(() => declareAppFrame(templateStore.appTemplate().meta?.frame));
+
+  createEffect(() => {
+    const frame = appFrame();
+    document.documentElement.style.setProperty('--we-sidebar-width', `${frame.left}px`);
+    document.documentElement.style.setProperty('--we-chrome-rail-width', `${frame.right}px`);
   });
 
   /*
@@ -943,6 +960,24 @@ export default function TemplateProvider() {
   const [slotVersion, setSlotVersion] = createSignal(0);
   onCleanup(onSlotRegistryChanged(() => setSlotVersion((version) => version + 1)));
 
+  /*
+    The app — the template WE's own chrome is drawn from — rendered before the host's chrome, in a
+    wrapper of its own so it can be edited where it is drawn: while the app is the editor's target the
+    wrapper is an edit surface, so presses inside it select the app's nodes; otherwise it is not, and
+    the chrome keeps behaving as chrome.
+  */
+  const appSchema: TemplateSchema = {
+    meta: { name: 'App', description: 'The app around every space', icon: '' },
+    type: 'Column',
+    props: { styles: { display: 'contents' } },
+    get children() {
+      const { meta: _meta, ...app } = templateStore.appTemplate();
+      const expanded = resolveParts(app as SchemaNode);
+      return Array.isArray(expanded) ? expanded : [expanded];
+    },
+  };
+  const appEditing = () => editTarget.target().kind === 'app';
+
   const shellSchema: TemplateSchema = {
     meta: { name: 'Shell', description: 'App shell chrome', icon: '' },
     type: 'Column',
@@ -963,7 +998,13 @@ export default function TemplateProvider() {
         Not in the slot registry itself, which `moduleParts` already imports for the parts map —
         putting it there makes a cycle out of two modules that currently only point one way.
       */
-      return slotRegistry.nodes().flatMap((node) => {
+      /*
+        The app first: the template WE's own chrome is drawn from, placing the sidebar and the rail as
+        host parts beside nodes of its own (`templateStore.appTemplate`). Then everything the host draws
+        whatever the app says — the editor's panels and bar, the boot screen and its modals, module
+        chrome — less the pieces the app places itself, so none is drawn twice.
+      */
+      return slotRegistry.nodes({ except: HOST_PART_SLOTS }).flatMap((node) => {
         const expanded = resolveParts(node);
         return Array.isArray(expanded) ? expanded : [expanded];
       });
@@ -1482,6 +1523,17 @@ export default function TemplateProvider() {
            nothing below lays out any differently for being inside it. */}
           <div ref={appLayer} style={{ display: 'contents' }}>
             {/* Shell chrome — stable, never remounts. Chrome tier: this is host-authored. */}
+            <div
+              style={{ display: 'contents' }}
+              data-we-app-chrome=""
+              ref={(el) =>
+                createEffect(() =>
+                  appEditing() ? el.setAttribute(EDIT_SURFACE_ATTR, '') : el.removeAttribute(EDIT_SURFACE_ATTR),
+                )
+              }
+            >
+              <RenderSchema node={appSchema} stores={chromeBag} registry={registry} />
+            </div>
             <RenderSchema node={shellSchema} stores={chromeBag} registry={registry} />
 
             {/* Router — keyed on the template ID *and* the resolved section list, since both decide what

@@ -6,6 +6,7 @@
  * node — so index traversal and scope traversal disagreed about what the tree
  * contained. One definition each, here.
  */
+import { TEMPLATE_HTML_ELEMENTS } from './templateElements';
 import type { OperatorToken, SchemaNode } from './types';
 
 /**
@@ -20,13 +21,6 @@ export function isSchemaChild(child: string | SchemaNode | OperatorToken | unkno
   return !Object.keys(child).some((k) => k.startsWith('$'));
 }
 
-/**
- * Returns true if val is a SchemaNode embedded as a prop value.
- * Requires `type` to look like a component name: PascalCase, hyphenated (we-button),
- * or $-prefixed ($if, $each). This distinguishes SchemaNodes from other objects that
- * appear in props — TransitionConfig ({ type: 'fade' }), styles objects, data items,
- * and operator tokens — which must not be treated as nodes.
- */
 /** A `meta.panels` entry: configuration that may carry a node, rather than a node itself. */
 interface PanelEntry {
   node?: unknown;
@@ -51,11 +45,20 @@ export const panelsOf = (node: SchemaNode): PanelEntry[] | undefined => {
   return Array.isArray(panels) ? (panels as PanelEntry[]) : undefined;
 };
 
+/**
+ * Returns true if val is a SchemaNode embedded as a prop value.
+ *
+ * Requires `type` to name something the renderer mounts: a component (PascalCase), a custom element
+ * (we-button), a control-flow node ($if, $each), or one of the native elements a template may use
+ * (`then: { type: 'div' }`). That is what tells a node apart from everything else a prop holds —
+ * a TransitionConfig (`{ type: 'fade' }`), a style or state object (`hoverProps`), a select's
+ * options, data items, operator tokens — none of which is a node or may be given an id.
+ */
 export function isPropsSchemaNode(val: unknown): val is SchemaNode {
   if (typeof val !== 'object' || val === null || Array.isArray(val)) return false;
   const type = (val as Record<string, unknown>).type;
   if (typeof type !== 'string') return false;
-  return /^[A-Z$]/.test(type) || type.includes('-');
+  return /^[A-Z$]/.test(type) || type.includes('-') || TEMPLATE_HTML_ELEMENTS.has(type);
 }
 
 /**

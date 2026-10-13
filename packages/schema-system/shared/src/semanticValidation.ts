@@ -5,6 +5,7 @@ import type { ContextData, StateMemberMeta } from './contextTypes';
 import { expandDefinitions } from './definitions';
 import { checkExpression, ExpressionSyntaxError, isCallTime, isExpressionToken, parseExpression } from './expressions';
 import type { Expr } from './expressions/ast';
+import { HOST_PART_IDS, isHostPartId } from './hostPartIds';
 import { isTemplateElement } from './templateElements';
 import type { SchemaNode } from './types';
 import type { ValidationError, ValidationResult } from './validators';
@@ -480,6 +481,8 @@ interface WalkState {
    * was flagged three times for reading `newLanguageAddress`, which the `/languages` route declares.
    */
   isFragment: boolean;
+  /** The template is an app (`meta.role: 'app'`) — the only kind that places WE's own chrome. */
+  isApp: boolean;
 }
 
 function walkNode(
@@ -555,6 +558,21 @@ function walkNode(
         message: '{ type: "$part" } needs an "id" of the form "<moduleId>.<partName>"',
         severity: 'error',
       });
+    } else if (id.startsWith('host.')) {
+      // WE's own chrome: a known piece, and only an app template places one.
+      if (!isHostPartId(id)) {
+        errors.push({
+          path: `${path}.props.id`,
+          message: `WE has no chrome piece "${id}". The pieces an app places are ${HOST_PART_IDS.join(', ')}.`,
+          severity: 'error',
+        });
+      } else if (!state.isApp && !state.isFragment) {
+        errors.push({
+          path: `${path}.props.id`,
+          message: `Only an app template (meta.role: 'app') places WE's own chrome; here "${id}" would draw a second one.`,
+          severity: 'error',
+        });
+      }
     } else if (ctx.modules && !ctx.modules.parts.has(id)) {
       const hint = suggest(id, ctx.modules.parts);
       errors.push({
@@ -2340,6 +2358,7 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
     hasRoutesAncestor: false,
     isRouteEligible: true,
     isFragment: !meta,
+    isApp: (schema as { meta?: { role?: string } } | null)?.meta?.role === 'app',
   };
 
   walkNode(schema, '', context, state, errors);

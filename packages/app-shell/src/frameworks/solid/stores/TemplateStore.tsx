@@ -1,8 +1,11 @@
+import { appTemplateRegistry, DEFAULT_APP_ID, resolveAppTemplate } from '@shared/registries/appTemplates';
 import { withDerivedIds } from '@shared/registries/derivedIds';
 import { reservedTemplateIds } from '@shared/registries/reservedTemplateIds';
 import { templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
+import { getSeed } from '@shared/seedRegistry';
 import { reserveId } from '@shared/templateIdentity';
+import { withLibrary } from '@shared/templateLists';
 import { explain } from '@shared/userMessage';
 import { deepClone } from '@shared/utils';
 import type { NewRecord } from '@we/backend-shared';
@@ -22,7 +25,7 @@ import {
 import type { RouteSchema, SchemaNode, StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { createStoredTemplate, ensureNodeIds, hasViewsMarker } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
-import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
+import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
 import { CHROME_TIER, SPACE_TIER } from '../../../shared/registries/templateSurface';
@@ -36,6 +39,7 @@ import {
 import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
+import { createTemplateDrafts } from './templateDrafts';
 
 const emptyMeta: TemplateMeta = { name: '', description: '', icon: '' };
 const emptyTemplate: TemplateSchema = { id: '', meta: emptyMeta, type: '', children: [], slots: {}, routes: [] };
@@ -149,6 +153,14 @@ export interface TemplateStore {
   cancelInstall: () => void;
   toggleInstalled: (templateId: string) => Promise<void>;
   setDefaultTemplate: (templateId: string) => Promise<boolean>;
+  /** The app this agent is in — the template WE's chrome is drawn from. See the definition. */
+  appTemplate: Accessor<TemplateSchema>;
+  /** Its id, for a picker to show as selected. */
+  appTemplateId: Accessor<string>;
+  /** The apps this agent can be in: WE's own, then their own copies — `{ label, value }` for a we-select. */
+  appTemplateOptions: () => { label: string; value: string }[];
+  /** Choose the app this agent is in. Theirs alone, kept in their settings. */
+  setAppTemplate: (id: string) => Promise<boolean>;
   saveTemplate: (name: string) => Promise<void>;
   /**
    * Save a schema as a template of its own, in the agent's library or the current space. By default it
@@ -174,6 +186,19 @@ export interface TemplateStore {
     screenshots: File[];
   }) => Promise<boolean>;
   persistCurrentTemplate: () => Promise<void>;
+  /** Save a template's working copy to its own record, whichever template it is — see the definition. */
+  persistTemplate: (template: TemplateSchema) => Promise<void>;
+  /**
+   * A working copy of a template edited where another draws it — a section inside its shell — as a
+   * store, so what draws it updates finely. Opening one twice answers with the same copy.
+   */
+  openDraft: (template: TemplateSchema) => TemplateSchema;
+  /** Replace a draft's contents, as `updateTemplate` does the template on screen. */
+  updateDraft: (draft: TemplateSchema, next: TemplateSchema) => void;
+  /** Drop a draft: what draws it goes back to the saved template. */
+  closeDraft: (draft: TemplateSchema) => void;
+  /** The open draft of a template, if it has one — what draws it prefers this. */
+  draftOf: (template: { id?: string; _fromSpace?: boolean }) => TemplateSchema | undefined;
   preloadSpaceTemplates: (dataset: AppDataset) => Promise<void>;
   loadSpaceTemplates: (dataset: AppDataset) => Promise<void>;
   refreshSpaceTemplates: () => Promise<void>;
@@ -320,23 +345,71 @@ export function TemplateStoreProvider(props: ParentProps) {
   const [pendingInstall, setPendingInstall] = createSignal<PendingInstall | null>(null);
   // Shell overlay: which shell view (if any) is currently shown above the active template
 
+  /** Working copies of templates edited where another draws them — see `templateDrafts.ts`. */
+  const { openDraft, updateDraft, closeDraft, draftOf } = createTemplateDrafts({
+    onInvalid: (message) => toastService.error(`Schema validation failed: ${message}`),
+  });
+
+  /*
+    An app template is the chrome around every space, chosen by the agent — never a space's template.
+    It is stored like any template, so every list a space's template is chosen from leaves it out.
+  */
+  const isApp = (t: TemplateSchema) => t.meta?.role === 'app';
+  const spaceChoosable = () => allTemplates().filter((t) => !isApp(t));
+
   const personalTemplates = () => {
     const installed = installedIds();
     const spaceIds = spaceTemplateIdSet();
-    return allTemplates().filter(
+    return spaceChoosable().filter(
       (t) => !spaceIds.has(t.id || '') && (isBuiltInTemplateId(t.id || '') || installed.has(t.id || '')),
     );
   };
 
-  const spaceTemplates = () => allTemplates().filter((t) => t._fromSpace);
+  const spaceTemplates = () => spaceChoosable().filter((t) => t._fromSpace);
 
-  const builtInTemplatesAccessor = () => allTemplates().filter((t) => isBuiltInTemplateId(t.id || ''));
+  const builtInTemplatesAccessor = () => spaceChoosable().filter((t) => isBuiltInTemplateId(t.id || ''));
 
   // User-installed templates that are neither built-in core nor from the current space
   const myTemplates = () => {
     const installed = installedIds();
-    return allTemplates().filter((t) => !isBuiltInTemplateId(t.id || '') && !t._fromSpace && installed.has(t.id || ''));
+    return spaceChoosable().filter(
+      (t) => !isBuiltInTemplateId(t.id || '') && !t._fromSpace && installed.has(t.id || ''),
+    );
   };
+
+  /*
+    The app this agent is in: the template WE's own chrome is drawn from.
+
+    Their own choice, else the deployment's (the seed's `host.ui.app`), else WE's. Only WE's apps and
+    the agent's own copies are honoured — an app is drawn with the chrome tier, so one from a
+    stranger waits for an install that asks first. Safe mode always draws WE's, so an app that hides
+    every way out is never the only way in. While the app is being edited, its working copy is drawn.
+  */
+  const ownApps = () => allTemplates().filter((t) => isApp(t) && !t._fromSpace && !!t.id);
+  const appTemplate = createMemo<TemplateSchema>(() => {
+    const found = resolveAppTemplate({
+      safe: safe.on,
+      chosen: datasetStore.agentSettings()?.appTemplateId,
+      seed: getSeed().host?.ui?.app,
+      own: ownApps(),
+    });
+    return draftOf(found) ?? found;
+  });
+  /** The apps on offer: what a we-select needs, and what a picker row needs — its icon, and whether it can be edited in place. */
+  const appOption = (t: TemplateSchema, editable: boolean) => ({
+    label: t.meta?.name ?? t.id ?? '',
+    value: t.id ?? '',
+    icon: t.meta?.icon ?? '',
+    editable,
+  });
+  const appTemplateOptions = () => [
+    ...Object.values(appTemplateRegistry).map((t) => appOption(t, false)),
+    ...ownApps().map((t) => appOption(t, true)),
+  ];
+  const appTemplateId = () => appTemplate().id ?? DEFAULT_APP_ID;
+  function setAppTemplate(id: string): Promise<boolean> {
+    return datasetStore.updateAgentSettings({ appTemplateId: id === DEFAULT_APP_ID ? '' : id });
+  }
 
   const toSwitcherItems = (templates: TemplateSchema[], prefix = ''): TemplateSwitcherItem[] =>
     templates.map((t) => ({
@@ -424,7 +497,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       // If a saved template shares an ID with a core template, use the saved version
       const savedIds = new Set(savedTemplates.map((t) => t.id));
       const filteredCore = builtInTemplates.filter((t) => !savedIds.has(t.id));
-      setAllTemplates([...filteredCore, ...savedTemplates]);
+      setAllTemplates((prev) => withLibrary(prev, [...filteredCore, ...savedTemplates]));
 
       // Build installed ID set from AgentSettings HasMany relation
       // HasMany without .include() returns raw URI strings, not model instances.
@@ -901,6 +974,11 @@ export function TemplateStoreProvider(props: ParentProps) {
       next.delete(templateId);
       return next;
     });
+
+    // An app of the agent's own is deleted from the same library. If it was the app they are in, they
+    // are back in WE's: the chrome already falls back once the record is gone, and the choice is put
+    // back with it, so nothing goes on naming an app that no longer exists.
+    if (datasetStore.agentSettings()?.appTemplateId === templateId) await setAppTemplate(DEFAULT_APP_ID);
 
     // If we deleted the current template, switch to the default
     if (currentTemplate.id === templateId) {
@@ -1409,13 +1487,30 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   /** Persist the current in-memory template state to AD4M (for saved templates only) */
   async function persistCurrentTemplate(): Promise<void> {
-    const templateId = currentTemplate.id;
-    if (!templateId || (!savedTemplateMap.has(templateId) && !spaceTemplateMap.has(templateId))) return;
+    return persistTemplate(currentTemplate);
+  }
+
+  /**
+   * Save a template's working copy to its own record — the agent's library or the space it lives in.
+   *
+   * Takes the template rather than reading `currentTemplate`, because the template being edited is not
+   * always the one on screen: a section is edited inside the shell that draws it, and the app around
+   * both. Which record it is follows where the copy came from, `_fromSpace`, since an agent's template
+   * and a space's may share an id.
+   */
+  async function persistTemplate(template: TemplateSchema): Promise<void> {
+    const templateId = template.id;
+    const fromSpace = !!template._fromSpace;
+    const recordOf = (id: string) =>
+      fromSpace
+        ? (spaceTemplateMap.get(id) ?? savedTemplateMap.get(id))
+        : (savedTemplateMap.get(id) ?? spaceTemplateMap.get(id));
+    if (!templateId || !recordOf(templateId)) return;
 
     const perspective = datasetStore.rootDataset()?.handle;
     if (!perspective) return;
 
-    const cloned = deepClone(currentTemplate);
+    const cloned = deepClone(template);
     delete cloned._fromSpace;
     const schemaToSave: TemplateSchema = { ...cloned, author: session.me()?.did };
     const storedTemplate = createStoredTemplate(schemaToSave);
@@ -1434,7 +1529,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     } as FileData;
 
     try {
-      const existing = savedTemplateMap.get(templateId) ?? spaceTemplateMap.get(templateId);
+      const existing = recordOf(templateId);
       if (!existing) return;
       existing.schema = asFileField(schemaBlob);
       existing.version = (existing.version || 1) + 1;
@@ -1456,9 +1551,11 @@ export function TemplateStoreProvider(props: ParentProps) {
     // and may not be present on currentTemplate if the fallback path was taken.
     setAllTemplates((prev) =>
       prev.map((t) => {
-        if (t.id !== templateId) return t;
-        const tv = t.templateVersion ?? savedTemplateMap.get(templateId)?.version ?? 1;
-        return { ...schemaToSave, templateVersion: tv };
+        if (t.id !== templateId || !!t._fromSpace !== fromSpace) return t;
+        const tv = t.templateVersion ?? recordOf(templateId)?.version ?? 1;
+        // The origin is kept: dropping it is what let a space's copy and an agent's template with the
+        // same id be confused on the next load.
+        return { ...schemaToSave, ...(fromSpace ? { _fromSpace: true } : {}), templateVersion: tv };
       }),
     );
   }
@@ -1702,7 +1799,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   const templateManagementList = () => {
     const defaultId = defaultTemplateId();
     const installed = installedIds();
-    return allTemplates()
+    return spaceChoosable()
       .filter((t) => !t._fromSpace)
       .map((t) => ({
         id: t.id || '',
@@ -1754,6 +1851,15 @@ export function TemplateStoreProvider(props: ParentProps) {
     publishToSpace,
     publishToMarketplace,
     persistCurrentTemplate,
+    persistTemplate,
+    appTemplate,
+    appTemplateId,
+    appTemplateOptions,
+    setAppTemplate,
+    openDraft,
+    updateDraft,
+    closeDraft,
+    draftOf,
     preloadSpaceTemplates,
     loadSpaceTemplates,
     clearSpaceTemplates,

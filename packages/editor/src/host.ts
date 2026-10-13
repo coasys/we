@@ -44,6 +44,11 @@ export type EditorEditingTheme = EditorTheme & { isDirty: boolean };
  * change twice as hard to review. Names can narrow when state migrates into the editor.
  */
 export interface TemplatePort {
+  /**
+   * The template being edited — the session's target. Usually the one on screen; it can also be a
+   * template drawn with it, such as a section inside its shell, edited where it is seen. Everything
+   * the editor reads and writes as "the template" is this one.
+   */
   currentTemplate: TemplateSchema & { id?: string; version?: number; slug?: string };
   switcherGroups: () => { label: string; items: { id: string; name: string; icon?: string }[] }[];
   updateTemplate: (next: TemplateSchema) => void;
@@ -339,7 +344,28 @@ export interface OwnersPort {
   sectionOnItsOwn?: () => { section: string; shell?: { name: string; back: () => void } } | null;
 }
 
+/**
+ * What the session edits beyond the template on screen: a section its shell draws, edited where it is
+ * seen. The host decides which sections may be; the editor decides when to go in and come out.
+ */
+export interface EditTargetsPort {
+  /** The section being edited in place, or null while it is the template on screen. */
+  section: () => { id: string; name: string } | null;
+  /** Whether a section the shell draws can be edited where it is — one the agent may change. */
+  canEditSection: (id: string) => boolean;
+  /** Edit that section in place. False when it cannot be. */
+  enterSection: (id: string) => boolean;
+  /** The app being edited — the chrome around every space — or null while it is not. */
+  app?: () => { name: string } | null;
+  /** Edit the app the agent is in, where it is drawn. False when this host has no app to edit. */
+  enterApp?: () => boolean;
+  /** Back to the template on screen. */
+  leave: () => void;
+}
+
 export interface EditorHost {
+  /** What the session edits beyond the template on screen. Without it, only that template is edited. */
+  targets?: EditTargetsPort;
   /** What the host knows about regions somebody else provides. Without it the editor names none. */
   owners?: OwnersPort;
   template: TemplatePort;

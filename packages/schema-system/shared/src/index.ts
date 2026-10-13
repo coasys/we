@@ -148,6 +148,7 @@ export {
 export type { SectionEntry, StoredTemplate, FindNodeResult, PatchError } from './indexer';
 export { deriveNodeIds, derivedNodeId, isNodeId, newNodeId, NODE_ID_LENGTH } from './nodeIdentity';
 export { type PartFork, partForkChanged, partForkPrint } from './forkPrint';
+export { HOST_PART_IDS, type HostPartId, isHostPartId } from './hostPartIds';
 export { createStoredTemplate, listSections, getSection, updateSection } from './sections';
 export {
   expandViewRoutes,

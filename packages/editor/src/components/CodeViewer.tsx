@@ -2,6 +2,8 @@ import { CodeEditor, type CodeEditorLanguage, Column, Row } from '@we/components
 import { tokenVar } from '@we/design-utils';
 import { createSignal, Show } from 'solid-js';
 
+import { readJson } from '../jsonText';
+
 export interface CodeViewerProps {
   json: string;
   language?: CodeEditorLanguage;
@@ -30,6 +32,7 @@ function copyViaExecCommand(text: string) {
 
 export function CodeViewer(props: CodeViewerProps) {
   const [find, setFind] = createSignal<(() => void) | undefined>();
+  const [goTo, setGoTo] = createSignal<((offset: number) => void) | undefined>();
   const [matches, setMatches] = createSignal({ query: '', matches: 0, capped: false });
   const [editing, setEditing] = createSignal(false);
   const [editValue, setEditValue] = createSignal('');
@@ -49,14 +52,17 @@ export function CodeViewer(props: CodeViewerProps) {
   }
 
   function saveEdit() {
-    const value = editValue();
+    let value = editValue();
     if (language() === 'json') {
-      try {
-        JSON.parse(value);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Invalid JSON');
+      // Trailing commas are let through — what is saved is written out again from the value — and
+      // anything else wrong is named by line and column, with the cursor put on it.
+      const read = readJson(value);
+      if (!read.ok) {
+        setError(`Line ${read.line}, column ${read.column}: ${read.message}`);
+        goTo()?.(read.offset);
         return;
       }
+      value = read.text;
     }
     props.onSave?.(value);
     setEditing(false);
@@ -127,7 +133,10 @@ export function CodeViewer(props: CodeViewerProps) {
         language={language()}
         readOnly={!editing()}
         onChange={setEditValue}
-        onReady={(api) => setFind(() => api.find)}
+        onReady={(api) => {
+          setFind(() => api.find);
+          setGoTo(() => api.goTo);
+        }}
         onSearchMatches={setMatches}
         styles={{ flex: '1', 'min-height': '0' }}
       />

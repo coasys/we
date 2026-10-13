@@ -42,6 +42,7 @@ import {
   screenSourcePrompt,
   sidebar,
   templateEditor,
+  templateNameDialog,
 } from '@we/template-shell';
 
 import { byOrderThenId, createRegistry } from './createRegistry';
@@ -302,14 +303,30 @@ export const slotRegistry = {
    *
    * Everything but the safety prompts, which render in a layer of their own — {@link promptNodes}.
    */
-  nodes(): SchemaNode[] {
-    return slotRegistry
-      .ordered()
-      .filter((entry) => !isProtectedSlot(entry.id))
-      .flatMap((entry) => {
-        const resolved = resolveAnchors(entry.node);
-        return Array.isArray(resolved) ? resolved : [resolved];
-      });
+  nodes(options: { except?: ReadonlySet<string> } = {}): SchemaNode[] {
+    return (
+      slotRegistry
+        .ordered()
+        // `except`: chrome the app template places itself, as host parts, rather than the flat list.
+        .filter((entry) => !isProtectedSlot(entry.id) && !options.except?.has(entry.id))
+        .flatMap((entry) => {
+          const resolved = resolveAnchors(entry.node);
+          return Array.isArray(resolved) ? resolved : [resolved];
+        })
+    );
+  },
+
+  /**
+   * One piece of chrome, with its `$slot` markers filled in — what a host part draws where an app
+   * template places it. Never a safety prompt: those are the host's own layer and nothing places them.
+   */
+  nodeOf(id: string): SchemaNode | undefined {
+    const entry = registry.get(id);
+    if (!entry || isProtectedSlot(id)) return undefined;
+    const resolved = resolveAnchors(entry.node);
+    return Array.isArray(resolved)
+      ? { type: 'Column', props: { styles: { display: 'contents' } }, children: resolved }
+      : resolved;
   },
 
   /** The safety prompts, in order — the host's own layer above everything {@link nodes} draws. */
@@ -356,6 +373,10 @@ export function registerCoreSlots(): void {
   // `shellStore.joinSpaceOpen`. The two are mutually exclusive in practice (one menu, two items),
   // so the order between them decides nothing; it sits next to the one it belongs with.
   slotRegistry.register({ id: 'core:joinSpace', anchor: 'overlay', node: joinSpaceModalMount, order: 5 });
+  // Naming a fork or a new template. Opened from the template picker, which is in the app's rail, and
+  // from the inspector while the app itself is edited — so it is drawn here, outside the app, where
+  // editing the app cannot make it inert and an app without the rail cannot leave it out.
+  slotRegistry.register({ id: 'core:templateNameDialog', anchor: 'overlay', node: templateNameDialog, order: 5 });
   // Last of the overlays, and deliberately: it is the only one raised by the app rather than by
   // something the user just did, so anything they *did* ask for belongs in front of it. Its own gate
   // (`profileStore.needsName`) is false until the app is ready and the profile fetch has answered,

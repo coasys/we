@@ -177,6 +177,11 @@ export interface WeSeedFile {
     ui?: {
       /** Custom boot screen schema (replaces default) */
       bootScreen?: SchemaNode;
+      /**
+       * The app this deployment opens in: the id of an app template it ships (`meta.role: 'app'`).
+       * Defaults to WE's own. An agent may choose one of their own copies instead.
+       */
+      app?: string;
     };
   };
 

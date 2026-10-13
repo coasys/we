@@ -33,7 +33,7 @@ import {
   type TemplateSchema,
 } from '@we/schema-shared';
 import { type OwnerRef, useVisualEditor } from '@we/schema-solid';
-import { createMemo, createSignal, For, type JSX, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, type JSX, Show } from 'solid-js';
 
 import { type OwnedPart, useEditorHost } from '../host';
 import { deepClone, lastOf } from '../utils';
@@ -467,7 +467,14 @@ function PanelCard(props: { dockId: string }) {
 
 function ViewCard(props: { id: string }) {
   const host = useEditorHost();
+  const visualEditor = useVisualEditor();
   const info = createMemo(() => host.owners?.view(props.id) ?? null);
+  /** Whether a section can be edited where it is: one this agent may change, a stored copy. */
+  const canChangeHere = (id: string | null) => !!id && !!host.targets?.canEditSection(id);
+  /** Edit it in this shell, where it is seen. The press that follows selects inside it. */
+  const changeHere = (id: string) => {
+    if (host.targets?.enterSection(id)) visualEditor.onSelectOwner(null);
+  };
   /** Asking before replacing a section for everyone — 'ask' once pressed, 'busy' while it saves. */
   const [step, setStep] = createSignal<'idle' | 'ask' | 'busy'>('idle');
   const [made, setMade] = createSignal<string | null>(null);
@@ -482,6 +489,21 @@ function ViewCard(props: { id: string }) {
     setStep('idle');
   };
 
+  /*
+    A copy is made to be changed, so it is gone into as soon as it can be, as a forked template is
+    opened for editing. The question worth asking — replacing the section for everyone — was the
+    confirmation; going in commits nothing more. Watched rather than done after the await, because
+    the copy becomes editable when the template lists hear of it, which can be a moment later. A copy
+    that never can be — one this shell cannot reach — keeps the card's way to open it on its own.
+  */
+  let wentIn = false;
+  createEffect(() => {
+    const copy = made();
+    if (!copy || wentIn || !canChangeHere(copy)) return;
+    wentIn = true;
+    changeHere(copy);
+  });
+
   return (
     <Show when={info()}>
       {(view) => (
@@ -493,17 +515,38 @@ function ViewCard(props: { id: string }) {
             </we-text>
           </Heading>
           <Column px="400" gap="100">
-            <Show when={host.owners?.forkView}>
+            <Show when={canChangeHere(props.id)}>
+              <we-text {...SECTION_LABEL_PROPS}>Change it</we-text>
+              <Route
+                title="Change it here"
+                detail="Edit it where it is, in this shell. Your changes are saved to it for everyone who sees it."
+                action="Change"
+                onPress={() => changeHere(props.id)}
+              />
+            </Show>
+            <Show when={host.owners?.forkView && !canChangeHere(props.id)}>
               <we-text {...SECTION_LABEL_PROPS}>Change it</we-text>
               <Show
                 when={!made()}
                 fallback={
-                  <Route
-                    title="Your copy is in its place"
-                    detail="Open it on its own to change it. Switch back to this template from the template menu when you are done."
-                    action="Edit it"
-                    onPress={() => host.owners?.openTemplate?.(made()!)}
-                  />
+                  <Show
+                    when={canChangeHere(made())}
+                    fallback={
+                      <Route
+                        title="Your copy is in its place"
+                        detail="Open it on its own to change it. Switch back to this template from the template menu when you are done."
+                        action="Edit it"
+                        onPress={() => host.owners?.openTemplate?.(made()!)}
+                      />
+                    }
+                  >
+                    <Route
+                      title="Your copy is in its place"
+                      detail="Change it where it is, in this shell."
+                      action="Change it here"
+                      onPress={() => changeHere(made()!)}
+                    />
+                  </Show>
                 }
               >
                 <Show
@@ -667,6 +710,103 @@ export function SectionOnItsOwnBar() {
           </Show>
         </Row>
       )}
+    </Show>
+  );
+}
+
+/**
+ * Where you are while a section or the app is edited where it is drawn, and the way out.
+ *
+ * What the inspector shows and what the editor saves is the section's or the app's, not the page's,
+ * and nothing on screen changes to say so — the section or the chrome looks exactly as it does when
+ * it is not being edited. WE's own app is built in, so the bar offers to fork it straight away rather
+ * than only after a change, which is what makes forking the app something you can set out to do.
+ */
+export function EditingSectionBar() {
+  const host = useEditorHost();
+  const visualEditor = useVisualEditor();
+  const section = createMemo(() => host.targets?.section() ?? null);
+  const app = createMemo(() => host.targets?.app?.() ?? null);
+  const leave = () => {
+    host.targets?.leave();
+    visualEditor.onSelect(null);
+  };
+  /** Where you are, in a sentence — or nothing, while it is the page. */
+  const where = () => {
+    const on = section();
+    if (on) return `Editing ${on.name}, a section of this space, where it is.`;
+    const editingApp = app();
+    if (editingApp) return `Editing ${editingApp.name}, the app around every space.`;
+    return null;
+  };
+  return (
+    <Show when={where()}>
+      {(sentence) => (
+        <Row
+          data-we-editing-section=""
+          ax="between"
+          ay="center"
+          gap="300"
+          mx="300"
+          mb="200"
+          px="300"
+          py="200"
+          r="surface"
+          bg="accent-muted"
+          flexShrink="0"
+        >
+          <we-text variant="footnote">{sentence()} Escape or a press outside it comes back out.</we-text>
+          <Row gap="200" flexShrink="0">
+            <Show when={app() && host.session.isReadOnly()}>
+              <we-button size="xs" variant="primary" onClick={() => host.session.startFork()}>
+                Fork
+              </we-button>
+            </Show>
+            <we-button size="xs" variant="secondary" onClick={leave}>
+              Done
+            </we-button>
+          </Row>
+        </Row>
+      )}
+    </Show>
+  );
+}
+
+/**
+ * What the session is editing: the page — the template on screen, and its sections — or the app
+ * around it. One at a time, and this is the way across in either direction.
+ *
+ * In the editor's bar rather than the inspector, so the app can be gone into without a page node
+ * selected first, and so the choice is on screen for the whole session. Absent where the host has no
+ * app to edit, as an editor embedded in somebody else's application has none.
+ */
+export function EditTargetSwitch() {
+  const host = useEditorHost();
+  const visualEditor = useVisualEditor();
+  const onApp = () => !!host.targets?.app?.();
+  const toPage = () => {
+    if (!onApp()) return;
+    host.targets?.leave();
+    visualEditor.onSelect(null);
+  };
+  const toApp = () => {
+    if (onApp()) return;
+    if (host.targets?.enterApp?.()) visualEditor.onSelect(null);
+  };
+  return (
+    <Show when={host.targets?.enterApp}>
+      <Row ay="center" gap="100" data-we-edit-target-switch="">
+        <we-tooltip content="Edit the template on screen" placement="bottom">
+          <we-button size="sm" variant={onApp() ? 'ghost' : 'secondary'} onClick={toPage}>
+            Page
+          </we-button>
+        </we-tooltip>
+        <we-tooltip content="Edit the app around every space: the sidebar, the rail" placement="bottom">
+          <we-button size="sm" variant={onApp() ? 'secondary' : 'ghost'} onClick={toApp}>
+            App
+          </we-button>
+        </we-tooltip>
+      </Row>
     </Show>
   );
 }

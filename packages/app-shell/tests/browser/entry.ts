@@ -26,8 +26,10 @@ import { createInMemoryBackend } from '@we/backend-inmemory';
 import { BlockHostProvider } from '@we/block-solid';
 import {
   CopiedPartNote,
+  EditingSectionBar,
   EditorHostProvider,
   EditorOverlay,
+  EditTargetSwitch,
   OwnerCard,
   PartCard,
   PartsPalette,
@@ -47,7 +49,7 @@ import {
 } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { VisualEditorProvider } from '@we/schema-solid';
-import { createComponent, createSignal } from 'solid-js';
+import { createComponent, createEffect, createSignal } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { render } from 'solid-js/web';
 
@@ -436,6 +438,11 @@ async function idleFrames(frames = 1): Promise<void> {
  * and the editor's selection is recorded as well, so a case can ask which of the two heard a press.
  */
 function editorProbe(): void {
+  // Each run starts with nothing recorded: cases share the page, and one case's presses are not the
+  // next case's evidence.
+  for (const key of Object.keys(globalThis)) {
+    if (key.startsWith('__probe')) delete (globalThis as unknown as Record<string, unknown>)[key];
+  }
   const record = (key: string, value: unknown) => {
     const bag = globalThis as unknown as Record<string, unknown[]>;
     (bag[key] ??= []).push(value);
@@ -553,7 +560,44 @@ function editorProbe(): void {
   for (let i = 0; i < 3; i++) list.append(instance('n-item', i));
   for (let i = 0; i < 3; i++) list.append(instance('n-copy', i));
 
-  document.body.append(content, panel, scrolled, list);
+  /*
+    The app's chrome, as the host draws it: a box-less wrapper that is an edit surface only while the
+    app is being edited, holding pieces that each position themselves — one node of the app's own, and
+    the sidebar as a host part, whose frame has no box, inside which a Column sized to nothing holds a
+    fixed, clipped column at the chrome's layer, as WE's sidebar is.
+  */
+  const appChrome = document.createElement('div');
+  appChrome.setAttribute('data-we-app-chrome', '');
+  appChrome.style.display = 'contents';
+  const appOwn = document.createElement('div');
+  appOwn.style.cssText = 'position: fixed; left: 0; top: 680px; width: 160px; height: 40px; z-index: 1;';
+  appOwn.append(node('n-app-inner', 'app'));
+  const sidebarPlaced = document.createElement('div');
+  sidebarPlaced.setAttribute('data-we-node-id', 'n-sidebar');
+  sidebarPlaced.style.display = 'contents';
+  const sidebarFrame = document.createElement('div');
+  sidebarFrame.style.display = 'contents';
+  sidebarFrame.setAttribute(PART_ATTR, 'host.sidebar');
+  sidebarFrame.setAttribute(PART_NODE_ATTR, 'n-sidebar');
+  const sidebarRoot = document.createElement('div');
+  sidebarRoot.setAttribute('data-we-node-id', 'n-sidebar-root');
+  sidebarRoot.style.display = 'contents';
+  const sidebarBox = document.createElement('div');
+  sidebarBox.style.cssText =
+    'position: fixed; left: 170px; top: 680px; width: 80px; height: 40px; overflow: hidden; z-index: 250; display: flex; flex-direction: column;';
+  const sidebarItem = node('n-sidebar-item', 'side');
+  (sidebarItem.firstElementChild as HTMLElement).style.width = '60px';
+  sidebarBox.append(sidebarItem);
+  // The Column the sidebar's root draws: a box of its own, sized to nothing, since all it holds is fixed.
+  const sidebarColumn = document.createElement('div');
+  sidebarColumn.style.cssText = 'display: flex; flex-direction: column;';
+  sidebarColumn.append(sidebarBox);
+  sidebarRoot.append(sidebarColumn);
+  sidebarFrame.append(sidebarRoot);
+  sidebarPlaced.append(sidebarFrame);
+  appChrome.append(appOwn, sidebarPlaced);
+
+  document.body.append(content, panel, scrolled, list, appChrome);
   scroller.scrollTop = 300;
   // The scenario mounted beside this one autofocuses a field, and a key typed there is typing — which
   // the editor rightly ignores. Nothing here should have focus to begin with.
@@ -574,6 +618,26 @@ function editorProbe(): void {
     ],
   };
   const [selected, setSelected] = createSignal<string | null>(null);
+  const [editingSection, setEditingSection] = createSignal<{ id: string; name: string } | null>(null);
+  const [editingApp, setEditingApp] = createSignal(false);
+  const appTemplate = {
+    id: 'my-app',
+    type: 'Column',
+    meta: { name: 'My app', role: 'app' },
+    children: [
+      { id: 'n-app-inner', type: 'we-button' },
+      { id: 'n-sidebar', type: '$part', props: { id: 'host.sidebar' } },
+    ],
+  };
+  createEffect(() =>
+    editingApp() ? appChrome.setAttribute(EDIT_SURFACE_ATTR, '') : appChrome.removeAttribute(EDIT_SURFACE_ATTR),
+  );
+  const aboutSection = {
+    id: 'about',
+    type: 'Column',
+    meta: { name: 'About', role: 'view' },
+    children: [{ id: 'n-view-inner', type: 'we-button' }],
+  };
   const [hovered, setHovered] = createSignal<string | null>(null);
   const [owner, setOwner] = createSignal<{ kind: string; id: string; name: string } | null>(null);
   const visual = {
@@ -599,9 +663,37 @@ function editorProbe(): void {
   };
   // A selection made for somebody rather than by a press — what copying a node inside a part does.
   probeSelect = (id: string | null) => visual.onSelect(id);
+  probeEnterApp = () => host.targets.enterApp();
   const host = {
     session: { contentMode: () => 'visual', isStreaming: () => false, pushSnapshot() {}, commitEdit: async () => {} },
-    template: { currentTemplate: template, updateTemplate: () => record('__probeUpdated', true) },
+    // The template being edited: the one on screen, or the About section once it is gone into.
+    template: {
+      get currentTemplate() {
+        return editingApp() ? appTemplate : editingSection() ? aboutSection : template;
+      },
+      updateTemplate: () => record('__probeUpdated', true),
+    },
+    // About is a section this agent may change, so a press can go into it and edit it where it is.
+    targets: {
+      section: editingSection,
+      canEditSection: (id: string) => id === 'about',
+      enterSection: (id: string) => {
+        setEditingSection({ id, name: 'About' });
+        record('__probeTarget', `section:${id}`);
+        return true;
+      },
+      app: () => (editingApp() ? { name: 'My app' } : null),
+      enterApp: () => {
+        setEditingApp(true);
+        record('__probeTarget', 'app');
+        return true;
+      },
+      leave: () => {
+        if (editingSection() || editingApp()) record('__probeTarget', 'screen');
+        setEditingSection(null);
+        setEditingApp(false);
+      },
+    },
     // Only what a ring asks about a part: what it is called and whose it is.
     owners: { part: (id: string) => ({ id, label: 'Tile', moduleName: 'Calls' }) },
   };
@@ -613,6 +705,7 @@ function editorProbe(): void {
     content.remove();
     scrolled.remove();
     list.remove();
+    appChrome.remove();
     owned.remove();
     panel.remove();
     root.remove();
@@ -647,13 +740,15 @@ function ownerCardProbe(
     | 'palette'
     | 'view'
     | 'view-blocked'
+    | 'view-editable'
     | 'arranged'
     | 'arranged-placed'
     | 'part-node'
     | 'copied-clean'
     | 'copied-inner'
     | 'copied-outer'
-    | 'section-alone',
+    | 'section-alone'
+    | 'targets',
 ): void {
   const record = (key: string, value: unknown) => {
     const bag = globalThis as unknown as Record<string, unknown[]>;
@@ -699,12 +794,32 @@ function ownerCardProbe(
       ((feed.children as Record<string, unknown>[])[0].children as string[])[0] = 'What was said';
     template.children = [feed];
   }
+  const [barApp, setBarApp] = createSignal<{ name: string } | null>(null);
   const host = {
+    targets: {
+      section: () => null,
+      // Only the copy, and only where the shell draws it so it can be edited in place.
+      canEditSection: (id: string) => kind === 'view-editable' && id === 'about-yours',
+      enterSection: (id: string) => {
+        record('__probeTarget', `section:${id}`);
+        return true;
+      },
+      app: barApp,
+      enterApp: () => {
+        setBarApp({ name: 'WE' });
+        return true;
+      },
+      leave: () => {
+        setBarApp(null);
+        record('__probeLeft', true);
+      },
+    },
     session: {
-      isReadOnly: () => false,
+      // WE's app is built in, so while it is the target the session cannot save in place.
+      isReadOnly: () => !!barApp(),
       pushSnapshot() {},
       commitEdit: async () => {},
-      startFork() {},
+      startFork: () => record('__probeForkStarted', true),
     },
     template: {
       get currentTemplate() {
@@ -814,6 +929,8 @@ function ownerCardProbe(
                 return createComponent(SuppliedPanelNote, { nodeId: 'bbbbbbbbbb' });
               if (kind.startsWith('copied-')) return createComponent(CopiedPartNote, { nodeId: 'vvvvvvvvvv' });
               if (kind === 'section-alone') return createComponent(SectionOnItsOwnBar, {});
+              if (kind === 'targets')
+                return [createComponent(EditTargetSwitch, {}), createComponent(EditingSectionBar, {})];
               if (kind === 'part-node')
                 return createComponent(OwnerCard, {
                   owner: {
@@ -824,7 +941,7 @@ function ownerCardProbe(
                     parts: ['demo.box'],
                   },
                 });
-              if (kind === 'view' || kind === 'view-blocked')
+              if (kind === 'view' || kind === 'view-blocked' || kind === 'view-editable')
                 return createComponent(OwnerCard, { owner: { kind: 'view', id: 'about', name: 'About' } });
               return kind === 'part'
                 ? createComponent(PartCard, { node: (template.children as Record<string, unknown>[])[0] as never })
@@ -964,6 +1081,10 @@ function emptyPartDraws(on: boolean): void {
   setPartDraws(on);
 }
 let probeSelect: (id: string | null) => void = () => {};
+let probeEnterApp: () => void = () => {};
+function editorProbeEnterApp(): void {
+  probeEnterApp();
+}
 function editorProbeSelect(id: string | null): void {
   probeSelect(id);
 }
@@ -994,6 +1115,7 @@ function composerFrame(): { border: string; height: number; button: number } | n
   pressGiveBackUnchanged,
   editorProbeDispose,
   editorProbeSelect,
+  editorProbeEnterApp,
   emptyPartProbe,
   missingPartProbe,
   emptyPartEditing,

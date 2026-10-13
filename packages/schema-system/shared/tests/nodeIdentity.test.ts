@@ -83,6 +83,41 @@ describe('deriveNodeIds', () => {
     expect((after.children![1] as SchemaNode).id).toBe((before.children![0] as SchemaNode).id);
   });
 
+  /*
+    A built-in's derived ids travel with a copy of it, so whatever they land on ends up in somebody's
+    template. A transition, a style object, a hoverProps bag or a select's options is not a node.
+  */
+  it('gives ids to the nodes a prop holds, and to nothing else a prop holds', () => {
+    const schema = deriveNodeIds(
+      {
+        id: 'app',
+        type: 'Column',
+        children: [
+          {
+            type: '$if',
+            props: {
+              condition: { $: 'local.open' },
+              enterTransition: [{ type: 'reveal', duration: 250 }],
+              then: { type: 'div', props: { style: { width: '100%' } }, children: [] },
+              else: { type: 'we-text', props: { hoverProps: { bg: 'surface-hover' } } },
+            },
+          },
+          { type: 'we-select', props: { options: [{ label: 'One', value: '1' }] } },
+        ],
+      },
+      'app',
+    );
+    const branch = schema.children![0] as SchemaNode;
+    const props = branch.props as Record<string, Record<string, unknown> & { props?: Record<string, unknown> }>;
+    expect(props.then.id).toBeTruthy();
+    expect(props.else.id).toBeTruthy();
+    expect((props.enterTransition as unknown as Record<string, unknown>[])[0]).not.toHaveProperty('id');
+    expect(props.then.props!.style).not.toHaveProperty('id');
+    expect(props.else.props!.hoverProps).not.toHaveProperty('id');
+    const select = schema.children![1] as SchemaNode;
+    expect(((select.props as Record<string, unknown>).options as object[])[0]).not.toHaveProperty('id');
+  });
+
   it('follows a keyed node through a reorder', () => {
     const make = (names: string[]): SchemaNode => ({
       id: 'form',

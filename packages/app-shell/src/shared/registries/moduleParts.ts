@@ -33,7 +33,21 @@ import {
   type SchemaProp,
 } from '@we/schema-shared';
 
+import { hostPartNode, isHostPart } from './hostParts';
 import { moduleRegistry } from './moduleRegistry';
+
+/**
+ * A part by its id: a module's published part, or one of WE's own chrome pieces an app template
+ * places (`host.*`). One lookup, so a host part is drawn, opened, copied and given back exactly as a
+ * module's is.
+ */
+function partOf(id: string): { node: SchemaNode; subject?: string } | undefined {
+  if (isHostPart(id)) {
+    const node = hostPartNode(id);
+    return node ? { node } : undefined;
+  }
+  return moduleRegistry.parts()[id];
+}
 
 /**
  * A deep copy of template data, which is JSON by definition.
@@ -184,7 +198,7 @@ export function resolveParts(node: SchemaNode): SchemaNode | SchemaNode[] {
       children,
     });
 
-    const part = moduleRegistry.parts()[id];
+    const part = partOf(id);
     if (!part) {
       warnUnknown(id);
       return frame([]);
@@ -243,7 +257,7 @@ export function openPart(placement: SchemaNode, depth: 'one' | 'all'): SchemaNod
  */
 function openRaw(placement: SchemaNode, depth: 'one' | 'all'): SchemaNode | null {
   const props = (placement.props ?? {}) as { id?: unknown; subject?: unknown; inputs?: unknown };
-  const part = typeof props.id === 'string' ? moduleRegistry.parts()[props.id] : undefined;
+  const part = typeof props.id === 'string' ? partOf(props.id) : undefined;
   if (!part) return null;
 
   const bound = copyOf(instantiate(placement, part));

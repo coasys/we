@@ -23,8 +23,12 @@ export interface CodeEditorProps {
    * reader looking for a value in a long document has no way to know it exists. The same shape
    * `BlockComposer` uses for `save()` — the component owns the behaviour, the caller owns where
    * the button goes.
+   *
+   * `goTo` puts the cursor on a character, by offset into the document, selects it, scrolls it into
+   * view and focuses the editor — how a caller that found something wrong points at it, rather than
+   * reporting a position somebody then has to count to.
    */
-  onReady?: (api: { find: () => void }) => void;
+  onReady?: (api: { find: () => void; goTo: (offset: number) => void }) => void;
   /**
    * How many matches the current search has, as it changes — `query` empty when the search closes.
    *

@@ -23,6 +23,7 @@ export type TaskStateSemantic = 'open' | 'active' | 'blocked' | 'done' | 'cancel
 export interface AgentSettingsRecord extends RecordInstance {
   currentTemplateId: string;
   defaultTemplateId: string;
+  appTemplateId: string;
   currentThemeId: string;
   defaultThemeId: string;
   systemLightThemeId: string;
