@@ -13,7 +13,17 @@
  * automatically (one type flag per entity). `options` (closed value sets) are manifest-level
  * metadata for forms and prompts — not compiled, since SHACL carries no enum the executor reads.
  */
-import { Ad4mModel, fileToDataUri, Flag, HasMany, HasOne, Model, Property } from '@coasys/ad4m';
+import {
+  Ad4mModel,
+  BelongsToMany,
+  BelongsToOne,
+  fileToDataUri,
+  Flag,
+  HasMany,
+  HasOne,
+  Model,
+  Property,
+} from '@coasys/ad4m';
 import {
   CONTAINMENT_PREDICATE,
   type EntityManifest,
@@ -121,7 +131,10 @@ export function buildEntityFromEntry(
     if (p.relatedEntity !== undefined || p.type === 'uri') {
       const resolver = opts?.classResolver;
       const related = p.relatedEntity;
-      const decorator = p.isCollection ? HasMany : HasOne;
+      // A reverse relation reads a link the other end owns, which AD4M spells `@BelongsTo*` — the
+      // same predicate, read the other way. As `@HasOne`, `partOf` through `we://child` would read
+      // this record's own children rather than its container (see generateClasses.mjs).
+      const decorator = p.reverse ? (p.isCollection ? BelongsToMany : BelongsToOne) : p.isCollection ? HasMany : HasOne;
       if (p.isCollection) {
         proto[p.name] = [];
         fieldDefaults[p.name] = [];
@@ -250,6 +263,7 @@ export function manifestToEntries(manifest: EntityManifest, opts: CompileManifes
           // AD4M's `@BelongsTo*` generates no `add`/`remove`/`set`, and an entry claiming otherwise
           // would build a runtime-adopted class that offers writes the hand-written one refuses.
           writable: !spec.reverseOf,
+          ...(spec.reverseOf ? { reverse: true } : {}),
           ...(spec.target ? { relatedEntity: spec.target } : {}),
           ...(spec.ordered ? { ordered: true } : {}),
           ...(resolvesPolymorphically(spec) ? { polymorphic: true } : {}),
