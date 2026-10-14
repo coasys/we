@@ -70,3 +70,21 @@ describe('the flow store, mounted', () => {
     expect(store.startable().map((f) => f.name)).toEqual(['review']);
   });
 });
+
+describe('edits a form submits', () => {
+  // A form closes in its action's `onSuccess`, which only fires for a promise, so an edit that
+  // returned nothing left every one of the flow editor's dialogs open after it had done its work.
+  it('resolves when the edit applies, so the form closes', async () => {
+    const store = mount();
+    await expect(store.newFlow('blank', 'Checks')).resolves.toBeUndefined();
+    expect(store.draft()?.label).toBe('Checks');
+    await expect(store.addStep(0, 'Review', 'start')).resolves.toBeUndefined();
+  });
+
+  it('rejects when the edit is refused, so the form stays open with what was typed', async () => {
+    const store = mount();
+    await store.newFlow('blank', 'Checks');
+    await store.addStep(0, 'Review', 'start');
+    await expect(store.addStep(0, 'Review', 'start')).rejects.toThrow();
+  });
+});

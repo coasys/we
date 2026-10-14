@@ -150,7 +150,7 @@ export interface FlowStore {
   moveRecord: (flow: string, recordId: string, to: string, note?: string) => Promise<string>;
   withdrawRecord: (flow: string, recordId: string) => Promise<void>;
 
-  newFlow: (preset: FlowPreset, label: string, subjects?: string[]) => void;
+  newFlow: (preset: FlowPreset, label: string, subjects?: string[]) => Promise<void>;
   editFlow: () => void;
   cancelDraft: () => void;
   saveDraft: () => Promise<void>;
@@ -159,7 +159,7 @@ export interface FlowStore {
   setDraftLabel: (label: string) => void;
   setDraftHint: (hint: string) => void;
   setDraftSubjects: (subjects: string[]) => void;
-  addStep: (lane: number, label: string, after?: string) => void;
+  addStep: (lane: number, label: string, after?: string) => Promise<void>;
   removeStep: (name: string) => void;
   moveStep: (name: string, by: number) => void;
   renameStep: (name: string, label: string) => void;
@@ -168,14 +168,17 @@ export interface FlowStore {
    * A step's name, hint and approvals at once — what a step's edit form saves. Applied as one edit,
    * so a refusal (a name already used) leaves the step exactly as it was.
    */
-  updateStep: (name: string, changes: { label?: string; hint?: string; approvals?: number; kind?: string }) => void;
-  addBranch: (from: string, label: string, rejoins?: string) => void;
+  updateStep: (
+    name: string,
+    changes: { label?: string; hint?: string; approvals?: number; kind?: string },
+  ) => Promise<void>;
+  addBranch: (from: string, label: string, rejoins?: string) => Promise<void>;
   setBranchEnd: (lane: number, rejoins: string) => void;
   setRule: (rule: FlowSequenceRule) => void;
   addException: (from: string, to: string) => void;
   removeException: (from: string, to: string) => void;
   setApprovals: (name: string, count: number, kind?: string) => void;
-  addGuard: (name: string, entity: string, tie?: string, min?: number) => void;
+  addGuard: (name: string, entity: string, tie?: string, min?: number) => Promise<void>;
   removeGuard: (name: string, index: number) => void;
 }
 
@@ -553,19 +556,30 @@ export function FlowStoreProvider(props: ParentProps) {
     };
   });
 
-  /** Apply one edit to the draft, or say why it cannot be made. */
-  const edit = (change: (draft: FlowDraft) => DraftEdit) => {
+  /** Apply one edit to the draft, or say why it cannot be made. Answers whether it applied. */
+  const edit = (change: (draft: FlowDraft) => DraftEdit): boolean => {
     const state = draftState();
-    if (!state) return;
+    if (!state) return false;
     const next = change(state.draft);
     if (isRefusal(next)) {
       toastService.error(next.refused);
-      return;
+      return false;
     }
     setDraftState({ ...state, draft: next });
+    return true;
   };
 
-  function newFlow(preset: FlowPreset, label: string, subjects: string[] = ['TaskBlock']): void {
+  /*
+    The same edit, for an edit a form submits. A form closes in its action's `onSuccess`, which only
+    a promise has, so these resolve when the edit applied and reject when it was refused: the form
+    closes on the one and stays open, holding what was typed, on the other. The refusal has already
+    been said in a toast.
+  */
+  const submitted = async (change: (draft: FlowDraft) => DraftEdit): Promise<void> => {
+    if (!edit(change)) throw new Error('That change was not made');
+  };
+
+  async function newFlow(preset: FlowPreset, label: string, subjects: string[] = ['TaskBlock']): Promise<void> {
     const name = flowNameOf(label) || 'NewFlow';
     setDraftState({ draft: presetDraft(preset, name, subjects), saved: null });
   }
@@ -666,13 +680,13 @@ export function FlowStoreProvider(props: ParentProps) {
       }),
     setDraftHint: (hint) => edit((d) => ({ ...d, ...(hint.trim() ? { hint: hint.trim() } : { hint: undefined }) })),
     setDraftSubjects: (subjects) => edit((d) => ({ ...d, subjects: [...new Set(subjects.filter(Boolean))] })),
-    addStep: (lane, label, after) => edit((d) => draftEdits.addStep(d, lane, label, after || undefined)),
+    addStep: (lane, label, after) => submitted((d) => draftEdits.addStep(d, lane, label, after || undefined)),
     removeStep: (name) => edit((d) => draftEdits.removeStep(d, name)),
     moveStep: (name, by) => edit((d) => draftEdits.moveStep(d, name, by < 0 ? -1 : 1)),
     renameStep: (name, label) => edit((d) => draftEdits.renameStep(d, name, label)),
     setStepHint: (name, hint) => edit((d) => draftEdits.setStepHint(d, name, hint)),
     updateStep: (name, changes) =>
-      edit((d) => {
+      submitted((d) => {
         let next: DraftEdit = d;
         if (changes.hint !== undefined) next = draftEdits.setStepHint(next, name, changes.hint);
         if (!isRefusal(next) && (changes.approvals !== undefined || changes.kind !== undefined)) {
@@ -687,7 +701,7 @@ export function FlowStoreProvider(props: ParentProps) {
         if (!isRefusal(next) && changes.label !== undefined) next = draftEdits.renameStep(next, name, changes.label);
         return next;
       }),
-    addBranch: (from, label, rejoins) => edit((d) => draftEdits.addBranch(d, from, label, rejoins || undefined)),
+    addBranch: (from, label, rejoins) => submitted((d) => draftEdits.addBranch(d, from, label, rejoins || undefined)),
     setBranchEnd: (lane, rejoins) => edit((d) => draftEdits.setBranchEnd(d, lane, rejoins || undefined)),
     setRule: (rule) => edit((d) => draftEdits.setRule(d, rule)),
     addException: (from, to) => edit((d) => draftEdits.addException(d, from, to)),
@@ -699,7 +713,7 @@ export function FlowStoreProvider(props: ParentProps) {
         return draftEdits.setRequirements(d, name, rule ? [rule, ...rest] : rest);
       }),
     addGuard: (name, entity, tie, min = 1) =>
-      edit((d) => {
+      submitted((d) => {
         if (!entity) return { refused: 'Say what kind of record has to be there.' };
         const guard: FlowRequirement = {
           kind: 'guard',
