@@ -4,7 +4,8 @@
  * Verifies that the session factory correctly:
  * - Reads the moderator's SFU config before creating a session
  * - Passes the correct topology to `createSession`
- * - Passes 'mesh' explicitly when the config says mesh, and an SFU mode as 'auto'
+ * - Passes 'mesh' explicitly when the config says mesh, and 'sfu' or 'auto' as 'auto'
+ * - Hands a retired SFU mode on as 'sfu'
  * - Falls back to 'auto' when the config read fails
  * - Throws when no dataset exists
  */
@@ -32,11 +33,11 @@ function mockDataset(overrides?: { sharedUrl?: string; sfuConfigMode?: string })
 
 describe('createCallSessionFactory', () => {
   /*
-    The session takes mesh, sfu or auto. An SFU mode goes as auto with the config beside it: the
+    The session takes mesh, sfu or auto. sfu and auto go as auto with the config beside it: the
     session's auto resolution follows the config, so the space's choice decides the topology.
   */
-  it('reads config and passes an SFU mode as auto, with the config', async () => {
-    const ds = mockDataset({ sfuConfigMode: 'designated' });
+  it('reads config and passes sfu as auto, with the config', async () => {
+    const ds = mockDataset({ sfuConfigMode: 'sfu' });
     const factory = createCallSessionFactory(
       () => null,
       () => ds as never,
@@ -49,7 +50,7 @@ describe('createCallSessionFactory', () => {
     expect(ds._nhProxy.createSession).toHaveBeenCalledWith('test-call-123', {
       neighbourhoodUrl: 'neighbourhood://test-space',
       topology: 'auto',
-      sfuConfig: { mode: 'designated' },
+      sfuConfig: { mode: 'sfu' },
     });
   });
 
@@ -87,22 +88,42 @@ describe('createCallSessionFactory', () => {
     });
   });
 
-  it('passes cascaded as auto too', async () => {
-    const ds = mockDataset({ sfuConfigMode: 'cascaded' });
+  it('passes auto as auto, with the config, so the SDK applies its rule', async () => {
+    const ds = mockDataset({ sfuConfigMode: 'auto' });
     const factory = createCallSessionFactory(
       () => null,
       () => ds as never,
       () => null,
     );
 
-    await factory('call-4');
+    await factory('call-3');
 
-    expect(ds._nhProxy.createSession).toHaveBeenCalledWith('call-4', {
+    expect(ds._nhProxy.createSession).toHaveBeenCalledWith('call-3', {
       neighbourhoodUrl: 'neighbourhood://test-space',
       topology: 'auto',
-      sfuConfig: { mode: 'cascaded' },
+      sfuConfig: { mode: 'auto' },
     });
   });
+
+  it.each(['designated', 'gateway', 'cascaded'])(
+    'hands a retired mode (%s) from an older executor on as sfu',
+    async (legacy) => {
+      const ds = mockDataset({ sfuConfigMode: legacy });
+      const factory = createCallSessionFactory(
+        () => null,
+        () => ds as never,
+        () => null,
+      );
+
+      await factory('call-4');
+
+      expect(ds._nhProxy.createSession).toHaveBeenCalledWith('call-4', {
+        neighbourhoodUrl: 'neighbourhood://test-space',
+        topology: 'auto',
+        sfuConfig: { mode: 'sfu' },
+      });
+    },
+  );
 
   it('passes the ICE servers the call module chose, in the SDK shape', async () => {
     // The browser's shape allows one URL as a string; the SDK's is always a list.

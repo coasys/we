@@ -77,6 +77,7 @@ export { createCallSessionFactory } from './callSessionAdapter';
 export {
   createCallConfigAccessors,
   DEFAULT_CALL_CONFIG,
+  toCallConfigMode,
   type CallConfig,
   type CallConfigMode,
   type CallConfigIceServer,
