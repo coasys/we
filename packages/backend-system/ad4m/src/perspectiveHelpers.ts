@@ -219,6 +219,8 @@ export function buildEntityManifest(shapes: ForeignShape[]): EntityManifestEntry
         writable: p.writable ?? true,
         ...(p.resolveLanguage !== undefined && { resolveLanguage: p.resolveLanguage }),
         ...(p.class !== undefined && { relatedEntity: shaclClassToLocalName(p.class) }),
+        // The shape says which end owns the link, so an entry read back from storage keeps it.
+        ...(p.relationKind?.startsWith('belongsTo') && { reverse: true }),
         ...(p.interpretationHint !== undefined && { interpretationHint: p.interpretationHint }),
         ...(p.identity ? { identity: true } : {}),
       })),
