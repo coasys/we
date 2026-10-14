@@ -7,21 +7,18 @@
  * the host wires into the call module's `CallStoreDeps.createBackend` — so the module stays
  * backend-agnostic and the host does the AD4M-specific construction.
  */
-import type { IceServer, PerspectiveProxy, Session, SessionTopology, SfuConfig } from '@coasys/ad4m';
+import type { IceServer, PerspectiveProxy, Session, SessionTopology, SfuConfig, SfuMode } from '@coasys/ad4m';
 import type { DatasetHandle } from '@we/backend-shared';
 
-import { type CallConfigMode, toCallConfig } from './callConfigAdapter';
-
 /**
- * The topology a session is asked for, from the mode the space's creator chose.
+ * The topology a session is asked for, from the mode the space's moderator chose.
  *
- * `mesh` means "never use an SFU" and is passed as it is. `sfu` and `auto` are both passed as
- * `auto` together with the config itself: the session's auto resolution follows the config's mode,
- * so `sfu` uses this executor's SFU and `auto` applies the SDK's rule (the SFU only when every
- * member is hosted here and the SFU is public). A space whose config could not be read is `auto`
- * with no config, which the SDK resolves by the same rule.
+ * The session takes `mesh`, `sfu` or `auto`; the space's config has four modes. `mesh` means
+ * "never use an SFU" and is passed as it is. The three SFU modes are passed as `auto` together with
+ * the config itself: the session's auto resolution then follows the config's mode and uses the SFU,
+ * while a space with no config still auto-discovers.
  */
-function topologyFor(mode: CallConfigMode | undefined): SessionTopology {
+function topologyFor(mode: SfuMode | undefined): SessionTopology {
   return mode === 'mesh' ? 'mesh' : 'auto';
 }
 
@@ -69,22 +66,17 @@ export function createCallSessionFactory(
     const nhProxy = proxy.getNeighbourhoodProxy();
 
     // An executor that predates the SFU answers with an error here; auto resolution is right then.
-    // With a config, the session's auto resolution follows its mode. A mode an older executor
-    // stored (`designated`, `gateway`, `cascaded`) is handed on as `sfu`, which is what each meant.
+    // With a config, the session's auto resolution follows its mode: any SFU mode uses the SFU.
     let sfuConfig: SfuConfig | undefined;
-    let mode: CallConfigMode | undefined;
     try {
-      const config = toCallConfig(await nhProxy.sfuConfig(neighbourhoodUrl));
-      mode = config.mode;
-      // Through `unknown`: WE's mode union and the SDK's need not be the same shape.
-      sfuConfig = config as unknown as SfuConfig;
+      sfuConfig = await nhProxy.sfuConfig(neighbourhoodUrl);
     } catch {
       // Non-fatal — fall back to auto topology resolution.
     }
 
     return await nhProxy.createSession(callId, {
       neighbourhoodUrl,
-      topology: topologyFor(mode),
+      topology: topologyFor(sfuConfig?.mode),
       ...(sfuConfig ? { sfuConfig } : {}),
       ...(options?.iceServers?.length ? { iceServers: options.iceServers.map(toIceServer) } : {}),
     });

@@ -917,24 +917,11 @@ const moduleSettingsSection: SchemaNode = {
 
 // ── Mode options for the call topology selector ────────────────────────────
 
-/**
- * The three ways a space's calls can connect. The store only ever holds one of these: a mode an
- * older executor stored (`designated`, `gateway`, `cascaded`) reads as `sfu`, which is what each of
- * them did.
- */
 const CALL_MODE_OPTIONS = [
-  { label: 'Mesh', value: 'mesh', description: 'Everyone connects directly. Best for small calls.' },
-  {
-    label: 'SFU',
-    value: 'sfu',
-    description:
-      "Calls run through this space's server (your executor). Scales to larger calls; everyone must be on the same executor.",
-  },
-  {
-    label: 'Auto',
-    value: 'auto',
-    description: 'SFU when everyone is on this executor and it can be reached; mesh otherwise.',
-  },
+  { label: 'Mesh (peer-to-peer)', value: 'mesh' },
+  { label: 'Designated SFU', value: 'designated' },
+  { label: 'Gateway SFU', value: 'gateway' },
+  { label: 'Cascaded SFU', value: 'cascaded' },
 ];
 
 /**
@@ -944,9 +931,9 @@ const CALL_MODE_OPTIONS = [
  * same configuration. Only shown when the call module runs here AND the executor supports SFU
  * configuration (feat/embedded-sfu builds).
  *
- * The space holds only its policy: the mode and the mesh limit. The SFU's capacity and ICE servers
- * belong to each executor (its `--sfu-*` flags), and the executor refuses them here — so this
- * section has no fields for them.
+ * The space holds only its policy: the mode and the mesh limit. Which SFU nodes cascade, their
+ * capacity and ICE servers belong to each executor (its `--sfu-*` flags), and the executor refuses
+ * them here — so this section has no fields for them.
  *
  * Only the space's creator can change it: the executor refuses anyone else's write, and the
  * call store shows that refusal. Members see the result (the topology indicator in the call
@@ -964,47 +951,27 @@ const callSettingsSection: SchemaNode = {
         {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint' },
-          children: ['How new calls in this space connect participants.'],
+          children: [
+            "How new calls in this space connect participants. Mesh connects everyone directly. The SFU modes route each member's media through their own executor's relay, which handles more participants; which relays cascade is set on each executor.",
+          ],
         },
 
         // ── Topology mode ──────────────────────────────────────────────
-        // A radio per mode rather than a select, so each one's line of explanation is on screen
-        // beside it: the difference between SFU and Auto is not readable from the names alone.
         {
-          type: 'Column',
-          props: { gap: '300' },
+          type: 'we-form-field',
+          props: { label: 'Topology mode' },
           children: [
             {
-              type: '$each',
-              props: { items: CALL_MODE_OPTIONS, as: 'callMode' },
-              children: [
-                {
-                  type: 'Column',
-                  props: { gap: '100' },
-                  children: [
-                    {
-                      type: 'we-radio',
-                      props: {
-                        size: 'sm',
-                        name: 'call-mode',
-                        label: { $: 'callMode.label' },
-                        value: { $: 'callMode.value' },
-                        checked: { $: 'modules.call.callConfig.mode == callMode.value' },
-                        disabled: { $: 'modules.call.callConfigSaving' },
-                        onChange: {
-                          $action: 'modules.call.setCallConfigField',
-                          args: ['mode', { $: 'callMode.value' }],
-                        },
-                      },
-                    },
-                    {
-                      type: 'we-text',
-                      props: { variant: 'footnote', color: 'text-muted', pl: '500' },
-                      children: [{ $: 'callMode.description' }],
-                    },
-                  ],
+              type: 'we-select',
+              props: {
+                size: 'sm',
+                value: { $: 'modules.call.callConfig.mode' },
+                options: CALL_MODE_OPTIONS,
+                onChange: {
+                  $action: 'modules.call.setCallConfigField',
+                  args: ['mode', { $: 'event.detail' }],
                 },
-              ],
+              },
             },
           ],
         },
@@ -1012,10 +979,7 @@ const callSettingsSection: SchemaNode = {
         // ── Max mesh participants ──────────────────────────────────────
         {
           type: 'we-form-field',
-          props: {
-            label: 'Max mesh participants',
-            description: 'A call room on the SFU holds four times this.',
-          },
+          props: { label: 'Max mesh participants before SFU escalation' },
           children: [
             {
               type: 'we-input',

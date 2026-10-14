@@ -9,54 +9,27 @@
  * path that the call module and Space Settings UI use to manage topology
  * defaults.
  */
-import type { IceServer, NeighbourhoodProxy, PerspectiveProxy, SfuConfig } from '@coasys/ad4m';
+import type { IceServer, NeighbourhoodProxy, PerspectiveProxy, SfuConfig, SfuMode } from '@coasys/ad4m';
 import type { DatasetHandle } from '@we/backend-shared';
 
 // ── Types ───────────────────────────────────────────────────────────────
 //
-// The SDK's own, under the names the rest of WE reads — except the mode, which is WE's own. The
-// SDK's mode union has changed shape (four modes, then three), and executors still hold the old
-// values; owning the union here and mapping at this boundary means the rest of WE only ever sees
-// the three below, whichever SDK it is built against and whatever an older executor stored.
+// The SDK's own, under the names the rest of WE reads. Aliases rather than copies: a field the
+// SDK adds, renames or narrows is a type error here instead of a silent mismatch at runtime.
 
-/**
- * How a space's calls connect: `mesh` peer to peer, `sfu` through this executor's SFU, `auto` the
- * SFU when every member is hosted on this executor and its SFU can be reached, mesh otherwise.
- */
-export type CallConfigMode = 'mesh' | 'sfu' | 'auto';
+export type CallConfigMode = SfuMode;
 
 export type CallConfigIceServer = IceServer;
 
-/**
- * Per-neighbourhood call configuration, stored as a link in the neighbourhood. A read also carries
- * the executor's own node settings, which the SDK's type describes. `fallback` is left out: it is
- * not stored and nothing reads it.
- */
-export type CallConfig = Omit<SfuConfig, 'mode' | 'fallback'> & { mode: CallConfigMode };
+/** Per-neighbourhood call configuration, stored as a link in the neighbourhood. */
+export type CallConfig = SfuConfig;
 
-/** The configuration a space has until its creator stores one — what the executor reports then too. */
+/** Default configuration — pure mesh, no SFU. */
 export const DEFAULT_CALL_CONFIG: CallConfig = {
-  mode: 'auto',
+  mode: 'mesh',
+  fallback: 'mesh',
   maxMeshParticipants: 6,
 };
-
-/**
- * A mode as an executor answered it, as one of the three. Older executors stored three SFU modes —
- * `designated`, `gateway`, `cascaded` — which all ran the call on the caller's own executor's SFU,
- * and a current executor reads them as `sfu`; so does this, for an executor that still reports
- * them. Anything else, absent included, is the default.
- */
-export function toCallConfigMode(raw: unknown): CallConfigMode {
-  if (raw === 'mesh' || raw === 'sfu' || raw === 'auto') return raw;
-  if (raw === 'designated' || raw === 'gateway' || raw === 'cascaded') return 'sfu';
-  return DEFAULT_CALL_CONFIG.mode;
-}
-
-/** An SDK config, with its mode mapped to one of WE's three. */
-export function toCallConfig(config: SfuConfig): CallConfig {
-  const { fallback: _fallback, ...rest } = config as SfuConfig & { fallback?: unknown };
-  return { ...rest, mode: toCallConfigMode((config as { mode?: unknown }).mode) } as CallConfig;
-}
 
 // ── Adapter factory ─────────────────────────────────────────────────────
 
@@ -90,7 +63,7 @@ export function createCallConfigAccessors(getCurrentDataset: () => DatasetHandle
     async getCallConfig(): Promise<CallConfig> {
       const { nhProxy, neighbourhoodUrl } = resolveProxy();
       try {
-        return toCallConfig(await nhProxy.sfuConfig(neighbourhoodUrl));
+        return await nhProxy.sfuConfig(neighbourhoodUrl);
       } catch (error) {
         console.warn('call config: could not read SFU config, using defaults', error);
         return { ...DEFAULT_CALL_CONFIG };
@@ -99,8 +72,7 @@ export function createCallConfigAccessors(getCurrentDataset: () => DatasetHandle
 
     async setCallConfig(config: unknown): Promise<boolean> {
       const { nhProxy, neighbourhoodUrl } = resolveProxy();
-      // Through `unknown`: WE's mode union and the SDK's need not be the same shape (see above).
-      return await nhProxy.setSfuConfig(neighbourhoodUrl, config as unknown as SfuConfig);
+      return await nhProxy.setSfuConfig(neighbourhoodUrl, config as CallConfig);
     },
 
     /**

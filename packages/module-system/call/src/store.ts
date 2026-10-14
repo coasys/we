@@ -220,31 +220,13 @@ export type CallDockEdge = 'left' | 'right' | 'top' | 'bottom';
 /** The call topology in use — mesh (peer-to-peer) or sfu (relay server). */
 export type CallTopology = 'mesh' | 'sfu';
 
-/**
- * How a space's calls connect, as its creator chose:
- *
- * - `mesh` — peer to peer, every member connected to every other.
- * - `sfu` — through this executor's SFU.
- * - `auto` — the SFU when every member is hosted on this executor and its SFU can be reached,
- *   mesh otherwise. What a space with no stored policy gets.
- */
-export type CallConfigMode = 'mesh' | 'sfu' | 'auto';
-
-/**
- * A mode as it arrives, as one of the three. Older executors stored three SFU modes —
- * `designated`, `gateway`, `cascaded` — which all ran the call on the caller's own executor's SFU,
- * so each reads as `sfu`. Anything else, absent included, is the default, `auto`.
- */
-export function callConfigMode(raw: unknown): CallConfigMode {
-  if (raw === 'mesh' || raw === 'sfu' || raw === 'auto') return raw;
-  if (raw === 'designated' || raw === 'gateway' || raw === 'cascaded') return 'sfu';
-  return 'auto';
-}
+/** Topology modes a moderator can choose from. */
+export type CallConfigMode = 'mesh' | 'designated' | 'gateway' | 'cascaded';
 
 /**
  * A space's call policy — the part of the call configuration its neighbourhood stores.
  *
- * The executor reports more when it is read (its SFU capacity and other node settings), but those
+ * The executor reports more when it is read (its cascade peers, capacity, preferred node), but those
  * are that executor's own settings and it refuses them on a write. So the store keeps and writes the
  * policy alone; see {@link callPolicy}.
  */
@@ -253,15 +235,14 @@ export interface CallConfigState {
   maxMeshParticipants: number;
 }
 
-/** The policy a space has until its creator stores one — the same default the executor reports. */
-const DEFAULT_POLICY: CallConfigState = { mode: 'auto', maxMeshParticipants: 6 };
+const MESH_POLICY: CallConfigState = { mode: 'mesh', maxMeshParticipants: 6 };
 
 /** The policy out of whatever the executor answered, so a write never echoes its node fields back. */
 export function callPolicy(raw: unknown): CallConfigState {
-  const config = (raw ?? {}) as { mode?: unknown; maxMeshParticipants?: number };
+  const config = (raw ?? {}) as Partial<CallConfigState>;
   return {
-    mode: callConfigMode(config.mode),
-    maxMeshParticipants: config.maxMeshParticipants ?? DEFAULT_POLICY.maxMeshParticipants,
+    mode: config.mode ?? MESH_POLICY.mode,
+    maxMeshParticipants: config.maxMeshParticipants ?? MESH_POLICY.maxMeshParticipants,
   };
 }
 
@@ -421,8 +402,8 @@ export function createCallStore(deps: ModuleStoreDeps) {
   // binds to these signals; the adapter reads them at join time.
 
   /** Per-neighbourhood SFU configuration — topology defaults set by a moderator.
-   *  Always non-null — the default policy (`auto`) until the real config loads. */
-  const [callConfig, setCallConfig] = signal<CallConfigState>(DEFAULT_POLICY);
+   *  Always non-null — defaults to pure mesh before the real config loads. */
+  const [callConfig, setCallConfig] = signal<CallConfigState>(MESH_POLICY);
   /** Whether the backend supports call configuration at all. */
   const [callConfigSupported, setCallConfigSupported] = signal(false);
   /** Whether a config save operation runs right now. */
@@ -1601,7 +1582,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     setCallConfigSupported(supported);
 
     if (!supported) {
-      setCallConfig(DEFAULT_POLICY);
+      setCallConfig(MESH_POLICY);
       return;
     }
 
@@ -1611,7 +1592,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     void deps
       .getCallConfig?.()
       .then((raw) => setCallConfig(callPolicy(raw)))
-      .catch(() => setCallConfig(DEFAULT_POLICY));
+      .catch(() => setCallConfig(MESH_POLICY));
   });
 
   /*

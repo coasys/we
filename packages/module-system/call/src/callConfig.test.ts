@@ -12,7 +12,7 @@
 import { markAction, markState } from '@we/module-shared';
 import { describe, expect, it, vi } from 'vitest';
 
-import { callConfigMode, type CallConfigState, callPolicy, createCallStore } from './store';
+import { type CallConfigState, createCallStore } from './store';
 
 const baseDeps = { state: markState, action: markAction, kernels: {} } as const;
 
@@ -35,13 +35,13 @@ function createEffectRunner() {
   };
 }
 
-const DEFAULT_POLICY: CallConfigState = {
-  mode: 'auto',
+const MESH_DEFAULT: CallConfigState = {
+  mode: 'mesh',
   maxMeshParticipants: 6,
 };
 
 const SFU_CONFIG: CallConfigState = {
-  mode: 'sfu',
+  mode: 'designated',
   maxMeshParticipants: 4,
 };
 
@@ -57,41 +57,10 @@ const READ_CONFIG = {
   preferredSfuDid: 'did:key:z6MkPreferred',
 };
 
-describe('call config mode', () => {
-  it('keeps the three modes as they are', () => {
-    expect(['mesh', 'sfu', 'auto'].map(callConfigMode)).toEqual(['mesh', 'sfu', 'auto']);
-  });
-
-  it('reads the retired SFU modes as sfu, since each ran the call on this executor’s SFU', () => {
-    expect(['designated', 'gateway', 'cascaded'].map(callConfigMode)).toEqual(['sfu', 'sfu', 'sfu']);
-  });
-
-  it('defaults to auto when no mode is stored, or one it does not know', () => {
-    expect(callConfigMode(undefined)).toBe('auto');
-    expect(callConfigMode('relay')).toBe('auto');
-    expect(callPolicy(undefined)).toEqual(DEFAULT_POLICY);
-  });
-
-  it('normalises a legacy mode on load, so the store only ever holds one of the three', async () => {
-    const { effect, flush } = createEffectRunner();
-    const store = createCallStore({
-      ...baseDeps,
-      signal,
-      effect,
-      dataset: () => ({ id: 'test' }) as never,
-      datasetUri: () => 'neighbourhood://test',
-      getCallConfig: async () => ({ mode: 'cascaded', maxMeshParticipants: 5 }),
-      callConfigSupported: () => true,
-    });
-    flush();
-    await vi.waitFor(() => expect(store.callConfig()).toEqual({ mode: 'sfu', maxMeshParticipants: 5 }));
-  });
-});
-
 describe('call config — store integration', () => {
-  it('defaults to auto before any load', () => {
+  it('defaults to mesh config before any load', () => {
     const store = createCallStore({ ...baseDeps, signal });
-    expect(store.callConfig()).toEqual(DEFAULT_POLICY);
+    expect(store.callConfig()).toEqual(MESH_DEFAULT);
     expect(store.callConfigSupported()).toBe(false);
   });
 
@@ -114,11 +83,11 @@ describe('call config — store integration', () => {
     await vi.waitFor(() => expect(store.callConfig()).toEqual(SFU_CONFIG));
 
     await store.setCallConfigField('maxMeshParticipants', 8);
-    await store.saveCallConfig({ ...READ_CONFIG, mode: 'mesh' } as CallConfigState);
+    await store.saveCallConfig({ ...READ_CONFIG, mode: 'cascaded' } as CallConfigState);
 
     expect(setCallConfig.mock.calls.map(([config]) => config)).toEqual([
-      { mode: 'sfu', maxMeshParticipants: 8 },
-      { mode: 'mesh', maxMeshParticipants: 4 },
+      { mode: 'designated', maxMeshParticipants: 8 },
+      { mode: 'cascaded', maxMeshParticipants: 4 },
     ]);
   });
 
@@ -157,7 +126,7 @@ describe('call config — store integration', () => {
     expect(store.callConfigSupported()).toBe(true);
   });
 
-  it('falls back to the default policy when getCallConfig rejects', async () => {
+  it('falls back to mesh defaults when getCallConfig rejects', async () => {
     const { effect, flush } = createEffectRunner();
 
     const getCallConfig = vi.fn().mockRejectedValue(new Error('RPC failed'));
@@ -176,10 +145,10 @@ describe('call config — store integration', () => {
     flush();
     await new Promise((r) => setTimeout(r, 10));
 
-    expect(store.callConfig()).toEqual(DEFAULT_POLICY);
+    expect(store.callConfig()).toEqual(MESH_DEFAULT);
   });
 
-  it('resets to the default policy when backend lacks support', () => {
+  it('resets to mesh defaults when backend lacks support', () => {
     const { effect, flush } = createEffectRunner();
 
     const store = createCallStore({
@@ -194,7 +163,7 @@ describe('call config — store integration', () => {
     flush();
 
     expect(store.callConfigSupported()).toBe(false);
-    expect(store.callConfig()).toEqual(DEFAULT_POLICY);
+    expect(store.callConfig()).toEqual(MESH_DEFAULT);
   });
 
   it('writes a single field through setCallConfigField', async () => {
@@ -212,10 +181,10 @@ describe('call config — store integration', () => {
     await store.saveCallConfig(SFU_CONFIG);
 
     // Now change one field
-    await store.setCallConfigField('mode', 'auto');
+    await store.setCallConfigField('mode', 'cascaded');
 
-    expect(setCallConfig).toHaveBeenLastCalledWith({ mode: 'auto', maxMeshParticipants: 4 });
-    expect(store.callConfig().mode).toBe('auto');
+    expect(setCallConfig).toHaveBeenLastCalledWith({ mode: 'cascaded', maxMeshParticipants: 4 });
+    expect(store.callConfig().mode).toBe('cascaded');
   });
 
   it('writes the full config through saveCallConfig', async () => {
@@ -228,7 +197,7 @@ describe('call config — store integration', () => {
     });
 
     const newConfig: CallConfigState = {
-      mode: 'mesh',
+      mode: 'gateway',
       maxMeshParticipants: 10,
     };
 
@@ -245,15 +214,15 @@ describe('call config — store integration', () => {
 
     // Pre-populate — this write succeeds
     await store.saveCallConfig(SFU_CONFIG);
-    expect(store.callConfig().mode).toBe('sfu');
+    expect(store.callConfig().mode).toBe('designated');
 
     // Now make subsequent writes fail
     setCallConfig.mockResolvedValue(false);
 
-    await store.saveCallConfig({ ...SFU_CONFIG, mode: 'mesh' });
+    await store.saveCallConfig({ ...SFU_CONFIG, mode: 'cascaded' });
 
     // The signal should still hold the old config because the write returned false
-    expect(store.callConfig().mode).toBe('sfu');
+    expect(store.callConfig().mode).toBe('designated');
   });
 
   it('says why when the executor refuses a write, and keeps the old config', async () => {
@@ -297,7 +266,7 @@ describe('call config — store integration', () => {
     expect(info.hasBackend).toBe(false);
     expect(info.participantCount).toBe(0);
     expect(info.meshLimitReached).toBe(false);
-    expect(info.configMode).toBe('auto');
+    expect(info.configMode).toBe('mesh');
   });
 
   it('quality can be set directly instead of cycling', async () => {

@@ -10,10 +10,10 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 
-import { type CallConfig, createCallConfigAccessors, DEFAULT_CALL_CONFIG, toCallConfigMode } from './callConfigAdapter';
+import { type CallConfig, createCallConfigAccessors, DEFAULT_CALL_CONFIG } from './callConfigAdapter';
 
 /** Build a mock dataset that looks like a shared PerspectiveProxy with SFU support. */
-function mockDataset(overrides?: { sharedUrl?: string; sfuConfig?: Record<string, unknown>; setSfuResult?: boolean }) {
+function mockDataset(overrides?: { sharedUrl?: string; sfuConfig?: CallConfig; setSfuResult?: boolean }) {
   const {
     sharedUrl = 'neighbourhood://test-space',
     sfuConfig = { ...DEFAULT_CALL_CONFIG },
@@ -55,8 +55,9 @@ describe('callConfigSupported', () => {
 describe('getCallConfig', () => {
   it('reads config from the neighbourhood proxy', async () => {
     // The policy plus the executor's own node settings, which a read reports.
-    const config = {
-      mode: 'sfu',
+    const config: CallConfig = {
+      mode: 'designated',
+      fallback: 'mesh',
       maxMeshParticipants: 4,
       sfuPeers: ['did:key:z6MkPeer'],
       maxParticipantsPerNode: 20,
@@ -70,22 +71,6 @@ describe('getCallConfig', () => {
     expect(ds._nhProxy.sfuConfig).toHaveBeenCalledWith('neighbourhood://test-space');
   });
 
-  it('reads a retired SFU mode from an older executor as sfu, and drops fallback', async () => {
-    for (const legacy of ['designated', 'gateway', 'cascaded']) {
-      const ds = mockDataset({ sfuConfig: { mode: legacy, fallback: 'mesh', maxMeshParticipants: 4 } });
-      const { getCallConfig } = createCallConfigAccessors(() => ds as never);
-
-      expect(await getCallConfig()).toEqual({ mode: 'sfu', maxMeshParticipants: 4 });
-    }
-  });
-
-  it('reads a config with no mode as auto, the default', async () => {
-    const ds = mockDataset({ sfuConfig: { maxMeshParticipants: 6 } });
-    const { getCallConfig } = createCallConfigAccessors(() => ds as never);
-
-    expect(await getCallConfig()).toEqual({ mode: 'auto', maxMeshParticipants: 6 });
-  });
-
   it('returns defaults when the read fails', async () => {
     const ds = mockDataset();
     (ds._nhProxy.sfuConfig as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('RPC failed'));
@@ -94,7 +79,6 @@ describe('getCallConfig', () => {
     const result = await getCallConfig();
 
     expect(result).toEqual(DEFAULT_CALL_CONFIG);
-    expect(result.mode).toBe('auto');
   });
 
   it('throws when no dataset exists', async () => {
@@ -109,7 +93,8 @@ describe('setCallConfig', () => {
     const { setCallConfig } = createCallConfigAccessors(() => ds as never);
 
     const config: CallConfig = {
-      mode: 'sfu',
+      mode: 'gateway',
+      fallback: 'mesh',
       maxMeshParticipants: 10,
     };
 
@@ -126,20 +111,5 @@ describe('setCallConfig', () => {
     const ok = await setCallConfig({ ...DEFAULT_CALL_CONFIG });
 
     expect(ok).toBe(false);
-  });
-});
-
-describe('toCallConfigMode', () => {
-  it('keeps mesh, sfu and auto as they are', () => {
-    expect(['mesh', 'sfu', 'auto'].map(toCallConfigMode)).toEqual(['mesh', 'sfu', 'auto']);
-  });
-
-  it('reads designated, gateway and cascaded as sfu', () => {
-    expect(['designated', 'gateway', 'cascaded'].map(toCallConfigMode)).toEqual(['sfu', 'sfu', 'sfu']);
-  });
-
-  it('reads anything else, absent included, as auto', () => {
-    expect(toCallConfigMode(undefined)).toBe('auto');
-    expect(toCallConfigMode('relay')).toBe('auto');
   });
 });
