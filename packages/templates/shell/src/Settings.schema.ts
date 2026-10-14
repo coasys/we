@@ -68,6 +68,103 @@ const accountSection: SchemaNode = {
   ],
 };
 
+/**
+ * Which app you are in — the chrome around every space. Yours alone, and the same in every space:
+ * which app you use is a fact about you, not about the community on screen.
+ */
+const appSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300' },
+  children: [
+    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['App'] },
+    {
+      type: 'we-form-field',
+      props: {
+        label: 'The app you are in',
+        description:
+          'The chrome around every space: your spaces, the module rail, and whatever an app of your own arranges around them. Yours alone.',
+        size: 'sm',
+      },
+      children: [
+        {
+          type: 'we-select',
+          props: {
+            options: { $: 'templateStore.appTemplateOptions' },
+            value: { $: 'templateStore.appTemplateId' },
+            size: 'sm',
+            onChange: { $action: 'templateStore.setAppTemplate', args: [{ $: 'event.detail' }] },
+          },
+        },
+      ],
+    },
+    /*
+      The apps that are yours to delete — the copies, never WE's own. Apps are left out of the template
+      list below, which is the only other place a template is deleted from, so without this a fork of
+      the app could be made and never removed. Deleting the one you are in puts you back in WE's.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'count(templateStore.appTemplateOptions.filter(app, app.editable))' },
+        then: {
+          type: 'Column',
+          props: { gap: '100' },
+          children: [
+            { type: 'we-text', props: { variant: 'label', color: 'text-muted' }, children: ['Your apps'] },
+            {
+              type: '$each',
+              props: { items: { $: 'templateStore.appTemplateOptions.filter(app, app.editable)' }, as: 'app' },
+              children: [
+                {
+                  type: 'Row',
+                  props: { gap: '300', ay: 'center', p: '300', r: '200' },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { gap: '300', ay: 'center', flex: '1', minWidth: '0' },
+                      children: [
+                        { type: 'we-icon', props: { name: { $: "app.icon ? app.icon : 'app-window'" }, size: '20px' } },
+                        {
+                          type: 'we-text',
+                          props: { variant: 'body', fontWeight: 'medium', truncate: true },
+                          children: [{ $: 'app.label' }],
+                        },
+                      ],
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: 'app.value == templateStore.appTemplateId' },
+                        then: { type: 'we-tag', props: { variant: 'primary' }, children: ['In use'] },
+                      },
+                    },
+                    {
+                      type: 'we-tooltip',
+                      props: { content: 'Delete this app', placement: 'top' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'ghost',
+                            size: 'sm',
+                            label: 'Delete this app',
+                            onClick: { $action: 'templateStore.deleteTemplate', args: [{ $: 'app.value' }] },
+                          },
+                          children: [{ type: 'we-icon', props: { name: 'trash', size: '16px', color: 'danger-text' } }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  ],
+};
+
 const templatesSection: SchemaNode = {
   type: 'Column',
   props: { gap: '300' },
@@ -1031,7 +1128,7 @@ export const settingsTemplate: TemplateSchema = {
   // render time, whatever the schema tree looks like, and state declared here would never reach it.
   routes: [
     { path: '/', ...page([accountSection]) },
-    { path: '/appearance', ...page([templatesSection, themeScopeSection, themesSection]) },
+    { path: '/appearance', ...page([appSection, templatesSection, themeScopeSection, themesSection]) },
     {
       path: '/spaces',
       ...page([

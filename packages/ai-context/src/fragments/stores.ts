@@ -1013,6 +1013,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
         loading: 'boolean — the template lists are still being read. Gate empty states on it',
         defaultTemplateId:
           "string — id of the agent's preferred default template, used where no space or override decides. Persisted to AgentSettings.defaultTemplateId",
+        appTemplateId:
+          "string — id of the app this agent is in: the template WE's own chrome is drawn from (the sidebar, the module rail, and whatever an app of their own arranges around every space). Not a space's template, and chosen by the agent alone",
+        appTemplateOptions:
+          '{ label, value, icon, editable }[] — the apps this agent can be in, ready for a we-select: WE’s own, then their own copies. `editable` is false for one that ships with WE, which is forked rather than edited — editorStore.editApp and forkApp take the value',
         safeMode:
           "{ on, reason, template } — whether this tab is in safe mode, where WE's own templates and themes are drawn in place of the chosen ones. reason is 'asked' (the ?safe address, the key or the menu) or 'unfinished-render' (a template did not finish loading last time — template is its id). Decided before anything rendered; fixed for the page",
         operationLoading:
@@ -1036,6 +1040,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(templateId: string): installs or uninstalls by id — what the settings list’s switch calls. Prefer installTemplate/uninstallTemplate where the switch can pass its value',
         setDefaultTemplate:
           "(templateId: string): sets the agent's preferred default template (persists to AgentSettings.defaultTemplateId)",
+        setAppTemplate:
+          "(id: string): chooses the app this agent is in, everywhere — persisted to AgentSettings.appTemplateId. Safe mode always draws WE's own",
         saveTemplateAs:
           "(schema: TemplateSchema, destination?: 'root' | 'space', options?: { activate?: boolean; rename?: boolean }): saves a schema as a new template in your library or in the current space, and makes it the template on screen unless activate is false. A copy saved beside the built-in it came from is named (yours) unless rename is false. Resolves true on success. The editor's fork path; prefer editorStore.startFork from chrome",
         publishToSpace:
@@ -1550,6 +1556,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
         cancelPicker: '(): closes the picker without creating anything',
         enterTemplateEditing:
           "(action?: 'edit' | 'fork' | 'fresh'): opens a template editing session on the template on screen. Omit action to edit in place; a read-only template buffers its edits",
+        editApp:
+          "(id?: string): opens an editing session on the app — the chrome around every space — made the agent's app first when an id is given. Starts in preview, as a template's session does. WE's own app is built in, so its edits buffer and the session offers Fork",
+        forkApp:
+          "(id?: string): the same, then opens the picker to name a copy of it. The copy becomes the agent's app, in every space, and stays the one being edited",
         exitTemplateEditing: '(): ends the template session. Buffered changes to a read-only template are dropped',
         toggleCodePanel: '(): opens or closes the code panel',
         openCodePanel: '(): opens the code panel',

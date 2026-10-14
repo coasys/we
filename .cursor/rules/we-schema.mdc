@@ -184,8 +184,12 @@ see docs/architecture/codebase-map.md.
 For how reusable template fragments work and where they are going, see
 docs/architecture/template-fragments.md.
 
-**A template is one of two things.** A *shell* owns a space's chrome, arrangement and route table;
-a *view* renders one section inside one. `meta.role` says which, and absent means shell. A shell
+**A template is one of three things.** A *shell* owns a space's chrome, arrangement and route table;
+a *view* renders one section inside one; an *app* is WE's own chrome around every space — the
+sidebar and the module rail placed as host parts (`{ type: '$part', props: { id: 'host.sidebar' } }`)
+beside nodes of its own, with the bands that chrome holds declared in `meta.frame`. An app is
+chosen by the agent, never applied as a space's template, and only an app may place a host part.
+`meta.role` says which, and absent means shell. A shell
 marks where its sections go with `{ path: '$views' }` and the host expands that per space, from
 `Space.enabledViews` (the community's list, and its order) minus `SpacePreference.hiddenViews`
 (each agent's own). Do **not** hardcode a space's sections as routes, and do not write a nav strip
@@ -1609,7 +1613,7 @@ when `relative` is enabled.
   Props: artboard: { width: number; height: number; }, fit?: "contain" | "none" | "stretch" | "scale", onMeasure?: ((box: { width: number; height: number; scale: number; }) => void)
 - Card (DesignSystemElement)
 - CodeEditor
-  Props: code: string, language?: CodeEditorLanguage, readOnly?: boolean, onChange?: ((code: string) => void), onSave?: ((code: string) => void), maxHeight?: string, onReady?: ((api: { find: () => void; }) => void), onSearchMatches?: ((result: { query: string; matches: number; capped: boolean; }) => void), styles?: Record<string, string | number>
+  Props: code: string, language?: CodeEditorLanguage, readOnly?: boolean, onChange?: ((code: string) => void), onSave?: ((code: string) => void), maxHeight?: string, onReady?: ((api: { find: () => void; goTo: (offset: number) => void; }) => void), onSearchMatches?: ((result: { query: string; matches: number; capped: boolean; }) => void), styles?: Record<string, string | number>
 - CollapsedContent
   Props: collapsed: boolean, onExpandClick?: (() => void), showToggle?: boolean, icon?: string, maxHeight?: string, fadeColor?: string, children?: JSX.Element, class?: string, styles?: Record<string, string | number>
 - Column (DesignSystemElement)
@@ -2943,6 +2947,8 @@ EditorStore:
   - confirmPicker(name: string, icon: string, destination: 'personal' | 'space'): creates the fork or fresh template and enters editing on it
   - cancelPicker(): closes the picker without creating anything
   - enterTemplateEditing(action?: 'edit' | 'fork' | 'fresh'): opens a template editing session on the template on screen. Omit action to edit in place; a read-only template buffers its edits
+  - editApp(id?: string): opens an editing session on the app — the chrome around every space — made the agent's app first when an id is given. Starts in preview, as a template's session does. WE's own app is built in, so its edits buffer and the session offers Fork
+  - forkApp(id?: string): the same, then opens the picker to name a copy of it. The copy becomes the agent's app, in every space, and stays the one being edited
   - exitTemplateEditing(): ends the template session. Buffered changes to a read-only template are dropped
   - toggle(): toggles the AI chat panel open/closed
   - open(): opens the AI chat panel
@@ -3445,6 +3451,8 @@ TemplateStore:
   - loading: boolean — the template lists are still being read. Gate empty states on it
   - defaultTemplateId: string — id of the agent's preferred default template, used where no space or override decides. Persisted to AgentSettings.defaultTemplateId
   - pendingInstall: the template an install dialog is showing ({ marketplaceId, destination, name, icon, version, capabilities, blocked }), or null when none is open. `capabilities` is already in the words a person reads. Host chrome renders it: a dialog vouching for a template must not be drawn by a template
+  - appTemplateId: string — id of the app this agent is in: the template WE's own chrome is drawn from (the sidebar, the module rail, and whatever an app of their own arranges around every space). Not a space's template, and chosen by the agent alone
+  - appTemplateOptions: { label, value, icon, editable }[] — the apps this agent can be in, ready for a we-select: WE’s own, then their own copies. `editable` is false for one that ships with WE, which is forked rather than edited — editorStore.editApp and forkApp take the value
   - safeMode: { on, reason, template } — whether this tab is in safe mode, where WE's own templates and themes are drawn in place of the chosen ones. reason is 'asked' (the ?safe address, the key or the menu) or 'unfinished-render' (a template did not finish loading last time — template is its id). Decided before anything rendered; fixed for the page
   - operationLoading: string | null — the id of the template operation in flight, namespaced by kind ('marketplace-install:<id>', 'space-install:<id>'), or null. A key rather than a boolean so one row's spinner does not appear on every row
 - Actions:
@@ -3460,6 +3468,7 @@ TemplateStore:
   - cancelInstall(): closes the install dialog without installing
   - toggleInstalled(templateId: string): installs or uninstalls by id — what the settings list’s switch calls. Prefer installTemplate/uninstallTemplate where the switch can pass its value
   - setDefaultTemplate(templateId: string): sets the agent's preferred default template (persists to AgentSettings.defaultTemplateId)
+  - setAppTemplate(id: string): chooses the app this agent is in, everywhere — persisted to AgentSettings.appTemplateId. Safe mode always draws WE's own
   - saveTemplate(name: string): saves the current template
   - saveTemplateAs(schema: TemplateSchema, destination?: 'root' | 'space', options?: { activate?: boolean; rename?: boolean }): saves a schema as a new template in your library or in the current space, and makes it the template on screen unless activate is false. A copy saved beside the built-in it came from is named (yours) unless rename is false. Resolves true on success. The editor's fork path; prefer editorStore.startFork from chrome
   - publishToSpace(perspectiveUuid: string, spaceName: string): copies the current template into that space, so its members get it. Resolves true on success

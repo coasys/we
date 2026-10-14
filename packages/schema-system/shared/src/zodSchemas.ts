@@ -344,8 +344,8 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
     icon: z.string(),
     /** A theme this template suggests. See `TemplateMeta.themeId` — a suggestion, not a setting. */
     themeId: z.string().optional(),
-    /** Whole interface, or one section inside one. See `TemplateMeta.role`. Absent means shell. */
-    role: z.enum(['shell', 'view']).optional(),
+    /** Whole interface, a section inside one, or the app around them. See `TemplateMeta.role`. Absent means shell. */
+    role: z.enum(['shell', 'view', 'app']).optional(),
     /** A view's default URL segment. See `TemplateMeta.segment`. */
     segment: z.string().optional(),
     /** A view that stays mounted across sibling navigation. See `TemplateMeta.keepAlive`. */
@@ -359,6 +359,16 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
         bottom: z.number().optional(),
         width: z.number().optional(),
       })
+      .optional(),
+    /** The bands an app's own chrome holds. See `TemplateMeta.frame`. */
+    frame: z
+      .object({
+        left: z.number().optional(),
+        right: z.number().optional(),
+        top: z.number().optional(),
+        bottom: z.number().optional(),
+      })
+      .strict()
       .optional(),
     /**
      * The panels this interface has, and where each starts. See `TemplatePanel`.

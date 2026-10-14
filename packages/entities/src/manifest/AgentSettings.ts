@@ -9,6 +9,15 @@ export const AgentSettings: CoreEntityDef = {
     properties: {
       currentTemplateId: { type: 'string', predicate: 'we://current_template', default: 'default' },
       defaultTemplateId: { type: 'string', predicate: 'we://default_template', default: 'default' },
+      /**
+       * Which app this agent is in — the template WE's own chrome is drawn from: the sidebar, the
+       * rail, and whatever an app of their own arranges around every space.
+       *
+       * Empty means the deployment's app (the seed's `app`, else WE's own). Not per space: which app
+       * you are in is a fact about you, not about the community on screen. Only WE's app or one of the
+       * agent's own copies is honoured, since an app is drawn with the chrome tier.
+       */
+      appTemplateId: { type: 'string', predicate: 'we://app_template', default: '' },
       currentThemeId: { type: 'string', predicate: 'we://current_theme', default: 'default' },
       defaultThemeId: { type: 'string', predicate: 'we://default_theme', default: 'default' },
       /**

@@ -18,6 +18,7 @@
  * chrome — only whether this build has the module at all counts, since no space has decided anything.
  */
 import { describeMissing, fixFor, type MissingPart as MissingPartReason, whyMissing } from '@shared/partAvailability';
+import { isHostPart } from '@shared/registries/hostParts';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { Row } from '@we/components/solid';
 import { PART_ATTR, PART_NODE_ATTR } from '@we/schema-shared';
@@ -37,15 +38,18 @@ export function PartFrame(props: { part: string; at?: string; children?: JSX.Ele
 
   const moduleId = () => props.part.split('.')[0] ?? '';
 
+  // WE's own chrome is always here: it is what the app is drawn from, not a module that can be off.
   const missing = createMemo(() =>
-    whyMissing({
-      registered: !!moduleRegistry.get(moduleId()),
-      published: !!moduleRegistry.parts()[props.part],
-      inSpace: !!datasetStore.currentDataset(),
-      active: spaceStore.activeModules().includes(moduleId()),
-      installed: spaceStore.installedModules().includes(moduleId()),
-      enabled: spaceStore.enabledModules().includes(moduleId()),
-    }),
+    isHostPart(props.part)
+      ? null
+      : whyMissing({
+          registered: !!moduleRegistry.get(moduleId()),
+          published: !!moduleRegistry.parts()[props.part],
+          inSpace: !!datasetStore.currentDataset(),
+          active: spaceStore.activeModules().includes(moduleId()),
+          installed: spaceStore.installedModules().includes(moduleId()),
+          enabled: spaceStore.enabledModules().includes(moduleId()),
+        }),
   );
 
   return (

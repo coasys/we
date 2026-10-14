@@ -2737,7 +2737,7 @@
         },
         {
           "name": "onReady",
-          "type": "((api: { find: () => void; }) => void)",
+          "type": "((api: { find: () => void; goTo: (offset: number) => void; }) => void)",
           "optional": true
         },
         {
@@ -6221,6 +6221,8 @@
         "confirmPicker",
         "cancelPicker",
         "enterTemplateEditing",
+        "editApp",
+        "forkApp",
         "exitTemplateEditing",
         "toggle",
         "open",
@@ -7381,6 +7383,12 @@
         "pendingInstall": {
           "type": "object"
         },
+        "appTemplateId": {
+          "type": "string"
+        },
+        "appTemplateOptions": {
+          "type": "array"
+        },
         "safeMode": {
           "type": "object",
           "properties": ["on", "reason", "template"]
@@ -7402,6 +7410,7 @@
         "cancelInstall",
         "toggleInstalled",
         "setDefaultTemplate",
+        "setAppTemplate",
         "saveTemplate",
         "saveTemplateAs",
         "publishToSpace",

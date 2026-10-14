@@ -12,6 +12,7 @@ import { chatContext, formatExternalManifestForPrompt, requestMessage, updateSch
 import { countedPatches, runEditSession } from '@shared/ai/editSession';
 import { prepareForModel } from '@shared/ai/nodeAliases';
 import { boundTemplate } from '@shared/ai/templateContext';
+import { isEditorChord } from '@shared/editorChord';
 import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
 import { deepClone } from '@shared/utils';
@@ -41,6 +42,8 @@ import {
   untrack,
   useContext,
 } from 'solid-js';
+
+import { createEditTarget, EditTargetContext } from './editTarget';
 
 export interface ChatMessage {
   id: string;
@@ -130,6 +133,10 @@ export interface EditorStore {
   isEditingTemplate: Accessor<boolean>;
   editAction: Accessor<'edit' | 'fork' | 'fresh' | null>;
   enterTemplateEditing: (action?: 'edit' | 'fork' | 'fresh') => void;
+  /** Opens an editing session on the app — the one named, made the agent's app first, or the one they are in. Starts in preview, as a template's does. */
+  editApp: (id?: string) => Promise<void>;
+  /** The same, then asks for a name for a copy of it: how WE's own app, which is built in, is made one's own. */
+  forkApp: (id?: string) => Promise<void>;
   exitTemplateEditing: () => void;
 
   // --- Panel control (AI chat) ---
@@ -240,6 +247,8 @@ export function EditorStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const datasetStore = useDatasetStore();
   const templateStore = useTemplateStore();
+  /** What the session edits — the template on screen, or another drawn with it. See `editTarget.ts`. */
+  const edit = createEditTarget(templateStore);
   const themeStore = useThemeStore();
 
   const shapeStore = useShapeStore();
@@ -328,15 +337,12 @@ export function EditorStoreProvider(props: ParentProps) {
     code panel is where somebody reads the template exactly. Stripping them made every save from the
     panel renumber the whole tree.
   */
-  const schemaJson = () => JSON.stringify(templateStore.currentTemplate, null, 2);
+  const schemaJson = () => JSON.stringify(edit.template(), null, 2);
 
   // --- Template context (computed) ---
-  const templateName = () => templateStore.currentTemplate.meta?.name || templateStore.currentTemplate.id || 'Template';
-  const templateIcon = () => templateStore.currentTemplate.meta?.icon || 'cube';
-  const isReadOnly = () => {
-    const id = templateStore.currentTemplate.id;
-    return !!id && templateStore.isBuiltInTemplateId(id);
-  };
+  const templateName = () => edit.template().meta?.name || edit.template().id || 'Template';
+  const templateIcon = () => edit.template().meta?.icon || 'cube';
+  const isReadOnly = () => edit.isBuiltIn();
 
   // --- Pending changes (buffered edits for read-only templates) ---
   const [pendingTemplate, setPendingTemplate] = createSignal<TemplateSchema | null>(null);
@@ -352,9 +358,7 @@ export function EditorStoreProvider(props: ParentProps) {
   const canRedo: Accessor<boolean> = () => redoStack().length > 0;
 
   function pushSnapshot() {
-    const current = isReadOnly()
-      ? (pendingTemplate() ?? deepClone(templateStore.currentTemplate))
-      : deepClone(templateStore.currentTemplate);
+    const current = isReadOnly() ? (pendingTemplate() ?? deepClone(edit.template())) : deepClone(edit.template());
     setUndoStack((prev) => {
       const next = [...prev, { type: 'template' as const, snapshot: current as TemplateSchema }];
       return next.length > MAX_UNDO ? next.slice(next.length - MAX_UNDO) : next;
@@ -372,10 +376,10 @@ export function EditorStoreProvider(props: ParentProps) {
    */
   async function commitEdit() {
     if (!isReadOnly()) {
-      await templateStore.persistCurrentTemplate();
+      await edit.persist();
       return;
     }
-    setPendingTemplate(deepClone(templateStore.currentTemplate) as TemplateSchema);
+    setPendingTemplate(deepClone(edit.template()) as TemplateSchema);
   }
 
   async function undo() {
@@ -386,17 +390,15 @@ export function EditorStoreProvider(props: ParentProps) {
 
     if (entry.type === 'template') {
       const currentSnap = (
-        isReadOnly()
-          ? (pendingTemplate() ?? deepClone(templateStore.currentTemplate))
-          : deepClone(templateStore.currentTemplate)
+        isReadOnly() ? (pendingTemplate() ?? deepClone(edit.template())) : deepClone(edit.template())
       ) as TemplateSchema;
       setRedoStack((prev) => [...prev, { type: 'template' as const, snapshot: currentSnap }]);
       if (isReadOnly()) {
         setPendingTemplate(entry.snapshot);
       } else {
-        templateStore.updateTemplate(entry.snapshot);
+        edit.update(entry.snapshot);
         try {
-          await templateStore.persistCurrentTemplate();
+          await edit.persist();
         } catch {
           /* key may already exist */
         }
@@ -416,17 +418,15 @@ export function EditorStoreProvider(props: ParentProps) {
 
     if (entry.type === 'template') {
       const currentSnap = (
-        isReadOnly()
-          ? (pendingTemplate() ?? deepClone(templateStore.currentTemplate))
-          : deepClone(templateStore.currentTemplate)
+        isReadOnly() ? (pendingTemplate() ?? deepClone(edit.template())) : deepClone(edit.template())
       ) as TemplateSchema;
       setUndoStack((prev) => [...prev, { type: 'template' as const, snapshot: currentSnap }]);
       if (isReadOnly()) {
         setPendingTemplate(entry.snapshot);
       } else {
-        templateStore.updateTemplate(entry.snapshot);
+        edit.update(entry.snapshot);
         try {
-          await templateStore.persistCurrentTemplate();
+          await edit.persist();
         } catch {
           /* key may already exist */
         }
@@ -460,7 +460,8 @@ export function EditorStoreProvider(props: ParentProps) {
   const [pickerAction, setPickerAction] = createSignal<'fork' | 'fresh'>('fork');
   const [pickerDefaultName, setPickerDefaultName] = createSignal('');
   const [pickerDefaultIcon, setPickerDefaultIcon] = createSignal('cube');
-  const pickerShowDestination = () => !!datasetStore.currentDataset();
+  // An app is the agent's own, whatever space is open, so forking one never asks where to put it.
+  const pickerShowDestination = () => !!datasetStore.currentDataset() && edit.target().kind !== 'app';
 
   // ----------------------------------------------------------------
   // Session management — load, create, switch, delete
@@ -548,7 +549,7 @@ export function EditorStoreProvider(props: ParentProps) {
 
   /** Create a new chat session for the current template */
   async function newChat() {
-    const templateId = templateStore.currentTemplate.id;
+    const templateId = edit.template().id;
     if (!templateId || templateStore.isBuiltInTemplateId(templateId)) {
       // For core templates, clear in-memory messages (ephemeral sessions)
       setMessages([]);
@@ -595,7 +596,7 @@ export function EditorStoreProvider(props: ParentProps) {
 
   /** Delete a session and its messages */
   async function deleteSession(sessionId: string) {
-    const templateId = templateStore.currentTemplate.id;
+    const templateId = edit.template().id;
     if (!templateId) return;
 
     const templateRecord = templateStore.getTemplateRecord(templateId);
@@ -676,7 +677,28 @@ export function EditorStoreProvider(props: ParentProps) {
     setThemePanelOpen(false);
   }
 
+  /*
+    The app is a template, but not the one on screen: it is the chrome around every space, and which
+    one is drawn is the agent's choice rather than the page's. So it is gone into from wherever the
+    choice is offered — the template picker's App section — straight to editing where it is drawn,
+    with no page node to select first.
+  */
+  async function editApp(id?: string) {
+    if (id && id !== templateStore.appTemplateId()) await templateStore.setAppTemplate(id);
+    // In preview, as a template's session starts: visual editing is a step the person takes, and
+    // starting in it would make the chrome inert under whatever opened this.
+    if (!isEditingTemplate()) enterTemplateEditing('edit');
+    edit.enterApp(templateStore.appTemplate());
+  }
+
+  async function forkApp(id?: string) {
+    await editApp(id);
+    startFork();
+  }
+
   function exitTemplateEditing() {
+    // A section edited in place goes back to being drawn from its saved template.
+    edit.leave();
     setIsEditingTemplate(false);
     setEditAction(null);
     setIsOpen(false);
@@ -873,9 +895,9 @@ export function EditorStoreProvider(props: ParentProps) {
   // Template actions — Fork / Start Fresh / Picker
   // ----------------------------------------------------------------
   function startFork() {
-    const name = templateStore.currentTemplate.meta?.name || templateStore.currentTemplate.id || '';
+    const name = edit.template().meta?.name || edit.template().id || '';
     setPickerDefaultName(`${name} (copy)`);
-    setPickerDefaultIcon(templateStore.currentTemplate.meta?.icon || 'cube');
+    setPickerDefaultIcon(edit.template().meta?.icon || 'cube');
     setPickerAction('fork');
     setPickerOpen(true);
   }
@@ -892,6 +914,35 @@ export function EditorStoreProvider(props: ParentProps) {
     const action = pickerAction();
     const templateId = `${name.toLowerCase().replace(/\s+/g, '-')}-${crypto.randomUUID().slice(0, 8)}`;
 
+    /*
+      Forking the app: a copy of the agent's own, chosen as their app at once and edited where it is
+      drawn. Saved without becoming the template on screen — an app is the chrome around the page, and
+      making it the page would draw the sidebar as content.
+    */
+    if (action !== 'fresh' && edit.target().kind === 'app') {
+      const base = pendingTemplate() ?? edit.template();
+      const forked = {
+        ...deepClone(base),
+        id: templateId,
+        meta: { ...base.meta, name, icon, role: 'app' as const },
+      } as TemplateSchema;
+      const saved = await templateStore.saveTemplateAs(forked, 'root', { activate: false });
+      setPickerOpen(false);
+      if (!saved) {
+        setMessages((prev) => [...prev, createMessage('assistant', `Failed to save the app "${name}".`)]);
+        return;
+      }
+      setPendingTemplate(null);
+      await templateStore.setAppTemplate(templateId);
+      const copy = templateStore.allTemplates().find((t) => t.id === templateId && !t._fromSpace);
+      if (copy) edit.enterApp(copy);
+      setMessages((prev) => [
+        ...prev,
+        createMessage('assistant', `Forked the app as "${name}". It is the app you are in now.`),
+      ]);
+      return;
+    }
+
     let schema: TemplateSchema;
     if (action === 'fresh') {
       schema = {
@@ -901,7 +952,7 @@ export function EditorStoreProvider(props: ParentProps) {
       } as TemplateSchema;
     } else {
       // Fork: clone current state (with any pending changes)
-      const base = pendingTemplate() ?? templateStore.currentTemplate;
+      const base = pendingTemplate() ?? edit.template();
       schema = {
         ...deepClone(base),
         id: templateId,
@@ -942,7 +993,7 @@ export function EditorStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   async function sendMessage(text: string) {
     // Lazy session creation for custom templates: if no active session, create one
-    const templateId = templateStore.currentTemplate.id;
+    const templateId = edit.template().id;
     if (templateId && !templateStore.isBuiltInTemplateId(templateId) && !activeSessionRecord) {
       await newChat();
     }
@@ -1019,7 +1070,7 @@ export function EditorStoreProvider(props: ParentProps) {
       side, to one inline copy of it. It validated, it saved, it changed something plausible, and
       the model's explanation of what it had done was confidently wrong.
     */
-    const modelTree = prepareForModel(deepClone(pendingTemplate() ?? templateStore.currentTemplate) as SchemaNode);
+    const modelTree = prepareForModel(deepClone(pendingTemplate() ?? edit.template()) as SchemaNode);
     const schemaForRequest = modelTree.schema;
     const prepared = await chatContext({ request: text, schema: schemaForRequest });
     /*
@@ -1061,11 +1112,11 @@ export function EditorStoreProvider(props: ParentProps) {
           setPendingTemplate(authored);
           return 'Schema changes validated and buffered. Template is read-only — user must fork to apply.';
         }
-        templateStore.updateTemplate({
+        edit.update({
           ...authored,
-          id: templateStore.currentTemplate.id,
+          id: edit.template().id,
         } as TemplateSchema);
-        await templateStore.persistCurrentTemplate();
+        await edit.persist();
         setPendingTemplate(null);
         return 'Template updated successfully.';
       },
@@ -1189,8 +1240,8 @@ export function EditorStoreProvider(props: ParentProps) {
         given a new one there too, with a warning. The root's id is the template's, and the panel
         does not get to change which template this is.
       */
-      const schema = { ...(parsed as TemplateSchema), id: templateStore.currentTemplate.id } as TemplateSchema;
-      templateStore.updateTemplate(schema);
+      const schema = { ...(parsed as TemplateSchema), id: edit.template().id } as TemplateSchema;
+      edit.update(schema);
       void commitEdit();
       setMessages((prev) => [...prev, createMessage('assistant', 'Schema updated from JSON editor.')]);
     } catch {
@@ -1225,20 +1276,50 @@ export function EditorStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   // Load sessions when template changes
   // ----------------------------------------------------------------
+  /*
+    The host's own way into the editor: Ctrl+Alt+Shift+E (⌘ on a Mac), beside safe mode's …+S.
+
+    An app template decides what the chrome shows, including whether there is any button that opens
+    the editor. One with none could only be changed back from safe mode; this chord makes it one key
+    instead. Listened for on the window in capture, ahead of anything a template's nodes do, so no
+    template can swallow it. It toggles: a second press leaves editing.
+  */
+  if (typeof window !== 'undefined') {
+    const onEditorChord = (event: KeyboardEvent) => {
+      if (!isEditorChord(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (isEditingTemplate()) exitTemplateEditing();
+      else {
+        enterTemplateEditing('edit');
+        setContentMode('visual');
+      }
+    };
+    window.addEventListener('keydown', onEditorChord, true);
+    onCleanup(() => window.removeEventListener('keydown', onEditorChord, true));
+  }
+
+  // Switching the template on screen ends the session; what is edited within one is chosen there.
   createEffect(() => {
     const templateId = templateStore.currentTemplate.id;
     if (templateId && datasetStore.rootDataset()) {
-      loadSessionsForTemplate(templateId);
+      untrack(() => edit.leave());
       setContentModeSignal('preview');
       setIsEditingTemplate(false);
       setEditAction(null);
     }
   });
 
-  // Save/restore undo/redo stacks per template.
+  // Chats are about what is being edited, which is not always the template on screen.
+  createEffect(() => {
+    const templateId = edit.template().id;
+    if (templateId && datasetStore.rootDataset()) loadSessionsForTemplate(templateId);
+  });
+
+  // Save/restore undo/redo stacks per edited template — keyed with its origin, see `EditTargetPort.key`.
   // Only template entries are persisted — theme entries become stale after a switch.
   createEffect(() => {
-    const newId = templateStore.currentTemplate.id;
+    const newId = edit.key();
     untrack(() => {
       if (prevTemplateId) {
         const undo = undoStack().filter((e) => e.type === 'template');
@@ -1313,6 +1394,8 @@ export function EditorStoreProvider(props: ParentProps) {
     isEditingTemplate,
     editAction,
     enterTemplateEditing,
+    editApp,
+    forkApp,
     exitTemplateEditing,
 
     // Theme editing
@@ -1367,7 +1450,11 @@ export function EditorStoreProvider(props: ParentProps) {
   registerHostDockStore(EDITOR_STORE_ID, store as unknown as Record<string, unknown>);
   onCleanup(() => unregisterHostDockStore(EDITOR_STORE_ID));
 
-  return <EditorContext.Provider value={store}>{props.children}</EditorContext.Provider>;
+  return (
+    <EditorContext.Provider value={store}>
+      <EditTargetContext.Provider value={edit}>{props.children}</EditTargetContext.Provider>
+    </EditorContext.Provider>
+  );
 }
 
 export function useEditorStore(): EditorStore {

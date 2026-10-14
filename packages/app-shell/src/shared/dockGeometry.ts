@@ -89,6 +89,39 @@ export const RAIL_PX = 0;
 export const CHROME_RAIL_PX = 56;
 
 /**
+ * How much of each edge the app's own chrome holds — the sidebar's band on the left, the rail's on
+ * the right, a top bar's, a bottom bar's — in pixels, at its collapsed size.
+ *
+ * Declared by the app template (`meta.frame`), not measured, for the reason `chromeReserve` is: chrome
+ * that grows as somebody opens it would shove every docked panel across the screen mid-read. The
+ * built-in app holds today's furniture, so the default is the two constants above; an app with a top
+ * bar declares `top`, and for the first time the content and the panels clear one.
+ *
+ * The left band is subtracted from the room panels have, as the sidebar always was. The right band is
+ * not — the rail moves out of a displacing panel's way rather than reserving room (`RAIL_PX`) — and is
+ * what floating panels and the call bar keep clear of.
+ */
+export interface AppFrame {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+export const DEFAULT_APP_FRAME: AppFrame = { left: SIDEBAR_PX, right: CHROME_RAIL_PX, top: 0, bottom: 0 };
+
+/**
+ * The frame every function here measures against. Set by the shell when the app template changes —
+ * which is rare, so it is configuration rather than a parameter threaded through every function in
+ * this file, as `SIDEBAR_PX` was configuration before it.
+ */
+let frame: AppFrame = DEFAULT_APP_FRAME;
+
+export function setGeometryFrame(next: AppFrame): void {
+  frame = next;
+}
+
+/**
  * How far down the module rail sits when it has nothing to clear — `ChromeRail`'s own `16px`.
  *
  * Here because the band that pushes it further down is measured from it: "clear that panel's
@@ -1151,10 +1184,10 @@ export const NO_INSET: ContentInset = { left: 0, right: 0, top: 0, bottom: 0 };
  * docks. A panel never counts itself, or it would shrink away from its own edge.
  */
 function contentRegion(viewport: Viewport, occupied: ContentInset = NO_INSET) {
-  const left = SIDEBAR_PX + occupied.left;
+  const left = frame.left + occupied.left;
   const right = RAIL_PX + occupied.right;
-  const top = occupied.top;
-  const bottom = occupied.bottom;
+  const top = frame.top + occupied.top;
+  const bottom = frame.bottom + occupied.bottom;
   return {
     left,
     right,
@@ -2943,14 +2976,16 @@ export function contentInset(requests: DockRequest[], viewport: Viewport): Conte
  */
 export function railBand(viewport: Viewport, inset: ContentInset, topChrome: TopChrome = NO_TOP_CHROME): number {
   if (topChrome.height <= 0 || topChrome.width <= 0) return 0;
+  // An app with no rail has nothing for the rail to dodge.
+  if (frame.right <= 0) return 0;
 
   const railRight = viewport.width - inset.right;
-  const railLeft = railRight - CHROME_RAIL_PX;
+  const railLeft = railRight - frame.right;
   /*
     Centred on the *content*, exactly as the bar itself is — `--we-chrome-center-x` is this same
     subtraction, and the two have to agree or the rail dodges a box the bar is not in.
   */
-  const centre = viewport.width / 2 + (SIDEBAR_PX + inset.left - inset.right) / 2;
+  const centre = viewport.width / 2 + (frame.left + inset.left - inset.right) / 2;
 
   const overlaps = centre + topChrome.width / 2 > railLeft && centre - topChrome.width / 2 < railRight;
   /*

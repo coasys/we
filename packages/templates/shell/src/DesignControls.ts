@@ -232,6 +232,47 @@ const LAYOUTS_READY = false;
 const templateRows = matching({ $: 'group.items' });
 
 /**
+ * The apps — the chrome around every space — above the templates, and apart from them.
+ *
+ * Not a sixth group in the same list, because a row here means something else: a template row
+ * changes what is on screen in this space, and an app row changes the chrome in every space. And the
+ * groups below split by who owns a template, a split apps barely have — they are WE's, or the
+ * agent's own copies — so one section, the copies after WE's.
+ *
+ * The same three things a template row does, aimed at the app: choose it, edit it where it is drawn,
+ * or fork it. WE's own app is built in, so it is forked rather than edited, as a built-in template is.
+ */
+const appRows = expr`filter(templateStore.appTemplateOptions, { label: { contains: local.pickerSearch } })`;
+
+function appsSection(): SchemaNode {
+  return section('App — around every space', appRows, {
+    type: '$each',
+    props: { items: appRows, as: 'app' },
+    children: [
+      pickerRow({
+        icon: iconOr('app.icon', 'app-window'),
+        label: { $: 'app.label' },
+        selected: { $: 'app.value == templateStore.appTemplateId' },
+        select: [{ $action: 'templateStore.setAppTemplate', args: [{ $: 'app.value' }] }, closeTemplatePicker],
+        actions: [
+          {
+            icon: 'pencil-simple',
+            tooltip: 'Edit this app',
+            when: { $: 'app.editable' },
+            onClick: [{ $action: 'editorStore.editApp', args: [{ $: 'app.value' }] }, closeTemplatePicker],
+          },
+          {
+            icon: 'git-fork',
+            tooltip: 'Fork this app',
+            onClick: [{ $action: 'editorStore.forkApp', args: [{ $: 'app.value' }] }, closeTemplatePicker],
+          },
+        ],
+      }),
+    ],
+  });
+}
+
+/**
  * The arrangements saved for the template on screen, and the way to save another.
  *
  * At the top of the template picker rather than in a panel's own menu, for the reason "Reset
@@ -392,6 +433,7 @@ export function templatePicker(): SchemaNode {
           type: 'Column',
           children: [
             ...(LAYOUTS_READY ? [layoutsSection()] : []),
+            appsSection(),
             {
               type: '$each',
               props: { items: { $: 'templateStore.switcherGroups' }, as: 'group' },
@@ -497,24 +539,33 @@ export function templatePicker(): SchemaNode {
       }),
 
       saveLayoutDialog(),
-
-      nameDialog({
-        open: { $: 'editorStore.pickerOpen' },
-        close: { $action: 'editorStore.cancelPicker' },
-        title: { $: "editorStore.pickerAction == 'fresh' ? 'New template' : 'Fork template'" },
-        initialName: { $: 'editorStore.pickerDefaultName' },
-        initialIcon: { $: 'editorStore.pickerDefaultIcon' },
-        showDestination: { $: 'editorStore.pickerShowDestination' },
-        confirmLabel: { $: "editorStore.pickerAction == 'fresh' ? 'Create' : 'Fork'" },
-        confirm: ({ name, icon, destination }) => ({
-          $action: 'editorStore.confirmPicker',
-          args: [name, icon, destination],
-          onFinally: [{ $setLocal: 'saving', value: false }],
-        }),
-      }),
     ],
   };
 }
+
+/**
+ * Naming a fork or a new template: the dialog `editorStore.startFork` and `startFresh` open.
+ *
+ * The host's, drawn as an overlay of its own (`core:templateNameDialog`) rather than inside the
+ * template picker that opens it most often. The picker is in the module rail, which is a piece of the
+ * app — and so it is inert while the app is edited visually, absent from an app that leaves the rail
+ * out, and not the only thing that opens this: the inspector forks the app from its own bar. A dialog
+ * the editor depends on cannot live inside what the editor is editing.
+ */
+export const templateNameDialog: SchemaNode = nameDialog({
+  open: { $: 'editorStore.pickerOpen' },
+  close: { $action: 'editorStore.cancelPicker' },
+  title: { $: "editorStore.pickerAction == 'fresh' ? 'New template' : 'Fork template'" },
+  initialName: { $: 'editorStore.pickerDefaultName' },
+  initialIcon: { $: 'editorStore.pickerDefaultIcon' },
+  showDestination: { $: 'editorStore.pickerShowDestination' },
+  confirmLabel: { $: "editorStore.pickerAction == 'fresh' ? 'Create' : 'Fork'" },
+  confirm: ({ name, icon, destination }) => ({
+    $action: 'editorStore.confirmPicker',
+    args: [name, icon, destination],
+    onFinally: [{ $setLocal: 'saving', value: false }],
+  }),
+});
 
 // ── Themes ──────────────────────────────────────────────────────────────────────────────────────
 

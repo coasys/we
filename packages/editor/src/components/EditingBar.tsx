@@ -4,6 +4,7 @@ import { createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
 import { useEditorHost } from '../host';
+import { EditTargetSwitch } from './OwnerCard';
 import { PublishToMarketplaceModal } from './PublishToMarketplaceModal';
 
 /**
@@ -30,7 +31,7 @@ import { PublishToMarketplaceModal } from './PublishToMarketplaceModal';
  * top of the panel it is meant to sit beside.
  */
 export function EditingBar() {
-  const { session, template: templateStore, theme: themeStore, identity } = useEditorHost();
+  const { session, template: templateStore, theme: themeStore, identity, targets } = useEditorHost();
 
   let containerRef: HTMLDivElement | undefined;
 
@@ -188,6 +189,19 @@ export function EditingBar() {
               </we-button>
             </we-tooltip>
           </Row>
+
+          {/* What is edited — the page or the app around it — template editing only */}
+          <Show when={session.isEditingTemplate() && targets?.enterApp}>
+            <Row
+              ay="center"
+              bg="page"
+              border="1px solid border"
+              r="var(--we-theme-control-radius, var(--we-radius-400))"
+              p="200"
+            >
+              <EditTargetSwitch />
+            </Row>
+          </Show>
 
           {/* Mode — template editing only; a theme has nothing to inspect */}
           <Show when={session.isEditingTemplate()}>

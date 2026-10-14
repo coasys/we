@@ -123,3 +123,36 @@ describe('the picker offers a way back to the template’s own layout', () => {
     expect((button.props as Record<string, unknown>).onClick).toEqual({ $action: 'shellStore.resetTemplateLayout' });
   });
 });
+
+/*
+  The app's rows act on the app, never on the template on screen. Every template row's actions start
+  with `switchTemplate`, so a copied row would quietly make the app the page — drawing the sidebar as
+  content — while looking like it worked.
+*/
+describe('the picker offers the app apart from the templates', () => {
+  const picker = templatePicker();
+  const edit = actionFor(picker, 'Edit this app');
+  const fork = actionFor(picker, 'Fork this app');
+
+  it('edits only an app the agent owns, the one on the row', () => {
+    expect(edit).toBeDefined();
+    expect((edit!.props as Record<string, unknown>).condition).toEqual({ $: 'app.editable' });
+    const steps = clickOf(edit!) as { $action?: string; args?: unknown[] }[];
+    expect(actionNames(steps)).toEqual(['editorStore.editApp']);
+    expect(steps[0].args).toEqual([{ $: 'app.value' }]);
+  });
+
+  it('forks any app, WE’s own included, and never switches the template', () => {
+    expect(fork).toBeDefined();
+    expect(fork!.type).toBe('we-tooltip');
+    const steps = clickOf(fork!) as { $action?: string; args?: unknown[] }[];
+    expect(actionNames(steps)).toEqual(['editorStore.forkApp']);
+    expect(steps[0].args).toEqual([{ $: 'app.value' }]);
+  });
+
+  it('comes before the templates', () => {
+    const text = JSON.stringify(picker);
+    expect(text.indexOf('templateStore.appTemplateOptions')).toBeGreaterThan(-1);
+    expect(text.indexOf('templateStore.appTemplateOptions')).toBeLessThan(text.indexOf('templateStore.switcherGroups'));
+  });
+});

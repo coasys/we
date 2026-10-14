@@ -357,6 +357,16 @@ interface PeerSlot {
    * the transport, and only ICE has anything to say about that.
    */
   everConnected: boolean;
+  /**
+   * When this side sent an offer that has had no answer yet, or 0.
+   *
+   * Tracked apart from the connection state because a pair renegotiates after it connects: the
+   * answerer's media travels in an offer of its own, sent once the pair is up. See the connected
+   * case in {@link dueForRepair}.
+   */
+  offeredAt: number;
+  /** The pending offer was made while the pair was already connected: a renegotiation. */
+  renegotiating: boolean;
   /** When this slot was created or last rebuilt — where the handshake deadline counts from. */
   since: number;
   /** When the last repair was attempted, so rungs are spaced rather than fired in a burst. */
@@ -410,6 +420,15 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
   let outstanding = 0;
   /** When a sweep last repaired something — the floor {@link REPAIR_SPACING_MS} describes. */
   let lastRepairAt = 0;
+  /**
+   * Repairs of a connected pair's unanswered renegotiation, per peer, kept across rebuilds.
+   *
+   * A slot's `attempts` resets when its connection connects, and a rebuilt pair connects before it
+   * renegotiates again — so against a peer that never answers a renegotiation, resend → rebuild →
+   * connect → unanswered would repeat for the whole call, dropping media both ways each time. Only
+   * an answered renegotiation clears it.
+   */
+  const renegotiationRepairs = new Map<string, number>();
   /**
    * Whether outcomes are reported at all.
    *
@@ -492,6 +511,8 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
       lastSent: null,
       lastResent: null,
       everConnected: false,
+      offeredAt: 0,
+      renegotiating: false,
       since: now(),
       lastAttempt: 0,
       attempts: 0,
@@ -510,6 +531,10 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
           // difference between the second rung of the ladder and the third: the peer connection is
           // intact and only the message was dropped, so nothing needs rebuilding.
           slot.lastSent = { type: pc.localDescription.type, sdp: pc.localDescription.sdp };
+          if (pc.localDescription.type === 'offer') {
+            slot.offeredAt = now();
+            slot.renegotiating = pc.connectionState === 'connected';
+          }
           sendFrom(peerId, slot, { kind: 'description', description: pc.localDescription });
         }
       } catch (error) {
@@ -796,8 +821,20 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
         // and `setRemoteDescription` performs the implicit rollback that lets it accept.
         slot.ignoreOffer = !slot.polite && collision;
         if (slot.ignoreOffer) return;
+        // An answer with no offer out is a late duplicate: the resend rung got one answer per copy.
+        // Expected on this transport, so not an error.
+        if (description.type === 'answer' && slot.pc.signalingState === 'stable') return;
 
         await slot.pc.setRemoteDescription(description);
+        // An answer settles this side's offer, and accepting the peer's offer rolled it back. Either
+        // way none is pending. An answered renegotiation is the evidence the connected-pair repair
+        // waits for, so only that clears its budget.
+        if (description.type === 'answer' && slot.renegotiating) {
+          renegotiationRepairs.delete(peerId);
+          if (slot.pc.connectionState === 'connected') slot.attempts = 0;
+        }
+        slot.offeredAt = 0;
+        slot.renegotiating = false;
         /*
           Candidates become applicable exactly here, and not before.
 
@@ -928,7 +965,15 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
       would be destroying working state. Bounded to one attempt per description by `lastResent`, so
       it escalates rather than repeating.
     */
-    if (!slot.everConnected && slot.lastSent && slot.lastSent.sdp !== slot.lastResent) {
+    const unanswered = slot.offeredAt > 0 && slot.pc.signalingState === 'have-local-offer';
+    if (state === 'connected') {
+      renegotiationRepairs.set(peerId, (renegotiationRepairs.get(peerId) ?? 0) + 1);
+      // The offer being repaired may have gone out while the pair was still connecting — the
+      // answerer's own offer usually does — so it was never marked as a renegotiation. Mark it now,
+      // or its answer would not clear the budget and each such repair would spend it for good.
+      slot.renegotiating = true;
+    }
+    if ((!slot.everConnected || unanswered) && slot.lastSent && slot.lastSent.sdp !== slot.lastResent) {
       slot.lastResent = slot.lastSent.sdp ?? null;
       sendFrom(peerId, slot, { kind: 'description', description: slot.lastSent });
       options.onPeerRecovery?.(peerId, { rung: 'resend', attempts });
@@ -941,10 +986,25 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
   }
 
   /** Whether this pair has been given long enough, and whether it is this side's turn to act. */
-  function dueForRepair(slot: PeerSlot, at: number): boolean {
+  function dueForRepair(peerId: string, slot: PeerSlot, at: number): boolean {
     const state = slot.pc.connectionState;
-    if (state === 'connected') return false;
     if (slot.attempts >= MAX_RECOVERY_ATTEMPTS) return false;
+
+    /*
+      Connected, with an offer of this side's never answered.
+
+      A pair renegotiates after it connects — the answerer's media travels in its own offer — and on
+      an unordered transport that offer can reach an impolite peer before the answer it follows. The
+      impolite peer is still waiting on its own offer, reads the new one as glare, and ignores it.
+      The answer then lands, the pair reads `connected`, and the media in that direction never
+      arrives, because nothing revisited a connected pair. Only this side can see the offer is still
+      pending, so it acts without the polite wait.
+    */
+    if (state === 'connected') {
+      if (!slot.offeredAt || slot.pc.signalingState !== 'have-local-offer') return false;
+      if ((renegotiationRepairs.get(peerId) ?? 0) >= MAX_RECOVERY_ATTEMPTS) return false;
+      return at - Math.max(slot.offeredAt, slot.lastAttempt) >= RECOVERY_INTERVAL_MS;
+    }
 
     /*
       The impolite peer repairs first; the polite one waits twice as long.
@@ -985,7 +1045,7 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
     // the two chase each other through every pair in the call.
     if (lastRepairAt && at - lastRepairAt < REPAIR_SPACING_MS) return;
     for (const [peerId, slot] of [...slots]) {
-      if (!dueForRepair(slot, at)) continue;
+      if (!dueForRepair(peerId, slot, at)) continue;
       lastRepairAt = at;
       repair(peerId, slot);
       // One pair per sweep. A call whose network has just come back has every pair due at once, and
@@ -1004,7 +1064,10 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
       const wanted = new Set(peerIds.filter((id) => id !== selfId));
 
       for (const peerId of slots.keys()) {
-        if (!wanted.has(peerId)) disconnect(peerId);
+        if (!wanted.has(peerId)) {
+          disconnect(peerId);
+          renegotiationRepairs.delete(peerId);
+        }
       }
       for (const peerId of wanted) {
         if (!slots.has(peerId)) release(peerId, connect(peerId));
@@ -1061,6 +1124,7 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
       // arguing with the person looking at the broken tile.
       const slot = slots.get(peerId);
       if (slot) slot.attempts = 0;
+      renegotiationRepairs.delete(peerId);
       rebuild(peerId, { announce: true, rung: 'rebuild' });
     },
 
@@ -1098,6 +1162,7 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
       unwatchPublish?.();
       unsubscribe();
       pending.clear();
+      renegotiationRepairs.clear();
       for (const peerId of [...slots.keys()]) disconnect(peerId);
       emitStreams();
     },

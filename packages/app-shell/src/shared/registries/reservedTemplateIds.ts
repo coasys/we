@@ -10,10 +10,16 @@
  *
  * A module's sections are reserved for the same reason: a module's view wins over a stored one.
  */
+import { appTemplateRegistry } from './appTemplates';
 import { moduleRegistry } from './moduleRegistry';
 import { templateRegistry } from './templateRegistry';
 import { viewRegistry } from './viewRegistry';
 
 export function reservedTemplateIds(): string[] {
-  return [...Object.keys(templateRegistry), ...Object.keys(viewRegistry), ...Object.keys(moduleRegistry.views())];
+  return [
+    ...Object.keys(templateRegistry),
+    ...Object.keys(viewRegistry),
+    ...Object.keys(moduleRegistry.views()),
+    ...Object.keys(appTemplateRegistry),
+  ];
 }

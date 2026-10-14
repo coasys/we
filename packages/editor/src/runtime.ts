@@ -12,6 +12,7 @@ export {
   type OwnedPanel,
   type OwnedPart,
   type OwnedView,
+  type EditTargetsPort,
   type OwnersPort,
   useEditorHost,
 } from './host';
