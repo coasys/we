@@ -917,11 +917,14 @@ const moduleSettingsSection: SchemaNode = {
 
 // ── Mode options for the call topology selector ────────────────────────────
 
+/**
+ * The modes offered: mesh, and an SFU on the executor the members share. The executor also takes
+ * `gateway` and `cascaded`, for SFUs across executors; they are not offered until that works end to
+ * end. A space that already has one of them shows as SFU, which is what it runs today.
+ */
 const CALL_MODE_OPTIONS = [
-  { label: 'Mesh (peer-to-peer)', value: 'mesh' },
-  { label: 'Designated SFU', value: 'designated' },
-  { label: 'Gateway SFU', value: 'gateway' },
-  { label: 'Cascaded SFU', value: 'cascaded' },
+  { label: 'Mesh', value: 'mesh' },
+  { label: 'SFU', value: 'designated' },
 ];
 
 /**
@@ -952,20 +955,20 @@ const callSettingsSection: SchemaNode = {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint' },
           children: [
-            "How new calls in this space connect participants. Mesh connects everyone directly. The SFU modes route each member's media through their own executor's relay, which handles more participants; which relays cascade is set on each executor.",
+            'How new calls in this space connect participants. Mesh connects everyone directly: best for small calls. SFU routes the call through the executor the members share, which handles more participants; everyone in the call must be on that executor.',
           ],
         },
 
         // ── Topology mode ──────────────────────────────────────────────
         {
           type: 'we-form-field',
-          props: { label: 'Topology mode' },
+          props: { label: 'Connection' },
           children: [
             {
               type: 'we-select',
               props: {
                 size: 'sm',
-                value: { $: 'modules.call.callConfig.mode' },
+                value: { $: "modules.call.callConfig.mode == 'mesh' ? 'mesh' : 'designated'" },
                 options: CALL_MODE_OPTIONS,
                 onChange: {
                   $action: 'modules.call.setCallConfigField',
@@ -979,7 +982,7 @@ const callSettingsSection: SchemaNode = {
         // ── Max mesh participants ──────────────────────────────────────
         {
           type: 'we-form-field',
-          props: { label: 'Max mesh participants before SFU escalation' },
+          props: { label: 'Max mesh participants', description: 'An SFU call room holds four times this.' },
           children: [
             {
               type: 'we-input',
