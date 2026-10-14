@@ -125,7 +125,7 @@ export function guardModal(opts: GuardModalOptions): SchemaNode {
     title: 'Something that must be there',
     size: 'sm',
     localState: {
-      guardEntity: { type: 'string', initial: 'TextBlock' },
+      guardEntity: { type: 'string', initial: 'comment' },
       guardTie: { type: 'string', initial: 'responses' },
       guardMin: { type: 'number', initial: 1 },
     },
@@ -139,7 +139,7 @@ export function guardModal(opts: GuardModalOptions): SchemaNode {
             props: {
               value: { $: 'local.guardEntity' },
               options: {
-                $: "[{ label: 'A note or comment', value: 'TextBlock' }, { label: 'A file', value: 'FileBlock' }, { label: 'A link', value: 'LinkBlock' }, { label: 'A task', value: 'TaskBlock' }, { label: 'An image', value: 'ImageBlock' }]",
+                $: "[{ label: 'A comment', value: 'comment' }, { label: 'A call about it', value: 'call' }, { label: 'A task', value: 'task' }, { label: 'A file', value: 'file' }, { label: 'A link', value: 'link' }, { label: 'An image', value: 'image' }]",
               },
               onChange: { $setLocal: 'guardEntity', value: { $: 'event.detail' } },
             },

@@ -16,6 +16,7 @@ import {
 } from '@shared/containerActivity';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { guardLabel } from '@shared/flowViews';
+import { guardSubjectOf } from '@shared/guardSubjects';
 import { buildGuestLink } from '@shared/guestLink';
 import {
   type AmendmentEntry,
@@ -368,7 +369,13 @@ export interface TaskStateView {
    * What must be there before a task enters this state, each with a sentence saying so — see
    * `TaskState.guards`. `tie` is the relation the task holds them through, empty for anywhere.
    */
-  guards: { entity: string; tie: string; min: number; label: string }[];
+  guards: {
+    entity: string;
+    where?: Record<string, string | number | boolean>;
+    tie: string;
+    min: number;
+    label: string;
+  }[];
 }
 
 export interface SpaceMetaUpdate {
@@ -3144,6 +3151,7 @@ export function SpaceStoreProvider(props: ParentProps) {
           approverKind: r.approverKind || '',
           guards: parseTaskStateGuards(r.guards).map((g) => ({
             entity: g.entity,
+            ...(g.where ? { where: g.where } : {}),
             tie: g.tie && 'relation' in g.tie ? g.tie.relation : '',
             min: g.min ?? 1,
             label: guardLabel(g),
@@ -3472,11 +3480,18 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   /** The state's guards as stored, for an edit that adds or takes one away. */
   const guardsOfState = (slug: string) =>
-    (taskStates().find((t) => t.slug === slug)?.guards ?? []).map(({ entity, tie, min }) => ({ entity, tie, min }));
+    (taskStates().find((t) => t.slug === slug)?.guards ?? []).map(({ entity, where, tie, min }) => ({
+      entity,
+      ...(where ? { where } : {}),
+      tie,
+      min,
+    }));
 
   async function addTaskStateGuard(slug: string, guard: { entity: string; tie?: string; min?: number }): Promise<void> {
     if (!guard?.entity) return;
-    await updateTaskState(slug, { guards: [...guardsOfState(slug), guard] });
+    // `entity` is what the requirement form picked — a key such as "comment" — or an entity name.
+    const what = guardSubjectOf(guard.entity);
+    await updateTaskState(slug, { guards: [...guardsOfState(slug), { ...guard, ...what }] });
   }
 
   async function removeTaskStateGuard(slug: string, index: number): Promise<void> {

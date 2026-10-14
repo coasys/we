@@ -71,7 +71,7 @@ export interface TaskStateRule {
 export type TaskFlowRule = '' | 'next' | 'next-and-back';
 
 /**
- * `TaskState.guards` as stored — a JSON list of `{ entity, tie?, min? }` — read into guards. Anything
+ * `TaskState.guards` as stored — a JSON list of `{ entity, where?, tie?, min? }` — read into guards. Anything
  * unreadable is no guard at all rather than an error: a state a peer wrote badly still has to load.
  */
 export function parseTaskStateGuards(json: string | null | undefined): FlowGuard[] {
@@ -80,13 +80,14 @@ export function parseTaskStateGuards(json: string | null | undefined): FlowGuard
     const parsed: unknown = JSON.parse(json);
     if (!Array.isArray(parsed)) return [];
     return parsed.flatMap((raw): FlowGuard[] => {
-      const entry = raw as { entity?: unknown; tie?: unknown; min?: unknown };
+      const entry = raw as { entity?: unknown; tie?: unknown; min?: unknown; where?: unknown };
       if (typeof entry.entity !== 'string' || !entry.entity) return [];
       const min = typeof entry.min === 'number' && entry.min >= 1 ? Math.floor(entry.min) : undefined;
       return [
         {
           kind: 'guard',
           entity: entry.entity,
+          ...(whereOf(entry.where) ? { where: whereOf(entry.where) } : {}),
           ...(typeof entry.tie === 'string' && entry.tie ? { tie: { relation: entry.tie } } : {}),
           ...(min && min !== 1 ? { min } : {}),
         },
@@ -97,12 +98,24 @@ export function parseTaskStateGuards(json: string | null | undefined): FlowGuard
   }
 }
 
+/** Conditions a stored guard carries, when they are plain values — anything else reads as none. */
+function whereOf(raw: unknown): Record<string, string | number | boolean> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const kept = Object.entries(raw as Record<string, unknown>).filter((e): e is [string, string | number | boolean] =>
+    ['string', 'number', 'boolean'].includes(typeof e[1]),
+  );
+  return kept.length ? Object.fromEntries(kept) : undefined;
+}
+
 /** Guards as `TaskState.guards` stores them. Empty for none, so a state without any stores nothing. */
-export function storeTaskStateGuards(guards: readonly { entity: string; tie?: string; min?: number }[]): string {
+export function storeTaskStateGuards(
+  guards: readonly { entity: string; where?: Record<string, string | number | boolean>; tie?: string; min?: number }[],
+): string {
   const kept = guards
     .filter((g) => g.entity)
     .map((g) => ({
       entity: g.entity,
+      ...(g.where && Object.keys(g.where).length ? { where: g.where } : {}),
       ...(g.tie ? { tie: g.tie } : {}),
       ...(g.min && g.min > 1 ? { min: g.min } : {}),
     }));

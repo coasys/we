@@ -1303,7 +1303,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setTaskFlowRule:
           "(rule: '' | 'next' | 'next-and-back'): how a task may move between this space's states — see taskFlowRule. Only whoever administers the space; rejects otherwise",
         addTaskStateGuard:
-          "(slug: string, guard: { entity, tie?, min? }): something that must be there before a task enters the state — at least `min` records of `entity`, held by the task through the relation `tie` ('responses' for what was made in response to it), or anywhere when `tie` is empty. The first guard turns the space's states into a flow",
+          "(slug: string, guard: { entity, tie?, min? }): something that must be there before a task enters the state — at least `min` of `entity`, held by the task through the relation `tie` ('responses' for what was made in response to it), or anywhere when `tie` is empty. `entity` is 'comment', 'call', 'task', 'file', 'link' or 'image' — a comment is a reply post, not the text inside one — or an entity name. The first guard turns the space's states into a flow",
         removeTaskStateGuard:
           '(slug: string, index: number): takes away the state\u2019s guard at that position in its `guards`',
         setFlowArchived:
@@ -1887,7 +1887,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setApprovals:
           "(name: string, count: number, kind?: string): how many people must agree before a record enters the step, and whose agreement counts — an involvement kind's slug, or '' for anybody's. 1 and '' is a plain ask",
         addGuard:
-          "(name: string, entity: string, tie?: string, min?: number): something that must be there before a record enters the step — at least `min` records of `entity`, held by the record through the relation `tie` ('responses' for what was made in response to it), or anywhere when `tie` is ''",
+          "(name: string, entity: string, tie?: string, min?: number): something that must be there before a record enters the step — at least `min` of `entity`, held by the record through the relation `tie` ('responses' for what was made in response to it), or anywhere when `tie` is ''. `entity` is 'comment', 'call', 'task', 'file', 'link' or 'image' — a comment is a reply post, not the text inside one — or an entity name",
         removeGuard: "(name: string, index: number): takes away the step's guard at that position in its `guards`",
       },
     },

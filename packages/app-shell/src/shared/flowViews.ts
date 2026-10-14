@@ -18,6 +18,7 @@ import { approvalsFor, guardsFor } from '@we/backend-shared';
 
 import { stateLabelOf } from './flowDraft';
 import { finalStates, type FlowLanes, type FlowSequenceRule, toLanes, walkOf } from './flowLanes';
+import { subjectOfGuard } from './guardSubjects';
 
 /** The role task states and the flow editor both write: holders of an involvement kind on the record. */
 export function involvementRole(kind: string): FlowRole {
@@ -113,7 +114,9 @@ export function guardLabel(guard: FlowGuard): string {
       : guard.tie
         ? ` naming it as ${guard.tie.field}`
         : '';
-  return `${count} ${guard.entity}${where}`;
+  const subject = subjectOfGuard(guard);
+  const noun = subject ? (guard.max === undefined && min === 1 ? subject.one : subject.many) : guard.entity;
+  return `${count} ${noun}${where}`;
 }
 
 function stepView(definition: FlowDefinition, name: string, labels: FlowLabels, finals: Set<string>): StepView {

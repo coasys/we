@@ -47,6 +47,7 @@ import {
   recordView,
   type StepHistoryView,
 } from '@shared/flowViews';
+import { guardSubjectOf } from '@shared/guardSubjects';
 import { TASK_FLOW } from '@shared/taskFlow';
 import { useDatasetStore } from '@solid/stores/DatasetStore';
 import { useSessionStore } from '@solid/stores/SessionStore';
@@ -749,7 +750,7 @@ export function FlowStoreProvider(props: ParentProps) {
         if (!entity) return { refused: 'Say what kind of record has to be there.' };
         const guard: FlowRequirement = {
           kind: 'guard',
-          entity,
+          ...guardSubjectOf(entity),
           ...(min !== 1 ? { min } : {}),
           ...(tie ? { tie: { relation: tie } } : {}),
         };

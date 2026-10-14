@@ -216,6 +216,13 @@ describe('a rule over the states, and what must be there', () => {
     expect(parseTaskStateGuards('{not json')).toEqual([]);
   });
 
+  it('keeps the conditions a requirement carries, so "a comment" stays a comment', () => {
+    const stored = storeTaskStateGuards([{ entity: 'CollectionBlock', where: { kind: 'reply' }, tie: 'responses' }]);
+    expect(parseTaskStateGuards(stored)).toEqual([
+      { kind: 'guard', entity: 'CollectionBlock', where: { kind: 'reply' }, tie: { relation: 'responses' } },
+    ]);
+  });
+
   it('refuses a move the rule does not allow without asking the backend', async () => {
     const port = createInMemoryFlowPort(() => ANA);
     const dataset = {};

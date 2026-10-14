@@ -6,7 +6,15 @@ import { describe, expect, it } from 'vitest';
 
 import { definitionOf, presetDraft } from '../src/shared/flowDraft';
 import { toLanes } from '../src/shared/flowLanes';
-import { approvalsRule, editorView, historyView, involvementRole, kindOf, recordView } from '../src/shared/flowViews';
+import {
+  approvalsRule,
+  editorView,
+  guardLabel,
+  historyView,
+  involvementRole,
+  kindOf,
+  recordView,
+} from '../src/shared/flowViews';
 
 const proposal = definitionOf(presetDraft('proposal', 'Proposal', ['TextBlock']));
 
@@ -51,9 +59,27 @@ describe('editorView', () => {
       transitions: [{ from: 'draft', to: 'review' }],
     };
     const review = editorView(definition, { state: (n) => n.toUpperCase(), kind: () => 'Reviewers' }).lanes[0].steps[1];
-    expect(review.requires).toEqual(['2 approvals from Reviewers', 'at least 1 FileBlock in response to it']);
+    expect(review.requires).toEqual(['2 approvals from Reviewers', 'at least 1 file in response to it']);
     expect(review.approverKind).toBe('reviewer');
     expect(review.label).toBe('REVIEW');
+  });
+
+  it('says a comment requirement as a comment, and anything else by its entity', () => {
+    expect(
+      guardLabel({
+        kind: 'guard',
+        entity: 'CollectionBlock',
+        where: { kind: 'reply' },
+        tie: { relation: 'responses' },
+      }),
+    ).toBe('at least 1 comment in response to it');
+    expect(guardLabel({ kind: 'guard', entity: 'CollectionBlock', where: { kind: 'reply' }, min: 2 })).toBe(
+      'at least 2 comments',
+    );
+    // A collection of another kind is not a comment — a call held about a record is one too.
+    expect(guardLabel({ kind: 'guard', entity: 'CollectionBlock', where: { kind: 'note' } })).toBe(
+      'at least 1 CollectionBlock',
+    );
   });
 });
 
