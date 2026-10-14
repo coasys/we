@@ -266,6 +266,26 @@ export function FlowStoreProvider(props: ParentProps) {
     void untrack(refreshFlows);
   });
 
+  // ─── Definitions, read once per flow and kept ────────────────────────────────
+
+  // Declared before `flows`, which reads them: a memo runs as soon as it is made, and a signal
+  // declared below it does not exist yet at that moment.
+  const [definitions, setDefinitions] = createSignal<Record<string, FlowDefinition>>({});
+  const definitionOfFlow = async (name: string): Promise<FlowDefinition | null> => {
+    const known = untrack(definitions)[name];
+    if (known) return known;
+    const p = port();
+    const h = handle();
+    if (!p || !h) return null;
+    const read = await p.read(h, name);
+    if (read) setDefinitions((prev) => ({ ...prev, [name]: read }));
+    return read;
+  };
+  createEffect(() => {
+    datasetId();
+    setDefinitions({});
+  });
+
   const flows = createMemo<FlowSummaryView[]>(() => {
     const archived = new Set(spaceStore.archivedFlows());
     const defs = definitions();
@@ -291,24 +311,6 @@ export function FlowStoreProvider(props: ParentProps) {
         };
       })
       .sort((a, b) => Number(Boolean(b.managedBy)) - Number(Boolean(a.managedBy)) || a.label.localeCompare(b.label));
-  });
-
-  // ─── Definitions, read once per flow and kept ────────────────────────────────
-
-  const [definitions, setDefinitions] = createSignal<Record<string, FlowDefinition>>({});
-  const definitionOfFlow = async (name: string): Promise<FlowDefinition | null> => {
-    const known = untrack(definitions)[name];
-    if (known) return known;
-    const p = port();
-    const h = handle();
-    if (!p || !h) return null;
-    const read = await p.read(h, name);
-    if (read) setDefinitions((prev) => ({ ...prev, [name]: read }));
-    return read;
-  };
-  createEffect(() => {
-    datasetId();
-    setDefinitions({});
   });
 
   const startableNames = createMemo(
