@@ -3592,6 +3592,12 @@
           "default": "'default'"
         },
         {
+          "name": "appTemplateId",
+          "type": "string",
+          "predicate": "we://app_template",
+          "required": false
+        },
+        {
           "name": "currentThemeId",
           "type": "string",
           "predicate": "we://current_theme",

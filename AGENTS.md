@@ -2400,6 +2400,7 @@ AgentSettings extends Ad4mModel:
   Fields:
   - currentTemplateId: string = 'default' [we://current_template]
   - defaultTemplateId: string = 'default' [we://default_template]
+  - appTemplateId: string [we://app_template]
   - currentThemeId: string = 'default' [we://current_theme]
   - defaultThemeId: string = 'default' [we://default_theme]
   - systemLightThemeId: string [we://system_light_theme]

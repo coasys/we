@@ -1318,6 +1318,7 @@ export const contextData: ContextData = {
           required: false,
           default: "'default'",
         },
+        { name: 'appTemplateId', type: 'string', predicate: 'we://app_template', required: false },
         {
           name: 'currentThemeId',
           type: 'string',
