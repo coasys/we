@@ -96,6 +96,7 @@ export function defaultExpanders(options: { reified?: ReifiedEdgeMap } = {}) {
       // The same, with values promoted to shared nodes — for a map where convergence is the point.
       propertyExpander({ id: 'property-values', valueNodes: true }),
       vocabulary.expander,
+      vocabulary.records,
     ],
     seeds: [querySeed({ reified: options.reified }), schemaSeed(), datasetSeed(), canvasSeed(), vocabulary.seed],
   };

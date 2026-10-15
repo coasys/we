@@ -80,7 +80,14 @@ export function schemaExpander(options: SchemaExpanderOptions = {}): Expander {
         const node = rowToNode(row, entity, dataset, shape, 'schema');
         if (!node) continue;
         nodes.push(node);
-        edges.push({ id: edgeId(typeNode, edgeType, node.id), source: typeNode, target: node.id, type: edgeType });
+        edges.push({
+          id: edgeId(typeNode, edgeType, node.id),
+          source: typeNode,
+          target: node.id,
+          type: edgeType,
+          // What the line is, for a graph that draws its lines' words.
+          label: 'record',
+        });
       }
 
       // A full page probably means more behind it. Reporting a cursor without knowing the total is

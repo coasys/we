@@ -128,7 +128,7 @@ describe('schemaPropertiesExpander', () => {
   });
 
   it('opens a word into the records that use it — a task state into its tasks', async () => {
-    const { seed, expander } = vocabularyPlugins();
+    const { seed, records: expander } = vocabularyPlugins();
     const states = {
       buckets: [
         {
@@ -158,7 +158,7 @@ describe('schemaPropertiesExpander', () => {
   });
 
   it('opens nothing for a record whose bucket says nothing about what it opens into', async () => {
-    const { seed, expander } = vocabularyPlugins();
+    const { seed, records: expander } = vocabularyPlugins();
     const ctx = context();
     await seed.seed(BUCKETS, ctx);
     const result = await expander.expand(
@@ -166,5 +166,14 @@ describe('schemaPropertiesExpander', () => {
       ctx,
     );
     expect(result.nodes).toEqual([]);
+  });
+
+  // A caret is offered wherever an expander claims a node, and one claiming every cluster put a caret
+  // on each of a flow's steps that opened nothing.
+  it("claims only buckets and flows, not a flow's steps", () => {
+    const { expander, records } = vocabularyPlugins();
+    expect(expander.kinds).toEqual(['cluster']);
+    expect(expander.types).toEqual(['vocabulary', 'flow']);
+    expect(records.kinds).toEqual(['entity']);
   });
 });

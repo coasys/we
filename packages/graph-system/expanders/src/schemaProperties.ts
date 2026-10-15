@@ -35,35 +35,43 @@ export function schemaPropertiesExpander(): Expander {
 
       const nodes: GraphNode[] = [];
       const edges: GraphEdge[] = [];
-      const add = (node: GraphNode) => {
+      // Each line says what it joins — a field, a relation — so a map drawing labels can tell them apart.
+      const add = (node: GraphNode, label: string) => {
         nodes.push(node);
         edges.push({
           id: edgeId(request.id, 'property', node.id),
           source: request.id,
           target: node.id,
           type: 'property',
+          label,
         });
       };
 
       for (const property of shape.properties) {
-        add({
-          id: propertyAddress(dataset, SCHEMA_TYPE, shape.name, property.name),
-          kind: 'property',
-          type: property.name,
-          label: `${property.name} · ${property.type}${property.required ? '' : '?'}`,
-          data: { field: property.name, valueType: property.type, required: property.required ?? false },
-          source: 'schema-properties',
-        });
+        add(
+          {
+            id: propertyAddress(dataset, SCHEMA_TYPE, shape.name, property.name),
+            kind: 'property',
+            type: property.name,
+            label: `${property.name} · ${property.type}${property.required ? '' : '?'}`,
+            data: { field: property.name, valueType: property.type, required: property.required ?? false },
+            source: 'schema-properties',
+          },
+          'field',
+        );
       }
       for (const relation of shape.relations) {
-        add({
-          id: propertyAddress(dataset, SCHEMA_TYPE, shape.name, relation.name),
-          kind: 'property',
-          type: relation.name,
-          label: `${relation.name} → ${relation.target || 'anything'}${relation.cardinality === 'many' ? ' (many)' : ''}`,
-          data: { field: relation.name, target: relation.target, cardinality: relation.cardinality },
-          source: 'schema-properties',
-        });
+        add(
+          {
+            id: propertyAddress(dataset, SCHEMA_TYPE, shape.name, relation.name),
+            kind: 'property',
+            type: relation.name,
+            label: `${relation.name} → ${relation.target || 'anything'}${relation.cardinality === 'many' ? ' (many)' : ''}`,
+            data: { field: relation.name, target: relation.target, cardinality: relation.cardinality },
+            source: 'schema-properties',
+          },
+          'relation',
+        );
       }
 
       const records = entityAddress(dataset, INSTANCES_TYPE, shape.name);
@@ -80,6 +88,7 @@ export function schemaPropertiesExpander(): Expander {
         source: request.id,
         target: records,
         type: 'instance',
+        label: 'records',
       });
 
       return { nodes, edges, total: nodes.length };

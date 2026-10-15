@@ -205,9 +205,17 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       id: 'vocabulary',
       category: 'expander',
       description:
-        'Opens a bucket the `vocabulary` seed drew into what is in it, a flow into its steps, with a line for each move between them, and a record in a bucket with `opens` into the records that use it.',
+        'Opens a bucket the `vocabulary` seed drew into what is in it, and a flow into its steps, with a line for each move between them.',
       options: [],
       example: `"seeds": { "source": "vocabulary", "options": { "buckets": [] } }, "expansion": { "expanders": ["vocabulary"] }`,
+    },
+    {
+      id: 'vocabulary-records',
+      category: 'expander',
+      description:
+        'Opens a record in a vocabulary bucket that names `opens` into the records that use it — a task state into its tasks. A line from each says the field that put it there ("status"). Separate from `vocabulary` so a flow\'s steps are not offered a caret that opens nothing.',
+      options: [],
+      example: `"expansion": { "expanders": ["vocabulary", "vocabulary-records"] }`,
     },
     {
       id: 'property',

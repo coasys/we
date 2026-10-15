@@ -69,7 +69,7 @@ export interface VocabularySeedOptions {
 /** A flow step's address. The flow's name and the step's are both part of it, so steps of two flows never meet. */
 const stepAddress = (flow: string, step: string) => clusterAddress(FLOW_STEP_TYPE, `${flow}\u0000${step}`);
 
-export function vocabularyPlugins(): { seed: SeedSource; expander: Expander } {
+export function vocabularyPlugins(): { seed: SeedSource; expander: Expander; records: Expander } {
   /** What the seed was last told, per dataset, for the expander to answer from. */
   const told = new Map<string, VocabularySeedOptions>();
   const datasetOf = (options: VocabularySeedOptions | undefined, fallback: string | null) =>
@@ -142,27 +142,44 @@ export function vocabularyPlugins(): { seed: SeedSource; expander: Expander } {
         source: request.id,
         target: node.id,
         type: 'instance',
+        // The condition that put it there — "status" for a state's tasks — which is what the line means.
+        label: opens.field,
       });
     }
     if (rows.length === limit) context.warn(`showing the first ${limit} ${opens.entity} records here`);
     return { nodes, edges, total: nodes.length };
   }
 
-  const expander: Expander = {
-    id: 'vocabulary',
-    // Records too: a bucket's records may open into what names them — see `VocabularyBucket.opens`.
-    kinds: ['cluster', 'entity'],
-    description:
-      'Opens a vocabulary bucket into what is in it, a flow into its steps and moves, and a word into the records that use it.',
+  /*
+    A separate expander, because what it claims is a different question. The buckets and the flows are
+    two cluster types; a word's records hang off records of any type at all. One expander claiming both
+    had to claim every cluster to reach the records, and offered a caret on a flow's steps that opened
+    nothing — a caret is offered wherever an expander says it can open.
+  */
+  const records: Expander = {
+    id: 'vocabulary-records',
+    kinds: ['entity'],
+    description: 'Opens a word on a vocabulary map into the records that use it — a task state into its tasks.',
     async expand(request, context) {
       const address = parseAddress(request.id);
       if (!address || !address.id || request.direction === 'in') return { nodes: [], edges: [] };
       const dataset = context.defaultDataset() ?? '';
-      const options = told.get(dataset) ?? [...told.values()][0];
-      if (address.kind === 'entity') return openRecord(request, context, address, options);
-      if (address.kind !== 'cluster' || (address.type !== VOCABULARY_TYPE && address.type !== FLOW_TYPE)) {
+      return openRecord(request, context, address, told.get(dataset) ?? [...told.values()][0]);
+    },
+  };
+
+  const expander: Expander = {
+    id: 'vocabulary',
+    kinds: ['cluster'],
+    types: [VOCABULARY_TYPE, FLOW_TYPE],
+    description: 'Opens a vocabulary bucket into what is in it, and a flow into its steps and moves.',
+    async expand(request, context) {
+      const address = parseAddress(request.id);
+      if (!address || address.kind !== 'cluster' || !address.id || request.direction === 'in') {
         return { nodes: [], edges: [] };
       }
+      const dataset = context.defaultDataset() ?? '';
+      const options = told.get(dataset) ?? [...told.values()][0];
       const nodes: GraphNode[] = [];
       const edges: GraphEdge[] = [];
       const contain = (node: GraphNode) => {
@@ -243,5 +260,5 @@ export function vocabularyPlugins(): { seed: SeedSource; expander: Expander } {
     },
   };
 
-  return { seed, expander };
+  return { seed, expander, records };
 }
