@@ -14,7 +14,7 @@ import type {
   FlowStep,
   FlowTie,
 } from '@we/backend-shared';
-import { approvalsFor, guardsFor } from '@we/backend-shared';
+import { allowedMoves, approvalsFor, guardsFor } from '@we/backend-shared';
 
 import { stateLabelOf } from './flowDraft';
 import { finalStates, type FlowLanes, type FlowSequenceRule, toLanes, walkOf } from './flowLanes';
@@ -117,6 +117,38 @@ export function guardLabel(guard: FlowGuard): string {
   const subject = subjectOfGuard(guard);
   const noun = subject ? (guard.max === undefined && min === 1 ? subject.one : subject.many) : guard.entity;
   return `${count} ${noun}${where}`;
+}
+
+/** "A", "A or B", "A, B or C". */
+const orList = (words: string[]) =>
+  words.length < 2 ? (words[0] ?? '') : `${words.slice(0, -1).join(', ')} or ${words[words.length - 1]}`;
+
+/**
+ * Why a move was refused, as a sentence — or `null` where there is not enough to say more than that
+ * it was. A refusal that only says "not allowed" leaves a person guessing which rule stopped them,
+ * and the flow already knows: where a record may go from where it stands, and what a step asks for.
+ */
+export function refusalWords(
+  definition: FlowDefinition | null | undefined,
+  from: string | null | undefined,
+  to: string,
+  reason: string,
+  labels: FlowLabels = defaultLabels,
+): string | null {
+  if (!definition) return null;
+  if (reason === 'not-allowed') {
+    if (!from) return null;
+    const allowed = allowedMoves(definition, from).map(labels.state);
+    return allowed.length
+      ? `From ${labels.state(from)} it can only move to ${orList(allowed)}.`
+      : `Nothing moves on from ${labels.state(from)}.`;
+  }
+  if (reason === 'unmet') {
+    const guards = guardsFor(definition.states.find((s) => s.name === to));
+    if (!guards.length) return null;
+    return `Not yet — ${labels.state(to)} needs ${guards.map(guardLabel).join(' and ')}.`;
+  }
+  return null;
 }
 
 function stepView(definition: FlowDefinition, name: string, labels: FlowLabels, finals: Set<string>): StepView {

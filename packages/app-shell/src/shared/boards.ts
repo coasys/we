@@ -106,6 +106,8 @@ export interface BoardFlow {
   move: (taskId: string, from: string, to: string) => Promise<TaskMoveOutcome>;
   /** The state a task made into a column that asks for agreement starts in instead. */
   entryFor: (to: string) => string;
+  /** Why a move was refused, in a sentence naming the rule — `null` to say it plainly. */
+  explain?: (from: string, to: string, outcome: TaskMoveOutcome) => string | null;
 }
 
 export interface CreateBoardOptions {
@@ -719,8 +721,15 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
           releaseStatus(cardId);
           if (outcome === 'stalled') notify('That card is stuck between two moves — one of them has to be withdrawn');
           if (outcome === 'slow') notify('The node is still counting that vote — the card will move when it has');
-          if (outcome === 'unmet') notify('Not yet — what that column asks for is not there');
-          if (outcome === 'not-allowed') notify('That card cannot move there from where it is');
+          if (outcome === 'unmet' || outcome === 'not-allowed') {
+            const why = flow.explain?.(current, to.slug, outcome);
+            notify(
+              why ??
+                (outcome === 'unmet'
+                  ? 'Not yet — what that column asks for is not there'
+                  : 'That card cannot move there from where it is'),
+            );
+          }
           return;
         }
       }

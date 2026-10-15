@@ -45,6 +45,7 @@ import {
   kindOf,
   type RecordView,
   recordView,
+  refusalWords,
   type StepHistoryView,
 } from '@shared/flowViews';
 import { guardSubjectOf } from '@shared/guardSubjects';
@@ -547,8 +548,10 @@ export function FlowStoreProvider(props: ParentProps) {
       toastService.error('Could not ask for that move');
       throw error;
     }
-    if (outcome === 'unmet') toastService.error('Not yet — what that step asks for is not there');
-    else if (outcome === 'not-allowed') toastService.error('It cannot move there from where it is');
+    const from = untrack(items)[flow]?.find((item) => item.subject === recordId)?.state;
+    const why = refusalWords(untrack(definitions)[flow], from, to, outcome, labelsFor(flow));
+    if (outcome === 'unmet') toastService.error(why ?? 'Not yet — what that step asks for is not there');
+    else if (outcome === 'not-allowed') toastService.error(why ?? 'It cannot move there from where it is');
     else if (outcome === 'stalled')
       toastService.error('Stuck between two agreed moves — one of them has to be withdrawn');
     else if (outcome === 'pending') toastService.info('Still being counted — it will move when it has');

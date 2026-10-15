@@ -15,7 +15,7 @@ import {
   unreadContainerIds,
 } from '@shared/containerActivity';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
-import { guardLabel } from '@shared/flowViews';
+import { guardLabel, refusalWords } from '@shared/flowViews';
 import { guardSubjectOf } from '@shared/guardSubjects';
 import { buildGuestLink } from '@shared/guestLink';
 import {
@@ -2267,6 +2267,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       stateOf: (taskId) => flowStateOf(taskFlowLive.view(), taskId),
       move: (taskId, from, to) => taskFlow.move(taskId, from, to),
       entryFor: (to) => taskFlow.entryFor(to),
+      explain: (from, to, outcome) => explainTaskMove(from, to, outcome ?? ''),
     },
     /*
       A staged suggestion for one property, dropped — see `BoardDeps.resolveSuggestion`. Checked
@@ -3314,6 +3315,14 @@ export function SpaceStoreProvider(props: ParentProps) {
     return rule === 'next' || rule === 'next-and-back' ? rule : '';
   });
   const taskFlowDefinition = createMemo(() => compileTaskFlow(taskFlowRules(), taskFlowRule()));
+  /** Why a task's move was refused, naming the rule — in the community's own words for its states. */
+  const explainTaskMove = (from: string, to: string, outcome: string): string | null => {
+    const names = new Map(taskStates().map((state) => [state.slug, state.name]));
+    return refusalWords(untrack(taskFlowDefinition), from, to, outcome, {
+      state: (slug) => names.get(slug) ?? slug,
+      kind: (slug) => slug,
+    });
+  };
   const taskFlowEnabled = (): boolean =>
     Boolean(taskFlowDefinition() && session.backendPorts()?.flows && datasetStore.isWeSpace());
   const [taskFlowView, setTaskFlowView] = createSignal<FlowView | null>(null);
@@ -3427,9 +3436,11 @@ export function SpaceStoreProvider(props: ParentProps) {
         // moves the card when it is.
         toastService.info('The node is still counting your approval — the card will move when it has');
       } else if (outcome === 'unmet') {
-        toastService.error('Not yet — what that column asks for is not there');
+        toastService.error(
+          explainTaskMove(from, move.to, outcome) ?? 'Not yet — what that column asks for is not there',
+        );
       } else if (outcome === 'not-allowed') {
-        toastService.error('That card cannot move there from where it is');
+        toastService.error(explainTaskMove(from, move.to, outcome) ?? 'That card cannot move there from where it is');
       }
     } catch (error) {
       console.error('SpaceStore: could not agree with that move', error);
