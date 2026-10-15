@@ -6,7 +6,13 @@ import { createAd4mDatasetLifecycle } from './lifecycleAdapter';
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const HOLOCHAIN = { address: 'Qm-holochain', name: 'perspectiveDiffSync', params: ['uid', 'name', 'description'] };
-const SERVER = { address: 'Qm-server', name: 'server-link-language', params: ['SERVER_URL', 'ROOM_ID', 'name'] };
+const SERVER = { address: 'Qm-server', name: 'server-link-language', params: ['SERVER_URL', 'UID'] };
+// A build from before the room was renamed UID and the bundle gained a default server.
+const OLD_SERVER = {
+  address: 'Qm-old-server',
+  name: 'server-link-language',
+  params: ['SERVER_URL', 'ROOM_ID', 'name'],
+};
 const UNDECLARED = { address: 'Qm-undeclared', name: 'legacy', params: null };
 
 type Template = { address: string; name: string; params: string[] | null };
@@ -45,13 +51,27 @@ const templateData = (client: ReturnType<typeof mockClient>) =>
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('linkLanguageTemplates', () => {
-  it('hides a template needing a server when no link server is configured', async () => {
-    const client = mockClient([HOLOCHAIN, SERVER]);
+  it('hides an old server build when no link server is configured', async () => {
+    const client = mockClient([HOLOCHAIN, OLD_SERVER]);
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
 
     expect(await lifecycle.linkLanguageTemplates?.()).toEqual([
       { address: HOLOCHAIN.address, name: HOLOCHAIN.name, kind: 'peer-to-peer' },
     ]);
+  });
+
+  it('offers a current server build with no link server configured, naming no host', async () => {
+    // The bundle carries its own default server, which the backend cannot read.
+    const client = mockClient([HOLOCHAIN, SERVER]);
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+    const templates = await lifecycle.linkLanguageTemplates?.();
+
+    expect(templates).toEqual([
+      { address: HOLOCHAIN.address, name: HOLOCHAIN.name, kind: 'peer-to-peer' },
+      { address: SERVER.address, name: SERVER.name, kind: 'server' },
+    ]);
+    expect(templates?.[1]).not.toHaveProperty('serverUrl', expect.anything());
   });
 
   it('offers it once a link server is configured, after the peer-to-peer templates', async () => {
@@ -102,16 +122,38 @@ describe('publish', () => {
     const [first, second] = client.languages.applyTemplateAndPublish.mock.calls.map(
       (call) => JSON.parse(call[1]) as Record<string, string>,
     );
-    expect(Object.keys(first).sort()).toEqual(['ROOM_ID', 'SERVER_URL', 'name']);
+    expect(Object.keys(first).sort()).toEqual(['SERVER_URL', 'UID']);
     expect(first.SERVER_URL).toBe('https://links.example.org');
-    expect(first.ROOM_ID).not.toBe(second.ROOM_ID);
+    expect(first.UID).not.toBe(second.UID);
   });
 
-  it('refuses a server template when no link server is configured', async () => {
+  it('leaves the server to the bundle when none is configured', async () => {
     const client = mockClient([HOLOCHAIN, SERVER]);
     const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
 
-    await expect(lifecycle.publish?.('dataset-1', SERVER.address)).rejects.toThrow(/SERVER_URL, ROOM_ID/);
+    await lifecycle.publish?.('dataset-1', SERVER.address);
+
+    expect(Object.keys(templateData(client))).toEqual(['UID']);
+  });
+
+  it('gives an old server build its room as ROOM_ID', async () => {
+    const client = mockClient([HOLOCHAIN, OLD_SERVER]);
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient, {
+      linkServerUrl: 'https://links.example.org',
+    });
+
+    await lifecycle.publish?.('dataset-1', OLD_SERVER.address);
+
+    const data = templateData(client);
+    expect(Object.keys(data).sort()).toEqual(['ROOM_ID', 'SERVER_URL', 'name']);
+    expect(data.ROOM_ID).toMatch(/[0-9a-f-]{36}/);
+  });
+
+  it('refuses an old server build when no link server is configured', async () => {
+    const client = mockClient([HOLOCHAIN, OLD_SERVER]);
+    const lifecycle = createAd4mDatasetLifecycle(client as unknown as Ad4mClient);
+
+    await expect(lifecycle.publish?.('dataset-1', OLD_SERVER.address)).rejects.toThrow(/needs SERVER_URL,/);
     expect(client.languages.applyTemplateAndPublish).not.toHaveBeenCalled();
   });
 
@@ -152,7 +194,7 @@ describe('development registration', () => {
     expect(client.languages.publish).toHaveBeenCalledTimes(1);
     expect(client.languages.publish.mock.calls[0]).toEqual([
       '/ad4m/bundle.js',
-      expect.objectContaining({ possibleTemplateParams: expect.arrayContaining(['SERVER_URL', 'ROOM_ID']) }),
+      expect.objectContaining({ possibleTemplateParams: expect.arrayContaining(['SERVER_URL', 'UID']) }),
     ]);
     expect(client.runtime.addKnownLinkLanguageTemplates).toHaveBeenCalledWith(['Qm-dev-server']);
     expect(templates?.map((t) => t.address)).toEqual([HOLOCHAIN.address, 'Qm-dev-server']);
