@@ -1284,6 +1284,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     capabilities: state('content'),
     canEdit: state('content'),
     flows: state('content'),
+    flowsLoaded: state('content'),
     startable: state('content'),
     open: state('content'),
     draft: state('view-state'),

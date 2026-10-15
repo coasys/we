@@ -1292,11 +1292,30 @@ const flowList: SchemaNode = {
       props: { items: { $: 'flowStore.flows.filter(f, !f.archived)' }, as: 'flow' },
       children: [flowButton],
     },
+    /*
+      Loading, then the list or "No flows yet." — never "No flows yet." while the list is still being
+      read. On a shared node the read takes seconds, and the empty sentence said the space had lost
+      its flows until they arrived.
+    */
     {
       type: '$if',
       props: {
-        condition: { $: '!count(flowStore.flows)' },
-        then: text('No flows yet.', { variant: 'footnote', color: 'text-faint' }),
+        condition: { $: 'flowStore.flowsLoaded' },
+        then: {
+          type: '$if',
+          props: {
+            condition: { $: '!count(flowStore.flows)' },
+            then: text('No flows yet.', { variant: 'footnote', color: 'text-faint' }),
+          },
+        },
+        else: {
+          type: 'Column',
+          props: { gap: '200' },
+          children: [
+            { type: 'we-skeleton', props: { height: '28px' } },
+            { type: 'we-skeleton', props: { height: '28px', width: '80%' } },
+          ],
+        },
       },
     },
     {

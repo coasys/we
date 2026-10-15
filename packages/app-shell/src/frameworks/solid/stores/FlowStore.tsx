@@ -132,6 +132,11 @@ export interface FlowStore {
   canEdit: Accessor<boolean>;
   /** Every flow in the space, archived ones included. */
   flows: Accessor<FlowSummaryView[]>;
+  /**
+   * The backend has answered with this space's flows. Until it has, an empty `flows` is not yet an
+   * answer, and the list is drawn as loading rather than as "no flows".
+   */
+  flowsLoaded: Accessor<boolean>;
   /** Flows a record can be started on: not archived, not written by something else. */
   startable: Accessor<{ name: string; label: string; subjects: string[] }[]>;
   /** The flow on screen, or `null`. */
@@ -243,22 +248,36 @@ export function FlowStoreProvider(props: ParentProps) {
   // ─── The list ────────────────────────────────────────────────────────────────
 
   const [summaries, setSummaries] = createSignal<FlowSummary[]>([]);
+  /*
+    Which space the list last answered for, rather than a flag: a switch of space has to make the list
+    unanswered again at once, and a slow answer for the space somebody just left must not count for
+    the one they are in. On a shared node listing flows takes seconds, and "no flows" for those
+    seconds read as the space having lost them.
+  */
+  const [listedFor, setListedFor] = createSignal<string | null>(null);
+  const flowsLoaded = () => listedFor() === datasetId();
 
   async function refreshFlows(): Promise<void> {
     const p = port();
     const h = handle();
+    const asked = datasetId();
     if (!p || !h) {
       setSummaries([]);
+      setListedFor(asked);
       return;
     }
     try {
       const listed = await p.list(h);
+      if (datasetId() !== asked) return;
       setSummaries(listed);
+      setListedFor(asked);
       // Every definition, once: the list says which flows there are, and a map of the space's flows
       // draws their steps — a handful of flows, each read once and kept until the space changes.
       for (const summary of listed) void definitionOfFlow(summary.name).catch(() => {});
     } catch (error) {
       console.warn('FlowStore: could not list the flows', error);
+      // An answer of a kind: waiting on a list that failed would spin for ever.
+      if (datasetId() === asked) setListedFor(asked);
     }
   }
 
@@ -266,6 +285,7 @@ export function FlowStoreProvider(props: ParentProps) {
   createEffect(() => {
     datasetId();
     available();
+    untrack(() => setSummaries([]));
     void untrack(refreshFlows);
   });
 
@@ -655,6 +675,7 @@ export function FlowStoreProvider(props: ParentProps) {
     capabilities,
     canEdit,
     flows,
+    flowsLoaded,
     startable,
     open,
     draft,

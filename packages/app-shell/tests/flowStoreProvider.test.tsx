@@ -71,6 +71,15 @@ describe('the flow store, mounted', () => {
   });
 });
 
+describe('the list, loading', () => {
+  // On a shared node the list takes seconds, and an empty list before it answers read as "no flows".
+  it('says it has not answered until it has', async () => {
+    const store = mount();
+    expect(store.flowsLoaded()).toBe(false);
+    await vi.waitFor(() => expect(store.flowsLoaded()).toBe(true));
+  });
+});
+
 describe('edits a form submits', () => {
   // A form closes in its action's `onSuccess`, which only fires for a promise, so an edit that
   // returned nothing left every one of the flow editor's dialogs open after it had done its work.
