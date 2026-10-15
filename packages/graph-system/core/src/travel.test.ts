@@ -1791,7 +1791,7 @@ describe('opening and closing a node', () => {
     const engine = await engineWithChild();
     await engine.expand('a');
     expect(engine.isTravelling()).toBe(true);
-    await vi.advanceTimersByTimeAsync(600);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(engine.isTravelling()).toBe(false);
   });
 
@@ -1800,7 +1800,7 @@ describe('opening and closing a node', () => {
     const engine = await engineWithChild();
     const before = xOf(engine, 'a')!;
     await engine.expand('a');
-    await vi.advanceTimersByTimeAsync(600);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(xOf(engine, 'a')).toBe(before);
   });
 
@@ -1808,11 +1808,11 @@ describe('opening and closing a node', () => {
     const engine = await engineWithChild();
     const before = xOf(engine, 'a')!;
     await engine.expand('a');
-    await vi.advanceTimersByTimeAsync(600);
+    await vi.advanceTimersByTimeAsync(1000);
     drew(engine);
     engine.collapse('a');
     expect(engine.isTravelling()).toBe(true);
-    await vi.advanceTimersByTimeAsync(600);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(xOf(engine, 'a')).toBe(before);
   });
 
@@ -1822,7 +1822,7 @@ describe('opening and closing a node', () => {
     const parent = xOf(engine, 'a')!;
     await engine.expand('a');
     expect(xOf(engine, 'c')).toBe(parent);
-    await vi.advanceTimersByTimeAsync(600);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(xOf(engine, 'c')).not.toBe(parent);
   });
 
@@ -1831,11 +1831,11 @@ describe('opening and closing a node', () => {
     const engine = await engineWithChild();
     const parent = xOf(engine, 'a')!;
     await engine.expand('a');
-    await vi.advanceTimersByTimeAsync(600);
+    await vi.advanceTimersByTimeAsync(1000);
     drew(engine);
     engine.collapse('a');
     expect(engine.store.node('c')).toBeDefined();
-    await vi.advanceTimersByTimeAsync(600);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(engine.store.node('c')).toBeUndefined();
     expect(xOf(engine, 'a')).toBe(parent);
   });
@@ -1843,10 +1843,10 @@ describe('opening and closing a node', () => {
   it('keeps what is opened again before it has gone', async () => {
     const engine = await engineWithChild();
     await engine.expand('a');
-    await vi.advanceTimersByTimeAsync(600);
+    await vi.advanceTimersByTimeAsync(1000);
     engine.collapse('a');
     await engine.expand('a');
-    await vi.advanceTimersByTimeAsync(600);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(engine.store.node('c')).toBeDefined();
   });
 
@@ -1855,7 +1855,7 @@ describe('opening and closing a node', () => {
     const engine = await engineWithChild();
     await engine.expand('a');
     expect(engine.visualOf(engine.store.node('c')!).z).toBe(-1);
-    await vi.advanceTimersByTimeAsync(600);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(engine.visualOf(engine.store.node('c')!).z).toBeUndefined();
   });
 
@@ -1889,7 +1889,7 @@ describe('opening and closing a node', () => {
     const going = 600;
     await vi.advanceTimersByTimeAsync(150);
     engine.relayout();
-    await vi.advanceTimersByTimeAsync(600);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(engine.getPositions().get('c')?.y).toBe(going);
   });
 
@@ -1902,12 +1902,12 @@ describe('opening and closing a node', () => {
     const opening = engine.foldScale('c');
     expect(opening).toBeGreaterThan(0);
     expect(opening).toBeLessThan(1);
-    await vi.advanceTimersByTimeAsync(600);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(engine.foldScale('c')).toBe(1);
 
     drew(engine);
     engine.collapse('a');
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(450);
     expect(engine.foldScale('c')).toBeLessThan(0.5);
   });
 
@@ -1935,13 +1935,13 @@ describe('opening and closing a node', () => {
     engine.setSelfTravel(400);
     drew(engine);
     await engine.expand('a');
-    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(2000);
     const placed = engine.getPositions().get('c')!;
     drew(engine);
     engine.collapse('a');
     await vi.advanceTimersByTimeAsync(200);
     await engine.expand('a');
-    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(2000);
     expect(engine.store.node('c')).toBeDefined();
     expect(engine.getPositions().get('c')).toMatchObject({ x: placed.x, y: placed.y });
   });
@@ -1949,13 +1949,45 @@ describe('opening and closing a node', () => {
   it('takes as long to close as to open', async () => {
     const engine = await engineWithChild();
     await engine.expand('a');
-    await vi.advanceTimersByTimeAsync(225);
+    await vi.advanceTimersByTimeAsync(325);
     const opening = engine.foldScale('c');
-    await vi.advanceTimersByTimeAsync(600);
+    await vi.advanceTimersByTimeAsync(1000);
     drew(engine);
     engine.collapse('a');
-    await vi.advanceTimersByTimeAsync(225);
+    await vi.advanceTimersByTimeAsync(325);
     // Halfway through each, the card is drawn at the same size.
     expect(engine.foldScale('c')).toBeCloseTo(opening, 1);
+  });
+
+  // Left free, a line to a property heading left of its card left the card's top or bottom — the card
+  // started inside its parent — and swung round to the side as it went.
+  it('holds a line to a moving card on the side the card is heading for, on a canvas', async () => {
+    const canvas = () => ({
+      id: 'canvas',
+      derivesPositions: false,
+      init(input: { nodes: { id: string }[] }) {
+        return {
+          positions: new Map(
+            input.nodes.map((node) => [node.id, node.id === 'c' ? { x: -400, y: 0 } : { x: 0, y: 0 }]),
+          ),
+        };
+      },
+    });
+    const registry = new PluginRegistry({ seeds: [seedOf(['a'])], expanders: [opensIntoChild], layouts: { canvas } });
+    const engine = new GraphEngine({
+      spec: { seeds: { source: 'test' }, layout: { type: 'canvas' } },
+      registry,
+      context,
+    });
+    engine.resize(800, 600);
+    await engine.start();
+    engine.setSelfTravel(400);
+    drew(engine);
+    await engine.expand('a');
+    await vi.advanceTimersByTimeAsync(100);
+    const route = engine.getEdgeGeometry().get('a->c')!;
+    // Leaving the parent's left side, level with its centre — not its top or bottom.
+    expect(route.from.x).toBeLessThan(0);
+    expect(route.from.y).toBeCloseTo(0, 5);
   });
 });

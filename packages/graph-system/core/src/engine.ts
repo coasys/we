@@ -14,6 +14,7 @@ import type {
   CardShape,
   EdgeAnchors,
   EdgeGeometry,
+  EdgeSide,
   EdgeStyle,
   ExpandDirection,
   ExpanderContext,
@@ -81,7 +82,7 @@ const FOLD_MS = 200;
  * a fold's snap and a layout switch's long travel: the same in both directions, so opening and closing
  * read as one movement and its reverse.
  */
-const PASS_MS = 450;
+const PASS_MS = 650;
 
 /**
  * The frame both of the engine's own animations advance on.
@@ -1147,6 +1148,13 @@ export class GraphEngine {
     // What arrived sets off from the node it came out of, so the opening reads as the node growing.
     this.passThrough(id, arrived, this.passMs(), true);
     this.relayout({ travel: this.passMs(), steady: id, emergeFrom: { node: id, ids: arrived } });
+    // Where each is heading, for the side its line holds while it travels — see `routeOf`.
+    for (const arrival of arrived) {
+      const passing = this.passing.get(arrival);
+      const home = this.travel.destination(arrival) ?? this.positions.get(arrival);
+      if (passing && home) passing.home = { x: home.x, y: home.y };
+    }
+    this.routeEdges();
     this.notify('graph');
   }
 
@@ -1166,11 +1174,14 @@ export class GraphEngine {
     const travel = this.passMs();
     if (travel > 0 && into && result.removedNodes.length) {
       const inward = new Map(this.positions);
+      this.passThrough(id, result.removedNodes, travel, false);
       for (const nodeId of result.removedNodes) {
+        const home = inward.get(nodeId);
+        const passing = this.passing.get(nodeId);
+        if (passing && home) passing.home = { x: home.x, y: home.y };
         const at = inward.get(nodeId);
         if (at) inward.set(nodeId, { ...at, x: into.x, y: into.y });
       }
-      this.passThrough(id, result.removedNodes, travel, false);
       this.applyPositions(inward, undefined, travel);
       this.notify('graph');
       setTimeout(() => {
@@ -1185,7 +1196,10 @@ export class GraphEngine {
    * Cards travelling out of (`out`) or back into a node, by the node, and when they set off — drawn
    * under it, and shrunk into it or grown out of it as a fold's cards are. See {@link passingScale}.
    */
-  private readonly passing = new Map<string, { node: string; out: boolean; started: number; ms: number }>();
+  private readonly passing = new Map<
+    string,
+    { node: string; out: boolean; started: number; ms: number; home?: Point }
+  >();
 
   /** Draw these under `node`, growing out of it or shrinking into it, for as long as their travel takes. */
   private passThrough(node: string, ids: readonly string[], ms: number, out: boolean): void {
@@ -1200,6 +1214,24 @@ export class GraphEngine {
       this.routeEdges();
       this.notify('graph');
     }, ms);
+  }
+
+  /**
+   * The sides a line to a moving card holds — see `routeOf`. From the node it comes out of toward where
+   * the card stands, along whichever axis that mostly runs, and the card's side facing back.
+   */
+  private passingSides(edge: GraphEdge): EdgeAnchors | undefined {
+    const end = this.passing.get(edge.target) ? edge.target : this.passing.get(edge.source) ? edge.source : null;
+    const passing = end ? this.passing.get(end) : undefined;
+    if (!end || !passing?.home) return undefined;
+    const parent = this.positions.get(passing.node);
+    const fromParent = parent ? { x: passing.home.x - parent.x, y: passing.home.y - parent.y } : null;
+    if (!fromParent) return undefined;
+    const across = Math.abs(fromParent.x) >= Math.abs(fromParent.y);
+    const away: EdgeSide = across ? (fromParent.x < 0 ? 'w' : 'e') : fromParent.y < 0 ? 'n' : 's';
+    const back: EdgeSide = ({ w: 'e', e: 'w', n: 's', s: 'n' } as const)[away];
+    // The parent is whichever end is not moving.
+    return end === edge.target ? { source: away, target: back } : { source: back, target: away };
   }
 
   /** How long opening and closing take: {@link PASS_MS}, or nothing where the reader wants no motion. */
@@ -2704,13 +2736,15 @@ export class GraphEngine {
     const data = { ...edge.data, ...patch };
     const ignore = style.ignoreRoute === true;
     /*
-      A line to a card coming out of a node or going back in takes the shortest way while it moves. Its
-      pinned sides are for where the card will stand: held while the card passes the parent's own edge,
-      a tree's line from the parent's bottom to the child's top looped back up into it.
+      On a canvas, a line to a card coming out of a node or going back in holds the sides it will meet
+      at where the card stands — the parent's side facing it, and the card's facing back — for the whole
+      move. Left free it was routed from wherever the card was that frame, which starts inside the
+      parent: a property heading left left from the parent's top or bottom and swung round to its side.
+      In a tree such a line is not drawn while the card moves (`hidesLinesTo`) and keeps its own sides,
+      so that it reappears where it belongs rather than sweeping there.
     */
-    if (this.passing.has(edge.source) || this.passing.has(edge.target)) {
-      return { anchors: {}, waypoints: [], bend: 0 };
-    }
+    const moving = this.layout?.derivesPositions === false ? this.passingSides(edge) : undefined;
+    if (moving) return { anchors: moving, waypoints: [], bend: 0 };
     return {
       anchors: anchorsOf(ignore ? undefined : data, { source: style.sourceAnchor, target: style.targetAnchor }),
       waypoints: waypointsOf(data),
