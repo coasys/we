@@ -20,6 +20,8 @@ import {
   type Point,
 } from '@we/graph-protocol';
 
+/** The least a pinned end of a smooth curve pulls out from its side — see the smooth branch of `edgeGeometry`. */
+const PINNED_MIN_REACH = 24;
 /**
  * Canonical curve name for whatever a style asked for.
  *
@@ -823,8 +825,24 @@ export function routeEdge(
       to be derived separately. Arriving along the inward direction is also what keeps the arrowhead
       aimed at the node's centre while the facing sweeps, rather than at wherever the line came from.
     */
-    const control = { x: start.x + facingFrom[0] * reach, y: start.y + facingFrom[1] * reach };
-    const control2 = { x: finish.x + facingTo[0] * reach, y: finish.y + facingTo[1] * reach };
+    /*
+      A pinned end pulls only as far as the span along the way it faces.
+
+      Half the larger span is right for a line that chose its own axis, since that is the axis it runs
+      along. A pinned end has not chosen: a tree's line leaves its parent's bottom whatever the child's
+      position, and for a child far to one side the larger span is the sideways one — so the curve
+      plunged half that distance below the parent and rose as far above the child, and read as a deep S
+      that dipped under the child and hooked back up into it. Measured along the side it faces, the
+      pull is half the gap between the ranks, and the curve is a gentle bend. Never less than a short
+      run, so it still visibly leaves the side it is pinned to.
+    */
+    const span = { x: Math.abs(finish.x - start.x), y: Math.abs(finish.y - start.y) };
+    const pull = (facing: readonly number[], pinned: unknown) =>
+      pinned ? Math.max(PINNED_MIN_REACH, (Math.abs(facing[0]) * span.x + Math.abs(facing[1]) * span.y) / 2) : reach;
+    const reachFrom = pull(facingFrom, anchors.source);
+    const reachTo = pull(facingTo, anchors.target);
+    const control = { x: start.x + facingFrom[0] * reachFrom, y: start.y + facingFrom[1] * reachFrom };
+    const control2 = { x: finish.x + facingTo[0] * reachTo, y: finish.y + facingTo[1] * reachTo };
     return {
       id,
       from: start,
