@@ -1124,7 +1124,7 @@ export class GraphEngine {
     this.expansion.markExpanded(id, { cursor, total, added });
     this.emit({ type: 'expanded', id, added, total });
     this.recomputeMetrics();
-    this.relayout({ travel: this.ownTravel() });
+    this.relayout({ travel: this.ownTravel(), steady: id });
     this.notify('graph');
   }
 
@@ -1146,7 +1146,7 @@ export class GraphEngine {
       this.status = { ...this.status, budgetReached: false };
     }
     this.recomputeMetrics();
-    this.relayout({ travel: this.ownTravel() });
+    this.relayout({ travel: this.ownTravel(), steady: id });
     this.notify('graph');
   }
 
@@ -1583,7 +1583,13 @@ export class GraphEngine {
     this.relayout({ travel: this.selfTravel });
   }
 
-  relayout(options?: { fit?: Fit; travel?: number }): void {
+  /**
+   * `steady` names a node to keep where it is: the arrangement the layout returns is shifted so that
+   * node does not move. Opening a node in a tree grows the tree around it, and without this the tree
+   * grew from its left edge — its root slid right by half of every child added, and every tree after
+   * it with it. Only where the layout works positions out; a pinned card is never shifted.
+   */
+  relayout(options?: { fit?: Fit; travel?: number; steady?: string }): void {
     this.relayoutHeld = false;
     const spec = this.spec.layout ?? { type: 'force' };
     /*
@@ -1682,8 +1688,26 @@ export class GraphEngine {
     // Areas the layout named — see `LayoutRegion`. Replaced wholesale rather than merged: a region is
     // a fact about *this* arrangement, so one kept from the previous run would be drawn around cards
     // that have since moved out of it.
-    this.layoutRegions = result.regions ?? [];
+    const shift = this.steadyShift(options?.steady, result.positions);
+    this.layoutRegions = (result.regions ?? []).map((region) =>
+      shift
+        ? {
+            ...region,
+            bounds: {
+              minX: region.bounds.minX + shift.x,
+              minY: region.bounds.minY + shift.y,
+              maxX: region.bounds.maxX + shift.x,
+              maxY: region.bounds.maxY + shift.y,
+            },
+          }
+        : region,
+    );
     this.fitUntilSettled = result.running ? (options?.fit ?? false) : false;
+    if (shift) {
+      for (const [id, at] of result.positions) {
+        if (!this.pinnedIds.has(id)) result.positions.set(id, { ...at, x: at.x + shift.x, y: at.y + shift.y });
+      }
+    }
     this.applyPositions(result.positions, options?.fit, options?.travel);
     // A dropped card whose write has come back needs holding no longer: the data now says what the hold did.
     if (this.arrangement && !this.arrangement.at && this.arrangementSettled()) this.endArrangement();
@@ -2030,6 +2054,20 @@ export class GraphEngine {
    */
   setSelfTravel(ms: number): void {
     this.selfTravel = Math.max(0, ms || 0);
+  }
+
+  /**
+   * How far to move a new arrangement so `steady` stays where it was — see {@link relayout}. Nothing
+   * where there is no such node, where it was not placed before, or where the layout does not work
+   * positions out.
+   */
+  private steadyShift(steady: string | undefined, next: Map<string, Placement>): Point | null {
+    if (!steady || this.layout?.derivesPositions === false) return null;
+    const before = this.positions.get(steady);
+    const after = next.get(steady);
+    if (!before || !after) return null;
+    const shift = { x: before.x - after.x, y: before.y - after.y };
+    return shift.x || shift.y ? shift : null;
   }
 
   /**

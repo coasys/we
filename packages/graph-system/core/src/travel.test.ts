@@ -1789,22 +1789,30 @@ describe('opening and closing a node', () => {
   // one frame read as a different picture rather than the same one growing.
   it('moves the cards already there rather than snapping them', async () => {
     const engine = await engineWithChild();
-    const before = xOf(engine, 'a')!;
     await engine.expand('a');
-    expect(xOf(engine, 'a')).toBe(before);
     expect(engine.isTravelling()).toBe(true);
     await vi.advanceTimersByTimeAsync(600);
-    expect(xOf(engine, 'a')).toBe(-100);
+    expect(engine.isTravelling()).toBe(false);
   });
 
-  it('moves them back when it closes', async () => {
+  // A tree grew from its left edge: its root slid right by half of everything it opened into.
+  it('keeps the node that opened where it was, and grows the arrangement around it', async () => {
     const engine = await engineWithChild();
+    const before = xOf(engine, 'a')!;
+    await engine.expand('a');
+    await vi.advanceTimersByTimeAsync(600);
+    expect(xOf(engine, 'a')).toBe(before);
+  });
+
+  it('keeps it where it was when it closes, too', async () => {
+    const engine = await engineWithChild();
+    const before = xOf(engine, 'a')!;
     await engine.expand('a');
     await vi.advanceTimersByTimeAsync(600);
     drew(engine);
     engine.collapse('a');
     expect(engine.isTravelling()).toBe(true);
     await vi.advanceTimersByTimeAsync(600);
-    expect(xOf(engine, 'a')).toBe(-50);
+    expect(xOf(engine, 'a')).toBe(before);
   });
 });
