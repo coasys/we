@@ -101,6 +101,23 @@ describe('GraphEngine', () => {
     expect(engine.getPositions().size).toBe(3);
   });
 
+  it('offers nothing to open on a node known to hold nothing, whatever claims it', async () => {
+    // An empty category on a map of a space's words had a caret that opened nothing.
+    const leafSeed: SeedSource = {
+      id: 'leaf',
+      async seed() {
+        return {
+          nodes: [{ id: 'empty', kind: 'entity' as const, type: 'Thing', label: 'empty', leaf: true }],
+          edges: [],
+        };
+      },
+    };
+    const registry = new PluginRegistry({ seeds: [leafSeed], expanders: [fanoutExpander(2)], layouts });
+    const engine = engineWith({ seeds: { source: 'leaf' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    expect(engine.canExpand('empty')).toBe(false);
+  });
+
   it('says a node can be opened only where an allowed expander claims it and it has more to give', async () => {
     const registry = new PluginRegistry({ seeds: [seedOf(1)], expanders: [fanoutExpander(2)], layouts });
     const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);

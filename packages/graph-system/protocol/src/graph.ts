@@ -32,6 +32,11 @@ export interface GraphNode {
    * there" from "not here yet", and every expander invents its own placeholder.
    */
   unresolved?: boolean;
+  /**
+   * Known to have nothing to open into — a category with nothing in it. No caret is offered on it,
+   * whatever expander would claim it: one that opened nothing read as broken.
+   */
+  leaf?: boolean;
   /** Which expander produced it — for debugging, and so re-expansion can be attributed. */
   source?: string;
 }

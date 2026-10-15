@@ -1376,7 +1376,7 @@ export class GraphEngine {
    */
   canExpand(id: string): boolean {
     const node = this.store.node(id);
-    if (!node || this.atBudget()) return false;
+    if (!node || node.leaf || this.atBudget()) return false;
     if (this.expansion.isExpanded(id) && !this.expansion.hasMore(id)) return false;
     return this.registry.expandersFor(node.kind, node.type, this.spec.expansion?.expanders).length > 0;
   }
