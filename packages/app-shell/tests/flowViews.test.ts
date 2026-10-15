@@ -68,11 +68,27 @@ describe('recordView', () => {
       'did:a',
     );
     expect(view.title).toBe('Buy a kettle');
+    // No start time from the backend reads as none, not as 1970.
+    expect(view.startedAt).toBe('');
     expect(view.walk.map((s) => s.at)).toEqual(['done', 'done', 'current', 'ahead']);
     expect(view.next.map((s) => s.label)).toEqual(['Adopted', 'Rejected']);
     expect(view.waiting).toEqual([
       { to: 'adopted', toLabel: 'Adopted', voters: ['did:a', 'did:b'], needs: 3, note: '', mine: true },
     ]);
+  });
+});
+
+describe('when a record started', () => {
+  it('reads the time it entered the flow as a date a timestamp shows', () => {
+    const { model } = toLanes(proposal);
+    const view = recordView(
+      proposal,
+      model,
+      { subject: 'p1', state: 'draft', waiting: [], stalled: false, since: 0 },
+      '',
+      undefined,
+    );
+    expect(view.startedAt).toBe('1970-01-01T00:00:00.000Z');
   });
 });
 
@@ -95,6 +111,7 @@ describe('rules from the editor', () => {
         toLabel: 'Review',
         voters: ['did:a'],
         at: 5,
+        when: '1970-01-01T00:00:00.005Z',
         evidence: ['x'],
         note: '',
       },

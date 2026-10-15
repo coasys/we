@@ -324,7 +324,13 @@ const ruleWords = (source: string) =>
 
 // ─── Records ───────────────────────────────────────────────────────────────────
 
-/** A record's walk, as a stepper. */
+/**
+ * A record's walk, as a stepper.
+ *
+ * A track joins the steps and fills with the accent as far as the record has got: the segment before
+ * a step is filled when the record has reached that step. Without it the steps read as a row of
+ * unrelated words rather than one path.
+ */
 const walk: SchemaNode = {
   type: 'Row',
   props: { gap: '100', ay: 'center', wrap: true },
@@ -339,14 +345,26 @@ const walk: SchemaNode = {
           children: [
             {
               type: '$if',
-              props: { condition: { $: 'index > 0' }, then: { type: 'we-divider', props: { width: '12px' } } },
+              props: {
+                condition: { $: 'index > 0' },
+                then: {
+                  type: 'Row',
+                  props: {
+                    width: '20px',
+                    height: '2px',
+                    r: 'full',
+                    bg: { $: "step.at == 'ahead' ? 'border' : 'accent'" },
+                  },
+                },
+              },
             },
             {
               type: 'we-icon',
               props: {
                 size: 'sm',
                 name: { $: "step.at == 'done' ? 'check-circle' : step.at == 'current' ? 'record' : 'circle'" },
-                color: { $: "step.at == 'ahead' ? 'text-faint' : 'accent'" },
+                weight: { $: "step.at == 'ahead' ? 'regular' : 'fill'" },
+                color: { $: "step.at == 'ahead' ? 'text-faint' : 'accent-text'" },
               },
             },
             text(
@@ -364,6 +382,18 @@ const walk: SchemaNode = {
   ],
 };
 
+/** Who agreed to a move, as faces — `step.voters` are DIDs, and the space's members carry the faces. */
+const VOTER_FACES =
+  'step.voters.map(d, { image: find(spaceStore.members, { did: d }).avatar, hash: d, initials: find(spaceStore.members, { did: d }).name })';
+/** The same people as a sentence, for the tooltip over the faces. */
+const VOTER_NAMES = "join(step.voters.map(d, find(spaceStore.members, { did: d }).name ?? 'Someone'), ', ')";
+
+/**
+ * What has happened to a record: one row per move, saying where it went, who agreed and when.
+ *
+ * The faces carry the "who" rather than a count, because "by 2 people" is the one thing a person
+ * looking at a history wants named. Their names are in the tooltip, where a row has no room for them.
+ */
 const historyList: SchemaNode = {
   type: '$if',
   props: {
@@ -374,18 +404,51 @@ const historyList: SchemaNode = {
     ],
     then: {
       type: 'Column',
-      props: { gap: '100', pl: '400' },
+      props: { gap: '200', pl: '400' },
       children: [
         {
           type: '$each',
           props: { items: { $: `${OPEN}.history[rec.subject] ?? []` }, as: 'step' },
           children: [
-            text(
-              {
-                $: "`${step.fromLabel} → ${step.toLabel}, by ${count(step.voters)} ${count(step.voters) == 1 ? 'person' : 'people'}${count(step.evidence) ? ` · ${count(step.evidence)} cited` : ''}${step.note ? ` — “${step.note}”` : ''}`",
-              },
-              { variant: 'footnote', color: 'text-muted' },
-            ),
+            {
+              type: 'Row',
+              props: { gap: '300', ay: 'center', wrap: true },
+              children: [
+                text({ $: '`${step.fromLabel} → ${step.toLabel}`' }, { variant: 'footnote' }),
+                {
+                  type: 'we-tooltip',
+                  props: { placement: 'top', content: { $: `'Agreed by ' + ${VOTER_NAMES}` } },
+                  children: [
+                    {
+                      type: 'AvatarStack',
+                      props: { avatars: { $: VOTER_FACES }, size: 'xs', max: 5 },
+                    },
+                  ],
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'step.when' },
+                    then: {
+                      type: 'we-timestamp',
+                      props: { value: { $: 'step.when' }, relative: true, color: 'text-faint', fontSize: '100' },
+                    },
+                  },
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'count(step.evidence) || step.note' },
+                    then: text(
+                      {
+                        $: "`${count(step.evidence) ? `${count(step.evidence)} cited` : ''}${count(step.evidence) && step.note ? ' · ' : ''}${step.note ? `“${step.note}”` : ''}`",
+                      },
+                      { variant: 'footnote', color: 'text-muted' },
+                    ),
+                  },
+                },
+              ],
+            },
           ],
         },
         {
@@ -415,7 +478,24 @@ const recordRow: SchemaNode = {
             variant: 'bare',
             onClick: { $action: 'routeStore.setParam', args: ['card', { $: 'rec.subject' }] },
           },
-          children: [text({ $: "rec.title ? rec.title : 'Untitled'" })],
+          children: [text({ $: "rec.title ? rec.title : 'Untitled'" }, { truncate: true, maxWidth: '360px' })],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'rec.startedAt' },
+            then: {
+              type: 'Row',
+              props: { gap: '100', ay: 'center' },
+              children: [
+                text('started', { variant: 'footnote', color: 'text-faint' }),
+                {
+                  type: 'we-timestamp',
+                  props: { value: { $: 'rec.startedAt' }, relative: true, color: 'text-faint', fontSize: '100' },
+                },
+              ],
+            },
+          },
         },
         {
           type: '$if',
@@ -581,7 +661,9 @@ const openHeader: SchemaNode = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $: `!count(${OPEN}.records)` },
+                    // Only once the records are read: before then the count is 0 for every flow,
+                    // and Delete showed for a moment on one that had records.
+                    condition: { $: `${OPEN}.recordsLoaded && !count(${OPEN}.records)` },
                     then: {
                       type: 'we-button',
                       props: {
@@ -631,7 +713,17 @@ const openFlow: SchemaNode = {
     {
       type: 'Row',
       props: { gap: '200', ay: 'center' },
-      children: [text('Going through it', { variant: 'label' }), chip({ $: `count(${OPEN}.records)` })],
+      children: [
+        text('Going through it', { variant: 'label' }),
+        chip({ $: `count(${OPEN}.records)` }),
+        {
+          type: '$if',
+          props: {
+            condition: { $: `count(${OPEN}.records) > 1` },
+            then: text('Newest first', { variant: 'footnote', color: 'text-faint' }),
+          },
+        },
+      ],
     },
     {
       type: '$if',

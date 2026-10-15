@@ -86,7 +86,13 @@ export interface OpenFlowView extends FlowEditorView {
   editable: boolean;
   managedBy: '' | 'task-states';
   archived: boolean;
+  /** Newest first. */
   records: RecordView[];
+  /**
+   * The records have been read. Until they have, an empty `records` is not yet an answer — so Delete,
+   * which is offered only for a flow nothing is going through, waits for it rather than flashing.
+   */
+  recordsLoaded: boolean;
   /** A record's moves, once asked for with `loadHistory`. */
   history: Record<string, StepHistoryView[]>;
 }
@@ -191,7 +197,8 @@ function flowLabelOf(name: string): string {
 const ANY_RECORD = ['TaskBlock', 'TextBlock', 'CollectionBlock', 'EventBlock'];
 
 const titleOf = (row: Record<string, unknown>): string => {
-  for (const key of ['title', 'name', 'text']) {
+  // A post or a note is a collection with no title of its own: what it says is in `textContent`.
+  for (const key of ['title', 'name', 'textContent', 'text']) {
     const value = row[key];
     if (typeof value === 'string' && value.trim()) {
       const plain = value.replace(/<[^>]*>/g, '').trim();
@@ -412,9 +419,10 @@ export function FlowStoreProvider(props: ParentProps) {
       editable: summary?.editable ?? false,
       managedBy: summary?.managedBy ?? (name === TASK_FLOW ? 'task-states' : ''),
       archived: summary?.archived ?? false,
-      records: (items()[name] ?? []).map((item) =>
-        recordView(definition, model, item, named[item.subject] ?? '', me(), labels),
-      ),
+      records: [...(items()[name] ?? [])]
+        .sort((a, b) => (b.since ?? 0) - (a.since ?? 0))
+        .map((item) => recordView(definition, model, item, named[item.subject] ?? '', me(), labels)),
+      recordsLoaded: name in items(),
       history: history(),
     };
   });

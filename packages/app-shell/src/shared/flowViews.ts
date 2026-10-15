@@ -187,6 +187,8 @@ export function editorView(
 export interface RecordView {
   subject: string;
   title: string;
+  /** When it entered the flow, as an ISO date for a timestamp; empty where the backend cannot say. */
+  startedAt: string;
   state: string | null;
   stateLabel: string;
   stalled: boolean;
@@ -217,6 +219,7 @@ export function recordView(
   return {
     subject: item.subject,
     title,
+    startedAt: isoOf(item.since),
     state: item.state,
     stateLabel: item.state ? labels.state(item.state) : '',
     stalled: item.stalled,
@@ -240,9 +243,15 @@ export interface StepHistoryView {
   toLabel: string;
   voters: string[];
   at: number | null;
+  /** `at` as an ISO date, for a timestamp; empty where the backend cannot say. */
+  when: string;
   evidence: string[];
   note: string;
 }
+
+/** Milliseconds as an ISO date — what a timestamp element reads — or empty for none. */
+const isoOf = (ms: number | null | undefined): string =>
+  typeof ms === 'number' && Number.isFinite(ms) ? new Date(ms).toISOString() : '';
 
 export const historyView = (steps: FlowStep[], labels: FlowLabels = defaultLabels): StepHistoryView[] =>
   steps.map((step) => ({
@@ -252,6 +261,7 @@ export const historyView = (steps: FlowStep[], labels: FlowLabels = defaultLabel
     toLabel: labels.state(step.to),
     voters: step.voters,
     at: step.at ?? null,
+    when: isoOf(step.at),
     evidence: step.evidence,
     note: step.note ?? '',
   }));
