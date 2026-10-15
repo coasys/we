@@ -77,6 +77,13 @@ const PENDING_EDGE_ID = '__pending__';
 const FOLD_MS = 200;
 
 /**
+ * How long a node takes to open or close — its contents growing out of it or shrinking back in. Between
+ * a fold's snap and a layout switch's long travel: the same in both directions, so opening and closing
+ * read as one movement and its reverse.
+ */
+const PASS_MS = 450;
+
+/**
  * The frame both of the engine's own animations advance on.
  *
  * One constant because it is one fact — how often a position that is being interpolated is rewritten
@@ -1117,6 +1124,16 @@ export class GraphEngine {
         );
         added += change.addedNodes.length;
         arrived.push(...change.addedNodes);
+        /*
+          Opened again while shrinking back in from the last close: still in the store, so not added —
+          but standing at the parent's centre, where they were shrinking to. Placed again and grown back
+          out, or a layout that keeps a card's last place left them stuck on top of their parent.
+        */
+        for (const node of trimmed) {
+          if (this.passing.get(node.id)?.out !== false) continue;
+          this.positions.delete(node.id);
+          arrived.push(node.id);
+        }
         if (result.total !== undefined) total = (total ?? 0) + result.total;
         cursor = cursor ?? result.cursor;
       }
@@ -1128,8 +1145,8 @@ export class GraphEngine {
     this.emit({ type: 'expanded', id, added, total });
     this.recomputeMetrics();
     // What arrived sets off from the node it came out of, so the opening reads as the node growing.
-    this.passThrough(id, arrived, this.selfTravel, true);
-    this.relayout({ travel: this.selfTravel, steady: id, emergeFrom: { node: id, ids: arrived } });
+    this.passThrough(id, arrived, this.passMs(), true);
+    this.relayout({ travel: this.passMs(), steady: id, emergeFrom: { node: id, ids: arrived } });
     this.notify('graph');
   }
 
@@ -1146,7 +1163,7 @@ export class GraphEngine {
     if (!result.removedNodes.length && !result.bundles.length) return;
 
     const into = this.positions.get(id);
-    const travel = this.selfTravel;
+    const travel = this.passMs();
     if (travel > 0 && into && result.removedNodes.length) {
       const inward = new Map(this.positions);
       for (const nodeId of result.removedNodes) {
@@ -1177,8 +1194,29 @@ export class GraphEngine {
     for (const passer of ids) this.passing.set(passer, { node, out, started, ms });
     setTimeout(() => {
       for (const passer of ids) if (this.passing.get(passer)?.started === started) this.passing.delete(passer);
-      if (!this.disposed) this.notify('graph');
+      if (this.disposed) return;
+      // Its lines took the shortest way while it moved; routed again now it has landed, they go back to
+      // their own sides — left alone, a tree's line stayed on the child's edge rather than its top.
+      this.routeEdges();
+      this.notify('graph');
     }, ms);
+  }
+
+  /** How long opening and closing take: {@link PASS_MS}, or nothing where the reader wants no motion. */
+  private passMs(): number {
+    return this.selfTravel > 0 ? PASS_MS : 0;
+  }
+
+  /**
+   * Whether a line to this card is left undrawn while it grows out of a node or shrinks back in.
+   *
+   * Where the layout works positions out — a tree — lines are pinned from a parent's bottom to a child's
+   * top, and a card moving across its parent's edge drags such a line into a loop whatever is done with
+   * its ends. There the line is drawn when the card lands. On a canvas, where nothing else moves, the
+   * line follows the card as a fold's does.
+   */
+  hidesLinesTo(id: string): boolean {
+    return this.passing.has(id) && this.layout?.derivesPositions !== false;
   }
 
   /**
@@ -1195,7 +1233,8 @@ export class GraphEngine {
     const passing = this.passing.get(id);
     if (!passing) return undefined;
     const t = Math.min(1, Math.max(0, (Date.now() - passing.started) / passing.ms));
-    const eased = 1 - (1 - t) ** 3;
+    // Eased in and out alike, so growing and shrinking are one movement walked both ways.
+    const eased = t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2;
     return passing.out ? eased : 1 - eased;
   }
 
@@ -1215,7 +1254,7 @@ export class GraphEngine {
       this.status = { ...this.status, budgetReached: false };
     }
     this.recomputeMetrics();
-    this.relayout({ travel: this.ownTravel(), steady: id });
+    this.relayout({ travel: this.layout?.derivesPositions !== false ? this.passMs() : 0, steady: id });
     this.notify('graph');
   }
 
@@ -2163,16 +2202,6 @@ export class GraphEngine {
     if (!before || !after) return null;
     const shift = { x: before.x - after.x, y: before.y - after.y };
     return shift.x || shift.y ? shift : null;
-  }
-
-  /**
-   * How long a rearrangement the graph made by itself takes: {@link selfTravel} where the layout works
-   * the positions out, and none where they are the data. Opening a node in a tree moves the cards
-   * already there to make room — that reads as one picture growing only if they travel — while on a
-   * canvas nothing the data did not say has moved.
-   */
-  private ownTravel(): number {
-    return this.layout?.derivesPositions !== false ? this.selfTravel : 0;
   }
 
   /** Whether a travel is running — for a caller that should wait for the arrangement to settle. */

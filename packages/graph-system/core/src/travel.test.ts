@@ -1910,4 +1910,52 @@ describe('opening and closing a node', () => {
     await vi.advanceTimersByTimeAsync(300);
     expect(engine.foldScale('c')).toBeLessThan(0.5);
   });
+
+  // Opened again while shrinking back in, cards stayed at the parent's centre, on top of it — under a
+  // layout that keeps a card's last place, as the canvas's does.
+  it('grows what is opened again mid-close back out to its place', async () => {
+    const keeps = () => ({
+      id: 'keeps',
+      init(input: { nodes: { id: string }[]; previous?: ReadonlyMap<string, { x: number; y: number }> }) {
+        return {
+          positions: new Map(
+            input.nodes.map((node, i) => [node.id, input.previous?.get(node.id) ?? { x: 0, y: (i + 1) * 300 }]),
+          ),
+        };
+      },
+    });
+    const registry = new PluginRegistry({ seeds: [seedOf(['a'])], expanders: [opensIntoChild], layouts: { keeps } });
+    const engine = new GraphEngine({
+      spec: { seeds: { source: 'test' }, layout: { type: 'keeps' } },
+      registry,
+      context,
+    });
+    engine.resize(800, 600);
+    await engine.start();
+    engine.setSelfTravel(400);
+    drew(engine);
+    await engine.expand('a');
+    await vi.advanceTimersByTimeAsync(1000);
+    const placed = engine.getPositions().get('c')!;
+    drew(engine);
+    engine.collapse('a');
+    await vi.advanceTimersByTimeAsync(200);
+    await engine.expand('a');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(engine.store.node('c')).toBeDefined();
+    expect(engine.getPositions().get('c')).toMatchObject({ x: placed.x, y: placed.y });
+  });
+
+  it('takes as long to close as to open', async () => {
+    const engine = await engineWithChild();
+    await engine.expand('a');
+    await vi.advanceTimersByTimeAsync(225);
+    const opening = engine.foldScale('c');
+    await vi.advanceTimersByTimeAsync(600);
+    drew(engine);
+    engine.collapse('a');
+    await vi.advanceTimersByTimeAsync(225);
+    // Halfway through each, the card is drawn at the same size.
+    expect(engine.foldScale('c')).toBeCloseTo(opening, 1);
+  });
 });

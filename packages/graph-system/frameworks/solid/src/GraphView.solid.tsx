@@ -1748,6 +1748,8 @@ export function GraphView(props: GraphViewProps) {
     return engine.drawnEdges().flatMap((edge) => {
       const route = geometry.get(edge.id);
       if (!route) return [];
+      // Drawn when the card lands, in a tree — see `hidesLinesTo`.
+      if (engine.hidesLinesTo(edge.source) || engine.hidesLinesTo(edge.target)) return [];
       const visual = edgeVisual(edge, resolveStyle(edge, props.edgeStyle, metrics), metrics);
       // The gap is the arrowhead's own length, in world units — the marker scales with stroke width,
       // so the stroke has to give up the same amount it takes.
