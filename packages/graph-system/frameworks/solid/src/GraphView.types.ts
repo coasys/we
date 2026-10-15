@@ -296,6 +296,12 @@ export interface GraphViewProps {
     recordId?: string;
     recordType?: string;
     /**
+     * The card is on the graph only because a card was opened into it — a note's blocks, opened out
+     * of the note. Its position is the opening's, not the canvas's: written as a placement, the card
+     * would join the canvas in its own right and stay behind when its parent closed.
+     */
+    opened?: boolean;
+    /**
      * What a folded card brought with it — every record hidden under it, at the place it now sits.
      *
      * Absent unless the card that was dragged is a fold holding something (see `folded`), so a

@@ -697,6 +697,7 @@ export function GraphView(props: GraphViewProps) {
             x: event.position.x,
             y: event.position.y,
             ...(isRecordAddress(at) && { recordId: at.id, recordType: at.type }),
+            ...(engine.expansion.heldOnlyByOpening(event.node.id) && { opened: true }),
             ...(carried.length ? { carried } : {}),
           });
           break;

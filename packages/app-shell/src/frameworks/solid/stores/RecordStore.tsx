@@ -436,6 +436,7 @@ export interface RecordStore {
       recordType?: string;
       x: number;
       y: number;
+      opened?: boolean;
       carried?: { recordId: string; recordType: string; x: number; y: number }[];
     },
   ) => Promise<void>;
@@ -1512,10 +1513,17 @@ export function RecordStoreProvider(props: ParentProps) {
       recordType?: string;
       x: number;
       y: number;
+      opened?: boolean;
       carried?: { recordId: string; recordType: string; x: number; y: number }[];
     },
   ): Promise<void> {
     if (!payload?.recordId || !payload.recordType) return;
+    /*
+      A card only an opening put here — a note's blocks, opened out of it — is moved and not written.
+      A placement is the canvas's membership, so writing one made the card a member in its own right:
+      it stayed on the canvas when the note closed, cut off from it, and came back on every load.
+    */
+    if (payload.opened) return;
     const cards = [
       { recordId: payload.recordId, recordType: payload.recordType, x: payload.x, y: payload.y },
       ...(payload.carried ?? []).filter((card) => card?.recordId && card.recordType),
