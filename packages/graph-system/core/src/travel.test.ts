@@ -1893,21 +1893,21 @@ describe('opening and closing a node', () => {
     expect(engine.getPositions().get('c')?.y).toBe(going);
   });
 
-  // Closing, cards passed over their parent and the lines between them bent round the overlap.
-  it('fades what comes out of a node in, and what goes back in out', async () => {
+  // Closing at full size, cards passed over their parent and the lines between them bent round the
+  // overlap. They grow out of it and shrink back into it, as a fold's cards do.
+  it('grows what comes out of a node from it, and shrinks what goes back in into it', async () => {
     const engine = await engineWithChild();
     await engine.expand('a');
     await vi.advanceTimersByTimeAsync(100);
-    const opening = engine.passingOpacity('c')!;
+    const opening = engine.foldScale('c');
     expect(opening).toBeGreaterThan(0);
     expect(opening).toBeLessThan(1);
-    expect(engine.visualOf(engine.store.node('c')!).opacity).toBeCloseTo(opening, 5);
     await vi.advanceTimersByTimeAsync(600);
-    expect(engine.passingOpacity('c')).toBeUndefined();
+    expect(engine.foldScale('c')).toBe(1);
 
     drew(engine);
     engine.collapse('a');
     await vi.advanceTimersByTimeAsync(300);
-    expect(engine.passingOpacity('c')!).toBeLessThan(0.5);
+    expect(engine.foldScale('c')).toBeLessThan(0.5);
   });
 });

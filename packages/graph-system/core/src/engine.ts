@@ -1165,34 +1165,38 @@ export class GraphEngine {
   }
 
   /**
-   * Cards travelling out of (`out`) or back into a node, by the node — drawn under it and faded with
-   * the travel. See {@link visualOf}.
+   * Cards travelling out of (`out`) or back into a node, by the node, and when they set off — drawn
+   * under it, and shrunk into it or grown out of it as a fold's cards are. See {@link passingScale}.
    */
-  private readonly passing = new Map<string, { node: string; out: boolean }>();
+  private readonly passing = new Map<string, { node: string; out: boolean; started: number; ms: number }>();
 
-  /** Draw these under `node`, fading in or out, for as long as their travel takes. */
+  /** Draw these under `node`, growing out of it or shrinking into it, for as long as their travel takes. */
   private passThrough(node: string, ids: readonly string[], ms: number, out: boolean): void {
     if (!ids.length || ms <= 0) return;
-    for (const passer of ids) this.passing.set(passer, { node, out });
+    const started = Date.now();
+    for (const passer of ids) this.passing.set(passer, { node, out, started, ms });
     setTimeout(() => {
-      for (const passer of ids) if (this.passing.get(passer)?.node === node) this.passing.delete(passer);
+      for (const passer of ids) if (this.passing.get(passer)?.started === started) this.passing.delete(passer);
       if (!this.disposed) this.notify('graph');
     }, ms);
   }
 
   /**
-   * How visible a card coming out of a node, or going back in, is this frame — rising with the travel
-   * as it comes out, falling as it goes in. Undefined for a card doing neither.
+   * How much of a card coming out of a node, or going back in, is drawn this frame — 0 at the node, 1
+   * at full size — with the fold's ease, so opening and folding move alike.
    *
-   * Faded rather than only moved: as it closes, a card passes over its parent, and the lines between the
-   * two are routed around boxes that overlap — they bent round each card's edge on the way in. Nearly
-   * transparent by the time they meet, neither the overlap nor the bend reads.
+   * Shrunk rather than faded, as a fold's cards are: moved into its parent at full size, a card passed
+   * over it as a box, and its lines bent round the overlap. One shrinking to a point at the parent's
+   * centre never covers it, and its lines meet its edge all the way in. On its own clock rather than
+   * the layout travel's, which starts again whenever anything re-runs the layout mid-way — a scale
+   * tied to it jumped back and flashed.
    */
-  passingOpacity(id: string): number | undefined {
+  private passingScale(id: string): number | undefined {
     const passing = this.passing.get(id);
-    if (!passing || !this.travel.running) return undefined;
-    const t = Math.min(1, Math.max(0, this.travel.progress));
-    return passing.out ? t : 1 - t;
+    if (!passing) return undefined;
+    const t = Math.min(1, Math.max(0, (Date.now() - passing.started) / passing.ms));
+    const eased = 1 - (1 - t) ** 3;
+    return passing.out ? eased : 1 - eased;
   }
 
   private finishCollapse(id: string, result: CollapseResult): void {
@@ -1447,7 +1451,7 @@ export class GraphEngine {
    */
   foldScale(id: string): number {
     const anim = this.foldAnim.get(id);
-    if (!anim) return 1;
+    if (!anim) return this.passingScale(id) ?? 1;
     return anim.out ? 1 - anim.at : anim.at;
   }
 
@@ -2432,13 +2436,8 @@ export class GraphEngine {
     */
     const passing = this.passing.get(node.id);
     const parentNode = passing ? this.store.node(passing.node) : undefined;
-    const fade = this.passingOpacity(node.id);
     const visual = parentNode
-      ? {
-          ...resolved,
-          z: (this.resolvedVisual(parentNode, this.metrics).z ?? 0) - 1,
-          ...(fade !== undefined ? { opacity: (resolved.opacity ?? 1) * fade } : {}),
-        }
+      ? { ...resolved, z: (this.resolvedVisual(parentNode, this.metrics).z ?? 0) - 1 }
       : resolved;
     // Recorded here rather than in `resolvedVisual`, because this is the drawing path: the hit area
     // resolves from the same blend without metrics, and is not what anybody saw.
@@ -2675,6 +2674,14 @@ export class GraphEngine {
   ): { anchors: EdgeAnchors; waypoints: EdgeWaypoint[]; bend: number } {
     const data = { ...edge.data, ...patch };
     const ignore = style.ignoreRoute === true;
+    /*
+      A line to a card coming out of a node or going back in takes the shortest way while it moves. Its
+      pinned sides are for where the card will stand: held while the card passes the parent's own edge,
+      a tree's line from the parent's bottom to the child's top looped back up into it.
+    */
+    if (this.passing.has(edge.source) || this.passing.has(edge.target)) {
+      return { anchors: {}, waypoints: [], bend: 0 };
+    }
     return {
       anchors: anchorsOf(ignore ? undefined : data, { source: style.sourceAnchor, target: style.targetAnchor }),
       waypoints: waypointsOf(data),
