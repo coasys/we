@@ -521,6 +521,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     moveCardToColumn: action('content'),
     approveTaskMove: action('content'),
     withdrawTaskMove: action('content'),
+    archivedFlows: state('content'),
+    setFlowArchived: action('space-settings'),
     addTaskToColumn: action('content'),
 
     // ── signals ──
@@ -1269,6 +1271,52 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setSpeed: ambient('view-state'),
     setLoop: ambient('view-state'),
     configure: ambient('view-state'),
+  },
+
+  /*
+    A flow's records and moves are the community's content, so reading them and asking for a move are
+    `content`. Writing a flow — saving, deleting — changes the space's rules for everybody, so it is
+    `space-settings`, and the store refuses it from anybody who does not administer the space anyway.
+    Everything that edits the draft is ambient view-state: nothing leaves this screen until a save.
+  */
+  flowStore: {
+    available: state('content'),
+    capabilities: state('content'),
+    canEdit: state('content'),
+    flows: state('content'),
+    startable: state('content'),
+    open: state('content'),
+    draft: state('view-state'),
+    recordFlows: state('content'),
+    refreshFlows: ambient('content'),
+    openFlow: ambient('view-state'),
+    closeFlow: ambient('view-state'),
+    loadHistory: ambient('content'),
+    startFlow: action('content'),
+    moveRecord: action('content'),
+    withdrawRecord: action('content'),
+    newFlow: ambient('view-state'),
+    editFlow: ambient('view-state'),
+    cancelDraft: ambient('view-state'),
+    saveDraft: action('space-settings'),
+    deleteFlow: destructive('space-settings'),
+    setDraftLabel: ambient('view-state'),
+    setDraftHint: ambient('view-state'),
+    setDraftSubjects: ambient('view-state'),
+    addStep: ambient('view-state'),
+    removeStep: ambient('view-state'),
+    moveStep: ambient('view-state'),
+    renameStep: ambient('view-state'),
+    setStepHint: ambient('view-state'),
+    updateStep: ambient('view-state'),
+    addBranch: ambient('view-state'),
+    setBranchEnd: ambient('view-state'),
+    setRule: ambient('view-state'),
+    addException: ambient('view-state'),
+    removeException: ambient('view-state'),
+    setApprovals: ambient('view-state'),
+    addGuard: ambient('view-state'),
+    removeGuard: ambient('view-state'),
   },
 
   appStore: {

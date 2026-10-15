@@ -65,7 +65,14 @@ export {
 export { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './languageModelPort';
 export { connectToLocalExecutor, createLocalAd4mConnector, type LocalExecutorConnection } from './localExecutor';
 export { createAd4mTranscriptionPort } from './transcriptionAdapter';
-export { createAd4mFlowPort, FLOW_NAMESPACE } from './flowPort';
+export {
+  AD4M_FLOW_CAPABILITIES,
+  createAd4mFlowPort,
+  FLOW_NAMESPACE,
+  fromShaclFlow,
+  isEditable,
+  toShaclFlow,
+} from './flowPort';
 export {
   createAd4mInterpretationPort,
   runtimeSupportsAutoProcessing,

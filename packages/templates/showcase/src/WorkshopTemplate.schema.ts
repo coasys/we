@@ -96,6 +96,7 @@ import {
   newNoteModal,
   newThingChooser,
 } from './WorkshopCards.ts';
+import { FLOWS_LOCALS, flowsPage, flowsSection } from './WorkshopFlows.ts';
 import {
   CANVAS_FILL,
   FOLD_FROM_GRAPH,
@@ -298,7 +299,7 @@ const openLiveCall: SchemaProp = pageWithCall("''");
  * word covers equally well. `BoardsView` keeps its name: it lists board records, has a picker, and
  * has no canvas beside it. See `docs/architecture/boards.md`.
  */
-const ROUTE = { canvas: 'canvas', kanban: 'kanban', calendar: 'calendar' } as const;
+const ROUTE = { canvas: 'canvas', kanban: 'kanban', calendar: 'calendar', flows: 'flows' } as const;
 
 const NAV = [
   { segment: ROUTE.canvas, icon: 'graph', label: 'Canvas' },
@@ -306,6 +307,9 @@ const NAV = [
   // already used this one, so the strip and the page it led to disagreed about what was there.
   { segment: ROUTE.kanban, icon: 'kanban', label: 'Kanban' },
   { segment: ROUTE.calendar, icon: 'calendar', label: 'Calendar' },
+  // The space's flows and what is going through them — see `WorkshopFlows.ts`. Named for what it
+  // lists, unlike its neighbours: a flow has no arrangement of its own to name the page after.
+  { segment: ROUTE.flows, icon: 'flow-arrow', label: 'Flows' },
 ];
 
 /**
@@ -2329,6 +2333,7 @@ const inspectorPanel: SchemaNode = {
     connectionsOpen: { type: 'boolean', initial: false, persist: 'inspector.connectionsSection' },
     connectsOpen: { type: 'boolean', initial: false, persist: 'inspector.connectsSection' },
     peopleOpen: { type: 'boolean', initial: false, persist: 'inspector.peopleSection' },
+    flowsOpen: { type: 'boolean', initial: false, persist: 'inspector.flowsSection' },
     reactionsOpen: { type: 'boolean', initial: false, persist: 'inspector.reactionsSection' },
     discussionOpen: { type: 'boolean', initial: false, persist: 'inspector.discussionSection' },
   },
@@ -2827,6 +2832,12 @@ const inspectorPanel: SchemaNode = {
                     // After the record's own fields and before its connections: who is on this record
                     // is about the record, and connections are about other records.
                     peopleSection,
+                    // Beside who is on it: which flows it is going through is also about this record.
+                    flowsSection({
+                      type: CARD_TYPE,
+                      open: { field: 'flowsOpen' },
+                      flowsPath: { $: '`${spaceStore.spacePath}/flows`' },
+                    }),
                     // After the disclosure: that is about this record's own fields, and connections
                     // are about other records.
                     connectionsSection,
@@ -4518,6 +4529,8 @@ const kanbanRoute: RouteSchema = {
                             there is something to open, which is what a preview owes a reader.
                           */
                       social: true,
+                      // A chip per flow the task is going through, beside the board's own.
+                      flows: true,
                       // Put away what extraction made and nobody has kept — shared with the canvas and calendar.
                       suggestions: true,
                       /*
@@ -5144,6 +5157,16 @@ const eventList: SchemaNode = {
  * but position 0. It is a `filter()` over the month's own hoisted query rather than a `$query` per
  * cell: one subscription sifted 42 times, against 42 subscriptions for rows already in hand.
  */
+/**
+ * Every flow in the space, the records going through each, and the editor. The page is in
+ * `WorkshopFlows.ts`; this gives it the route's padding under the pinned chrome.
+ */
+const flowsRoute: RouteSchema = {
+  path: '/flows',
+  $localState: { ...FLOWS_LOCALS },
+  ...flowsPage({ ...ROUTE_BAND }),
+};
+
 const calendarRoute: RouteSchema = {
   path: '/calendar',
   type: 'Column',
@@ -5809,6 +5832,7 @@ export const workshopTemplate: TemplateSchema = {
     canvasRoute,
     kanbanRoute,
     calendarRoute,
+    flowsRoute,
     /*
       An address this template has no screen for goes to the canvas, rather than saying so.
 

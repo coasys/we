@@ -95,7 +95,7 @@ import {
   routableSections,
   viewSettings,
 } from '@shared/viewResolution';
-import type { AgentProfileSummary, DatasetRef, FlowSnapshot } from '@we/backend-shared';
+import type { AgentProfileSummary, DatasetRef, FlowView } from '@we/backend-shared';
 import { displayName, trace } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
@@ -935,6 +935,13 @@ export interface SpaceStore {
   approveTaskMove: (taskId: string) => Promise<void>;
   /** Take back this agent's own vote on the move a task is waiting on. Never touches anybody else's. */
   withdrawTaskMove: (taskId: string) => Promise<void>;
+  /**
+   * The flows this space has put away, by name (`Space.archivedFlows`). An archived flow keeps its
+   * records, which still show and can still finish, but is not offered for starting on anything new.
+   */
+  archivedFlows: Accessor<string[]>;
+  /** Put a flow away, or bring it back. Only whoever administers the space; rejects otherwise. */
+  setFlowArchived: (name: string, archived: boolean) => Promise<void>;
   /**
    * Withdraw a state from use, or bring it back. Never touches the work sitting in it. By slug, which
    * is what a task and a screen both hold.
@@ -3270,14 +3277,12 @@ export function SpaceStoreProvider(props: ParentProps) {
   const taskFlowDefinition = createMemo(() => compileTaskFlow(taskFlowRules()));
   const taskFlowEnabled = (): boolean =>
     Boolean(taskFlowDefinition() && session.backendPorts()?.flows && datasetStore.isWeSpace());
-  const [taskFlowSnapshot, setTaskFlowSnapshot] = createSignal<FlowSnapshot | null>(null);
+  const [taskFlowView, setTaskFlowView] = createSignal<FlowView | null>(null);
 
   const taskFlow = createTaskFlowActions({
     dataset: () => datasetStore.currentDataset()?.handle,
     port: () => (taskFlowEnabled() ? session.backendPorts()?.flows : undefined),
     states: () => taskFlowRules(),
-    snapshot: () => taskFlowSnapshot(),
-    me: () => session.me()?.did,
   });
 
   /*
@@ -3299,7 +3304,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   });
   createEffect(() => {
     const key = taskFlowKey();
-    setTaskFlowSnapshot(null);
+    setTaskFlowView(null);
     if (!key) return;
     const port = session.backendPorts()?.flows;
     const dataset = datasetStore.currentDataset()?.handle;
@@ -3322,8 +3327,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       }
       if (cancelled) return;
       try {
-        const unsubscribe = await port.watch(dataset, TASK_FLOW, (snapshot) => {
-          if (!cancelled) setTaskFlowSnapshot(snapshot);
+        const unsubscribe = await port.watch(dataset, TASK_FLOW, (view) => {
+          if (!cancelled) setTaskFlowView(view);
         });
         if (cancelled) unsubscribe();
         else stop = unsubscribe;
@@ -3333,16 +3338,16 @@ export function SpaceStoreProvider(props: ParentProps) {
     })();
   });
 
-  // What the board draws from — the snapshot and the rules, together, or nothing.
+  // What the board draws from — the view and the rules, together, or nothing.
   createEffect(() => {
-    const snapshot = taskFlowSnapshot();
+    const view = taskFlowView();
     const rules = Object.fromEntries(
       taskFlowRules().map((rule) => [
         rule.slug,
         { approvals: approvalsOf(rule), approverKind: rule.approverKind ?? '' },
       ]),
     );
-    taskFlowLive.set(taskFlowKey() && snapshot ? { snapshot, rules } : null);
+    taskFlowLive.set(taskFlowKey() && view ? { view, rules } : null);
   });
   onCleanup(() => taskFlowLive.set(null));
 
@@ -3381,11 +3386,49 @@ export function SpaceStoreProvider(props: ParentProps) {
         // Not a failure: the vote is usually counted after the call gives up waiting, and the board
         // moves the card when it is.
         toastService.info('The node is still counting your approval — the card will move when it has');
+      } else if (outcome === 'unmet') {
+        toastService.error('Not yet — what that column asks for is not there');
+      } else if (outcome === 'not-allowed') {
+        toastService.error('That card cannot move there from where it is');
       }
     } catch (error) {
       console.error('SpaceStore: could not agree with that move', error);
       toastService.error('Could not agree with that move');
     }
+  }
+
+  const archivedFlows = createMemo<string[]>(() => parseIdList(currentSpace()?.archivedFlows), [], {
+    equals: (a, b) => a.join('\u0000') === b.join('\u0000'),
+  });
+
+  /**
+   * Put a flow away or bring it back — persisted on the space, cached, and republished the way
+   * `writeEnabledViews` does it, for the reason it gives.
+   */
+  async function setFlowArchived(name: string, archived: boolean): Promise<void> {
+    const ds = datasetStore.currentDataset();
+    const space = currentSpace();
+    if (!ds || !space) return;
+    if (!canAdministerCurrentSpace()) throw new Error('Only whoever administers this space can archive its flows');
+    const current = parseIdList(space.archivedFlows);
+    const next = archived ? [...new Set([...current, name])] : current.filter((n) => n !== name);
+    if (next.join('\u0000') === current.join('\u0000')) return;
+    const archivedFlowsJson = next.length ? JSON.stringify(next) : '';
+    try {
+      await Space.update(ds.handle, space.id, { archivedFlows: archivedFlowsJson });
+    } catch (error) {
+      console.error('SpaceStore: could not persist archivedFlows', error);
+      toastService.error('Could not save this change for the space.');
+      throw error;
+    }
+    updateSpaceInCache(ds, { archivedFlows: archivedFlowsJson } as never);
+    setCurrentSpace((prev) =>
+      prev
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
+            archivedFlows: archivedFlowsJson,
+          }) as Space)
+        : prev,
+    );
   }
 
   /** Take back this agent's vote on the move a task is waiting on. */
@@ -5612,6 +5655,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateTaskState,
     setTaskStateRetired,
     taskFlowEnabled,
+    archivedFlows,
+    setFlowArchived,
     approveTaskMove,
     withdrawTaskMove,
     reorderTaskStates,

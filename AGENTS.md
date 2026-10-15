@@ -211,6 +211,12 @@ never delete its cards, and why the link state can be inconsistent after a parti
 still renders one answer. The same doc records where new per-column state goes, so the entity does
 not accrete a scalar per feature.
 
+**Before changing anything about flows, read docs/architecture/flows.md.** `FlowPort` speaks in
+rules and moves — a state's `requires`, `move` answering moved, waiting, refused, stalled or pending —
+and never in how a backend enforces them: runs, proposals and an entry state stay in the AD4M
+adapter, and where backends differ they say so in `FlowPort.capabilities`. A flow is edited as lanes
+that are read back out of the stored definition, never stored themselves.
+
 ---
 
 ## Contribution Surfaces (codebase work — not for JSON schema authoring)
@@ -2672,6 +2678,7 @@ Space extends WeNode:
   - autoInterpret: boolean = true [we://auto_interpret]
   - threadMode: string = 'fractal' [we://thread_mode]
   - moduleSettings: string [we://module_settings]
+  - archivedFlows: string [we://archived_flows]
   Relations:
   - location: HasOne → LocationBlock [we://location]
   - taskStates: HasMany → TaskState [we://task_state_order]
@@ -2966,6 +2973,47 @@ EditorStore:
   - toggleThemeEditing(): enters or exits theme editing — what a single button in chrome should call
   - sendMessage(text: string): sends a message to the assistant. Patches it proposes are applied to the template and land in undo history; the reply streams into streamingContent
   - clearHistory(): deletes the active session's messages
+
+FlowStore:
+- State:
+  - available: boolean — this space has flows at all: its backend offers them and it is a WE space. Gate a Flows route or a "Start flow" control on it
+  - capabilities: { requirements, enforcement, sealedEvidence, contention } | null — what this backend can do with flows. `requirements` lists the kinds of rule it enforces ('approvals', 'guard'); `enforcement` is 'server' (one authority applies every rule) or 'peers' (every member's software applies them, so a member running other software can write past one — say so beside a rule); `contention` is 'stall' when two moves out of one step both agreed leave a record stuck until somebody withdraws, or 'first' when the earlier wins
+  - canEdit: boolean — the viewer may save, delete and archive flows here: whoever administers the space
+  - flows: { name, label, editable, records, managedBy, archived }[] — every flow in the space, archived ones included. `editable` is false for one written by something that uses more than this editor shows, and for the task-state flow; `managedBy` is 'task-states' for the flow the board's task states write, which is edited in the space's settings and moved on the board, never here; `records` is how many records are going through it
+  - startable: { name, label, subjects }[] — flows a record can be put through: not archived, not written by something else. `subjects` are the entity names a flow is for, empty for any record — filter with `card.__subjectClass in flow.subjects || !count(flow.subjects)`
+  - open: { name, label, hint, subjects, rule, fits, editable, managedBy, archived, lanes, exceptions, steps, records, history } | null — the flow opened with openFlow. `lanes` is the flow as a main line and branches: each { index, main, leaves, leavesLabel, rejoins, rejoinsLabel, ends, steps }, every step { name, label, final, approvals, approverKind, approverLabel, guards, requires, hint }, `requires` being each thing entering it takes as a short phrase. `rule` is 'next', 'next-and-back' or 'any'; `exceptions` the moves nothing else covers, { from, to, fromLabel, toLabel, name }. `records` are what is going through it, newest first: { subject, title, startedAt, state, stateLabel, stalled, waiting, walk, next }, `startedAt` an ISO date for a we-timestamp (empty when unknown), `walk` its path as { name, label, at } with `at` 'done', 'current' or 'ahead' — a stepper — and `next` where it may be asked to go, `waiting` each move asked for { to, toLabel, voters, needs, note, mine }. `recordsLoaded` says the records have been read — gate anything offered only for a flow with none on it. `history[subject]` is filled by loadHistory: { from, to, fromLabel, toLabel, voters, at, when, evidence, note }[], `when` being `at` as an ISO date
+  - draft: { …the shape of open’s lanes, label, isNew, dirty, problems } | null — the flow being written, after newFlow or editFlow. `problems` are sentences saying what saving would be refused for; saveDraft refuses while there are any, so show them beside the button
+  - recordFlows: Record<recordId, { flow, label, state, stateLabel, waiting, stalled }[]> — by record, every startable flow it is going through and where it stands: what a chip on a card shows. Read as `flowStore.recordFlows[card.id]`, which is undefined for a record in none
+- Actions:
+  - refreshFlows(): asks the backend for the flow list again — after something another member did
+  - openFlow(name: string): opens a flow — its lanes and the records going through it fill `open`
+  - closeFlow(): closes the flow on screen
+  - loadHistory(subject: string): reads the moves a record made in the open flow into open.history[subject] — for an expanded row
+  - startFlow(flow: string, recordId: string): puts a record through a flow, at its first step. Anybody may
+  - moveRecord(flow: string, recordId: string, to: string, note?: string): asks for a record to move — the same call whether the viewer is first to ask or agreeing with somebody who did. Resolves with 'moved', 'waiting', 'not-allowed', 'unmet', 'stalled' or 'pending', and says the unhappy ones in a toast itself. Refused for the task-state flow, which moves on the board
+  - withdrawRecord(flow: string, recordId: string): takes back the viewer's own asks on a record's waiting moves, never anybody else's, never a move that happened
+  - newFlow(preset: 'blank' | 'review' | 'proposal', label: string, subjects?: string[]): starts writing a new flow from a preset into `draft`. Nothing is written into the space until saveDraft
+  - editFlow(): starts editing the open flow, when it is `editable`
+  - cancelDraft(): throws the draft away
+  - saveDraft(): writes the draft into the space and opens it. Only whoever administers the space; rejects while draft.problems has anything, and on failure, so an onSuccess after it means it saved
+  - deleteFlow(name: string): takes a flow out of the space. Refused while any record is going through it — offer spaceStore.setFlowArchived instead then
+  - setDraftLabel(label: string): names a new flow. A saved flow keeps its name
+  - setDraftHint(hint: string): one sentence on what the flow is about
+  - setDraftSubjects(subjects: string[]): which kinds of record the flow is for, by entity name; empty for any record
+  - addStep(lane: number, label: string, after?: string): a new step on a lane (0 is the main line), after the step named, or first. Refused, with a toast, for a name already used
+  - removeStep(name: string): takes a step out, and every move naming it. Refused while a branch leaves from or rejoins at it
+  - moveStep(name: string, by: number): moves a step one place along its lane: -1 earlier, 1 later
+  - renameStep(name: string, label: string): renames a step everywhere it is named
+  - setStepHint(name: string, hint: string): one sentence on what being at that step means
+  - updateStep(name: string, changes: { label?, hint?, approvals?, kind? }): a step's name, hint and approvals at once — what a step's edit form saves. `kind` is the involvement kind whose holders' approval counts, '' for anybody's. All or nothing: a name already used refuses the lot
+  - addBranch(from: string, label: string, rejoins?: string): a new branch leaving the step `from`, with one step on it, ending there unless `rejoins` names where it comes back
+  - setBranchEnd(lane: number, rejoins: string): where a branch comes back, or '' for a branch that ends
+  - setRule(rule: 'next' | 'next-and-back' | 'any'): how steps move along a lane — on only, on and back, or anywhere to anywhere (no branches then)
+  - addException(from: string, to: string): a move nothing else covers
+  - removeException(from: string, to: string): takes such a move away
+  - setApprovals(name: string, count: number, kind?: string): how many people must agree before a record enters the step, and whose agreement counts — an involvement kind's slug, or '' for anybody's. 1 and '' is a plain ask
+  - addGuard(name: string, entity: string, tie?: string, min?: number): something that must be there before a record enters the step — at least `min` records of `entity`, held by the record through the relation `tie` ('responses' for what was made in response to it), or anywhere when `tie` is ''
+  - removeGuard(name: string, index: number): takes away the step's guard at that position in its `guards`
 
 InterpretationStore:
 - State:
@@ -3364,6 +3412,7 @@ SpaceStore:
   - roles: Record<name, id> — the records this space names by role, e.g. spaceStore.roles.canvas is the space's canvas. Written by the space's starter at creation. A role can be absent — a space can switch template and a template must never assume what another set up — so guard every read
   - extractionTargets: string[] — the models a NEW collection here starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a new conversation begins with, and each collection then holds its own list, which its participants change (modules.transcribe.extractionFor[id].targets). A default, copied when a collection is made. Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings
   - taskFlowEnabled: boolean — this space’s task states ask for agreement: some state needs more than one approval, or names whose approval counts. Where true, a card dragged into such a state waits instead of moving, and arrangedBoard(…).flow[card.id] describes what it is waiting on. Gate an explanation of the waiting on it; the board needs nothing else
+  - archivedFlows: string[] — the names of the flows this space has put away. An archived flow keeps its records, which still show and can still finish, but is not offered for starting on anything new; flowStore.flows marks each one `archived`
   - canAdministerCurrentSpace: boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space
 - Actions:
   - createSpace(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, linkLanguageTemplate?): creates a new space with full setup. linkLanguageTemplate is an address from linkLanguageTemplateOptions and only matters for a shared space; empty uses the backend's default
@@ -3418,6 +3467,7 @@ SpaceStore:
   - updateTaskState(slug: string, updates: { name?, icon?, color?, semantic?, approvals?, approverKind? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. `approvals` (a whole number, 1–20) and `approverKind` (an involvement kind’s slug, or empty) set what agreement the state asks for — the first state that asks for any turns the space’s states into a flow, see taskFlowEnabled. By slug, which is what a task and a screen both hold
   - approveTaskMove(taskId: string): agrees with the move a task is waiting on — the same as dragging the card there yourself, so it counts toward the state’s approvals when the agent is one whose approval counts. Offer it where arrangedBoard(…).flow[card.id].canApprove
   - withdrawTaskMove(taskId: string): takes back this agent’s own vote on the move a task is waiting on, never anybody else’s. Offer it where arrangedBoard(…).flow[card.id].mine
+  - setFlowArchived(name: string, archived: boolean): puts a flow away, or brings it back. Only whoever administers the space; rejects otherwise. Archiving never touches the records going through the flow — offer it in place of deleting one that has any
   - setTaskStateRetired(slug: string, retired: boolean): withdraws a state from use, or brings it back. Never touches the work sitting in it — a task names its state by slug, so deleting the state would leave the work holding a word nothing defines. The same decision setSignalTypeRetired makes. By slug, which is what a task and a screen both hold
   - reorderTaskStates(orderedSlugs: string[]): sets the order this community reads its states in — which is the order of a board’s columns. An ordered relation rather than a number on each state, so two people reordering at once converge instead of one write discarding the other. A state the order does not mention still appears, after the ones it does. Slugs, which is what a screen holds. Key the rows by slug and pair with we-sortable’s onReorder, passing { $: "arg.detail" }
   - setInvolvement(nodeId: string, agent: string, kind: string, on: boolean): puts somebody on a record as a kind one member says about another — assigning a task, asking for a review — or takes them off. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick it shows and a double press cannot undo itself. Every copy of the pair goes on removal. A reflexive kind is routed to respondTo, and refused for anybody but the agent it is about. Pair with a DropdownMenu of toggle entries: `onSelect: { $action: "spaceStore.setInvolvement", args: [{ $: "card.id" }, { $: "arg.id" }, "assignee", { $: "!arg.checked" }] }`

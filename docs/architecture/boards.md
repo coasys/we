@@ -317,32 +317,34 @@ A task state can ask for agreement before work enters it: `TaskState.approvals` 
 people) and `TaskState.approverKind` (an involvement kind whose holders on the task are the only ones
 who count — its reviewers, say). The first state that asks for any turns the space's states into a
 **flow**, and the rest of this section is what changes when it does. The mechanism is the backend's
-flow port (`FlowPort` in `@we/backend-shared`); what task states mean as a flow is
-`packages/app-shell/src/shared/taskFlow.ts`.
+flow port (`FlowPort` in `@we/backend-shared`; see [flows.md](./flows.md)); what task states mean as a
+flow is `packages/app-shell/src/shared/taskFlow.ts`.
 
 **A drop asks rather than writes.** Into a state that asks for nothing, it moves the card as before,
 drawn ahead of the round trip. Into a state that asks for agreement, nothing is written and nothing
 is drawn ahead: the card stays in its column and gains a line saying where it asked to go, how many
 of the approvals it has and whose they are. Somebody whose approval would count sees Approve;
-somebody who asked sees Withdraw. When enough people have asked, the move happens on every device,
-because each derives the state from the votes it holds.
+somebody who asked sees Withdraw. When enough people have asked, the move happens on every device.
 
-**State is read from the run, where there is one.** Each task gets a run the first time anybody moves
-it. `arrangedBoard` reads a card's state from its run and falls back to `status` for a task nobody has
-moved since the space began asking. `status` goes on being written, by whoever's action made a move,
-so every surface that reads it keeps working without knowing flows exist.
+**State is read from the flow, where it can say.** A task enters the flow the first time anybody moves
+it. `arrangedBoard` reads a card's state from the flow and falls back to `status` for a task the flow
+has not seen, or whose state the backend cannot say yet (`FlowItem.state` is `null`). `status` goes on
+being written, by whoever's action made a move, so every surface that reads it keeps working without
+knowing flows exist.
 
-**Every run starts in an entry state no board shows**, and its first move enters it into the state the
-task already holds, on one vote from anybody. A run starts on a task's first move, and by then the task
-already has a state, so without the entry every existing task would restart in the first column. A
-task made straight into a column that asks for agreement starts in the first column that does not,
-and asks.
+**A task enters the flow where it already stands.** By the time anybody moves a task it already has a
+state, so every move passes it as `from`, and a task the flow has not seen enters there rather than
+restarting in the first column. How a backend does that is its own: the AD4M adapter keeps an entry
+state no board shows and places the run out of it. A task made straight into a column that asks for
+agreement starts in the first column that does not, and asks.
 
-**What this does and does not protect.** A move nobody agreed to is one nobody's board shows. But the
-rules are data in the space like everything else, and a member with a modified client can still
-rewrite them or write `status` directly — which other surfaces would then show. This is a board a
-group moves forward together, not enforcement. Making a space's rules trustworthy against its own
-members is the backend's job and is tracked there.
+**What this does and does not protect.** A move nobody agreed to is one nobody's board shows. How far
+a rule holds beyond that is the backend's to say, and it says so in `FlowCapabilities.enforcement`.
+On a peer-to-peer backend (`peers`) the rules are data in the space like everything else, and a member
+with a modified client can still rewrite them or write `status` directly — which other surfaces would
+then show: a board a group moves forward together, not enforcement. A backend with one authority
+(`server`) can refuse such a write outright. Either way, writing `status` past the flow is something
+every surface that reads `status` has to live with until it moves through the flow too.
 
 **Not built yet:** other writers of `status` — the inspector, extraction's suggestions — still write
 it directly in a space with a flow, so such an edit shows everywhere except the board. Routing them

@@ -4,6 +4,7 @@ import {
   ClockStoreProvider,
   DatasetStoreProvider,
   EditorStoreProvider,
+  FlowStoreProvider,
   InterpretationStoreProvider,
   PresenceStoreProvider,
   ProfileStoreProvider,
@@ -67,7 +68,11 @@ export default function StoreProvider(props: ParentProps) {
                                       outlive the panel that started a pass — a call bar is still
                                       showing an extraction after the transcript panel closes. */}
                                     <InterpretationStoreProvider>
-                                      <EditorHostAdapter>{props.children}</EditorHostAdapter>
+                                      {/* Beneath the space store, whose task states, involvement kinds,
+                                        archive list and administrator it reads. */}
+                                      <FlowStoreProvider>
+                                        <EditorHostAdapter>{props.children}</EditorHostAdapter>
+                                      </FlowStoreProvider>
                                     </InterpretationStoreProvider>
                                   </PresenceStoreProvider>
                                 </SpaceStoreProvider>
