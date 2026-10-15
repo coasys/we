@@ -828,6 +828,18 @@
   The one part of a card that takes the pointer. The rest is inert so that a press anywhere falls through
   to the canvas beneath and picks the card up; a press on the badge stops at the badge.
 */
+/*
+  A card's caret, where it is the card's only control — see `caretInCorner`. Inside the card's top-right
+  corner, above its content, taking its own presses like the badge below.
+*/
+.we-graph__corner-caret {
+  position: absolute;
+  top: var(--we-space-100);
+  right: var(--we-space-100);
+  z-index: 2;
+  pointer-events: auto;
+}
+
 .we-graph__badge {
   position: absolute;
   right: var(--we-space-300);

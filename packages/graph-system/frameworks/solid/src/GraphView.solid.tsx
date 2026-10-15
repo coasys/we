@@ -2158,6 +2158,21 @@ export function GraphView(props: GraphViewProps) {
     return { mode: null };
   };
 
+  /**
+   * Whether a card's caret sits in its own corner rather than in the bar above it.
+   *
+   * The bar is for a selected card's actions, and is the right place while there are several. With
+   * nothing in it but the caret — a map whose cards only open and close — it was a toolbar floating
+   * over each card to hold one disclosure, and only once the card was selected. In the corner the
+   * caret is on every card that has something inside, where the eye already is.
+   */
+  const caretInCorner = (entry: NodeEntry): boolean =>
+    // A card has a corner; a dot does not, and keeps its caret in the bar.
+    entry.visual.shape === 'card' &&
+    caretSays(entry).mode !== null &&
+    actionsFor(entry.node).length === 0 &&
+    !props.carry;
+
   /** Open or close a card from its caret, and tell the interface so it can keep the open set. */
   function toggleOpen(entry: NodeEntry, open: boolean): void {
     const at = parseAddress(entry.node.id);
@@ -3983,6 +3998,55 @@ export function GraphView(props: GraphViewProps) {
                       the surface beneath the drawn layers, which are inert, so a badge that takes the
                       pointer is the only thing a press on it reaches.
                     */}
+                    <Show when={caretInCorner(entry)}>
+                      {/*
+                        Its presses are its own for the badge's reason below: the canvas takes presses
+                        on the surface beneath the drawn layers, which are inert. Down to open, up to
+                        close, since what it opens grows below the card.
+                      */}
+                      <div class="we-graph__corner-caret">
+                        <we-tooltip
+                          content={
+                            caretSays(entry).mode === 'fold'
+                              ? foldTitle(entry, foldSays(entry))
+                              : caretSays(entry).mode === 'close'
+                                ? 'Close what is open under this card'
+                                : 'Open what is in this card'
+                          }
+                        >
+                          <we-button
+                            variant="ghost"
+                            size="xs"
+                            square
+                            label={
+                              caretSays(entry).mode === 'fold'
+                                ? entry.folded
+                                  ? 'Unfold'
+                                  : 'Fold'
+                                : caretSays(entry).mode === 'close'
+                                  ? 'Close'
+                                  : 'Open'
+                            }
+                            disabled={caretSays(entry).mode === 'fold' && !foldSays(entry).enabled}
+                            color="text-muted"
+                            prop:hoverProps={{ color: 'text' }}
+                            onClick={() => {
+                              const mode = caretSays(entry).mode;
+                              if (mode === 'fold') reportFold(entry);
+                              else toggleOpen(entry, mode === 'open');
+                            }}
+                          >
+                            <we-icon
+                              name={
+                                (caretSays(entry).mode === 'fold' && !entry.folded) || caretSays(entry).mode === 'close'
+                                  ? 'caret-up'
+                                  : 'caret-down'
+                              }
+                            />
+                          </we-button>
+                        </we-tooltip>
+                      </div>
+                    </Show>
                     <Show when={cardBadge(entry.visual)}>
                       {(Badge) => {
                         const at = parseAddress(entry.node.id);
@@ -4131,7 +4195,13 @@ export function GraphView(props: GraphViewProps) {
                   )}
                 </For>
               </Show>
-              <Show when={actionsFor(entry.node).length > 0 || caretSays(entry).mode !== null || props.carry}>
+              <Show
+                when={
+                  actionsFor(entry.node).length > 0 ||
+                  (caretSays(entry).mode !== null && !caretInCorner(entry)) ||
+                  props.carry
+                }
+              >
                 {/*
                   `pointerdown` stopped, as well as the click — on the bar, once, for everything in
                   it. The canvas hit-tests in world space from a pointer press on the layer beneath,
