@@ -1128,7 +1128,7 @@ export class GraphEngine {
     this.emit({ type: 'expanded', id, added, total });
     this.recomputeMetrics();
     // What arrived sets off from the node it came out of, so the opening reads as the node growing.
-    this.passThrough(id, arrived, this.selfTravel);
+    this.passThrough(id, arrived, this.selfTravel, true);
     this.relayout({ travel: this.selfTravel, steady: id, emergeFrom: { node: id, ids: arrived } });
     this.notify('graph');
   }
@@ -1153,7 +1153,7 @@ export class GraphEngine {
         const at = inward.get(nodeId);
         if (at) inward.set(nodeId, { ...at, x: into.x, y: into.y });
       }
-      this.passThrough(id, result.removedNodes, travel);
+      this.passThrough(id, result.removedNodes, travel, false);
       this.applyPositions(inward, undefined, travel);
       this.notify('graph');
       setTimeout(() => {
@@ -1164,17 +1164,35 @@ export class GraphEngine {
     this.finishCollapse(id, result);
   }
 
-  /** Cards travelling out of or back into a node, by the node — drawn under it. See {@link visualOf}. */
-  private readonly passing = new Map<string, string>();
+  /**
+   * Cards travelling out of (`out`) or back into a node, by the node — drawn under it and faded with
+   * the travel. See {@link visualOf}.
+   */
+  private readonly passing = new Map<string, { node: string; out: boolean }>();
 
-  /** Draw these under `node` for as long as their travel takes. */
-  private passThrough(node: string, ids: readonly string[], ms: number): void {
+  /** Draw these under `node`, fading in or out, for as long as their travel takes. */
+  private passThrough(node: string, ids: readonly string[], ms: number, out: boolean): void {
     if (!ids.length || ms <= 0) return;
-    for (const passer of ids) this.passing.set(passer, node);
+    for (const passer of ids) this.passing.set(passer, { node, out });
     setTimeout(() => {
-      for (const passer of ids) if (this.passing.get(passer) === node) this.passing.delete(passer);
+      for (const passer of ids) if (this.passing.get(passer)?.node === node) this.passing.delete(passer);
       if (!this.disposed) this.notify('graph');
     }, ms);
+  }
+
+  /**
+   * How visible a card coming out of a node, or going back in, is this frame — rising with the travel
+   * as it comes out, falling as it goes in. Undefined for a card doing neither.
+   *
+   * Faded rather than only moved: as it closes, a card passes over its parent, and the lines between the
+   * two are routed around boxes that overlap — they bent round each card's edge on the way in. Nearly
+   * transparent by the time they meet, neither the overlap nor the bend reads.
+   */
+  passingOpacity(id: string): number | undefined {
+    const passing = this.passing.get(id);
+    if (!passing || !this.travel.running) return undefined;
+    const t = Math.min(1, Math.max(0, this.travel.progress));
+    return passing.out ? t : 1 - t;
   }
 
   private finishCollapse(id: string, result: CollapseResult): void {
@@ -2412,10 +2430,15 @@ export class GraphEngine {
       opened card is drawn over its parent, and travelling in or out across it read as the parent being
       covered rather than as the card emerging from behind it.
     */
-    const parent = this.passing.get(node.id);
-    const parentNode = parent ? this.store.node(parent) : undefined;
+    const passing = this.passing.get(node.id);
+    const parentNode = passing ? this.store.node(passing.node) : undefined;
+    const fade = this.passingOpacity(node.id);
     const visual = parentNode
-      ? { ...resolved, z: (this.resolvedVisual(parentNode, this.metrics).z ?? 0) - 1 }
+      ? {
+          ...resolved,
+          z: (this.resolvedVisual(parentNode, this.metrics).z ?? 0) - 1,
+          ...(fade !== undefined ? { opacity: (resolved.opacity ?? 1) * fade } : {}),
+        }
       : resolved;
     // Recorded here rather than in `resolvedVisual`, because this is the drawing path: the hit area
     // resolves from the same blend without metrics, and is not what anybody saw.

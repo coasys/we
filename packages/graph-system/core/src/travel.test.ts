@@ -1892,4 +1892,22 @@ describe('opening and closing a node', () => {
     await vi.advanceTimersByTimeAsync(600);
     expect(engine.getPositions().get('c')?.y).toBe(going);
   });
+
+  // Closing, cards passed over their parent and the lines between them bent round the overlap.
+  it('fades what comes out of a node in, and what goes back in out', async () => {
+    const engine = await engineWithChild();
+    await engine.expand('a');
+    await vi.advanceTimersByTimeAsync(100);
+    const opening = engine.passingOpacity('c')!;
+    expect(opening).toBeGreaterThan(0);
+    expect(opening).toBeLessThan(1);
+    expect(engine.visualOf(engine.store.node('c')!).opacity).toBeCloseTo(opening, 5);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(engine.passingOpacity('c')).toBeUndefined();
+
+    drew(engine);
+    engine.collapse('a');
+    await vi.advanceTimersByTimeAsync(300);
+    expect(engine.passingOpacity('c')!).toBeLessThan(0.5);
+  });
 });
