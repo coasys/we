@@ -23,14 +23,23 @@ const SCHEME = 'neighbourhood://';
 /** Template parameters a template may declare and still publish without a value. */
 const OPTIONAL_TEMPLATE_PARAMS = ['description'];
 
+/**
+ * The server link language names its room `UID` and carries a default `SERVER_URL`
+ * (`https://link.ad4m.dev`), so a template declaring `UID` can publish with no server configured:
+ * the executor only replaces a variable it is given a value for. Builds before that named the room
+ * `ROOM_ID` and had no default, so they still need a configured server.
+ */
+const ROOM_PARAMS = ['UID', 'ROOM_ID'];
+const hasDefaultServer = (params: readonly string[]) => params.includes('UID');
+
 /** What a template that declares no parameters has always been given. */
 const pick = ({ uid, name }: Record<string, string>) => ({ uid, name });
 
 export interface Ad4mLifecycleOptions {
   /**
    * The link server a shared space can sync through, from the deployment's seed
-   * (`ad4m.linkServerUrl`). Without one, the server link language is never offered: it has
-   * nowhere to connect to.
+   * (`ad4m.linkServerUrl`). Without one, the server link language syncs through the server built
+   * into it, and a build too old to have one is not offered: it has nowhere to connect to.
    */
   linkServerUrl?: string;
   /**
@@ -50,7 +59,7 @@ const SERVER_LINK_LANGUAGE_META = {
   name: 'server-link-language',
   description: 'AD4M link language that syncs through a self-hosted link-server',
   sourceCodeLink: 'https://github.com/coasys/ad4m/tree/dev/bootstrap-languages/server-link-language',
-  possibleTemplateParams: ['SERVER_URL', 'ROOM_ID', 'name', 'description'],
+  possibleTemplateParams: ['SERVER_URL', 'UID'],
 };
 
 /**
@@ -215,22 +224,27 @@ export function createAd4mDatasetLifecycle(
   /**
    * The values `publish` can give a template's parameters, for one neighbourhood.
    *
-   * `uid` and `ROOM_ID` are fresh each time, so every neighbourhood gets its own link language and,
+   * `uid` and the room are fresh each time, so every neighbourhood gets its own link language and,
    * on a link server, its own room — which the server creates when the first agent connects, so
-   * there is nothing to provision. `SERVER_URL` exists only where the deployment named a server.
-   * `description` is absent on purpose: templates declaring it treat it as optional.
+   * there is nothing to provision. The room goes under both names the server link language has used
+   * (see `ROOM_PARAMS`); only the one a template declares is sent. `SERVER_URL` exists only where the
+   * deployment named a server. `description` is absent on purpose: templates declaring it treat it
+   * as optional.
    */
   function templateValues(datasetName: string): Record<string, string> {
+    const room = crypto.randomUUID();
     return {
       uid: crypto.randomUUID(),
       name: `${datasetName}-link-language`,
-      ...(options.linkServerUrl ? { SERVER_URL: options.linkServerUrl, ROOM_ID: crypto.randomUUID() } : {}),
+      ...Object.fromEntries(ROOM_PARAMS.map((param) => [param, room])),
+      ...(options.linkServerUrl ? { SERVER_URL: options.linkServerUrl } : {}),
     };
   }
 
   /** Parameters a template declares that `publish` has no value for — empty when it can publish. */
   function unfillableParams(params: readonly string[]): string[] {
     const fillable = new Set([...Object.keys(templateValues('')), ...OPTIONAL_TEMPLATE_PARAMS]);
+    if (hasDefaultServer(params)) fillable.add('SERVER_URL');
     return params.filter((param) => !fillable.has(param));
   }
 
@@ -264,7 +278,7 @@ export function createAd4mDatasetLifecycle(
       if (!published.possibleTemplateParams?.includes('SERVER_URL')) {
         console.warn(
           `[lifecycle] not registering ${published.address}: the language store already holds that build with ` +
-            `template parameters ${JSON.stringify(published.possibleTemplateParams)}, not SERVER_URL/ROOM_ID.`,
+            `template parameters ${JSON.stringify(published.possibleTemplateParams)}, not SERVER_URL/UID.`,
         );
         return;
       }
@@ -282,7 +296,9 @@ export function createAd4mDatasetLifecycle(
    *
    * A template declaring a parameter `publish` cannot fill is left out rather than offered: it
    * would be published with that parameter still a placeholder and never sync. That is what hides
-   * the server link language on a deployment that has not named a link server.
+   * an old build of the server link language on a deployment that has not named a link server. A
+   * current build offered without one carries no `serverUrl`: the server it syncs through is the
+   * default inside the bundle, which the backend cannot read, so nothing names a host it may not use.
    *
    * The first entry is the default, and the node's own order says nothing: AD4M sorts known
    * templates by address, which is a hash. So templates syncing through a server go last. Sending a
