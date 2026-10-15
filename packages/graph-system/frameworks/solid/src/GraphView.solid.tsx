@@ -3956,7 +3956,11 @@ export function GraphView(props: GraphViewProps) {
                     also what makes `contentMinZoom` cheap: below the threshold the card draws one
                     string instead of a document, which is all that is legible at that size anyway.
                   */}
-                      <div class="we-graph__card-content">
+                      <div
+                        class="we-graph__card-content"
+                        // Only a document can run past the bottom of its card, so only one is faded there.
+                        classList={{ 'we-graph__card-content--document': !!cardContent(entry.visual) }}
+                      >
                         {/*
                         The scale lives on an inner element because it has to change the box the
                         content is *laid out* in, not just how large the result is drawn. Scaling

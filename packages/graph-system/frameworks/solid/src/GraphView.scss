@@ -771,7 +771,11 @@
     top: var(--we-space-100);
   }
 
-  &::after {
+  /*
+    Only over a document, which can run past the card. Over a one-line label the fade's fixed height
+    covered half the text of a short card — a card's opened field read as half faded out.
+  */
+  &--document::after {
     content: '';
     position: absolute;
     inset: auto 0 0;
@@ -821,14 +825,6 @@
 }
 
 /*
-  A card's badge — see `NodeStyle.badge`. On the lower edge, straddling it, so it belongs to the card
-  without covering what the card says; toward the right, because a tree's lines leave a parent from the
-  middle of that edge and a mark there would sit on them.
-
-  The one part of a card that takes the pointer. The rest is inert so that a press anywhere falls through
-  to the canvas beneath and picks the card up; a press on the badge stops at the badge.
-*/
-/*
   A card's caret, where it is the card's only control — see `caretInCorner`. Inside the card's top-right
   corner, above its content, taking its own presses like the badge below.
 */
@@ -840,6 +836,14 @@
   pointer-events: auto;
 }
 
+/*
+  A card's badge — see `NodeStyle.badge`. On the lower edge, straddling it, so it belongs to the card
+  without covering what the card says; toward the right, because a tree's lines leave a parent from the
+  middle of that edge and a mark there would sit on them.
+
+  The one part of a card that takes the pointer. The rest is inert so that a press anywhere falls through
+  to the canvas beneath and picks the card up; a press on the badge stops at the badge.
+*/
 .we-graph__badge {
   position: absolute;
   right: var(--we-space-300);
