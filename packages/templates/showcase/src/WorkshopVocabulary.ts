@@ -94,6 +94,13 @@ export const vocabularyCanvas: SchemaNode = {
           defaultDepth: 0,
           direction: 'out',
           expanders: ['vocabulary', 'schema-properties', 'schema-instances', 'property-values'],
+          /*
+            Every bucket open from the start, so the map arrives as one tree per kind of word. Closed,
+            it arrived as a row of buckets with no lines between them — the forest layout warned that
+            every card was unconnected — and opening one grew its tree somewhere else on the map. Only
+            the buckets: what is in them (a flow's steps, a model's fields) still opens on a press.
+          */
+          auto: [{ when: { kind: 'cluster', type: 'vocabulary' }, depth: 1 }],
         },
         // Each bucket is a tree of its own, its members under it; containment edges make the parents.
         layout: {
