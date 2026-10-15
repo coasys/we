@@ -46,6 +46,13 @@ export interface VocabularyBucket {
   label: string;
   /** Records of this entity are what is in the bucket. */
   entity?: string;
+  /**
+   * What one of those records opens into, beside its own fields: the records of `entity` whose
+   * `field` holds the record's `key`. A task state opens into the tasks in it —
+   * `{ entity: 'TaskBlock', field: 'status', key: 'slug' }` — which is what somebody opening "To do"
+   * on a map of the space's words is asking to see.
+   */
+  opens?: { entity: string; field: string; key: string };
   /** Or these models. */
   models?: { name: string; label?: string }[];
   /** Or these flows. */
@@ -94,18 +101,66 @@ export function vocabularyPlugins(): { seed: SeedSource; expander: Expander } {
     },
   };
 
+  /** A record a bucket's `opens` names, opened into the records that name it. */
+  async function openRecord(
+    request: Parameters<Expander['expand']>[0],
+    context: Parameters<Expander['expand']>[1],
+    address: { type?: string; id?: string },
+    options: VocabularySeedOptions | undefined,
+  ) {
+    const nodes: GraphNode[] = [];
+    const edges: GraphEdge[] = [];
+    const opens = options?.buckets.find((b) => b.entity && b.entity === address.type)?.opens;
+    if (!opens || !address.type || !address.id) return { nodes, edges };
+    const dataset = context.defaultDataset() ?? '';
+    const [record] = await context.query({
+      entity: address.type,
+      dataset,
+      where: { id: address.id },
+      limit: 1,
+      signal: request.signal,
+    });
+    const value = record?.[opens.key];
+    if (value === undefined || value === null || value === '') return { nodes, edges };
+    const limit = options?.limit ?? 200;
+    const shape = context.models(dataset).find((s) => s.name === opens.entity);
+    const rows = await context.query({
+      entity: opens.entity,
+      dataset,
+      where: { [opens.field]: value },
+      limit,
+      signal: request.signal,
+    });
+    for (const row of rows) {
+      const node = rowToNode(row, opens.entity, dataset, shape, 'vocabulary');
+      if (!node) continue;
+      nodes.push(node);
+      edges.push({
+        id: edgeId(request.id, 'instance', node.id),
+        source: request.id,
+        target: node.id,
+        type: 'instance',
+      });
+    }
+    if (rows.length === limit) context.warn(`showing the first ${limit} ${opens.entity} records here`);
+    return { nodes, edges, total: nodes.length };
+  }
+
   const expander: Expander = {
     id: 'vocabulary',
-    kinds: ['cluster'],
-    types: [VOCABULARY_TYPE, FLOW_TYPE],
-    description: 'Opens a vocabulary bucket into what is in it, and a flow into its steps and moves.',
+    // Records too: a bucket's records may open into what names them — see `VocabularyBucket.opens`.
+    kinds: ['cluster', 'entity'],
+    description:
+      'Opens a vocabulary bucket into what is in it, a flow into its steps and moves, and a word into the records that use it.',
     async expand(request, context) {
       const address = parseAddress(request.id);
-      if (!address || address.kind !== 'cluster' || !address.id || request.direction === 'in') {
-        return { nodes: [], edges: [] };
-      }
+      if (!address || !address.id || request.direction === 'in') return { nodes: [], edges: [] };
       const dataset = context.defaultDataset() ?? '';
       const options = told.get(dataset) ?? [...told.values()][0];
+      if (address.kind === 'entity') return openRecord(request, context, address, options);
+      if (address.kind !== 'cluster' || (address.type !== VOCABULARY_TYPE && address.type !== FLOW_TYPE)) {
+        return { nodes: [], edges: [] };
+      }
       const nodes: GraphNode[] = [];
       const edges: GraphEdge[] = [];
       const contain = (node: GraphNode) => {

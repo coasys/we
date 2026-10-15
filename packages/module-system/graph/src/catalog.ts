@@ -137,9 +137,9 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       options: [
         {
           name: 'buckets',
-          type: '{ key, label, entity? | models? | flows? }[]',
+          type: '{ key, label, entity? | models? | flows?, opens? }[]',
           description:
-            "The buckets, in order. `entity` names a record type whose records fill it; `models` is `[{ name, label? }]`; `flows` is `[{ name, label, steps: [{ name, label, final? }], moves: [{ from, to }] }]`. `key` must stay the same between loads — it is part of the bucket's address.",
+            "The buckets, in order. `entity` names a record type whose records fill it; `models` is `[{ name, label? }]`; `flows` is `[{ name, label, steps: [{ name, label, final? }], moves: [{ from, to }] }]`. `opens` — `{ entity, field, key }` beside an `entity` — is what one of its records opens into: the records of `entity` whose `field` holds the record's `key`, so a task state opens into its tasks with `{ entity: 'TaskBlock', field: 'status', key: 'slug' }`. `key` must stay the same between loads — it is part of the bucket's address.",
         },
         { name: 'limit', type: 'number', description: 'Records read per entity bucket. Default 200.' },
       ],
@@ -205,7 +205,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       id: 'vocabulary',
       category: 'expander',
       description:
-        'Opens a bucket the `vocabulary` seed drew into what is in it, and a flow into its steps, with a line for each move between them.',
+        'Opens a bucket the `vocabulary` seed drew into what is in it, a flow into its steps, with a line for each move between them, and a record in a bucket with `opens` into the records that use it.',
       options: [],
       example: `"seeds": { "source": "vocabulary", "options": { "buckets": [] } }, "expansion": { "expanders": ["vocabulary"] }`,
     },

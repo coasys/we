@@ -126,4 +126,45 @@ describe('schemaPropertiesExpander', () => {
     });
     expect(result.edges.map((e) => e.type)).toEqual(['property', 'property', 'instance']);
   });
+
+  it('opens a word into the records that use it — a task state into its tasks', async () => {
+    const { seed, expander } = vocabularyPlugins();
+    const states = {
+      buckets: [
+        {
+          key: 'states',
+          label: 'Task states',
+          entity: 'TaskState',
+          opens: { entity: 'TaskBlock', field: 'status', key: 'slug' },
+        },
+      ],
+    };
+    const ctx = context();
+    await seed.seed(states, ctx);
+    ctx.query.mockImplementation(async (q: { entity: string }) =>
+      q.entity === 'TaskState' ? [{ id: 's1', slug: 'todo' }] : [{ id: 't1', title: 'Write it' }],
+    );
+
+    const result = await expander.expand(
+      { id: entityAddress('ds', 'TaskState', 's1'), direction: 'out' } as never,
+      ctx,
+    );
+
+    expect(ctx.query).toHaveBeenLastCalledWith(
+      expect.objectContaining({ entity: 'TaskBlock', where: { status: 'todo' } }),
+    );
+    expect(result.nodes.map((n) => n.id)).toEqual([entityAddress('ds', 'TaskBlock', 't1')]);
+    expect(result.edges[0]).toMatchObject({ type: 'instance', target: entityAddress('ds', 'TaskBlock', 't1') });
+  });
+
+  it('opens nothing for a record whose bucket says nothing about what it opens into', async () => {
+    const { seed, expander } = vocabularyPlugins();
+    const ctx = context();
+    await seed.seed(BUCKETS, ctx);
+    const result = await expander.expand(
+      { id: entityAddress('ds', 'SignalType', 'x'), direction: 'out' } as never,
+      ctx,
+    );
+    expect(result.nodes).toEqual([]);
+  });
 });

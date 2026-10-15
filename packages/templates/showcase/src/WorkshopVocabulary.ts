@@ -59,7 +59,7 @@ export const FIELD_NODE_RULE = {
 const BUCKETS = `[
   { key: 'signals', label: 'Signal types', entity: 'SignalType' },
   { key: 'connections', label: 'Relationship types', entity: 'RelationshipType' },
-  { key: 'states', label: 'Task states', entity: 'TaskState' },
+  { key: 'states', label: 'Task states', entity: 'TaskState', opens: { entity: 'TaskBlock', field: 'status', key: 'slug' } },
   { key: 'kinds', label: 'Involvement types', entity: 'InvolvementType' },
   { key: 'topics', label: 'Topics', entity: 'Topic' },
   { key: 'models', label: 'Models', models: shapeStore.spaceShapes.map(s, { name: s.name }) },
@@ -82,8 +82,9 @@ export const vocabularyCanvas: SchemaNode = {
         seeds: { source: 'vocabulary', options: { buckets: { $: BUCKETS } } },
         /*
       What opens into what: a bucket into its members, a model into its fields and a Records node, the
-      Records node into the model's records, any record into its fields — with values as shared nodes,
-      since on a map of words, three states meeting at one "done" is the point.
+      Records node into the model's records, a task state into the tasks in it (the bucket's `opens`),
+      any record into its fields — with values as shared nodes, since on a map of words, three states
+      meeting at one "done" is the point.
     */
         expansion: {
           defaultDepth: 0,
