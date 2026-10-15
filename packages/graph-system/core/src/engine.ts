@@ -1128,6 +1128,7 @@ export class GraphEngine {
     this.emit({ type: 'expanded', id, added, total });
     this.recomputeMetrics();
     // What arrived sets off from the node it came out of, so the opening reads as the node growing.
+    this.passThrough(id, arrived, this.selfTravel);
     this.relayout({ travel: this.selfTravel, steady: id, emergeFrom: { node: id, ids: arrived } });
     this.notify('graph');
   }
@@ -1152,6 +1153,7 @@ export class GraphEngine {
         const at = inward.get(nodeId);
         if (at) inward.set(nodeId, { ...at, x: into.x, y: into.y });
       }
+      this.passThrough(id, result.removedNodes, travel);
       this.applyPositions(inward, undefined, travel);
       this.notify('graph');
       setTimeout(() => {
@@ -1160,6 +1162,19 @@ export class GraphEngine {
       return;
     }
     this.finishCollapse(id, result);
+  }
+
+  /** Cards travelling out of or back into a node, by the node — drawn under it. See {@link visualOf}. */
+  private readonly passing = new Map<string, string>();
+
+  /** Draw these under `node` for as long as their travel takes. */
+  private passThrough(node: string, ids: readonly string[], ms: number): void {
+    if (!ids.length || ms <= 0) return;
+    for (const passer of ids) this.passing.set(passer, node);
+    setTimeout(() => {
+      for (const passer of ids) if (this.passing.get(passer) === node) this.passing.delete(passer);
+      if (!this.disposed) this.notify('graph');
+    }, ms);
   }
 
   private finishCollapse(id: string, result: CollapseResult): void {
@@ -1935,7 +1950,14 @@ export class GraphEngine {
    */
   private warmStart(): ReadonlyMap<string, Placement> {
     const warm = new Map<string, Placement>();
-    for (const [id, at] of this.positions) {
+    for (const [id, drawn] of this.positions) {
+      /*
+        Where a travelling card is going, not where it is drawn this frame. A layout that keeps a card's
+        previous place — `manual` does, for a card it parked — re-run mid-travel by an unrelated refresh
+        took the half-travelled point as that place, and the card stopped there: a note's opened blocks
+        froze in a heap just off the note.
+      */
+      const at = this.travel.destination(id) ?? drawn;
       warm.set(id, this.pinnedIds.has(id) ? { x: at.x, y: at.y, fixed: true } : { x: at.x, y: at.y });
     }
     return warm;
@@ -2384,7 +2406,17 @@ export class GraphEngine {
    * for why the engine owns this rather than the renderer.
    */
   visualOf(node: GraphNode): NodeVisual {
-    const visual = this.resolvedVisual(node, this.metrics);
+    const resolved = this.resolvedVisual(node, this.metrics);
+    /*
+      Under the node it is coming out of or going back into. A card stacks by when it arrived, so an
+      opened card is drawn over its parent, and travelling in or out across it read as the parent being
+      covered rather than as the card emerging from behind it.
+    */
+    const parent = this.passing.get(node.id);
+    const parentNode = parent ? this.store.node(parent) : undefined;
+    const visual = parentNode
+      ? { ...resolved, z: (this.resolvedVisual(parentNode, this.metrics).z ?? 0) - 1 }
+      : resolved;
     // Recorded here rather than in `resolvedVisual`, because this is the drawing path: the hit area
     // resolves from the same blend without metrics, and is not what anybody saw.
     this.travel.drewVisual(node.id, visual);

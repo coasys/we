@@ -1849,4 +1849,47 @@ describe('opening and closing a node', () => {
     await vi.advanceTimersByTimeAsync(600);
     expect(engine.store.node('c')).toBeDefined();
   });
+
+  // Drawn over its parent, a card travelling out of it read as covering it.
+  it('draws what is coming out of a node, or going back in, under it', async () => {
+    const engine = await engineWithChild();
+    await engine.expand('a');
+    expect(engine.visualOf(engine.store.node('c')!).z).toBe(-1);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(engine.visualOf(engine.store.node('c')!).z).toBeUndefined();
+  });
+
+  /*
+    A layout that keeps a card's previous place, as `manual` does for one it parked, re-run mid-travel
+    by an unrelated refresh: it was handed the half-travelled point as that place, and the card stopped
+    there.
+  */
+  it('lands where it was going when the layout runs again mid-travel', async () => {
+    const keeps = () => ({
+      id: 'keeps',
+      init(input: { nodes: { id: string }[]; previous?: ReadonlyMap<string, { x: number; y: number }> }) {
+        return {
+          positions: new Map(
+            input.nodes.map((node, i) => [node.id, input.previous?.get(node.id) ?? { x: 0, y: (i + 1) * 300 }]),
+          ),
+        };
+      },
+    });
+    const registry = new PluginRegistry({ seeds: [seedOf(['a'])], expanders: [opensIntoChild], layouts: { keeps } });
+    const engine = new GraphEngine({
+      spec: { seeds: { source: 'test' }, layout: { type: 'keeps' } },
+      registry,
+      context,
+    });
+    engine.resize(800, 600);
+    await engine.start();
+    engine.setSelfTravel(400);
+    drew(engine);
+    await engine.expand('a');
+    const going = 600;
+    await vi.advanceTimersByTimeAsync(150);
+    engine.relayout();
+    await vi.advanceTimersByTimeAsync(600);
+    expect(engine.getPositions().get('c')?.y).toBe(going);
+  });
 });
