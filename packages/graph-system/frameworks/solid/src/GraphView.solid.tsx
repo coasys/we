@@ -1749,6 +1749,9 @@ export function GraphView(props: GraphViewProps) {
       const route = geometry.get(edge.id);
       if (!route) return [];
       const visual = edgeVisual(edge, resolveStyle(edge, props.edgeStyle, metrics), metrics);
+      // A line to a card coming out of a node, or going back in, fades with it — see `passingOpacity`.
+      const fade = Math.min(engine.passingOpacity(edge.source) ?? 1, engine.passingOpacity(edge.target) ?? 1);
+      if (fade < 1) visual.opacity = (visual.opacity ?? 1) * fade;
       // The gap is the arrowhead's own length, in world units — the marker scales with stroke width,
       // so the stroke has to give up the same amount it takes.
       const gap = visual.arrow === 'none' ? 0 : ARROW_LENGTH * visual.width;
@@ -2173,6 +2176,39 @@ export function GraphView(props: GraphViewProps) {
     caretSays(entry).mode !== null &&
     actionsFor(entry.node).length === 0 &&
     !props.carry;
+
+  /*
+    Which cards' content runs past the bottom of the card — the only ones the fade there is for.
+
+    Measured, because only measuring can say it: a one-line property and a long note can both be drawn
+    as content, and a fade on every card with content covered half the line of a short one. One observer
+    for the whole graph, watching each card's content box and what is inside it, so a document that
+    finishes rendering after the card mounts is measured again when it grows.
+  */
+  const markOverflow = (scale: Element) =>
+    scale.parentElement?.classList.toggle(
+      'we-graph__card-content--overflows',
+      scale.scrollHeight > scale.clientHeight + 1,
+    );
+  const overflowWatch =
+    typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver((entries) => {
+          for (const entry of entries) {
+            const scale = entry.target?.closest?.('.we-graph__card-scale');
+            if (scale) markOverflow(scale);
+          }
+        });
+  onCleanup(() => overflowWatch?.disconnect());
+  function watchOverflow(scale: HTMLElement): void {
+    if (!overflowWatch) return;
+    overflowWatch.observe(scale);
+    // Its content is drawn after this ref runs.
+    queueMicrotask(() => {
+      for (const child of Array.from(scale.children)) overflowWatch.observe(child);
+      markOverflow(scale);
+    });
+  }
 
   /** Open or close a card from its caret, and tell the interface so it can keep the open set. */
   function toggleOpen(entry: NodeEntry, open: boolean): void {
@@ -3957,11 +3993,7 @@ export function GraphView(props: GraphViewProps) {
                     also what makes `contentMinZoom` cheap: below the threshold the card draws one
                     string instead of a document, which is all that is legible at that size anyway.
                   */}
-                      <div
-                        class="we-graph__card-content"
-                        // Only a document can run past the bottom of its card, so only one is faded there.
-                        classList={{ 'we-graph__card-content--document': !!cardContent(entry.visual) }}
-                      >
+                      <div class="we-graph__card-content">
                         {/*
                         The scale lives on an inner element because it has to change the box the
                         content is *laid out* in, not just how large the result is drawn. Scaling
@@ -3972,7 +4004,7 @@ export function GraphView(props: GraphViewProps) {
                         The fallback label lives in the same box as a document, so it flows to the
                         shape the same way — it used to sit outside, where no float could reach it.
                       */}
-                        <div class="we-graph__card-scale">
+                        <div class="we-graph__card-scale" ref={watchOverflow}>
                           {/*
                           For a shape with an outline, two floats hugging its edges — the exterior
                           on each side — so every line wraps to it. `shape-inside` does not exist;

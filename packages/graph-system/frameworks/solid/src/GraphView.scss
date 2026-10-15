@@ -772,10 +772,10 @@
   }
 
   /*
-    Only over a document, which can run past the card. Over a one-line label the fade's fixed height
-    covered half the text of a short card — a card's opened field read as half faded out.
+    Only where the content runs past the card — measured by the renderer, see `watchOverflow`. Over a
+    one-line card the fade's fixed height covered half the text.
   */
-  &--document::after {
+  &--overflows::after {
     content: '';
     position: absolute;
     inset: auto 0 0;
