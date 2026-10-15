@@ -87,13 +87,13 @@ export const vocabularyCanvas: SchemaNode = {
         /*
       What opens into what: a bucket into its members, a model into its fields and a Records node, the
       Records node into the model's records, a task state into the tasks in it (the bucket's `opens`),
-      any record into its fields — with values as shared nodes, since on a map of words, three states
-      meeting at one "done" is the point.
+      any record into its fields — each field one node saying its name and value, as a card's do on the
+      canvas, rather than a field node with its value hanging off it as another.
     */
         expansion: {
           defaultDepth: 0,
           direction: 'out',
-          expanders: ['vocabulary', 'schema-properties', 'schema-instances', 'property-values'],
+          expanders: ['vocabulary', 'schema-properties', 'schema-instances', 'property'],
         },
         // Each bucket is a tree of its own, its members under it; containment edges make the parents.
         /*
@@ -113,7 +113,19 @@ export const vocabularyCanvas: SchemaNode = {
           { when: { kind: 'property' }, style: { color: 'surface-sunken', height: 44 } },
           { when: { kind: 'literal' }, style: { shape: 'circle', size: 12 } },
         ],
-        edgeStyle: [{ when: { type: 'move' }, style: { dashed: true, color: 'accent-text' } }],
+        /*
+          A parent's lines leave its bottom edge and meet each child at its top, as the canvas's tree
+          draws them — where the geometry decides, the outer children of a wide rank are met at their
+          sides, and the same relationship reads three different ways. Not a flow's moves, which run
+          between steps side by side.
+        */
+        edgeStyle: [
+          ...['contains', 'instance', 'property'].map((type) => ({
+            when: { type },
+            style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true },
+          })),
+          { when: { type: 'move' }, style: { dashed: true, color: 'accent-text' } },
+        ],
         open: { $: OPEN_NODES },
         onNodeOpen: OPEN_FROM_GRAPH,
         // A record on the map is inspected like any card; a bucket, a flow or a field has none, and clears it.
