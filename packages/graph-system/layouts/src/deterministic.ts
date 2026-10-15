@@ -299,14 +299,11 @@ function trayPosition(input: LayoutInput, index: number, pitch: { x: number; y: 
   };
 }
 
-/** Edges whose target is drawn below its source rather than beside it: what a node contains, not what it says. */
-const BELOW_EDGE_TYPES: readonly string[] = ['contains', 'instance'];
+/** Edges whose target goes in the column to its source's left — what a node says about itself, its properties. */
+const LEFT_EDGE_TYPES: readonly string[] = ['property', 'value'];
 
 /** How far out from its card a column of opened fields sits, in gaps. */
 const BESIDE_GAPS = 6;
-
-/** How far below its card a row of what it contains sits, in gaps. */
-const BELOW_GAPS = 3;
 
 /** How many slots beside a parent are tried before a node goes to the tray. */
 const SLOT_TRIES = 12;
@@ -469,10 +466,10 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
         card's fields read top to bottom as its model declares them. A slot that would cover something
         is skipped for the next one along; only a node with nowhere near its parent goes to the tray.
       */
-      const openedFrom = new Map<string, { parent: string; below: boolean }>();
+      const openedFrom = new Map<string, { parent: string; left: boolean }>();
       for (const edge of input.edges) {
         if (CONTAINMENT_EDGE_TYPES.includes(edge.type) && !openedFrom.has(edge.target))
-          openedFrom.set(edge.target, { parent: edge.source, below: BELOW_EDGE_TYPES.includes(edge.type) });
+          openedFrom.set(edge.target, { parent: edge.source, left: LEFT_EDGE_TYPES.includes(edge.type) });
       }
       const nextSlot = new Map<string, number>();
       const stillToPark: LayoutInput['nodes'] = [];
@@ -488,20 +485,20 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
         const own = sizeOf(node);
         const parentSize = sizeOf(parent);
         const gap = Math.max(12, margin || 16);
-        const key = `${from.parent}\u0000${from.below ? 'below' : 'right'}`;
-        const slotAt = (index: number): Point =>
-          from.below
-            ? {
-                x: parentAt.x - parentSize.width / 2 + own.width / 2 + index * (own.width + gap),
-                // Further below than a gap: the lines to a row of them fan out from the card's bottom.
-                y: parentAt.y + parentSize.height / 2 + gap * BELOW_GAPS + own.height / 2,
-              }
-            : {
-                // Further out than the gap between fields: the lines to a column of them fan out from
-                // the card's edge, and at one gap they arrived bunched against it.
-                x: parentAt.x + parentSize.width / 2 + gap * BESIDE_GAPS + own.width / 2,
-                y: parentAt.y - parentSize.height / 2 + own.height / 2 + index * (own.height + gap / 2),
-              };
+        const key = `${from.parent}\u0000${from.left ? 'left' : 'right'}`;
+        /*
+          A column each side, from the card's top down: its properties to the left, what it contains to
+          the right. They used to share the right and a row below, and grew into each other — a note's
+          blocks displaced its properties and the other way round. Two columns cannot meet.
+
+          Further out than the gap between them, because the lines to a column fan out from the card's
+          edge, and at one gap they arrived bunched against it.
+        */
+        const reach = parentSize.width / 2 + gap * BESIDE_GAPS + own.width / 2;
+        const slotAt = (index: number): Point => ({
+          x: parentAt.x + (from.left ? -reach : reach),
+          y: parentAt.y - parentSize.height / 2 + own.height / 2 + index * (own.height + gap / 2),
+        });
         let index = nextSlot.get(key) ?? 0;
         let placed: Point | undefined;
         for (let tries = 0; tries < SLOT_TRIES && !placed; tries++, index++) {
