@@ -1414,14 +1414,101 @@ export function flowsPage(band: Record<string, string>): SchemaNode {
 // ─── The inspector's section ───────────────────────────────────────────────────
 
 /**
+ * What can be done to a record in one flow from its inspector: the moves waiting on agreement, with
+ * Agree or Withdraw, and where it may be asked to go next. `inFlow` is one of its `recordFlows`.
+ */
+const inspectorMoves: SchemaNode = {
+  type: 'Column',
+  props: { gap: '100', pl: '600' },
+  children: [
+    {
+      type: '$each',
+      props: { items: { $: 'inFlow.asks' }, as: 'ask' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', wrap: true },
+          children: [
+            text(
+              { $: '`Asked to move to ${ask.toLabel} · ${count(ask.voters)} of ${ask.needs}`' },
+              { variant: 'footnote', color: 'text-muted' },
+            ),
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'ask.mine' },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    size: 'xs',
+                    variant: 'ghost',
+                    onClick: { $action: 'flowStore.withdrawRecord', args: [{ $: 'inFlow.flow' }, { $: 'row.id' }] },
+                  },
+                  children: [text('Withdraw')],
+                },
+                else: {
+                  type: 'we-button',
+                  props: {
+                    size: 'xs',
+                    variant: 'secondary',
+                    onClick: {
+                      $action: 'flowStore.moveRecord',
+                      args: [{ $: 'inFlow.flow' }, { $: 'row.id' }, { $: 'ask.to' }],
+                    },
+                  },
+                  children: [text('Agree')],
+                },
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'count(inFlow.next)' },
+        then: {
+          type: 'Row',
+          props: { gap: '100', ay: 'center', wrap: true },
+          children: [
+            text('Move to', { variant: 'footnote', color: 'text-muted' }),
+            {
+              type: '$each',
+              props: { items: { $: 'inFlow.next' }, as: 'to' },
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    size: 'xs',
+                    variant: 'ghost',
+                    onClick: {
+                      $action: 'flowStore.moveRecord',
+                      args: [{ $: 'inFlow.flow' }, { $: 'row.id' }, { $: 'to.name' }],
+                    },
+                  },
+                  children: [text({ $: 'to.label' })],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  ],
+};
+
+/**
  * The flows a record is going through, in its inspector, and the one control that starts another.
  *
  * Shown wherever the space has flows. `row` is the record the inspector's loop binds, `type` the
  * expression naming its entity. Where it stands in each is read from `flowStore.recordFlows`, which
  * watches every startable flow, so a card and its inspector agree without either asking.
  *
- * "Open" goes to the Flows page with that flow open — the one place a record's moves are asked for
- * and its history read, so the inspector does not grow a second copy of the stepper.
+ * Each flow offers what can be done to the record from here — move it on, agree with a move somebody
+ * asked for, or take back one's own ask — so moving a record does not mean leaving it. "Open" goes to
+ * the Flows page with that flow open, where its whole walk and its history are read: the inspector
+ * does not grow a second copy of the stepper.
  */
 export function flowsSection(opts: { type: string; open: { field: string }; flowsPath: SchemaProp }): SchemaNode {
   const mine = 'flowStore.recordFlows[row.id] ?? []';
@@ -1467,39 +1554,46 @@ export function flowsSection(opts: { type: string; open: { field: string }; flow
                     props: { items: { $: mine }, as: 'inFlow' },
                     children: [
                       {
-                        type: 'Row',
-                        props: { gap: '200', ay: 'center', wrap: true },
+                        type: 'Column',
+                        props: { gap: '100' },
                         children: [
-                          { type: 'we-icon', props: { name: 'flow-arrow', size: 'sm' } },
-                          text({ $: 'inFlow.label' }, { variant: 'label' }),
-                          text(
-                            { $: "inFlow.stateLabel ? inFlow.stateLabel : 'Not placed yet'" },
-                            { variant: 'footnote', color: 'text-muted' },
-                          ),
                           {
-                            type: '$if',
-                            props: {
-                              condition: { $: 'inFlow.waiting' },
-                              then: chip({ $: '`${inFlow.waiting} waiting`' }, 'warning-surface'),
-                            },
+                            type: 'Row',
+                            props: { gap: '200', ay: 'center', wrap: true },
+                            children: [
+                              { type: 'we-icon', props: { name: 'flow-arrow', size: 'sm' } },
+                              text({ $: 'inFlow.label' }, { variant: 'label' }),
+                              text(
+                                { $: "inFlow.stateLabel ? inFlow.stateLabel : 'Not placed yet'" },
+                                { variant: 'footnote', color: 'text-muted' },
+                              ),
+                              {
+                                type: '$if',
+                                props: {
+                                  condition: { $: 'inFlow.waiting' },
+                                  then: chip({ $: '`${inFlow.waiting} waiting`' }, 'warning-surface'),
+                                },
+                              },
+                              {
+                                type: '$if',
+                                props: { condition: { $: 'inFlow.stalled' }, then: chip('Stuck', 'warning-surface') },
+                              },
+                              { type: 'Row', props: { flex: '1' } },
+                              {
+                                type: 'we-button',
+                                props: {
+                                  size: 'xs',
+                                  variant: 'ghost',
+                                  onClick: [
+                                    { $action: 'flowStore.openFlow', args: [{ $: 'inFlow.flow' }] },
+                                    { $action: 'routeStore.navigate', args: [opts.flowsPath] },
+                                  ],
+                                },
+                                children: [text('Open')],
+                              },
+                            ],
                           },
-                          {
-                            type: '$if',
-                            props: { condition: { $: 'inFlow.stalled' }, then: chip('Stuck', 'warning-surface') },
-                          },
-                          { type: 'Row', props: { flex: '1' } },
-                          {
-                            type: 'we-button',
-                            props: {
-                              size: 'xs',
-                              variant: 'ghost',
-                              onClick: [
-                                { $action: 'flowStore.openFlow', args: [{ $: 'inFlow.flow' }] },
-                                { $action: 'routeStore.navigate', args: [opts.flowsPath] },
-                              ],
-                            },
-                            children: [text('Open')],
-                          },
+                          inspectorMoves,
                         ],
                       },
                     ],

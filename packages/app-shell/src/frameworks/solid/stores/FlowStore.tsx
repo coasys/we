@@ -121,6 +121,10 @@ export interface RecordFlowChip {
   /** Moves asked for and not made. */
   waiting: number;
   stalled: boolean;
+  /** Where it may be asked to go from here — empty until the flow's definition is read. */
+  next: RecordView['next'];
+  /** Each move asked for, with who asked and whether the viewer did — what Agree and Withdraw act on. */
+  asks: RecordView['waiting'];
 }
 
 export interface FlowStore {
@@ -490,15 +494,22 @@ export function FlowStoreProvider(props: ParentProps) {
   const recordFlows = createMemo<Record<string, RecordFlowChip[]>>(() => {
     const out: Record<string, RecordFlowChip[]> = {};
     const all = items();
+    const defs = definitions();
     for (const name of startableNames()) {
+      const definition = defs[name];
+      const model = definition ? toLanes(definition).model : null;
+      const labels = labelsFor(name);
       for (const item of all[name] ?? []) {
+        const view = definition && model ? recordView(definition, model, item, '', me(), labels) : null;
         (out[item.subject] ??= []).push({
           flow: name,
           label: flowLabelOf(name),
           state: item.state,
-          stateLabel: item.state ? labelsFor(name).state(item.state) : '',
+          stateLabel: item.state ? labels.state(item.state) : '',
           waiting: item.waiting.length,
           stalled: item.stalled,
+          next: view?.next ?? [],
+          asks: view?.waiting ?? [],
         });
       }
     }

@@ -1831,7 +1831,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         draft:
           '{ …the shape of open’s lanes, label, isNew, dirty, problems } | null — the flow being written, after newFlow or editFlow. `problems` are sentences saying what saving would be refused for; saveDraft refuses while there are any, so show them beside the button',
         recordFlows:
-          'Record<recordId, { flow, label, state, stateLabel, waiting, stalled }[]> — by record, every startable flow it is going through and where it stands: what a chip on a card shows. Read as `flowStore.recordFlows[card.id]`, which is undefined for a record in none',
+          'Record<recordId, { flow, label, state, stateLabel, waiting, stalled, next, asks }[]> — by record, every startable flow it is going through and where it stands: what a chip on a card shows. `next` ({ name, label }[]) is where it may be asked to go, for moveRecord; `asks` ({ to, toLabel, voters, needs, note, mine }[]) the moves waiting on agreement — offer withdrawRecord where `mine`, moveRecord to the same `to` to agree. Read as `flowStore.recordFlows[card.id]`, which is undefined for a record in none',
       },
       actions: {
         refreshFlows: '(): asks the backend for the flow list again — after something another member did',

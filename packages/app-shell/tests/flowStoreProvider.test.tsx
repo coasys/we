@@ -80,6 +80,19 @@ describe('the list, loading', () => {
   });
 });
 
+describe('a record, from its inspector', () => {
+  // So a record can be moved where it is, rather than only from the Flows page.
+  it('says where it can be moved next', async () => {
+    await flowPort.install(dataset, REVIEW);
+    const store = mount();
+    await vi.waitFor(() => expect(store.startable().map((f) => f.name)).toContain('review'));
+    await store.startFlow('review', 'r1');
+    await vi.waitFor(() =>
+      expect(store.recordFlows()['r1']?.[0]).toMatchObject({ next: [{ name: 'published' }], asks: [] }),
+    );
+  });
+});
+
 describe('edits a form submits', () => {
   // A form closes in its action's `onSuccess`, which only fires for a promise, so an edit that
   // returned nothing left every one of the flow editor's dialogs open after it had done its work.
