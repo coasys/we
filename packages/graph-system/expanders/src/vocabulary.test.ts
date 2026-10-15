@@ -58,15 +58,27 @@ const BUCKETS = {
 };
 
 describe('vocabulary', () => {
-  it('seeds one bucket per kind of vocabulary, in the order given, counting what it already holds', async () => {
+  it('seeds one bucket per kind of vocabulary, counting what is in each', async () => {
     const { seed } = vocabularyPlugins();
     const result = await seed.seed(BUCKETS, context());
     expect(result.nodes.map((n) => [n.label, n.data?.count])).toEqual([
-      ['Signal types', undefined],
+      ['Signal types', 0],
       ['Models', 1],
       ['Flows', 1],
     ]);
     expect(result.nodes[0]).toMatchObject({ id: clusterAddress('vocabulary', 'signals'), kind: 'cluster' });
+  });
+
+  // An empty category offered a caret that opened nothing, and sat among the full ones.
+  it('marks an empty bucket as having nothing to open, and ranks the fullest first', async () => {
+    const { seed } = vocabularyPlugins();
+    const result = await seed.seed(BUCKETS, context());
+    const byLabel = Object.fromEntries(result.nodes.map((n) => [n.label, n]));
+    expect(byLabel['Signal types']).toMatchObject({ leaf: true, data: { order: 2 } });
+    // Equal counts keep the order given.
+    expect(byLabel['Models']).toMatchObject({ data: { order: 0 } });
+    expect(byLabel['Models'].leaf).toBeUndefined();
+    expect(byLabel['Flows']).toMatchObject({ data: { order: 1 } });
   });
 
   it('opens a bucket of records by asking for them, each held by the bucket', async () => {
@@ -83,6 +95,8 @@ describe('vocabulary', () => {
     const { seed, expander } = vocabularyPlugins();
     const ctx = context();
     await seed.seed(BUCKETS, ctx);
+    // The seed reads the record buckets to count them; opening these two reads nothing.
+    ctx.query.mockClear();
     const models = await expander.expand({ id: clusterAddress('vocabulary', 'models'), direction: 'out' }, ctx);
     expect(models.nodes).toMatchObject([{ id: entityAddress('ds', SCHEMA_TYPE, 'TaskBlock'), label: 'Task' }]);
 

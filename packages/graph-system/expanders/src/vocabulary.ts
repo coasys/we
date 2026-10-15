@@ -83,20 +83,37 @@ export function vocabularyPlugins(): { seed: SeedSource; expander: Expander; rec
       const options = (rawOptions ?? { buckets: [] }) as VocabularySeedOptions;
       const dataset = datasetOf(options, context.defaultDataset());
       told.set(dataset, options);
-      const nodes: GraphNode[] = (options.buckets ?? []).map((bucket, order) => ({
+      const buckets = options.buckets ?? [];
+      const limit = options.limit ?? 200;
+      /*
+        How much is in each, read now rather than when it is opened: a category with nothing in it is
+        offered no caret, and the categories are ranked by it, fullest first, so the empty ones end up
+        at the far end. A vocabulary is a few dozen words, so this is a handful of small reads.
+      */
+      const counts = await Promise.all(
+        buckets.map(async (bucket) => {
+          if (bucket.models) return bucket.models.length;
+          if (bucket.flows) return bucket.flows.length;
+          if (!bucket.entity) return 0;
+          const rows = await context.query({ entity: bucket.entity, dataset, limit }).catch(() => null);
+          // Unreadable is not empty: it keeps its caret, and says why when opened.
+          return rows ? rows.length : undefined;
+        }),
+      );
+      // Fullest first; the order given between equals, so the settings' order still decides most of it.
+      const rank = buckets.map((_, index) => index).sort((a, b) => (counts[b] ?? 0) - (counts[a] ?? 0) || a - b);
+      const nodes: GraphNode[] = buckets.map((bucket, index) => ({
         id: clusterAddress(VOCABULARY_TYPE, bucket.key),
         kind: 'cluster',
         type: VOCABULARY_TYPE,
         label: bucket.label,
         data: {
           bucket: bucket.key,
-          // Its place in the order given, for a layout to keep — a node id sorts alphabetically.
-          order,
-          // A count only where the seed already holds the members; a bucket of records says how many
-          // once it is opened, rather than asking for every bucket's records to count them.
-          ...(bucket.models ? { count: bucket.models.length } : {}),
-          ...(bucket.flows ? { count: bucket.flows.length } : {}),
+          // Its place among the categories, for a layout to keep — a node id sorts alphabetically.
+          order: rank.indexOf(index),
+          ...(counts[index] !== undefined ? { count: counts[index]! } : {}),
         },
+        ...(counts[index] === 0 ? { leaf: true } : {}),
         source: 'vocabulary',
       }));
       return { nodes, edges: [], total: nodes.length };
