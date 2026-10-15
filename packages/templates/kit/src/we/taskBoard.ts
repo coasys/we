@@ -939,21 +939,19 @@ function flowChips(flows: string): SchemaNode {
             props: { items: { $: `${flows} ?? []` }, as: 'inFlow' },
             children: [
               {
-                type: 'Row',
+                type: 'we-badge',
                 props: {
-                  gap: '100',
-                  ay: 'center',
-                  r: 'full',
-                  px: '200',
-                  py: '100',
-                  bg: { $: "inFlow.waiting || inFlow.stalled ? 'warning-surface' : 'surface-sunken'" },
+                  size: 'sm',
+                  variant: { $: "inFlow.waiting || inFlow.stalled ? 'warning' : 'neutral'" },
                 },
                 children: [
-                  { type: 'we-icon', props: { name: 'flow-arrow', size: 'xs' } },
                   {
-                    type: 'we-text',
-                    props: { fontSize: '100' },
-                    children: [{ $: 'inFlow.stateLabel ? `${inFlow.label} · ${inFlow.stateLabel}` : inFlow.label' }],
+                    type: 'Row',
+                    props: { gap: '100', ay: 'center' },
+                    children: [
+                      { type: 'we-icon', props: { name: 'flow-arrow', size: 'xs' } },
+                      { $: 'inFlow.stateLabel ? `${inFlow.label} · ${inFlow.stateLabel}` : inFlow.label' },
+                    ],
                   },
                 ],
               },
