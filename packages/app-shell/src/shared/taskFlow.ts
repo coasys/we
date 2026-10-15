@@ -141,8 +141,10 @@ export function needsAgreement(state: TaskStateRule | undefined): boolean {
  * or for something to be there, and the rule lets a card go anywhere.
  *
  * Compiled as one lane through `toDefinition`, the same compiler a flow written in the editor goes
- * through — so "next and back" on a board means exactly what it means in a flow, a final state
- * included.
+ * through, with one difference: the last state is not an end. In a flow written as lanes it is, and
+ * nothing leaves it — right for a proposal, where Adopted is where it stops, and wrong for a board,
+ * where a done task gets reopened. So under "next and back" the last state goes back one like every
+ * other. Under "next" it still leads nowhere, because that rule has no way back from anything.
  *
  * Deterministic in the order and content of what it is given, because two members installing the
  * same states must install the same definition — see the flow port's note on rival rules.
@@ -172,7 +174,14 @@ export function compileTaskFlow(states: readonly TaskStateRule[], rule: TaskFlow
   );
   return toDefinition(
     { name: TASK_FLOW, subjects: ['TaskBlock'], hint: "Where a task stands in this community's work." },
-    { rule: rule || 'any', lanes: [{ states: slugs }], exceptions: [] },
+    {
+      rule: rule || 'any',
+      lanes: [{ states: slugs }],
+      exceptions:
+        rule === 'next-and-back' && slugs.length > 1
+          ? [{ from: slugs[slugs.length - 1]!, to: slugs[slugs.length - 2]! }]
+          : [],
+    },
     settings,
   );
 }

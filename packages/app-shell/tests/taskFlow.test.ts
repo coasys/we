@@ -192,8 +192,13 @@ describe('a rule over the states, and what must be there', () => {
       { from: 'doing', to: 'done' },
     ]);
     const back = compileTaskFlow(DEFAULTS, 'next-and-back')!;
-    // The last state is final, as it is in any flow written as lanes: nothing leads back out of it.
-    expect(back.transitions.map((t) => `${t.from}>${t.to}`).sort()).toEqual(['doing>done', 'doing>todo', 'todo>doing']);
+    // Unlike a flow written as lanes, the last state is not an end: a done task can be reopened.
+    expect(back.transitions.map((t) => `${t.from}>${t.to}`).sort()).toEqual([
+      'doing>done',
+      'doing>todo',
+      'done>doing',
+      'todo>doing',
+    ]);
   });
 
   it('compiles a guard into the state it guards, and counts it as asking', () => {
