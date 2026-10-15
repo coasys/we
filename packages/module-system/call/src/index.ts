@@ -1400,7 +1400,7 @@ const topologyIndicator: SchemaNode = {
           children: [
             {
               type: 'we-icon',
-              props: { name: 'broadcast', color: 'text-muted' },
+              props: { name: 'broadcast', size: 'sm', color: 'text-muted' },
             },
           ],
         },
@@ -1410,7 +1410,7 @@ const topologyIndicator: SchemaNode = {
           children: [
             {
               type: 'we-icon',
-              props: { name: 'graph', color: 'text-faint' },
+              props: { name: 'graph', size: 'sm', color: 'text-faint' },
             },
           ],
         },
