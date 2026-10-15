@@ -93,7 +93,7 @@ export const vocabularyCanvas: SchemaNode = {
         expansion: {
           defaultDepth: 0,
           direction: 'out',
-          expanders: ['vocabulary', 'schema-properties', 'schema-instances', 'property'],
+          expanders: ['vocabulary', 'vocabulary-records', 'schema-properties', 'schema-instances', 'property'],
         },
         // Each bucket is a tree of its own, its members under it; containment edges make the parents.
         /*
@@ -138,6 +138,12 @@ export const vocabularyCanvas: SchemaNode = {
           ...['contains', 'instance', 'property'].map((type) => ({
             when: { type },
             style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true },
+          })),
+          // What a line is, where two kinds of thing hang off one card: its fields ("field",
+          // "relation") and its records ("records", "status"). A bucket's members need no word.
+          ...['instance', 'property'].map((type) => ({
+            when: { type },
+            style: { showLabel: true },
           })),
           { when: { type: 'move' }, style: { dashed: true, color: 'accent-text' } },
         ],
