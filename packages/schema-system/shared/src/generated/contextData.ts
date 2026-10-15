@@ -1770,6 +1770,7 @@ export const contextData: ContextData = {
         { name: 'threadMode', type: 'string', predicate: 'we://thread_mode', required: false, default: "'fractal'" },
         { name: 'moduleSettings', type: 'string', predicate: 'we://module_settings', required: false },
         { name: 'archivedFlows', type: 'string', predicate: 'we://archived_flows', required: false },
+        { name: 'taskFlowRule', type: 'string', predicate: 'we://task_flow_rule', required: false },
       ],
       relations: [
         { name: 'location', kind: 'HasOne', predicate: 'we://location', target: 'LocationBlock' },
@@ -1850,6 +1851,7 @@ export const contextData: ContextData = {
         { name: 'retired', type: 'boolean', predicate: 'we://retired', required: false, default: 'false' },
         { name: 'approvals', type: 'number', predicate: 'we://approvals', required: false, default: '1' },
         { name: 'approverKind', type: 'string', predicate: 'we://approver_kind', required: false },
+        { name: 'guards', type: 'string', predicate: 'we://guards', required: false },
         { name: 'schemaVersion', type: 'number', predicate: 'we://schema_version', required: false, default: '1' },
       ],
       relations: [],
@@ -2861,6 +2863,7 @@ export const contextData: ContextData = {
         pendingDestructive: { type: 'object' },
         spaceSettingsOpen: { type: 'boolean' },
         spaceSettingsTab: { type: 'string' },
+        spaceSettingsFocus: { type: 'string' },
         dockGeometry: { type: 'object' },
         contentInset: { type: 'object' },
         coveredInset: { type: 'object' },
@@ -2990,11 +2993,11 @@ export const contextData: ContextData = {
         enabledModules: { type: 'array' },
         taskStates: {
           type: 'array',
-          properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'approvals', 'approverKind'],
+          properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'approvals', 'approverKind', 'guards'],
         },
         offeredTaskStates: {
           type: 'array',
-          properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'approvals', 'approverKind'],
+          properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'approvals', 'approverKind', 'guards'],
         },
         taskStatesLoaded: { type: 'boolean' },
         involvementTypes: {
@@ -3036,6 +3039,7 @@ export const contextData: ContextData = {
         root: { type: 'string' },
         roles: { type: 'object' },
         extractionTargets: { type: 'array' },
+        taskFlowRule: { type: 'string' },
         taskFlowEnabled: { type: 'boolean' },
         archivedFlows: { type: 'array' },
         canAdministerCurrentSpace: { type: 'boolean' },
@@ -3091,6 +3095,9 @@ export const contextData: ContextData = {
         'setSignalTypeRetired',
         'createTaskState',
         'updateTaskState',
+        'setTaskFlowRule',
+        'addTaskStateGuard',
+        'removeTaskStateGuard',
         'approveTaskMove',
         'withdrawTaskMove',
         'setFlowArchived',
@@ -3247,6 +3254,12 @@ export const contextData: ContextData = {
     'WeCube',
   ],
   sources: [
+    {
+      name: 'requirementLabel',
+      params: ['options'],
+      doc: 'What a step or a task state asks to be there first, in the words the app uses for it ("at least 1 comment in response to it"). For a form holding requirements it has not saved yet. Options: entity (comment, call, task, file, link, image, or an entity name), tie ("responses", or empty for anywhere in the space), min.',
+      example: 'requirementLabel({ entity: local.guardEntity, tie: local.guardTie, min: local.guardMin })',
+    },
     {
       name: 'calendarMonth',
       params: ['options?'],
