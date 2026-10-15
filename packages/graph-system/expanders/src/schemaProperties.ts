@@ -57,7 +57,7 @@ export function schemaPropertiesExpander(): Expander {
             data: { field: property.name, valueType: property.type, required: property.required ?? false },
             source: 'schema-properties',
           },
-          'field',
+          'property',
         );
       }
       for (const relation of shape.relations) {

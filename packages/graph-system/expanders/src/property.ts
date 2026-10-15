@@ -98,7 +98,7 @@ export function propertyExpander(options: PropertyExpanderOptions = {}): Expande
           target: propertyId,
           type: 'property',
           // What the line is, for a graph that draws its lines' words.
-          label: 'field',
+          label: 'property',
         });
 
         if (!valueNodes || value === null || value === undefined) continue;
