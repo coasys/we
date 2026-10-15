@@ -302,6 +302,9 @@ function trayPosition(input: LayoutInput, index: number, pitch: { x: number; y: 
 /** Edges whose target is drawn below its source rather than beside it: what a node contains, not what it says. */
 const BELOW_EDGE_TYPES: readonly string[] = ['contains', 'instance'];
 
+/** How far out from its card a column of opened fields sits, in gaps. */
+const BESIDE_GAPS = 3;
+
 /** How many slots beside a parent are tried before a node goes to the tray. */
 const SLOT_TRIES = 12;
 
@@ -490,7 +493,9 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
                 y: parentAt.y + parentSize.height / 2 + gap + own.height / 2,
               }
             : {
-                x: parentAt.x + parentSize.width / 2 + gap + own.width / 2,
+                // Further out than the gap between fields: the lines to a column of them fan out from
+                // the card's edge, and at one gap they arrived bunched against it.
+                x: parentAt.x + parentSize.width / 2 + gap * BESIDE_GAPS + own.width / 2,
                 y: parentAt.y - parentSize.height / 2 + own.height / 2 + index * (own.height + gap / 2),
               };
         let index = nextSlot.get(key) ?? 0;
