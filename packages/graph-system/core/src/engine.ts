@@ -35,7 +35,7 @@ import type {
 import { addressKind, metricKey } from '@we/graph-protocol';
 
 import { connectionTarget } from './connect';
-import { ExpansionState, SEED_OPENER } from './expansion';
+import { type CollapseResult, ExpansionState, SEED_OPENER } from './expansion';
 import { downstreamOf, FOLD_BUNDLE, foldableIn, foldGraph, type FoldResult, wouldFold } from './fold';
 import type { EdgeClearance, EdgeWaypoint } from './geometry';
 import {
@@ -1095,6 +1095,8 @@ export class GraphEngine {
     let added = 0;
     let total: number | undefined;
     let cursor: string | undefined;
+    /** What this opening put on the graph for the first time — what grows out of the node. */
+    const arrived: string[] = [];
 
     try {
       for (const expander of chosen) {
@@ -1114,6 +1116,7 @@ export class GraphEngine {
           result.edges.map((e) => e.id),
         );
         added += change.addedNodes.length;
+        arrived.push(...change.addedNodes);
         if (result.total !== undefined) total = (total ?? 0) + result.total;
         cursor = cursor ?? result.cursor;
       }
@@ -1124,17 +1127,46 @@ export class GraphEngine {
     this.expansion.markExpanded(id, { cursor, total, added });
     this.emit({ type: 'expanded', id, added, total });
     this.recomputeMetrics();
-    this.relayout({ travel: this.ownTravel(), steady: id });
+    // What arrived sets off from the node it came out of, so the opening reads as the node growing.
+    this.relayout({ travel: this.selfTravel, steady: id, emergeFrom: { node: id, ids: arrived } });
     this.notify('graph');
   }
 
-  /** Close a node: drop what only it was holding, and bundle what crossed the boundary. */
+  /**
+   * Close a node: drop what only it was holding, and bundle what crossed the boundary.
+   *
+   * What goes travels back into the node first, and is removed when it gets there — the opening run
+   * backwards. Removed at once, a closing card simply vanished, where a fold on the same canvas draws
+   * its cards in. Opened again before they arrive, they stay: a card something holds again is not
+   * removed.
+   */
   collapse(id: string): void {
     const result = this.expansion.collapse(id, this.store);
     if (!result.removedNodes.length && !result.bundles.length) return;
 
-    this.store.removeNodes(result.removedNodes);
-    for (const nodeId of result.removedNodes) {
+    const into = this.positions.get(id);
+    const travel = this.selfTravel;
+    if (travel > 0 && into && result.removedNodes.length) {
+      const inward = new Map(this.positions);
+      for (const nodeId of result.removedNodes) {
+        const at = inward.get(nodeId);
+        if (at) inward.set(nodeId, { ...at, x: into.x, y: into.y });
+      }
+      this.applyPositions(inward, undefined, travel);
+      this.notify('graph');
+      setTimeout(() => {
+        if (!this.disposed) this.finishCollapse(id, result);
+      }, travel);
+      return;
+    }
+    this.finishCollapse(id, result);
+  }
+
+  private finishCollapse(id: string, result: CollapseResult): void {
+    // Anything opened again on the way in is held again, and stays.
+    const removed = result.removedNodes.filter((nodeId) => !this.expansion.isHeld(nodeId));
+    this.store.removeNodes(removed);
+    for (const nodeId of removed) {
       this.positions.delete(nodeId);
       this.selected.delete(nodeId);
     }
@@ -1589,7 +1621,13 @@ export class GraphEngine {
    * grew from its left edge — its root slid right by half of every child added, and every tree after
    * it with it. Only where the layout works positions out; a pinned card is never shifted.
    */
-  relayout(options?: { fit?: Fit; travel?: number; steady?: string }): void {
+  relayout(options?: {
+    fit?: Fit;
+    travel?: number;
+    steady?: string;
+    /** Cards that set off from another node's place rather than appearing at their own — see `expand`. */
+    emergeFrom?: { node: string; ids: string[] };
+  }): void {
     this.relayoutHeld = false;
     const spec = this.spec.layout ?? { type: 'force' };
     /*
@@ -1708,7 +1746,12 @@ export class GraphEngine {
         if (!this.pinnedIds.has(id)) result.positions.set(id, { ...at, x: at.x + shift.x, y: at.y + shift.y });
       }
     }
-    this.applyPositions(result.positions, options?.fit, options?.travel);
+    const origin = options?.emergeFrom ? result.positions.get(options.emergeFrom.node) : undefined;
+    const origins =
+      origin && options?.emergeFrom
+        ? new Map(options.emergeFrom.ids.map((nodeId) => [nodeId, { x: origin.x, y: origin.y }]))
+        : undefined;
+    this.applyPositions(result.positions, options?.fit, options?.travel, origins);
     // A dropped card whose write has come back needs holding no longer: the data now says what the hold did.
     if (this.arrangement && !this.arrangement.at && this.arrangementSettled()) this.endArrangement();
     // A fit that could not run yet (no surface measured) is remembered, not dropped.
@@ -1771,7 +1814,13 @@ export class GraphEngine {
     }, 16);
   }
 
-  private applyPositions(positions: Map<string, Placement>, fit?: Fit, travel?: number): void {
+  private applyPositions(
+    positions: Map<string, Placement>,
+    fit?: Fit,
+    travel?: number,
+    /** Where cards with no place yet set off from, for a travel — see `relayout`'s `emergeFrom`. */
+    origins?: ReadonlyMap<string, Point>,
+  ): void {
     // Re-asserted over whatever the layout returned — see `pinnedIds`.
     for (const id of this.pinnedIds) {
       const at = positions.get(id);
@@ -1811,7 +1860,9 @@ export class GraphEngine {
       here. One line below, the layout's answer has replaced it and "where did this come from" is gone
       — the same reason `setFolded` captures the positions before it recomputes the fold.
     */
-    const before = this.positions;
+    const before: ReadonlyMap<string, Placement> = origins?.size
+      ? new Map([...origins, ...this.positions] as [string, Placement][])
+      : this.positions;
     this.positions = positions;
     // A card that has gone — deleted, or folded away — takes its record of how it was drawn with it.
     this.travel.keepVisuals(this.positions);

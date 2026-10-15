@@ -1815,4 +1815,38 @@ describe('opening and closing a node', () => {
     await vi.advanceTimersByTimeAsync(600);
     expect(xOf(engine, 'a')).toBe(before);
   });
+
+  // A card that arrived appeared at its place in one frame; the node opening now reads as it growing.
+  it('sets what arrives off from the node it came out of', async () => {
+    const engine = await engineWithChild();
+    const parent = xOf(engine, 'a')!;
+    await engine.expand('a');
+    expect(xOf(engine, 'c')).toBe(parent);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(xOf(engine, 'c')).not.toBe(parent);
+  });
+
+  // A closing card vanished, where a fold on the same canvas draws its cards in.
+  it('draws what goes back into the node before it goes', async () => {
+    const engine = await engineWithChild();
+    const parent = xOf(engine, 'a')!;
+    await engine.expand('a');
+    await vi.advanceTimersByTimeAsync(600);
+    drew(engine);
+    engine.collapse('a');
+    expect(engine.store.node('c')).toBeDefined();
+    await vi.advanceTimersByTimeAsync(600);
+    expect(engine.store.node('c')).toBeUndefined();
+    expect(xOf(engine, 'a')).toBe(parent);
+  });
+
+  it('keeps what is opened again before it has gone', async () => {
+    const engine = await engineWithChild();
+    await engine.expand('a');
+    await vi.advanceTimersByTimeAsync(600);
+    engine.collapse('a');
+    await engine.expand('a');
+    await vi.advanceTimersByTimeAsync(600);
+    expect(engine.store.node('c')).toBeDefined();
+  });
 });

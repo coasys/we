@@ -70,6 +70,21 @@ export class ExpansionState {
     for (const id of edgeIds) addOpener(this.edgeOpeners, id, opener);
   }
 
+  /**
+   * Whether a node is on the graph only because something was opened — no seed holds it. A canvas
+   * reads it to leave such a card's position unwritten: written, it would join the canvas in its own
+   * right and outlive the parent closing.
+   */
+  heldOnlyByOpening(id: string): boolean {
+    const holders = this.openers.get(id);
+    return !!holders && holders.size > 0 && !holders.has(SEED_OPENER);
+  }
+
+  /** Whether anything — a seed or an opening — still holds a node on the graph. */
+  isHeld(id: string): boolean {
+    return (this.openers.get(id)?.size ?? 0) > 0;
+  }
+
   /** Mark a node open, and record where its next page starts. */
   markExpanded(id: string, page: { cursor?: string; total?: number; added: number }): void {
     this.expanded.add(id);
