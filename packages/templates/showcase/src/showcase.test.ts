@@ -696,7 +696,7 @@ describe('the workshop template’s call selection', () => {
     expect(json).toContain('"syncParam":"cardType"');
     // Set from the click, cleared only when the selection actually empties — an unguarded clear
     // would race the click that set it.
-    expect(json).toContain('{"$setLocal":"inspectingType","value":{"$":"event.recordType"}}');
+    expect(json).toContain('{"$setLocal":"inspectingType","value":{"$":"event.recordType ?? \'\'"}}');
     expect(json).toContain('"condition":{"$":"!count(arg)"}');
   });
 

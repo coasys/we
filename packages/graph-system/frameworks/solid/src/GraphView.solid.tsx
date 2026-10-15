@@ -86,6 +86,7 @@ import { Dynamic } from 'solid-js/web';
 
 import type { GraphViewProps, NodeBadge, NodeContent } from './GraphView.types';
 import { isSettled, patched } from './pending';
+import { isRecordAddress } from './recordAddress';
 import { type Grip, HANDLES, resizeBox } from './resize';
 
 /** Matches the engine's own floor, so a drag cannot leave a card the style layer would refuse. */
@@ -587,7 +588,7 @@ export function GraphView(props: GraphViewProps) {
             // type an id is, and neither can `recordStore.displays`. Double-click and the node
             // actions both carried it already; this was the one that made a caller reach for the
             // double-click handler to answer a single click's question.
-            ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+            ...(isRecordAddress(at) && { recordId: at.id, recordType: at.type }),
             fields: readableFields(node),
           });
           break;
@@ -601,7 +602,7 @@ export function GraphView(props: GraphViewProps) {
           const opened = parseAddress(node.id);
           props.onNodeDoubleClick?.({
             ...node,
-            ...(opened?.kind === 'entity' && { recordId: opened.id, recordType: opened.type }),
+            ...(isRecordAddress(opened) && { recordId: opened.id, recordType: opened.type }),
           });
           break;
         }
@@ -615,7 +616,7 @@ export function GraphView(props: GraphViewProps) {
           const behind = edge.reifiedAs ? parseAddress(edge.reifiedAs) : null;
           props.onEdgeClick?.({
             ...edge,
-            ...(behind?.kind === 'entity' && { recordId: behind.id, recordType: behind.type }),
+            ...(isRecordAddress(behind) && { recordId: behind.id, recordType: behind.type }),
           });
           break;
         }
@@ -669,7 +670,7 @@ export function GraphView(props: GraphViewProps) {
           /** One card that moved with the drag, as a record, or nothing when it does not stand for one. */
           const asRecord = (id: string, x: number, y: number) => {
             const address = parseAddress(id);
-            if (address?.kind !== 'entity' || !address.id) return [];
+            if (!isRecordAddress(address) || !address.id) return [];
             return [{ recordId: address.id, recordType: address.type ?? '', x, y }];
           };
           /*
@@ -695,7 +696,7 @@ export function GraphView(props: GraphViewProps) {
             id: event.node.id,
             x: event.position.x,
             y: event.position.y,
-            ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+            ...(isRecordAddress(at) && { recordId: at.id, recordType: at.type }),
             ...(carried.length ? { carried } : {}),
           });
           break;
@@ -1167,7 +1168,7 @@ export function GraphView(props: GraphViewProps) {
           id: target.owner,
           folded: false,
           count: engine.foldedCount(target.owner),
-          ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+          ...(isRecordAddress(at) && { recordId: at.id, recordType: at.type }),
         });
       }
       return;
@@ -1466,7 +1467,7 @@ export function GraphView(props: GraphViewProps) {
   const selectedRecords = createMemo(() =>
     selectedRows().flatMap(({ entry }) => {
       const at = parseAddress(entry.node.id);
-      return at?.kind === 'entity' && at.id ? [{ recordId: at.id, recordType: at.type ?? '' }] : [];
+      return isRecordAddress(at) && at.id ? [{ recordId: at.id, recordType: at.type ?? '' }] : [];
     }),
   );
 
@@ -2131,7 +2132,7 @@ export function GraphView(props: GraphViewProps) {
       id: entry.node.id,
       folded: !entry.folded,
       count: engine.foldImpact(entry.node.id),
-      ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+      ...(isRecordAddress(at) && { recordId: at.id, recordType: at.type }),
     });
   }
 
@@ -2165,7 +2166,7 @@ export function GraphView(props: GraphViewProps) {
     props.onNodeOpen?.({
       id: entry.node.id,
       open,
-      ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+      ...(isRecordAddress(at) && { recordId: at.id, recordType: at.type }),
     });
   }
 
@@ -2534,7 +2535,7 @@ export function GraphView(props: GraphViewProps) {
       setGesturing(null);
       setHovered(null);
       const behind = edge.reifiedAs ? parseAddress(edge.reifiedAs) : null;
-      const connection = behind?.kind === 'entity' ? { recordId: behind.id, recordType: behind.type } : {};
+      const connection = isRecordAddress(behind) ? { recordId: behind.id, recordType: behind.type } : {};
       const arrived = landing ? parseAddress(landing) : null;
       /*
         A re-attachment rewrites the *claim*; an anchor rewrites how one canvas draws it.
@@ -2672,7 +2673,7 @@ export function GraphView(props: GraphViewProps) {
       props.onEdgeReroute?.({
         id: edgeId,
         points,
-        ...(behind?.kind === 'entity' && { recordId: behind.id, recordType: behind.type }),
+        ...(isRecordAddress(behind) && { recordId: behind.id, recordType: behind.type }),
       });
     };
 
@@ -2733,7 +2734,7 @@ export function GraphView(props: GraphViewProps) {
     props.onEdgeReroute?.({
       id: edgeId,
       points,
-      ...(behind?.kind === 'entity' && { recordId: behind.id, recordType: behind.type }),
+      ...(isRecordAddress(behind) && { recordId: behind.id, recordType: behind.type }),
     });
   }
 
@@ -2823,7 +2824,7 @@ export function GraphView(props: GraphViewProps) {
         y: Math.round(box.y),
         width: Math.round(box.width),
         height: Math.round(box.height),
-        ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+        ...(isRecordAddress(at) && { recordId: at.id, recordType: at.type }),
       });
     };
 
@@ -3040,7 +3041,7 @@ export function GraphView(props: GraphViewProps) {
       report({
         count: 1,
         kind: 'edge',
-        ...(behind?.kind === 'entity' && { recordId: behind.id, recordType: behind.type }),
+        ...(isRecordAddress(behind) && { recordId: behind.id, recordType: behind.type }),
       });
       return;
     }
@@ -3056,7 +3057,7 @@ export function GraphView(props: GraphViewProps) {
       count: ids.length,
       kind: 'node',
       // Still filled for a selection of one, which is what every existing consumer reads.
-      ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+      ...(isRecordAddress(at) && { recordId: at.id, recordType: at.type }),
       ...(records.length ? { records } : {}),
     });
   }
@@ -4007,7 +4008,7 @@ export function GraphView(props: GraphViewProps) {
                               component={Badge()}
                               node={entry.node}
                               keepStill={(on: boolean) => engine.keepStill(opened, on)}
-                              {...(at?.kind === 'entity' && at.id ? { recordId: at.id, recordType: at.type } : {})}
+                              {...(isRecordAddress(at) && at.id ? { recordId: at.id, recordType: at.type } : {})}
                             />
                           </div>
                         );
@@ -4233,7 +4234,7 @@ export function GraphView(props: GraphViewProps) {
                             id: entry.node.id,
                             x: entry.at.x,
                             y: entry.at.y,
-                            ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+                            ...(isRecordAddress(at) && { recordId: at.id, recordType: at.type }),
                             ...extra,
                           });
                         };

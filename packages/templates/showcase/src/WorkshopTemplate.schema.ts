@@ -3857,9 +3857,14 @@ const canvas: SchemaNode = {
       an entity, and so does `recordStore.displays`. The graph carries both on the payload, which is
       the reason `recordType` is on a single click at all.
     */
+    /*
+      A node that stands for no record — a field opened out of a card — clears the selection rather
+      than storing what it lacks: an absent type written to the address read back as the word
+      "undefined", and the inspector asked for a model by that name.
+    */
     onNodeClick: [
-      { $setLocal: 'inspecting', value: { $: 'event.recordId' } },
-      { $setLocal: 'inspectingType', value: { $: 'event.recordType' } },
+      { $setLocal: 'inspecting', value: { $: "event.recordId ?? ''" } },
+      { $setLocal: 'inspectingType', value: { $: "event.recordType ?? ''" } },
     ],
     /*
       Double-click opens a note in the composer. The first click has already selected it, so the
@@ -3892,8 +3897,8 @@ const canvas: SchemaNode = {
       nothing to say about.
     */
     onEdgeClick: [
-      { $setLocal: 'inspecting', value: { $: 'event.recordId' } },
-      { $setLocal: 'inspectingType', value: { $: 'event.recordType' } },
+      { $setLocal: 'inspecting', value: { $: "event.recordId ?? ''" } },
+      { $setLocal: 'inspectingType', value: { $: "event.recordType ?? ''" } },
     ],
     /*
       Delete, on whatever is selected — a card, several cards, or a line.
