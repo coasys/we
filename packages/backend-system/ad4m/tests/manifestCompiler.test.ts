@@ -267,4 +267,32 @@ describe('a manifest extending the core vocabulary', () => {
     expect(byName.responses).toBe('we://response');
     expect(byName.signals).toBe('we://signal');
   });
+
+  it('reads an inherited reverse relation backwards, as the hand-written models do', () => {
+    // `partOf` is `CollectionBlock.children` read from the child's end. Compiled as a forward
+    // relation it reads the record's own children instead of its container — and makes every
+    // runtime-compiled entity look like a container to anything matching shapes by relation.
+    const classes = compileManifest(
+      {
+        version: '1',
+        entities: { Sighting: { extends: 'WeNode', properties: { species: { type: 'string' } }, relations: {} } },
+      },
+      { moduleId: 'shape/abc' },
+    );
+    const kinds = (cls: unknown) =>
+      Object.fromEntries(
+        (cls as Shaped)
+          .generateSHACL()
+          .shape!.properties.map((p) => [p.name, (p as { relationKind?: string }).relationKind]),
+      );
+    const compiled = kinds(classes.Sighting);
+    const handWritten = kinds(ALL_MODELS.find((m) => m.name === 'TextBlock'));
+
+    for (const name of ['partOf', 'respondsTo', 'inThread', 'extractedFrom']) {
+      expect(compiled[name], name).toBe('belongsToOne');
+    }
+    for (const name of ['partOf', 'respondsTo', 'inThread', 'extractedFrom', 'responses', 'thread', 'signals']) {
+      expect(compiled[name], name).toBe(handWritten[name]);
+    }
+  });
 });
