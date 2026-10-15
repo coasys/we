@@ -1396,21 +1396,21 @@ const topologyIndicator: SchemaNode = {
         condition: { $: "modules.call.topology == 'sfu'" },
         then: {
           type: 'we-tooltip',
-          props: { title: 'Routed through relay server (SFU)', placement: 'bottom' },
+          props: { content: 'Routed through relay server (SFU)', placement: 'bottom' },
           children: [
             {
               type: 'we-icon',
-              props: { name: 'broadcast', size: 'sm', color: 'var(--we-color-text-secondary)' },
+              props: { name: 'broadcast', color: 'text-muted' },
             },
           ],
         },
         else: {
           type: 'we-tooltip',
-          props: { title: 'Peer-to-peer mesh', placement: 'bottom' },
+          props: { content: 'Peer-to-peer mesh', placement: 'bottom' },
           children: [
             {
               type: 'we-icon',
-              props: { name: 'graph', size: 'sm', color: 'var(--we-color-text-tertiary)' },
+              props: { name: 'graph', color: 'text-faint' },
             },
           ],
         },
@@ -1436,7 +1436,7 @@ const qualitySelector: SchemaNode = {
     then: {
       type: 'we-tooltip',
       props: {
-        title: expr`"Quality: " + ${{ $: 'modules.call.qualityPreference' }}`,
+        content: expr`"Quality: " + ${{ $: 'modules.call.qualityPreference' }}`,
         placement: 'bottom',
       },
       children: [
@@ -1482,7 +1482,7 @@ const callSettingsPopover: SchemaNode = {
         // Trigger button — gear icon
         {
           type: 'we-tooltip',
-          props: { title: 'Call settings', placement: 'bottom' },
+          props: { content: 'Call settings', placement: 'bottom' },
           children: [
             {
               type: 'we-button',
@@ -1491,7 +1491,7 @@ const callSettingsPopover: SchemaNode = {
                 variant: 'ghost',
                 onClick: { $setLocal: 'open', value: { $: '!local.open' } },
               },
-              children: [{ type: 'we-icon', props: { name: 'settings', size: 'sm' } }],
+              children: [{ type: 'we-icon', props: { name: 'settings' } }],
             },
           ],
         },
@@ -1512,7 +1512,7 @@ const callSettingsPopover: SchemaNode = {
                 bg: 'surface-raised',
                 r: '300',
                 border: '1px solid border',
-                boxShadow: 'var(--we-shadow-lg)',
+                shadow: 'lg',
                 zIndex: '100',
               },
               children: [
@@ -1530,7 +1530,7 @@ const callSettingsPopover: SchemaNode = {
                         variant: 'ghost',
                         onClick: { $setLocal: 'open', value: false },
                       },
-                      children: [{ type: 'we-icon', props: { name: 'x', size: 'sm' } }],
+                      children: [{ type: 'we-icon', props: { name: 'x' } }],
                     },
                   ],
                 },
@@ -1551,11 +1551,11 @@ const callSettingsPopover: SchemaNode = {
                             condition: { $: "modules.call.topology == 'sfu'" },
                             then: {
                               type: 'we-icon',
-                              props: { name: 'broadcast', size: 'sm', color: 'var(--we-color-text-secondary)' },
+                              props: { name: 'broadcast', size: 'sm', color: 'text-muted' },
                             },
                             else: {
                               type: 'we-icon',
-                              props: { name: 'graph', size: 'sm', color: 'var(--we-color-text-tertiary)' },
+                              props: { name: 'graph', size: 'sm', color: 'text-faint' },
                             },
                           },
                         },
