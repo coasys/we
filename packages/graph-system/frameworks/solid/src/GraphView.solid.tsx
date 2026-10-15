@@ -1749,9 +1749,6 @@ export function GraphView(props: GraphViewProps) {
       const route = geometry.get(edge.id);
       if (!route) return [];
       const visual = edgeVisual(edge, resolveStyle(edge, props.edgeStyle, metrics), metrics);
-      // A line to a card coming out of a node, or going back in, fades with it — see `passingOpacity`.
-      const fade = Math.min(engine.passingOpacity(edge.source) ?? 1, engine.passingOpacity(edge.target) ?? 1);
-      if (fade < 1) visual.opacity = (visual.opacity ?? 1) * fade;
       // The gap is the arrowhead's own length, in world units — the marker scales with stroke width,
       // so the stroke has to give up the same amount it takes.
       const gap = visual.arrow === 'none' ? 0 : ARROW_LENGTH * visual.width;
@@ -2141,25 +2138,57 @@ export function GraphView(props: GraphViewProps) {
   }
 
   /**
-   * What the caret on a card does — one control, three answers, so a reader has one way to look
-   * inside a card whatever is behind it:
+   * What the caret on a card does — one control for everything under it, whatever put it there.
    *
-   * - **fold** — the card's children are already on the graph (a seed drew them): hide or show them.
-   *   Comes first, and a folded card always answers it, so nothing loaded is ever re-fetched.
-   * - **close** — the graph opened this card itself: drop what only it brought in.
-   * - **open** — nothing is under it yet, and an expander the spec allows claims it: fetch.
+   * Two things can be under a card: what is already on the graph and hangs off it (a seed drew it, and
+   * a fold hides it), and what the graph fetches when the card is opened (its properties, what it
+   * contains). They used to be one answer or the other — whichever came first — so a card that had been
+   * opened could no longer fold its connections from the caret. Now:
    *
-   * The opening half is offered only to an interface listening on `onNodeOpen`, the bargain the fold
-   * makes: where the open set is kept is the interface's, and a caret that forgot on reload would be
+   * - **close** — something is showing under it: closes what was opened and folds what can fold.
+   * - **open** — something is hidden: unfolds it and opens the card.
+   *
+   * Folding is offered only to an interface listening on `onNodeFold`, and opening only to one on
+   * `onNodeOpen` — where each is kept is the interface's, and a caret that forgot on reload would be
    * worse than none.
    */
-  const caretSays = (entry: NodeEntry): { mode: 'fold' | 'close' | 'open' | null } => {
+  const caretSays = (
+    entry: NodeEntry,
+  ): { mode: 'close' | 'open' | null; folds: boolean; opens: boolean; enabled: boolean } => {
     version();
-    if (entry.folded) return { mode: 'fold' };
-    if (props.onNodeOpen && engine.expansion.isExpanded(entry.node.id)) return { mode: 'close' };
-    if (foldSays(entry).show) return { mode: 'fold' };
-    if (props.onNodeOpen && engine.canExpand(entry.node.id)) return { mode: 'open' };
-    return { mode: null };
+    const fold = foldSays(entry);
+    const opened = !!props.onNodeOpen && engine.expansion.isExpanded(entry.node.id);
+    const canOpen = !!props.onNodeOpen && engine.canExpand(entry.node.id);
+    const unfolded = fold.show && !entry.folded;
+    if (opened || unfolded) {
+      return { mode: 'close', folds: unfolded, opens: opened, enabled: opened || fold.enabled };
+    }
+    if (entry.folded || canOpen) return { mode: 'open', folds: entry.folded, opens: canOpen, enabled: true };
+    return { mode: null, folds: false, opens: false, enabled: false };
+  };
+
+  /** Press the caret: everything under the card the one way or the other — see {@link caretSays}. */
+  function pressCaret(entry: NodeEntry): void {
+    const says = caretSays(entry);
+    if (says.mode === 'close') {
+      if (says.opens) toggleOpen(entry, false);
+      if (says.folds && foldSays(entry).enabled) reportFold(entry);
+    } else if (says.mode === 'open') {
+      if (says.folds) reportFold(entry);
+      if (says.opens) toggleOpen(entry, true);
+    }
+  }
+
+  /** What the caret is called, and says on hover — in the fold's words where only a fold is involved. */
+  const caretLabel = (entry: NodeEntry): string => {
+    const says = caretSays(entry);
+    if (says.mode === 'close') return says.opens ? 'Close' : 'Fold';
+    return says.folds && !says.opens ? 'Unfold' : 'Open';
+  };
+  const caretTitle = (entry: NodeEntry): string => {
+    const says = caretSays(entry);
+    if (says.folds && !says.opens) return foldTitle(entry, foldSays(entry));
+    return says.mode === 'close' ? 'Close what is open under this card' : 'Open what is in this card';
   };
 
   /**
@@ -4042,44 +4071,18 @@ export function GraphView(props: GraphViewProps) {
                         close, since what it opens grows below the card.
                       */}
                       <div class="we-graph__corner-caret">
-                        <we-tooltip
-                          content={
-                            caretSays(entry).mode === 'fold'
-                              ? foldTitle(entry, foldSays(entry))
-                              : caretSays(entry).mode === 'close'
-                                ? 'Close what is open under this card'
-                                : 'Open what is in this card'
-                          }
-                        >
+                        <we-tooltip content={caretTitle(entry)}>
                           <we-button
                             variant="ghost"
                             size="xs"
                             square
-                            label={
-                              caretSays(entry).mode === 'fold'
-                                ? entry.folded
-                                  ? 'Unfold'
-                                  : 'Fold'
-                                : caretSays(entry).mode === 'close'
-                                  ? 'Close'
-                                  : 'Open'
-                            }
-                            disabled={caretSays(entry).mode === 'fold' && !foldSays(entry).enabled}
+                            label={caretLabel(entry)}
+                            disabled={!caretSays(entry).enabled}
                             color="text-muted"
                             prop:hoverProps={{ color: 'text' }}
-                            onClick={() => {
-                              const mode = caretSays(entry).mode;
-                              if (mode === 'fold') reportFold(entry);
-                              else toggleOpen(entry, mode === 'open');
-                            }}
+                            onClick={() => pressCaret(entry)}
                           >
-                            <we-icon
-                              name={
-                                (caretSays(entry).mode === 'fold' && !entry.folded) || caretSays(entry).mode === 'close'
-                                  ? 'caret-up'
-                                  : 'caret-down'
-                              }
-                            />
+                            <we-icon name={caretSays(entry).mode === 'close' ? 'caret-up' : 'caret-down'} />
                           </we-button>
                         </we-tooltip>
                       </div>
@@ -4279,56 +4282,32 @@ export function GraphView(props: GraphViewProps) {
                       does not take the count away with the chip it replaces. Icons rather than words:
                       the caret points the way the contents are about to go.
                     */}
-                    <Show when={caretSays(entry).mode === 'fold'}>
-                      <we-tooltip content={foldTitle(entry, foldSays(entry))}>
+                    <Show when={caretSays(entry).mode !== null}>
+                      <we-tooltip content={caretTitle(entry)}>
                         <we-button
                           variant="ghost"
                           size="md"
                           // Square only while there is no count beside the caret.
                           square={!entry.folded}
-                          label={entry.folded ? 'Unfold' : 'Fold'}
+                          label={caretLabel(entry)}
                           /*
-                            Shown and refused, rather than absent. Where everything under a card is
-                            held elsewhere there is nothing a fold may take — and a control that
-                            simply was not there said that about the card instead of about the rule.
+                            Shown and refused, rather than absent. Where everything under a card is held
+                            elsewhere there is nothing a fold may take — and a control that simply was not
+                            there said that about the card instead of about the rule.
                           */
-                          disabled={!foldSays(entry).enabled}
-                          color={entry.folded ? 'accent-text' : 'text-muted'}
-                          prop:hoverProps={{ color: entry.folded ? 'accent' : 'text' }}
-                          onClick={() => reportFold(entry)}
+                          disabled={!caretSays(entry).enabled}
+                          color={caretSays(entry).mode === 'open' && entry.folded ? 'accent-text' : 'text-muted'}
+                          prop:hoverProps={{
+                            color: caretSays(entry).mode === 'open' && entry.folded ? 'accent' : 'text',
+                          }}
+                          onClick={() => pressCaret(entry)}
                         >
-                          <we-icon name={entry.folded ? 'caret-right' : 'caret-down'} />
+                          <we-icon name={caretSays(entry).mode === 'close' ? 'caret-down' : 'caret-right'} />
                           <Show when={entry.folded && entry.foldedCount > 0}>
                             <we-text variant="label" color="accent-text">
                               {String(entry.foldedCount)}
                             </we-text>
                           </Show>
-                        </we-button>
-                      </we-tooltip>
-                    </Show>
-                    {/*
-                      The same caret, for a card the graph opens itself rather than folds — see
-                      `caretSays`. Pointing right while closed and down while open, as the fold's does,
-                      so the one control reads the same whichever of the two is behind it.
-                    */}
-                    <Show when={caretSays(entry).mode === 'open' || caretSays(entry).mode === 'close'}>
-                      <we-tooltip
-                        content={
-                          caretSays(entry).mode === 'close'
-                            ? 'Close what is open under this card'
-                            : 'Open what is in this card'
-                        }
-                      >
-                        <we-button
-                          variant="ghost"
-                          size="md"
-                          square
-                          label={caretSays(entry).mode === 'close' ? 'Close' : 'Open'}
-                          color={caretSays(entry).mode === 'close' ? 'accent-text' : 'text-muted'}
-                          prop:hoverProps={{ color: caretSays(entry).mode === 'close' ? 'accent' : 'text' }}
-                          onClick={() => toggleOpen(entry, caretSays(entry).mode === 'open')}
-                        >
-                          <we-icon name={caretSays(entry).mode === 'close' ? 'caret-down' : 'caret-right'} />
                         </we-button>
                       </we-tooltip>
                     </Show>

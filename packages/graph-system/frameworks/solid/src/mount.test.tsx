@@ -455,6 +455,26 @@ describe('GraphView folding', () => {
     expect(host.querySelector('.we-graph__actions')).toBeNull();
   });
 
+  // An opened card could no longer fold its connections from the caret: the opening answered first.
+  it('closes what was opened and folds what can fold, from one caret', async () => {
+    const folds: boolean[] = [];
+    const opens: boolean[] = [];
+    const host = mount({
+      seeds: literal,
+      layout: { type: 'manual' },
+      focus: 'parent',
+      open: [entityAddress('ds', 'TaskBlock', 'parent')],
+      onNodeOpen: (payload) => opens.push(payload.open),
+      onNodeFold: (payload) => folds.push(payload.folded),
+    });
+    await until(() => propOf(host, '.we-graph__actions we-button', 'label') === 'Close');
+
+    (host.querySelector('.we-graph__actions we-button') as HTMLElement).click();
+
+    expect(opens).toEqual([false]);
+    expect(folds).toEqual([true]);
+  });
+
   it('says what a fold will leave behind, rather than half working in silence', async () => {
     /*
       `shared` is held by `outside` as well, so folding `parent` may take `own` and may not take
