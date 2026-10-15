@@ -108,7 +108,16 @@ export const vocabularyCanvas: SchemaNode = {
             dived below the child and hooked back up into it. A little more than the canvas's tree has,
             since these lines run between shorter cards that sit wider apart.
           */
-          options: { card: { width: 180, height: 64 }, levelGap: 110, unattached: 'trees', sortBy: 'order' },
+          // Sideways, tighter than the default share of the card's width, so a map of many small trees
+          // stays close together.
+          options: {
+            card: { width: 180, height: 64 },
+            levelGap: 110,
+            siblingGap: 36,
+            treeGap: 90,
+            unattached: 'trees',
+            sortBy: 'order',
+          },
         },
         nodeStyle: [
           { style: { shape: 'card', width: 180, height: 64, color: 'surface-raised' } },
