@@ -24,6 +24,9 @@ import {
   type BackendPorts,
   CONTAINMENT_PREDICATE,
   type DatasetHandle,
+  type FlowDefinition,
+  type FlowView,
+  itemFor,
   RECORD_TYPE_KEY,
   type RendererDataBindings,
 } from '@we/backend-shared';
@@ -84,6 +87,12 @@ export const CONFORMANCE_CASES = [
   'live.identical-queries-independent',
   'ephemeral.no-echo',
   'references.referrers',
+  'flows.definition-round-trip',
+  'flows.move-and-watch',
+  'flows.enter-where-it-stands',
+  'flows.waiting-and-withdraw',
+  'flows.guard',
+  'flows.remove-refused-with-records',
 ] as const;
 
 /** Every case a harness can name in `knownGaps` — the per-case ones above and the template queries. */
@@ -125,12 +134,23 @@ interface Reader {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Retry an assertion until it holds or `timeout` runs out, then throw its last failure. */
-async function eventually(assertion: () => void, timeout: number): Promise<void> {
+/** A definition with its moves in one order, since the contract gives them none. */
+function movesAsSet(definition: FlowDefinition | null): FlowDefinition | null {
+  if (!definition) return definition;
+  const key = (t: FlowDefinition['transitions'][number]) => `${t.from}\u0000${t.to}\u0000${t.name ?? ''}`;
+  return { ...definition, transitions: [...definition.transitions].sort((a, b) => key(a).localeCompare(key(b))) };
+}
+
+/**
+ * Retry an assertion until it holds or `timeout` runs out, then throw its last failure. An assertion
+ * that reads asynchronously is awaited, so its failure is retried like any other rather than escaping
+ * as an unhandled rejection while the case passes.
+ */
+async function eventually(assertion: () => void | Promise<void>, timeout: number): Promise<void> {
   const deadline = Date.now() + timeout;
   for (;;) {
     try {
-      assertion();
+      await assertion();
       return;
     } catch (error) {
       if (Date.now() >= deadline) throw error;
@@ -633,6 +653,181 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           await eventually(() => expect(names(second.pushes.at(-1))).toEqual(['Seen']), settle);
         },
       );
+    });
+
+    describe('flows', () => {
+      /*
+        One agent per case, so nothing here can be agreed by two people — that is each backend's own
+        suite. What every backend must agree on is the shape of the answers: a definition reads back as
+        it was written, a move is reported and then seen, a record that predates the flow keeps its
+        place, an ask short of agreement waits and can be taken back, a guard refuses until it holds.
+      */
+      const FLOW: FlowDefinition = {
+        name: 'Conformance',
+        subjects: ['TaskBlock'],
+        states: [
+          { name: 'todo' },
+          { name: 'doing' },
+          { name: 'done', requires: [{ kind: 'approvals', count: 2 }] },
+          {
+            name: 'shipped',
+            requires: [
+              { kind: 'guard', entity: 'TextBlock', where: { text: 'release note' }, tie: { relation: 'responses' } },
+            ],
+          },
+        ],
+        transitions: [
+          { from: 'todo', to: 'doing' },
+          { from: 'doing', to: 'todo' },
+          { from: 'doing', to: 'done' },
+          { from: 'doing', to: 'shipped' },
+        ],
+      };
+
+      const ready = async () => {
+        const flows = subject.ports.flows;
+        if (!flows) return null;
+        await flows.install(subject.dataset, FLOW);
+        const task = await model('TaskBlock').create(subject.dataset, { title: 'Ship it' });
+        return { flows, task: task.id };
+      };
+
+      const watching = async (flows: NonNullable<BackendPorts['flows']>) => {
+        const views: FlowView[] = [];
+        const stop = await flows.watch(subject.dataset, FLOW.name, (view) => void views.push(view));
+        return { views, stop };
+      };
+
+      test(
+        'flows.definition-round-trip',
+        'reads a definition back as it was written, and a changed rule replaced',
+        async () => {
+          const flows = subject.ports.flows;
+          if (!flows) return;
+          await flows.install(subject.dataset, FLOW);
+          expect(movesAsSet(await flows.read(subject.dataset, FLOW.name))).toEqual(movesAsSet(FLOW));
+          expect(await flows.list(subject.dataset)).toEqual(
+            expect.arrayContaining([{ name: FLOW.name, editable: true, records: 0 }]),
+          );
+
+          const three: FlowDefinition = {
+            ...FLOW,
+            states: FLOW.states.map((s) =>
+              s.name === 'done' ? { ...s, requires: [{ kind: 'approvals', count: 3 }] } : s,
+            ),
+          };
+          await flows.install(subject.dataset, three);
+          await eventually(async () => {
+            expect(movesAsSet(await flows.read(subject.dataset, FLOW.name))).toEqual(movesAsSet(three));
+          }, settle);
+        },
+      );
+
+      test('flows.move-and-watch', 'reports a move, shows it to a watcher, and keeps it as a step', async () => {
+        const setup = await ready();
+        if (!setup) return;
+        const { flows, task } = setup;
+        const { views, stop } = await watching(flows);
+        try {
+          const result = await flows.move(subject.dataset, FLOW.name, task, 'doing');
+          expect(result).toMatchObject({ outcome: 'moved', state: 'doing', steps: [{ from: 'todo', to: 'doing' }] });
+          await eventually(() => expect(itemFor(views.at(-1), task)?.state).toBe('doing'), settle);
+          expect((await flows.history(subject.dataset, FLOW.name, task)).map((s) => [s.from, s.to])).toEqual([
+            ['todo', 'doing'],
+          ]);
+          expect(await flows.move(subject.dataset, FLOW.name, task, 'done', {})).toMatchObject({ outcome: 'waiting' });
+          expect(await flows.move(subject.dataset, FLOW.name, task, 'shipped')).toMatchObject({
+            outcome: 'refused',
+            reason: 'unmet',
+          });
+        } finally {
+          stop();
+        }
+      });
+
+      test(
+        'flows.enter-where-it-stands',
+        'enters a record that predates the flow where the caller says it stands',
+        async () => {
+          const setup = await ready();
+          if (!setup) return;
+          const { flows, task } = setup;
+          // Doing → todo is allowed and todo → todo is not a move, so only a record entered at `doing`
+          // can make this one.
+          const result = await flows.move(subject.dataset, FLOW.name, task, 'todo', { from: 'doing' });
+          expect(result).toMatchObject({ outcome: 'moved', state: 'todo', steps: [{ from: 'doing', to: 'todo' }] });
+        },
+      );
+
+      test(
+        'flows.waiting-and-withdraw',
+        'keeps an ask short of agreement waiting, and lets the asker take it back',
+        async () => {
+          const setup = await ready();
+          if (!setup) return;
+          const { flows, task } = setup;
+          await flows.move(subject.dataset, FLOW.name, task, 'doing');
+          const waiting = await flows.move(subject.dataset, FLOW.name, task, 'done', { note: 'Looks finished' });
+          expect(waiting).toMatchObject({ outcome: 'waiting', to: 'done', voted: true, voters: [subject.agent] });
+          expect(await flows.move(subject.dataset, FLOW.name, task, 'done')).toMatchObject({
+            outcome: 'waiting',
+            voted: false,
+          });
+
+          const { views, stop } = await watching(flows);
+          try {
+            await eventually(
+              () =>
+                expect(itemFor(views.at(-1), task)?.waiting).toMatchObject([
+                  { to: 'done', voters: [subject.agent], note: 'Looks finished' },
+                ]),
+              settle,
+            );
+            expect(await flows.withdraw(subject.dataset, FLOW.name, task)).toBeGreaterThan(0);
+            await eventually(
+              () => expect(itemFor(views.at(-1), task)).toMatchObject({ state: 'doing', waiting: [] }),
+              settle,
+            );
+          } finally {
+            stop();
+          }
+        },
+      );
+
+      test(
+        'flows.guard',
+        'refuses a move until its guard holds, then makes it with the guard’s records as evidence',
+        async () => {
+          const setup = await ready();
+          if (!setup) return;
+          const { flows, task } = setup;
+          await flows.move(subject.dataset, FLOW.name, task, 'doing');
+          expect(await flows.move(subject.dataset, FLOW.name, task, 'shipped')).toMatchObject({
+            outcome: 'refused',
+            reason: 'unmet',
+            state: 'doing',
+          });
+
+          const note = await model('TextBlock').create(subject.dataset, { text: 'release note' });
+          await model('TaskBlock').addRelation(subject.dataset, task, 'responses', note.id);
+          await eventually(async () => {
+            expect(await flows.move(subject.dataset, FLOW.name, task, 'shipped')).toMatchObject({ outcome: 'moved' });
+          }, settle);
+          await eventually(async () => {
+            const steps = await flows.history(subject.dataset, FLOW.name, task);
+            expect(steps.at(-1)).toMatchObject({ to: 'shipped', evidence: [note.id] });
+          }, settle);
+        },
+      );
+
+      test('flows.remove-refused-with-records', 'refuses to remove a flow a record is going through', async () => {
+        const setup = await ready();
+        if (!setup) return;
+        const { flows, task } = setup;
+        await flows.start(subject.dataset, FLOW.name, task);
+        await expect(flows.remove(subject.dataset, FLOW.name)).rejects.toThrow();
+        expect((await flows.list(subject.dataset)).map((f) => f.name)).toContain(FLOW.name);
+      });
     });
 
     describe('ephemeral', () => {

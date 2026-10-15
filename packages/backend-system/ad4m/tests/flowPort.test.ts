@@ -5,10 +5,11 @@
  *
  * What the engine then does with the links is the engine's business and is not tested here.
  */
+import { SHACLFlow } from '@coasys/ad4m';
 import type { FlowDefinition } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
-import { createAd4mFlowPort, toShaclFlow } from '../src/flowPort';
+import { createAd4mFlowPort, fromShaclFlow, isEditable, moveRefusal, toShaclFlow } from '../src/flowPort';
 
 interface Stored {
   data: { source: string; predicate?: string; target: string };
@@ -45,23 +46,27 @@ function fakePerspective(initial: Stored['data'][] = []) {
   return { perspective, added, removed, all: () => links.map((l) => l.data) };
 }
 
+const REVIEWING = { entity: 'Involvement', agentField: 'agent', where: { kind: 'reviewing' }, subjectField: 'node' };
+
 const FLOW: FlowDefinition = {
   name: 'Tasks',
   subjects: ['TaskBlock'],
   states: [
-    { name: '_entry' },
     { name: 'todo' },
-    { name: 'done', approvals: 2 },
+    { name: 'done', requires: [{ kind: 'approvals', count: 2 }] },
+    { name: 'review', requires: [{ kind: 'approvals', count: 1, from: REVIEWING }] },
     {
-      name: 'review',
-      role: { entity: 'Involvement', agentField: 'agent', where: { kind: 'reviewing' }, subjectField: 'node' },
+      name: 'shipped',
+      requires: [
+        { kind: 'guard', entity: 'TextBlock', where: { text: 'release note' }, tie: { relation: 'responses' } },
+      ],
     },
   ],
   transitions: [
-    { from: '_entry', to: 'todo' },
     { from: 'todo', to: 'done' },
     { from: 'done', to: 'todo' },
     { from: 'todo', to: 'review' },
+    { from: 'review', to: 'shipped', name: 'ship' },
   ],
 };
 
@@ -69,15 +74,23 @@ const rules = (definition: FlowDefinition) =>
   Object.fromEntries(toShaclFlow(definition).states.map((s) => [s.name, s.consensusRule ?? null]));
 
 describe('toShaclFlow', () => {
-  it('orders states as given, so the first is where every run starts', () => {
+  it('puts a hidden entry first, so every run begins there, then the states as given', () => {
     const flow = toShaclFlow(FLOW);
     expect(flow.states.map((s) => [s.name, s.value])).toEqual([
       ['_entry', 0],
       ['todo', 1],
       ['done', 2],
       ['review', 3],
+      ['shipped', 4],
     ]);
     expect(flow.flowUri).toBe('we://flow/TasksFlow');
+  });
+
+  it('lets a record be placed from the entry into any state', () => {
+    const fromEntry = toShaclFlow(FLOW)
+      .transitions.filter((t) => t.fromState === '_entry')
+      .map((t) => t.toState);
+    expect(fromEntry).toEqual(['todo', 'done', 'review', 'shipped']);
   });
 
   it('writes no rule where one vote from anybody is enough — the engine’s own default', () => {
@@ -95,10 +108,43 @@ describe('toShaclFlow', () => {
     expect(text.indexOf('"kind"')).toBeLessThan(text.indexOf('"node"'));
   });
 
+  it('ties a guard to the record through the predicate its relation is stored under', () => {
+    const shipped = toShaclFlow(FLOW).states.find((s) => s.name === 'shipped');
+    expect(shipped?.requires).toEqual([
+      { className: 'TextBlock', where: { text: 'release note' }, linkedTo: { via: 'we://response', to: 'base' } },
+    ]);
+  });
+
+  it('refuses a guard tied through a relation read backwards, which the engine cannot follow', () => {
+    expect(() =>
+      toShaclFlow({
+        ...FLOW,
+        states: [{ name: 'todo', requires: [{ kind: 'guard', entity: 'TextBlock', tie: { relation: 'respondsTo' } }] }],
+        transitions: [],
+      }),
+    ).toThrow('read backwards');
+  });
+
   it('compiles one definition to the same bytes every time, so two installs never read as rival rules', () => {
     const a = toShaclFlow(FLOW).toLinks();
     const b = toShaclFlow(structuredClone(FLOW)).toLinks();
     expect(a).toEqual(b);
+  });
+});
+
+describe('fromShaclFlow', () => {
+  it('reads back exactly the definition that was compiled, entry and all hidden', () => {
+    expect(fromShaclFlow(toShaclFlow(FLOW))).toEqual(FLOW);
+  });
+
+  it('calls a flow WE wrote editable, and one carrying what the contract cannot hold not', () => {
+    expect(isEditable(toShaclFlow(FLOW))).toBe(true);
+    const foreign = toShaclFlow(FLOW);
+    foreign.addState({ name: 'checked', value: 9, semanticCheck: 'Is it really done?' });
+    expect(isEditable(foreign)).toBe(false);
+    const elsewhere = new SHACLFlow('Tasks', 'other://flow/');
+    for (const state of toShaclFlow(FLOW).states) elsewhere.addState(state);
+    expect(isEditable(elsewhere)).toBe(false);
   });
 });
 
@@ -132,7 +178,9 @@ describe('install', () => {
     await port.install(fake.perspective as never, FLOW);
     const three: FlowDefinition = {
       ...FLOW,
-      states: FLOW.states.map((s) => (s.name === 'done' ? { ...s, approvals: 3 } : s)),
+      states: FLOW.states.map((s) =>
+        s.name === 'done' ? { ...s, requires: [{ kind: 'approvals' as const, count: 3 }] } : s,
+      ),
     };
     await port.install(fake.perspective as never, three);
 
@@ -149,8 +197,8 @@ describe('install', () => {
     await port.install(fake.perspective as never, FLOW);
     await port.install(fake.perspective as never, {
       ...FLOW,
-      states: FLOW.states.filter((s) => s.name !== 'review'),
-      transitions: FLOW.transitions.filter((t) => t.to !== 'review'),
+      states: FLOW.states.filter((s) => s.name !== 'review' && s.name !== 'shipped'),
+      transitions: FLOW.transitions.filter((t) => t.to !== 'review' && t.from !== 'review'),
     });
     const sources = new Set(fake.all().map((l) => l.source));
     expect(sources.has('we://flow/Tasks.review')).toBe(false);
@@ -171,5 +219,37 @@ describe('install', () => {
     await createAd4mFlowPort().install(fake.perspective as never, FLOW);
     expect(fake.removed).toEqual([]);
     expect(fake.all()).toEqual(expect.arrayContaining([receiptIndex, otherFlow]));
+  });
+});
+
+describe('moveRefusal', () => {
+  it('reads "not reachable from where you asked to go" as already there', () => {
+    // The board showed Done; a rule change had the engine re-judge the run into Doing.
+    const error = new Error('RPC error 500: `doing` is not reachable from `doing` — no proposal written');
+    expect(moveRefusal(error, 'doing', 'done')).toEqual({ outcome: 'moved', state: 'doing', steps: [] });
+  });
+
+  it('reads an unreachable move as not allowed, naming where the record stands — none at the entry', () => {
+    expect(moveRefusal(new Error('`todo` is not reachable from `done`'), 'todo', 'done')).toEqual({
+      outcome: 'refused',
+      reason: 'not-allowed',
+      state: 'done',
+    });
+    expect(moveRefusal(new Error('`todo` is not reachable from `_entry`'), 'todo', null)).toMatchObject({
+      state: null,
+    });
+  });
+
+  it('reads an unmet guard, a contested run and a timeout', () => {
+    const unmet = new Error('guard for `shipped` is not satisfied on this replica — proposal not written');
+    expect(moveRefusal(unmet, 'shipped', 'doing')).toEqual({ outcome: 'refused', reason: 'unmet', state: 'doing' });
+    const contested = new Error('ad4m://x is contested in `vote` — two edges out of it already carry quorum');
+    expect(moveRefusal(contested, 'adopted', 'vote')).toEqual({ outcome: 'stalled', state: 'vote' });
+    const slow = new Error("RPC call 'perspective.proposeFlowTransition' timed out after 30000ms");
+    expect(moveRefusal(slow, 'done', 'doing')).toEqual({ outcome: 'pending' });
+  });
+
+  it('leaves any other error to be thrown', () => {
+    expect(moveRefusal(new Error('socket closed'), 'done', 'doing')).toBeUndefined();
   });
 });

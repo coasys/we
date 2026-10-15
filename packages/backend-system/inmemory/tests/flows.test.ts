@@ -1,12 +1,12 @@
 /**
- * The in-memory flow port — the semantics a surface relies on, with several agents voting.
+ * The in-memory flow port — the semantics a surface relies on, with several agents asking.
  *
  * Several agents are one process here, so "who is signed in" is a variable the test moves between
  * calls. That is the whole reason these tests can exist without an executor: against a real backend,
  * two people agreeing on one move needs two identities sharing one dataset.
  */
-import type { DatasetHandle, FlowDefinition, FlowPort, FlowSnapshot } from '@we/backend-shared';
-import { openMoves, readProposeResult, runFor } from '@we/backend-shared';
+import type { DatasetHandle, FlowDefinition, FlowPort, FlowView } from '@we/backend-shared';
+import { itemFor } from '@we/backend-shared';
 import { getEntity } from '@we/entities';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -16,17 +16,32 @@ const ALICE = 'did:test:alice';
 const BOB = 'did:test:bob';
 const CAROL = 'did:test:carol';
 
-/** Todo → Doing needs one; Done needs two; Review needs one from whoever is reviewing the task. */
+/**
+ * Todo → Doing needs one; Done needs two; Review needs one from whoever is reviewing the task;
+ * Shipped needs a response on the task marked as a release note.
+ */
 const FLOW: FlowDefinition = {
   name: 'Tasks',
   subjects: ['TaskBlock'],
   states: [
     { name: 'todo' },
     { name: 'doing' },
-    { name: 'done', approvals: 2 },
+    { name: 'done', requires: [{ kind: 'approvals', count: 2 }] },
     {
       name: 'review',
-      role: { entity: 'Involvement', agentField: 'agent', where: { kind: 'reviewing' }, subjectField: 'node' },
+      requires: [
+        {
+          kind: 'approvals',
+          count: 1,
+          from: { entity: 'Involvement', agentField: 'agent', where: { kind: 'reviewing' }, subjectField: 'node' },
+        },
+      ],
+    },
+    {
+      name: 'shipped',
+      requires: [
+        { kind: 'guard', entity: 'TextBlock', where: { text: 'release note' }, tie: { relation: 'responses' } },
+      ],
     },
   ],
   transitions: [
@@ -35,12 +50,18 @@ const FLOW: FlowDefinition = {
     { from: 'doing', to: 'done' },
     { from: 'done', to: 'doing' },
     { from: 'doing', to: 'review' },
+    { from: 'doing', to: 'shipped' },
   ],
 };
 
 let signedIn = ALICE;
 let flows: FlowPort;
 let dataset: DatasetHandle;
+let task: string;
+
+type Created = { id: string; save(): Promise<void>; [key: string]: unknown };
+const model = (name: string) =>
+  getEntity(name) as unknown as { create(dataset: unknown, data: Record<string, unknown>): Promise<Created> };
 
 beforeEach(async () => {
   signedIn = ALICE;
@@ -51,6 +72,7 @@ beforeEach(async () => {
   flows = ports.flows!;
   dataset = (await ports.lifecycle.get('ds'))!.handle;
   await flows.install(dataset, FLOW);
+  task = (await model('TaskBlock').create(dataset, { title: 'Ship it' })).id;
 });
 
 const as = async <T>(did: string, act: () => Promise<T>): Promise<T> => {
@@ -62,121 +84,143 @@ const as = async <T>(did: string, act: () => Promise<T>): Promise<T> => {
   }
 };
 
-async function latest(): Promise<FlowSnapshot> {
-  let seen: FlowSnapshot | undefined;
-  const stop = await flows.watch(dataset, 'Tasks', (s) => (seen = s));
-  await Promise.resolve();
+async function latest(): Promise<FlowView> {
+  let seen: FlowView | undefined;
+  const stop = await flows.watch(dataset, 'Tasks', (v) => (seen = v));
   await new Promise((r) => setTimeout(r, 0));
   stop();
   return seen!;
 }
 
-describe('in-memory flows', () => {
-  it('starts every run in the first state, and finds the same run again rather than starting another', async () => {
-    const first = await flows.start(dataset, 'Tasks', 'task-1');
-    const again = await as(BOB, () => flows.start(dataset, 'Tasks', 'task-1'));
-    expect(first.state).toBe('todo');
-    expect(again.id).toBe(first.id);
+const move = (to: string, opts?: { from?: string; note?: string }) => flows.move(dataset, 'Tasks', task, to, opts);
+
+describe('in-memory flows: definitions', () => {
+  it('lists, reads back exactly what was installed, and refuses one it cannot enforce', async () => {
+    expect(await flows.list(dataset)).toEqual([{ name: 'Tasks', editable: true, records: 0 }]);
+    expect(await flows.read(dataset, 'Tasks')).toEqual(FLOW);
+    expect(await flows.read(dataset, 'Missing')).toBeNull();
+    await expect(
+      flows.install(dataset, { ...FLOW, name: 'Bad', transitions: [{ from: 'todo', to: 'nowhere' }] }),
+    ).rejects.toThrow('not a state of this flow');
   });
 
-  it('moves at once where one approval is enough', async () => {
-    const run = await flows.start(dataset, 'Tasks', 'task-1');
-    const result = await flows.propose(dataset, run.id, 'doing');
-    expect(readProposeResult(result)).toBe('moved');
-    expect(result.moves).toEqual([{ from: 'todo', to: 'doing', voters: [ALICE] }]);
-    expect(result.state).toBe('doing');
+  it('refuses to remove a flow while a record is going through it, and removes one that has none', async () => {
+    await flows.start(dataset, 'Tasks', task);
+    await expect(flows.remove(dataset, 'Tasks')).rejects.toThrow('still has 1 record');
+    await flows.install(dataset, { ...FLOW, name: 'Empty' });
+    await flows.remove(dataset, 'Empty');
+    expect((await flows.list(dataset)).map((f) => f.name)).toEqual(['Tasks']);
+  });
+});
+
+describe('in-memory flows: moves', () => {
+  it('starts a record in the first state, or where it is told, and finds it again rather than restarting it', async () => {
+    expect((await flows.start(dataset, 'Tasks', task)).state).toBe('todo');
+    expect((await as(BOB, () => flows.start(dataset, 'Tasks', task, { at: 'doing' }))).state).toBe('todo');
+    const other = (await model('TaskBlock').create(dataset, { title: 'Other' })).id;
+    expect((await flows.start(dataset, 'Tasks', other, { at: 'doing' })).state).toBe('doing');
   });
 
-  it('waits for a second person where two are needed, and the second joins rather than opening a twin', async () => {
-    const run = await flows.start(dataset, 'Tasks', 'task-1');
-    await flows.propose(dataset, run.id, 'doing');
-
-    const alice = await flows.propose(dataset, run.id, 'done');
-    expect(readProposeResult(alice)).toBe('waiting');
-    expect(alice.opened).toBe(true);
-
-    const again = await flows.propose(dataset, run.id, 'done');
-    expect(readProposeResult(again)).toBe('already-voted');
-
-    const snapshot = await latest();
-    const current = runFor(snapshot.runs, 'task-1')!;
-    expect(openMoves(snapshot, current)).toMatchObject([{ to: 'done', voters: [ALICE] }]);
-
-    const bob = await as(BOB, () => flows.propose(dataset, run.id, 'done'));
-    expect(bob.opened).toBe(false);
-    expect(bob.proposal).toBe(alice.proposal);
-    expect(readProposeResult(bob)).toBe('moved');
-    expect(bob.moves[0]).toEqual({ from: 'doing', to: 'done', voters: [ALICE, BOB] });
+  it('enters a record the flow has not seen where the caller says it already stands', async () => {
+    const result = await move('done', { from: 'doing' });
+    expect(result).toMatchObject({ outcome: 'waiting', state: 'doing', to: 'done', voted: true });
   });
 
-  it('moves a run back when the vote that completed a move is withdrawn', async () => {
-    const run = await flows.start(dataset, 'Tasks', 'task-1');
-    await flows.propose(dataset, run.id, 'doing');
-    const opened = await flows.propose(dataset, run.id, 'done');
-    await as(BOB, () => flows.propose(dataset, run.id, 'done'));
-    expect(runFor((await latest()).runs, 'task-1')?.state).toBe('done');
-
-    await as(BOB, () => flows.withdraw(dataset, opened.proposal));
-    expect(runFor((await latest()).runs, 'task-1')?.state).toBe('doing');
+  it('moves at once where one ask is enough, and reports it as a step', async () => {
+    const result = await move('doing', { note: 'Starting' });
+    expect(result).toEqual({
+      outcome: 'moved',
+      state: 'doing',
+      steps: [{ from: 'todo', to: 'doing', voters: [ALICE], at: expect.any(Number), evidence: [], note: 'Starting' }],
+    });
   });
 
-  it('refuses to withdraw what the caller never asked for', async () => {
-    const run = await flows.start(dataset, 'Tasks', 'task-1');
-    await flows.propose(dataset, run.id, 'doing');
-    const opened = await flows.propose(dataset, run.id, 'done');
-    await expect(as(CAROL, () => flows.withdraw(dataset, opened.proposal))).rejects.toThrow();
+  it('treats asking for where a record already stands as done', async () => {
+    await move('doing');
+    expect(await move('doing')).toEqual({ outcome: 'moved', state: 'doing', steps: [] });
   });
 
-  it('refuses a move the run cannot make from where it stands, naming that state', async () => {
-    const run = await flows.start(dataset, 'Tasks', 'task-1');
-    await expect(flows.propose(dataset, run.id, 'done')).rejects.toThrow('`done` is not reachable from `todo`');
+  it('waits for a second person where two are needed, and one person asking twice is still one', async () => {
+    await move('doing');
+    expect(await move('done')).toMatchObject({ outcome: 'waiting', voted: true, voters: [ALICE] });
+    expect(await move('done')).toMatchObject({ outcome: 'waiting', voted: false, voters: [ALICE] });
+    expect(itemFor(await latest(), task)?.waiting).toMatchObject([{ to: 'done', voters: [ALICE] }]);
+
+    const bob = await as(BOB, () => move('done'));
+    expect(bob).toMatchObject({
+      outcome: 'moved',
+      state: 'done',
+      steps: [{ from: 'doing', to: 'done', voters: [ALICE, BOB] }],
+    });
+    expect(itemFor(await latest(), task)).toMatchObject({ state: 'done', waiting: [] });
   });
 
-  it('counts only the people the role names for this record, and a vote that did not count is still recorded', async () => {
-    const Involvement = getEntity('Involvement') as unknown as {
-      create(dataset: unknown, data: Record<string, unknown>): Promise<{ node?: unknown; save(): Promise<void> }>;
-    };
-    // The in-memory backend sets a to-one link through the record rather than through `create`.
+  it('refuses a move the record cannot make from where it stands, writing nothing', async () => {
+    expect(await move('done')).toEqual({ outcome: 'refused', reason: 'not-allowed', state: 'todo' });
+    expect(itemFor(await latest(), task)?.waiting).toEqual([]);
+  });
+
+  it('counts only the people the role names for this record, and records an ask that did not count', async () => {
     const involve = async (agent: string, node: string) => {
-      const row = await Involvement.create(dataset, { agent, kind: 'reviewing' });
+      const row = await model('Involvement').create(dataset, { agent, kind: 'reviewing' });
       row.node = [node];
       await row.save();
     };
-    // Bob reviews task-1; Carol reviews a different task, which makes her nothing here.
-    await involve(BOB, 'task-1');
-    await involve(CAROL, 'task-2');
+    const other = (await model('TaskBlock').create(dataset, { title: 'Other' })).id;
+    await involve(BOB, task);
+    await involve(CAROL, other);
+    await move('doing');
 
-    const run = await flows.start(dataset, 'Tasks', 'task-1');
-    await flows.propose(dataset, run.id, 'doing');
-
-    const alice = await flows.propose(dataset, run.id, 'review');
-    expect(readProposeResult(alice)).toBe('waiting');
-    const carol = await as(CAROL, () => flows.propose(dataset, run.id, 'review'));
-    expect(readProposeResult(carol)).toBe('waiting');
-
-    const bob = await as(BOB, () => flows.propose(dataset, run.id, 'review'));
-    expect(readProposeResult(bob)).toBe('moved');
-    expect(bob.moves[0].voters).toEqual([BOB]);
+    expect(await move('review')).toMatchObject({ outcome: 'waiting' });
+    expect(await as(CAROL, () => move('review'))).toMatchObject({ outcome: 'waiting', voters: [ALICE, CAROL] });
+    const bob = await as(BOB, () => move('review'));
+    expect(bob).toMatchObject({ outcome: 'moved', steps: [{ voters: [BOB] }] });
   });
 
-  it('asks again on a second visit: a move that happened consumed the votes that made it', async () => {
-    const run = await flows.start(dataset, 'Tasks', 'task-1');
-    await flows.propose(dataset, run.id, 'doing');
-    await flows.propose(dataset, run.id, 'todo');
-    const back = await flows.propose(dataset, run.id, 'doing');
-    expect(back.opened).toBe(true);
-    expect(back.state).toBe('doing');
+  it('refuses a move whose guard does not hold, and makes it with the guard’s records as evidence once it does', async () => {
+    await move('doing');
+    expect(await move('shipped')).toEqual({ outcome: 'refused', reason: 'unmet', state: 'doing' });
+
+    const note = await model('TextBlock').create(dataset, { text: 'release note' });
+    const Task = getEntity('TaskBlock') as unknown as {
+      findAll(d: unknown, q: unknown): Promise<Array<{ addResponses(id: string): Promise<void> }>>;
+    };
+    const [row] = await Task.findAll(dataset, { where: { id: task } });
+    await row.addResponses(note.id);
+
+    const shipped = await move('shipped');
+    expect(shipped).toMatchObject({ outcome: 'moved', steps: [{ to: 'shipped', evidence: [note.id] }] });
+    expect((await flows.history(dataset, 'Tasks', task)).map((s) => s.to)).toEqual(['doing', 'shipped']);
   });
 
-  it('tells a watcher about a peer’s vote', async () => {
-    const run = await flows.start(dataset, 'Tasks', 'task-1');
-    await flows.propose(dataset, run.id, 'doing');
-    const seen: FlowSnapshot[] = [];
-    const stop = await flows.watch(dataset, 'Tasks', (s) => seen.push(s));
-    await as(BOB, () => flows.propose(dataset, run.id, 'done'));
+  it('closes every ask out of a state the record has left', async () => {
+    await move('doing');
+    await move('done');
+    await move('todo');
+    expect(itemFor(await latest(), task)).toMatchObject({ state: 'todo', waiting: [] });
+  });
+});
+
+describe('in-memory flows: withdrawing', () => {
+  it('takes back only the caller’s own asks, and never a move that happened', async () => {
+    await move('doing');
+    await move('done');
+    await as(BOB, () => flows.withdraw(dataset, 'Tasks', task));
+    expect(itemFor(await latest(), task)?.waiting).toMatchObject([{ to: 'done', voters: [ALICE] }]);
+
+    expect(await flows.withdraw(dataset, 'Tasks', task)).toBe(1);
+    expect(itemFor(await latest(), task)).toMatchObject({ state: 'doing', waiting: [] });
+  });
+});
+
+describe('in-memory flows: watching', () => {
+  it('tells a watcher about a peer’s ask', async () => {
+    await move('doing');
+    const seen: FlowView[] = [];
+    const stop = await flows.watch(dataset, 'Tasks', (v) => seen.push(v));
+    await as(BOB, () => move('done'));
     await new Promise((r) => setTimeout(r, 0));
     stop();
-    const last = seen.at(-1)!;
-    expect(openMoves(last, runFor(last.runs, 'task-1')!)).toMatchObject([{ to: 'done', voters: [BOB] }]);
+    expect(itemFor(seen.at(-1), task)?.waiting).toMatchObject([{ to: 'done', voters: [BOB] }]);
   });
 });

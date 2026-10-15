@@ -196,7 +196,7 @@ export function createAd4mBackendPorts(
     // Takes no client: interpretation is entirely a per-dataset operation, and every call already
     // carries the dataset handle it needs.
     interpretation: createAd4mInterpretationPort(ctx.selfId),
-    flows: createAd4mFlowPort(),
+    flows: createAd4mFlowPort(ctx.selfId),
     references: createAd4mReferencePort(),
     ephemeral,
     dataBindings: (deps: DataBindingDeps) =>

@@ -719,6 +719,8 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
           releaseStatus(cardId);
           if (outcome === 'stalled') notify('That card is stuck between two moves — one of them has to be withdrawn');
           if (outcome === 'slow') notify('The node is still counting that vote — the card will move when it has');
+          if (outcome === 'unmet') notify('Not yet — what that column asks for is not there');
+          if (outcome === 'not-allowed') notify('That card cannot move there from where it is');
           return;
         }
       }
