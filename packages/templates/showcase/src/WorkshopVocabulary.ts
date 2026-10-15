@@ -94,22 +94,20 @@ export const vocabularyCanvas: SchemaNode = {
           defaultDepth: 0,
           direction: 'out',
           expanders: ['vocabulary', 'schema-properties', 'schema-instances', 'property-values'],
-          /*
-            Every bucket open from the start, so the map arrives as one tree per kind of word. Closed,
-            it arrived as a row of buckets with no lines between them — the forest layout warned that
-            every card was unconnected — and opening one grew its tree somewhere else on the map. Only
-            the buckets: what is in them (a flow's steps, a model's fields) still opens on a press.
-          */
-          auto: [{ when: { kind: 'cluster', type: 'vocabulary' }, depth: 1 }],
         },
         // Each bucket is a tree of its own, its members under it; containment edges make the parents.
+        /*
+          One tree per kind of word, closed until opened, in the settings' order. A kind with nothing
+          in it is still a root (`unattached: 'trees'`), rather than a card in a zone of its own.
+        */
         layout: {
           type: 'forest',
-          options: { card: { width: 180, height: 64 }, unattached: 'bottom', unattachedLabel: '' },
+          options: { card: { width: 180, height: 64 }, unattached: 'trees', sortBy: 'order' },
         },
         nodeStyle: [
           { style: { shape: 'card', width: 180, height: 64, color: 'surface-raised' } },
-          { when: { kind: 'cluster', type: 'vocabulary' }, style: { color: 'accent-surface', height: 56 } },
+          // A role: `accent-surface` is not one, so the roots painted nothing and read as bare words on the page.
+          { when: { kind: 'cluster', type: 'vocabulary' }, style: { color: 'accent-muted', height: 56 } },
           { when: { kind: 'cluster', type: 'flow' }, style: { color: 'surface-sunken' } },
           { when: { 'data.final': true }, style: { borderColor: 'accent-text', borderWidth: 2 } },
           { when: { kind: 'property' }, style: { color: 'surface-sunken', height: 44 } },

@@ -57,7 +57,7 @@ import type {
 import { CONTAINMENT_EDGE_TYPES } from '@we/graph-protocol';
 
 /** Where cards that are on no tree go. */
-export type UnattachedPlacement = 'right' | 'bottom';
+export type UnattachedPlacement = 'right' | 'bottom' | 'trees';
 
 export interface ForestLayoutOptions {
   /**
@@ -111,7 +111,12 @@ export interface ForestLayoutOptions {
   levelGap?: number;
   /** Clear space between one tree and the next. Defaults to three sibling gaps. */
   treeGap?: number;
-  /** Where cards on no tree go. Default `right`; `bottom` suits a narrow screen. */
+  /**
+   * Where cards on no tree go. Default `right`; `bottom` suits a narrow screen. `trees` makes each one
+   * a tree of its own, in line with the others — for a forest whose roots are given rather than
+   * found, where a root with nothing under it yet is still a root (an empty category on a map of a
+   * space's words), and a zone apart would say it is something else.
+   */
   unattached?: UnattachedPlacement;
   /** How many cards wide the unconnected zone is. Default 3, so it reads as a column rather than a field. */
   unattachedColumns?: number;
@@ -240,7 +245,9 @@ export function forestLayout(rawOptions?: Record<string, unknown>): Layout {
           'forest layout: some cards are connected in a loop along the spine, so no card in that group is above the others. The loop was opened at one of them to draw it as a tree.',
         );
       }
-      if (!links.length && input.nodes.length) {
+      const loneAreTrees = options.unattached === 'trees';
+      // Where lone cards are trees, a forest of them is the expected state rather than a mistake.
+      if (!links.length && input.nodes.length && !loneAreTrees) {
         warnings.push(
           spine
             ? `forest layout: no connection matched the spine (${spine.field} = ${String(spine.value)}), so every card is in the unconnected zone. Pick a different kind of connection, or draw some.`
@@ -335,7 +342,11 @@ export function forestLayout(rawOptions?: Record<string, unknown>): Layout {
 
       // Trees read left to right in the same order siblings do, by their own root — so "the strongest
       // proposal" is the top-left card whether it is a sibling or a tree of its own.
-      const roots = inOrder([...drawn.treeOf.entries()].filter(([id, root]) => id === root).map(([id]) => id));
+      const lone = input.nodes.map((node) => node.id).filter((id) => !drawn.depthOf.has(id));
+      const roots = inOrder([
+        ...[...drawn.treeOf.entries()].filter(([id, root]) => id === root).map(([id]) => id),
+        ...(loneAreTrees ? lone : []),
+      ]);
       const positions = new Map<string, Placement>();
       let cursorX = 0;
 
@@ -352,10 +363,12 @@ export function forestLayout(rawOptions?: Record<string, unknown>): Layout {
         if (x === undefined) continue;
         positions.set(id, { x, y: depth * rankPitch });
       }
+      // A lone card made a tree is a root: on the top rank, where `assign` put it.
+      if (loneAreTrees) for (const id of lone) positions.set(id, { x: centreX.get(id) ?? 0, y: 0 });
 
       // ─── Whatever is on no tree ─────────────────────────────────────────────
 
-      const loose = inOrder(input.nodes.map((node) => node.id).filter((id) => !drawn.depthOf.has(id)));
+      const loose = loneAreTrees ? [] : inOrder(lone);
       const regions: LayoutRegion[] = [];
 
       if (loose.length) {

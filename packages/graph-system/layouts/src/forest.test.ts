@@ -390,4 +390,25 @@ describe('forest layout — a card being arranged', () => {
     expect(leftToRight(arrange({ id: 'gone', parent: 'p', index: 0 }), ['a', 'b', 'c'])).toEqual(['a', 'b', 'c']);
     expect(leftToRight(arrange({ id: 'a', parent: 'gone', index: 0 }), ['a', 'b', 'c'])).toEqual(['a', 'b', 'c']);
   });
+
+  it('makes each lone card a tree of its own when asked, in line with the others and without a warning', () => {
+    const layout = forestLayout({ unattached: 'trees', sortBy: 'order', card: { width: 100, height: 50 } });
+    const result = layout.init({
+      nodes: [
+        { id: 'b', kind: 'cluster', type: 'vocabulary', label: 'b', data: { order: 1 } },
+        { id: 'a', kind: 'cluster', type: 'vocabulary', label: 'a', data: { order: 0 } },
+        { id: 'a1', kind: 'entity', type: 'Thing', label: 'a1' },
+      ],
+      edges: [{ id: 'e', source: 'a', target: 'a1', type: 'contains' }],
+      viewport: { width: 800, height: 600 },
+    });
+    const a = result.positions.get('a')!;
+    const b = result.positions.get('b')!;
+    // Both on the top rank, in the order given, and no zone apart for the one with nothing under it.
+    expect(a.y).toBe(0);
+    expect(b.y).toBe(0);
+    expect(b.x).toBeGreaterThan(a.x);
+    expect(result.regions ?? []).toEqual([]);
+    expect(result.warnings ?? []).toEqual([]);
+  });
 });

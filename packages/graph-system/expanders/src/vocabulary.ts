@@ -83,13 +83,15 @@ export function vocabularyPlugins(): { seed: SeedSource; expander: Expander } {
       const options = (rawOptions ?? { buckets: [] }) as VocabularySeedOptions;
       const dataset = datasetOf(options, context.defaultDataset());
       told.set(dataset, options);
-      const nodes: GraphNode[] = (options.buckets ?? []).map((bucket) => ({
+      const nodes: GraphNode[] = (options.buckets ?? []).map((bucket, order) => ({
         id: clusterAddress(VOCABULARY_TYPE, bucket.key),
         kind: 'cluster',
         type: VOCABULARY_TYPE,
         label: bucket.label,
         data: {
           bucket: bucket.key,
+          // Its place in the order given, for a layout to keep — a node id sorts alphabetically.
+          order,
           // A count only where the seed already holds the members; a bucket of records says how many
           // once it is opened, rather than asking for every bucket's records to count them.
           ...(bucket.models ? { count: bucket.models.length } : {}),

@@ -318,8 +318,9 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
         },
         {
           name: 'unattached',
-          type: '"right" | "bottom"',
-          description: 'Where cards on no tree go. Default "right"; "bottom" suits a narrow screen.',
+          type: '"right" | "bottom" | "trees"',
+          description:
+            'Where cards on no tree go. Default "right"; "bottom" suits a narrow screen. "trees" makes each a one-card tree in line with the others — for roots that are given rather than found, such as the categories of a vocabulary map, where one with nothing in it is still a root.',
         },
         { name: 'unattachedColumns', type: 'number', description: 'How many cards wide that zone is. Default 3.' },
         {
