@@ -295,7 +295,13 @@ export interface ShellStore {
    * The tab argument is what lets a control elsewhere point at the setting it is about instead of
    * naming it in prose and leaving the reader to find it. See `spaceSettingsTab`.
    */
-  openSpaceSettings: (tab?: string) => void;
+  openSpaceSettings: (tab?: string, focus?: string) => void;
+  /**
+   * The record the space-settings panel was opened about, by id — or empty. A row for that record
+   * marks itself while the panel is open, and the panel scrolls to it once it is drawn: "Edit in
+   * Vocabulary" on a task state lands on that state rather than at the top of the tab.
+   */
+  spaceSettingsFocus: Accessor<string>;
   closeSpaceSettings: () => void;
   /** Smooth-scroll the element with the given DOM id into view. */
   scrollToId: (id: string) => void;
@@ -987,6 +993,23 @@ export function ShellStoreProvider(props: ParentProps) {
   // Where the panel starts, for a caller that knows which setting it is sending somebody to. Not a
   // controlled value — see `spaceSettingsTab`.
   const [spaceSettingsTab, setSpaceSettingsTab] = createSignal('about');
+  const [spaceSettingsFocus, setSpaceSettingsFocus] = createSignal('');
+
+  /**
+   * Scroll to a vocabulary row once it exists. The panel mounts and its rows arrive from queries after
+   * the press, so the element is not there yet when it is asked for; it is looked for until it is, for
+   * a few seconds, and then given up on — a record that never draws a row has nowhere to scroll to.
+   */
+  let focusSearch: ReturnType<typeof setTimeout> | undefined;
+  function scrollWhenDrawn(id: string, tries = 40): void {
+    clearTimeout(focusSearch);
+    const element = document.getElementById(id);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    if (tries > 0) focusSearch = setTimeout(() => scrollWhenDrawn(id, tries - 1), 100);
+  }
 
   const [pendingDestructive, setPendingDestructive] = createSignal<PendingDestructive | null>(null);
   /** Resolves the promise `requestDestructive` handed back. Null when no question is outstanding. */
@@ -2843,14 +2866,24 @@ export function ShellStoreProvider(props: ParentProps) {
       */
       return saver.save({ ...schema, meta: { ...schema.meta, panels: arranged } });
     },
-    toggleSpaceSettings: () => setSpaceSettingsOpen((open) => !open),
-    openSpaceSettings: (tab?: string) => {
+    toggleSpaceSettings: () => {
+      setSpaceSettingsFocus('');
+      setSpaceSettingsOpen((open) => !open);
+    },
+    openSpaceSettings: (tab?: string, focus?: string) => {
       // Only a name is a tab. A button wired without `args` hands an action the click, and the About
       // view's pencil did, so the panel was asked to open on a MouseEvent.
       setSpaceSettingsTab(typeof tab === 'string' && tab ? tab : 'about');
+      const about = typeof focus === 'string' ? focus : '';
+      setSpaceSettingsFocus(about);
       setSpaceSettingsOpen(true);
+      if (about) scrollWhenDrawn(`vocab-${about}`);
     },
-    closeSpaceSettings: () => setSpaceSettingsOpen(false),
+    closeSpaceSettings: () => {
+      setSpaceSettingsFocus('');
+      setSpaceSettingsOpen(false);
+    },
+    spaceSettingsFocus,
     takePendingPath: () => {
       const path = pendingPath();
       setPendingPath(null);

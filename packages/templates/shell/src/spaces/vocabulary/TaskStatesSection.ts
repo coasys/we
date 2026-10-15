@@ -10,6 +10,8 @@ import {
   stepRequirementFields,
 } from '@we/template-kit';
 
+import { focusRow } from './focusRow';
+
 /**
  * The states this community's work moves through.
  *
@@ -529,13 +531,9 @@ export const taskStatesSection: SchemaNode = sectionCard({
           type: '$each',
           props: { items: { $: 'spaceStore.taskStates' }, as: 'state' },
           children: [
-            {
-              // `data-we-id` on a native element: a component's props are assigned as DOM
-              // properties, so the attribute the sortable looks for would never exist on one.
-              type: 'div',
-              props: { 'data-we-id': { $: 'state.slug' }, style: { width: '100%' } },
-              children: [stateRow],
-            },
+            // `data-we-id` on a native element: a component's props are assigned as DOM
+            // properties, so the attribute the sortable looks for would never exist on one.
+            focusRow('state', stateRow, { 'data-we-id': { $: 'state.slug' } }),
           ],
         },
       ],

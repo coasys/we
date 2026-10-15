@@ -1118,6 +1118,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     spaceSettingsOpen: state('navigation'),
     spaceSettingsTab: state('navigation'),
+    spaceSettingsFocus: state('navigation'),
     openSpaceSettings: ambient('navigation'),
     closeSpaceSettings: ambient('navigation'),
     toggleSpaceSettings: ambient('navigation'),

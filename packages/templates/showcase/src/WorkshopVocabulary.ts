@@ -205,7 +205,8 @@ export function vocabularyEditLink(cardType: string): SchemaNode {
         props: {
           size: 'sm',
           variant: 'secondary',
-          onClick: { $action: 'shellStore.openSpaceSettings', args: ['vocabulary'] },
+          // About this record, so the settings land on its row — see `spaceSettingsFocus`.
+          onClick: { $action: 'shellStore.openSpaceSettings', args: ['vocabulary', { $: 'row.id' }] },
         },
         children: [
           { type: 'we-icon', props: { name: 'book-open-text' } },

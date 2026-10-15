@@ -1649,6 +1649,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'boolean — the space-settings panel is open. It configures whichever space is open, so it needs no id; bind a launcher\u2019s active state to this',
         spaceSettingsTab:
           "string — the tab the space-settings panel opens on ('about' | 'features' | 'vocabulary'). A starting position read once as the panel mounts, not a controlled value: somebody who then walks to another tab stays there. Set it by passing a tab to openSpaceSettings",
+        spaceSettingsFocus:
+          "string — the record the space-settings panel was opened about, by id, or ''. A vocabulary row for it marks itself, and the panel scrolls to it — give the row's element the DOM id `vocab-<record id>`. Set by openSpaceSettings' second argument; cleared when the panel closes",
         pendingDestructive:
           "the destructive action a space template just asked for ({ path, title, body }), or null. The host raises its own confirmation in front of every one of them — a space template arrives from a stranger, so whether it asks before deleting is not the stranger's decision. Host chrome renders it; a template writing its own dialog for a destructive store action would be a second question about one click",
         layoutPinned:
@@ -1777,7 +1779,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(name: string): puts the arrangement back to a saved layout. What the layout does not mention returns to what meta.panels declared, exactly as a reset would leave it',
         deleteLayout: '(name: string): forgets a saved layout',
         openSpaceSettings:
-          '(): opens that panel without closing it again. For a control that sits on the very fields it leads to (the About view\u2019s pencil), where a toggle would break the promise to show them',
+          '(tab?: string, focus?: string): opens that panel, on a tab and about a record when given them, without closing it again. For a control that sits on the very fields it leads to (the About view\u2019s pencil), where a toggle would break the promise to show them',
         closeSpaceSettings: '(): closes the space-settings panel',
         scrollToId: '(id: string): smooth-scrolls the element with that DOM id into view',
       },
