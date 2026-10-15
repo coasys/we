@@ -303,7 +303,10 @@ function trayPosition(input: LayoutInput, index: number, pitch: { x: number; y: 
 const BELOW_EDGE_TYPES: readonly string[] = ['contains', 'instance'];
 
 /** How far out from its card a column of opened fields sits, in gaps. */
-const BESIDE_GAPS = 5;
+const BESIDE_GAPS = 6;
+
+/** How far below its card a row of what it contains sits, in gaps. */
+const BELOW_GAPS = 3;
 
 /** How many slots beside a parent are tried before a node goes to the tray. */
 const SLOT_TRIES = 12;
@@ -490,7 +493,8 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
           from.below
             ? {
                 x: parentAt.x - parentSize.width / 2 + own.width / 2 + index * (own.width + gap),
-                y: parentAt.y + parentSize.height / 2 + gap + own.height / 2,
+                // Further below than a gap: the lines to a row of them fan out from the card's bottom.
+                y: parentAt.y + parentSize.height / 2 + gap * BELOW_GAPS + own.height / 2,
               }
             : {
                 // Further out than the gap between fields: the lines to a column of them fan out from
