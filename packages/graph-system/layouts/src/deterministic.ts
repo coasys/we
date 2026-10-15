@@ -251,6 +251,12 @@ export interface ManualLayoutOptions {
    * was 160 and a canvas card is 180 wide.
    */
   size?: { width: number; height: number };
+  /**
+   * The box a node of one kind takes, where it is not the card `size` — a card's opened field is a
+   * one-line box, and given a card's room a column of them ran into the next card and spilled into
+   * the tray. Keyed by node kind (`property`, `literal`, …).
+   */
+  kindSizes?: Record<string, { width: number; height: number }>;
   /** Data fields holding a node's own size, for a card somebody resized. */
   widthField?: string;
   heightField?: string;
@@ -293,6 +299,12 @@ function trayPosition(input: LayoutInput, index: number, pitch: { x: number; y: 
   };
 }
 
+/** Edges whose target is drawn below its source rather than beside it: what a node contains, not what it says. */
+const BELOW_EDGE_TYPES: readonly string[] = ['contains', 'instance'];
+
+/** How many slots beside a parent are tried before a node goes to the tray. */
+const SLOT_TRIES = 12;
+
 /** A node's box around its centre, as edges. */
 interface Box {
   left: number;
@@ -320,9 +332,10 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
   const sizeOf = (node: LayoutInput['nodes'][number]) => {
     const width = Number(options.widthField ? node.data?.[options.widthField] : undefined);
     const height = Number(options.heightField ? node.data?.[options.heightField] : undefined);
+    const base = options.kindSizes?.[node.kind ?? ''] ?? size;
     return {
-      width: Number.isFinite(width) && width > 0 ? width : size.width,
-      height: Number.isFinite(height) && height > 0 ? height : size.height,
+      width: Number.isFinite(width) && width > 0 ? width : base.width,
+      height: Number.isFinite(height) && height > 0 ? height : base.height,
     };
   };
   /*
@@ -441,47 +454,58 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
         taken.push(boxAround(at, own.width, own.height));
       }
       /*
-        A node opened out of another — a card's field, a bucket's member — goes beside it.
+        A node opened out of another goes beside it: a card's fields in a column to its right, one
+        under the next, and what it contains — a note's blocks — in a row below it.
 
-        Parked in the tray, a field lands wherever the tray has room, which on a busy canvas is across
-        the view from the card it is a field of, and the line between them is all that says so. So a
-        node whose only way onto the canvas is a containment edge from a placed node is stacked in a
-        column to that node's right, one under the next, and falls back to the tray only when that
-        column would cover something. Placed in the order the graph holds them, which is the order the
-        expander returned, so a card's fields read top to bottom as its model declares them.
+        Parked in the tray, a field landed wherever the tray had room, which on a busy canvas is
+        across the view from the card it is a field of, and the line between them was all that said
+        so. Placed in the order the graph holds them, which is the order the expander returned, so a
+        card's fields read top to bottom as its model declares them. A slot that would cover something
+        is skipped for the next one along; only a node with nowhere near its parent goes to the tray.
       */
-      const containedBy = new Map<string, string>();
+      const openedFrom = new Map<string, { parent: string; below: boolean }>();
       for (const edge of input.edges) {
-        if (CONTAINMENT_EDGE_TYPES.includes(edge.type) && !containedBy.has(edge.target))
-          containedBy.set(edge.target, edge.source);
+        if (CONTAINMENT_EDGE_TYPES.includes(edge.type) && !openedFrom.has(edge.target))
+          openedFrom.set(edge.target, { parent: edge.source, below: BELOW_EDGE_TYPES.includes(edge.type) });
       }
-      const stacked = new Map<string, number>();
+      const nextSlot = new Map<string, number>();
       const stillToPark: LayoutInput['nodes'] = [];
       const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
       for (const node of toPark) {
-        const parentId = containedBy.get(node.id);
-        const parentAt = parentId ? positions.get(parentId) : undefined;
-        const parent = parentId ? nodeById.get(parentId) : undefined;
-        if (!parentId || !parentAt || !parent) {
+        const from = openedFrom.get(node.id);
+        const parentAt = from ? positions.get(from.parent) : undefined;
+        const parent = from ? nodeById.get(from.parent) : undefined;
+        if (!from || !parentAt || !parent) {
           stillToPark.push(node);
           continue;
         }
         const own = sizeOf(node);
         const parentSize = sizeOf(parent);
         const gap = Math.max(12, margin || 16);
-        const index = stacked.get(parentId) ?? 0;
-        const at = {
-          x: parentAt.x + parentSize.width / 2 + gap + own.width / 2,
-          y: parentAt.y - parentSize.height / 2 + own.height / 2 + index * (own.height + gap / 2),
-        };
-        const box = boxAround(at, own.width, own.height);
-        if (taken.some((other) => overlaps(other, box))) {
+        const key = `${from.parent}\u0000${from.below ? 'below' : 'right'}`;
+        const slotAt = (index: number): Point =>
+          from.below
+            ? {
+                x: parentAt.x - parentSize.width / 2 + own.width / 2 + index * (own.width + gap),
+                y: parentAt.y + parentSize.height / 2 + gap + own.height / 2,
+              }
+            : {
+                x: parentAt.x + parentSize.width / 2 + gap + own.width / 2,
+                y: parentAt.y - parentSize.height / 2 + own.height / 2 + index * (own.height + gap / 2),
+              };
+        let index = nextSlot.get(key) ?? 0;
+        let placed: Point | undefined;
+        for (let tries = 0; tries < SLOT_TRIES && !placed; tries++, index++) {
+          const candidate = slotAt(index);
+          if (!taken.some((other) => overlaps(other, boxAround(candidate, own.width, own.height)))) placed = candidate;
+        }
+        if (!placed) {
           stillToPark.push(node);
           continue;
         }
-        positions.set(node.id, { ...at, fixed: true });
-        taken.push(box);
-        stacked.set(parentId, index + 1);
+        positions.set(node.id, { ...placed, fixed: true });
+        taken.push(boxAround(placed, own.width, own.height));
+        nextSlot.set(key, index);
         parked.add(node.id);
         unplaced += 1;
       }

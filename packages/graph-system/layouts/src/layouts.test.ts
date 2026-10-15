@@ -169,13 +169,46 @@ describe('manual layout', () => {
     expect(f2.y).toBeGreaterThan(f1.y);
   });
 
-  it('falls back to the tray when the column beside the card is taken', () => {
+  it('moves down the column past what is in the way rather than covering it', () => {
     const contains: GraphEdge = { id: 'card->f', source: 'card', target: 'f', type: 'property' };
     const result = manualLayout({ gap: 100 }).init(
       input([node('card', { x: 500, y: 500 }), node('neighbour', { x: 620, y: 500 }), node('f')], [contains]),
     );
     const f = result.positions.get('f')!;
     expect(Math.abs(f.x - 620) < 100 && Math.abs(f.y - 500) < 100).toBe(false);
+    // Still beside the card, a slot further down — not across the view in the tray.
+    expect(f.x).toBeLessThan(500 + 200);
+    expect(f.y).toBeGreaterThan(500);
+  });
+
+  it('gives a field the room a field takes, so a column of them stays beside its card', () => {
+    // A field given a card's room ran down into the next card, and each that would cover it went to the tray.
+    const field = (id: string): GraphNode => ({ id, kind: 'property', type: 'Thing', label: id });
+    const opened = (target: string): GraphEdge => ({ id: `card->${target}`, source: 'card', target, type: 'property' });
+    const result = manualLayout({
+      size: { width: 180, height: 135 },
+      kindSizes: { property: { width: 170, height: 44 } },
+    }).init(input([node('card', { x: 0, y: 0 }), field('f1'), field('f2')], [opened('f1'), opened('f2')]));
+    const f1 = result.positions.get('f1')!;
+    const f2 = result.positions.get('f2')!;
+    expect(f2.y - f1.y).toBe(44 + 12);
+  });
+
+  it('puts what a card contains in a row below it, not beside it', () => {
+    const contains = (target: string): GraphEdge => ({
+      id: `note->${target}`,
+      source: 'note',
+      target,
+      type: 'contains',
+    });
+    const result = manualLayout({ gap: 100 }).init(
+      input([node('note', { x: 500, y: 500 }), node('b1'), node('b2')], [contains('b1'), contains('b2')]),
+    );
+    const b1 = result.positions.get('b1')!;
+    const b2 = result.positions.get('b2')!;
+    expect(b1.y).toBeGreaterThan(500 + 50);
+    expect(b2.y).toBe(b1.y);
+    expect(b2.x).toBeGreaterThan(b1.x);
   });
 
   it('keeps a dragged position over the stored one until it is written back', () => {

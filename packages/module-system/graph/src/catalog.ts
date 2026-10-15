@@ -360,7 +360,13 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           name: 'size',
           type: '{ width: number; height: number }',
           description:
-            'The box a card takes. A node with no stored position is parked in the view, in the first slot clear of every card already there — pass the card size so slots do not overlap. Absent means a 160-sided square.',
+            'The box a card takes. A node with no stored position is parked in the view, in the first slot clear of every card already there — pass the card size so slots do not overlap. A node opened out of a placed card goes beside it instead: a field in a column to its right, what it contains in a row below. Absent means a 160-sided square.',
+        },
+        {
+          name: 'kindSizes',
+          type: '{ [kind]: { width: number; height: number } }',
+          description:
+            'The box a node of one kind takes where it is not `size` — `{ property: { width: 170, height: 44 } }` for a card’s opened fields, matching the style rule that draws them, so a column of them fits beside the card.',
         },
         {
           name: 'widthField',
