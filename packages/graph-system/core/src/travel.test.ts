@@ -1743,3 +1743,68 @@ describe('switching again mid-switch', () => {
     expect(engine.visualOf(nodes()[0]).width).toBe(100);
   });
 });
+
+describe('opening and closing a node', () => {
+  /** A layout that centres the row, so a card arriving moves every card already there. */
+  const centred = () => ({
+    id: 'centred',
+    init(input: { nodes: { id: string }[] }) {
+      const n = input.nodes.length;
+      return { positions: new Map(input.nodes.map((node, i) => [node.id, { x: i * 100 - (n - 1) * 50, y: 0 }])) };
+    },
+  });
+  const opensIntoChild = {
+    id: 'child',
+    kinds: ['entity'],
+    description: 'opens a into c',
+    async expand(request: { id: string }) {
+      return request.id === 'a'
+        ? {
+            nodes: [{ id: 'c', kind: 'entity' as const, type: 'Thing', label: 'c' }],
+            edges: [{ id: 'a->c', source: 'a', target: 'c', type: 'contains' }],
+          }
+        : { nodes: [], edges: [] };
+    },
+  };
+
+  async function engineWithChild() {
+    const registry = new PluginRegistry({
+      seeds: [seedOf(['a', 'b'])],
+      expanders: [opensIntoChild],
+      layouts: { centred },
+    });
+    const engine = new GraphEngine({
+      spec: { seeds: { source: 'test' }, layout: { type: 'centred' } },
+      registry,
+      context,
+    });
+    engine.resize(800, 600);
+    await engine.start();
+    engine.setSelfTravel(400);
+    drew(engine);
+    return engine;
+  }
+
+  // The tree on a canvas moves its cards when it rearranges; a map that opened a node by redrawing in
+  // one frame read as a different picture rather than the same one growing.
+  it('moves the cards already there rather than snapping them', async () => {
+    const engine = await engineWithChild();
+    const before = xOf(engine, 'a')!;
+    await engine.expand('a');
+    expect(xOf(engine, 'a')).toBe(before);
+    expect(engine.isTravelling()).toBe(true);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(xOf(engine, 'a')).toBe(-100);
+  });
+
+  it('moves them back when it closes', async () => {
+    const engine = await engineWithChild();
+    await engine.expand('a');
+    await vi.advanceTimersByTimeAsync(600);
+    drew(engine);
+    engine.collapse('a');
+    expect(engine.isTravelling()).toBe(true);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(xOf(engine, 'a')).toBe(-50);
+  });
+});

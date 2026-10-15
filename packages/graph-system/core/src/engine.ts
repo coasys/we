@@ -1124,7 +1124,7 @@ export class GraphEngine {
     this.expansion.markExpanded(id, { cursor, total, added });
     this.emit({ type: 'expanded', id, added, total });
     this.recomputeMetrics();
-    this.relayout();
+    this.relayout({ travel: this.ownTravel() });
     this.notify('graph');
   }
 
@@ -1146,7 +1146,7 @@ export class GraphEngine {
       this.status = { ...this.status, budgetReached: false };
     }
     this.recomputeMetrics();
-    this.relayout();
+    this.relayout({ travel: this.ownTravel() });
     this.notify('graph');
   }
 
@@ -2030,6 +2030,16 @@ export class GraphEngine {
    */
   setSelfTravel(ms: number): void {
     this.selfTravel = Math.max(0, ms || 0);
+  }
+
+  /**
+   * How long a rearrangement the graph made by itself takes: {@link selfTravel} where the layout works
+   * the positions out, and none where they are the data. Opening a node in a tree moves the cards
+   * already there to make room — that reads as one picture growing only if they travel — while on a
+   * canvas nothing the data did not say has moved.
+   */
+  private ownTravel(): number {
+    return this.layout?.derivesPositions !== false ? this.selfTravel : 0;
   }
 
   /** Whether a travel is running — for a caller that should wait for the arrangement to settle. */
