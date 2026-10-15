@@ -578,7 +578,9 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
         // intact and only the message was dropped, so nothing needs rebuilding.
         sendDescription(peerId, slot);
       } catch (error) {
-        if (pc.signalingState === 'stable') fail(`negotiating with ${peerId}`, error);
+        // The one refusal this expects: the peer's offer got here first, and the browser asks again
+        // once stable. Anything else is a real failure, including one with this side's offer out.
+        if (pc.signalingState !== 'have-remote-offer') fail(`negotiating with ${peerId}`, error);
       } finally {
         slot.makingOffer = false;
       }
