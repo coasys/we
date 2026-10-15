@@ -3459,7 +3459,7 @@
         },
         {
           "name": "onNodeDragEnd",
-          "type": "((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void)",
+          "type": "((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; opened?: boolean; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void)",
           "optional": true
         },
         {
@@ -6296,6 +6296,9 @@
         "flows": {
           "type": "array",
           "properties": ["name", "label", "editable", "records", "managedBy", "archived", "steps", "moves"]
+        },
+        "flowsLoaded": {
+          "type": "boolean"
         },
         "startable": {
           "type": "array",
@@ -9533,6 +9536,10 @@
         },
         {
           "id": "vocabulary",
+          "category": "expander"
+        },
+        {
+          "id": "vocabulary-records",
           "category": "expander"
         },
         {

@@ -1238,7 +1238,7 @@ export const contextData: ContextData = {
         { name: 'onSelectionChange', type: '((ids: string[]) => void)', optional: true },
         {
           name: 'onNodeDragEnd',
-          type: '((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void)',
+          type: '((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; opened?: boolean; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void)',
           optional: true,
         },
         {
@@ -2373,6 +2373,7 @@ export const contextData: ContextData = {
           type: 'array',
           properties: ['name', 'label', 'editable', 'records', 'managedBy', 'archived', 'steps', 'moves'],
         },
+        flowsLoaded: { type: 'boolean' },
         startable: { type: 'array', properties: ['name', 'label', 'subjects'] },
         open: { type: 'object' },
         draft: { type: 'object' },
@@ -4397,6 +4398,7 @@ export const contextData: ContextData = {
         { id: 'schema-instances', category: 'expander' },
         { id: 'schema-properties', category: 'expander' },
         { id: 'vocabulary', category: 'expander' },
+        { id: 'vocabulary-records', category: 'expander' },
         { id: 'property', category: 'expander' },
         { id: 'property-values', category: 'expander' },
         { id: 'force', category: 'layout' },
