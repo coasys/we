@@ -63,6 +63,7 @@ import { readSpaceRoles, writeSpaceRole } from '@shared/spaceRoles';
 import {
   applyStarterRecords,
   defaultSpaceStarter,
+  linkSpaceRelations,
   SPACE_COLLECTION_KIND,
   type SpaceStarter,
   starterSettings,
@@ -1746,15 +1747,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         return (made as { id: string }).id;
       },
       role: (name, nodeId) => writeSpaceRole(dataset, space.id, name, nodeId),
-      linkSpace: async (relations) => {
-        // A list is written in order, which is what an ordered relation (the space's task states)
-        // keeps; a single id is the same thing with one entry.
-        for (const [relation, value] of Object.entries(relations)) {
-          for (const id of Array.isArray(value) ? value : [value]) {
-            await Space.addRelation(dataset, space.id, relation, id);
-          }
-        }
-      },
+      linkSpace: (relations) => linkSpaceRelations(Space, dataset, space.id, relations),
       /*
         A post is seeded as the blocks inside it, and its stored document is derived from those here,
         unless the starter wrote one itself. Anything else has nothing to derive.
