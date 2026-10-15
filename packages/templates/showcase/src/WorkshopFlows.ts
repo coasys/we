@@ -348,13 +348,13 @@ const walk: SchemaNode = {
               type: '$if',
               props: {
                 condition: { $: 'index > 0' },
+                // A divider rather than a sized box: a Row keeps a height of its own and drew an oval.
                 then: {
-                  type: 'Row',
+                  type: 'we-divider',
                   props: {
-                    width: '20px',
-                    height: '2px',
-                    r: 'full',
-                    bg: { $: "step.at == 'ahead' ? 'border' : 'accent'" },
+                    width: '24px',
+                    thickness: '3px',
+                    color: { $: "step.at == 'ahead' ? 'border' : 'accent'" },
                   },
                 },
               },
@@ -715,7 +715,7 @@ const OPEN_DEFINITION = `flowStore.flows.find(f, f.name == ${OPEN}.name)`;
  */
 const flowGraph: SchemaNode = {
   type: 'Column',
-  props: { width: '100%', height: '420px', r: 'card', border: '1px solid border', overflow: 'hidden' },
+  props: { width: '100%', height: '480px', r: 'card', border: '1px solid border', overflow: 'hidden' },
   children: [
     {
       type: 'GraphView',
@@ -729,7 +729,12 @@ const flowGraph: SchemaNode = {
             $: `(${OPEN_DEFINITION}.moves ?? []).map(m, { id: m.from + '>' + m.to, source: 'step:' + m.from, target: 'step:' + m.to, type: 'move' })`,
           },
         },
-        layout: { type: 'tree', options: { direction: 'right' } },
+        /*
+          Room between steps for the lines to read. The tree's gaps are centre to centre, and at its
+          defaults a 150-wide step sat 120 from the next — overlapping — so a move back or a branch had
+          nowhere to go but a sharp bend. A step's width plus 120 along, its height plus 70 across.
+        */
+        layout: { type: 'tree', options: { direction: 'right', levelGap: 270, siblingGap: 122 } },
         nodeStyle: [
           { style: { shape: 'card', width: 150, height: 52, color: 'surface-raised' } },
           { when: { 'data.final': true }, style: { borderColor: 'accent-text', borderWidth: 2 } },
@@ -884,8 +889,13 @@ const draftHeader: SchemaNode = {
               type: 'we-select',
               props: {
                 value: { $: `${DRAFT}.subjects[0] ?? ''` },
+                /*
+                  A note and a post are each a collection (`CollectionBlock`), not the text inside one
+                  (`TextBlock`), which is what this used to name — so a flow for "notes and posts" was
+                  offered on none of them. "Collections" picked the same records, and goes.
+                */
                 options: {
-                  $: "[{ label: 'Any record', value: '' }, { label: 'Tasks', value: 'TaskBlock' }, { label: 'Notes and posts', value: 'TextBlock' }, { label: 'Events', value: 'EventBlock' }, { label: 'Collections', value: 'CollectionBlock' }]",
+                  $: "[{ label: 'Any record', value: '' }, { label: 'Tasks', value: 'TaskBlock' }, { label: 'Notes and posts', value: 'CollectionBlock' }, { label: 'Events', value: 'EventBlock' }]",
                 },
                 onChange: {
                   $action: 'flowStore.setDraftSubjects',
@@ -993,7 +1003,7 @@ const newFlowModal: SchemaNode = formModal({
     args: [
       { $: 'local.flowPreset' },
       { $: 'local.flowLabel' },
-      { $: "local.flowPreset == 'proposal' ? ['TextBlock'] : ['TaskBlock']" },
+      { $: "local.flowPreset == 'proposal' ? ['CollectionBlock'] : ['TaskBlock']" },
     ],
   },
 });
