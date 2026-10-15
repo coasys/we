@@ -26,6 +26,10 @@ Before the tiers below, the connections every record makes are fixed, and there 
 | `we://response` — `WeNode.responses`, read back as `respondsTo`         | **What does it answer?**       | Optional, open to anyone whatever `mode` says, on every node: a reply, a comment, a call held about it, a channel spun off from it.                  |
 | `we://thread` — `WeNode.thread`, read back as `inThread`                | **Which discussion is it in?** | An index, written by the host: from a thread's subject to every response under it, at any depth.                                                     |
 
+`we://child` is the name containment goes by in a template, a module and a `parent` option. A
+backend with a containment predicate of its own stores it under that one and translates at its
+boundary (`containment.ts` in the AD4M backend), so the name is the same everywhere above it.
+
 **A response is never a child of anything.** A reply to a line in a call answers the line and is in
 the line's thread; a comment on a post answers the post and is in the post's thread. Neither is one
 of the call's or the channel's children.

@@ -9,10 +9,14 @@
 import { LinkQuery, type PerspectiveProxy } from '@coasys/ad4m';
 import type { DatasetHandle, ReferencePort } from '@we/backend-shared';
 
+import { toAd4mPredicate } from './containment';
+
 export function createAd4mReferencePort(): ReferencePort {
   return {
     referrers: async (dataset: DatasetHandle, predicate: string, target: string, opts) => {
-      const links = await (dataset as PerspectiveProxy).get(new LinkQuery({ predicate, target }));
+      const links = await (dataset as PerspectiveProxy).get(
+        new LinkQuery({ predicate: toAd4mPredicate(predicate), target }),
+      );
       const newest = [...links].sort((a, b) => Date.parse(String(b.timestamp)) - Date.parse(String(a.timestamp)));
       const seen = new Set<string>();
       const out: { id: string; author: string; at: string }[] = [];

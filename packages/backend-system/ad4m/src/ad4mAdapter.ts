@@ -51,6 +51,7 @@ import type {
 import { irToFlatQuery, planQuery } from '@we/backend-shared';
 import { type EntityClass as Ad4mEntityClass, getEntity, getEntityForDataset } from '@we/entities';
 
+import { toAd4mPredicate } from './containment';
 import type { EntityManifestEntry } from './manifestTypes';
 
 /**
@@ -273,14 +274,16 @@ function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): Reco
     scope.direction === 'in' ||
     scope.limitPerAnchor !== undefined ||
     scope.levels !== undefined;
-  if (!bounded) return { id: scope.anchorId, predicate: prop.predicate };
+  // A core entry names containment by its neutral key; a foreign one already holds the AD4M spelling.
+  const predicate = toAd4mPredicate(prop.predicate);
+  if (!bounded) return { id: scope.anchorId, predicate };
 
   // Anything more is the executor's traverse form, which names its anchors as `ids`. An empty list
   // stays an empty list rather than being dropped: "the replies to none of these" answers with
   // nothing, where omitting the scope would answer with the whole space.
   return {
     ids: Array.isArray(scope.anchorId) ? scope.anchorId : [scope.anchorId],
-    predicate: prop.predicate,
+    predicate,
     ...(scope.transitive ? { transitive: true } : {}),
     ...(scope.direction === 'in' ? { direction: 'in' } : {}),
     ...(scope.limitPerAnchor !== undefined ? { limitPerAnchor: scope.limitPerAnchor } : {}),

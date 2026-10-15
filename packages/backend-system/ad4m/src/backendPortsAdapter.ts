@@ -30,6 +30,7 @@ import { createAd4mDataBindings } from './ad4mAdapter';
 import { createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
 import { createFileExpression, getProfile, publishProfileToPublicPerspective } from './agentHelpers';
 import { installClearOnEmpty } from './clearOnEmpty';
+import { installContainmentPredicate } from './containment';
 import { Space } from './entities';
 import { createAd4mFlowPort } from './flowPort';
 import { createAd4mInterpretationPort } from './interpretationAdapter';
@@ -160,6 +161,9 @@ export function createAd4mBackendPorts(
   // "this relation's membership is now that list", and every model class — generated, compiled
   // or built from foreign SHACL — inherits the ability to carry it out. See `relationWrites.ts`.
   installRelationWrites(Ad4mModel);
+  // And containment: callers name it by the neutral key, and AD4M stores it as `has_child`. Every
+  // `parent` scope a model static receives is translated here. See `containment.ts`.
+  installContainmentPredicate(Ad4mModel);
   // Register the native model classes for name-based $query resolution. Previously a module-load
   // side effect in the shell; it belongs to the backend choice. Use .className (set by @Model)
   // rather than .name — bundlers mangle the native .name in production builds.

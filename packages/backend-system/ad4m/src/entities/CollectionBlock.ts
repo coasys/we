@@ -201,7 +201,7 @@ export class CollectionBlock extends WeNode {
    * board should take them. The cards a column *positions* are not, which is what `arranges`
    * is for.
    */
-  @HasMany({ through: 'we://child', ordering: { strategy: 'linkedList' }, polymorphic: true })
+  @HasMany({ through: 'ad4m://has_child', ordering: { strategy: 'linkedList' }, polymorphic: true })
   children: string[] = [];
 
   /**

@@ -13,6 +13,7 @@ import { CONTAINMENT_PREDICATE, type EntityManifest } from '@we/backend-shared';
 import { FILE_STORAGE_LANGUAGE, getEntityPredicates } from '@we/entities';
 import { describe, expect, it } from 'vitest';
 
+import { AD4M_CONTAINMENT_PREDICATE } from '../src/containment';
 import { buildEntityFromEntry, compileManifest, CORE_VOCABULARY, manifestToEntries } from '../src/manifestCompiler';
 import { buildEntityManifest } from '../src/perspectiveHelpers';
 import { ROOT_MODELS, SPACE_MODELS } from '../src/sdnaEntities';
@@ -197,6 +198,25 @@ describe('compileManifest — module-declared entities', () => {
     );
     const folder = entries.find((e) => e.name === 'Folder')!;
     expect(folder.properties.find((p) => p.name === 'items')!.predicate).toBe(CONTAINMENT_PREDICATE);
+  });
+
+  it('reports containment by its neutral key and stores it as AD4M’s own has_child', () => {
+    // The entries are also what `schemas.entries` hands the rest of WE, so they keep the neutral
+    // key; the class they compile to is what writes links, and it writes AD4M's containment.
+    const declaration: EntityManifest = {
+      version: '1',
+      entities: {
+        Folder: {
+          properties: {},
+          relations: { items: { target: '', cardinality: 'many' as const, containment: true } },
+        },
+      },
+    };
+    const classes = compileManifest(declaration, { moduleId: 'notes' });
+    const stored = (classes.Folder as unknown as Shaped)
+      .generateSHACL()
+      .shape!.properties.find((p) => p.name === 'items')!.path;
+    expect(stored).toBe(AD4M_CONTAINMENT_PREDICATE);
   });
 
   it('shares a core predicate when the declaration asks for it', () => {

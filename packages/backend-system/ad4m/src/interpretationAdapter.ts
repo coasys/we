@@ -35,6 +35,7 @@ import type {
 import { trace } from '@we/backend-shared';
 import { getEntity, getEntityForDataset, getEntityTargetClass, getRegisteredEntityNames } from '@we/entities';
 
+import { toAd4mScope } from './containment';
 import { recordMissingMethod } from './missingMethods';
 import { readShapeProperties } from './perspectiveHelpers';
 
@@ -114,6 +115,20 @@ export function provenanceLink(
 ): { id: string; predicate: string } | undefined {
   if (!provenance) return undefined;
   return recognised && !id.startsWith(prefix) ? recognised : provenance;
+}
+
+/**
+ * A request's anchors with their predicates in this backend's terms — containment named by its
+ * neutral key becomes `has_child`. Applied once at each entry point, so every link this port reads or
+ * writes by hand below uses the predicate the models store.
+ */
+function inAd4mTerms<R extends { parent?: unknown; provenance?: unknown; recognised?: unknown }>(request: R): R {
+  return {
+    ...request,
+    ...(request.parent ? { parent: toAd4mScope(request.parent) } : {}),
+    ...(request.provenance ? { provenance: toAd4mScope(request.provenance) } : {}),
+    ...(request.recognised ? { recognised: toAd4mScope(request.recognised) } : {}),
+  };
 }
 
 /**
@@ -984,6 +999,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       request: InterpretationRequest,
       ctl?: { signal?: AbortSignal },
     ): Promise<InterpretationResult> {
+      request = inAd4mTerms(request);
       const perspective = proxy(dataset);
       if (!runtimeSupportsInterpretation(dataset)) throw new Error(UNSUPPORTED);
       if (!request.classes.length) throw new Error('interpretation: no classes given');
@@ -1090,6 +1106,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
     },
 
     async proposals(dataset: DatasetHandle, scope?: InterpretationScope): Promise<InterpretationProposal[]> {
+      scope = scope && inAd4mTerms(scope);
       // Empty rather than thrown: a review surface asking "anything pending?" on a runtime that
       // cannot propose anything has its answer, and it is "no" — not an error worth a toast on
       // every render.
@@ -1221,6 +1238,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
     },
 
     async watch(dataset: DatasetHandle, request: WatchRequest): Promise<void> {
+      request = inAd4mTerms(request);
       const perspective = proxy(dataset);
       if (!runtimeSupportsAutoProcessing(dataset)) throw new Error(UNSUPPORTED_WATCH);
       if (!request.classes.length) throw new Error('interpretation: no classes given');
@@ -1332,6 +1350,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
     },
 
     async reconcile(dataset: DatasetHandle, request: InterpretationRequest): Promise<number> {
+      request = inAd4mTerms(request);
       if (!request.parent || !runtimeSupportsInterpretation(dataset)) return 0;
       const perspective = proxy(dataset);
       const prefix = request.basePrefix ?? prefixFor(conversationOf(request)!);
