@@ -303,7 +303,7 @@ function trayPosition(input: LayoutInput, index: number, pitch: { x: number; y: 
 const BELOW_EDGE_TYPES: readonly string[] = ['contains', 'instance'];
 
 /** How far out from its card a column of opened fields sits, in gaps. */
-const BESIDE_GAPS = 3;
+const BESIDE_GAPS = 5;
 
 /** How many slots beside a parent are tried before a node goes to the tray. */
 const SLOT_TRIES = 12;
