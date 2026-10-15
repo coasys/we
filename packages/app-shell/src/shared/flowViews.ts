@@ -67,6 +67,16 @@ export interface LaneView {
   rejoinsLabel: string;
   /** A branch with nowhere to rejoin: its last step is final. */
   ends: boolean;
+  /**
+   * Where along the line the lane's first step stands, in step widths from the main line's first — so
+   * a branch can be drawn under the step it leaves, as a line on a map rather than a list below it. A
+   * branch starts one along from the step it leaves; the main line at 0.
+   */
+  column: number;
+  /** The column of the lane's last step. */
+  lastColumn: number;
+  /** The column of the step it rejoins at, or -1 for a lane that does not rejoin. */
+  rejoinsColumn: number;
   steps: StepView[];
 }
 
@@ -199,7 +209,8 @@ export function editorView(
     hint: definition.hint ?? '',
     rule: read.model.rule,
     fits: read.fits,
-    lanes: read.model.lanes.map((lane, index) => ({
+    // `columnOf` is complete once every lane is placed, which it is by the time these are built.
+    lanes: lanesWithColumns(read.model.lanes).map(({ lane, column, columnOf }, index) => ({
       index,
       main: index === 0,
       leaves: lane.leaves ?? '',
@@ -207,6 +218,9 @@ export function editorView(
       rejoins: lane.rejoins ?? '',
       rejoinsLabel: label(lane.rejoins),
       ends: index > 0 && !lane.rejoins,
+      column,
+      lastColumn: column + Math.max(0, lane.states.length - 1),
+      rejoinsColumn: lane.rejoins ? (columnOf.get(lane.rejoins) ?? -1) : -1,
       steps: lane.states.map((name) => stepView(definition, name, labels, finals)),
     })),
     exceptions: read.model.exceptions.map((m) => ({
@@ -240,6 +254,19 @@ export interface RecordView {
   }[];
   walk: { name: string; label: string; at: 'done' | 'current' | 'ahead' }[];
   next: { name: string; label: string }[];
+}
+
+/**
+ * Each lane with the column its first step stands in — see `LaneView.column`. A lane leaving a step not
+ * placed yet (written before the lane it leaves) is placed after the main line's first step.
+ */
+function lanesWithColumns(lanes: readonly FlowLanes['lanes'][number][]) {
+  const columnOf = new Map<string, number>();
+  return lanes.map((lane, index) => {
+    const column = index === 0 ? 0 : (columnOf.get(lane.leaves ?? '') ?? 0) + 1;
+    lane.states.forEach((name, i) => columnOf.has(name) || columnOf.set(name, column + i));
+    return { lane, column, columnOf };
+  });
 }
 
 /** One record going through a flow, as a row draws it. */

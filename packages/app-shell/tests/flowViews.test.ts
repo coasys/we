@@ -146,6 +146,23 @@ describe('rules from the editor', () => {
   });
 });
 
+describe('lanes on a line', () => {
+  // A branch was drawn as a list under the main line, matched to where it left only by name.
+  it('places a branch one along from the step it leaves, and knows where it rejoins', () => {
+    const view = editorView(definitionOf(presetDraft('proposal', 'Proposal', [])));
+    const [main, ...branches] = view.lanes;
+    expect(main.column).toBe(0);
+    for (const branch of branches) {
+      const leaves = view.lanes.flatMap((lane) => lane.steps.map((step, i) => [step.name, lane.column + i] as const));
+      const at = new Map(leaves).get(branch.leaves)!;
+      expect(branch.column).toBe(at + 1);
+      expect(branch.lastColumn).toBe(branch.column + branch.steps.length - 1);
+      if (branch.rejoins) expect(branch.rejoinsColumn).toBe(new Map(leaves).get(branch.rejoins));
+      else expect(branch.rejoinsColumn).toBe(-1);
+    }
+  });
+});
+
 describe('why a move was refused', () => {
   const board: FlowDefinition = {
     name: 'TaskStates',

@@ -78,8 +78,9 @@ function stepCard(editing: boolean): SchemaNode {
       r: 'card',
       bg: 'surface-raised',
       border: '1px solid border',
-      minWidth: '160px',
-      maxWidth: '220px',
+      // One width for every step, so a lane's position along the line is a number of steps — see `lanes`.
+      width: `${STATION}px`,
+      flexShrink: '0',
     },
     children: [
       {
@@ -134,11 +135,38 @@ function stepCard(editing: boolean): SchemaNode {
   };
 }
 
-/** Every lane of a flow — `source` is `flowStore.open` or `flowStore.draft`. */
+/** A step's width, the line between two, and the two together: one step along the line. */
+const STATION = 180;
+const LINK = 48;
+const PITCH = STATION + LINK;
+/** How far down a step its line runs — level with its name — and the gap between one lane and the next. */
+const MID = 22;
+const LANE_GAP = 32;
+const LINE = '3px solid accent';
+
+/** The line between two steps on a lane. */
+const link: SchemaNode = {
+  type: 'we-divider',
+  props: { width: `${LINK}px`, thickness: '3px', color: 'accent', mt: `${MID - 1}px`, flexShrink: '0' },
+};
+
+/**
+ * Every lane of a flow, as lines on a map — `source` is `flowStore.open` or `flowStore.draft`.
+ *
+ * The main line across the top, and each branch under the step it leaves, with an elbow down from that
+ * step into the branch's first: a fork reads as the line splitting, where it used to be a list of rows
+ * under the main line matched to where they left only by name. A branch that rejoins further along
+ * climbs back up under the step it rejoins at; one that rejoins earlier says where, and one that ends
+ * ends on its final step's flag.
+ *
+ * Every step is one width, so where a lane starts is a number of steps along (`lane.column`), and every
+ * offset here is that times one step. Laid out in one row each rather than wrapping, which would move a
+ * branch out from under the step it leaves — the lanes scroll sideways instead.
+ */
 function lanes(source: string, editing: boolean): SchemaNode {
   return {
     type: 'Column',
-    props: { gap: '400', width: '100%' },
+    props: { gap: `${LANE_GAP}px`, width: '100%', overflowX: 'auto', pb: '200', pt: '100' },
     children: [
       {
         type: '$each',
@@ -149,17 +177,121 @@ function lanes(source: string, editing: boolean): SchemaNode {
             props: { gap: '200' },
             children: [
               {
-                type: '$if',
-                props: {
-                  condition: { $: '!lane.main' },
-                  then: {
-                    type: 'Row',
-                    props: { gap: '200', ay: 'center', wrap: true },
+                type: 'Row',
+                props: { ay: 'start', gap: '0' },
+                children: [
+                  {
+                    // In under the step it leaves: from that step's middle, down, and along into this one.
+                    type: '$if',
+                    props: {
+                      condition: { $: '!lane.main' },
+                      then: {
+                        type: 'Row',
+                        props: { ay: 'start', gap: '0', flexShrink: '0' },
+                        children: [
+                          {
+                            type: 'Row',
+                            props: {
+                              width: { $: `\`\${(lane.column - 1) * ${PITCH} + ${STATION / 2}}px\`` },
+                              flexShrink: '0',
+                            },
+                          },
+                          {
+                            type: 'Column',
+                            props: {
+                              width: `${PITCH - STATION / 2}px`,
+                              height: `${MID + LANE_GAP + 1}px`,
+                              mt: `-${LANE_GAP}px`,
+                              borderLeft: LINE,
+                              borderBottom: LINE,
+                              rbl: '500',
+                              flexShrink: '0',
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  },
+                  {
+                    type: '$each',
+                    props: { items: { $: 'lane.steps' }, as: 'step' },
                     children: [
-                      { type: 'we-icon', props: { name: 'git-branch', size: 'sm' } },
-                      text({ $: '`From ${lane.leavesLabel}`' }, { variant: 'label' }),
-                      ...(editing
-                        ? [
+                      {
+                        type: 'Row',
+                        props: { ay: 'start', gap: '0', flexShrink: '0' },
+                        children: [
+                          { type: '$if', props: { condition: { $: 'index > 0' }, then: link } },
+                          stepCard(editing),
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    // Back up under the step it rejoins at, when that is further along.
+                    type: '$if',
+                    props: {
+                      condition: { $: '!lane.main && lane.rejoinsColumn > lane.lastColumn' },
+                      then: {
+                        type: 'Column',
+                        props: {
+                          width: { $: `\`\${(lane.rejoinsColumn - lane.lastColumn) * ${PITCH} - ${STATION / 2}}px\`` },
+                          height: `${MID + LANE_GAP + 1}px`,
+                          mt: `-${LANE_GAP}px`,
+                          borderRight: LINE,
+                          borderBottom: LINE,
+                          rbr: '500',
+                          flexShrink: '0',
+                        },
+                      },
+                    },
+                  },
+                  {
+                    // Rejoining at or before where it is: no line can climb back, so it says where.
+                    type: '$if',
+                    props: {
+                      condition: { $: '!lane.main && lane.rejoins && lane.rejoinsColumn <= lane.lastColumn' },
+                      then: {
+                        type: 'Row',
+                        props: { gap: '100', ay: 'center', mt: `${MID - 10}px`, ml: '200', flexShrink: '0' },
+                        children: [
+                          { type: 'we-icon', props: { name: 'arrow-bend-left-up', size: 'sm', color: 'accent-text' } },
+                          text({ $: '`back to ${lane.rejoinsLabel}`' }, { variant: 'footnote', color: 'text-muted' }),
+                        ],
+                      },
+                    },
+                  },
+                  ...(editing
+                    ? [
+                        {
+                          type: 'Row',
+                          props: { mt: `${MID - 14}px`, ml: '200', flexShrink: '0' },
+                          children: [
+                            iconButton('plus', 'Add a step to the start of this lane', [
+                              { $setLocal: 'addStepLane', value: { $: 'lane.index' } },
+                              { $setLocal: 'addStepAfter', value: '' },
+                            ]),
+                          ],
+                        } satisfies SchemaNode,
+                      ]
+                    : []),
+                ],
+              },
+              ...(editing
+                ? [
+                    {
+                      // Where a branch comes back, under it — the line above has to stay unbroken.
+                      type: '$if',
+                      props: {
+                        condition: { $: '!lane.main' },
+                        then: {
+                          type: 'Row',
+                          props: {
+                            gap: '200',
+                            ay: 'center',
+                            pl: { $: `\`\${lane.column * ${PITCH}}px\`` },
+                          },
+                          children: [
+                            text({ $: '`From ${lane.leavesLabel}`' }, { variant: 'footnote', color: 'text-muted' }),
                             {
                               type: 'we-select',
                               props: {
@@ -174,58 +306,13 @@ function lanes(source: string, editing: boolean): SchemaNode {
                                   args: [{ $: 'lane.index' }, { $: 'event.detail' }],
                                 },
                               },
-                            } satisfies SchemaNode,
-                          ]
-                        : [
-                            text(
-                              { $: "lane.ends ? 'and ends' : `and rejoins at ${lane.rejoinsLabel}`" },
-                              {
-                                variant: 'footnote',
-                                color: 'text-muted',
-                              },
-                            ),
-                          ]),
-                    ],
-                  },
-                },
-              },
-              {
-                type: 'Row',
-                props: { gap: '200', ay: 'center', wrap: true, pl: { $: "lane.main ? '0' : '600'" } },
-                children: [
-                  {
-                    type: '$each',
-                    props: { items: { $: 'lane.steps' }, as: 'step' },
-                    children: [
-                      {
-                        type: 'Row',
-                        props: { gap: '200', ay: 'center' },
-                        children: [
-                          {
-                            type: '$if',
-                            props: {
-                              condition: { $: 'index > 0' },
-                              then: {
-                                type: 'we-icon',
-                                props: { name: 'arrow-right', size: 'sm', color: 'text-faint' },
-                              },
                             },
-                          },
-                          stepCard(editing),
-                        ],
+                          ],
+                        },
                       },
-                    ],
-                  },
-                  ...(editing
-                    ? [
-                        iconButton('plus', 'Add a step to the start of this lane', [
-                          { $setLocal: 'addStepLane', value: { $: 'lane.index' } },
-                          { $setLocal: 'addStepAfter', value: '' },
-                        ]),
-                      ]
-                    : []),
-                ],
-              },
+                    } satisfies SchemaNode,
+                  ]
+                : []),
             ],
           },
         ],
