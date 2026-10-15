@@ -102,7 +102,13 @@ export const vocabularyCanvas: SchemaNode = {
         */
         layout: {
           type: 'forest',
-          options: { card: { width: 180, height: 64 }, unattached: 'trees', sortBy: 'order' },
+          /*
+            The gap between ranks set rather than derived: a share of a 64-high card is about 40, and a
+            line from a parent's bottom to a child's top needs more room than that to turn — in less it
+            dived below the child and hooked back up into it. The canvas's tree, with taller cards, gets
+            about this much.
+          */
+          options: { card: { width: 180, height: 64 }, levelGap: 84, unattached: 'trees', sortBy: 'order' },
         },
         nodeStyle: [
           { style: { shape: 'card', width: 180, height: 64, color: 'surface-raised' } },
