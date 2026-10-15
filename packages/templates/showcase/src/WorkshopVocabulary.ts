@@ -53,7 +53,8 @@ export const CANVAS_EXPANSION = { defaultDepth: 0, direction: 'out', expanders: 
 export const FIELD_NODE_RULE = {
   when: { kind: 'property' },
   // The size the canvas layout gives a field — `FIELD_BOX` in WorkshopTree — so they agree.
-  style: { shape: 'card', width: 170, height: 44, content: '', color: 'surface-sunken', labelMinZoom: 0.3 },
+  // `property` draws the name quietly and the value plainly — see `PropertyCard` in the host.
+  style: { shape: 'card', width: 170, height: 44, content: 'property', color: 'surface-sunken', labelMinZoom: 0.3 },
 };
 
 /**
@@ -66,8 +67,8 @@ const BUCKETS = `[
   { key: 'states', label: 'Task states', entity: 'TaskState', opens: { entity: 'TaskBlock', field: 'status', key: 'slug' } },
   { key: 'kinds', label: 'Involvement types', entity: 'InvolvementType' },
   { key: 'topics', label: 'Topics', entity: 'Topic' },
-  { key: 'models', label: 'Models', models: shapeStore.spaceShapes.map(s, { name: s.name }) },
-  { key: 'other', label: 'From other apps', models: datasetStore.currentDatasetEntities.map(e, { name: e.name }) },
+  { key: 'models', label: 'Models', models: recordStore.creatableEntities.map(k, { name: k.value, label: k.label }) },
+  { key: 'other', label: 'From other apps', models: datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value))).map(e, { name: e.name }) },
   { key: 'flows', label: 'Flows', flows: flowStore.flows.map(f, { name: f.name, label: f.label, steps: f.steps, moves: f.moves }) }
 ].filter(b, b.key != 'other' || count(b.models))`;
 
@@ -119,13 +120,16 @@ export const vocabularyCanvas: SchemaNode = {
             sortBy: 'order',
           },
         },
+        /*
+          Lighter than the page, and in the theme's accent: the surface roles a card usually takes sit a
+          step from the page and read as dark on dark here. The kinds of word are the strongest fill,
+          what is in them a tint of it, and a card's properties the quietest.
+        */
         nodeStyle: [
-          { style: { shape: 'card', width: 180, height: 64, color: 'surface-raised' } },
-          // A role: `accent-surface` is not one, so the roots painted nothing and read as bare words on the page.
-          { when: { kind: 'cluster', type: 'vocabulary' }, style: { color: 'accent-muted', height: 56 } },
-          { when: { kind: 'cluster', type: 'flow' }, style: { color: 'surface-sunken' } },
+          { style: { shape: 'card', width: 180, height: 64, color: 'accent-muted' } },
+          { when: { kind: 'cluster', type: 'vocabulary' }, style: { color: 'accent', height: 56 } },
           { when: { 'data.final': true }, style: { borderColor: 'accent-text', borderWidth: 2 } },
-          { when: { kind: 'property' }, style: { color: 'surface-sunken', height: 44 } },
+          { when: { kind: 'property' }, style: { color: 'control-surface', height: 44, content: 'property' } },
           { when: { kind: 'literal' }, style: { shape: 'circle', size: 12 } },
         ],
         /*
