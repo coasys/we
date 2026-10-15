@@ -940,7 +940,7 @@ export interface SpaceStore {
       semantic?: TaskStateView['semantic'];
       approvals?: number;
       approverKind?: string;
-      guards?: { entity: string; tie?: string; min?: number }[];
+      guards?: { entity: string; where?: Record<string, string | number | boolean>; tie?: string; min?: number }[];
     },
   ) => Promise<void>;
   /**
@@ -3706,7 +3706,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       semantic?: TaskStateView['semantic'];
       approvals?: number;
       approverKind?: string;
-      guards?: { entity: string; tie?: string; min?: number }[];
+      guards?: { entity: string; where?: Record<string, string | number | boolean>; tie?: string; min?: number }[];
     },
   ): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
@@ -3728,7 +3728,11 @@ export function SpaceStoreProvider(props: ParentProps) {
       */
       if (updates.approvals !== undefined) record.approvals = approvalsOf({ slug, approvals: updates.approvals });
       if (updates.approverKind !== undefined) record.approverKind = updates.approverKind;
-      if (Array.isArray(updates.guards)) record.guards = storeTaskStateGuards(updates.guards);
+      // A form's list may hold keys ("comment") beside guards read back off the record; both store as records.
+      if (Array.isArray(updates.guards))
+        record.guards = storeTaskStateGuards(
+          updates.guards.map((guard) => ({ ...guard, ...guardSubjectOf(guard.entity) })),
+        );
       await record.save();
       await loadTaskStates();
       await syncTaskStateHint();

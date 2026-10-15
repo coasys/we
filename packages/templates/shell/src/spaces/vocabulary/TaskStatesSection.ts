@@ -227,14 +227,19 @@ const agreementFields: SchemaNode = {
             onChange: { $setLocal: 'editApproverKind', value: { $: 'event.detail' } },
           },
           /*
-            Written at once rather than on Save: a guard is added through a form of its own, which
-            cannot write into this one's draft. Removing one is as immediate, so the two agree.
+            Held until Save, like every other field here. They were written the moment one was added,
+            so leaving the form without saving still kept it — the one change in this form that Cancel
+            did not undo. The list lives beside the form rather than in it, because a requirement is
+            added through a modal of its own, which can reach a list declared above them both.
+
+            Removed by its words rather than its position: two requirements that read the same are the
+            same requirement, and `filter` has no index to compare.
           */
           guards: {
-            items: `${EDITING}.guards ?? []`,
+            items: 'local.editTaskStateGuards',
             onRemove: {
-              $action: 'spaceStore.removeTaskStateGuard',
-              args: [{ $: 'local.editTaskStateSlug' }, { $: 'index' }],
+              $setLocal: 'editTaskStateGuards',
+              value: { $: 'local.editTaskStateGuards.filter(g, g.label != guard.label)' },
             },
             onAdd: { $setLocal: 'guardTaskStateSlug', value: { $: 'local.editTaskStateSlug' } },
           },
@@ -272,7 +277,8 @@ const editModal: SchemaNode = formModal({
     $:
       `local.editName != ${EDITING}.name || local.editSemantic != ${EDITING}.semantic || ` +
       `local.editIcon != ${EDITING}.icon || local.editColor != ${EDITING}.color || ` +
-      `local.editApprovals != (${EDITING}.approvals ?? 1) || local.editApproverKind != (${EDITING}.approverKind ?? '')`,
+      `local.editApprovals != (${EDITING}.approvals ?? 1) || local.editApproverKind != (${EDITING}.approverKind ?? '') || ` +
+      `join(local.editTaskStateGuards.map(g, g.label), '|') != join((${EDITING}.guards ?? []).map(g, g.label), '|')`,
   },
   submitLabel: 'Save',
   submit: {
@@ -286,6 +292,7 @@ const editModal: SchemaNode = formModal({
         icon: { $: 'local.editIcon' },
         approvals: { $: 'local.editApprovals' },
         approverKind: { $: 'local.editApproverKind' },
+        guards: { $: 'local.editTaskStateGuards.map(g, { entity: g.entity, where: g.where, tie: g.tie, min: g.min })' },
       },
     ],
   },
@@ -419,7 +426,11 @@ const stateRow: SchemaNode = {
             label: 'Edit this state',
             size: 'xs',
             variant: 'ghost',
-            onClick: { $setLocal: 'editTaskStateSlug', value: { $: 'state.slug' } },
+            onClick: [
+              // Its requirements first, so the form opens holding them — see `agreementFields`.
+              { $setLocal: 'editTaskStateGuards', value: { $: 'state.guards ?? []' } },
+              { $setLocal: 'editTaskStateSlug', value: { $: 'state.slug' } },
+            ],
           },
           children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
         },
@@ -535,9 +546,14 @@ export const taskStatesSection: SchemaNode = sectionCard({
     guardModal({
       open: { $: 'local.guardTaskStateSlug' },
       close: { $setLocal: 'guardTaskStateSlug', value: '' },
-      submit: ({ entity, tie, min }) => ({
-        $action: 'spaceStore.addTaskStateGuard',
-        args: [{ $: 'local.guardTaskStateSlug' }, { entity, tie, min }],
+      // Into the edit form's list, which Save writes — not straight onto the state.
+      submit: () => ({
+        $setLocal: 'editTaskStateGuards',
+        value: {
+          $:
+            'distinct(local.editTaskStateGuards, [{ entity: local.guardEntity, tie: local.guardTie, min: local.guardMin, ' +
+            'label: requirementLabel({ entity: local.guardEntity, tie: local.guardTie, min: local.guardMin }) }])',
+        },
       }),
     }),
   ],
