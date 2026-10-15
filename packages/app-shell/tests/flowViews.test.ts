@@ -159,7 +159,16 @@ describe('lanes on a line', () => {
       expect(branch.lastColumn).toBe(branch.column + branch.steps.length - 1);
       if (branch.rejoins) expect(branch.rejoinsColumn).toBe(new Map(leaves).get(branch.rejoins));
       else expect(branch.rejoinsColumn).toBe(-1);
+      // Every branch of the Proposal leaves a step on the main line.
+      expect(branch.leavesLane).toBe(0);
     }
+  });
+
+  // "Other moves" were listed under the lanes, apart from the steps they lead into.
+  it('says on a step which steps an exception comes in from', () => {
+    const view = editorView(definitionOf(presetDraft('proposal', 'Proposal', [])));
+    const withdrawn = view.lanes.flatMap((lane) => lane.steps).find((step) => step.name === 'withdrawn');
+    expect(withdrawn?.alsoFrom).toEqual(['Draft']);
   });
 });
 

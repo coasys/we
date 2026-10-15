@@ -78,8 +78,14 @@ function stepCard(editing: boolean): SchemaNode {
       r: 'card',
       bg: 'surface-raised',
       border: '1px solid border',
-      // One width for every step, so a lane's position along the line is a number of steps — see `lanes`.
+      /*
+        One size for every step, so where a lane is is a number of steps along and a number of lanes
+        down, and a line can be drawn exactly to a step it joins — see `lanes`. Taller while editing,
+        for the controls. What does not fit is cut, each line to one line.
+      */
       width: `${STATION}px`,
+      height: `${editing ? STATION_H_EDITING : STATION_H}px`,
+      overflow: 'hidden',
       flexShrink: '0',
     },
     children: [
@@ -100,13 +106,31 @@ function stepCard(editing: boolean): SchemaNode {
       {
         type: '$each',
         props: { items: { $: 'step.requires' }, as: 'need' },
-        children: [text({ $: 'need' }, { variant: 'footnote', color: 'text-muted' })],
+        children: [text({ $: 'need' }, { variant: 'footnote', color: 'text-muted', truncate: true })],
       },
       {
         type: '$if',
         props: {
           condition: { $: 'step.hint' },
-          then: text({ $: 'step.hint' }, { variant: 'footnote', color: 'text-faint' }),
+          then: text({ $: 'step.hint' }, { variant: 'footnote', color: 'text-faint', truncate: true }),
+        },
+      },
+      {
+        // A move nothing else covers, said on the step it leads into — see `exceptions`.
+        type: '$if',
+        props: {
+          condition: { $: 'count(step.alsoFrom ?? [])' },
+          then: {
+            type: 'Row',
+            props: { gap: '100', ay: 'center' },
+            children: [
+              { type: 'we-icon', props: { name: 'arrow-bend-down-right', size: 'xs', color: 'accent-text' } },
+              text(
+                { $: "`also from ${join(step.alsoFrom, ', ')}`" },
+                { variant: 'footnote', color: 'accent-text', truncate: true },
+              ),
+            ],
+          },
         },
       },
       ...(editing
@@ -137,6 +161,9 @@ function stepCard(editing: boolean): SchemaNode {
 
 /** A step's width, the line between two, and the two together: one step along the line. */
 const STATION = 180;
+/** A step's height, reading and editing. */
+const STATION_H = 112;
+const STATION_H_EDITING = 176;
 const LINK = 48;
 const PITCH = STATION + LINK;
 /** How far down a step its line runs — level with its name — and the gap between one lane and the next. */
@@ -153,146 +180,133 @@ const link: SchemaNode = {
 /**
  * Every lane of a flow, as lines on a map — `source` is `flowStore.open` or `flowStore.draft`.
  *
- * The main line across the top, and each branch under the step it leaves, with an elbow down from that
- * step into the branch's first: a fork reads as the line splitting, where it used to be a list of rows
- * under the main line matched to where they left only by name. A branch that rejoins further along
- * climbs back up under the step it rejoins at; one that rejoins earlier says where, and one that ends
- * ends on its final step's flag.
+ * The main line across the top, and each branch under it, joined to the step it leaves by a line that
+ * drops from that step's foot and turns into the branch's first. A branch that rejoins further along
+ * climbs back up into the foot of the step it rejoins at; one that rejoins earlier says where. A move no
+ * lane covers is said on the step it leads into ("also from Draft").
  *
- * Every step is one width, so where a lane starts is a number of steps along (`lane.column`), and every
- * offset here is that times one step. Laid out in one row each rather than wrapping, which would move a
- * branch out from under the step it leaves — the lanes scroll sideways instead.
+ * Every step is one size and every lane one height, so a step's place is a number of steps along
+ * (`lane.column`) and of lanes down (`lane.index`), and a line is drawn exactly to the step it joins —
+ * through the lanes in between, behind their steps — whatever is written on the steps. The lanes scroll
+ * sideways rather than wrap, which would move a branch out from under its step.
  */
 function lanes(source: string, editing: boolean): SchemaNode {
+  const height = editing ? STATION_H_EDITING : STATION_H;
+  const pitch = height + LANE_GAP;
+  /** How far above this lane's top a step on lane `other` ends, as the top of a line climbing to it. */
+  const climb = (other: string) => `${height} - (lane.index - ${other}) * ${pitch}`;
+  /** A line climbing to a step on another lane, turning at this lane's line — `side` is the turn's corner. */
+  const climber = (other: string, width: string, side: 'left' | 'right'): SchemaNode => ({
+    type: 'Column',
+    props: {
+      width: { $: width },
+      mt: { $: `\`\${${climb(other)}}px\`` },
+      height: { $: `\`\${${MID + 1} - (${climb(other)})}px\`` },
+      ...(side === 'left' ? { borderLeft: LINE, rbl: '500' } : { borderRight: LINE, rbr: '500' }),
+      borderBottom: LINE,
+      flexShrink: '0',
+      // Behind the steps of the lanes it passes, so it reads as running under them to the one it joins.
+      position: 'relative',
+      zIndex: -1,
+    },
+  });
   return {
     type: 'Column',
-    props: { gap: `${LANE_GAP}px`, width: '100%', overflowX: 'auto', pb: '200', pt: '100' },
+    // Its own stacking context, so the climbing lines can go behind the steps and not behind the page.
+    props: {
+      gap: `${LANE_GAP}px`,
+      width: '100%',
+      overflowX: 'auto',
+      pb: '200',
+      pt: '100',
+      position: 'relative',
+      zIndex: 0,
+    },
     children: [
       {
         type: '$each',
         props: { items: { $: `${source}.lanes` }, as: 'lane' },
         children: [
           {
-            type: 'Column',
-            props: { gap: '200' },
+            type: 'Row',
+            props: { ay: 'start', gap: '0', height: `${height}px` },
             children: [
               {
-                type: 'Row',
-                props: { ay: 'start', gap: '0' },
-                children: [
-                  {
-                    // In under the step it leaves: from that step's middle, down, and along into this one.
-                    type: '$if',
-                    props: {
-                      condition: { $: '!lane.main' },
-                      then: {
-                        type: 'Row',
-                        props: { ay: 'start', gap: '0', flexShrink: '0' },
-                        children: [
-                          {
-                            type: 'Row',
-                            props: {
-                              width: { $: `\`\${(lane.column - 1) * ${PITCH} + ${STATION / 2}}px\`` },
-                              flexShrink: '0',
-                            },
-                          },
-                          {
-                            type: 'Column',
-                            props: {
-                              width: `${PITCH - STATION / 2}px`,
-                              height: `${MID + LANE_GAP + 1}px`,
-                              mt: `-${LANE_GAP}px`,
-                              borderLeft: LINE,
-                              borderBottom: LINE,
-                              rbl: '500',
-                              flexShrink: '0',
-                            },
-                          },
-                        ],
-                      },
-                    },
-                  },
-                  {
-                    type: '$each',
-                    props: { items: { $: 'lane.steps' }, as: 'step' },
+                type: '$if',
+                props: {
+                  condition: { $: '!lane.main && lane.leavesLane >= 0' },
+                  then: {
+                    type: 'Row',
+                    props: { ay: 'start', gap: '0', flexShrink: '0' },
                     children: [
                       {
                         type: 'Row',
-                        props: { ay: 'start', gap: '0', flexShrink: '0' },
-                        children: [
-                          { type: '$if', props: { condition: { $: 'index > 0' }, then: link } },
-                          stepCard(editing),
-                        ],
-                      },
-                    ],
-                  },
-                  {
-                    // Back up under the step it rejoins at, when that is further along.
-                    type: '$if',
-                    props: {
-                      condition: { $: '!lane.main && lane.rejoinsColumn > lane.lastColumn' },
-                      then: {
-                        type: 'Column',
                         props: {
-                          width: { $: `\`\${(lane.rejoinsColumn - lane.lastColumn) * ${PITCH} - ${STATION / 2}}px\`` },
-                          height: `${MID + LANE_GAP + 1}px`,
-                          mt: `-${LANE_GAP}px`,
-                          borderRight: LINE,
-                          borderBottom: LINE,
-                          rbr: '500',
+                          width: { $: `\`\${(lane.column - 1) * ${PITCH} + ${STATION / 2}}px\`` },
                           flexShrink: '0',
                         },
                       },
-                    },
+                      climber('lane.leavesLane', `'${PITCH - STATION / 2}px'`, 'left'),
+                    ],
                   },
+                },
+              },
+              {
+                type: '$each',
+                props: { items: { $: 'lane.steps' }, as: 'step' },
+                children: [
                   {
-                    // Rejoining at or before where it is: no line can climb back, so it says where.
-                    type: '$if',
-                    props: {
-                      condition: { $: '!lane.main && lane.rejoins && lane.rejoinsColumn <= lane.lastColumn' },
-                      then: {
-                        type: 'Row',
-                        props: { gap: '100', ay: 'center', mt: `${MID - 10}px`, ml: '200', flexShrink: '0' },
-                        children: [
-                          { type: 'we-icon', props: { name: 'arrow-bend-left-up', size: 'sm', color: 'accent-text' } },
-                          text({ $: '`back to ${lane.rejoinsLabel}`' }, { variant: 'footnote', color: 'text-muted' }),
-                        ],
-                      },
-                    },
+                    type: 'Row',
+                    props: { ay: 'start', gap: '0', flexShrink: '0' },
+                    children: [
+                      { type: '$if', props: { condition: { $: 'index > 0' }, then: link } },
+                      stepCard(editing),
+                    ],
                   },
-                  ...(editing
-                    ? [
-                        {
-                          type: 'Row',
-                          props: { mt: `${MID - 14}px`, ml: '200', flexShrink: '0' },
-                          children: [
-                            iconButton('plus', 'Add a step to the start of this lane', [
-                              { $setLocal: 'addStepLane', value: { $: 'lane.index' } },
-                              { $setLocal: 'addStepAfter', value: '' },
-                            ]),
-                          ],
-                        } satisfies SchemaNode,
-                      ]
-                    : []),
                 ],
+              },
+              {
+                type: '$if',
+                props: {
+                  condition: { $: '!lane.main && lane.rejoinsLane >= 0 && lane.rejoinsColumn > lane.lastColumn' },
+                  then: climber(
+                    'lane.rejoinsLane',
+                    `\`\${(lane.rejoinsColumn - lane.lastColumn) * ${PITCH} - ${STATION / 2}}px\``,
+                    'right',
+                  ),
+                },
+              },
+              {
+                // Rejoining at or before where it is: no line can climb back, so it says where.
+                type: '$if',
+                props: {
+                  condition: { $: '!lane.main && lane.rejoins && lane.rejoinsColumn <= lane.lastColumn' },
+                  then: {
+                    type: 'Row',
+                    props: { gap: '100', ay: 'center', mt: `${MID - 10}px`, ml: '200', flexShrink: '0' },
+                    children: [
+                      { type: 'we-icon', props: { name: 'arrow-bend-left-up', size: 'sm', color: 'accent-text' } },
+                      text({ $: '`back to ${lane.rejoinsLabel}`' }, { variant: 'footnote', color: 'text-muted' }),
+                    ],
+                  },
+                },
               },
               ...(editing
                 ? [
                     {
-                      // Where a branch comes back, under it — the line above has to stay unbroken.
-                      type: '$if',
-                      props: {
-                        condition: { $: '!lane.main' },
-                        then: {
-                          type: 'Row',
+                      // On the lane's own row, so every lane stays one height and the lines meet.
+                      type: 'Row',
+                      props: { gap: '200', ay: 'center', mt: `${MID - 14}px`, ml: '300', flexShrink: '0' },
+                      children: [
+                        iconButton('plus', 'Add a step to the start of this lane', [
+                          { $setLocal: 'addStepLane', value: { $: 'lane.index' } },
+                          { $setLocal: 'addStepAfter', value: '' },
+                        ]),
+                        {
+                          type: '$if',
                           props: {
-                            gap: '200',
-                            ay: 'center',
-                            pl: { $: `\`\${lane.column * ${PITCH}}px\`` },
-                          },
-                          children: [
-                            text({ $: '`From ${lane.leavesLabel}`' }, { variant: 'footnote', color: 'text-muted' }),
-                            {
+                            condition: { $: '!lane.main' },
+                            then: {
                               type: 'we-select',
                               props: {
                                 fit: true,
@@ -307,9 +321,9 @@ function lanes(source: string, editing: boolean): SchemaNode {
                                 },
                               },
                             },
-                          ],
+                          },
                         },
-                      },
+                      ],
                     } satisfies SchemaNode,
                   ]
                 : []),
@@ -810,7 +824,11 @@ const flowGraph: SchemaNode = {
         seeds: {
           literal: true,
           nodes: {
-            $: `(${OPEN_DEFINITION}.steps ?? []).map(s, { id: 'step:' + s.name, kind: 'cluster', type: 'flow-step', label: s.label, data: { final: s.final } })`,
+            /*
+              From the open flow's own steps, which say what entering each takes and what it means — the
+              same lines a step's card carries in the lanes. The list's steps carried only their names.
+            */
+            $: `(${OPEN}.steps ?? []).map(s, { id: 'step:' + s.name, kind: 'cluster', type: 'flow-step', label: s.label + (count(s.requires) ? '\\n' + join(s.requires, '\\n') : '') + (s.hint ? '\\n' + s.hint : ''), data: { final: s.final } })`,
           },
           edges: {
             $: `(${OPEN_DEFINITION}.moves ?? []).map(m, { id: m.from + '>' + m.to, source: 'step:' + m.from, target: 'step:' + m.to, type: 'move' })`,
@@ -818,12 +836,13 @@ const flowGraph: SchemaNode = {
         },
         /*
           Room between steps for the lines to read. The tree's gaps are centre to centre, and at its
-          defaults a 150-wide step sat 120 from the next — overlapping — so a move back or a branch had
-          nowhere to go but a sharp bend. A step's width plus 120 along, its height plus 70 across.
+          defaults a step sat closer to the next than its own width — overlapping — so a move back or a
+          branch had nowhere to go but a sharp bend. A step's width plus 120 along, its height plus 70
+          across.
         */
-        layout: { type: 'tree', options: { direction: 'right', levelGap: 270, siblingGap: 122 } },
+        layout: { type: 'tree', options: { direction: 'right', levelGap: 290, siblingGap: 166 } },
         nodeStyle: [
-          { style: { shape: 'card', width: 150, height: 52, color: 'surface-raised' } },
+          { style: { shape: 'card', width: 170, height: 96, color: 'surface-raised' } },
           { when: { 'data.final': true }, style: { borderColor: 'accent-text', borderWidth: 2 } },
         ],
         edgeStyle: [{ style: { color: 'accent-text' } }],
@@ -871,7 +890,8 @@ const openFlow: SchemaNode = {
         else: {
           type: 'Column',
           props: { gap: '500', width: '100%' },
-          children: [lanes(OPEN, false), exceptions(OPEN, false)],
+          // The moves no lane covers are said on the steps they lead into; the list is the editor's.
+          children: [lanes(OPEN, false)],
         },
       },
     },

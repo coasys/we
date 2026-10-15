@@ -56,6 +56,11 @@ export interface StepView {
   /** Everything entering it takes, as one short phrase each. */
   requires: string[];
   hint: string;
+  /**
+   * The steps a move nothing else covers comes in from (an exception), by name as a person reads it —
+   * so a map of lanes can say "also from Draft" on the step it leads into rather than only in a list.
+   */
+  alsoFrom: string[];
 }
 
 export interface LaneView {
@@ -77,6 +82,9 @@ export interface LaneView {
   lastColumn: number;
   /** The column of the step it rejoins at, or -1 for a lane that does not rejoin. */
   rejoinsColumn: number;
+  /** Which lane the step it leaves is on, and the step it rejoins at — so a line can climb to it. -1 for none. */
+  leavesLane: number;
+  rejoinsLane: number;
   steps: StepView[];
 }
 
@@ -191,6 +199,8 @@ function stepView(definition: FlowDefinition, name: string, labels: FlowLabels, 
     guards,
     requires,
     hint: state?.hint ?? '',
+    // Filled in where the lanes are known — see `editorView`.
+    alsoFrom: [],
   };
 }
 
@@ -210,7 +220,7 @@ export function editorView(
     rule: read.model.rule,
     fits: read.fits,
     // `columnOf` is complete once every lane is placed, which it is by the time these are built.
-    lanes: lanesWithColumns(read.model.lanes).map(({ lane, column, columnOf }, index) => ({
+    lanes: lanesWithColumns(read.model.lanes).map(({ lane, column, columnOf, laneOf }, index) => ({
       index,
       main: index === 0,
       leaves: lane.leaves ?? '',
@@ -221,7 +231,12 @@ export function editorView(
       column,
       lastColumn: column + Math.max(0, lane.states.length - 1),
       rejoinsColumn: lane.rejoins ? (columnOf.get(lane.rejoins) ?? -1) : -1,
-      steps: lane.states.map((name) => stepView(definition, name, labels, finals)),
+      leavesLane: lane.leaves ? (laneOf.get(lane.leaves) ?? -1) : -1,
+      rejoinsLane: lane.rejoins ? (laneOf.get(lane.rejoins) ?? -1) : -1,
+      steps: lane.states.map((name) => ({
+        ...stepView(definition, name, labels, finals),
+        alsoFrom: read.model.exceptions.filter((m) => m.to === name).map((m) => labels.state(m.from)),
+      })),
     })),
     exceptions: read.model.exceptions.map((m) => ({
       from: m.from,
@@ -262,10 +277,14 @@ export interface RecordView {
  */
 function lanesWithColumns(lanes: readonly FlowLanes['lanes'][number][]) {
   const columnOf = new Map<string, number>();
+  const laneOf = new Map<string, number>();
   return lanes.map((lane, index) => {
     const column = index === 0 ? 0 : (columnOf.get(lane.leaves ?? '') ?? 0) + 1;
-    lane.states.forEach((name, i) => columnOf.has(name) || columnOf.set(name, column + i));
-    return { lane, column, columnOf };
+    lane.states.forEach((name, i) => {
+      if (!columnOf.has(name)) columnOf.set(name, column + i);
+      if (!laneOf.has(name)) laneOf.set(name, index);
+    });
+    return { lane, column, columnOf, laneOf };
   });
 }
 
