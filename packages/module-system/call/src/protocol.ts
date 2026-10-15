@@ -83,7 +83,14 @@ export interface CallGenerations {
  * they share, losing the discriminant and with it the narrowing that makes handling each kind safe.
  */
 export type CallBody =
-  | { kind: 'description'; description: RTCSessionDescriptionInit }
+  /**
+   * `offer` numbers the offers of one connection: an offer carries its own, an answer the one it
+   * answers. A connection makes several (the first, a renegotiation, an ICE restart) and the resend
+   * rung can draw two answers to one, so an answer can reach this side while a newer offer is out —
+   * and the browser refuses it against that offer. The number is what lets it be dropped instead.
+   * Optional: a peer that predates it sends none, and its answers apply as before.
+   */
+  | { kind: 'description'; description: RTCSessionDescriptionInit; offer?: number }
   | { kind: 'ice'; candidate: RTCIceCandidateInit }
   /**
    * Throw this pair's connection away and build a new one.
@@ -128,7 +135,13 @@ export function parseCallMessage(payload: unknown): CallMessage | null {
     const { type, sdp } = description as RTCSessionDescriptionInit;
     if (type !== 'offer' && type !== 'answer' && type !== 'pranswer' && type !== 'rollback') return null;
     if (sdp !== undefined && typeof sdp !== 'string') return null;
-    return { ...envelope, kind: 'description', description: { type, sdp } };
+    const offer = (msg as { offer?: unknown }).offer;
+    return {
+      ...envelope,
+      kind: 'description',
+      description: { type, sdp },
+      ...(Number.isSafeInteger(offer) ? { offer: offer as number } : {}),
+    };
   }
 
   if (msg.kind === 'ice') {

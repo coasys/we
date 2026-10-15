@@ -105,13 +105,26 @@ class FakePeerConnection {
     return this.senders;
   }
 
+  private offersMade = 0;
+  private remoteOfferSeq = 0;
+
   async setLocalDescription(description?: RTCSessionDescriptionInit) {
     // The spec updates the negotiation-needed flag here, which is what stops an answer being
     // chased by a redundant offer.
     this.negotiationNeeded = false;
     // Mirrors the browser: with no argument it picks offer or answer from the signaling state.
     const type = description?.type ?? (this.signalingState === 'have-remote-offer' ? 'answer' : 'offer');
-    this.localDescription = { type: type as RTCSdpType, sdp: `${type}-sdp@${this.id}` };
+    // As a browser does: an offer only when not answering one, an answer only to an offer.
+    if ((type === 'offer') !== (this.signalingState !== 'have-remote-offer')) {
+      throw new Error(`InvalidStateError: cannot set a local ${type} in state ${this.signalingState}`);
+    }
+    // An offer is `offer-sdp@pc1#2` (pc1's second offer); an answer names the offer it answers,
+    // `answer-sdp@pc2>pc1#2`, which is what lets `setRemoteDescription` refuse a stale one.
+    const sdp =
+      type === 'offer'
+        ? `offer-sdp@${this.id}#${(this.offersMade += 1)}`
+        : `answer-sdp@${this.id}>${this.remoteDescription?.sdp?.split('@')[1] ?? ''}`;
+    this.localDescription = { type: type as RTCSdpType, sdp };
     this.signalingState = type === 'offer' ? 'have-local-offer' : 'stable';
   }
 
@@ -123,12 +136,31 @@ class FakePeerConnection {
    * cannot be applied to a connection that negotiated with its predecessor. Modelled by origin
    * rather than by m-lines, because which connection a description came from is the whole fact;
    * a hand-written description with no origin is accepted, as before.
+   *
+   * Refuses, too, an answer to another offer than the one out — the browser's "The order of m-lines
+   * in answer doesn't match order in offer": a connection that has made a newer offer cannot apply
+   * the answer to an older one.
    */
   async setRemoteDescription(description: RTCSessionDescriptionInit) {
-    const origin = description.sdp?.split('@')[1] ?? null;
+    const [, tail] = description.sdp?.split('@') ?? [];
+    const origin = tail?.split(/[#>]/)[0] ?? null;
     if (origin && this.remoteOrigin && origin !== this.remoteOrigin) {
       throw new Error(
         "InvalidAccessError: Failed to set remote offer sdp: The order of m-lines in subsequent offer doesn't match order from previous offer/answer.",
+      );
+    }
+    // An offer older than one applied describes m-lines the connection has moved past.
+    const offerSeq = Number(tail?.split('>')[0].split('#')[1]);
+    if (description.type === 'offer' && offerSeq < this.remoteOfferSeq) {
+      throw new Error(
+        "InvalidAccessError: Failed to set remote offer sdp: The order of m-lines in subsequent offer doesn't match order from previous offer/answer.",
+      );
+    }
+    if (description.type === 'offer' && offerSeq) this.remoteOfferSeq = offerSeq;
+    const answers = tail?.split('>')[1];
+    if (description.type === 'answer' && answers && answers !== this.localDescription?.sdp?.split('@')[1]) {
+      throw new Error(
+        "InvalidAccessError: Failed to set remote answer sdp: The order of m-lines in answer doesn't match order in offer. Rejecting answer.",
       );
     }
     if (origin) this.remoteOrigin = origin;
@@ -709,6 +741,50 @@ describe('recovering a pair that did not connect', () => {
     expect(bob.errors).toEqual([]);
   });
 
+  it("holds the answerer's own offer until the pair connects", async () => {
+    /*
+      Answering leaves Bob with transceivers of his own to negotiate, so an offer follows at once. If
+      his answer was lost, Alice still has her offer out, reads his as glare and negotiates afresh,
+      and both take the same DTLS role — "Failed to set SSL role for the transport". Connecting is
+      what proves the answer arrived, so his offer waits for it.
+    */
+    const alice = makeMesh(bus, dataset, 'did:alice', callId);
+    const bob = makeMesh(bus, dataset, 'did:bob', callId, {
+      drop: (payload) => (payload as { description?: { type?: string } }).description?.type === 'answer',
+    });
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    bob.mesh.setRoster(['did:alice', 'did:bob']);
+    // As in a browser: Bob's own sections are not all in Alice's offer, so his answer leaves them to
+    // negotiate, and `negotiationneeded` fires while the answer is still being set.
+    const pc = bob.live() as unknown as {
+      setLocalDescription(description?: RTCSessionDescriptionInit): Promise<void>;
+      localDescription: RTCSessionDescriptionInit | null;
+      queueNegotiation(): void;
+    };
+    const setLocal = pc.setLocalDescription.bind(pc);
+    pc.setLocalDescription = async (description) => {
+      await setLocal(description);
+      if (pc.localDescription?.type === 'answer') pc.queueNegotiation();
+    };
+    for (let i = 0; i < 4; i += 1) await settle();
+
+    const lastFromBob = () =>
+      bob.sent
+        .map((payload) => (payload as { description?: { type?: string } }).description?.type)
+        .filter(Boolean)
+        .slice(-1)[0];
+    expect(bob.live().localDescription?.type).toBe('answer');
+    expect(lastFromBob()).toBe('answer');
+    expect(alice.live().signalingState).toBe('have-local-offer');
+
+    // Connected: the answer demonstrably arrived, and the held offer goes.
+    bob.live().setConnectionState('connected');
+    for (let i = 0; i < 4; i += 1) await settle();
+    expect(lastFromBob()).toBe('offer');
+    expect(alice.errors).toEqual([]);
+    expect(bob.errors).toEqual([]);
+  });
+
   it('resends the answer when that is the half that was lost', async () => {
     /*
       The other direction of the same failure, and the one the first version of this ladder missed.
@@ -1143,6 +1219,78 @@ describe('a connected pair whose renegotiation went unanswered', () => {
     expect(bob.live().signalingState).toBe('stable');
   });
 
+  it('drops an answer to an offer the connection has since replaced', async () => {
+    // A late copy of the answer to Bob's last offer reaches him while his next offer is out. Applied,
+    // the browser refuses it ("The order of m-lines in answer doesn't match order in offer").
+    const { clock, alice, bob, aliceLoses } = await connectedPair();
+    bob.live().restartIce();
+    for (let i = 0; i < 4; i += 1) await settle();
+    const stale = descriptions(alice.sent).slice(-1)[0] as { description: { type: string } };
+    expect(stale.description.type).toBe('answer');
+
+    aliceLoses.answer = true;
+    bob.live().restartIce();
+    for (let i = 0; i < 4; i += 1) await settle();
+    expect(bob.live().signalingState).toBe('have-local-offer');
+    bus.deliver(bus.keyFor(dataset), 'rtc', 'did:alice', stale);
+    for (let i = 0; i < 4; i += 1) await settle();
+    expect(bob.errors).toEqual([]);
+    expect(bob.live().signalingState).toBe('have-local-offer');
+
+    // The answer to the current offer still settles it.
+    aliceLoses.answer = false;
+    clock.advance(RECOVERY_INTERVAL_MS);
+    bob.mesh.tick();
+    for (let i = 0; i < 4; i += 1) await settle();
+    expect(bob.live().signalingState).toBe('stable');
+    expect(bob.errors).toEqual([]);
+  });
+
+  it('ignores an offer overtaken by a later one', async () => {
+    // Alice's earlier offer arrives after Bob applied her next one.
+    const { alice, bob } = await connectedPair();
+    alice.live().restartIce();
+    for (let i = 0; i < 4; i += 1) await settle();
+    const overtaken = descriptions(alice.sent).slice(-1)[0] as { description: { type: string } };
+    expect(overtaken.description.type).toBe('offer');
+    alice.live().restartIce();
+    for (let i = 0; i < 4; i += 1) await settle();
+    expect(bob.live().signalingState).toBe('stable');
+
+    bus.deliver(bus.keyFor(dataset), 'rtc', 'did:alice', overtaken);
+    for (let i = 0; i < 4; i += 1) await settle();
+    expect(bob.errors).toEqual([]);
+    expect(bob.live().signalingState).toBe('stable');
+  });
+
+  it("answers the peer's offer when negotiation is asked for while it is applied", async () => {
+    /*
+      The browser can fire `negotiationneeded` during the rollback that accepting the peer's offer
+      starts. A description picked from the state when the handler runs is then the answer, and the
+      answering path, finding the connection stable, makes an offer in its place: the roles swap.
+    */
+    const { alice, bob } = await connectedPair();
+    const pc = bob.live() as unknown as {
+      setRemoteDescription(description: RTCSessionDescriptionInit): Promise<void>;
+      onnegotiationneeded: (() => void) | null;
+    };
+    const setRemote = pc.setRemoteDescription.bind(pc);
+    pc.setRemoteDescription = async (description) => {
+      await setRemote(description);
+      if (description.type === 'offer') pc.onnegotiationneeded?.();
+    };
+    const before = descriptions(bob.sent).length;
+
+    alice.live().restartIce();
+    for (let i = 0; i < 4; i += 1) await settle();
+
+    const sent = descriptions(bob.sent).slice(before) as { description: { type: string } }[];
+    expect(sent.map((message) => message.description.type)).toEqual(['answer']);
+    expect(alice.live().signalingState).toBe('stable');
+    expect(bob.live().signalingState).toBe('stable');
+    expect(bob.errors).toEqual([]);
+  });
+
   it('stops repairing a peer that never answers a renegotiation, across rebuilds', async () => {
     /*
       Each rebuilt connection connects before it renegotiates, which resets a slot's own budget. The
@@ -1495,11 +1643,12 @@ describe('signalling that arrives before the roster', () => {
     const bob = makeMesh(bus, dataset, 'did:bob', callId);
 
     bob.mesh.setRoster(['did:alice', 'did:bob']);
-    // Twenty renegotiations before Alice ever hears of Bob. This buffers messages from an agent the
-    // roster has not vouched for, so it must not be a memory target.
-    for (let n = 0; n < 20; n += 1) {
+    // Forty renegotiations and candidates before Alice ever hears of Bob. This buffers messages from
+    // an agent the roster has not vouched for, so it must not be a memory target.
+    for (let n = 0; n < 40; n += 1) {
       await bob.mesh.setOutboundTrack('audio', { kind: 'audio' } as MediaStreamTrack);
       await bob.mesh.setOutboundTrack('audio', null);
+      bob.live().emitCandidate({ candidate: `c${n}` });
     }
     await settle();
 
@@ -1509,6 +1658,27 @@ describe('signalling that arrives before the roster', () => {
 
     // It replayed something rather than nothing, and did not replay everything.
     expect(alice.connections[0].remoteDescription).not.toBeNull();
+    expect(alice.connections[0].candidates.length).toBeLessThan(40);
+  });
+
+  it('keeps the held offer when its candidates overflow the buffer', async () => {
+    // An offer is followed by many candidates; held for a peer the roster has not listed yet, the
+    // overflow must not take the offer with it.
+    const alice = makeMesh(bus, dataset, 'did:alice', callId);
+    const bob = makeMesh(bus, dataset, 'did:bob', callId);
+
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+    await settle();
+    for (let i = 0; i < 40; i += 1) {
+      alice.live().emitCandidate({ candidate: `candidate:${i} 1 udp 1 10.0.0.${i} 9 typ host`, sdpMid: '0' });
+    }
+
+    bob.mesh.setRoster(['did:alice', 'did:bob']);
+    for (let i = 0; i < 4; i += 1) await settle();
+
+    expect(bob.live().remoteDescription?.type).toBe('offer');
+    expect(bob.errors).toEqual([]);
   });
 });
 
