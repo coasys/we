@@ -290,7 +290,7 @@ export const storeEntries: StoreEntry[] = [
       currentTemplate: { type: 'object', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       templateManagementList: {
         type: 'array',
-        properties: ['id', 'name', 'icon', 'description', 'isBuiltIn', 'isInstalled', 'isDefault'],
+        properties: ['id', 'name', 'icon', 'description', 'isBuiltIn', 'isInstalled', 'isDefault', 'fromApp'],
       },
       refusedTemplates: { type: 'array', properties: ['id', 'name', 'icon', 'reason'] },
       switcherGroups: { type: 'array', properties: ['label', 'items'] },
@@ -1055,7 +1055,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         allTemplates: 'array of TemplateSchema objects — union of built-in + personal + space templates',
         currentTemplate: 'TemplateSchema (the active template)',
         templateManagementList:
-          'TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault)',
+          'TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault, fromApp). `fromApp` names the installed or built-in app a template came with, empty otherwise: such a template is removed with its app, never on its own',
         refusedTemplates:
           "RefusedTemplate[] — templates in this agent's library that no longer validate, so they cannot be loaded (id, name, icon, reason). `reason` is the validator's first complaint with where it is. Listed so they can be seen and deleted; they are in no other list. `id` is the record's own, for deleteRefusedTemplate",
         switcherGroups:
@@ -1906,6 +1906,34 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setLoop: '(name: string, loop: boolean): starts again at the end rather than stopping',
         configure:
           '(name: string, settings: { from?, to?, speed?, duration?, rate?, loop? }): several at once. `duration` is how long the whole range takes to play at speed 1 — seconds or a span ("45s", "2m"), default 30s; `rate` instead runs at a fixed pace (1 is real time, for a countdown); from/to fix the range rather than taking it from the data',
+      },
+    },
+    bundleStore: {
+      state: {
+        pendingInstall:
+          '{ name, icon, version, author, fileName, updates, adds, capabilities, blocked, modulesToTurnOn, modulesNotInBuild, recordTypes, needsSpace, display } | null — the app an install prompt is asking about, everything already in the words a person reads. `author` is what the file claims and nothing attests to it; `updates` is the version already installed, empty for a first install; `needsSpace` says it brings record types or sections, so the prompt lists spaceChoices; `display` is `ours` (every space opens in the app’s template while it is in use) or `theirs`. Host chrome only: an app must never draw the prompt vouching for it',
+        installed:
+          '{ id, name, icon, version, from, setUp }[] — the apps this agent has installed (`from: file`) and those built into the deployment (`from: deployment`, which cannot be removed). `setUp` says whether the spaces this agent runs have the record types and sections the app needs: `done` (all of them), `available` (offer openSetUp) or `none` (it needs nothing, or this agent runs no space)',
+        busy: 'boolean — an install, a set-up or a removal is in flight',
+        spaceChoices:
+          '{ id, name, avatar, chosen, done, here }[] — the spaces this agent runs, for the app the install prompt or the set-up picker is about; empty with neither open. A checklist: `chosen` is ticked (toggleSpace), `done` is already set up and has nothing to tick, `here` is the space on screen — ticked to start with, since that is where somebody asked from',
+        setUpPicker:
+          '{ id, name, icon } | null — the app the set-up picker is open for. Its non-nullness is what mounts the picker',
+      },
+      actions: {
+        installFromFile:
+          '(file: File): reads an app from a file — a we-file-upload’s change event passes it as event.detail — and raises the install prompt, or a toast saying why it cannot be installed. Writes nothing',
+        confirmInstall:
+          '(): installs what the prompt is showing — its app, templates and theme into this agent’s library, the modules it needs turned on, its record types and sections into every space ticked in spaceChoices — and makes its app the one in use. The prompt stays up until it is done, so give its button `loading: bundleStore.busy`. Host chrome only',
+        cancelInstall: '(): closes the install prompt without installing. Does nothing while an install is running',
+        toggleSpace: '(spaceId: string): ticks or unticks one space in spaceChoices',
+        openSetUp:
+          '(bundleId: string): opens the set-up picker for an app, with the space on screen ticked when this agent runs it',
+        closeSetUp: '(): closes the set-up picker without setting anything up',
+        confirmSetUp:
+          '(): adds the picker’s app’s record types to every ticked space, copies its sections in and switches them on — for everybody in each. Only spaces this agent runs are ever offered',
+        removeBundle:
+          '(bundleId: string): removes an installed app: its app, templates and theme. Never its record types, which hold the records people made with it',
       },
     },
     interpretationStore: {

@@ -14,6 +14,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { RENDERER_BINDING_NAMES } from '@we/backend-shared';
 import { markAction, markState } from '@we/module-shared';
 import { REACTIVE_ACCESSOR, runWithGesture } from '@we/schema-shared';
 import { vi } from 'vitest';
@@ -206,6 +207,26 @@ describe('what the space tier can reach', () => {
       'editorStore.sendMessage',
     ]) {
       expect(reaches(chromeBag, path), path).toBe(true);
+    }
+  });
+
+  it('carries every renderer binding the host supplies into a space template, by getter', () => {
+    // A binding dropped here is a feature silently off in every template: `$modelsPending` was, and
+    // a reload reported a space's own models missing while they were still being read.
+    let reads = 0;
+    const host: Record<string, unknown> = {};
+    for (const name of RENDERER_BINDING_NAMES)
+      Object.defineProperty(host, name, {
+        enumerable: true,
+        get: () => {
+          reads++;
+          return () => name;
+        },
+      });
+    const bag = buildTemplateBag(host, { grants: SPACE_TIER });
+    expect(reads, 'a binding was read while the bag was built, pinning its pre-connect value').toBe(0);
+    for (const name of RENDERER_BINDING_NAMES) {
+      expect((bag[name] as (() => string) | undefined)?.(), name).toBe(name);
     }
   });
 

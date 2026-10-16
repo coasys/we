@@ -6,6 +6,7 @@
  * chrome reads as a notebook rather than a social space.
  */
 import type { Cartridge } from '../cartridge.ts';
+import { fieldGuideApp } from './app.ts';
 import { agents, records, sightingShape, speciesShape } from './model.ts';
 import { mapSection, sightingsSection, speciesSection } from './sections.ts';
 import { fieldGuideShell } from './shell.ts';
@@ -14,6 +15,7 @@ export const fieldGuide: Cartridge = {
   id: 'field-guide',
   name: 'Field Guide',
   description: 'Species and sightings for a naturalist group, on a map.',
+  app: fieldGuideApp,
   shell: fieldGuideShell,
   sections: [speciesSection, sightingsSection, mapSection],
   theme: {
@@ -32,6 +34,8 @@ export const fieldGuide: Cartridge = {
   },
   shapes: [speciesShape, sightingShape],
   modules: ['globe'],
+  // A focused app: every space a member opens here is a field guide.
+  display: 'ours',
   sample: {
     space: { name: 'Levels Naturalists', description: 'Species and sightings across the Somerset Levels' },
     agents,

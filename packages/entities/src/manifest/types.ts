@@ -24,6 +24,7 @@ export interface AgentSettingsRecord extends RecordInstance {
   currentTemplateId: string;
   defaultTemplateId: string;
   appTemplateId: string;
+  installedBundles: string;
   currentThemeId: string;
   defaultThemeId: string;
   systemLightThemeId: string;

@@ -77,6 +77,7 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
       'core:templateNameDialog',
       'core:screenSource',
       'core:namePrompt',
+      'core:bundlePrompt',
       'core:installPrompt',
       'core:destructivePrompt',
       'core:safeModeBanner',

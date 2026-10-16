@@ -7,6 +7,7 @@ export type {
   TemplateMeta,
   TemplatePanel,
   TemplateSchema,
+  TemplateSource,
   RouteParamsBinding,
   ThemeOverrides,
   ThemeRole,
@@ -149,6 +150,17 @@ export type { SectionEntry, StoredTemplate, FindNodeResult, PatchError } from '.
 export { deriveNodeIds, derivedNodeId, isNodeId, newNodeId, NODE_ID_LENGTH } from './nodeIdentity';
 export { type PartFork, partForkChanged, partForkPrint } from './forkPrint';
 export { HOST_PART_IDS, type HostPartId, isHostPartId } from './hostPartIds';
+export {
+  type Bundle,
+  BUNDLE_FORMAT,
+  BUNDLE_FORMAT_VERSION,
+  type BundleDisplay,
+  bundlePieceId,
+  type BundleProblem,
+  type BundleRecordType,
+  type BundleTheme,
+  readBundle,
+} from './bundle';
 export { createStoredTemplate, listSections, getSection, updateSection } from './sections';
 export {
   expandViewRoutes,

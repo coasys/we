@@ -31,7 +31,9 @@ an app of their own — in Settings → Appearance, or in the template picker's 
 above the templates and offers to edit or fork each — and edit it where it is drawn: the editor bar's
 **Page | App** switch says which of the two the session edits, one at a time, and WE's app — built
 in — is forked from the bar the inspector shows while it is the target. An app of your own is
-deleted in Settings → Appearance, which puts you back in WE's if it was the one you were in. Safe
+deleted in Settings → Appearance, which puts you back in WE's if it was the one you were in. An app
+can also arrive in a bundle — built in by the seed, or installed from a file — with templates, a
+theme and record types of its own; see `apps-as-data.md`. Safe
 mode always draws WE's. Everything else here — the editor's panels and bar, the boot screen and its
 modals, module chrome, the safety prompts — the host draws whatever the app says.
 

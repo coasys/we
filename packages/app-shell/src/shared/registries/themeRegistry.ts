@@ -6,6 +6,8 @@ import lightCss from '@we/themes/light?raw';
 import { THEME_PRESETS } from '@we/themes/presets';
 import retroCss from '@we/themes/retro?raw';
 
+import { seedBundleThemes } from './seedBundles';
+
 /**
  * A built-in theme, ready for the app to apply.
  *
@@ -35,6 +37,18 @@ export const themeRegistry: Record<string, ThemeRegistryEntry> = {
   // two were built to find out how far it stretches.
   channels: { ...THEME_PRESETS.channels, css: null, overrides: THEME_PRESETS.channels.parameters },
   timeline: { ...THEME_PRESETS.timeline, css: null, overrides: THEME_PRESETS.timeline.parameters },
+  // The themes the seed's bundles bring, built in beside these.
+  ...Object.fromEntries(
+    Object.values(seedBundleThemes).map((theme) => [
+      theme.id,
+      {
+        name: theme.name,
+        icon: theme.icon ?? 'palette',
+        css: theme.css ?? null,
+        overrides: theme.overrides as ThemeOverrides,
+      },
+    ]),
+  ),
 };
 
 export type ThemeKey = keyof typeof themeRegistry;

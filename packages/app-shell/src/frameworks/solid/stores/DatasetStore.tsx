@@ -1095,9 +1095,18 @@ export function DatasetStoreProvider(props: ParentProps) {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return;
     requestedDataset = uuid;
+    const started = performance.now();
+    let step = started;
+    const lap = () => {
+      const now = performance.now();
+      const ms = Math.round(now - step);
+      step = now;
+      return ms;
+    };
 
     try {
       const ref = await lifecycle.get(uuid);
+      trace('dataset', 'switch:get', { dataset: uuid, ms: lap() });
       if (!ref || requestedDataset !== uuid) return;
       const app = toApp(ref);
       const handle = app.handle;
@@ -1120,6 +1129,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       // — should hit the install path here.
       const schemas = session.backendPorts()!.schemas;
       let weSpace = await schemas.hasCoreSchema(handle);
+      trace('dataset', 'switch:core', { dataset: uuid, weSpace, ms: lap() });
       if (!weSpace) {
         if (!(await schemas.hasAnySchema(handle))) {
           await schemas.installSpace(handle, moduleRegistry.moduleSchemas(schemas));
@@ -1147,6 +1157,7 @@ export function DatasetStoreProvider(props: ParentProps) {
           }),
         ]);
         if (written.length) console.info(`DatasetStore: brought space schemas up to date — ${written.join(', ')}`);
+        trace('dataset', 'switch:refresh', { dataset: uuid, written: written.length, ms: lap() });
       }
 
       // Everything above is a round trip, and the reader may have asked for somewhere else while
@@ -1168,6 +1179,11 @@ export function DatasetStoreProvider(props: ParentProps) {
       batch(() => {
         setIsWeSpace(weSpace);
         setCurrentDataset(app);
+      });
+      trace('dataset', 'switch:published', {
+        dataset: uuid,
+        totalMs: Math.round(performance.now() - started),
+        sincePageStartMs: Math.round(performance.now()),
       });
 
       // Background: discover schemas foreign to the host (another app's entities synced into

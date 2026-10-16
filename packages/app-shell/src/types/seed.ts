@@ -134,6 +134,20 @@ export interface WeSeedFile {
   templates?: string[];
 
   /**
+   * Bundles this deployment builds in — apps as data, by id, each read from
+   * `bundles/<id>.bundle.json` at the repository root.
+   *
+   * Built in the way `templates` are: a bundle's app, space templates, sections and theme join the
+   * built-in registries, read-only and forkable, and change with the next deploy. Nobody is asked,
+   * because whoever built the deployment chose them. The first bundle bringing an app is the
+   * deployment's app unless `host.ui.app` names another. Its record types are not built in — they
+   * belong to spaces, and are added to one by whoever runs it.
+   *
+   * `pnpm --filter @we/app-shell generate-bundles` writes them into the build.
+   */
+  bundles?: string[];
+
+  /**
    * Built-in view ids this deployment ships — a space's *sections*, as opposed to `templates`, which
    * are whole interfaces.
    *

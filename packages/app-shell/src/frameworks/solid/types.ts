@@ -1,6 +1,7 @@
 import type {
   AccountStore,
   AppStore,
+  BundleStore,
   ClockStore,
   DatasetStore,
   EditorStore,
@@ -72,6 +73,7 @@ export interface Stores extends RendererStores {
   shellStore: ShellStore;
   presenceStore: PresenceStore;
   interpretationStore: InterpretationStore;
+  bundleStore: BundleStore;
   clockStore: ClockStore;
   flowStore: FlowStore;
   record?: RecordActions;

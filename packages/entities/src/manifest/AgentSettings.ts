@@ -18,6 +18,15 @@ export const AgentSettings: CoreEntityDef = {
        * agent's own copies is honoured, since an app is drawn with the chrome tier.
        */
       appTemplateId: { type: 'string', predicate: 'we://app_template', default: '' },
+      /**
+       * The bundles this agent installed, and what each wrote: JSON, a list of `InstalledBundle`
+       * (`app-shell/src/shared/bundles/installedBundles.ts`).
+       *
+       * Kept so an app can be recognised when a later version of it is installed, removed with
+       * everything it brought, and asked how it shows spaces — its display policy is read from here,
+       * so leaving the app is all it takes to stop it. A seed's bundles are built in and never here.
+       */
+      installedBundles: { type: 'string', predicate: 'we://installed_bundles', default: '' },
       currentThemeId: { type: 'string', predicate: 'we://current_theme', default: 'default' },
       defaultThemeId: { type: 'string', predicate: 'we://default_theme', default: 'default' },
       /**

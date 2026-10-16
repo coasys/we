@@ -199,7 +199,53 @@ export interface RendererDataBindings {
    * reach and a module can contribute its own.
    */
   $sources?: Record<string, (options: Record<string, unknown>) => unknown>;
+  /**
+   * Whether a dataset's own models are still being read, so a query for one the renderer does not
+   * know yet waits rather than reporting it missing.
+   *
+   * A community defines its own models as records in its space, and a host can only turn those into
+   * classes once it has read them — which is after the first frame. A query asked before then cannot
+   * tell "not loaded yet" from "does not exist" on its own. With this it waits, silently, and is asked
+   * again the moment the answer turns false; a model still unknown then is reported as missing.
+   *
+   * Must read reactively. Absent means nothing is ever pending, which is the old behaviour.
+   */
+  $modelsPending?: (dataset: unknown) => boolean;
 }
+
+/**
+ * Every binding above, by name, for a host that narrows the bag it hands a template.
+ *
+ * A host gives each template only what its tier allows, and the renderer's own bindings have to get
+ * through every narrowing — a host that drops one silently turns a feature off for every template it
+ * renders, which is how `$modelsPending` first shipped. Listed here, beside the interface, and
+ * checked against it below, so a binding added to the interface and not to this list fails to
+ * compile rather than failing in a template.
+ */
+export const RENDERER_BINDING_NAMES = [
+  '$currentDataset',
+  '$getEntity',
+  '$getEntityForDataset',
+  '$getEntitiesForDataset',
+  '$onError',
+  '$queryAdapter',
+  '$identities',
+  '$ephemeral',
+  '$sources',
+  '$modelsPending',
+] as const satisfies readonly (keyof RendererDataBindings)[];
+
+/**
+ * Declared and deliberately not carried into every bag. `model` is the mutation surface, which a
+ * template must be given by tier rather than always — WE hands writes to a template as `record`,
+ * gated like any store, and nothing reads `model` from the bag.
+ */
+type GatedBinding = 'model';
+
+type UnlistedBinding = Exclude<keyof RendererDataBindings, (typeof RENDERER_BINDING_NAMES)[number] | GatedBinding>;
+/** Fails to compile, naming the binding, when one is declared above and missing from the list. */
+const everyBindingListed: [UnlistedBinding] extends [never] ? true : UnlistedBinding = true;
+void everyBindingListed;
 
 /**
  * The `stores` bag as the renderer sees it: the declared data bindings above, plus whatever

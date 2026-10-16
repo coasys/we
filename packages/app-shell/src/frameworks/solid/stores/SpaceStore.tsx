@@ -5582,7 +5582,14 @@ export function SpaceStoreProvider(props: ParentProps) {
       return now[0] === 'space' && datasetAddressedBy(ds, now[1] ?? '');
     };
     void (async () => {
+      const started = performance.now();
       await templateStore.preloadSpaceTemplates(ds);
+      // Its own line because the switch waits on it: a space's templates are file-storage reads.
+      trace('dataset', 'switch:templates', {
+        dataset: ds.id,
+        ms: Math.round(performance.now() - started),
+        sincePageStartMs: Math.round(performance.now()),
+      });
       await datasetStore.switchDataset(ds.id, { stillWanted: stillAddressed });
     })();
   });
