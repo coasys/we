@@ -74,7 +74,13 @@ const STORAGE_KEY = 'we:trace';
  * `records`, then per model `adopt` split into `declare` (in memory) and `ensure` (round trips to
  * the backend), and `ready` with the total and how long after the page started it was.
  */
-export const TRACE_SCOPES = ['presence', 'ephemeral', 'dataset', 'space', 'graph', 'shapes'] as const;
+/*
+ * `boot` times the way from page start to somebody's data: connecting to the backend, whether the
+ * agent is unlocked, then each read after unlock — the dataset list, the system datasets, the spaces,
+ * the published list — with `ready` when the app has it all. Each line says how long its step took
+ * and when it ended, since page start, so the step a slow boot waited on is the one with the gap.
+ */
+export const TRACE_SCOPES = ['presence', 'ephemeral', 'dataset', 'space', 'graph', 'shapes', 'boot'] as const;
 
 function enabledScopes(): Set<string> | null {
   if (typeof localStorage === 'undefined') return null;

@@ -104,13 +104,6 @@ export interface DatasetStore {
   currentDatasetEntities: Accessor<EntityManifestEntry[]>;
   /** True once the current dataset is confirmed to have WE's `Space` schema installed. */
   isWeSpace: Accessor<boolean>;
-  /**
-   * The WE space a switch is on its way to, from the moment it is known to be one until it is
-   * published as `currentDataset` (or the switch is abandoned); null otherwise. For a reader that can
-   * start on a space's own data while the switch finishes its schema checks — the space's models,
-   * which every list in it waits on. Not somewhere to render: nothing about the space is settled yet.
-   */
-  arrivingDataset: Accessor<AppDataset | null>;
   joinedSpaceCids: Accessor<string[]>;
   /**
    * The backend has answered with the dataset list.
@@ -281,7 +274,6 @@ export function DatasetStoreProvider(props: ParentProps) {
   const [currentDataset, setCurrentDataset] = createSignal<AppDataset | null>(null, { equals: sameDataset });
   const [currentDatasetEntities, setCurrentDatasetEntities] = createSignal<EntityManifestEntry[]>([]);
   const [isWeSpace, setIsWeSpace] = createSignal<boolean>(false);
-  const [arrivingDataset, setArrivingDataset] = createSignal<AppDataset | null>(null);
   const [rootDataset, setRootDataset] = createSignal<AppDataset | null>(null);
   const [personalDataset, setPersonalDataset] = createSignal<AppDataset | null>(null);
   const [testDataset, setTestDataset] = createSignal<AppDataset | null>(null);
@@ -1138,8 +1130,6 @@ export function DatasetStoreProvider(props: ParentProps) {
       const schemas = session.backendPorts()!.schemas;
       let weSpace = await schemas.hasCoreSchema(handle);
       trace('dataset', 'switch:core', { dataset: uuid, weSpace, ms: lap() });
-      // Known to be a WE space: what waits on its own data can start while the checks below run.
-      if (weSpace && requestedDataset === uuid) setArrivingDataset(app);
       if (!weSpace) {
         if (!(await schemas.hasAnySchema(handle))) {
           await schemas.installSpace(handle, moduleRegistry.moduleSchemas(schemas));
@@ -1189,7 +1179,6 @@ export function DatasetStoreProvider(props: ParentProps) {
       batch(() => {
         setIsWeSpace(weSpace);
         setCurrentDataset(app);
-        setArrivingDataset(null);
       });
       trace('dataset', 'switch:published', {
         dataset: uuid,
@@ -1216,9 +1205,6 @@ export function DatasetStoreProvider(props: ParentProps) {
       // failure a store can have: the sidebar highlights the space, the URL says the space, and the
       // content is the previous one's. Console-only, this looked like the app ignoring a click.
       toastService.error('Could not open that space');
-    } finally {
-      // Abandoned or superseded: it is not arriving any more. A later switch has set its own.
-      if (arrivingDataset()?.id === uuid && currentDataset()?.id !== uuid) setArrivingDataset(null);
     }
   }
 
@@ -1258,7 +1244,6 @@ export function DatasetStoreProvider(props: ParentProps) {
     currentDatasetCid,
     currentDatasetEntities,
     isWeSpace,
-    arrivingDataset,
     joinedSpaceCids,
     datasetsLoaded,
     systemDatasetUuids,
@@ -1284,7 +1269,6 @@ export function DatasetStoreProvider(props: ParentProps) {
       requestedDataset = null;
       setCurrentDataset(null);
       setIsWeSpace(false);
-      setArrivingDataset(null);
     },
     cleanupSpaceSdna,
 

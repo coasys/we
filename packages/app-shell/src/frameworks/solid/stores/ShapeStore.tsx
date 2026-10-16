@@ -558,42 +558,15 @@ export function ShapeStoreProvider(props: ParentProps) {
     });
   }
 
-  /*
-    Whose models to read: the space a switch is on its way to, as soon as it is known to be a WE
-    space, else the one on screen. Reading on arrival rather than on publish overlaps the read with
-    the switch's own schema checks — after a reload, seconds of an empty list somebody is looking at.
-  */
-  const shapesTarget = () => {
-    const arriving = datasetStore.arrivingDataset();
-    return arriving
-      ? { dataset: arriving, weSpace: true }
-      : { dataset: datasetStore.currentDataset(), weSpace: datasetStore.isWeSpace() };
-  };
-  /** The space whose models are loaded or being loaded, so its publish does not start the read again. */
-  let shapesFor: string | null = null;
-  /**
-   * A model refused while its space was still arriving, when another app's models in it were not yet
-   * known — one that names them would be refused for that alone. Read again once it is published.
-   */
-  let refusedEarly = false;
-
-  /** `force` reads again a space already read — after a model was saved or added. */
-  async function loadShapes(force = false): Promise<void> {
+  async function loadShapes(): Promise<void> {
     const ports = schemas();
-    const target = shapesTarget();
-    const dataset = target.dataset?.handle;
-    const uuid = target.dataset?.id;
-    if (!ports || !dataset || !uuid || !target.weSpace) {
-      shapesFor = null;
+    const dataset = handle();
+    const uuid = datasetStore.currentDataset()?.id;
+    if (!ports || !dataset || !datasetStore.isWeSpace()) {
       setSpaceShapes([]);
       setShapesLoaded(true);
       return;
     }
-    const published = datasetStore.currentDataset()?.id === uuid;
-    if (!force && uuid === shapesFor && !(published && refusedEarly)) return;
-    shapesFor = uuid;
-    refusedEarly = false;
-    const stillWanted = () => shapesTarget().dataset?.id === uuid;
     setShapesLoaded(false);
     const started = performance.now();
     let step = started;
@@ -610,7 +583,7 @@ export function ShapeStoreProvider(props: ParentProps) {
       trace('shapes', 'catalogue', { space: uuid, ms: lap() });
       const records = await Shape.findAll(dataset);
       trace('shapes', 'records', { space: uuid, count: records.length, ms: lap() });
-      if (!stillWanted()) return; // navigated away while loading
+      if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
 
       const views: SpaceShapeView[] = [];
       const adopted = new Set<string>();
@@ -636,11 +609,9 @@ export function ShapeStoreProvider(props: ParentProps) {
         }
         // Validated against everything nameable here except itself — including shapes loaded
         // earlier in this same pass, so sibling references resolve whatever the record order.
-        // Another app's models are known only once the space is published — see `refusedEarly`.
-        const foreign = datasetStore.currentDataset()?.id === uuid ? datasetStore.currentDatasetEntities() : [];
         const external = [
           ...Object.keys(CORE_MANIFEST.entities),
-          ...foreign.map((m) => m.name),
+          ...datasetStore.currentDatasetEntities().map((m) => m.name),
           ...records.map((r) => r.name).filter((n) => n !== record.name),
         ];
         const gate = validateManifest(manifest, { externalEntities: external });
@@ -661,7 +632,7 @@ export function ShapeStoreProvider(props: ParentProps) {
         if (!view.manifest || view.problems.length || adopted.has(view.name)) continue;
         adopted.add(view.name);
         try {
-          await adoptShape(view, view.manifest, dataset);
+          await adoptShape(view, view.manifest);
         } catch (err) {
           view.problems = [`adoption failed: ${err instanceof Error ? err.message : String(err)}`];
         }
@@ -673,21 +644,19 @@ export function ShapeStoreProvider(props: ParentProps) {
         totalMs: Math.round(performance.now() - started),
         sincePageStartMs: Math.round(performance.now()),
       });
-      if (!published && views.some((view) => view.problems.length)) refusedEarly = true;
-      if (stillWanted()) setSpaceShapes(views);
+      if (datasetStore.currentDataset()?.id === uuid) setSpaceShapes(views);
     } catch (err) {
       console.error('ShapeStore: loading space shapes failed', err);
-      // Not loaded, so a later switch back is not skipped as though it had been.
-      if (shapesFor === uuid) shapesFor = null;
-      if (stillWanted()) setSpaceShapes([]);
+      if (datasetStore.currentDataset()?.id === uuid) setSpaceShapes([]);
     } finally {
-      if (stillWanted()) setShapesLoaded(true);
+      if (datasetStore.currentDataset()?.id === uuid) setShapesLoaded(true);
     }
   }
 
   createEffect(() => {
-    // Re-runs when a switch learns where it is going, when it publishes, and when WE-ness settles.
-    void shapesTarget();
+    // Re-runs on every dataset switch and when the space's WE-ness settles.
+    void datasetStore.currentDataset();
+    void datasetStore.isWeSpace();
     void loadShapes();
   });
 
@@ -1155,7 +1124,7 @@ export function ShapeStoreProvider(props: ParentProps) {
       }
       cancelShapeWizard();
       toastService.success(existing ? `Model "${entityName}" updated` : `Model "${entityName}" created`);
-      await loadShapes(true);
+      await loadShapes();
     } catch (err) {
       console.error('ShapeStore: saving shape failed', err);
       setDraftErrors([err instanceof Error ? err.message : String(err)]);
@@ -1213,7 +1182,7 @@ export function ShapeStoreProvider(props: ParentProps) {
       // The record's own shapeId, as `loadShapes` adopts it on every later visit.
       await adoptShape({ name: type.name, shapeId }, gate.manifest, dataset);
     }
-    if (onScreen) await loadShapes(true);
+    if (onScreen) await loadShapes();
     return problems;
   }
 
@@ -1224,7 +1193,7 @@ export function ShapeStoreProvider(props: ParentProps) {
       const record = (await Shape.findAll(dataset)).find((r) => r.id === shapeRecordId);
       if (record) await record.delete();
       toastService.success('Model removed. Existing entries keep their data.');
-      await loadShapes(true);
+      await loadShapes();
     } catch (err) {
       console.error('ShapeStore: deleting shape failed', err);
       toastService.error('Removing the model failed.');
