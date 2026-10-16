@@ -290,7 +290,7 @@ export const mapSection: TemplateSchema & { id: string } = {
     keepAlive: true,
   },
   type: 'Column',
-  props: { width: '100%', height: '100%', minHeight: '70dvh' },
+  props: { width: '100%', height: '100%' },
   $queries: {
     sightings: { entity: 'Sighting', include: { species: true, place: true }, limit: 500 },
   },
