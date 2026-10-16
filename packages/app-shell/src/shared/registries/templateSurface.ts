@@ -37,6 +37,7 @@
  * store member fails that test until it is classified, so this cannot quietly fall behind the code
  * it describes — the failure mode an allowlist beside the thing it allows usually has.
  */
+import { RENDERER_BINDING_NAMES } from '@we/backend-shared';
 import { memberAmbient, memberKind } from '@we/module-shared';
 import { claimGesture, isExpressionToken, markReactive, parseExpression, referencedPaths } from '@we/schema-shared';
 
@@ -1455,8 +1456,15 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
   },
 };
 
-/** Members present in every bag: renderer bindings and template-facing vocabulary, not store state. */
-const ALWAYS_PRESENT = new Set([
+/**
+ * Members present in every bag: renderer bindings and template-facing vocabulary, not store state.
+ *
+ * The renderer's bindings come from its own contract rather than being listed again here — a list
+ * kept twice is a list that drifts, and this one drifted: `$modelsPending` was added to the
+ * contract and not here, so every template had it stripped and never waited for a space's models.
+ */
+const ALWAYS_PRESENT = new Set<string>([
+  ...RENDERER_BINDING_NAMES,
   'modules',
   'consoleStore',
   '$onError',
