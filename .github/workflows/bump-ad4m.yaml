@@ -10,7 +10,8 @@ name: Bump ad4m
 #
 # A PR opened with GITHUB_TOKEN starts no workflows of its own, so this starts CI on the branch
 # itself, and the results appear as checks on the PR. The Netlify preview needs nothing: Netlify
-# hears about the PR from GitHub whoever opened it.
+# hears about the PR from GitHub whoever opened it. Before any of that it starts the new version's
+# executor building on `dev` (`ad4m-executor.yaml`), so it is cached once, where every PR reads it.
 #
 # Opening a PR needs the repository setting "Allow GitHub Actions to create and approve pull
 # requests" (Settings → Actions → General).
@@ -80,6 +81,28 @@ jobs:
             echo "stale=false" >> "$GITHUB_OUTPUT"
           else
             echo "stale=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Before anything starts CI on the branch: the build takes the commit's concurrency group first,
+      # so the bump PR's own run waits for it and restores rather than building a copy only that PR
+      # can read — and the push to `dev` after the bump merges finds it already cached. See
+      # `ad4m-executor.yaml`.
+      - name: Build the new executor on dev
+        if: steps.current.outputs.stale == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          # Outside the repo, so npm does not read the workspace's pnpm-only config.
+          SHA="$(cd "$RUNNER_TEMP" && npm view "@coasys/ad4m@$VERSION" gitHead)"
+          if [ -z "$SHA" ]; then
+            echo "::warning::@coasys/ad4m@$VERSION records no gitHead, so its executor is not prebuilt; the first run that needs it builds it."
+            exit 0
+          fi
+          # Only saves time, so it never stops the bump: without it, the first run that needs the
+          # executor builds it, as before.
+          if ! gh workflow run ad4m-executor.yaml --ref dev -f commit="$SHA"; then
+            echo "::warning::Could not start the executor build on dev; the first run that needs it builds it."
           fi
 
       - name: Push the branch
