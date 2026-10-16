@@ -137,12 +137,13 @@ export type {
 } from './queryIR';
 export type {
   AgentIdentity,
+  AgentCredentials,
   AgentSessionPort,
   AgentSessionStatus,
   DatasetChangeHandlers,
   DatasetLifecyclePort,
   DatasetRef,
-  LinkLanguageTemplate,
+  SharingOption,
 } from './lifecycle';
 export { isSessionTimeout, SessionTimeoutError } from './lifecycle';
 export { manifestEntries } from './manifestEntry';
@@ -152,7 +153,6 @@ export type { NameableProperty } from './recordName';
 export { ANONYMOUS_AGENT_NAME, displayName, isProfileEmpty } from './profileTypes';
 export type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 export type {
-  BackendInterop,
   BackendPorts,
   BackendPortsContext,
   DataBindingDeps,
@@ -160,6 +160,7 @@ export type {
   ProfileDirectoryPort,
   ReferencePort,
   SchemaPort,
+  UploadFile,
 } from './backendPorts';
 export type {
   AiApiProtocol,
@@ -170,18 +171,23 @@ export type {
   AiModelSource,
   AiModelStatus,
   AiTask,
+  ModelAdminPort,
+  TokenizerSource,
+} from './modelAdmin';
+export type {
   AuthorizedApp,
   ConsentRequest,
   InstalledLanguage,
   PeerRecords,
   RuntimeAdminPort,
-  TokenizerSource,
   UnsupportedCapability,
 } from './runtimeAdmin';
 export type {
+  CreateOptions,
   IncludeExtras,
   IncludeOf,
   NewRecord,
+  ParentRef,
   RecordDataKeys,
   RecordInstance,
   EntityStatic,
@@ -205,19 +211,34 @@ export type {
   LanguageModelPort,
   LanguageModelStatus,
 } from './languageModel';
-export { openMoves, readProposeResult, runFor } from './flows';
+export {
+  allowedMoves,
+  approvalsFor,
+  asksForMore,
+  guardsFor,
+  isFinalState,
+  itemFor,
+  validateFlowDefinition,
+} from './flows';
 export type {
+  FlowApprovals,
+  FlowCapabilities,
   FlowDefinition,
-  FlowMove,
+  FlowGuard,
+  FlowItem,
+  FlowMoveOptions,
+  FlowMoveResult,
   FlowPort,
-  FlowProposal,
-  FlowProposeResult,
+  FlowRequirement,
+  FlowRequirementKind,
   FlowRole,
-  FlowRun,
-  FlowSnapshot,
   FlowStateDefinition,
+  FlowStep,
+  FlowSummary,
+  FlowTie,
   FlowTransitionDefinition,
-  OpenMove,
+  FlowView,
+  FlowWaitingMove,
 } from './flows';
 export type {
   TranscriptionModelOffer,

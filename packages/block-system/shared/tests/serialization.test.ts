@@ -401,7 +401,7 @@ describe('createBlocks', () => {
   });
 
   it('passes the anchor to the root only — descendants attach to their in-tree parent', async () => {
-    const anchor = { id: 'channel-1', predicate: 'we://child' };
+    const anchor = { id: 'channel-1', relation: 'children', entity: 'CollectionBlock' };
     const root = (await createBlocks(perspective, [paragraph('first'), paragraph('second')], {
       kind: 'message',
       anchor,

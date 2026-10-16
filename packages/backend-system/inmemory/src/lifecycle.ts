@@ -154,6 +154,8 @@ export function createInMemoryAgentSession(opts: InMemoryAgentOptions = {}): Age
   let password = opts.password ?? 'password';
   let hasAgent = opts.hasAgent ?? true;
   let unlocked = opts.unlocked ?? false;
+  // A session already open when the port was made was not begun here, so there is nothing to end.
+  let signedInHere = false;
 
   return {
     async status() {
@@ -161,26 +163,30 @@ export function createInMemoryAgentSession(opts: InMemoryAgentOptions = {}): Age
     },
 
     /**
-     * Creating an identity takes over the passphrase from that point on, so a test can generate
-     * with one password and then lock/unlock with it — the same lifecycle a real agent has.
-     * Refusing when one already exists mirrors the executor, where `generate` on a live agent is
-     * a caller error rather than a silent key replacement.
+     * Creating an identity takes over the password from that point on, so a test can sign up with
+     * one password and then sign in with it — the same lifecycle a real agent has. Refusing when one
+     * already exists mirrors a real backend, where signing up over a live identity is a caller error
+     * rather than a silent key replacement.
      */
-    async generate(pw) {
+    async signUp(credentials) {
       if (hasAgent) throw new Error('an agent already exists');
-      password = pw;
+      password = credentials.password;
       hasAgent = true;
       unlocked = true;
+      signedInHere = true;
     },
 
-    async unlock(pw) {
-      if (pw !== password) throw new Error('invalid password');
+    async signIn(credentials) {
+      if (credentials.password !== password) throw new Error('invalid password');
       unlocked = true;
+      signedInHere = true;
     },
 
-    async lock(pw) {
-      if (pw !== password) throw new Error('invalid password');
+    async signOut() {
+      if (!signedInHere) return false;
       unlocked = false;
+      signedInHere = false;
+      return true;
     },
 
     async me() {
@@ -214,11 +220,9 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
   const seedDeclaredHints = (manifest: Parameters<SchemaPort['declare']>[0]) => {
     for (const [name, entity] of Object.entries(manifest.entities)) {
       const propHints: Record<string, string> = {};
-      for (const spec of Object.values(entity.properties)) {
-        // Keyed by predicate to match the port contract; a declaration without one has no stable
-        // storage key, so its hint is unreachable through this surface — as in production, where
-        // the minted predicate is the key.
-        if (spec.interpretationHint && spec.predicate) propHints[spec.predicate] = spec.interpretationHint;
+      // Keyed by property name, as the port says.
+      for (const [property, spec] of Object.entries(entity.properties)) {
+        if (spec.interpretationHint) propHints[property] = spec.interpretationHint;
       }
       declaredHints.set(name, {
         ...(entity.interpretationHint ? { classHint: entity.interpretationHint } : {}),
@@ -288,9 +292,9 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
         if (hints.classHint) current.classHint = hints.classHint;
         else delete current.classHint;
       }
-      for (const [predicate, hint] of Object.entries(hints.propHints ?? {})) {
-        if (hint) current.propHints[predicate] = hint;
-        else delete current.propHints[predicate];
+      for (const [name, hint] of Object.entries(hints.propHints ?? {})) {
+        if (hint) current.propHints[name] = hint;
+        else delete current.propHints[name];
       }
       customized.set(k, current);
     },
@@ -332,8 +336,8 @@ export function createInMemoryProfileDirectory(
       if ('lastName' in fields) next.lastName = fields.lastName ?? '';
       if ('handle' in fields) next.handle = fields.handle ?? '';
       if ('bio' in fields) next.bio = fields.bio ?? '';
-      if ('avatarExpressionUrl' in fields) next.avatar = fields.avatarExpressionUrl;
-      if ('coverImageExpressionUrl' in fields) next.coverImage = fields.coverImageExpressionUrl;
+      if ('avatarUrl' in fields) next.avatar = fields.avatarUrl;
+      if ('coverImageUrl' in fields) next.coverImage = fields.coverImageUrl;
       if ('location' in fields) next.location = fields.location ?? undefined;
       profiles.set(id, next);
     },

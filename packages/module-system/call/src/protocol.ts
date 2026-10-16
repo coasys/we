@@ -83,7 +83,14 @@ export interface CallGenerations {
  * they share, losing the discriminant and with it the narrowing that makes handling each kind safe.
  */
 export type CallBody =
-  | { kind: 'description'; description: RTCSessionDescriptionInit }
+  /**
+   * `offer` numbers the offers of one connection: an offer carries its own, an answer the one it
+   * answers. A connection makes several (the first, a renegotiation, an ICE restart) and the resend
+   * rung can draw two answers to one, so an answer can reach this side while a newer offer is out —
+   * and the browser refuses it against that offer. The number is what lets it be dropped instead.
+   * Optional: a peer that predates it sends none, and its answers apply as before.
+   */
+  | { kind: 'description'; description: RTCSessionDescriptionInit; offer?: number }
   | { kind: 'ice'; candidate: RTCIceCandidateInit }
   /**
    * Throw this pair's connection away and build a new one.
@@ -128,7 +135,13 @@ export function parseCallMessage(payload: unknown): CallMessage | null {
     const { type, sdp } = description as RTCSessionDescriptionInit;
     if (type !== 'offer' && type !== 'answer' && type !== 'pranswer' && type !== 'rollback') return null;
     if (sdp !== undefined && typeof sdp !== 'string') return null;
-    return { ...envelope, kind: 'description', description: { type, sdp } };
+    const offer = (msg as { offer?: unknown }).offer;
+    return {
+      ...envelope,
+      kind: 'description',
+      description: { type, sdp },
+      ...(Number.isSafeInteger(offer) ? { offer: offer as number } : {}),
+    };
   }
 
   if (msg.kind === 'ice') {
@@ -151,15 +164,6 @@ export function parseCallMessage(payload: unknown): CallMessage | null {
  * one it is told about and never mints one.
  */
 export const CALL_KIND = 'call';
-
-/**
- * Predicate joining a call record to the node it is about — `WeNode.responses`.
- *
- * A call about a post is a response to it, like a reply: the one relation for everything made in
- * response to a node, told apart by what each response is (`kind: 'call'`). The host files it in
- * the post's thread and in the feed the post lives in, so it is in that room's calls too.
- */
-export const RESPONSE_PREDICATE = 'we://response';
 
 /**
  * The id of a call, derived from the record it is about.

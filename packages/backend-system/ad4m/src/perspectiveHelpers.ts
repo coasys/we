@@ -113,11 +113,23 @@ export async function readShapeProperties(
 }
 
 /**
+ * Whether a target class is one the executor registers for its own bookkeeping — a flow's runs and
+ * proposals, an extraction run, the auto-processor's claim. Every one is minted under `ad4m://`, and no
+ * app's model is. They are the executor's state rather than anybody's data, so they are not another
+ * app's models: listed as such, a space's vocabulary offered `FlowInstance` and `AutoProcessor` as
+ * things to look at, and every AI turn described them as part of the space.
+ */
+const isExecutorClass = (targetClass: string | null | undefined): boolean =>
+  typeof targetClass === 'string' && targetClass.startsWith('ad4m://');
+
+/**
  * Fetch SHACL shapes that the perspective has but WE does not know about natively.
  *
  * A shape is foreign when no native model has its name, or when it takes a native name over a
  * different target class. The index answers that for every shape in one query, so only foreign
  * shapes are read in full, and a native name is read only when the index says it might be one.
+ *
+ * The executor's own classes are left out — see {@link isExecutorClass}.
  *
  * A native name with no stored target class counts as the native model and is not read. Read in
  * full, it would not have: `SHACLShape.fromLinks` falls back to the shape's own URI as its target
@@ -145,8 +157,11 @@ export async function getForeignShacl(perspective: PerspectiveProxy): Promise<Fo
     const name = shapeName(row.name);
     if (name && row.targetClass) storedClasses.set(name, (storedClasses.get(name) ?? new Set()).add(row.targetClass));
   }
-  const worthReading = (name: string) =>
-    !rows || !nativeNames.has(name) || [...(storedClasses.get(name) ?? [])].some((c) => c !== nativeTargetClass(name));
+  const worthReading = (name: string) => {
+    const stored = [...(storedClasses.get(name) ?? [])];
+    if (rows && stored.length && stored.every(isExecutorClass)) return false;
+    return !rows || !nativeNames.has(name) || stored.some((c) => c !== nativeTargetClass(name));
+  };
 
   const read = await Promise.all(
     names.filter(worthReading).map(async (name) => {
@@ -164,6 +179,7 @@ export async function getForeignShacl(perspective: PerspectiveProxy): Promise<Fo
   return read.filter(
     (s): s is ForeignShape =>
       !!s.shape &&
+      !isExecutorClass(s.shape.targetClass) &&
       (!nativeNames.has(s.name) || (s.shape.targetClass != null && s.shape.targetClass !== nativeTargetClass(s.name))),
   );
 }
@@ -219,6 +235,8 @@ export function buildEntityManifest(shapes: ForeignShape[]): EntityManifestEntry
         writable: p.writable ?? true,
         ...(p.resolveLanguage !== undefined && { resolveLanguage: p.resolveLanguage }),
         ...(p.class !== undefined && { relatedEntity: shaclClassToLocalName(p.class) }),
+        // The shape says which end owns the link, so an entry read back from storage keeps it.
+        ...(p.relationKind?.startsWith('belongsTo') && { reverse: true }),
         ...(p.interpretationHint !== undefined && { interpretationHint: p.interpretationHint }),
         ...(p.identity ? { identity: true } : {}),
       })),

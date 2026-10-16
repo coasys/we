@@ -1,33 +1,39 @@
 /**
- * Group decisions over a record's state — a state machine a group moves forward by voting.
+ * Rules over a record's state, and moves made under them.
  *
- * A **flow** is a definition: the states a record can be in, the moves between them, and for each
- * state how many distinct people must agree before a record may enter it, and who counts. A **run**
- * is one record going through a flow. A **proposal** is one person asking for one move on one run;
- * others agree by asking for the same move. When enough people who count have asked, the move
- * happens — for everyone, since each backend derives a run's state from the votes it holds rather
- * than from whoever wrote last.
+ * A **flow** is a definition: the states a record can be in, the moves allowed between them, and what
+ * each state requires before a record may enter it — a number of people agreeing, or something being
+ * present. A record **moves** when somebody asks for a move and what the state requires is met.
+ *
+ * ## The domain here, the mechanism in the adapter
+ *
+ * The contract speaks about records, rules and moves, and nothing about how a backend enforces them.
+ * A backend with a server checks a rule inside a transaction. A peer-to-peer backend has each replica
+ * derive a record's state from the signed votes it holds, which means runs, proposals, an entry state
+ * and a state not yet derived here. All of that stays inside its adapter. A surface sees the same
+ * answers either way: a move happened, it is waiting for agreement, it was refused and why, or the
+ * record is stuck.
+ *
+ * Where backends genuinely differ — which kinds of requirement they can enforce, whether a move's
+ * evidence is sealed, what happens when two moves are agreed at once — the backend says so in
+ * {@link FlowCapabilities}, and a surface reads that rather than guessing.
  *
  * ## Facts here, readings above
  *
- * The port reports what a backend knows and nothing it would have to guess at: which proposal a call
- * opened or joined, whether it recorded a vote, which moves happened and who made each, where the run
- * stands, whether it is stuck. What a surface shows — "waiting for one more", "you already agreed" —
- * is a reading of those facts, and lives in the helpers at the bottom of this file, which any caller
- * can replace without the contract changing. A port that answered in the surface's words would have
- * to be widened every time a surface wanted a word it had not thought of.
+ * The port reports what a backend knows: where a record stands, which moves are waiting and who asked,
+ * which moves happened and who made them. What a surface shows — "one more approval", "you already
+ * agreed", which columns a card may enter — is a reading of those facts, and lives in the helpers at the
+ * bottom of this file, which any caller can replace without the contract changing.
  *
  * ## What a flow does not do
  *
- * It does not stop a write. A record's other properties stay as writable as ever, and a flow's own
- * rules are data in the dataset like anything else. What it gives is a state every reader derives the
- * same way from signed votes — so a move nobody agreed to is one nobody's screen shows.
- *
- * Grown as consumers appear: members this contract does not have yet (a portable proof that a run
- * finished, what a run produced) arrive as new optional members, which no implementation has to
- * change for.
+ * It does not stop a write. A record's other properties stay as writable as ever. How strongly a rule
+ * holds against a member who wants around it is the backend's to say — see
+ * {@link FlowCapabilities.enforcement}.
  */
 import type { DatasetHandle } from './dataSource';
+
+// ─── Definitions ───────────────────────────────────────────────────────────────
 
 /**
  * Who counts toward a state's approvals: the agents named by records of one entity.
@@ -44,20 +50,66 @@ export interface FlowRole {
   /** Conditions every counting record must meet — equality only. */
   where?: Record<string, string | number | boolean>;
   /**
-   * The property on each record that must name the run's subject, when the role is about *this*
+   * The property on each record that must name the record being moved, when the role is about *this*
    * record rather than about the space — "reviewing this task", not "a reviewer somewhere".
    */
   subjectField?: string;
 }
 
-export interface FlowStateDefinition {
-  /** Unique within the flow; letters, digits, `-` and `_`. */
-  name: string;
-  /** How many distinct agents who count must ask for a move before a run may enter this state. At least 1. */
-  approvals?: number;
+/**
+ * How a guard's records are tied to the record being moved.
+ *
+ * - `{ relation }` — the record holds them through one of its own relations, named as its entity names
+ *   it: `responses` for what was made in response to it (a comment, a document answering a task),
+ *   `children` for a collection's parts.
+ * - `{ field }` — each names the record in a property of its own, the way an involvement names the task
+ *   it is about.
+ *
+ * Absent, a guard counts matching records anywhere in the dataset.
+ */
+export type FlowTie = { relation: string } | { field: string };
+
+/** Distinct agents who count must ask for the move. */
+export interface FlowApprovals {
+  kind: 'approvals';
+  /** At least 1. */
+  count: number;
   /** Who counts. Absent, anybody does. */
-  role?: FlowRole;
-  /** One sentence on what being in this state means, for a model reasoning about the run. */
+  from?: FlowRole;
+}
+
+/**
+ * Records matching a query must exist — "a document attached", "a comment from a reviewer". The records
+ * that satisfied it when a move was asked for are that move's evidence.
+ */
+export interface FlowGuard {
+  kind: 'guard';
+  /** The entity whose records count. */
+  entity: string;
+  /** Conditions every counting record must meet — equality only. */
+  where?: Record<string, string | number | boolean>;
+  /** At least this many must match. Default 1. */
+  min?: number;
+  /** At most this many may match. */
+  max?: number;
+  tie?: FlowTie;
+}
+
+/** One thing a state requires before a record may enter it. */
+export type FlowRequirement = FlowApprovals | FlowGuard;
+
+/** The kinds of requirement there are — what {@link FlowCapabilities.requirements} lists. */
+export type FlowRequirementKind = FlowRequirement['kind'];
+
+export interface FlowStateDefinition {
+  /** Unique within the flow; letters, digits, `-` and `_`, not starting with `_`. */
+  name: string;
+  /**
+   * Everything entering this state requires; all of it must hold. At most one `approvals`. Absent or
+   * empty, one ask from anybody moves a record in.
+   */
+  requires?: FlowRequirement[];
+  /** One sentence on what being in this state means, for a model reasoning about the record. */
   hint?: string;
 }
 
@@ -71,189 +123,285 @@ export interface FlowTransitionDefinition {
 export interface FlowDefinition {
   /** The flow's identifier within a dataset; letters and digits. */
   name: string;
-  /** The entities a run may be about. */
+  /** The entities a record moved through this flow may be. Empty means any record. */
   subjects: string[];
   /**
-   * In order. **Every run starts in the first**, whatever else is true of the record it is about —
-   * so a flow over records that already have a state wants a first state standing for "not yet
-   * entered", and a move out of it for each state a record might already be in.
+   * In order. A record the flow has not seen starts in the first, unless whoever moves it says where it
+   * already stands — see {@link FlowMoveOptions.from}.
    */
   states: FlowStateDefinition[];
-  /** The only moves a proposal may ask for. */
+  /**
+   * The only moves anybody may ask for. A state with no move out of it is final. A set: the order
+   * means nothing, and a backend may answer with them in any order.
+   */
   transitions: FlowTransitionDefinition[];
   /** One sentence on what the flow is about. */
   hint?: string;
 }
 
-/** One record going through a flow. */
-export interface FlowRun {
-  id: string;
-  /** The record the run is about. */
-  subject: string;
-  /** Where the run stands, as this backend derives it. Empty when it has not been derived here yet. */
-  state: string;
-  /** Milliseconds since the epoch; what tells two runs of one subject apart — see {@link runFor}. */
-  startedAt?: number;
-}
-
-/** One person asking for one move on one run, and everyone who has agreed with them. */
-export interface FlowProposal {
-  id: string;
-  run: string;
-  from: string;
-  to: string;
-  proposer: string;
-  /** Everyone who has asked for this move on this proposal, the proposer first. Counted or not. */
-  voters: string[];
-  rationale?: string;
-  proposedAt?: number;
-  /** The move happened — this proposal is history, not a question still open. */
-  settled: boolean;
-}
-
-/** A move that happened, and the agents whose votes made it. */
-export interface FlowMove {
-  from: string;
-  to: string;
-  voters: string[];
-}
-
-/** What one propose call did, and where the run stands after it. */
-export interface FlowProposeResult {
-  /** The proposal this call opened or joined — the one to withdraw from. */
-  proposal: string;
-  /** This call wrote the proposal, rather than joining one somebody else had opened for the same move. */
-  opened: boolean;
-  /** This call recorded a vote. False when the caller had already asked for this move. */
-  voted: boolean;
-  /** Moves that happened because of this call. Empty while the move is short of its approvals. */
-  moves: FlowMove[];
-  /** Where the run stands after the call. */
-  state: string;
+/** A flow as a list shows it. */
+export interface FlowSummary {
+  name: string;
   /**
-   * Two moves out of the run's state both have their approvals, and the backend will not pick one.
-   * More votes cannot help; somebody has to withdraw.
+   * The definition can be read back exactly as {@link FlowDefinition} says it. False for a flow written
+   * by something that uses more than this contract can hold — saving it from here would drop the rest.
    */
+  editable: boolean;
+  /** How many records are going through it. */
+  records: number;
+}
+
+// ─── Records going through a flow ──────────────────────────────────────────────
+
+/** A move somebody has asked for that has not happened. */
+export interface FlowWaitingMove {
+  to: string;
+  /** Everyone who has asked for it, the first asker first. Counted toward its approvals or not. */
+  voters: string[];
+  /** Milliseconds since the epoch, when first asked. */
+  askedAt?: number;
+  /** What the first asker said about it. */
+  note?: string;
+}
+
+/** One record going through a flow. */
+export interface FlowItem {
+  /** The record. */
+  subject: string;
+  /**
+   * Where it stands. `null` when this backend cannot say yet — a peer-to-peer backend that has not
+   * derived it here, or a record the flow has not placed — and a reader falls back to what the record
+   * itself says.
+   */
+  state: string | null;
+  /** Milliseconds since the epoch, when the record entered the flow. */
+  since?: number;
+  /** Moves asked for out of where it stands. */
+  waiting: FlowWaitingMove[];
+  /** Two moves out of where it stands are both agreed and the backend will not choose: somebody has to withdraw. */
   stalled: boolean;
 }
 
-/** Every run of one flow in a dataset, and every proposal on them. */
-export interface FlowSnapshot {
-  runs: FlowRun[];
-  proposals: FlowProposal[];
+/** Every record going through one flow. */
+export interface FlowView {
+  flow: string;
+  items: FlowItem[];
 }
 
+/** A move that happened. */
+export interface FlowStep {
+  from: string;
+  to: string;
+  /** The agents whose asks made it. */
+  voters: string[];
+  /** Milliseconds since the epoch, when first asked. */
+  at?: number;
+  /** Ids of the records that met the state's guards when it was asked for. */
+  evidence: string[];
+  note?: string;
+}
+
+/** What one move call came to. */
+export type FlowMoveResult =
+  /** The record moved — or was already where it was asked to go, in which case `steps` is empty. */
+  | { outcome: 'moved'; state: string; steps: FlowStep[] }
+  /** Recorded and short of what the state requires. `voted` is false when the caller had already asked. */
+  | { outcome: 'waiting'; state: string | null; to: string; voted: boolean; voters: string[] }
+  /**
+   * Nothing written. `not-allowed`: no move from where the record stands to there. `unmet`: the state's
+   * guards do not hold yet.
+   */
+  | { outcome: 'refused'; reason: 'not-allowed' | 'unmet'; state: string | null }
+  /** The record is stuck — see {@link FlowItem.stalled}. More asks cannot help. */
+  | { outcome: 'stalled'; state: string | null }
+  /** Asked, and the backend has not answered in time. Not a failure: what happened arrives through {@link FlowPort.watch}. */
+  | { outcome: 'pending' };
+
+export interface FlowMoveOptions {
+  /**
+   * Where the caller believes the record already stands. Used only when the flow has no place for it
+   * yet: a record that existed before the flow did enters at `from` rather than restarting in the first
+   * state. Ignored when it names no state of the flow.
+   */
+  from?: string;
+  /** What the caller says about the move. */
+  note?: string;
+}
+
+// ─── What a backend can do ─────────────────────────────────────────────────────
+
+export interface FlowCapabilities {
+  /** The kinds of requirement this backend enforces. A definition using another is refused on install. */
+  requirements: FlowRequirementKind[];
+  /**
+   * How a rule holds. `server`: one authority applies it and nobody gets round it. `peers`: every
+   * member's software applies it to what it holds — a member running other software can write past it,
+   * and nobody else's screen shows the result.
+   */
+  enforcement: 'server' | 'peers';
+  /** A move's evidence is sealed: a later edit to it does not change what the move was agreed on. */
+  sealedEvidence: boolean;
+  /**
+   * Two moves out of one state both agreed. `stall`: the backend picks neither and the record is
+   * stuck until somebody withdraws. `first`: the earlier one wins.
+   */
+  contention: 'stall' | 'first';
+}
+
+// ─── The port ──────────────────────────────────────────────────────────────────
+
 export interface FlowPort {
+  readonly capabilities: FlowCapabilities;
+
   /**
    * Make the dataset's copy of a flow say what this definition says. Idempotent, and diff-first:
-   * installing an unchanged definition writes nothing.
+   * installing an unchanged definition writes nothing. Rejects a definition {@link validateFlowDefinition}
+   * finds fault with.
    *
    * Replaces rather than merges. A rule left over from an earlier version beside the new one is not
-   * a stricter rule, it is two rules — and a backend may refuse to move a run at all while it holds two.
+   * a stricter rule, it is two rules.
    */
   install(dataset: DatasetHandle, definition: FlowDefinition): Promise<void>;
+  /** Every flow in the dataset. */
+  list(dataset: DatasetHandle): Promise<FlowSummary[]>;
+  /** One flow's definition, or `null` when there is none by that name. */
+  read(dataset: DatasetHandle, flow: string): Promise<FlowDefinition | null>;
   /**
-   * The run of a flow about a record, starting one when there is none.
-   *
-   * Two agents starting a run at the same moment both succeed, so a subject can have more than one;
-   * every reader treats the same one as authoritative — see {@link runFor}.
+   * Take a flow out of the dataset. Rejects while any record is going through it: those records would
+   * be left where they stand with nothing to move them, and a flow made later under the same name could
+   * pick them up again.
    */
-  start(dataset: DatasetHandle, flow: string, subject: string): Promise<FlowRun>;
+  remove(dataset: DatasetHandle, flow: string): Promise<void>;
+
   /**
-   * Ask for a move — opening a proposal for it, or agreeing with the one already open.
-   *
-   * Rejects when the move is not one the run can make from where it stands, naming that state.
+   * Put a record into a flow, at `at` or the first state. Resolves with where it stands — which, for a
+   * record already in the flow, is wherever that is.
    */
-  propose(dataset: DatasetHandle, run: string, to: string, rationale?: string): Promise<FlowProposeResult>;
+  start(dataset: DatasetHandle, flow: string, subject: string, opts?: { at?: string }): Promise<FlowItem>;
   /**
-   * Take back what the caller asked for on a proposal — its vote, or the whole proposal if it opened
-   * it. Never touches anybody else's. Resolves with how much was withdrawn; rejects when the caller
-   * had asked for nothing there.
-   *
-   * A withdrawal can move a run *back*: state is derived from the votes present, so taking away the
-   * vote that completed a move undoes it.
+   * Ask for a record to move — the same call whether the caller is first to ask or agreeing with
+   * somebody who did. A record not yet in the flow enters it first (see {@link FlowMoveOptions.from}).
    */
-  withdraw(dataset: DatasetHandle, proposal: string): Promise<number>;
+  move(
+    dataset: DatasetHandle,
+    flow: string,
+    subject: string,
+    to: string,
+    opts?: FlowMoveOptions,
+  ): Promise<FlowMoveResult>;
   /**
-   * Every run of a flow and every proposal on them — once now, and again whenever that changes,
-   * including when a peer's vote arrives. Resolves with a stop function once watching has begun.
+   * Take back what the caller asked for on a record's waiting moves. Never touches anybody else's ask,
+   * nor a move that has happened. Resolves with how many asks were withdrawn.
    */
-  watch(dataset: DatasetHandle, flow: string, onChange: (snapshot: FlowSnapshot) => void): Promise<() => void>;
+  withdraw(dataset: DatasetHandle, flow: string, subject: string): Promise<number>;
+
+  /**
+   * Every record going through a flow — once now, and again whenever that changes, including when a
+   * peer's ask arrives. Resolves with a stop function once watching has begun.
+   */
+  watch(dataset: DatasetHandle, flow: string, onChange: (view: FlowView) => void): Promise<() => void>;
+  /** The moves a record has made in a flow, oldest first. */
+  history(dataset: DatasetHandle, flow: string, subject: string): Promise<FlowStep[]>;
+}
+
+// ─── Checking a definition ─────────────────────────────────────────────────────
+
+const STATE_NAME = /^[A-Za-z0-9-][A-Za-z0-9_-]*$/;
+const FLOW_NAME = /^[A-Za-z0-9]+$/;
+
+/**
+ * What is wrong with a definition, as sentences — empty when nothing is. Checked against what a backend
+ * can enforce when given its capabilities.
+ *
+ * The editor and both adapters call this, so a definition the editor accepts is one every backend
+ * installs, and a mistake is described once.
+ */
+export function validateFlowDefinition(definition: FlowDefinition, capabilities?: FlowCapabilities): string[] {
+  const problems: string[] = [];
+  if (!FLOW_NAME.test(definition.name))
+    problems.push(`"${definition.name}" is not a flow name: letters and digits only.`);
+  if (!definition.states.length) problems.push('A flow needs at least one state.');
+  const names = new Set<string>();
+  for (const state of definition.states) {
+    if (!STATE_NAME.test(state.name)) {
+      problems.push(`"${state.name}" is not a state name: letters, digits, "-" and "_", not starting with "_".`);
+    }
+    if (names.has(state.name)) problems.push(`Two states are called "${state.name}".`);
+    names.add(state.name);
+    const requires = state.requires ?? [];
+    if (requires.filter((r) => r.kind === 'approvals').length > 1) {
+      problems.push(`"${state.name}" asks for approvals twice; one rule says how many and from whom.`);
+    }
+    for (const requirement of requires) {
+      if (capabilities && !capabilities.requirements.includes(requirement.kind)) {
+        problems.push(`"${state.name}" requires ${requirement.kind}, which this backend cannot enforce.`);
+      }
+      if (requirement.kind === 'approvals' && !(Number.isInteger(requirement.count) && requirement.count >= 1)) {
+        problems.push(
+          `"${state.name}" asks for ${requirement.count} approvals; it must be a whole number, at least 1.`,
+        );
+      }
+      if (requirement.kind === 'guard') {
+        const min = requirement.min ?? 1;
+        if (!(Number.isInteger(min) && min >= 0))
+          problems.push(`"${state.name}" has a guard with a minimum of ${min}.`);
+        if (requirement.max !== undefined && requirement.max < min) {
+          problems.push(`"${state.name}" has a guard whose maximum is below its minimum.`);
+        }
+        if (!requirement.entity) problems.push(`"${state.name}" has a guard that names no kind of record.`);
+        const tie = requirement.tie;
+        if (tie && !('relation' in tie ? tie.relation : tie.field)) {
+          problems.push(`"${state.name}" has a guard tied to the record by nothing.`);
+        }
+      }
+    }
+  }
+  const moves = new Set<string>();
+  for (const transition of definition.transitions) {
+    for (const end of [transition.from, transition.to]) {
+      if (!names.has(end)) problems.push(`A move names "${end}", which is not a state of this flow.`);
+    }
+    if (transition.from === transition.to) problems.push(`A move from "${transition.from}" to itself goes nowhere.`);
+    const key = `${transition.from}\u0000${transition.to}`;
+    if (moves.has(key)) problems.push(`The move from "${transition.from}" to "${transition.to}" is listed twice.`);
+    moves.add(key);
+  }
+  return problems;
 }
 
 // ─── Readings ──────────────────────────────────────────────────────────────────
 
-/**
- * The run that speaks for a subject: the earliest started, then the lowest id.
- *
- * A subject can have two runs when two agents started one at once. Which one counts must not depend
- * on who is asking, so the choice is made on facts every reader holds the same.
- */
-export function runFor(runs: readonly FlowRun[], subject: string): FlowRun | undefined {
-  let best: FlowRun | undefined;
-  for (const run of runs) {
-    if (run.subject !== subject) continue;
-    if (!best) {
-      best = run;
-      continue;
-    }
-    const a = run.startedAt ?? Number.POSITIVE_INFINITY;
-    const b = best.startedAt ?? Number.POSITIVE_INFINITY;
-    if (a < b || (a === b && run.id < best.id)) best = run;
-  }
-  return best;
+/** The states a record standing at `state` may be asked into. A record with no known state may enter the first. */
+export function allowedMoves(definition: FlowDefinition, state: string | null): string[] {
+  if (state === null) return definition.states[0] ? [definition.states[0].name] : [];
+  return definition.transitions.filter((t) => t.from === state).map((t) => t.to);
 }
 
-/** A move somebody has asked for and that has not happened. */
-export interface OpenMove {
-  to: string;
-  /** Every proposal asking for it. Usually one; two when two agents opened one at the same moment. */
-  proposals: string[];
-  /** Everyone who has asked, across all of them, in the order they asked. Counted or not. */
-  voters: string[];
-  /** Who asked first. */
-  proposer: string;
-  proposedAt?: number;
+/** A state no move leaves. */
+export function isFinalState(definition: FlowDefinition, state: string): boolean {
+  return !definition.transitions.some((t) => t.from === state);
 }
 
-/**
- * The moves still open on a run, one per target state.
- *
- * Only proposals out of the state the run is in: one asked for from a state the run has since left
- * is a question about a situation that no longer exists. Proposals asking for the same move are one
- * move — a backend counts approvals per move, not per proposal, so twins opened concurrently add up.
- */
-export function openMoves(snapshot: FlowSnapshot, run: FlowRun): OpenMove[] {
-  const byTarget = new Map<string, OpenMove>();
-  const asked = snapshot.proposals
-    .filter((p) => p.run === run.id && !p.settled && p.from === run.state && p.to !== run.state)
-    .sort((a, b) => (a.proposedAt ?? 0) - (b.proposedAt ?? 0) || (a.id < b.id ? -1 : 1));
-  for (const proposal of asked) {
-    const move = byTarget.get(proposal.to);
-    if (!move) {
-      byTarget.set(proposal.to, {
-        to: proposal.to,
-        proposals: [proposal.id],
-        voters: [...new Set(proposal.voters)],
-        proposer: proposal.proposer,
-        ...(proposal.proposedAt !== undefined ? { proposedAt: proposal.proposedAt } : {}),
-      });
-      continue;
-    }
-    move.proposals.push(proposal.id);
-    for (const voter of proposal.voters) if (!move.voters.includes(voter)) move.voters.push(voter);
-  }
-  return [...byTarget.values()];
+/** How many approvals entering a state takes, and from whom. One from anybody when it says nothing. */
+export function approvalsFor(state: FlowStateDefinition | undefined): { count: number; from?: FlowRole } {
+  const rule = state?.requires?.find((r): r is FlowApprovals => r.kind === 'approvals');
+  return rule
+    ? { count: Math.max(1, Math.floor(rule.count)), ...(rule.from ? { from: rule.from } : {}) }
+    : { count: 1 };
 }
 
-/**
- * What a propose call amounted to, in the four cases a surface tells apart.
- *
- * `stalled` is checked first: a stuck run is not waiting for anything, and saying it was would invite
- * votes that cannot help.
- */
-export function readProposeResult(result: FlowProposeResult): 'moved' | 'waiting' | 'already-voted' | 'stalled' {
-  if (result.stalled) return 'stalled';
-  if (result.moves.length) return 'moved';
-  return result.voted ? 'waiting' : 'already-voted';
+/** The guards entering a state takes. */
+export function guardsFor(state: FlowStateDefinition | undefined): FlowGuard[] {
+  return (state?.requires ?? []).filter((r): r is FlowGuard => r.kind === 'guard');
+}
+
+/** Whether entering a state takes more than one ask from anybody — agreement, or something present. */
+export function asksForMore(state: FlowStateDefinition | undefined): boolean {
+  const approvals = approvalsFor(state);
+  return approvals.count > 1 || Boolean(approvals.from) || guardsFor(state).length > 0;
+}
+
+/** A record's item in a view, or `undefined` when it is not going through the flow. */
+export function itemFor(view: FlowView | null | undefined, subject: string): FlowItem | undefined {
+  return view?.items.find((item) => item.subject === subject);
 }

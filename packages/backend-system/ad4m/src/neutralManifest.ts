@@ -32,12 +32,11 @@ const SCALAR: Record<EntityManifestProperty['type'], ScalarType> = {
  * isn't among the given entities are dropped (and reported in `warnings`) so the result is always
  * referentially valid.
  *
- * `reverseOf` is not emitted **on this path**, which is the read direction: SHACL carries the
- * predicate and the target class, not which end of a pair a relation is, so an inverse read back
- * out of a foreign perspective would be a guess. The authoring direction is where the answer
- * exists — a relation declaring `reverseOf` in `@we/entities` generates a `@BelongsTo*` — so a
- * WeNode knows what it is a comment on while a foreign entity read back from SHACL does not.
- * Closing that gap means SHACL saying which end owns the link, and nothing consumes the answer yet.
+ * `reverseOf` is not emitted **on this path**, which is the read direction. SHACL says which end
+ * owns a link (the entry's `reverse`, from `@BelongsTo*`), but not which relation on the other
+ * entity is its forward half, and `reverseOf` names that relation — so reading it back out of a
+ * foreign perspective would be a guess. The authoring direction is where the name exists: a
+ * relation declaring `reverseOf` in `@we/entities` names it.
  */
 export function toNeutralManifest(entries: EntityManifestEntry[], opts?: { version?: string }): NeutralManifestResult {
   const warnings: string[] = [];

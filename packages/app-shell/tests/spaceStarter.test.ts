@@ -13,6 +13,8 @@ import weSeed from '../../../we-seed.json';
 import {
   applyStarterRecords,
   defaultSpaceStarter,
+  linkSpaceRelations,
+  type RelationWrites,
   type SpaceStarter,
   starterProblems,
   starterSettings,
@@ -293,5 +295,19 @@ describe('checking a starter', () => {
       const status = CORE_MANIFEST.entities.TaskBlock.properties.status as { options?: string[] };
       expect(states.map((s) => s.slug).sort()).toEqual([...(status.options ?? [])].sort());
     });
+  });
+});
+
+describe('linking the space', () => {
+  it('writes a list as one whole-list write, so an ordered relation keeps its order', async () => {
+    const calls: string[] = [];
+    const writes: RelationWrites = {
+      setRelation: async (_d, id, relation, targets) => void calls.push(`set ${id}.${relation} ${targets.join(',')}`),
+      addRelation: async (_d, id, relation, target) => void calls.push(`add ${id}.${relation} ${target}`),
+    };
+    await linkSpaceRelations(writes, {}, 'space-1', { taskStates: ['todo', 'doing', 'done'], root: 'root-1' });
+    // One at a time, an ordered relation holds the members and no positions, and the backend's
+    // read order comes back instead — which is how a space's states read Done, Doing, To do.
+    expect(calls).toEqual(['set space-1.taskStates todo,doing,done', 'add space-1.root root-1']);
   });
 });

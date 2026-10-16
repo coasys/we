@@ -72,6 +72,16 @@ still points at, and say what went away — and answers them from the edges inst
 since a canvas has none. Hidden is spelled _no position_, which the three things downstream of a
 position already read as absent: no hit area, no routed lines, nothing drawn.
 
+**One caret for both.** A reader does not care which of the two is behind a card, so the caret on a
+selected card answers whichever applies: a card whose children are already on the graph **folds**; a
+card the graph opened itself **closes** (a collapse); a card with nothing under it yet, which an
+expander the spec allows claims, **opens** (an expansion). The opening half is offered only where the
+host listens on `onNodeOpen` and keeps the open set (`open`), the same bargain the fold makes — WE's
+canvas keeps it in the address beside the fold. So a canvas can now use one corner of exploration: a
+card opened into its own fields, placed beside it (`manual` stacks a node whose parent arrived through
+a containment edge next to that parent) and under it in a tree (`forest` treats `CONTAINMENT_EDGE_TYPES`
+as parent links whatever its spine says).
+
 **Expansion is paged and budgeted.** One click on a hub with four thousand neighbours must not be able
 to kill the frame. `ExpandResult.total` is reported so the UI can say what it is not showing, and the
 node ceiling surfaces in the status strip rather than truncating in silence.

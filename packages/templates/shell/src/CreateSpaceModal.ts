@@ -40,7 +40,7 @@ export const createSpaceModal = {
     avatar: { type: 'file', initial: null },
     coverImage: { type: 'file', initial: null },
     location: { type: 'object', initial: null },
-    linkLanguage: { type: 'string', initial: '' },
+    sharing: { type: 'string', initial: '' },
     submitting: { type: 'boolean', initial: false },
     ...guard.localState,
   },
@@ -294,7 +294,7 @@ export const createSpaceModal = {
     {
       type: '$if',
       props: {
-        condition: { $: "local.access == 'shared' && count(spaceStore.linkLanguageTemplateOptions) > 1" },
+        condition: { $: "local.access == 'shared' && count(spaceStore.sharingOptions) > 1" },
         then: {
           type: 'Column',
           props: { gap: '200' },
@@ -313,7 +313,7 @@ export const createSpaceModal = {
                   props: { variant: 'footnote', color: 'text-faint' },
                   children: [
                     {
-                      $: 'find(spaceStore.linkLanguageTemplateOptions, { value: local.linkLanguage ? local.linkLanguage : spaceStore.defaultLinkLanguageTemplate }).description',
+                      $: 'find(spaceStore.sharingOptions, { value: local.sharing ? local.sharing : spaceStore.defaultSharing }).description',
                     },
                   ],
                 },
@@ -323,9 +323,9 @@ export const createSpaceModal = {
               type: 'we-select',
               props: {
                 label: 'How this space syncs',
-                value: { $: 'local.linkLanguage ? local.linkLanguage : spaceStore.defaultLinkLanguageTemplate' },
-                options: { $: 'spaceStore.linkLanguageTemplateOptions' },
-                onChange: { $setLocal: 'linkLanguage', value: { $: 'event.detail' } },
+                value: { $: 'local.sharing ? local.sharing : spaceStore.defaultSharing' },
+                options: { $: 'spaceStore.sharingOptions' },
+                onChange: { $setLocal: 'sharing', value: { $: 'event.detail' } },
               },
             },
           ],
@@ -455,7 +455,7 @@ export const createSpaceModal = {
                       { $: 'local.avatar' },
                       { $: 'local.coverImage' },
                       { $: 'local.location' },
-                      { $: 'local.linkLanguage' },
+                      { $: 'local.sharing' },
                     ],
                     onSuccess: [{ $action: 'shellStore.setCreateSpaceOpen', args: [false] }],
                     onFinally: [{ $setLocal: 'submitting', value: false }],

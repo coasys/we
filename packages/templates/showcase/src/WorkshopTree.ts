@@ -48,6 +48,8 @@ const CARD_SIZES: Record<string, { width: number; height: number }> = {
 
 /** What the freeform canvas parks an unplaced card in, and the size a tree card falls back to. */
 export const CANVAS_CARD = CARD_SIZES.md;
+/** A field opened out of a card — the box `FIELD_NODE_RULE` draws, so the layout gives it that room. */
+const FIELD_BOX = { width: 170, height: 44 };
 
 /**
  * The locals the canvas route declares for this.
@@ -427,7 +429,7 @@ export const TREE_LAYOUT: SchemaProp = {
   $:
     `${TREE_ON} ? { type: 'forest', options: { spine: ${SPINE_SELECTOR}, sortBy: ${SORT_FIELD},` +
     ` sortDirection: ${SORT_DIRECTION}, card: ${CARD_BOX}, unattachedLabel: 'Unconnected' } }` +
-    ` : { type: 'manual', options: { size: ${box(CANVAS_CARD)},` +
+    ` : { type: 'manual', options: { size: ${box(CANVAS_CARD)}, kindSizes: { property: ${box(FIELD_BOX)} },` +
     ` widthField: 'canvasWidth', heightField: 'canvasHeight' } }`,
 };
 

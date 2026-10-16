@@ -1,5 +1,16 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { field, formModal, sectionCard, stateFill, stateFillFor, stateIcon } from '@we/template-kit';
+import {
+  field,
+  formModal,
+  guardModal,
+  sectionCard,
+  stateFill,
+  stateFillFor,
+  stateIcon,
+  stepRequirementFields,
+} from '@we/template-kit';
+
+import { focusRow } from './focusRow';
 
 /**
  * The states this community's work moves through.
@@ -207,44 +218,34 @@ const agreementFields: SchemaNode = {
       props: { gap: '300', width: '100%' },
       children: [
         { type: 'we-divider' },
-        {
-          type: 'we-form-field',
-          props: {
-            label: 'Approvals needed',
-            description: 'How many people must agree before a card moves here. At 1 a drag moves it straight away.',
+        // The same fields a flow's step shows in the Flows editor — see `stepRequirementFields`.
+        ...stepRequirementFields({
+          approvals: {
+            value: { $: 'local.editApprovals' },
+            onChange: { $setLocal: 'editApprovals', value: { $: 'event.detail' } },
           },
-          children: [
-            {
-              type: 'we-number-input',
-              props: {
-                value: { $: 'local.editApprovals' },
-                min: 1,
-                max: 20,
-                step: 1,
-                onChange: { $setLocal: 'editApprovals', value: { $: 'event.detail' } },
-              },
-            },
-          ],
-        },
-        {
-          type: 'we-form-field',
-          props: {
-            label: 'Whose approval counts',
-            description: 'Only people holding this part in the task being moved — its reviewers, say.',
+          kind: {
+            value: { $: 'local.editApproverKind' },
+            onChange: { $setLocal: 'editApproverKind', value: { $: 'event.detail' } },
           },
-          children: [
-            {
-              type: 'we-select',
-              props: {
-                options: {
-                  $: "distinct([{ label: 'Any member', value: '' }], spaceStore.offeredInvolvementTypes.filter(k, !k.reflexive).map(k, { label: k.name, value: k.slug }))",
-                },
-                value: { $: 'local.editApproverKind' },
-                onChange: { $setLocal: 'editApproverKind', value: { $: 'event.detail' } },
-              },
+          /*
+            Held until Save, like every other field here. They were written the moment one was added,
+            so leaving the form without saving still kept it — the one change in this form that Cancel
+            did not undo. The list lives beside the form rather than in it, because a requirement is
+            added through a modal of its own, which can reach a list declared above them both.
+
+            Removed by its words rather than its position: two requirements that read the same are the
+            same requirement, and `filter` has no index to compare.
+          */
+          guards: {
+            items: 'local.editTaskStateGuards',
+            onRemove: {
+              $setLocal: 'editTaskStateGuards',
+              value: { $: 'local.editTaskStateGuards.filter(g, g.label != guard.label)' },
             },
-          ],
-        },
+            onAdd: { $setLocal: 'guardTaskStateSlug', value: { $: 'local.editTaskStateSlug' } },
+          },
+        }),
       ],
     },
   },
@@ -278,7 +279,8 @@ const editModal: SchemaNode = formModal({
     $:
       `local.editName != ${EDITING}.name || local.editSemantic != ${EDITING}.semantic || ` +
       `local.editIcon != ${EDITING}.icon || local.editColor != ${EDITING}.color || ` +
-      `local.editApprovals != (${EDITING}.approvals ?? 1) || local.editApproverKind != (${EDITING}.approverKind ?? '')`,
+      `local.editApprovals != (${EDITING}.approvals ?? 1) || local.editApproverKind != (${EDITING}.approverKind ?? '') || ` +
+      `join(local.editTaskStateGuards.map(g, g.label), '|') != join((${EDITING}.guards ?? []).map(g, g.label), '|')`,
   },
   submitLabel: 'Save',
   submit: {
@@ -292,6 +294,7 @@ const editModal: SchemaNode = formModal({
         icon: { $: 'local.editIcon' },
         approvals: { $: 'local.editApprovals' },
         approverKind: { $: 'local.editApproverKind' },
+        guards: { $: 'local.editTaskStateGuards.map(g, { entity: g.entity, where: g.where, tie: g.tie, min: g.min })' },
       },
     ],
   },
@@ -370,6 +373,18 @@ const stateRow: SchemaNode = {
               },
             },
             {
+              // What must be there first, where the state asks for anything.
+              type: '$if',
+              props: {
+                condition: { $: 'count(state.guards ?? [])' },
+                then: {
+                  type: 'we-badge',
+                  props: { size: 'xs', variant: 'warning' },
+                  children: [{ $: "join((state.guards ?? []).map(g, g.label), ' · ')" }],
+                },
+              },
+            },
+            {
               // What agreement the state asks for, where it asks for any — the one thing about a state
               // that changes what dragging a card into it does.
               type: '$if',
@@ -413,7 +428,11 @@ const stateRow: SchemaNode = {
             label: 'Edit this state',
             size: 'xs',
             variant: 'ghost',
-            onClick: { $setLocal: 'editTaskStateSlug', value: { $: 'state.slug' } },
+            onClick: [
+              // Its requirements first, so the form opens holding them — see `agreementFields`.
+              { $setLocal: 'editTaskStateGuards', value: { $: 'state.guards ?? []' } },
+              { $setLocal: 'editTaskStateSlug', value: { $: 'state.slug' } },
+            ],
           },
           children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
         },
@@ -449,7 +468,7 @@ const stateRow: SchemaNode = {
 export const taskStatesSection: SchemaNode = sectionCard({
   title: 'Task States',
   description:
-    'The stages work moves through here — "To do", "Blocked", "Shipped". Each becomes a column on the tasks board, and each says what it counts as so the rest of the app can still tell finished work from outstanding. A state can also ask for agreement: then a card dragged into it waits until enough people have approved.',
+    'The stages work moves through here — "To do", "Blocked", "Shipped". Each becomes a column on the tasks board, and each says what it counts as so the rest of the app can still tell finished work from outstanding. A state can also ask for agreement, or for something to be there first: then a card dragged into it waits until enough people have approved, or is refused until it is.',
   aside: {
     type: 'we-button',
     props: { variant: 'secondary', size: 'sm', onClick: { $setLocal: 'createTaskStateOpen', value: true } },
@@ -459,6 +478,35 @@ export const taskStatesSection: SchemaNode = sectionCard({
     ],
   },
   children: [
+    {
+      /*
+        How a card may move between these states, in this order — the one setting about the states as
+        a whole rather than about one of them. Anywhere is a board as it always was.
+      */
+      type: '$if',
+      props: {
+        condition: { $: 'spaceStore.canAdministerCurrentSpace' },
+        then: {
+          type: 'we-form-field',
+          props: {
+            label: 'Cards move',
+            description: 'In the order below. A move this does not allow is refused on the board.',
+          },
+          children: [
+            {
+              type: 'we-select',
+              props: {
+                value: { $: 'spaceStore.taskFlowRule' },
+                options: {
+                  $: "[{ label: 'To any state', value: '' }, { label: 'On to the next state', value: 'next' }, { label: 'On, or back one', value: 'next-and-back' }]",
+                },
+                onChange: { $action: 'spaceStore.setTaskFlowRule', args: [{ $: 'event.detail' }] },
+              },
+            },
+          ],
+        },
+      },
+    },
     {
       /*
         Drag to reorder, which is the order a board's columns appear in.
@@ -483,13 +531,9 @@ export const taskStatesSection: SchemaNode = sectionCard({
           type: '$each',
           props: { items: { $: 'spaceStore.taskStates' }, as: 'state' },
           children: [
-            {
-              // `data-we-id` on a native element: a component's props are assigned as DOM
-              // properties, so the attribute the sortable looks for would never exist on one.
-              type: 'div',
-              props: { 'data-we-id': { $: 'state.slug' }, style: { width: '100%' } },
-              children: [stateRow],
-            },
+            // `data-we-id` on a native element: a component's props are assigned as DOM
+            // properties, so the attribute the sortable looks for would never exist on one.
+            focusRow('state', stateRow, { 'data-we-id': { $: 'state.slug' } }),
           ],
         },
       ],
@@ -497,5 +541,18 @@ export const taskStatesSection: SchemaNode = sectionCard({
     createModal,
     // One modal for the whole list, opened by whichever row's pencil was pressed — see `editModal`.
     editModal,
+    guardModal({
+      open: { $: 'local.guardTaskStateSlug' },
+      close: { $setLocal: 'guardTaskStateSlug', value: '' },
+      // Into the edit form's list, which Save writes — not straight onto the state.
+      submit: () => ({
+        $setLocal: 'editTaskStateGuards',
+        value: {
+          $:
+            'distinct(local.editTaskStateGuards, [{ entity: local.guardEntity, tie: local.guardTie, min: local.guardMin, ' +
+            'label: requirementLabel({ entity: local.guardEntity, tie: local.guardTie, min: local.guardMin }) }])',
+        },
+      }),
+    }),
   ],
 });

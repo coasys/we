@@ -17,36 +17,42 @@
  * end, which matters twice over: a backend treats a state with no way out as the end of a run and
  * asks more of a move into it, and a choice between two moves never forecloses the other.
  *
- * Plus one state no board shows, {@link ENTRY_STATE}, which every run starts in. A run starts the
- * first time anyone moves a task, and the task already has a state by then — whatever it was made
- * with, or whatever it was moved to before the space asked for agreement. So the first move of a run
- * is out of the entry state into the one the task is already in, with one vote from anybody, and
- * only then into the one somebody asked for. A task made straight into a column that asks for
- * approval starts in the first column that does not, and asks.
+ * A task the flow has not seen yet — one that existed before the space asked for agreement, or was
+ * moved before it did — enters the flow where its `status` already says it is, rather than restarting
+ * in the first column: every move passes the task's current state as `from`. How a backend honours
+ * that is its own business. A task made straight into a column that asks for agreement starts in the
+ * first column that does not, and asks.
  *
- * What that entry costs is written down rather than hidden: a client that skipped this code could
- * start a run of a task nobody has moved and enter it straight into Done. That is no more than such
- * a client could already do by writing `status`, and it is the same limit the rest of a flow has —
- * the rules are data in the space, and a member with a modified client can rewrite them.
+ * What that costs is written down rather than hidden: a client that passed a false `from` could enter
+ * a task straight into Done, where that state asks for nothing more than any other entry. That is no
+ * more than such a client could already do by writing `status`, and how far any rule holds against a
+ * member running other software is the backend's to say (`FlowCapabilities.enforcement`).
  *
  * ## Which state a surface shows
  *
- * The run's, where a task has one; `status` otherwise. `status` goes on being written — by whoever's
+ * The flow's, where it can say; `status` otherwise. `status` goes on being written — by whoever's
  * action moved the run — so every surface that reads it (a card's badge, the inspector, a model
  * reading the space) keeps working without knowing flows exist. The board reads the run, because the
  * board is where a move is asked for and where "not yet" has to be visible.
  */
-import type { DatasetHandle, FlowDefinition, FlowPort, FlowSnapshot, OpenMove } from '@we/backend-shared';
-import { openMoves, readProposeResult, runFor, trace, tracing } from '@we/backend-shared';
+import type {
+  DatasetHandle,
+  FlowDefinition,
+  FlowGuard,
+  FlowMoveResult,
+  FlowPort,
+  FlowRequirement,
+  FlowStateDefinition,
+  FlowView,
+  FlowWaitingMove,
+} from '@we/backend-shared';
+import { allowedMoves, itemFor, trace, tracing } from '@we/backend-shared';
+
+import { toDefinition } from './flowLanes';
+import { involvementRole } from './flowViews';
 
 /** The flow's name in the dataset. One per space: the space's own task states. */
 export const TASK_FLOW = 'TaskStates';
-
-/**
- * Where every run starts — a state no board shows. A slug is lower-case letters, digits and hyphens,
- * so this cannot be one.
- */
-export const ENTRY_STATE = '_entry';
 
 /** How many approvals a state may ask for. Past this a number is a typo, not a policy. */
 export const MAX_APPROVALS = 20;
@@ -57,6 +63,63 @@ export interface TaskStateRule {
   approvals?: number;
   /** The slug of the InvolvementType whose holders' approval counts; empty for anybody's. */
   approverKind?: string;
+  /** What must be there before a task enters it — see `TaskState.guards`. */
+  guards?: FlowGuard[];
+}
+
+/** How a task may move between the space's states, in their order — see `Space.taskFlowRule`. */
+export type TaskFlowRule = '' | 'next' | 'next-and-back';
+
+/**
+ * `TaskState.guards` as stored — a JSON list of `{ entity, where?, tie?, min? }` — read into guards. Anything
+ * unreadable is no guard at all rather than an error: a state a peer wrote badly still has to load.
+ */
+export function parseTaskStateGuards(json: string | null | undefined): FlowGuard[] {
+  if (!json) return [];
+  try {
+    const parsed: unknown = JSON.parse(json);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((raw): FlowGuard[] => {
+      const entry = raw as { entity?: unknown; tie?: unknown; min?: unknown; where?: unknown };
+      if (typeof entry.entity !== 'string' || !entry.entity) return [];
+      const min = typeof entry.min === 'number' && entry.min >= 1 ? Math.floor(entry.min) : undefined;
+      return [
+        {
+          kind: 'guard',
+          entity: entry.entity,
+          ...(whereOf(entry.where) ? { where: whereOf(entry.where) } : {}),
+          ...(typeof entry.tie === 'string' && entry.tie ? { tie: { relation: entry.tie } } : {}),
+          ...(min && min !== 1 ? { min } : {}),
+        },
+      ];
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** Conditions a stored guard carries, when they are plain values — anything else reads as none. */
+function whereOf(raw: unknown): Record<string, string | number | boolean> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const kept = Object.entries(raw as Record<string, unknown>).filter((e): e is [string, string | number | boolean] =>
+    ['string', 'number', 'boolean'].includes(typeof e[1]),
+  );
+  return kept.length ? Object.fromEntries(kept) : undefined;
+}
+
+/** Guards as `TaskState.guards` stores them. Empty for none, so a state without any stores nothing. */
+export function storeTaskStateGuards(
+  guards: readonly { entity: string; where?: Record<string, string | number | boolean>; tie?: string; min?: number }[],
+): string {
+  const kept = guards
+    .filter((g) => g.entity)
+    .map((g) => ({
+      entity: g.entity,
+      ...(g.where && Object.keys(g.where).length ? { where: g.where } : {}),
+      ...(g.tie ? { tie: g.tie } : {}),
+      ...(g.min && g.min > 1 ? { min: g.min } : {}),
+    }));
+  return kept.length ? JSON.stringify(kept) : '';
 }
 
 /** A state's approvals, normalised: a whole number from 1 to {@link MAX_APPROVALS}. */
@@ -65,76 +128,81 @@ export function approvalsOf(state: TaskStateRule | undefined): number {
   return Number.isFinite(n) ? Math.min(MAX_APPROVALS, Math.max(1, n)) : 1;
 }
 
-/** Whether a drop into this state waits for agreement rather than moving the card. */
+/**
+ * Whether a drop into this state may not simply move the card: it waits for agreement, or it is
+ * refused until what the state asks for is there. Either way nothing is drawn ahead of the answer.
+ */
 export function needsAgreement(state: TaskStateRule | undefined): boolean {
-  return approvalsOf(state) > 1 || Boolean(state?.approverKind);
+  return approvalsOf(state) > 1 || Boolean(state?.approverKind) || Boolean(state?.guards?.length);
 }
 
 /**
- * The space's task states as a flow, or `null` when no state asks for agreement.
+ * The space's task states as a flow, or `null` when nothing asks for one: no state asks for agreement
+ * or for something to be there, and the rule lets a card go anywhere.
+ *
+ * Compiled as one lane through `toDefinition`, the same compiler a flow written in the editor goes
+ * through, with one difference: the last state is not an end. In a flow written as lanes it is, and
+ * nothing leaves it — right for a proposal, where Adopted is where it stops, and wrong for a board,
+ * where a done task gets reopened. So under "next and back" the last state goes back one like every
+ * other. Under "next" it still leads nowhere, because that rule has no way back from anything.
  *
  * Deterministic in the order and content of what it is given, because two members installing the
  * same states must install the same definition — see the flow port's note on rival rules.
  */
-export function compileTaskFlow(states: readonly TaskStateRule[]): FlowDefinition | null {
+export function compileTaskFlow(states: readonly TaskStateRule[], rule: TaskFlowRule = ''): FlowDefinition | null {
   const slugs = [...new Set(states.map((s) => s.slug).filter(Boolean))];
-  if (!slugs.length || !states.some(needsAgreement)) return null;
+  if (!slugs.length || (!rule && !states.some(needsAgreement))) return null;
   const bySlug = new Map(states.map((s) => [s.slug, s]));
-  return {
-    name: TASK_FLOW,
-    subjects: ['TaskBlock'],
-    hint: "Where a task stands in this community's work.",
-    states: [
-      { name: ENTRY_STATE, hint: 'Not yet moved since the community began asking for agreement.' },
-      ...slugs.map((slug) => {
-        const rule = bySlug.get(slug);
-        const approvals = approvalsOf(rule);
-        return {
-          name: slug,
-          ...(approvals > 1 ? { approvals } : {}),
-          ...(rule?.approverKind
-            ? {
-                role: {
-                  entity: 'Involvement',
-                  agentField: 'agent',
-                  where: { kind: rule.approverKind },
-                  subjectField: 'node',
-                },
-              }
-            : {}),
-        };
-      }),
-    ],
-    transitions: [
-      ...slugs.map((to) => ({ from: ENTRY_STATE, to })),
-      ...slugs.flatMap((from) => slugs.filter((to) => to !== from).map((to) => ({ from, to }))),
-    ],
-  };
+  const settings = Object.fromEntries(
+    slugs.map((slug): [string, Omit<FlowStateDefinition, 'name'>] => {
+      const state = bySlug.get(slug);
+      const count = approvalsOf(state);
+      const requires: FlowRequirement[] = [
+        ...(count > 1 || state?.approverKind
+          ? [
+              {
+                kind: 'approvals' as const,
+                count,
+                ...(state?.approverKind ? { from: involvementRole(state.approverKind) } : {}),
+              },
+            ]
+          : []),
+        ...(state?.guards ?? []),
+      ];
+      return [slug, requires.length ? { requires } : {}];
+    }),
+  );
+  return toDefinition(
+    { name: TASK_FLOW, subjects: ['TaskBlock'], hint: "Where a task stands in this community's work." },
+    {
+      rule: rule || 'any',
+      lanes: [{ states: slugs }],
+      exceptions:
+        rule === 'next-and-back' && slugs.length > 1
+          ? [{ from: slugs[slugs.length - 1]!, to: slugs[slugs.length - 2]! }]
+          : [],
+    },
+    settings,
+  );
 }
 
-// ─── Reading a snapshot ─────────────────────────────────────────────────────────
+// ─── Reading a view ─────────────────────────────────────────────────────────────
 
-/** A space's flow as the board reads it: the runs, and the rules each state asks for. */
+/** A space's flow as the board reads it: where each task stands, and the rules each state asks for. */
 export interface TaskFlowView {
-  snapshot: FlowSnapshot;
+  view: FlowView;
   rules: Record<string, { approvals: number; approverKind: string }>;
 }
 
-/** The state a task's run is in, or `undefined` where the board should read `status`. */
+/** The state the flow has a task in, or `undefined` where the board should read `status`. */
 export function flowStateOf(view: TaskFlowView | null | undefined, taskId: string): string | undefined {
-  if (!view) return undefined;
-  const run = runFor(view.snapshot.runs, taskId);
-  // Not derived here yet, or never moved out of the entry: the run knows nothing `status` does not.
-  if (!run?.state || run.state === ENTRY_STATE) return undefined;
-  return run.state;
+  // Not in the flow, or the backend cannot say yet: the flow knows nothing `status` does not.
+  return itemFor(view?.view, taskId)?.state ?? undefined;
 }
 
 /** The one move a task is waiting on — the earliest asked — or `undefined`. */
-export function openMoveOf(view: TaskFlowView | null | undefined, taskId: string): OpenMove | undefined {
-  if (!view) return undefined;
-  const run = runFor(view.snapshot.runs, taskId);
-  if (!run?.state) return undefined;
-  return openMoves(view.snapshot, run).filter((move) => move.to !== ENTRY_STATE)[0];
+export function openMoveOf(view: TaskFlowView | null | undefined, taskId: string): FlowWaitingMove | undefined {
+  return itemFor(view?.view, taskId)?.waiting[0];
 }
 
 /** What a card shows about the move it is waiting on. */
@@ -192,24 +260,34 @@ export function taskMoveCard(
  * What asking for a move came to. `null` when the space has no flow and the caller should write
  * `status`.
  *
- * Two answers beyond what a backend reports:
- *
- * - `already-there` — the backend refused because the run is already in the state asked for. The
- *   move is done as far as anyone can make it, and `status` should say so. It happens when the
- *   state a board shows is behind the backend's — a rule changed, and the backend re-judged the
- *   run without yet re-deriving what it shows.
- * - `slow` — the call did not answer in time. Not a failure: the backend usually carries on and
- *   the move lands, and the board catches up when it does.
+ * - `moved` — it happened. `already-there` — the task was already where it was asked to go: done as
+ *   far as anyone can make it, and `status` should say so. It happens when what a board shows is
+ *   behind the backend.
+ * - `waiting` — recorded, short of agreement. `already-voted` — the caller had asked already.
+ * - `not-allowed`, `unmet` — refused: no move from where it stands to there, or what the state asks
+ *   to be present is not.
+ * - `stalled` — stuck between two agreed moves; somebody has to withdraw.
+ * - `slow` — the backend had not answered in time. Not a failure: it usually carries on, and the board
+ *   catches up when it does.
  */
-export type TaskMoveOutcome = ReturnType<typeof readProposeResult> | 'already-there' | 'slow' | null;
+export type TaskMoveOutcome =
+  'moved' | 'already-there' | 'waiting' | 'already-voted' | 'not-allowed' | 'unmet' | 'stalled' | 'slow' | null;
 
-const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
-
-/** The state a refusal names the run as being in, when it was refused as unreachable. */
-const refusedFrom = (error: unknown): string | undefined => /not reachable from `([^`]+)`/.exec(messageOf(error))?.[1];
-
-/** The call outlived the caller's patience; the backend may well still be doing it. */
-const timedOut = (error: unknown) => /timed out|timeout/i.test(messageOf(error));
+/** A move's result in the board's words. */
+export function readMoveResult(result: FlowMoveResult): Exclude<TaskMoveOutcome, null> {
+  switch (result.outcome) {
+    case 'moved':
+      return result.steps.length ? 'moved' : 'already-there';
+    case 'waiting':
+      return result.voted ? 'waiting' : 'already-voted';
+    case 'refused':
+      return result.reason;
+    case 'stalled':
+      return 'stalled';
+    case 'pending':
+      return 'slow';
+  }
+}
 
 export interface TaskFlowDeps {
   /** The space's dataset, when one is on screen. */
@@ -217,27 +295,27 @@ export interface TaskFlowDeps {
   port: () => FlowPort | undefined;
   /** The space's states, in its order. */
   states: () => readonly TaskStateRule[];
-  /** The latest snapshot, for withdrawing — which needs to know which proposals carry the viewer's vote. */
-  snapshot: () => FlowSnapshot | null;
-  me: () => string | undefined;
+  /** How a task may move between them — see `Space.taskFlowRule`. */
+  rule?: () => TaskFlowRule;
 }
 
 export interface TaskFlowActions {
   /** Whether the space's states run as a flow at all. */
   enabled: () => boolean;
   /**
-   * Ask for a task to move from the state it is in to another. Starts the task's run if it has
-   * none, entering it into `from` first — see the module docblock.
+   * Ask for a task to move from the state it is in to another. A task the flow has not seen enters it
+   * at `from` — see the module docblock.
    */
   move: (taskId: string, from: string, to: string) => Promise<TaskMoveOutcome>;
-  /** Take back the viewer's vote on whatever move a task is waiting on. */
+  /** Take back the viewer's ask on whatever move a task is waiting on. */
   withdraw: (taskId: string) => Promise<number>;
   /** The state a task made into a column that asks for agreement starts in instead. */
   entryFor: (to: string) => string;
 }
 
 export function createTaskFlowActions(deps: TaskFlowDeps): TaskFlowActions {
-  const enabled = () => Boolean(deps.port() && compileTaskFlow(deps.states()));
+  const definition = () => compileTaskFlow(deps.states(), deps.rule?.() ?? '');
+  const enabled = () => Boolean(deps.port() && definition());
 
   function entryFor(to: string): string {
     const states = deps.states();
@@ -265,57 +343,22 @@ export function createTaskFlowActions(deps: TaskFlowDeps): TaskFlowActions {
     if (!port || !dataset || !enabled()) return null;
     const known = new Set(deps.states().map((s) => s.slug));
     if (!known.has(to)) throw new Error(`"${to}" is not one of this space's states`);
-
-    try {
-      const run = await port.start(dataset, TASK_FLOW, taskId);
-      let state = run.state;
-      /*
-        A run that has never left the entry is entered into the state the task already holds, on one
-        vote from anybody. An empty state is a run this device has not derived yet — synced in from a
-        peer a moment ago — which may or may not be past the entry; asking for the entry move then is
-        harmless either way, since a run past it refuses the move and names where it stands.
-      */
-      if (!state || state === ENTRY_STATE) {
-        const into = known.has(from) ? from : entryFor(to);
-        try {
-          state = (await port.propose(dataset, run.id, into)).state;
-        } catch (error) {
-          const at = refusedFrom(error);
-          if (!at) throw error;
-          state = at;
-        }
-      }
-      if (state === to) return 'moved';
-      try {
-        return readProposeResult(await port.propose(dataset, run.id, to));
-      } catch (error) {
-        // The run is already where it was asked to go; what this device showed was behind.
-        if (refusedFrom(error) === to) return 'already-there';
-        throw error;
-      }
-    } catch (error) {
-      if (timedOut(error)) return 'slow';
-      throw error;
-    }
+    /*
+      A move the rule does not allow is refused here, before anything is sent: the rule is the
+      space's, every member holds it, and the answer would be the same after a round trip — which a
+      board would spend drawing the card in a column it is about to leave again.
+    */
+    const flow = definition();
+    if (flow && known.has(from) && from !== to && !allowedMoves(flow, from).includes(to)) return 'not-allowed';
+    const result = await port.move(dataset, TASK_FLOW, taskId, to, { from: known.has(from) ? from : entryFor(to) });
+    return readMoveResult(result);
   }
 
   async function withdraw(taskId: string): Promise<number> {
     const port = deps.port();
     const dataset = deps.dataset();
-    const snapshot = deps.snapshot();
-    const me = deps.me();
-    if (!port || !dataset || !snapshot || !me) return 0;
-    const run = runFor(snapshot.runs, taskId);
-    if (!run) return 0;
-    let withdrawn = 0;
-    // Every proposal of the open moves the viewer asked on — twins included — and none they did not.
-    for (const open of openMoves(snapshot, run)) {
-      for (const id of open.proposals) {
-        const proposal = snapshot.proposals.find((p) => p.id === id);
-        if (proposal?.voters.includes(me)) withdrawn += await port.withdraw(dataset, id);
-      }
-    }
-    return withdrawn;
+    if (!port || !dataset) return 0;
+    return port.withdraw(dataset, TASK_FLOW, taskId);
   }
 
   return { enabled, move, withdraw, entryFor };

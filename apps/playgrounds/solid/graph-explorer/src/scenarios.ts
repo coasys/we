@@ -147,7 +147,7 @@ export const SCENARIOS: Scenario[] = [
     note: 'The resolution level below an entity. Every task opens into its own fields, and the shared value nodes converge — three open tasks meet at one `open` node, which is the only reason promoting values to nodes is worth doing.',
     spec: {
       seeds: { source: 'query', options: { entity: 'Task', limit: 10 } },
-      expansion: { defaultDepth: 1, direction: 'out', expanders: ['property'], maxNodes: 200 },
+      expansion: { defaultDepth: 1, direction: 'out', expanders: ['property-values'], maxNodes: 200 },
       layout: { type: 'force', options: { distance: 70, charge: -160, collide: 20 } },
       nodeStyle: [
         { style: { size: 8, color: 'neutral-400' } },

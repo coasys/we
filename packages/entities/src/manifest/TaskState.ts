@@ -114,6 +114,18 @@ export const TaskState: CoreEntityDef = {
        * task, by whoever assigned it; a second list here would be a second answer to that question.
        */
       approverKind: { type: 'string', predicate: 'we://approver_kind', default: '' },
+      /**
+       * What must be there before a task may enter this state — "a document in response to it" — as a
+       * JSON list of `{ entity, tie?, min? }`: at least `min` records of `entity`, held by the task
+       * through the relation `tie` (`responses` for what was made in response to it), or anywhere in
+       * the space when `tie` is empty.
+       *
+       * Like `approvals`, it is about entering the state from wherever: the space's states then run as
+       * a flow, a drop into this column is refused until the records exist, and the move records which
+       * ones met it. JSON rather than records of their own because a guard is part of what the state
+       * asks, written and read with it, never on its own.
+       */
+      guards: { type: 'string', predicate: 'we://guards', default: '' },
       schemaVersion: { type: 'number', predicate: 'we://schema_version', default: 1 },
     },
     relations: {},

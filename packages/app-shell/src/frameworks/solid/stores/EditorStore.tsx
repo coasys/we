@@ -651,11 +651,8 @@ export function EditorStoreProvider(props: ParentProps) {
       await ChatMessageRecord.create(
         perspective,
         { role, content },
-        // The predicate by name, not `model`. These classes come from `@we/entities`, which are
-        // neutral proxies; the `@HasMany` metadata the backend resolves a parent predicate from
-        // lives on the generated backend classes, so a proxy handed over as `model` resolves to
-        // nothing and every message fails to save.
-        { parent: { id: activeSessionRecord.id, predicate: 'we://chat_message' } },
+        // The session's `messages`, by name — the backend resolves how it stores them.
+        { parent: { id: activeSessionRecord.id, relation: 'messages', entity: 'ChatSession' } },
       );
     } catch (err) {
       console.error('Failed to persist message', err);

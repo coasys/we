@@ -211,6 +211,12 @@ never delete its cards, and why the link state can be inconsistent after a parti
 still renders one answer. The same doc records where new per-column state goes, so the entity does
 not accrete a scalar per feature.
 
+**Before changing anything about flows, read docs/architecture/flows.md.** `FlowPort` speaks in
+rules and moves — a state's `requires`, `move` answering moved, waiting, refused, stalled or pending —
+and never in how a backend enforces them: runs, proposals and an entry state stay in the AD4M
+adapter, and where backends differ they say so in `FlowPort.capabilities`. A flow is edited as lanes
+that are read back out of the stored definition, never stored themselves.
+
 ---
 
 ## Contribution Surfaces (codebase work — not for JSON schema authoring)
@@ -546,6 +552,7 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     touched(field) — Whether the field has been blurred or marked with $touch.  e.g. touched('email')
     valid(field) — Whether every validation rule on the field passes, touched or not. True for a field with no rules.  e.g. valid('email')
   Host functions (this deployment registers them):
+    requirementLabel(options) — What a step or a task state asks to be there first, in the words the app uses for it ("at least 1 comment in response to it"). For a form holding requirements it has not saved yet. Options: entity (comment, call, task, file, link, image, or an entity name), tie ("responses", or empty for anywhere in the space), min.  e.g. requirementLabel({ entity: local.guardEntity, tie: local.guardTie, min: local.guardMin })
     calendarMonth(options?) — The days of a month as rows — { date, day, inMonth, isToday, weekday } — padded to whole weeks. Options: month (YYYY-MM-DD, default today), offset (months from it), weekStartsOn (0 Sunday … 6), fixedWeeks (six rows, default on).  e.g. calendarMonth({ offset: local.monthOffset, weekStartsOn: 1 })
     calendarMonths(options?) — The twelve months of the year an offset lands in — { label, month, year, offset, isThisMonth, isShown } — each carrying its own offset from today, for a jump-to-month picker.  e.g. calendarMonths({ offset: local.monthOffset })
     monthLabel(options?) — The month a calendar is showing, as "August 2026" in the viewer’s language. Same options as calendarMonth.  e.g. monthLabel({ offset: local.monthOffset })
@@ -1657,7 +1664,7 @@ Common recipes:
 the relations between them. Picks up model types added later with no template change.
 - **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.
 - **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.
-  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, empty?: string, emptyIcon?: string, emptyGradient?: string, emptyAction?: JSX.Element, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeRetarget?: ((payload: { id: string; end: "source" | "target"; nodeId: string; nodeType: string; recordId?: string; recordType?: string; }) => void), onEdgeReroute?: ((payload: { id: string; points: EdgeWaypoint[]; recordId?: string; recordType?: string; }) => void), onEdgeAnchor?: ((payload: { id: string; end: "source" | "target"; side: "" | "n" | "e" | "s" | "w"; recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void), onSeedSummary?: ((payload: { source: string; } & Record<string, unknown>) => void), onNodeArrange?: ((payload: { id: string; into: "child" | "sibling" | "loose"; recordId: string; recordType: string; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void), resizable?: boolean, onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), onDrop?: ((payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number; within?: { entity: string; id: string; }; preview?: { thumbnail?: string; author?: string; source?: string; }; }) => void), nodeActions?: NodeAction[], onNodeAction?: ((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; x: number; y: number; }) => void), focus?: string, folded?: string[], onNodeFold?: ((payload: { id: string; recordId?: string; recordType?: string; folded: boolean; count: number; }) => void), onDeleteSelection?: ((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; records?: { recordId: string; recordType: string; }[]; }) => void), carry?: boolean, selectionActions?: NodeAction[], onSelectionAction?: ((payload: { action: string; records: { recordId: string; recordType: string; }[]; count: number; value?: unknown; preview?: boolean; }) => void), onUndo?: (() => void), onRedo?: (() => void), onPointerAt?: ((at: { x: number; y: number; } | null) => void), onViewport?: ((region: GraphRegion) => void), region?: GraphRegion | null, reframeOn?: string | number | boolean | null, host?: GraphHostBindings
+  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, empty?: string, emptyIcon?: string, emptyGradient?: string, emptyAction?: JSX.Element, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; recordType?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeRetarget?: ((payload: { id: string; end: "source" | "target"; nodeId: string; nodeType: string; recordId?: string; recordType?: string; }) => void), onEdgeReroute?: ((payload: { id: string; points: EdgeWaypoint[]; recordId?: string; recordType?: string; }) => void), onEdgeAnchor?: ((payload: { id: string; end: "source" | "target"; side: "" | "n" | "e" | "s" | "w"; recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; opened?: boolean; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void), onSeedSummary?: ((payload: { source: string; } & Record<string, unknown>) => void), onNodeArrange?: ((payload: { id: string; into: "child" | "sibling" | "loose"; recordId: string; recordType: string; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void), resizable?: boolean, onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), onDrop?: ((payload: { entity: string; id: string; dataset?: string; label: string; x: number; y: number; within?: { entity: string; id: string; }; preview?: { thumbnail?: string; author?: string; source?: string; }; }) => void), nodeActions?: NodeAction[], onNodeAction?: ((payload: { action: string; id: string; recordId?: string; recordType?: string; value?: unknown; preview?: boolean; x: number; y: number; }) => void), focus?: string, folded?: string[], onNodeFold?: ((payload: { id: string; recordId?: string; recordType?: string; folded: boolean; count: number; }) => void), open?: string[], onNodeOpen?: ((payload: { id: string; recordId?: string; recordType?: string; open: boolean; }) => void), onDeleteSelection?: ((payload: { recordId?: string; recordType?: string; kind?: "node" | "edge"; count: number; records?: { recordId: string; recordType: string; }[]; }) => void), carry?: boolean, selectionActions?: NodeAction[], onSelectionAction?: ((payload: { action: string; records: { recordId: string; recordType: string; }[]; count: number; value?: unknown; preview?: boolean; }) => void), onUndo?: (() => void), onRedo?: (() => void), onPointerAt?: ((at: { x: number; y: number; } | null) => void), onViewport?: ((region: GraphRegion) => void), region?: GraphRegion | null, reframeOn?: string | number | boolean | null, host?: GraphHostBindings
 
 ---
 
@@ -1824,6 +1831,10 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - weights: string — How much each person's voice counts in `weigh` — `did=50,did=0` in whole percent, anyone not named in full; 0 leaves them out. Applied to the answers already read, so changing it re-weighs the canvas with no query — a slider can drive it. The seed reports who answered as `onSeedSummary`'s `voices`: `{ author, cards, mean }`, the busiest first.
   - limit: number — Rows per type. Default 200.
   - Example: `{ "source": "canvas", "options": { "canvas": { "$": "local.canvasId" } } }`
+- `vocabulary` — What a space has DEFINED rather than what it holds — its signal types, task states, kinds of part, connection kinds, models and flows — drawn as buckets that open. These records are found by type, never by containment, so a canvas seeded from a space's collection cannot reach them; this is how a map of the vocabulary does. Each bucket opens through the `vocabulary` expander: a bucket of records into those records, a bucket of models into type nodes (which `schema-properties` opens into their fields), a bucket of flows into one node per flow and each flow into its steps and moves. Pair with layout: forest, buckets as roots.
+  - buckets: { key, label, entity? | models? | flows?, opens? }[] — The buckets, in order. `entity` names a record type whose records fill it; `models` is `[{ name, label? }]`; `flows` is `[{ name, label, steps: [{ name, label, final? }], moves: [{ from, to }] }]`. `opens` — `{ entity, field, key }` beside an `entity` — is what one of its records opens into: the records of `entity` whose `field` holds the record's `key`, so a task state opens into its tasks with `{ entity: 'TaskBlock', field: 'status', key: 'slug' }`. `key` must stay the same between loads — it is part of the bucket's address.
+  - limit: number — Records read per entity bucket. Default 200.
+  - Example: `{ "source": "vocabulary", "options": { "buckets": [{ "key": "signals", "label": "Signal types", "entity": "SignalType" }] } }`
 - `dataset` — Seeds a single node for the current space — the starting point for exploring outward.
   - label: string — What the node is called. Defaults to the space name.
   - Example: `{ "source": "dataset", "options": { "label": "This space" } }`
@@ -1842,10 +1853,22 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
 - `schema` — Opens an entity-type node from the schema seed into instances of that type — the step from "what kinds of thing are here" to "here they are". Paired with the schema seed it makes one map out of two.
   - limit: number — Instances loaded per type. Default 25.
   - Example: `"seeds": { "source": "schema" }, "expansion": { "expanders": ["schema", "entity"] }`
+- `schema-instances` — Opens the Records node a model was opened into (by `schema-properties`) into that model's instances. The `schema` expander's question asked one click later, so opening a model shows what it is before it shows everything there is of it.
+  - limit: number — Instances loaded. Default 25.
+  - Example: `"expansion": { "expanders": ["schema-properties", "schema-instances"] }`
+- `schema-properties` — Opens a type node into what the type IS — one node per field, labelled with its kind, one per relation naming what it points at — and a Records node that `schema-instances` opens into its instances. The question a map of a vocabulary asks first.
+  - Example: `"expansion": { "expanders": ["vocabulary", "schema-properties", "schema-instances"] }`
+- `vocabulary` — Opens a bucket the `vocabulary` seed drew into what is in it, and a flow into its steps, with a line for each move between them.
+  - Example: `"seeds": { "source": "vocabulary", "options": { "buckets": [] } }, "expansion": { "expanders": ["vocabulary"] }`
+- `vocabulary-records` — Opens a record in a vocabulary bucket that names `opens` into the records that use it — a task state into its tasks. A line from each says the field that put it there ("status"). Separate from `vocabulary` so a flow's steps are not offered a caret that opens nothing.
+  - Example: `"expansion": { "expanders": ["vocabulary", "vocabulary-records"] }`
 - `property` — Opens an instance out into its own scalar fields, and optionally into shared value nodes so instances converge on common values. The resolution level below an entity.
   - properties: string[] — Only show these fields.
-  - valueNodes: boolean — Promote values to shared nodes. Defaults to true.
+  - valueNodes: boolean — Promote values to shared nodes. Defaults to false; name `property-values` instead for a map where instances converging on a value is the point.
   - Example: `"expansion": { "expanders": ["property"] }`
+- `property-values` — The `property` expander with every value promoted to a shared node, so three tasks marked "blocked" meet at one "blocked" node. For a map where convergence is the point; a canvas of work wants `property`, whose fields are leaves.
+  - properties: string[] — Only show these fields.
+  - Example: `"expansion": { "expanders": ["property-values"] }`
 
 **layout**
 
@@ -1861,6 +1884,7 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - Example: `{ "type": "tree", "options": { "direction": "right", "levelGap": 200 } }`
 - `forest` — Separate tidy trees side by side along one named connection, each parent centred over its own children, siblings ordered by a field on the card, and everything the connection does not touch in a labelled zone of its own. This is the layout for a map somebody reads an ORDER off — "the strongest option is leftmost". Prefer `tree` where shared parents are the point and crossings are what to reduce, since ordering siblings by data and minimising crossings are the same decision and cannot both be had.
   - spine: { field: string; value: string | number | boolean } — Which connections make a parent a parent — one field of a line and the value it must hold. `{ "field": "data.relationshipTypeId", "value": "<id>" }` follows one kind a community named. Absent follows every line, which is right only where they are all one kind. Every other line is still drawn; it simply does not decide where a card goes.
+  - containment: string[] — Line types that make a parent whatever the spine says — a card's opened fields, a bucket's members. Default ["contains", "property", "value", "instance"]; [] to follow the spine alone.
   - sortBy: string — Card data field deciding sibling order, left to right — "weight" for strongest first, "createdAt" for oldest first, "canvasRank" for an order somebody dragged. Absent leaves the order the graph holds.
   - sortDirection: "asc" | "desc" — Default "asc", which is what a date wants.
   - tiebreakBy: string — The second key, used only where the first ties. Default "createdAt". Not decoration: two cards on the same number of votes otherwise swap places whenever anything else in the space changes, which reads as the map being unstable.
@@ -1868,7 +1892,7 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - siblingGap: number — Clear space between two cards side by side. Defaults to a share of the card's WIDTH, so a reader switching to large cards gets room to match — a constant is comfortable at one card size and reads as cards touching at another.
   - levelGap: number — Clear space between one rank and the next. A share of the card's HEIGHT, and a larger share than the sibling gap: a rank is read along, so its cards belong together, where the vertical gap is what the lines live in and has to be legible on its own.
   - treeGap: number — Clear space between one tree and the next. Default three sibling gaps.
-  - unattached: "right" | "bottom" — Where cards on no tree go. Default "right"; "bottom" suits a narrow screen.
+  - unattached: "right" | "bottom" | "trees" — Where cards on no tree go. Default "right"; "bottom" suits a narrow screen. "trees" makes each a one-card tree in line with the others — for roots that are given rather than found, such as the categories of a vocabulary map, where one with nothing in it is still a root.
   - unattachedColumns: number — How many cards wide that zone is. Default 3.
   - unattachedLabel: string — What the zone is called; the count is appended. Default "Unconnected", and an empty string leaves it unlabelled.
   - Example: `{ "type": "forest", "options": { "spine": { "field": "data.relationshipTypeId", "value": { "$": "local.spine" } }, "sortBy": "weight", "sortDirection": "desc", "card": { "width": 180, "height": 120 } } }`
@@ -1882,7 +1906,8 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
 - `manual` — Positions come from the nodes themselves — a canvas, where position is the data being edited rather than something derived. Pair with drag-node and persist via onNodeDragEnd.
   - xField: string — Node data field holding x. Default "x".
   - yField: string — Node data field holding y. Default "y".
-  - size: { width: number; height: number } — The box a card takes. A node with no stored position is parked in the view, in the first slot clear of every card already there — pass the card size so slots do not overlap. Absent means a 160-sided square.
+  - size: { width: number; height: number } — The box a card takes. A node with no stored position is parked in the view, in the first slot clear of every card already there — pass the card size so slots do not overlap. A node opened out of a placed card goes beside it instead: a field in a column to its right, what it contains in a row below. Absent means a 160-sided square.
+  - kindSizes: { [kind]: { width: number; height: number } } — The box a node of one kind takes where it is not `size` — `{ property: { width: 170, height: 44 } }` for a card’s opened fields, matching the style rule that draws them, so a column of them fits beside the card.
   - widthField: string — Node data field holding a resized card’s own width, so parking keeps clear of it.
   - heightField: string — The same, for height.
   - margin: number — Clear space around a parked card. Default 24 with `size`.
@@ -1900,7 +1925,7 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - Example: `"edgeStyle": [{ "style": { "arrow": "none" } }]`
 - `scaleWithZoom` — Edge style. true (default) treats the line as part of the drawing, so it thickens as you zoom in — right for a canvas. false pins it to a constant on-screen width, so hairlines stay visible when you zoom out to see a whole network.
   - Example: `"edgeStyle": [{ "style": { "scaleWithZoom": false } }]`
-- `content` — Node style, cards only. Names a host-supplied component to draw INSIDE the card instead of a text label — WE registers `block`, which renders a CollectionBlock's composed content the way a post card does, and `record`, which does the same for a note and draws any other record as its kind, its name and every value it holds. A label can only ever be the first line, so a card holding an image and three paragraphs shows sixty characters and gives no sign the rest exists. Clipped, not scrolled: a card is a preview, and what does not fit is reached by opening it. Falls back to the label when the host supplies no component by that name.
+- `content` — Node style, cards only. Names a host-supplied component to draw INSIDE the card instead of a text label — WE registers `block`, which renders a CollectionBlock's composed content the way a post card does, `record`, which does the same for a note and draws any other record as its kind, its name and every value it holds, and `property`, which draws a property node's name quietly and its value in bold. A label can only ever be the first line, so a card holding an image and three paragraphs shows sixty characters and gives no sign the rest exists. Clipped, not scrolled: a card is a preview, and what does not fit is reached by opening it. Falls back to the label when the host supplies no component by that name.
   - Example: `"nodeStyle": [{ "style": { "shape": "card", "width": 180, "content": "block" } }]`
 - `contentMinZoom` — Node style. Hides card content below this zoom and falls back to the label. The sibling of labelMinZoom, and the thing that decides whether rich cards scale: a hundred documents rendered at once is a hundred component trees, and at the zoom where a canvas reads as coloured rectangles none of them is legible anyway.
   - Example: `"nodeStyle": [{ "style": { "shape": "card", "content": "block", "contentMinZoom": 0.5 } }]`
@@ -2674,6 +2699,8 @@ Space extends WeNode:
   - autoInterpret: boolean = true [we://auto_interpret]
   - threadMode: string = 'fractal' [we://thread_mode]
   - moduleSettings: string [we://module_settings]
+  - archivedFlows: string [we://archived_flows]
+  - taskFlowRule: string [we://task_flow_rule]
   Relations:
   - location: HasOne → LocationBlock [we://location]
   - taskStates: HasMany → TaskState [we://task_state_order]
@@ -2728,6 +2755,7 @@ TaskState extends WeNode:
   - retired: boolean = false [we://retired]
   - approvals: number = 1 [we://approvals]
   - approverKind: string [we://approver_kind]
+  - guards: string [we://guards]
   - schemaVersion: number = 1 [we://schema_version]
 
 Template extends WeNode:
@@ -2969,6 +2997,48 @@ EditorStore:
   - sendMessage(text: string): sends a message to the assistant. Patches it proposes are applied to the template and land in undo history; the reply streams into streamingContent
   - clearHistory(): deletes the active session's messages
 
+FlowStore:
+- State:
+  - available: boolean — this space has flows at all: its backend offers them and it is a WE space. Gate a Flows route or a "Start flow" control on it
+  - capabilities: { requirements, enforcement, sealedEvidence, contention } | null — what this backend can do with flows. `requirements` lists the kinds of rule it enforces ('approvals', 'guard'); `enforcement` is 'server' (one authority applies every rule) or 'peers' (every member's software applies them, so a member running other software can write past one — say so beside a rule); `contention` is 'stall' when two moves out of one step both agreed leave a record stuck until somebody withdraws, or 'first' when the earlier wins
+  - canEdit: boolean — the viewer may save, delete and archive flows here: whoever administers the space
+  - flows: { name, label, editable, records, managedBy, archived, steps, moves }[] — every flow in the space, archived ones included. `editable` is false for one written by something that uses more than this editor shows, and for the task-state flow; `managedBy` is 'task-states' for the flow the board's task states write, which is edited in the space's settings and moved on the board, never here; `records` is how many records are going through it; `steps` ({ name, label, final }[]) and `moves` ({ from, to }[]) are its definition once read — what a map of the space's flows draws
+  - flowsLoaded: boolean — the backend has answered with this space's flows. An empty `flows` before then is not yet an answer: gate a "no flows" sentence on it and draw the list as loading until it is true
+  - startable: { name, label, subjects }[] — flows a record can be put through: not archived, not written by something else. `subjects` are the entity names a flow is for, empty for any record — filter with `card.__subjectClass in flow.subjects || !count(flow.subjects)`
+  - open: { name, label, hint, subjects, rule, fits, editable, managedBy, archived, lanes, exceptions, steps, records, history } | null — the flow opened with openFlow. `lanes` is the flow as a main line and branches: each { index, main, leaves, leavesLabel, rejoins, rejoinsLabel, ends, steps }, every step { name, label, final, approvals, approverKind, approverLabel, guards, requires, hint }, `requires` being each thing entering it takes as a short phrase. `rule` is 'next', 'next-and-back' or 'any'; `exceptions` the moves nothing else covers, { from, to, fromLabel, toLabel, name }. `records` are what is going through it, newest first: { subject, title, startedAt, state, stateLabel, stalled, waiting, walk, next }, `startedAt` an ISO date for a we-timestamp (empty when unknown), `walk` its path as { name, label, at } with `at` 'done', 'current' or 'ahead' — a stepper — and `next` where it may be asked to go, `waiting` each move asked for { to, toLabel, voters, needs, note, mine }. `recordsLoaded` says the records have been read — gate anything offered only for a flow with none on it. `history[subject]` is filled by loadHistory: { from, to, fromLabel, toLabel, voters, at, when, evidence, note }[], `when` being `at` as an ISO date
+  - draft: { …the shape of open’s lanes, label, isNew, dirty, problems } | null — the flow being written, after newFlow or editFlow. `problems` are sentences saying what saving would be refused for; saveDraft refuses while there are any, so show them beside the button
+  - recordFlows: Record<recordId, { flow, label, state, stateLabel, waiting, stalled, next, asks }[]> — by record, every startable flow it is going through and where it stands: what a chip on a card shows. `next` ({ name, label }[]) is where it may be asked to go, for moveRecord; `asks` ({ to, toLabel, voters, needs, note, mine }[]) the moves waiting on agreement — offer withdrawRecord where `mine`, moveRecord to the same `to` to agree. Read as `flowStore.recordFlows[card.id]`, which is undefined for a record in none
+- Actions:
+  - refreshFlows(): asks the backend for the flow list again — after something another member did
+  - openFlow(name: string): opens a flow — its lanes and the records going through it fill `open`
+  - closeFlow(): closes the flow on screen
+  - loadHistory(subject: string): reads the moves a record made in the open flow into open.history[subject] — for an expanded row
+  - startFlow(flow: string, recordId: string): puts a record through a flow, at its first step. Anybody may
+  - moveRecord(flow: string, recordId: string, to: string, note?: string): asks for a record to move — the same call whether the viewer is first to ask or agreeing with somebody who did. Resolves with 'moved', 'waiting', 'not-allowed', 'unmet', 'stalled' or 'pending', and says the unhappy ones in a toast itself. Refused for the task-state flow, which moves on the board
+  - withdrawRecord(flow: string, recordId: string): takes back the viewer's own asks on a record's waiting moves, never anybody else's, never a move that happened
+  - newFlow(preset: 'blank' | 'review' | 'proposal', label: string, subjects?: string[]): starts writing a new flow from a preset into `draft`. Nothing is written into the space until saveDraft
+  - editFlow(): starts editing the open flow, when it is `editable`
+  - cancelDraft(): throws the draft away
+  - saveDraft(): writes the draft into the space and opens it. Only whoever administers the space; rejects while draft.problems has anything, and on failure, so an onSuccess after it means it saved
+  - deleteFlow(name: string): takes a flow out of the space. Refused while any record is going through it — offer spaceStore.setFlowArchived instead then
+  - setDraftLabel(label: string): names a new flow. A saved flow keeps its name
+  - setDraftHint(hint: string): one sentence on what the flow is about
+  - setDraftSubjects(subjects: string[]): which kinds of record the flow is for, by entity name; empty for any record
+  - addStep(lane: number, label: string, after?: string): a new step on a lane (0 is the main line), after the step named, or first. Refused, with a toast, for a name already used
+  - removeStep(name: string): takes a step out, and every move naming it. Refused while a branch leaves from or rejoins at it
+  - moveStep(name: string, by: number): moves a step one place along its lane: -1 earlier, 1 later
+  - renameStep(name: string, label: string): renames a step everywhere it is named
+  - setStepHint(name: string, hint: string): one sentence on what being at that step means
+  - updateStep(name: string, changes: { label?, hint?, approvals?, kind? }): a step's name, hint and approvals at once — what a step's edit form saves. `kind` is the involvement kind whose holders' approval counts, '' for anybody's. All or nothing: a name already used refuses the lot
+  - addBranch(from: string, label: string, rejoins?: string): a new branch leaving the step `from`, with one step on it, ending there unless `rejoins` names where it comes back
+  - setBranchEnd(lane: number, rejoins: string): where a branch comes back, or '' for a branch that ends
+  - setRule(rule: 'next' | 'next-and-back' | 'any'): how steps move along a lane — on only, on and back, or anywhere to anywhere (no branches then)
+  - addException(from: string, to: string): a move nothing else covers
+  - removeException(from: string, to: string): takes such a move away
+  - setApprovals(name: string, count: number, kind?: string): how many people must agree before a record enters the step, and whose agreement counts — an involvement kind's slug, or '' for anybody's. 1 and '' is a plain ask
+  - addGuard(name: string, entity: string, tie?: string, min?: number): something that must be there before a record enters the step — at least `min` of `entity`, held by the record through the relation `tie` ('responses' for what was made in response to it), or anywhere when `tie` is ''. `entity` is 'comment', 'call', 'task', 'file', 'link' or 'image' — a comment is a reply post, not the text inside one — or an entity name
+  - removeGuard(name: string, index: number): takes away the step's guard at that position in its `guards`
+
 InterpretationStore:
 - State:
   - activity: InterpretationActivityView[] — every extraction pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Extracted 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` carries `prompt`/`response` — a peer’s exchange is never sent live; read it from the call’s `ExtractionPass` records once the pass settles — so gate a details affordance on `hasDetail`
@@ -3198,7 +3268,7 @@ ShapeStore:
   - relationshipTargets: { label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent
   - identityOptions: { label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can map options but cannot prepend one
   - nameOptions: { label, value }[] — "Work it out" plus every named property of the open draft, for the naming-field picker. A different first entry from identityOptions on purpose: no identity means no dedup key, where no naming field means the name is DERIVED (a property called name or title, else whichever string is required or first) — there is no such thing as a record with no name
-  - hintEditor: the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal
+  - hintEditor: the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal
   - hintBusy: boolean — the hint editor is loading or saving
   - extractionNeedsIdentity: boolean — the open draft would be extracted into and has no field to recognise what it already wrote, so every pass duplicates everything. A warning to put beside the switch, not a refusal: the wizard saves either way
   - memberOptions: { rowId, options }[] — each member's default-value picker entries. Read with find(shapeStore.memberOptions, { rowId: member.rowId }) rather than off member: rows are mutated in place while typing, so values hanging off the row cannot be reactive
@@ -3232,7 +3302,7 @@ ShapeStore:
   - deleteShape(shapeRecordId): removes a model definition from the space. Existing entries keep their data; only the definition goes
   - openHintEditor(entity): opens per-space AI-hint tuning for an entity (core or space-defined)
   - closeHintEditor(): closes the hint editor, discarding unsaved edits. Pair it with hintEditorDirty in a discardGuard rather than wiring it to a modal’s close directly
-  - setHintDraft(key, value): sets one hint in the open editor — key is 'class' or a property predicate
+  - setHintDraft(key, value): sets one hint in the open editor — key is 'class' or a property's name
   - saveHintEditor(): writes the hints to this space and marks them customized, so schema refreshes stop reverting them
   - resetHintEditor(): back to the declaration's hints; release improvements flow again
 
@@ -3245,6 +3315,7 @@ ShellStore:
   - pendingDestructive: the destructive action a space template just asked for ({ path, title, body }), or null. The host raises its own confirmation in front of every one of them — a space template arrives from a stranger, so whether it asks before deleting is not the stranger's decision. Host chrome renders it; a template writing its own dialog for a destructive store action would be a second question about one click
   - spaceSettingsOpen: boolean — the space-settings panel is open. It configures whichever space is open, so it needs no id; bind a launcher’s active state to this
   - spaceSettingsTab: string — the tab the space-settings panel opens on ('about' | 'features' | 'vocabulary'). A starting position read once as the panel mounts, not a controlled value: somebody who then walks to another tab stays there. Set it by passing a tab to openSpaceSettings
+  - spaceSettingsFocus: string — the record the space-settings panel was opened about, by id, or ''. A vocabulary row for it marks itself, and the panel scrolls to it — give the row's element the DOM id `vocab-<record id>`. Set by openSpaceSettings' second argument; cleared when the panel closes
   - dockGeometry: Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode) and its state — hidden behind another tab, collapsed to its bar, stowed in a lane collapsed to its edge, and which of those its titlebar may offer (canCollapse, canStow). Read a field as { $: "shellStore.dockGeometry['<id>'].<field>" } — by index, since a dock id holds a colon; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting
   - contentInset: { top, right, bottom, left } in pixels — what the content viewport gives up to panels that displace it. Read it to keep your own fixed chrome clear of docked panels
   - coveredInset: { top, right, bottom, left } in pixels — what FLOATING panels are covering. They take no room, so they leave contentInset at zero while still sitting over the content: this is the part of your own box the reader cannot see. Read it to keep something in the clear where contentInset would say there is nothing in the way
@@ -3273,7 +3344,7 @@ ShellStore:
   - confirmDestructive(): runs the destructive action the host is asking about. Host chrome only, for the reason pendingDestructive is: an action able to answer its own confirmation is the confirmation being skipped
   - cancelDestructive(): refuses it. The waiting action resolves as though it had been blocked
   - toggleSpaceSettings(): opens or closes the settings panel for the space on screen. What a gear in chrome should call — a control that is always present toggles, so a second press puts back what the first press changed
-  - openSpaceSettings(): opens that panel without closing it again. For a control that sits on the very fields it leads to (the About view’s pencil), where a toggle would break the promise to show them
+  - openSpaceSettings(tab?: string, focus?: string): opens that panel, on a tab and about a record when given them, without closing it again. For a control that sits on the very fields it leads to (the About view’s pencil), where a toggle would break the promise to show them
   - closeSpaceSettings(): closes the space-settings panel
   - scrollToId(id: string): smooth-scrolls the element with that DOM id into view
   - beginDockResize(id: string): remembers a panel's current size so the drag that follows is measured from it. Wire it to we-resize-handle's resizestart. For a divider between lane-mates it first makes every member's stored size what is on screen, so the boundary can then travel the whole lane
@@ -3332,7 +3403,7 @@ SpaceStore:
   - orderedSidebarItems: array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged
   - foreignSpacePrefill: { name, description, avatar } | null — detected from a foreign app's own model (e.g. Flux's Community) for prefilling the "Initialize as WE space" gate; null once the dataset is a WE space or no recognized foreign model is found
   - enabledModules: string[] — ids of the feature modules THIS SPACE has turned on: the community’s decision, shared with every member. An unset value means "not decided", not "none": it falls back to every registered module, so spaces predating the setting keep the chrome they had
-  - taskStates: { id, name, slug, semantic, color, retired, approvals, approverKind }[] — the states this community’s work moves through: its TaskState records, which a new space’s starter writes. A space with none has none. Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community’s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `approvals` is how many distinct people must agree before a task enters the state (1 is a plain drop) and `approverKind` the involvement kind whose holders’ agreement counts (empty: anybody’s) — see taskFlowEnabled
+  - taskStates: { id, name, slug, semantic, color, retired, approvals, approverKind }[] — the states this community’s work moves through: its TaskState records, which a new space’s starter writes. A space with none has none. Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community’s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `approvals` is how many distinct people must agree before a task enters the state (1 is a plain drop) and `approverKind` the involvement kind whose holders’ agreement counts (empty: anybody’s) — see taskFlowEnabled. `guards` ({ entity, tie, min, label }[]) is what must be there first — `label` says it in words
   - offeredTaskStates: { id, name, slug, semantic, color, retired, approvals, approverKind }[] — the same list without the withdrawn ones. What a state picker or a new board column should offer
   - taskStatesLoaded: boolean — the space has been asked for its states. An empty list is otherwise indistinguishable from "not fetched yet"; gate an empty state on it
   - involvementTypes: { id, name, slug, semantic, reflexive, appliesTo, icon, color, retired }[] — the kinds of part a person can have in a record: "Assigned" and "Reviewing" on a task, "Going", "Maybe" and "Not going" on an event, plus whatever this community has named: its InvolvementType records, which a new space’s starter writes. `slug` is what Involvement.kind holds. `semantic` is the closed meaning underneath the name — responsible, reviewing, committed, interested, declined — so a board still finds the assignee after "Assigned" is renamed. `reflexive` kinds are an agent’s own answer, which nobody else may give, and an agent holds one per record. `appliesTo` is the entity names the kind is offered on, empty for all — filter with `'TaskBlock' in kind.appliesTo || !count(kind.appliesTo)`. Includes withdrawn kinds; offer offeredInvolvementTypes. Read who holds them through the `involvement` host function
@@ -3351,8 +3422,8 @@ SpaceStore:
   - routableViews: ResolvedView[] — every view that could render here, at its permanent segment — what routes are built from. Separate from spaceViews because it changes when a view is installed, not when a switch is flicked
   - enabledViewIds: string[] — ids of the sections the community has turned on here. What a route body is gated on; not the nav list, which also drops this agent's hidden ones — hiding a section for yourself must not make its URL refuse you
   - viewNav: { id, segment, label, icon, path }[] — the sections as a nav strip reads them: enabled by the community, minus those this agent hid, in order. One source with the routes, so nav and routes cannot disagree
-  - linkLanguageTemplateOptions: { label, value, icon, description }[] — how a shared space can sync (its link language), for a we-select, default first; value is the template address. Labelled by how it syncs ("Peer-to-peer", "Server (host)") rather than by the template’s package name, and `description` is one sentence on what choosing it means — bind a we-form-field’s description to the selected entry’s. Only templates publishing can fill in are listed. Empty until the backend answers, and on a backend with no choice to offer
-  - defaultLinkLanguageTemplate: string — address of the template publishing uses when none is chosen: the backend’s default, empty until it answers. Show it as the picker’s value while nothing is chosen — { $: "local.linkLanguage ? local.linkLanguage : spaceStore.defaultLinkLanguageTemplate" } — and pass the bare choice to createSpace, rather than copying it into local state, which freezes whatever it was at that moment
+  - sharingOptions: { label, value, icon, description }[] — how a shared space can sync, for a we-select, default first; value is what createSpace takes. Labelled by how it syncs ("Peer-to-peer", "Server (host)") rather than by the backend’s own name for it, and `description` is one sentence on what choosing it means — bind a we-form-field’s description to the selected entry’s. Only options this deployment can fill in are listed. Empty until the backend answers, and on a backend with no choice to offer
+  - defaultSharing: string — the option publishing uses when none is chosen: the backend’s default, empty until it answers. Show it as the picker’s value while nothing is chosen — { $: "local.sharing ? local.sharing : spaceStore.defaultSharing" } — and pass the bare choice to createSpace, rather than copying it into local state, which freezes whatever it was at that moment
   - mutedDids: string[] — DIDs this agent has muted, everywhere. Private, held in the root dataset. A feed filters on it before rendering: { $: '!(post.author in spaceStore.mutedDids)' }. Hides on this screen only — a neighbourhood is writable by every member, so nothing here removes anything for anyone else
   - mutedAgents: MutedAgent[] — the full mute records (did, description), for a settings list that wants the note as well as the DID
   - readMarkers: { nodeId, lastReadAt }[] — when this agent last read each node. No row means never read, so everything is unread. Read with find(spaceStore.readMarkers, { nodeId: item.id }); a keyed map would not be indexable by a row
@@ -3365,10 +3436,12 @@ SpaceStore:
   - root: string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one
   - roles: Record<name, id> — the records this space names by role, e.g. spaceStore.roles.canvas is the space's canvas. Written by the space's starter at creation. A role can be absent — a space can switch template and a template must never assume what another set up — so guard every read
   - extractionTargets: string[] — the models a NEW collection here starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a new conversation begins with, and each collection then holds its own list, which its participants change (modules.transcribe.extractionFor[id].targets). A default, copied when a collection is made. Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings
+  - taskFlowRule: '' | 'next' | 'next-and-back' — how a task may move between this space's states, in their order: anywhere, on to the next only, or on and back one. Anything but '' runs the states as a flow, so a move the rule does not allow is refused on the board — say so beside a picker of states
   - taskFlowEnabled: boolean — this space’s task states ask for agreement: some state needs more than one approval, or names whose approval counts. Where true, a card dragged into such a state waits instead of moving, and arrangedBoard(…).flow[card.id] describes what it is waiting on. Gate an explanation of the waiting on it; the board needs nothing else
+  - archivedFlows: string[] — the names of the flows this space has put away. An archived flow keeps its records, which still show and can still finish, but is not offered for starting on anything new; flowStore.flows marks each one `archived`
   - canAdministerCurrentSpace: boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space
 - Actions:
-  - createSpace(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, linkLanguageTemplate?): creates a new space with full setup. linkLanguageTemplate is an address from linkLanguageTemplateOptions and only matters for a shared space; empty uses the backend's default
+  - createSpace(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, sharing?): creates a new space with full setup. sharing is a value from sharingOptions and only matters for a shared space; empty uses the backend's default
   - joinSpace(id: string, focus = true): joins a shared space by share link, neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in. Rejects when the join could not be completed, so onSuccess means what it says; watch joiningSpace/joinSlow/joinError for what to show while it runs. A join whose network call times out keeps going: the backend usually finishes anyway, and this waits for that before believing the failure
   - initializeAsWeSpace(name: string, description: string, avatarValue?: File | string | null): installs WE's Space SDNA into the current, already-joined, foreign-native dataset (e.g. one synced in from Flux) and creates a Space entity in place — access is always 'shared' since the dataset is already a published neighbourhood
   - removeSpace(uuid: string): removes a space — clears its global-discovery listing (when authored by this agent) and removes the backing dataset
@@ -3417,9 +3490,13 @@ SpaceStore:
   - createRelationshipType(config: Partial<RelationshipType>): names a kind of connection this community makes — "contradicts", "came out of". The counterpart to createSignalType; slug derived from name if blank
   - setSignalTypeRetired(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given and re-creating one with the same slug does not restore them. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves
   - createTaskState(config: { name, semantic?, color?, icon? }): names a state this community’s work moves through — "Blocked", "In review". The counterpart to createSignalType one concept along. A slug the space already has is refused. The space’s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards
-  - updateTaskState(slug: string, updates: { name?, icon?, color?, semantic?, approvals?, approverKind? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. `approvals` (a whole number, 1–20) and `approverKind` (an involvement kind’s slug, or empty) set what agreement the state asks for — the first state that asks for any turns the space’s states into a flow, see taskFlowEnabled. By slug, which is what a task and a screen both hold
+  - updateTaskState(slug: string, updates: { name?, icon?, color?, semantic?, approvals?, approverKind?, guards? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. `approvals` (a whole number, 1–20) and `approverKind` (an involvement kind’s slug, or empty) set what agreement the state asks for, and `guards` ({ entity, tie?, min? }[], the whole list) what must be there first — the first state that asks for either turns the space’s states into a flow, see taskFlowEnabled. By slug, which is what a task and a screen both hold
+  - setTaskFlowRule(rule: '' | 'next' | 'next-and-back'): how a task may move between this space's states — see taskFlowRule. Only whoever administers the space; rejects otherwise
+  - addTaskStateGuard(slug: string, guard: { entity, tie?, min? }): something that must be there before a task enters the state — at least `min` of `entity`, held by the task through the relation `tie` ('responses' for what was made in response to it), or anywhere when `tie` is empty. `entity` is 'comment', 'call', 'task', 'file', 'link' or 'image' — a comment is a reply post, not the text inside one — or an entity name. The first guard turns the space's states into a flow
+  - removeTaskStateGuard(slug: string, index: number): takes away the state’s guard at that position in its `guards`
   - approveTaskMove(taskId: string): agrees with the move a task is waiting on — the same as dragging the card there yourself, so it counts toward the state’s approvals when the agent is one whose approval counts. Offer it where arrangedBoard(…).flow[card.id].canApprove
   - withdrawTaskMove(taskId: string): takes back this agent’s own vote on the move a task is waiting on, never anybody else’s. Offer it where arrangedBoard(…).flow[card.id].mine
+  - setFlowArchived(name: string, archived: boolean): puts a flow away, or brings it back. Only whoever administers the space; rejects otherwise. Archiving never touches the records going through the flow — offer it in place of deleting one that has any
   - setTaskStateRetired(slug: string, retired: boolean): withdraws a state from use, or brings it back. Never touches the work sitting in it — a task names its state by slug, so deleting the state would leave the work holding a word nothing defines. The same decision setSignalTypeRetired makes. By slug, which is what a task and a screen both hold
   - reorderTaskStates(orderedSlugs: string[]): sets the order this community reads its states in — which is the order of a board’s columns. An ordered relation rather than a number on each state, so two people reordering at once converge instead of one write discarding the other. A state the order does not mention still appears, after the ones it does. Slugs, which is what a screen holds. Key the rows by slug and pair with we-sortable’s onReorder, passing { $: "arg.detail" }
   - setInvolvement(nodeId: string, agent: string, kind: string, on: boolean): puts somebody on a record as a kind one member says about another — assigning a task, asking for a review — or takes them off. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick it shows and a double press cannot undo itself. Every copy of the pair goes on removal. A reflexive kind is routed to respondTo, and refused for anybody but the agent it is about. Pair with a DropdownMenu of toggle entries: `onSelect: { $action: "spaceStore.setInvolvement", args: [{ $: "card.id" }, { $: "arg.id" }, "assignee", { $: "!arg.checked" }] }`
@@ -3434,7 +3511,6 @@ SpaceStore:
   - canAdministerSpace(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to me.did, so the answer can grow (multiple admins, roles) without every template changing
   - copyShareLink(uuid: string): copies that space's share link to the clipboard, with a toast either way. No-op for a personal space, which has no global id and so no shareable link — read `spaceList[].shareLink` to decide whether to offer the control at all
   - copyGuestLink(uuid: string): copies that space's guest invite link — a URL that creates an account on the space's host and joins, with no sign-up and no download. Empty, and the control hidden, unless BOTH this app's origin and the node's URL are addresses a recipient could reach: a loopback address on either half resolves to the reader's own machine. Read `spaceList[].guestLink` to decide whether to offer it; `shareLink` is the one for somebody who already has WE
-  - getSubgroupMessages(subgroupId: string): messages belonging to one of Flux's conversation subgroups, fetched on demand. A dialect query against a foreign schema rather than a WE model, so it goes through the backend's interop surface instead of $query — which is why it is a store method and not a relation you can drill into
   - exportCallTranscript(callId: string): writes the call's transcript to a .txt file (one line per utterance: name, timestamp, text) and downloads it. Read-only and client-side — it reads the shared record and writes to the caller's own device
   - exportExtractionLog(callId: string): writes everything extraction did with the call to a Markdown file and downloads it — the settings it ran under, the transcript once, every member's passes with their prompts and responses verbatim, the records written as they are stored now, and the suggestions still awaiting a decision. For handing to a person or a model investigating the extraction. Read-only and client-side, like exportCallTranscript
   - removeSpaceFromGlobal(spaceUuid: string): withdraws a space's listing from the global discovery space, leaving the space itself alone. Only its author may; removeSpace does this for you
@@ -3787,6 +3863,12 @@ A general-purpose graph engine — knowledge maps, schema maps, hierarchies and 
 - No store: everything this module does is declared.
 - Parts: `graph.schemaMap`, `graph.contentTree`, `graph.staticDiagram`, `graph.knowledgeMapPosts`
 - Components: GraphView
+
+### Flux (`flux`)
+Reads conversations a Flux community keeps, in a space synced in from Flux.
+Needs: backends ad4m.
+- Actions (`{ "$action": "modules.flux.<name>" }`):
+  - subgroupMessages — The messages in one of Flux’s conversation subgroups, oldest first — { id, author, timestamp, body }. Read when asked, since a subgroup’s messages are not a relation a $query can follow.
 
 ### Polls (`polls`)
 Ask the space a question and watch the answer arrive.
@@ -5818,25 +5900,26 @@ contextually narrows it to the `true` literal, so it needs no `as const`.
 
 ---
 
-### Signal Predicate
+### Parents by relation name
 
-Signals on any `WeNode` subclass (Space, AgentProfile, TextBlock, …) use the
-predicate **`we://signal`** — the relation is declared as:
+A record created under another — a signal on a node, a message in a channel, a reply to a post —
+names where it goes by the RELATION it joins, as the parent entity declares it, never by how a
+backend stores that relation:
 ```ts
-@HasMany(() => Signal, { through: 'we://signal' })
-signals: string[] = [];
-```
-
-When creating a signal manually (not via the ORM relation helpers), pass the
-correct predicate to the `parent` option:
-```ts
-await Signal.create(perspective, { signalTypeId, value }, {
-  parent: { id: nodeId, predicate: 'we://signal' },
+await Signal.create(dataset, { signalTypeId, value }, {
+  parent: { id: nodeId, relation: 'signals' },
+});
+await TextBlock.create(dataset, { text }, {
+  parent: { id: channelId, relation: 'children', entity: 'CollectionBlock' },
 });
 ```
 
-**`we://has_signals` is wrong** — it is a different predicate that the ORM does not
-know about. Using it creates orphaned links invisible to `include: { signals: true }`.
+Add `entity` where the name alone does not decide — `children` is declared on more than one
+entity, so name `CollectionBlock`. `signals` and `responses` live on `WeNode` and mean the same
+thing on every record, so they need none. An unknown or ambiguous name is refused with what to add,
+rather than written somewhere a query will never look. The same shape (`ParentRef` in
+`@we/backend-shared`) is what a module's `createEntity`, a referrer lookup and an interpretation
+scope take.
 
 ---
 
