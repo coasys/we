@@ -1,0 +1,52 @@
+# Builds the ad4m executor for one ad4m commit and caches it, without testing anything.
+#
+# A cache is read only from the run's own branch and its base branch, so an executor built on a PR
+# serves that PR alone, and the push to `dev` after it merges builds the same commit again — most
+# of an hour each time. The bump workflow dispatches this on `dev` as soon as it sees a new ad4m
+# version, before any PR asks for it: the copy lands where every PR can read it, and the bump PR, a
+# paired PR moving to the same version, and the push to `dev` after either merges all restore it.
+#
+# Run it on `dev`. On any other ref it caches where only that ref and the branches based on it can
+# read. By hand, "Run workflow" from the Actions tab takes the commit too — the one a version was
+# published from is `npm view @coasys/ad4m@<version> gitHead`.
+name: AD4M executor
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: The ad4m commit to build, as a full 40-character sha.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build the executor
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    # The group `ad4m-live.yaml`'s build job uses, so a PR run on the same commit waits for this one
+    # and restores what it saved rather than building alongside it. Never cancelled: a build that
+    # stops caches nothing. Ubuntu 24.04 for the glibc the executor needs (see `ad4m-live.yaml`).
+    concurrency:
+      group: ad4m-executor-${{ inputs.commit }}
+      cancel-in-progress: false
+    steps:
+      # A short sha or a branch name would build, but under a concurrency group no other run names,
+      # so a PR on the same commit would build its own copy beside this one.
+      - name: Check the commit
+        env:
+          COMMIT: ${{ inputs.commit }}
+        run: |
+          if ! [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::'$COMMIT' is not a full commit sha. Give all 40 characters."
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/actions/ad4m-executor
+      - uses: ./.github/actions/ad4m-executor
+        with:
+          ref: ${{ inputs.commit }}

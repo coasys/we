@@ -259,8 +259,13 @@ touches the backend packages, the entities or the pin, on `dev` after such a mer
 bot's branch. The executor takes the better part of an hour to compile, so it is built once per
 pinned commit and cached, by the `.github/actions/ad4m-executor` action the desktop package uses too
 — so the tests run the binary the app ships. A cache saved on `dev` serves every PR, and one saved on
-a PR serves only that PR, which is why a merged bump builds on `dev`: after that, every run takes
-minutes. A push never cancels a build in progress, only the tests.
+a PR serves only that PR. So when the bump bot sees a new version, it first starts that version's
+executor building on `dev` (the `AD4M executor` workflow, `.github/workflows/ad4m-executor.yaml`),
+and only then starts CI on its branch. Runs on the same commit wait for one another rather than
+build twice, so the bump PR's run, a paired PR moving to the same version, and the push to `dev`
+after either merges all restore that one build, and take minutes. A push never cancels a build in
+progress, only the tests. To prebuild by hand — a version the bot cannot move to yet — run the
+`AD4M executor` workflow on `dev` with the commit `npm view @coasys/ad4m@<version> gitHead` prints.
 It is not a required check: read it before merging a bump, the way you would the run here. It skips
 a paired PR until that PR moves the pin. A paired PR cannot merge before then, so the run that
 matters is the one after the bump — and nothing builds the paired executor, which takes the better
