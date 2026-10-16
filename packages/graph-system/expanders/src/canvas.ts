@@ -813,6 +813,13 @@ export function canvasSeed(): SeedSource {
           const target = typeof row.target === 'string' ? row.target : undefined;
           if (!source || !target || !onCanvas.has(source) || !onCanvas.has(target)) continue;
           /*
+            A connection from a card to itself is left off. A canvas has nothing sensible to draw for
+            it, and it is not a claim anybody makes by hand: an extraction pass writes one when dedup
+            resolves both ends of a "this leads to that" to the same record. Drawn, it was a line
+            looping back into its own card.
+          */
+          if (source === target) continue;
+          /*
             A connection is a record too, so the two flags a card answers to apply to a line as well.
             An extraction pass stages connections just as it stages cards: hidden when the reader has
             put suggestions away, and marked when it is still one, so the line can be drawn as the

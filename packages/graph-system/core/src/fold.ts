@@ -168,12 +168,20 @@ function reach(
 ): Set<string> {
   const seen = new Set<string>();
   const worklist: string[] = [];
+  /*
+    Whether the excluded card's own lines have been followed yet. It is never in `seen`, so without
+    this a line from the card to itself put it back on the worklist every time it came off, along
+    with everything else it points at, and the walk grew until the tab ran out of memory. A seed has
+    been walked already, so a cycle back to one adds nothing.
+  */
+  let excludeWalked = false;
   for (const id of from) {
     for (const edge of store.edgeIds(id, 'out')) {
       const target = store.edge(edge)?.target;
       if (target) worklist.push(target);
     }
     if (!options.skipSeeds) seen.add(id);
+    if (id === options.exclude) excludeWalked = true;
   }
   while (worklist.length) {
     const id = worklist.pop()!;
@@ -181,6 +189,8 @@ function reach(
     // Walked through but never reported — a card is not under itself, however the lines come back
     // around to it.
     if (id === options.exclude) {
+      if (excludeWalked) continue;
+      excludeWalked = true;
       for (const edge of store.edgeIds(id, 'out')) {
         const target = store.edge(edge)?.target;
         if (target && !seen.has(target)) worklist.push(target);

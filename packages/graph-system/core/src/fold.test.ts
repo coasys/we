@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { FOLD_BUNDLE, foldableIn, foldGraph, wouldFold } from './fold';
+import { downstreamOf, FOLD_BUNDLE, foldableIn, foldGraph, wouldFold } from './fold';
 import { GraphStore } from './store';
 
 function node(id: string) {
@@ -85,6 +85,18 @@ describe('foldGraph', () => {
 
   it('survives a cycle back through the folded card', () => {
     const { hidden } = foldGraph(['a'], graph(['a', 'b'], ['b', 'a']));
+
+    expect([...hidden]).toEqual(['b']);
+  });
+
+  it('terminates on a card connected to itself', () => {
+    /*
+      The folded card is walked through but never marked seen, so a line from it to itself put it
+      back on the worklist every time it came off — with everything else it points at — and the walk
+      grew until the tab ran out of memory. Every card with a line is asked about on every render, so
+      one such connection froze the canvas for everybody in the space.
+    */
+    const { hidden } = foldGraph(['a'], graph(['a', 'a'], ['a', 'b']));
 
     expect([...hidden]).toEqual(['b']);
   });
@@ -202,5 +214,17 @@ describe('foldableIn', () => {
 
   it('offers nothing on a card that is itself folded away', () => {
     expect(foldableIn(['a'], graph(['a', 'b'], ['b', 'c'])).has('b')).toBe(false);
+  });
+
+  it('answers for a card connected to itself, offering a fold only for what is under it', () => {
+    // The path that froze the canvas: asked of every card with a line, before anybody folds anything.
+    expect(foldableIn([], graph(['a', 'a'])).size).toBe(0);
+    expect([...foldableIn([], graph(['a', 'a'], ['a', 'b']))]).toEqual(['a']);
+  });
+});
+
+describe('downstreamOf', () => {
+  it('terminates on a card connected to itself, and does not count the card', () => {
+    expect([...downstreamOf('a', graph(['a', 'a'], ['a', 'b']))]).toEqual(['b']);
   });
 });

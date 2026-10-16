@@ -600,6 +600,29 @@ describe('canvasSeed', () => {
     expect(nodes).toHaveLength(1);
   });
 
+  it('drops a connection from a card to itself', async () => {
+    // What an extraction pass writes when dedup resolves both ends to one record. There is nothing
+    // to draw, and a self-loop is the one shape the rest of the canvas has to treat specially.
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 },
+        { id: 'p2', node: 'c2', nodeType: 'CollectionBlock', x: 200, y: 0 },
+      ],
+      CollectionBlock: [
+        { id: 'c1', title: 'One' },
+        { id: 'c2', title: 'Two' },
+      ],
+      Relationship: [
+        { id: 'r1', label: 'leads to', source: 'c1', target: 'c1' },
+        { id: 'r2', label: 'depends on', source: 'c1', target: 'c2' },
+      ],
+    });
+
+    const { edges } = await canvasSeed().seed({ canvas: 'b1', connections: 'Relationship' }, ctx);
+
+    expect(edges.map((edge) => edge.label)).toEqual(['depends on']);
+  });
+
   it('draws a connection to a card still in the tray', async () => {
     // The tray is on the canvas — it is where everything a call extracts lands — so a connection the
     // extraction drew between a placed card and one nobody has positioned yet is a line between two
