@@ -1285,9 +1285,11 @@ describe('transport and device lifetime', () => {
         fire('topology-changed', 'mesh');
         const id = store.callId() as string;
 
-        publishesCall('did:someone', id, { topology: { mode: 'sfu', at: Date.now() + 1000, by: 'did:someone' } });
+        // The same switch, republished: it keeps the time it was made.
+        const switched = { mode: 'sfu', at: Date.now() + 1000, by: 'did:someone' };
+        publishesCall('did:someone', id, { topology: switched });
         await settle();
-        publishesCall('did:someone', id, { topology: { mode: 'sfu', at: Date.now() + 1000, by: 'did:someone' } });
+        publishesCall('did:someone', id, { topology: switched });
         await settle();
 
         expect(backendArgs.map((args) => (args[1] as { topology?: string }).topology)).toEqual([undefined, 'sfu']);
