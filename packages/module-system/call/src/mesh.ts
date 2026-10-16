@@ -339,7 +339,11 @@ interface PeerSlot {
    */
   earlyCandidates: { gen?: string; candidate: RTCIceCandidateInit }[];
   /** The last description this side sent, so a lost one can be sent again rather than rebuilt. */
-  lastSent: RTCSessionDescriptionInit | null;
+  lastSent: Extract<CallBody, { kind: 'description' }> | null;
+  /** How many offers this connection has made: the last one's `offer` number. */
+  offers: number;
+  /** The `offer` number of the peer's last applied offer, which this side's answer names. */
+  remoteOffer: number | undefined;
   /**
    * The `sdp` of the description this pair has already had resent once.
    *
@@ -357,6 +361,8 @@ interface PeerSlot {
    * the transport, and only ICE has anything to say about that.
    */
   everConnected: boolean;
+  /** An offer this side held back until the pair connects; see the negotiationneeded handler. */
+  offerDeferred: boolean;
   /**
    * When this side sent an offer that has had no answer yet, or 0.
    *
@@ -477,6 +483,18 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
     slot.remoteGeneration ? { gen: slot.generation, peerGen: slot.remoteGeneration } : { gen: slot.generation };
 
   const sendFrom = (peerId: string, slot: PeerSlot, message: CallBody) => send(peerId, { ...message, ...stamp(slot) });
+  /**
+   * Send the connection's local description, numbered as {@link CallBody} describes, and remember it
+   * so the resend rung sends the same message — number included — rather than rebuilding it.
+   */
+  const sendDescription = (peerId: string, slot: PeerSlot) => {
+    const local = slot.pc.localDescription;
+    if (!local) return;
+    const { type, sdp } = local;
+    const offer = type === 'offer' ? ++slot.offers : slot.remoteOffer;
+    slot.lastSent = { kind: 'description', description: { type, sdp }, ...(offer !== undefined ? { offer } : {}) };
+    sendFrom(peerId, slot, slot.lastSent);
+  };
 
   /** The peer connections each peer has replaced. Kept past a slot, so a late message cannot revive one. */
   const retired = new Map<string, string[]>();
@@ -509,8 +527,11 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
       remoteReady: false,
       earlyCandidates: [],
       lastSent: null,
+      offers: 0,
+      remoteOffer: undefined,
       lastResent: null,
       everConnected: false,
+      offerDeferred: false,
       offeredAt: 0,
       renegotiating: false,
       since: now(),
@@ -520,29 +541,51 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
     };
     slots.set(peerId, slot);
 
-    pc.onnegotiationneeded = async () => {
+    const negotiate = async () => {
+      /*
+        An answerer's first offer waits until the pair connects.
+
+        Both sides declare their own audio and video transceivers, so answering the peer's first
+        offer leaves this side with m-lines of its own to negotiate, and `negotiationneeded` fires
+        straight after the answer. Before the pair connects this side cannot know its answer
+        arrived; if it was lost, the peer still has its offer out, reads this offer as glare and
+        negotiates afresh, and both sides take the same DTLS role ("Failed to set SSL role").
+        Connecting proves the peer applied the answer: DTLS needs the fingerprint it carries. Once
+        connected the roles are fixed, so later offers go at once.
+
+        Read from the connection rather than from what was sent: the browser can fire this while
+        the peer's offer is still being applied, before any answer exists.
+      */
+      if (pc.remoteDescription?.type === 'offer' && !slot.everConnected) {
+        slot.offerDeferred = true;
+        return;
+      }
+      slot.offerDeferred = false;
       try {
         slot.makingOffer = true;
-        // No argument: the browser picks offer or answer from the signaling state, which is what
-        // makes the rolled-back case recover on its own.
-        await pc.setLocalDescription();
-        if (pc.localDescription) {
-          // Remembered so a lost one can be sent again. Resending the exact description is the
-          // difference between the second rung of the ladder and the third: the peer connection is
-          // intact and only the message was dropped, so nothing needs rebuilding.
-          slot.lastSent = { type: pc.localDescription.type, sdp: pc.localDescription.sdp };
-          if (pc.localDescription.type === 'offer') {
-            slot.offeredAt = now();
-            slot.renegotiating = pc.connectionState === 'connected';
-          }
-          sendFrom(peerId, slot, { kind: 'description', description: pc.localDescription });
-        }
+        /*
+          Always an offer, never "whatever the state calls for". The browser can fire this during
+          the rollback that accepting the peer's offer starts; a description picked from the state
+          when the call runs is then the answer, and the answering path makes an offer in its place
+          — the roles swap. If the peer's offer got here first the browser refuses, and asks again
+          once stable.
+        */
+        await pc.setLocalDescription({ type: 'offer' });
+        slot.offeredAt = now();
+        slot.renegotiating = pc.connectionState === 'connected';
+        // Remembered so a lost one can be sent again. Resending the exact description is the
+        // difference between the second rung of the ladder and the third: the peer connection is
+        // intact and only the message was dropped, so nothing needs rebuilding.
+        sendDescription(peerId, slot);
       } catch (error) {
-        fail(`negotiating with ${peerId}`, error);
+        // The one refusal this expects: the peer's offer got here first, and the browser asks again
+        // once stable. Anything else is a real failure, including one with this side's offer out.
+        if (pc.signalingState !== 'have-remote-offer') fail(`negotiating with ${peerId}`, error);
       } finally {
         slot.makingOffer = false;
       }
     };
+    pc.onnegotiationneeded = negotiate;
 
     pc.onicecandidate = ({ candidate }) => {
       if (candidate) sendFrom(peerId, slot, { kind: 'ice', candidate: candidate.toJSON() });
@@ -595,6 +638,8 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
         // Nothing held for this connection is needed now. Anything from a peer connection it has not
         // met stays: that may be the one the peer is about to offer from.
         slot.earlyCandidates = slot.earlyCandidates.filter((held) => held.gen && held.gen !== slot.remoteGeneration);
+        // The offer held back while this side could not know its answer had arrived.
+        if (slot.offerDeferred && pc.signalingState === 'stable') void negotiate();
       }
       if (state === 'disconnected' && !slot.disconnectedAt) slot.disconnectedAt = now();
       if (state === 'connected' || state === 'failed') slot.disconnectedAt = 0;
@@ -697,18 +742,22 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
    * never reaches `failed` and the honest error badge never appears.
    *
    * Bounded on both axes, because this buffers messages from agents the roster has not vouched for
-   * and an unbounded one is a memory target for anybody on the channel. Overflow drops the oldest:
-   * a stale offer is worth less than the one behind it.
+   * and an unbounded one is a memory target for anybody on the channel. Overflow drops the oldest
+   * message that is not a description or a reset: an offer is followed by its candidates, and
+   * dropping the oldest message would drop the offer, which the pair cannot start without.
    */
   const pending = new Map<string, CallMessage[]>();
   const MAX_PENDING_PEERS = 16;
-  const MAX_PENDING_PER_PEER = 8;
+  const MAX_PENDING_PER_PEER = 32;
 
   function hold(peerId: string, message: CallMessage): void {
     if (!pending.has(peerId) && pending.size >= MAX_PENDING_PEERS) return;
     const queue = pending.get(peerId) ?? [];
     queue.push(message);
-    if (queue.length > MAX_PENDING_PER_PEER) queue.shift();
+    while (queue.length > MAX_PENDING_PER_PEER) {
+      const spare = queue.findIndex((held) => held.kind !== 'description' && held.kind !== 'reset');
+      queue.splice(spare === -1 ? 0 : spare, 1);
+    }
     pending.set(peerId, queue);
   }
 
@@ -815,6 +864,16 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
 
       if (message.kind === 'description') {
         const { description } = message;
+        // An offer older than one already applied — overtaken on this unordered transport —
+        // describes m-lines the connection has moved past. The same number again is the resend
+        // rung's copy, and is answered.
+        if (
+          description.type === 'offer' &&
+          message.offer !== undefined &&
+          slot.remoteOffer !== undefined &&
+          message.offer < slot.remoteOffer
+        )
+          return;
         const collision = description.type === 'offer' && (slot.makingOffer || slot.pc.signalingState !== 'stable');
 
         // The impolite peer wins a collision by ignoring the other's offer; the polite peer yields,
@@ -824,8 +883,13 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
         // An answer with no offer out is a late duplicate: the resend rung got one answer per copy.
         // Expected on this transport, so not an error.
         if (description.type === 'answer' && slot.pc.signalingState === 'stable') return;
+        // An answer to an earlier offer of this connection — a late copy from the resend rung — would
+        // be refused against the offer out now ("The order of m-lines in answer doesn't match order
+        // in offer"). Dropped, and the answer to the current offer settles it.
+        if (description.type === 'answer' && message.offer !== undefined && message.offer !== slot.offers) return;
 
         await slot.pc.setRemoteDescription(description);
+        if (description.type === 'offer') slot.remoteOffer = message.offer;
         // An answer settles this side's offer, and accepting the peer's offer rolled it back. Either
         // way none is pending. An answered renegotiation is the evidence the connected-pair repair
         // waits for, so only that clears its budget.
@@ -848,11 +912,9 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
         await flushCandidates(peerId, slot);
 
         if (description.type === 'offer') {
-          await slot.pc.setLocalDescription();
-          if (slot.pc.localDescription) {
-            slot.lastSent = { type: slot.pc.localDescription.type, sdp: slot.pc.localDescription.sdp };
-            sendFrom(peerId, slot, { kind: 'description', description: slot.pc.localDescription });
-          }
+          // Named rather than left to the state: see `negotiate`.
+          await slot.pc.setLocalDescription({ type: 'answer' });
+          sendDescription(peerId, slot);
         }
         return;
       }
@@ -973,9 +1035,9 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
       // or its answer would not clear the budget and each such repair would spend it for good.
       slot.renegotiating = true;
     }
-    if ((!slot.everConnected || unanswered) && slot.lastSent && slot.lastSent.sdp !== slot.lastResent) {
-      slot.lastResent = slot.lastSent.sdp ?? null;
-      sendFrom(peerId, slot, { kind: 'description', description: slot.lastSent });
+    if ((!slot.everConnected || unanswered) && slot.lastSent && slot.lastSent.description.sdp !== slot.lastResent) {
+      slot.lastResent = slot.lastSent.description.sdp ?? null;
+      sendFrom(peerId, slot, slot.lastSent);
       options.onPeerRecovery?.(peerId, { rung: 'resend', attempts });
       return;
     }

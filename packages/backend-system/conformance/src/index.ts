@@ -24,7 +24,9 @@ import {
   type BackendPorts,
   CONTAINMENT_PREDICATE,
   type DatasetHandle,
-  type FlowSnapshot,
+  type FlowDefinition,
+  type FlowView,
+  itemFor,
   RECORD_TYPE_KEY,
   type RendererDataBindings,
 } from '@we/backend-shared';
@@ -85,7 +87,12 @@ export const CONFORMANCE_CASES = [
   'live.identical-queries-independent',
   'ephemeral.no-echo',
   'references.referrers',
-  'flows.watch-follows-a-move',
+  'flows.definition-round-trip',
+  'flows.move-and-watch',
+  'flows.enter-where-it-stands',
+  'flows.waiting-and-withdraw',
+  'flows.guard',
+  'flows.remove-refused-with-records',
 ] as const;
 
 /** Every case a harness can name in `knownGaps` — the per-case ones above and the template queries. */
@@ -112,7 +119,7 @@ interface Model {
   create(
     dataset: DatasetHandle,
     data?: Record<string, unknown>,
-    options?: { parent?: { id: string; predicate: string } },
+    options?: { parent?: { id: string; relation: string; entity?: string } },
   ): Promise<Instance>;
   update(dataset: DatasetHandle, id: string, data: Record<string, unknown>): Promise<unknown>;
   setRelation(dataset: DatasetHandle, id: string, relation: string, ids: readonly string[]): Promise<void>;
@@ -127,12 +134,23 @@ interface Reader {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Retry an assertion until it holds or `timeout` runs out, then throw its last failure. */
-async function eventually(assertion: () => void, timeout: number): Promise<void> {
+/** A definition with its moves in one order, since the contract gives them none. */
+function movesAsSet(definition: FlowDefinition | null): FlowDefinition | null {
+  if (!definition) return definition;
+  const key = (t: FlowDefinition['transitions'][number]) => `${t.from}\u0000${t.to}\u0000${t.name ?? ''}`;
+  return { ...definition, transitions: [...definition.transitions].sort((a, b) => key(a).localeCompare(key(b))) };
+}
+
+/**
+ * Retry an assertion until it holds or `timeout` runs out, then throw its last failure. An assertion
+ * that reads asynchronously is awaited, so its failure is retried like any other rather than escaping
+ * as an unhandled rejection while the case passes.
+ */
+async function eventually(assertion: () => void | Promise<void>, timeout: number): Promise<void> {
   const deadline = Date.now() + timeout;
   for (;;) {
     try {
-      assertion();
+      await assertion();
       return;
     } catch (error) {
       if (Date.now() >= deadline) throw error;
@@ -367,7 +385,7 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
 
       test(
         'relations.create-under-parent',
-        'creates a record inside its container, named by id and the containment predicate',
+        'creates a record inside its container, named by id and the relation it joins',
         async () => {
           // How a transcript line, a space's canvas and a post in a space are all made: inside their
           // container in one write, so there is no moment in which they are loose in the space.
@@ -376,7 +394,7 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           const made = await Collection.create(
             subject.dataset,
             { kind: 'canvas' },
-            { parent: { id: container.id, predicate: CONTAINMENT_PREDICATE } },
+            { parent: { id: container.id, relation: 'children' } },
           );
 
           const [row] = await reader('CollectionBlock').findAll(subject.dataset, {
@@ -389,17 +407,17 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
 
       test(
         'relations.read-under-parent',
-        'reads only what one container holds, newest first and bounded, given its id and the predicate',
+        'reads only what one container holds, newest first and bounded, given its id and the relation',
         async () => {
           /*
-            How one call's lines are paged: by the call's id and the containment predicate, ordered
+            How one call's lines are paged: by the call's id and its `children` relation, ordered
             and capped, so a page costs the same however long the space's history is. A backend that
             ignored the parent answered with every line in the space — right-looking, and wrong.
           */
           const Collection = model('CollectionBlock');
           const call = await Collection.create(subject.dataset, { kind: 'call' });
           const other = await Collection.create(subject.dataset, { kind: 'call' });
-          const parent = (id: string) => ({ parent: { id, predicate: CONTAINMENT_PREDICATE } });
+          const parent = (id: string) => ({ parent: { id, relation: 'children' } });
           const first = await Collection.create(subject.dataset, { kind: 'line-1' }, parent(call.id));
           await sleep(5);
           const second = await Collection.create(subject.dataset, { kind: 'line-2' }, parent(call.id));
@@ -431,13 +449,13 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           const reply = await Collection.create(
             subject.dataset,
             { kind: 'reply' },
-            { parent: { id: channel.id, predicate: CONTAINMENT_PREDICATE } },
+            { parent: { id: channel.id, relation: 'children' } },
           );
           await Collection.addRelation(subject.dataset, post.id, 'thread', reply.id);
           const kept = await Collection.create(
             subject.dataset,
             { kind: 'reply' },
-            { parent: { id: channel.id, predicate: CONTAINMENT_PREDICATE } },
+            { parent: { id: channel.id, relation: 'children' } },
           );
 
           await reply.delete();
@@ -453,7 +471,7 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
     describe('references', () => {
       test(
         'references.referrers',
-        'answers who links to a value through one predicate, newest first, across kinds of record',
+        'answers who holds a value through one relation, newest first, across kinds of record',
         async () => {
           /*
             How "messages that mention me" is asked: from the agent's end, through the mention relation,
@@ -470,10 +488,12 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           await model('TextBlock').addRelation(subject.dataset, line.id, 'mentions', did);
           await model('TextBlock').addRelation(subject.dataset, line.id, 'mentions', 'did:key:somebody-else');
 
-          const found = await references!.referrers(subject.dataset, 'we://mention', did);
+          const found = await references!.referrers(subject.dataset, { relation: 'mentions' }, did);
           expect(found.map((row) => row.id)).toEqual([line.id, post.id]);
           expect(
-            (await references!.referrers(subject.dataset, 'we://mention', did, { limit: 1 })).map((r) => r.id),
+            (await references!.referrers(subject.dataset, { relation: 'mentions' }, did, { limit: 1 })).map(
+              (r) => r.id,
+            ),
           ).toEqual([line.id]);
         },
       );
@@ -638,35 +658,177 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
     });
 
     describe('flows', () => {
-      test('flows.watch-follows-a-move', 'reports a move and the proposal that made it', async () => {
-        // The state and what settled are the backend's to derive, and a backend may keep them
-        // somewhere a link query cannot see. A port that still looked for them where they used to
-        // be would compile and pass every other case, while every board showed nothing settling.
-        const flows = subject.ports.flows;
-        if (!flows) return;
-        const task = await model('TaskBlock').create(subject.dataset, { title: 'Ship it' });
-        await flows.install(subject.dataset, {
-          name: 'Conformance',
-          subjects: ['TaskBlock'],
-          states: [{ name: 'todo' }, { name: 'done' }],
-          transitions: [{ from: 'todo', to: 'done' }],
-        });
-        const run = await flows.start(subject.dataset, 'Conformance', task.id);
-        expect(run.state).toBe('todo');
+      /*
+        One agent per case, so nothing here can be agreed by two people — that is each backend's own
+        suite. What every backend must agree on is the shape of the answers: a definition reads back as
+        it was written, a move is reported and then seen, a record that predates the flow keeps its
+        place, an ask short of agreement waits and can be taken back, a guard refuses until it holds.
+      */
+      const FLOW: FlowDefinition = {
+        name: 'Conformance',
+        subjects: ['TaskBlock'],
+        states: [
+          { name: 'todo' },
+          { name: 'doing' },
+          { name: 'done', requires: [{ kind: 'approvals', count: 2 }] },
+          {
+            name: 'shipped',
+            requires: [
+              { kind: 'guard', entity: 'TextBlock', where: { text: 'release note' }, tie: { relation: 'responses' } },
+            ],
+          },
+        ],
+        transitions: [
+          { from: 'todo', to: 'doing' },
+          { from: 'doing', to: 'todo' },
+          { from: 'doing', to: 'done' },
+          { from: 'doing', to: 'shipped' },
+        ],
+      };
 
-        const snapshots: FlowSnapshot[] = [];
-        const stop = await flows.watch(subject.dataset, 'Conformance', (snapshot) => void snapshots.push(snapshot));
-        try {
-          const result = await flows.propose(subject.dataset, run.id, 'done');
-          expect(result.moves.map((move) => move.to)).toEqual(['done']);
-          await eventually(() => {
-            const last = snapshots.at(-1);
-            expect(last?.runs.find((r) => r.id === run.id)?.state).toBe('done');
-            expect(last?.proposals.find((p) => p.id === result.proposal)?.settled).toBe(true);
+      const ready = async () => {
+        const flows = subject.ports.flows;
+        if (!flows) return null;
+        await flows.install(subject.dataset, FLOW);
+        const task = await model('TaskBlock').create(subject.dataset, { title: 'Ship it' });
+        return { flows, task: task.id };
+      };
+
+      const watching = async (flows: NonNullable<BackendPorts['flows']>) => {
+        const views: FlowView[] = [];
+        const stop = await flows.watch(subject.dataset, FLOW.name, (view) => void views.push(view));
+        return { views, stop };
+      };
+
+      test(
+        'flows.definition-round-trip',
+        'reads a definition back as it was written, and a changed rule replaced',
+        async () => {
+          const flows = subject.ports.flows;
+          if (!flows) return;
+          await flows.install(subject.dataset, FLOW);
+          expect(movesAsSet(await flows.read(subject.dataset, FLOW.name))).toEqual(movesAsSet(FLOW));
+          expect(await flows.list(subject.dataset)).toEqual(
+            expect.arrayContaining([{ name: FLOW.name, editable: true, records: 0 }]),
+          );
+
+          const three: FlowDefinition = {
+            ...FLOW,
+            states: FLOW.states.map((s) =>
+              s.name === 'done' ? { ...s, requires: [{ kind: 'approvals', count: 3 }] } : s,
+            ),
+          };
+          await flows.install(subject.dataset, three);
+          await eventually(async () => {
+            expect(movesAsSet(await flows.read(subject.dataset, FLOW.name))).toEqual(movesAsSet(three));
           }, settle);
+        },
+      );
+
+      test('flows.move-and-watch', 'reports a move, shows it to a watcher, and keeps it as a step', async () => {
+        const setup = await ready();
+        if (!setup) return;
+        const { flows, task } = setup;
+        const { views, stop } = await watching(flows);
+        try {
+          const result = await flows.move(subject.dataset, FLOW.name, task, 'doing');
+          expect(result).toMatchObject({ outcome: 'moved', state: 'doing', steps: [{ from: 'todo', to: 'doing' }] });
+          await eventually(() => expect(itemFor(views.at(-1), task)?.state).toBe('doing'), settle);
+          expect((await flows.history(subject.dataset, FLOW.name, task)).map((s) => [s.from, s.to])).toEqual([
+            ['todo', 'doing'],
+          ]);
+          expect(await flows.move(subject.dataset, FLOW.name, task, 'done', {})).toMatchObject({ outcome: 'waiting' });
+          expect(await flows.move(subject.dataset, FLOW.name, task, 'shipped')).toMatchObject({
+            outcome: 'refused',
+            reason: 'unmet',
+          });
         } finally {
           stop();
         }
+      });
+
+      test(
+        'flows.enter-where-it-stands',
+        'enters a record that predates the flow where the caller says it stands',
+        async () => {
+          const setup = await ready();
+          if (!setup) return;
+          const { flows, task } = setup;
+          // Doing → todo is allowed and todo → todo is not a move, so only a record entered at `doing`
+          // can make this one.
+          const result = await flows.move(subject.dataset, FLOW.name, task, 'todo', { from: 'doing' });
+          expect(result).toMatchObject({ outcome: 'moved', state: 'todo', steps: [{ from: 'doing', to: 'todo' }] });
+        },
+      );
+
+      test(
+        'flows.waiting-and-withdraw',
+        'keeps an ask short of agreement waiting, and lets the asker take it back',
+        async () => {
+          const setup = await ready();
+          if (!setup) return;
+          const { flows, task } = setup;
+          await flows.move(subject.dataset, FLOW.name, task, 'doing');
+          const waiting = await flows.move(subject.dataset, FLOW.name, task, 'done', { note: 'Looks finished' });
+          expect(waiting).toMatchObject({ outcome: 'waiting', to: 'done', voted: true, voters: [subject.agent] });
+          expect(await flows.move(subject.dataset, FLOW.name, task, 'done')).toMatchObject({
+            outcome: 'waiting',
+            voted: false,
+          });
+
+          const { views, stop } = await watching(flows);
+          try {
+            await eventually(
+              () =>
+                expect(itemFor(views.at(-1), task)?.waiting).toMatchObject([
+                  { to: 'done', voters: [subject.agent], note: 'Looks finished' },
+                ]),
+              settle,
+            );
+            expect(await flows.withdraw(subject.dataset, FLOW.name, task)).toBeGreaterThan(0);
+            await eventually(
+              () => expect(itemFor(views.at(-1), task)).toMatchObject({ state: 'doing', waiting: [] }),
+              settle,
+            );
+          } finally {
+            stop();
+          }
+        },
+      );
+
+      test(
+        'flows.guard',
+        'refuses a move until its guard holds, then makes it with the guard’s records as evidence',
+        async () => {
+          const setup = await ready();
+          if (!setup) return;
+          const { flows, task } = setup;
+          await flows.move(subject.dataset, FLOW.name, task, 'doing');
+          expect(await flows.move(subject.dataset, FLOW.name, task, 'shipped')).toMatchObject({
+            outcome: 'refused',
+            reason: 'unmet',
+            state: 'doing',
+          });
+
+          const note = await model('TextBlock').create(subject.dataset, { text: 'release note' });
+          await model('TaskBlock').addRelation(subject.dataset, task, 'responses', note.id);
+          await eventually(async () => {
+            expect(await flows.move(subject.dataset, FLOW.name, task, 'shipped')).toMatchObject({ outcome: 'moved' });
+          }, settle);
+          await eventually(async () => {
+            const steps = await flows.history(subject.dataset, FLOW.name, task);
+            expect(steps.at(-1)).toMatchObject({ to: 'shipped', evidence: [note.id] });
+          }, settle);
+        },
+      );
+
+      test('flows.remove-refused-with-records', 'refuses to remove a flow a record is going through', async () => {
+        const setup = await ready();
+        if (!setup) return;
+        const { flows, task } = setup;
+        await flows.start(subject.dataset, FLOW.name, task);
+        await expect(flows.remove(subject.dataset, FLOW.name)).rejects.toThrow();
+        expect((await flows.list(subject.dataset)).map((f) => f.name)).toContain(FLOW.name);
       });
     });
 

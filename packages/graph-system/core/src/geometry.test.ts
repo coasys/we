@@ -461,6 +461,21 @@ describe('anchors', () => {
     expect(route.control!.y).toBeLessThan(route.from.y);
   });
 
+  it('pulls a pinned end only as far as the gap it faces across, not the width beside it', () => {
+    /*
+      A tree's line, to a child far to one side: leaving the parent's bottom, meeting the child's top.
+      Pulled by half the larger span — the sideways one — the curve dropped 200 below the parent and
+      rose 200 above the child across a gap of 84, and read as a deep S hooking up into the child.
+    */
+    const route = routeEdge('e', { x: 0, y: 0 }, { x: 400, y: 164 }, 'smooth', 0, box, box, {
+      source: 's',
+      target: 'n',
+    });
+    const gap = route.to.y - route.from.y;
+    expect(route.control!.y - route.from.y).toBeCloseTo(gap / 2, 5);
+    expect(route.to.y - route.control2!.y).toBeCloseTo(gap / 2, 5);
+  });
+
   it('beats a chord trim, which would otherwise decide the side for itself', () => {
     // `straight` and `arc` meet a node wherever the ray crosses it. An anchor is not a hint about
     // which crossing to prefer — it names the side, and a straight edge told to leave the north one

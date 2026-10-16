@@ -14,6 +14,7 @@ import type {
   CardShape,
   EdgeAnchors,
   EdgeGeometry,
+  EdgeSide,
   EdgeStyle,
   ExpandDirection,
   ExpanderContext,
@@ -35,7 +36,7 @@ import type {
 import { addressKind, metricKey } from '@we/graph-protocol';
 
 import { connectionTarget } from './connect';
-import { ExpansionState, SEED_OPENER } from './expansion';
+import { type CollapseResult, ExpansionState, SEED_OPENER } from './expansion';
 import { downstreamOf, FOLD_BUNDLE, foldableIn, foldGraph, type FoldResult, wouldFold } from './fold';
 import type { EdgeClearance, EdgeWaypoint } from './geometry';
 import {
@@ -75,6 +76,13 @@ const PENDING_EDGE_ID = '__pending__';
  * went, which is the whole reason they travel instead of blinking out. The tick matches the layout's.
  */
 const FOLD_MS = 200;
+
+/**
+ * How long a node takes to open or close — its contents growing out of it or shrinking back in. Between
+ * a fold's snap and a layout switch's long travel: the same in both directions, so opening and closing
+ * read as one movement and its reverse.
+ */
+const PASS_MS = 650;
 
 /**
  * The frame both of the engine's own animations advance on.
@@ -1095,6 +1103,8 @@ export class GraphEngine {
     let added = 0;
     let total: number | undefined;
     let cursor: string | undefined;
+    /** What this opening put on the graph for the first time — what grows out of the node. */
+    const arrived: string[] = [];
 
     try {
       for (const expander of chosen) {
@@ -1114,6 +1124,17 @@ export class GraphEngine {
           result.edges.map((e) => e.id),
         );
         added += change.addedNodes.length;
+        arrived.push(...change.addedNodes);
+        /*
+          Opened again while shrinking back in from the last close: still in the store, so not added —
+          but standing at the parent's centre, where they were shrinking to. Placed again and grown back
+          out, or a layout that keeps a card's last place left them stuck on top of their parent.
+        */
+        for (const node of trimmed) {
+          if (this.passing.get(node.id)?.out !== false) continue;
+          this.positions.delete(node.id);
+          arrived.push(node.id);
+        }
         if (result.total !== undefined) total = (total ?? 0) + result.total;
         cursor = cursor ?? result.cursor;
       }
@@ -1124,17 +1145,136 @@ export class GraphEngine {
     this.expansion.markExpanded(id, { cursor, total, added });
     this.emit({ type: 'expanded', id, added, total });
     this.recomputeMetrics();
-    this.relayout();
+    // What arrived sets off from the node it came out of, so the opening reads as the node growing.
+    this.passThrough(id, arrived, this.passMs(), true);
+    this.relayout({ travel: this.passMs(), steady: id, emergeFrom: { node: id, ids: arrived } });
+    // Where each is heading, for the side its line holds while it travels — see `routeOf`.
+    for (const arrival of arrived) {
+      const passing = this.passing.get(arrival);
+      const home = this.travel.destination(arrival) ?? this.positions.get(arrival);
+      if (passing && home) passing.home = { x: home.x, y: home.y };
+    }
+    this.routeEdges();
     this.notify('graph');
   }
 
-  /** Close a node: drop what only it was holding, and bundle what crossed the boundary. */
+  /**
+   * Close a node: drop what only it was holding, and bundle what crossed the boundary.
+   *
+   * What goes travels back into the node first, and is removed when it gets there — the opening run
+   * backwards. Removed at once, a closing card simply vanished, where a fold on the same canvas draws
+   * its cards in. Opened again before they arrive, they stay: a card something holds again is not
+   * removed.
+   */
   collapse(id: string): void {
     const result = this.expansion.collapse(id, this.store);
     if (!result.removedNodes.length && !result.bundles.length) return;
 
-    this.store.removeNodes(result.removedNodes);
-    for (const nodeId of result.removedNodes) {
+    const into = this.positions.get(id);
+    const travel = this.passMs();
+    if (travel > 0 && into && result.removedNodes.length) {
+      const inward = new Map(this.positions);
+      this.passThrough(id, result.removedNodes, travel, false);
+      for (const nodeId of result.removedNodes) {
+        const home = inward.get(nodeId);
+        const passing = this.passing.get(nodeId);
+        if (passing && home) passing.home = { x: home.x, y: home.y };
+        const at = inward.get(nodeId);
+        if (at) inward.set(nodeId, { ...at, x: into.x, y: into.y });
+      }
+      this.applyPositions(inward, undefined, travel);
+      this.notify('graph');
+      setTimeout(() => {
+        if (!this.disposed) this.finishCollapse(id, result);
+      }, travel);
+      return;
+    }
+    this.finishCollapse(id, result);
+  }
+
+  /**
+   * Cards travelling out of (`out`) or back into a node, by the node, and when they set off — drawn
+   * under it, and shrunk into it or grown out of it as a fold's cards are. See {@link passingScale}.
+   */
+  private readonly passing = new Map<
+    string,
+    { node: string; out: boolean; started: number; ms: number; home?: Point }
+  >();
+
+  /** Draw these under `node`, growing out of it or shrinking into it, for as long as their travel takes. */
+  private passThrough(node: string, ids: readonly string[], ms: number, out: boolean): void {
+    if (!ids.length || ms <= 0) return;
+    const started = Date.now();
+    for (const passer of ids) this.passing.set(passer, { node, out, started, ms });
+    setTimeout(() => {
+      for (const passer of ids) if (this.passing.get(passer)?.started === started) this.passing.delete(passer);
+      if (this.disposed) return;
+      // Its lines took the shortest way while it moved; routed again now it has landed, they go back to
+      // their own sides — left alone, a tree's line stayed on the child's edge rather than its top.
+      this.routeEdges();
+      this.notify('graph');
+    }, ms);
+  }
+
+  /**
+   * The sides a line to a moving card holds — see `routeOf`. From the node it comes out of toward where
+   * the card stands, along whichever axis that mostly runs, and the card's side facing back.
+   */
+  private passingSides(edge: GraphEdge): EdgeAnchors | undefined {
+    const end = this.passing.get(edge.target) ? edge.target : this.passing.get(edge.source) ? edge.source : null;
+    const passing = end ? this.passing.get(end) : undefined;
+    if (!end || !passing?.home) return undefined;
+    const parent = this.positions.get(passing.node);
+    const fromParent = parent ? { x: passing.home.x - parent.x, y: passing.home.y - parent.y } : null;
+    if (!fromParent) return undefined;
+    const across = Math.abs(fromParent.x) >= Math.abs(fromParent.y);
+    const away: EdgeSide = across ? (fromParent.x < 0 ? 'w' : 'e') : fromParent.y < 0 ? 'n' : 's';
+    const back: EdgeSide = ({ w: 'e', e: 'w', n: 's', s: 'n' } as const)[away];
+    // The parent is whichever end is not moving.
+    return end === edge.target ? { source: away, target: back } : { source: back, target: away };
+  }
+
+  /** How long opening and closing take: {@link PASS_MS}, or nothing where the reader wants no motion. */
+  private passMs(): number {
+    return this.selfTravel > 0 ? PASS_MS : 0;
+  }
+
+  /**
+   * Whether a line to this card is left undrawn while it grows out of a node or shrinks back in.
+   *
+   * Where the layout works positions out — a tree — lines are pinned from a parent's bottom to a child's
+   * top, and a card moving across its parent's edge drags such a line into a loop whatever is done with
+   * its ends. There the line is drawn when the card lands. On a canvas, where nothing else moves, the
+   * line follows the card as a fold's does.
+   */
+  hidesLinesTo(id: string): boolean {
+    return this.passing.has(id) && this.layout?.derivesPositions !== false;
+  }
+
+  /**
+   * How much of a card coming out of a node, or going back in, is drawn this frame — 0 at the node, 1
+   * at full size — with the fold's ease, so opening and folding move alike.
+   *
+   * Shrunk rather than faded, as a fold's cards are: moved into its parent at full size, a card passed
+   * over it as a box, and its lines bent round the overlap. One shrinking to a point at the parent's
+   * centre never covers it, and its lines meet its edge all the way in. On its own clock rather than
+   * the layout travel's, which starts again whenever anything re-runs the layout mid-way — a scale
+   * tied to it jumped back and flashed.
+   */
+  private passingScale(id: string): number | undefined {
+    const passing = this.passing.get(id);
+    if (!passing) return undefined;
+    const t = Math.min(1, Math.max(0, (Date.now() - passing.started) / passing.ms));
+    // Eased in and out alike, so growing and shrinking are one movement walked both ways.
+    const eased = t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2;
+    return passing.out ? eased : 1 - eased;
+  }
+
+  private finishCollapse(id: string, result: CollapseResult): void {
+    // Anything opened again on the way in is held again, and stays.
+    const removed = result.removedNodes.filter((nodeId) => !this.expansion.isHeld(nodeId));
+    this.store.removeNodes(removed);
+    for (const nodeId of removed) {
       this.positions.delete(nodeId);
       this.selected.delete(nodeId);
     }
@@ -1146,7 +1286,7 @@ export class GraphEngine {
       this.status = { ...this.status, budgetReached: false };
     }
     this.recomputeMetrics();
-    this.relayout();
+    this.relayout({ travel: this.layout?.derivesPositions !== false ? this.passMs() : 0, steady: id });
     this.notify('graph');
   }
 
@@ -1337,6 +1477,18 @@ export class GraphEngine {
     return held;
   }
 
+  /**
+   * Whether opening this node could bring anything in: a registered expander the spec allows claims
+   * it, it is not already open with nothing more to give, and the graph has room. What a caret asks
+   * before offering to open a card — asked, like `canFold`, of the selected card only.
+   */
+  canExpand(id: string): boolean {
+    const node = this.store.node(id);
+    if (!node || node.leaf || this.atBudget()) return false;
+    if (this.expansion.isExpanded(id) && !this.expansion.hasMore(id)) return false;
+    return this.registry.expandersFor(node.kind, node.type, this.spec.expansion?.expanders).length > 0;
+  }
+
   /** Whether folding this card would take anything away — see {@link foldableIds}. */
   canFold(id: string): boolean {
     if (this.foldedIds.has(id)) return true;
@@ -1370,7 +1522,7 @@ export class GraphEngine {
    */
   foldScale(id: string): number {
     const anim = this.foldAnim.get(id);
-    if (!anim) return 1;
+    if (!anim) return this.passingScale(id) ?? 1;
     return anim.out ? 1 - anim.at : anim.at;
   }
 
@@ -1571,7 +1723,19 @@ export class GraphEngine {
     this.relayout({ travel: this.selfTravel });
   }
 
-  relayout(options?: { fit?: Fit; travel?: number }): void {
+  /**
+   * `steady` names a node to keep where it is: the arrangement the layout returns is shifted so that
+   * node does not move. Opening a node in a tree grows the tree around it, and without this the tree
+   * grew from its left edge — its root slid right by half of every child added, and every tree after
+   * it with it. Only where the layout works positions out; a pinned card is never shifted.
+   */
+  relayout(options?: {
+    fit?: Fit;
+    travel?: number;
+    steady?: string;
+    /** Cards that set off from another node's place rather than appearing at their own — see `expand`. */
+    emergeFrom?: { node: string; ids: string[] };
+  }): void {
     this.relayoutHeld = false;
     const spec = this.spec.layout ?? { type: 'force' };
     /*
@@ -1670,9 +1834,32 @@ export class GraphEngine {
     // Areas the layout named — see `LayoutRegion`. Replaced wholesale rather than merged: a region is
     // a fact about *this* arrangement, so one kept from the previous run would be drawn around cards
     // that have since moved out of it.
-    this.layoutRegions = result.regions ?? [];
+    const shift = this.steadyShift(options?.steady, result.positions);
+    this.layoutRegions = (result.regions ?? []).map((region) =>
+      shift
+        ? {
+            ...region,
+            bounds: {
+              minX: region.bounds.minX + shift.x,
+              minY: region.bounds.minY + shift.y,
+              maxX: region.bounds.maxX + shift.x,
+              maxY: region.bounds.maxY + shift.y,
+            },
+          }
+        : region,
+    );
     this.fitUntilSettled = result.running ? (options?.fit ?? false) : false;
-    this.applyPositions(result.positions, options?.fit, options?.travel);
+    if (shift) {
+      for (const [id, at] of result.positions) {
+        if (!this.pinnedIds.has(id)) result.positions.set(id, { ...at, x: at.x + shift.x, y: at.y + shift.y });
+      }
+    }
+    const origin = options?.emergeFrom ? result.positions.get(options.emergeFrom.node) : undefined;
+    const origins =
+      origin && options?.emergeFrom
+        ? new Map(options.emergeFrom.ids.map((nodeId) => [nodeId, { x: origin.x, y: origin.y }]))
+        : undefined;
+    this.applyPositions(result.positions, options?.fit, options?.travel, origins);
     // A dropped card whose write has come back needs holding no longer: the data now says what the hold did.
     if (this.arrangement && !this.arrangement.at && this.arrangementSettled()) this.endArrangement();
     // A fit that could not run yet (no surface measured) is remembered, not dropped.
@@ -1735,7 +1922,13 @@ export class GraphEngine {
     }, 16);
   }
 
-  private applyPositions(positions: Map<string, Placement>, fit?: Fit, travel?: number): void {
+  private applyPositions(
+    positions: Map<string, Placement>,
+    fit?: Fit,
+    travel?: number,
+    /** Where cards with no place yet set off from, for a travel — see `relayout`'s `emergeFrom`. */
+    origins?: ReadonlyMap<string, Point>,
+  ): void {
     // Re-asserted over whatever the layout returned — see `pinnedIds`.
     for (const id of this.pinnedIds) {
       const at = positions.get(id);
@@ -1775,7 +1968,9 @@ export class GraphEngine {
       here. One line below, the layout's answer has replaced it and "where did this come from" is gone
       — the same reason `setFolded` captures the positions before it recomputes the fold.
     */
-    const before = this.positions;
+    const before: ReadonlyMap<string, Placement> = origins?.size
+      ? new Map([...origins, ...this.positions] as [string, Placement][])
+      : this.positions;
     this.positions = positions;
     // A card that has gone — deleted, or folded away — takes its record of how it was drawn with it.
     this.travel.keepVisuals(this.positions);
@@ -1848,7 +2043,14 @@ export class GraphEngine {
    */
   private warmStart(): ReadonlyMap<string, Placement> {
     const warm = new Map<string, Placement>();
-    for (const [id, at] of this.positions) {
+    for (const [id, drawn] of this.positions) {
+      /*
+        Where a travelling card is going, not where it is drawn this frame. A layout that keeps a card's
+        previous place — `manual` does, for a card it parked — re-run mid-travel by an unrelated refresh
+        took the half-travelled point as that place, and the card stopped there: a note's opened blocks
+        froze in a heap just off the note.
+      */
+      const at = this.travel.destination(id) ?? drawn;
       warm.set(id, this.pinnedIds.has(id) ? { x: at.x, y: at.y, fixed: true } : { x: at.x, y: at.y });
     }
     return warm;
@@ -2018,6 +2220,20 @@ export class GraphEngine {
    */
   setSelfTravel(ms: number): void {
     this.selfTravel = Math.max(0, ms || 0);
+  }
+
+  /**
+   * How far to move a new arrangement so `steady` stays where it was — see {@link relayout}. Nothing
+   * where there is no such node, where it was not placed before, or where the layout does not work
+   * positions out.
+   */
+  private steadyShift(steady: string | undefined, next: Map<string, Placement>): Point | null {
+    if (!steady || this.layout?.derivesPositions === false) return null;
+    const before = this.positions.get(steady);
+    const after = next.get(steady);
+    if (!before || !after) return null;
+    const shift = { x: before.x - after.x, y: before.y - after.y };
+    return shift.x || shift.y ? shift : null;
   }
 
   /** Whether a travel is running — for a caller that should wait for the arrangement to settle. */
@@ -2273,7 +2489,17 @@ export class GraphEngine {
    * for why the engine owns this rather than the renderer.
    */
   visualOf(node: GraphNode): NodeVisual {
-    const visual = this.resolvedVisual(node, this.metrics);
+    const resolved = this.resolvedVisual(node, this.metrics);
+    /*
+      Under the node it is coming out of or going back into. A card stacks by when it arrived, so an
+      opened card is drawn over its parent, and travelling in or out across it read as the parent being
+      covered rather than as the card emerging from behind it.
+    */
+    const passing = this.passing.get(node.id);
+    const parentNode = passing ? this.store.node(passing.node) : undefined;
+    const visual = parentNode
+      ? { ...resolved, z: (this.resolvedVisual(parentNode, this.metrics).z ?? 0) - 1 }
+      : resolved;
     // Recorded here rather than in `resolvedVisual`, because this is the drawing path: the hit area
     // resolves from the same blend without metrics, and is not what anybody saw.
     this.travel.drewVisual(node.id, visual);
@@ -2509,6 +2735,16 @@ export class GraphEngine {
   ): { anchors: EdgeAnchors; waypoints: EdgeWaypoint[]; bend: number } {
     const data = { ...edge.data, ...patch };
     const ignore = style.ignoreRoute === true;
+    /*
+      On a canvas, a line to a card coming out of a node or going back in holds the sides it will meet
+      at where the card stands — the parent's side facing it, and the card's facing back — for the whole
+      move. Left free it was routed from wherever the card was that frame, which starts inside the
+      parent: a property heading left left from the parent's top or bottom and swung round to its side.
+      In a tree such a line is not drawn while the card moves (`hidesLinesTo`) and keeps its own sides,
+      so that it reappears where it belongs rather than sweeping there.
+    */
+    const moving = this.layout?.derivesPositions === false ? this.passingSides(edge) : undefined;
+    if (moving) return { anchors: moving, waypoints: [], bend: 0 };
     return {
       anchors: anchorsOf(ignore ? undefined : data, { source: style.sourceAnchor, target: style.targetAnchor }),
       waypoints: waypointsOf(data),

@@ -20,18 +20,19 @@
 */
 import '@we/graph-solid/styles';
 
-import type { EntityClass, QueryOptions, RendererStores } from '@we/backend-shared';
+import type { EntityClass, ParentRef, QueryOptions, RendererStores } from '@we/backend-shared';
 import { manifestEntries, trace } from '@we/backend-shared';
 import { BlockRenderer } from '@we/block-solid';
 import { Column, Row } from '@we/components/solid';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { placementPosition, placementStyle } from '@we/graph-expanders';
 import type { GraphNode, GraphValue, WatchQuery } from '@we/graph-protocol';
+import { parseAddress } from '@we/graph-protocol';
 import { GraphView, type GraphViewProps } from '@we/graph-solid';
 import type { RenderProps } from '@we/schema-solid';
 import { RenderSchema } from '@we/schema-solid';
 import { fillForSemantic } from '@we/template-kit';
-import { createComputed, createEffect, createMemo, createSignal, type JSX, onCleanup, Show } from 'solid-js';
+import { createComputed, createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
 import { toEntityShape } from '../../../shared/graphEntityShape';
@@ -47,6 +48,7 @@ import { chromeBag } from '../../../shared/registries/templateBag';
 import { CANVAS_RECORD_CARD, type CanvasCard, canvasCard } from '../../../shared/shapes/canvasCard';
 import { componentRegistry } from '../registries/componentRegistry';
 import { useDatasetStore } from '../stores/DatasetStore';
+import { useFlowStore } from '../stores/FlowStore';
 import { useProfileStore } from '../stores/ProfileStore';
 import { useRecordStore } from '../stores/RecordStore';
 import { useSessionStore } from '../stores/SessionStore';
@@ -104,7 +106,72 @@ interface ScopeRequest {
  * from one whose rule never asked for content.
  */
 function BlockCard(props: { node: GraphNode }) {
-  return <DocumentCard node={props.node} fallback={<span class="we-graph__card-text">{props.node.label}</span>} />;
+  return (
+    <>
+      <FlowBadges node={props.node} />
+      <DocumentCard node={props.node} fallback={<span class="we-graph__card-text">{props.node.label}</span>} />
+    </>
+  );
+}
+
+/**
+ * The flows a card's record is going through, one badge each — the same badges a board's cards carry,
+ * so a record reads the same wherever it is drawn. Above the card's contents rather than below them,
+ * because a card is clipped: the end of a long note is exactly what does not show.
+ */
+function FlowBadges(props: { node: GraphNode }) {
+  const flowStore = useFlowStore();
+  const flows = createMemo(() => {
+    const id = parseAddress(props.node.id)?.id;
+    return (id && flowStore.recordFlows()[id]) || [];
+  });
+  return (
+    <Show when={flows().length}>
+      <Row gap="100" wrap pb="100">
+        <For each={flows()}>
+          {(inFlow) => (
+            <we-badge size="xs" variant={inFlow.waiting || inFlow.stalled ? 'warning' : 'neutral'}>
+              <Row gap="100" ay="center">
+                <we-icon name="flow-arrow" size="xs" />
+                {inFlow.stateLabel ? `${inFlow.label} · ${inFlow.stateLabel}` : inFlow.label}
+              </Row>
+            </we-badge>
+          )}
+        </For>
+      </Row>
+    </Show>
+  );
+}
+
+/**
+ * A property, as its name and its value — the `content: 'property'` a style rule names.
+ *
+ * The node's label says both in one string ("status: todo", "title · string"), and drawn as one they
+ * read with equal weight, when what a reader scans for is the value. So the name is drawn quietly and
+ * the value plainly and bold, split at the separator the expander wrote.
+ */
+function PropertyCard(props: { node: GraphNode }) {
+  const parts = createMemo(() => {
+    const label = props.node.label ?? '';
+    for (const separator of [': ', ' · ', ' → ']) {
+      const at = label.indexOf(separator);
+      if (at > 0) return { name: label.slice(0, at), value: label.slice(at + separator.length), separator };
+    }
+    return { name: '', value: label, separator: '' };
+  });
+  return (
+    <span class="we-graph__card-text">
+      <Show when={parts().name}>
+        <we-text color="text-muted" inline>
+          {parts().name}
+          {parts().separator === ' → ' ? ' → ' : ' '}
+        </we-text>
+      </Show>
+      <we-text fontWeight="semibold" inline>
+        {parts().value}
+      </we-text>
+    </span>
+  );
 }
 
 /** A composed document drawn in full, or `fallback` for a record that has none. */
@@ -184,15 +251,18 @@ function RecordCard(props: { node: GraphNode }) {
   );
 
   return (
-    <DocumentCard
-      node={props.node}
-      fallback={RenderSchema({
-        node: CANVAS_RECORD_CARD,
-        stores: NO_STORES,
-        registry: NO_COMPONENTS,
-        context: { card },
-      })}
-    />
+    <>
+      <FlowBadges node={props.node} />
+      <DocumentCard
+        node={props.node}
+        fallback={RenderSchema({
+          node: CANVAS_RECORD_CARD,
+          stores: NO_STORES,
+          registry: NO_COMPONENTS,
+          context: { card },
+        })}
+      />
+    </>
   );
 }
 
@@ -294,12 +364,11 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     return options;
   }
 
-  /** Resolve a neutral drill-down to the parent handle the ORM takes. Mirrors the query adapter. */
-  function parentFor(scope: ScopeRequest): { id: string; predicate: string } | undefined {
+  /** A neutral drill-down as the parent a read narrows to — the relation by name, on its entity. */
+  function parentFor(scope: ScopeRequest): ParentRef | undefined {
     const entry = manifest().find((m) => m.name === scope.anchor);
-    const property = entry?.properties.find((p) => p.name === scope.via);
-    if (!property) return undefined;
-    return { id: scope.anchorId, predicate: property.predicate };
+    if (!entry?.properties.some((p) => p.name === scope.via)) return undefined;
+    return { id: scope.anchorId, relation: scope.via, entity: scope.anchor };
   }
 
   /**
@@ -409,7 +478,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
   });
 
   const host: GraphViewProps['host'] = {
-    nodeContent: { block: BlockCard, record: RecordCard },
+    nodeContent: { block: BlockCard, record: RecordCard, property: PropertyCard },
     // A card's score for the reaction a tree is ordered by, and the reader's own answer — see `ReactionBadge`.
     nodeBadges: { reaction: ReactionBadge },
     // The header controls a template may name — colour, shape, scale. See `graphControls`.

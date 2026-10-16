@@ -16,7 +16,7 @@
  * diarization is involved. That is a property of how transcription was built, and it is what makes
  * speaker attribution here free and correct rather than inferred.
  */
-import type { EntityManifestEntry, TranscriptTurn } from '@we/backend-shared';
+import type { TranscriptTurn } from '@we/backend-shared';
 
 /** The model statics this needs, narrowed so callers can pass an ORM class without a cast. */
 export interface TurnRecord {
@@ -28,18 +28,6 @@ export interface GatherTurnsDeps {
   modelFor(entity: string): TurnRecord | undefined;
   /** The dataset handle the models take. */
   handle: unknown;
-  /**
-   * The predicate holding the container's children, resolved by the caller.
-   *
-   * Passed in rather than looked up here, and the reason is a bug worth remembering: this used to
-   * read it from the dataset's manifest, which carries **foreign** schemas only — everything WE
-   * already knows natively is deliberately absent from it. So the lookup for `CollectionBlock`
-   * always missed, the gather returned nothing, and extraction reported "0 records" without ever
-   * reaching the model. Silent, and indistinguishable from a conversation with nothing in it.
-   *
-   * The caller knows whether a container is native or foreign and can answer from either.
-   */
-  containmentPredicate: string;
 }
 
 /** Entities whose instances can be a turn. Only TextBlock today; a list so a caller can widen it. */
@@ -56,38 +44,6 @@ const DEFAULT_TURN_ENTITIES = ['TextBlock'];
  * wants to make a record writes the record.
  */
 export const INPUT_SOURCES = ['spoken', 'typed', 'corrected'] as const;
-
-/** The shape statics this reads off a model class, narrowed so a caller passes an ORM class as-is. */
-interface ShapeBearing {
-  generateSHACL?: () => { shape?: { properties?: { name?: string; path?: string }[] } };
-}
-
-/**
- * The predicate holding a `CollectionBlock`'s children, from whichever side knows it.
- *
- * **The native model first, and that ordering is the whole point.** A dataset's manifest carries
- * *foreign* schemas only — everything the host knows natively is deliberately absent from it — so
- * resolving a core model's predicate from the manifest always misses. Doing exactly that made
- * extraction gather zero turns and report "0 records found" without ever reaching the model, which
- * is indistinguishable from a conversation with nothing worth extracting in it. It also left the
- * `parent` link unset, so anything that *had* been written would have been invisible in every view.
- *
- * The manifest stays as the fallback for a container that is genuinely foreign — another app's,
- * synced into the space, which the native registry has never heard of.
- */
-export function containmentPredicate(
-  modelFor: (entity: string) => unknown,
-  manifest: EntityManifestEntry[],
-  container = 'CollectionBlock',
-  relation = 'children',
-): string | undefined {
-  const shape = (modelFor(container) as ShapeBearing | undefined)?.generateSHACL?.().shape;
-  const native = shape?.properties?.find((property) => property.name === relation)?.path;
-  if (native) return native;
-
-  return manifest.find((entry) => entry.name === container)?.properties.find((property) => property.name === relation)
-    ?.predicate;
-}
 
 /**
  * Normalise whatever the model layer hands back for `createdAt` into ISO-8601.
@@ -138,11 +94,6 @@ export async function gatherTranscriptTurns(
   collectionId: string,
   options: { entities?: string[]; limit?: number } = {},
 ): Promise<TranscriptTurn[]> {
-  const predicate = deps.containmentPredicate;
-  // No containment predicate means the caller could not resolve the collection schema — a foreign
-  // space with no WE collections is a real state rather than a bug, so there is nothing to gather.
-  if (!predicate) return [];
-
   const turns: TranscriptTurn[] = [];
 
   for (const entity of options.entities ?? DEFAULT_TURN_ENTITIES) {
@@ -157,7 +108,8 @@ export async function gatherTranscriptTurns(
     */
     const rows = withThreads(
       (await model.findAll(deps.handle, {
-        parent: { id: collectionId, predicate },
+        // The collection's own parts, by the relation's name; the backend knows how it stores them.
+        parent: { id: collectionId, relation: 'children', entity: 'CollectionBlock' },
         include: { thread: true },
         ...(options.limit !== undefined ? { limit: options.limit } : {}),
       })) as Record<string, unknown>[],

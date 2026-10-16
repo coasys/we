@@ -46,7 +46,6 @@ export { type NeutralManifestResult, toNeutralManifest } from './neutralManifest
 export * from './interpretationHints';
 export * from './perspectiveHelpers';
 export * from './sdnaEntities';
-export * from './syncHelpers';
 export {
   buildEntityFromEntry,
   compileManifest,
@@ -55,6 +54,7 @@ export {
   manifestToEntries,
 } from './manifestCompiler';
 export { type Ad4mLifecycleOptions, createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
+export { createAd4mModelAdmin } from './modelAdminAdapter';
 export { type Ad4mRuntimeOptions, createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
 export {
   type Ad4mConnectionOptions,
@@ -65,7 +65,14 @@ export {
 export { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './languageModelPort';
 export { connectToLocalExecutor, createLocalAd4mConnector, type LocalExecutorConnection } from './localExecutor';
 export { createAd4mTranscriptionPort } from './transcriptionAdapter';
-export { createAd4mFlowPort, FLOW_NAMESPACE } from './flowPort';
+export {
+  AD4M_FLOW_CAPABILITIES,
+  createAd4mFlowPort,
+  FLOW_NAMESPACE,
+  fromShaclFlow,
+  isEditable,
+  toShaclFlow,
+} from './flowPort';
 export {
   createAd4mInterpretationPort,
   runtimeSupportsAutoProcessing,

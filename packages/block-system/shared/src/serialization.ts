@@ -1,4 +1,4 @@
-import type { RecordInstance } from '@we/backend-shared';
+import type { ParentRef, RecordInstance } from '@we/backend-shared';
 import type { FileData } from '@we/entities';
 import { asFileField, dataURIToFileData, getFileStore, runEntityTransaction } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
@@ -540,21 +540,14 @@ async function writeMentions(root: RecordInstance, blocks: readonly ContentBlock
 // ── Create ───────────────────────────────────────────────────────────────────
 
 /**
- * Where a newly-created composition attaches, as a raw predicate link.
+ * Where a new root attaches: an existing record and the relation of it the root joins, by name.
  *
- * A predicate rather than a relation name because the two anchors that matter mean different
- * things and live on different models: `we://child` puts a message *inside* a channel
- * (composition — what a container is made of), `we://response` hangs a reply *off* any `WeNode`
- * (discourse — what was said about it). A relation-name API would have to resolve the name against
- * the anchor's class, which the block system does not have and should not need: it is persisting a
- * document, and where that document belongs is the caller's knowledge.
+ * The two anchors that matter mean different things: `children` puts a message *inside* a channel
+ * (composition — what a container is made of), `responses` hangs a reply *off* any `WeNode`
+ * (discourse — what was said about it). Where the root belongs is the caller's knowledge; how the
+ * backend stores that relation is the backend's, so nothing here names it.
  */
-export interface BlockAnchor {
-  /** Id of the existing node the new root links from. */
-  id: string;
-  /** The predicate to link through — `'we://child'`, `'we://response'`. */
-  predicate: string;
-}
+export type BlockAnchor = ParentRef;
 
 export interface CreateBlocksOptions {
   /** Free label stamped onto the root saying what it is for — see the discussion below. */
@@ -625,7 +618,7 @@ export async function createBlocks(
         {},
         {
           batchId: tx.batchId,
-          ...(anchor && { parent: { id: anchor.id, predicate: anchor.predicate } }),
+          ...(anchor && { parent: anchor }),
         },
       )) as BlockRecord;
 
@@ -672,7 +665,7 @@ export async function createBlock(
     async (tx) => {
       const model = (await registration.model.create(perspective, modelData(registration.entity, block), {
         batchId: tx.batchId,
-        ...(options.anchor && { parent: { id: options.anchor.id, predicate: options.anchor.predicate } }),
+        ...(options.anchor && { parent: options.anchor }),
       })) as BlockRecord;
       if (isCollectionBlock(block)) {
         for (const child of block.content ?? []) await persistBlock(perspective, tx.batchId, child, undefined, model);

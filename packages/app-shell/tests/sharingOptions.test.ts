@@ -5,19 +5,19 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { linkLanguageOptions } from '../src/shared/linkLanguageOptions';
+import { sharingPickerOptions } from '../src/shared/sharingOptions';
 
-const P2P = { address: 'Qm-p2p', name: 'perspectiveDiffSync', kind: 'peer-to-peer' as const };
+const P2P = { id: 'Qm-p2p', name: 'perspectiveDiffSync', kind: 'peer-to-peer' as const };
 const SERVER = {
-  address: 'Qm-server',
+  id: 'Qm-server',
   name: 'server-link-language',
   kind: 'server' as const,
   serverUrl: 'https://links.example.org:8443/sync',
 };
 
-describe('linkLanguageOptions', () => {
+describe('sharingPickerOptions', () => {
   it('labels by how a space syncs, keeping the backend’s order', () => {
-    const options = linkLanguageOptions([P2P, SERVER]);
+    const options = sharingPickerOptions([P2P, SERVER]);
 
     expect(options.map((o) => [o.value, o.label, o.icon])).toEqual([
       ['Qm-p2p', 'Peer-to-peer', 'share-network'],
@@ -26,7 +26,7 @@ describe('linkLanguageOptions', () => {
   });
 
   it('describes each choice, naming the server in its own description', () => {
-    const [p2p, server] = linkLanguageOptions([P2P, SERVER]);
+    const [p2p, server] = sharingPickerOptions([P2P, SERVER]);
 
     expect(p2p.description).toMatch(/directly with each other/);
     expect(server.description).toMatch(/links\.example\.org:8443/);
@@ -36,7 +36,7 @@ describe('linkLanguageOptions', () => {
   it('adds the technical name only when two choices would read the same', () => {
     const other = { ...P2P, address: 'Qm-p2p-2', name: 'otherSync' };
 
-    expect(linkLanguageOptions([P2P, other, SERVER]).map((o) => o.label)).toEqual([
+    expect(sharingPickerOptions([P2P, other, SERVER]).map((o) => o.label)).toEqual([
       'Peer-to-peer · perspectiveDiffSync',
       'Peer-to-peer · otherSync',
       'Server (links.example.org:8443)',
@@ -44,7 +44,7 @@ describe('linkLanguageOptions', () => {
   });
 
   it('still labels a server template whose URL is missing or unparseable', () => {
-    expect(linkLanguageOptions([{ ...SERVER, serverUrl: undefined }])[0].label).toBe('Server');
-    expect(linkLanguageOptions([{ ...SERVER, serverUrl: 'not a url' }])[0].label).toBe('Server (not a url)');
+    expect(sharingPickerOptions([{ ...SERVER, serverUrl: undefined }])[0].label).toBe('Server');
+    expect(sharingPickerOptions([{ ...SERVER, serverUrl: 'not a url' }])[0].label).toBe('Server (not a url)');
   });
 });

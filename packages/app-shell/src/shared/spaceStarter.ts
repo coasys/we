@@ -168,6 +168,33 @@ export interface StarterWriter {
   compose(id: string, entity: string, fields: Record<string, unknown>): Promise<void>;
 }
 
+/** The two relation writes `linkSpaceRelations` needs, as an entity class offers them. */
+export interface RelationWrites {
+  setRelation(dataset: unknown, id: string, relation: string, targetIds: readonly string[]): Promise<void>;
+  addRelation(dataset: unknown, id: string, relation: string, targetId: string): Promise<void>;
+}
+
+/**
+ * Write a starter's relations onto a record: a list as one write, a single id as an addition.
+ *
+ * A list is a sequence somebody chose, and only a whole-list write carries the sequence. Added one
+ * at a time, an ordered relation holds the members and no positions, and reads back in whatever
+ * order the backend's query returns — the space's task states came back Done, Doing, To do, which
+ * made "on to the next state" refuse every move the board showed as next. The relation is new, so
+ * setting it can lose nobody's addition.
+ */
+export async function linkSpaceRelations(
+  writes: RelationWrites,
+  dataset: unknown,
+  id: string,
+  relations: Record<string, string | string[]>,
+): Promise<void> {
+  for (const [relation, value] of Object.entries(relations)) {
+    if (Array.isArray(value)) await writes.setRelation(dataset, id, relation, value);
+    else await writes.addRelation(dataset, id, relation, value);
+  }
+}
+
 /** Where a starter writes: the space it is starting, and what the create form said about it. */
 export interface StarterTarget extends StarterContext {
   rootId: string;

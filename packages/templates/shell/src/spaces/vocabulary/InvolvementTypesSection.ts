@@ -1,6 +1,8 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { field, formModal, sectionCard } from '@we/template-kit';
 
+import { focusRow } from './focusRow';
+
 /**
  * The kinds of part people can have in this community's work — "Assigned", "Reviewing", "Going".
  *
@@ -316,7 +318,7 @@ export const involvementTypesSection: SchemaNode = sectionCard({
       // is the defaults, and a query would show nothing on exactly the spaces that most need explaining.
       type: '$each',
       props: { items: { $: 'spaceStore.involvementTypes' }, as: 'kind' },
-      children: [kindRow],
+      children: [focusRow('kind', kindRow)],
     },
     createModal,
     editModal,

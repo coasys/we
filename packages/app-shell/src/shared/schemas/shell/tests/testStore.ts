@@ -167,7 +167,7 @@ export function createTestStore(
       const gamma = await TestItem.create(p, { name: 'Gamma', status: 'active', category: 'A' });
 
       const addChild = (parentId: string, label: string, owner: string) =>
-        TestChild.create(p, { label, owner }, { parent: { id: parentId, predicate: 'we://test_child' } });
+        TestChild.create(p, { label, owner }, { parent: { id: parentId, relation: 'children', entity: 'TestItem' } });
       await addChild(alpha.id, 'a-mine', queryOwner);
       await addChild(alpha.id, 'a-other', 'owner:other');
       await addChild(gamma.id, 'g-mine', queryOwner);

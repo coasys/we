@@ -181,7 +181,7 @@ const watchRoute: RouteSchema = {
               title: 'Comment',
               kind: KIND.reply,
               parentId: { $: 'post.id' },
-              predicate: 'we://response',
+              relation: 'responses',
               saveLabel: 'Comment',
             }),
             commentThread({

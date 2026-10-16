@@ -1,17 +1,19 @@
 /**
  * A space's task states as a flow: when there is one, what it compiles to, and what asking for a
- * move does — driven through the in-memory flow port with several agents voting.
+ * move does — driven through the in-memory flow port with several agents asking.
  */
 import { createInMemoryFlowPort } from '@we/backend-inmemory';
-import type { FlowSnapshot } from '@we/backend-shared';
+import type { FlowMoveResult, FlowView } from '@we/backend-shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   compileTaskFlow,
   createTaskFlowActions,
-  ENTRY_STATE,
   flowStateOf,
   needsAgreement,
+  parseTaskStateGuards,
+  readMoveResult,
+  storeTaskStateGuards,
   TASK_FLOW,
   type TaskFlowActions,
   type TaskFlowView,
@@ -30,39 +32,39 @@ describe('compileTaskFlow', () => {
     expect(compileTaskFlow([{ slug: 'todo', approvals: 1, approverKind: '' }])).toBeNull();
   });
 
-  it('turns every state into a flow once one asks, with the entry first and every move between them', () => {
+  it('turns every state into a flow once one asks, with every move between them', () => {
     const flow = compileTaskFlow([{ slug: 'todo' }, { slug: 'doing' }, { slug: 'done', approvals: 2 }])!;
     expect(flow.name).toBe(TASK_FLOW);
-    expect(flow.states.map((s) => s.name)).toEqual([ENTRY_STATE, 'todo', 'doing', 'done']);
-    expect(flow.states.find((s) => s.name === 'done')?.approvals).toBe(2);
-    // Three entries, and six moves among three states.
-    expect(flow.transitions).toHaveLength(3 + 6);
+    expect(flow.states.map((s) => s.name)).toEqual(['todo', 'doing', 'done']);
+    expect(flow.states.find((s) => s.name === 'done')?.requires).toEqual([{ kind: 'approvals', count: 2 }]);
+    expect(flow.states.find((s) => s.name === 'todo')?.requires).toBeUndefined();
+    // Six moves among three states.
+    expect(flow.transitions).toHaveLength(6);
     expect(flow.transitions).toContainEqual({ from: 'done', to: 'todo' });
-    expect(flow.transitions).toContainEqual({ from: ENTRY_STATE, to: 'done' });
   });
 
   it('names whose approval counts as the holders of an involvement kind on the task being moved', () => {
     const flow = compileTaskFlow([{ slug: 'todo' }, { slug: 'done', approverKind: 'reviewer' }])!;
-    expect(flow.states.find((s) => s.name === 'done')?.role).toEqual({
-      entity: 'Involvement',
-      agentField: 'agent',
-      where: { kind: 'reviewer' },
-      subjectField: 'node',
-    });
+    expect(flow.states.find((s) => s.name === 'done')?.requires).toEqual([
+      {
+        kind: 'approvals',
+        count: 1,
+        from: { entity: 'Involvement', agentField: 'agent', where: { kind: 'reviewer' }, subjectField: 'node' },
+      },
+    ]);
   });
 
   it('normalises approvals, and treats a kind on its own as asking for agreement', () => {
     expect(needsAgreement({ slug: 'x', approvals: 0 })).toBe(false);
     expect(needsAgreement({ slug: 'x', approverKind: 'reviewer' })).toBe(true);
     const flow = compileTaskFlow([{ slug: 'todo' }, { slug: 'done', approvals: 999 }])!;
-    expect(flow.states.find((s) => s.name === 'done')?.approvals).toBe(20);
+    expect(flow.states.find((s) => s.name === 'done')?.requires).toEqual([{ kind: 'approvals', count: 20 }]);
   });
 });
 
 describe('asking for a move', () => {
   let signedIn = ANA;
   let states: TaskStateRule[];
-  let snapshot: FlowSnapshot | null;
   let actions: TaskFlowActions;
   const dataset = {};
   const port = createInMemoryFlowPort(() => signedIn);
@@ -76,23 +78,18 @@ describe('asking for a move', () => {
     }
   };
 
-  const refresh = async () => {
-    const stop = await port.watch(dataset, TASK_FLOW, (s) => (snapshot = s));
+  const latest = async (rules: TaskFlowView['rules'] = {}): Promise<TaskFlowView> => {
+    let view: FlowView | undefined;
+    const stop = await port.watch(dataset, TASK_FLOW, (v) => (view = v));
     await new Promise((r) => setTimeout(r, 0));
     stop();
+    return { view: view!, rules };
   };
 
   beforeEach(async () => {
     signedIn = ANA;
-    snapshot = null;
     states = [{ slug: 'todo' }, { slug: 'doing' }, { slug: 'done', approvals: 2 }];
-    actions = createTaskFlowActions({
-      dataset: () => dataset,
-      port: () => port,
-      states: () => states,
-      snapshot: () => snapshot,
-      me: () => signedIn,
-    });
+    actions = createTaskFlowActions({ dataset: () => dataset, port: () => port, states: () => states });
     await port.install(dataset, compileTaskFlow(states)!);
   });
 
@@ -104,8 +101,7 @@ describe('asking for a move', () => {
   it('enters a never-moved task into the state it already holds, then asks for the move', async () => {
     // The task was made in Doing before the space asked for agreement.
     expect(await actions.move('task-b', 'doing', 'done')).toBe('waiting');
-    await refresh();
-    const view: TaskFlowView = { snapshot: snapshot!, rules: { done: { approvals: 2, approverKind: '' } } };
+    const view = await latest({ done: { approvals: 2, approverKind: '' } });
     expect(flowStateOf(view, 'task-b')).toBe('doing');
     expect(taskMoveCard(view, 'task-b', () => [], BEN)).toMatchObject({
       to: 'done',
@@ -120,21 +116,18 @@ describe('asking for a move', () => {
   it('moves once a second person asks for the same move', async () => {
     await actions.move('task-c', 'doing', 'done');
     expect(await as(BEN, () => actions.move('task-c', 'doing', 'done'))).toBe('moved');
-    await refresh();
-    expect(flowStateOf({ snapshot: snapshot!, rules: {} }, 'task-c')).toBe('done');
+    expect(flowStateOf(await latest(), 'task-c')).toBe('done');
   });
 
   it('moves at once into a state that asks for nothing', async () => {
     expect(await actions.move('task-d', 'todo', 'doing')).toBe('moved');
   });
 
-  it('withdraws only the viewer’s own vote', async () => {
+  it('withdraws only the viewer’s own ask', async () => {
     await actions.move('task-e', 'doing', 'done');
-    await refresh();
     expect(await as(BEN, () => actions.withdraw('task-e'))).toBe(0);
     expect(await actions.withdraw('task-e')).toBeGreaterThan(0);
-    await refresh();
-    expect(taskMoveCard({ snapshot: snapshot!, rules: {} }, 'task-e', () => [], ANA)).toBeUndefined();
+    expect(taskMoveCard(await latest(), 'task-e', () => [], ANA)).toBeUndefined();
   });
 
   it('starts a task made into a column that asks for agreement in the first one that does not', () => {
@@ -143,11 +136,13 @@ describe('asking for a move', () => {
 });
 
 describe('taskMoveCard', () => {
-  const snapshot: FlowSnapshot = {
-    runs: [{ id: 'r', subject: 'task', state: 'doing', startedAt: 1 }],
-    proposals: [{ id: 'p', run: 'r', from: 'doing', to: 'done', proposer: ANA, voters: [ANA, BEN], settled: false }],
+  const flowView: FlowView = {
+    flow: TASK_FLOW,
+    items: [
+      { subject: 'task', state: 'doing', since: 1, waiting: [{ to: 'done', voters: [ANA, BEN] }], stalled: false },
+    ],
   };
-  const view: TaskFlowView = { snapshot, rules: { done: { approvals: 1, approverKind: 'reviewer' } } };
+  const view: TaskFlowView = { view: flowView, rules: { done: { approvals: 1, approverKind: 'reviewer' } } };
 
   it('counts only the holders of the kind, and offers approval only to one who would count', () => {
     const holders = (kind: string) => (kind === 'reviewer' ? [BEN, 'did:key:cat'] : []);
@@ -156,52 +151,98 @@ describe('taskMoveCard', () => {
     expect(taskMoveCard(view, 'task', holders, ANA)).toMatchObject({ mine: true, canApprove: false });
   });
 
-  it('reads nothing for the entry state — the board goes on reading `status` there', () => {
-    const entry: TaskFlowView = {
-      snapshot: { runs: [{ ...snapshot.runs[0], state: ENTRY_STATE }], proposals: [] },
+  it('reads nothing where the flow cannot say — the board goes on reading `status` there', () => {
+    const unknown: TaskFlowView = {
+      view: { flow: TASK_FLOW, items: [{ ...flowView.items[0], state: null }] },
       rules: {},
     };
-    expect(flowStateOf(entry, 'task')).toBeUndefined();
+    expect(flowStateOf(unknown, 'task')).toBeUndefined();
   });
 });
 
-describe('what a refusal or a timeout means', () => {
-  const states: TaskStateRule[] = [{ slug: 'todo' }, { slug: 'doing' }, { slug: 'done', approvals: 2 }];
-  const run = { id: 'r', subject: 'task', state: 'done', startedAt: 1 };
-  const stub = (propose: () => Promise<never>) =>
-    createTaskFlowActions({
-      dataset: () => ({}),
-      port: () => ({
-        install: async () => {},
-        start: async () => run,
-        propose,
-        withdraw: async () => 0,
-        watch: async () => () => {},
-      }),
-      states: () => states,
-      snapshot: () => null,
-      me: () => ANA,
-    });
+describe('readMoveResult', () => {
+  const read = (result: FlowMoveResult) => readMoveResult(result);
 
-  it('reads "not reachable from where you asked to go" as already there', async () => {
-    // The board showed Done; a rule change had the backend re-judge the run into Doing.
-    const actions = stub(async () => {
-      throw new Error('RPC error 500: `doing` is not reachable from `doing` — no proposal written');
-    });
-    expect(await actions.move('task', 'done', 'doing')).toBe('already-there');
+  it('tells a move that happened from one that was already made', () => {
+    expect(
+      read({ outcome: 'moved', state: 'done', steps: [{ from: 'doing', to: 'done', voters: [ANA], evidence: [] }] }),
+    ).toBe('moved');
+    expect(read({ outcome: 'moved', state: 'done', steps: [] })).toBe('already-there');
   });
 
-  it('reads a timeout as slow rather than failed', async () => {
-    const actions = stub(async () => {
-      throw new Error("RPC call 'perspective.proposeFlowTransition' timed out after 30000ms");
-    });
-    expect(await actions.move('task', 'done', 'doing')).toBe('slow');
+  it('tells a first ask from a repeated one, and names a refusal by its reason', () => {
+    expect(read({ outcome: 'waiting', state: 'doing', to: 'done', voted: true, voters: [ANA] })).toBe('waiting');
+    expect(read({ outcome: 'waiting', state: 'doing', to: 'done', voted: false, voters: [ANA] })).toBe('already-voted');
+    expect(read({ outcome: 'refused', reason: 'unmet', state: 'doing' })).toBe('unmet');
+    expect(read({ outcome: 'refused', reason: 'not-allowed', state: 'doing' })).toBe('not-allowed');
   });
 
-  it('still throws a refusal that names somewhere else', async () => {
-    const actions = stub(async () => {
-      throw new Error('`todo` is not reachable from `done`');
+  it('reads an unanswered move as slow rather than failed', () => {
+    expect(read({ outcome: 'pending' })).toBe('slow');
+    expect(read({ outcome: 'stalled', state: 'vote' })).toBe('stalled');
+  });
+});
+
+describe('a rule over the states, and what must be there', () => {
+  it('runs the states as a flow under a rule even where no state asks for agreement', () => {
+    expect(compileTaskFlow(DEFAULTS)).toBeNull();
+    const flow = compileTaskFlow(DEFAULTS, 'next')!;
+    expect(flow.transitions).toEqual([
+      { from: 'todo', to: 'doing' },
+      { from: 'doing', to: 'done' },
+    ]);
+    const back = compileTaskFlow(DEFAULTS, 'next-and-back')!;
+    // Unlike a flow written as lanes, the last state is not an end: a done task can be reopened.
+    expect(back.transitions.map((t) => `${t.from}>${t.to}`).sort()).toEqual([
+      'doing>done',
+      'doing>todo',
+      'done>doing',
+      'todo>doing',
+    ]);
+  });
+
+  it('compiles a guard into the state it guards, and counts it as asking', () => {
+    const guards = parseTaskStateGuards(JSON.stringify([{ entity: 'TextBlock', tie: 'responses' }]));
+    expect(needsAgreement({ slug: 'done', guards })).toBe(true);
+    const flow = compileTaskFlow([{ slug: 'todo' }, { slug: 'done', guards }])!;
+    expect(flow.states[1]).toEqual({
+      name: 'done',
+      requires: [{ kind: 'guard', entity: 'TextBlock', tie: { relation: 'responses' } }],
     });
-    await expect(actions.move('task', 'done', 'todo')).rejects.toThrow('not reachable');
+  });
+
+  it('stores guards compactly, reads them back, and reads anything unreadable as none', () => {
+    const stored = storeTaskStateGuards([{ entity: 'FileBlock', tie: 'responses', min: 2 }, { entity: '' }]);
+    expect(JSON.parse(stored)).toEqual([{ entity: 'FileBlock', tie: 'responses', min: 2 }]);
+    expect(parseTaskStateGuards(stored)).toEqual([
+      { kind: 'guard', entity: 'FileBlock', tie: { relation: 'responses' }, min: 2 },
+    ]);
+    expect(storeTaskStateGuards([])).toBe('');
+    expect(parseTaskStateGuards('{not json')).toEqual([]);
+  });
+
+  it('keeps the conditions a requirement carries, so "a comment" stays a comment', () => {
+    const stored = storeTaskStateGuards([{ entity: 'CollectionBlock', where: { kind: 'reply' }, tie: 'responses' }]);
+    expect(parseTaskStateGuards(stored)).toEqual([
+      { kind: 'guard', entity: 'CollectionBlock', where: { kind: 'reply' }, tie: { relation: 'responses' } },
+    ]);
+  });
+
+  it('refuses a move the rule does not allow without asking the backend', async () => {
+    const port = createInMemoryFlowPort(() => ANA);
+    const dataset = {};
+    let asked = 0;
+    const counting = { ...port, move: (...args: Parameters<typeof port.move>) => ((asked += 1), port.move(...args)) };
+    const actions = createTaskFlowActions({
+      dataset: () => dataset,
+      port: () => counting,
+      states: () => DEFAULTS,
+      rule: () => 'next',
+    });
+    await port.install(dataset, compileTaskFlow(DEFAULTS, 'next')!);
+    expect(await actions.move('task', 'todo', 'done')).toBe('not-allowed');
+    expect(asked).toBe(0);
+    expect(await actions.move('task', 'todo', 'doing')).toBe('moved');
+    expect(asked).toBe(1);
   });
 });

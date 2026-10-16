@@ -17,9 +17,9 @@ imports one.
   in the morning; a wizard and a language model both produce declarations; forms, cards, pickers and
   extraction prompts derive from them. That needs a declaration format that is not class syntax —
   `EntityManifest` — whatever the adapter compiles it to.
-- **Optional ports degrade by construction.** Transcription, the language model, runtime admin and
-  interpretation are optional and feature-detected. A node without one omits the port, and the UI
-  says so rather than every feature learning how to check.
+- **Optional ports degrade by construction.** Transcription, the language model, model admin,
+  runtime admin and interpretation are optional and feature-detected. A node without one omits the
+  port, and the UI says so rather than every feature learning how to check.
 - **A client upgrade is one package.** The adapter carries the version it was verified against and
   the quirks that version has; moving the pin is one review.
 - **Consumers boot in milliseconds.** Because the contract is implementable over arrays, store tests

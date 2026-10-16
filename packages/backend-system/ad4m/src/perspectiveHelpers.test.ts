@@ -113,6 +113,19 @@ describe('getForeignShacl', () => {
     expect(shapesRead(perspective)).toEqual([]);
   });
 
+  it("leaves out the executor's own classes, without reading them", async () => {
+    const perspective = mockPerspective([
+      { name: 'FlowInstance', shape: makeShape('ad4m://FlowInstance') },
+      { name: 'AutoProcessor', shape: makeShape('ad4m://AutoProcessor') },
+      { name: 'Task', shape: makeShape('app://Task') },
+    ]);
+
+    const foreign = await getForeignShacl(perspective);
+
+    expect(foreign.map((s) => s.name)).toEqual(['Task']);
+    expect(shapesRead(perspective)).toEqual(['Task']);
+  });
+
   it('returns an empty array when the perspective has no shapes', async () => {
     const perspective = mockPerspective([]);
     const foreign = await getForeignShacl(perspective);

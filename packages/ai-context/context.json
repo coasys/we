@@ -3459,7 +3459,7 @@
         },
         {
           "name": "onNodeDragEnd",
-          "type": "((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void)",
+          "type": "((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; opened?: boolean; carried?: { recordId: string; recordType: string; x: number; y: number; }[]; }) => void)",
           "optional": true
         },
         {
@@ -3510,6 +3510,16 @@
         {
           "name": "onNodeFold",
           "type": "((payload: { id: string; recordId?: string; recordType?: string; folded: boolean; count: number; }) => void)",
+          "optional": true
+        },
+        {
+          "name": "open",
+          "type": "string[]",
+          "optional": true
+        },
+        {
+          "name": "onNodeOpen",
+          "type": "((payload: { id: string; recordId?: string; recordType?: string; open: boolean; }) => void)",
           "optional": true
         },
         {
@@ -4952,6 +4962,18 @@
           "type": "string",
           "predicate": "we://module_settings",
           "required": false
+        },
+        {
+          "name": "archivedFlows",
+          "type": "string",
+          "predicate": "we://archived_flows",
+          "required": false
+        },
+        {
+          "name": "taskFlowRule",
+          "type": "string",
+          "predicate": "we://task_flow_rule",
+          "required": false
         }
       ],
       "relations": [
@@ -5209,6 +5231,12 @@
           "name": "approverKind",
           "type": "string",
           "predicate": "we://approver_kind",
+          "required": false
+        },
+        {
+          "name": "guards",
+          "type": "string",
+          "predicate": "we://guards",
           "required": false
         },
         {
@@ -6266,6 +6294,98 @@
       "destructive": ["deleteSession", "clearHistory"]
     },
     {
+      "name": "flowStore",
+      "state": {
+        "available": {
+          "type": "boolean"
+        },
+        "capabilities": {
+          "type": "object"
+        },
+        "canEdit": {
+          "type": "boolean"
+        },
+        "flows": {
+          "type": "array",
+          "properties": ["name", "label", "editable", "records", "managedBy", "archived", "steps", "moves"]
+        },
+        "flowsLoaded": {
+          "type": "boolean"
+        },
+        "startable": {
+          "type": "array",
+          "properties": ["name", "label", "subjects"]
+        },
+        "open": {
+          "type": "object"
+        },
+        "draft": {
+          "type": "object"
+        },
+        "recordFlows": {
+          "type": "object"
+        }
+      },
+      "actions": [
+        "refreshFlows",
+        "openFlow",
+        "closeFlow",
+        "loadHistory",
+        "startFlow",
+        "moveRecord",
+        "withdrawRecord",
+        "newFlow",
+        "editFlow",
+        "cancelDraft",
+        "saveDraft",
+        "deleteFlow",
+        "setDraftLabel",
+        "setDraftHint",
+        "setDraftSubjects",
+        "addStep",
+        "removeStep",
+        "moveStep",
+        "renameStep",
+        "setStepHint",
+        "updateStep",
+        "addBranch",
+        "setBranchEnd",
+        "setRule",
+        "addException",
+        "removeException",
+        "setApprovals",
+        "addGuard",
+        "removeGuard"
+      ],
+      "ambient": [
+        "refreshFlows",
+        "openFlow",
+        "closeFlow",
+        "loadHistory",
+        "newFlow",
+        "editFlow",
+        "cancelDraft",
+        "setDraftLabel",
+        "setDraftHint",
+        "setDraftSubjects",
+        "addStep",
+        "removeStep",
+        "moveStep",
+        "renameStep",
+        "setStepHint",
+        "updateStep",
+        "addBranch",
+        "setBranchEnd",
+        "setRule",
+        "addException",
+        "removeException",
+        "setApprovals",
+        "addGuard",
+        "removeGuard"
+      ],
+      "destructive": ["deleteFlow"]
+    },
+    {
       "name": "interpretationStore",
       "state": {
         "activity": {
@@ -6936,6 +7056,9 @@
         "spaceSettingsTab": {
           "type": "string"
         },
+        "spaceSettingsFocus": {
+          "type": "string"
+        },
         "dockGeometry": {
           "type": "object"
         },
@@ -7143,11 +7266,11 @@
         },
         "taskStates": {
           "type": "array",
-          "properties": ["id", "name", "slug", "semantic", "color", "retired", "approvals", "approverKind"]
+          "properties": ["id", "name", "slug", "semantic", "color", "retired", "approvals", "approverKind", "guards"]
         },
         "offeredTaskStates": {
           "type": "array",
-          "properties": ["id", "name", "slug", "semantic", "color", "retired", "approvals", "approverKind"]
+          "properties": ["id", "name", "slug", "semantic", "color", "retired", "approvals", "approverKind", "guards"]
         },
         "taskStatesLoaded": {
           "type": "boolean"
@@ -7206,10 +7329,10 @@
         "viewNav": {
           "type": "array"
         },
-        "linkLanguageTemplateOptions": {
+        "sharingOptions": {
           "type": "array"
         },
-        "defaultLinkLanguageTemplate": {
+        "defaultSharing": {
           "type": "string"
         },
         "mutedDids": {
@@ -7249,8 +7372,14 @@
         "extractionTargets": {
           "type": "array"
         },
+        "taskFlowRule": {
+          "type": "string"
+        },
         "taskFlowEnabled": {
           "type": "boolean"
+        },
+        "archivedFlows": {
+          "type": "array"
         },
         "canAdministerCurrentSpace": {
           "type": "boolean"
@@ -7307,8 +7436,12 @@
         "setSignalTypeRetired",
         "createTaskState",
         "updateTaskState",
+        "setTaskFlowRule",
+        "addTaskStateGuard",
+        "removeTaskStateGuard",
         "approveTaskMove",
         "withdrawTaskMove",
+        "setFlowArchived",
         "setTaskStateRetired",
         "reorderTaskStates",
         "setInvolvement",
@@ -7323,19 +7456,11 @@
         "canAdministerSpace",
         "copyShareLink",
         "copyGuestLink",
-        "getSubgroupMessages",
         "exportCallTranscript",
         "exportExtractionLog",
         "removeSpaceFromGlobal"
       ],
-      "ambient": [
-        "autoExtractFor",
-        "canSetExtractionFor",
-        "navigateToSpace",
-        "openRecordRef",
-        "canAdministerSpace",
-        "getSubgroupMessages"
-      ],
+      "ambient": ["autoExtractFor", "canSetExtractionFor", "navigateToSpace", "openRecordRef", "canAdministerSpace"],
       "destructive": ["removeSpace", "deleteCollection", "removeSpaceFromGlobal"]
     },
     {
@@ -7558,6 +7683,12 @@
     "WeCube"
   ],
   "sources": [
+    {
+      "name": "requirementLabel",
+      "params": ["options"],
+      "doc": "What a step or a task state asks to be there first, in the words the app uses for it (\"at least 1 comment in response to it\"). For a form holding requirements it has not saved yet. Options: entity (comment, call, task, file, link, image, or an entity name), tie (\"responses\", or empty for anywhere in the space), min.",
+      "example": "requirementLabel({ entity: local.guardEntity, tie: local.guardTie, min: local.guardMin })"
+    },
     {
       "name": "calendarMonth",
       "params": ["options?"],
@@ -9143,6 +9274,35 @@
       "entities": []
     },
     {
+      "id": "flux",
+      "name": "Flux",
+      "description": "Reads conversations a Flux community keeps, in a space synced in from Flux.",
+      "icon": "chats-circle",
+      "scope": "space",
+      "requires": {
+        "backends": ["ad4m"]
+      },
+      "capabilities": [],
+      "members": [
+        {
+          "name": "subgroupMessages",
+          "kind": "action",
+          "doc": "The messages in one of Flux’s conversation subgroups, oldest first — { id, author, timestamp, body }. Read when asked, since a subgroup’s messages are not a relation a $query can follow.",
+          "ambient": true
+        }
+      ],
+      "parts": [],
+      "panels": [],
+      "launchers": [],
+      "settings": [],
+      "activities": {},
+      "components": [],
+      "functions": [],
+      "views": [],
+      "blocks": [],
+      "entities": []
+    },
+    {
       "id": "polls",
       "name": "Polls",
       "description": "Ask the space a question and watch the answer arrive.",
@@ -9395,6 +9555,10 @@
           "category": "seed"
         },
         {
+          "id": "vocabulary",
+          "category": "seed"
+        },
+        {
           "id": "dataset",
           "category": "seed"
         },
@@ -9411,7 +9575,27 @@
           "category": "expander"
         },
         {
+          "id": "schema-instances",
+          "category": "expander"
+        },
+        {
+          "id": "schema-properties",
+          "category": "expander"
+        },
+        {
+          "id": "vocabulary",
+          "category": "expander"
+        },
+        {
+          "id": "vocabulary-records",
+          "category": "expander"
+        },
+        {
           "id": "property",
+          "category": "expander"
+        },
+        {
+          "id": "property-values",
           "category": "expander"
         },
         {
