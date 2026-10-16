@@ -588,3 +588,46 @@ describe('a device list that is empty', () => {
     expect(json, 'the offer outlives the thing it fixes').toContain('!modules.call.devicesProbed');
   });
 });
+
+/**
+ * Props the design system does not read, in the one file three checks cannot see.
+ *
+ * `validate:schemas` walks `*.schema.ts`; `tooltip-audit` and `role-audit`'s schema half walk
+ * top-level *exported* nodes. This module's chrome is neither — it is module-level consts composed
+ * into `contributes` at definition time, in a file called `index.ts`. So a prop spelled in a way
+ * nothing reads renders nothing, reports nothing, and is found by somebody noticing the screen.
+ *
+ * Both cases below were real, and shipped together: four `we-tooltip`s carrying `title` (which is a
+ * global HTML attribute, so the browser drew its own bubble instead), and two icons coloured
+ * `var(--we-color-text-secondary)`, a token that has never existed — so the declaration was dropped
+ * and the glyph inherited. Structural rather than visual, because the failure is structural: every
+ * node rendered exactly as written.
+ *
+ * Asserted over everything the module contributes rather than over the nodes by name, so a control
+ * added later is covered without anybody remembering to add it here.
+ */
+describe('props the design system reads', () => {
+  const everything = (): SchemaNode[] => [
+    ...walk(callModule.contributes?.slots ?? []),
+    ...walk(callModule.contributes?.parts ?? {}),
+    ...walk(callModule.contributes?.panels ?? []),
+  ];
+
+  it('asks we-tooltip for `content`, never `title`', () => {
+    const asking = everything().filter(
+      (node) => node.type === 'we-tooltip' && (node.props as Record<string, unknown>)?.title !== undefined,
+    );
+    expect(asking.map((node) => (node.props as Record<string, unknown>).title)).toEqual([]);
+  });
+
+  it('names a colour role, never a raw colour variable', () => {
+    const raw: string[] = [];
+    for (const node of everything()) {
+      for (const [prop, value] of Object.entries((node.props ?? {}) as Record<string, unknown>)) {
+        if (typeof value === 'string' && value.includes('var(--we-color-'))
+          raw.push(`<${node.type}> ${prop}="${value}"`);
+      }
+    }
+    expect(raw).toEqual([]);
+  });
+});

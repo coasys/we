@@ -128,6 +128,20 @@ else
   # core/ as a standalone package.
   rm -f "$AD4M_DIR/package.json" "$AD4M_DIR/pnpm-workspace.yaml"
   cd "$AD4M_DIR/core"
+  # npm ignores `pnpm.overrides`, and installs without a lockfile, so core's pins are lost: an
+  # unpinned `@types/node` resolves to a release core's TypeScript cannot parse. Apply them the
+  # way pnpm does — a direct dependency's spec is replaced, anything deeper goes to npm's
+  # `overrides` (which refuses to contradict a direct dependency).
+  node -e "
+    const fs = require('fs');
+    const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+    for (const [name, spec] of Object.entries(pkg.pnpm?.overrides ?? {})) {
+      const direct = ['dependencies', 'devDependencies'].find((field) => pkg[field]?.[name]);
+      if (direct) pkg[direct][name] = spec;
+      else pkg.overrides = { ...pkg.overrides, [name]: spec };
+    }
+    fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+  "
   npm install --ignore-scripts
   npx patch-package
   npx tsc

@@ -3381,6 +3381,17 @@ export const contextData: ContextData = {
           kind: 'state',
           doc: 'The microphone this agent has chosen, or empty for whatever the system offers.',
         },
+        {
+          name: 'callConfig',
+          kind: 'state',
+          doc: "This space's call policy — { mode, maxMeshParticipants } — as its creator stored it in the neighbourhood.",
+        },
+        { name: 'callConfigSaving', kind: 'state', doc: 'Whether a call config write is in flight.' },
+        {
+          name: 'callConfigSupported',
+          kind: 'state',
+          doc: 'Whether the backend can read and write call configuration. False on executors without SFU support.',
+        },
         { name: 'callId', kind: 'state', doc: 'The id of the call this agent is in, or null between calls.' },
         {
           name: 'callRecordId',
@@ -3409,6 +3420,7 @@ export const contextData: ContextData = {
           kind: 'action',
           doc: 'Pick a past call back up by its record id, joining anyone already in it and writing no new record.',
         },
+        { name: 'cycleQuality', kind: 'action', doc: 'Cycle through quality presets: high, medium, low.' },
         { name: 'deviceSettingsOpen', kind: 'state', doc: 'Whether the camera and microphone chooser is open.' },
         {
           name: 'devicesNamed',
@@ -3442,6 +3454,7 @@ export const contextData: ContextData = {
           kind: 'action',
           doc: 'Go to the call: join the one running here, pick up the one on screen, or start one; in a call already, bring it up.',
         },
+        { name: 'hasSessionBackend', kind: 'state', doc: 'Whether this call uses a Session backend.' },
         {
           name: 'joinAnchoredCall',
           kind: 'action',
@@ -3483,6 +3496,11 @@ export const contextData: ContextData = {
           doc: 'Ask for a device once so this machine will say what its hardware is called.',
         },
         {
+          name: 'newCallsUseSfu',
+          kind: 'state',
+          doc: "Whether this space's new calls start on the SFU rather than as a mesh. Running calls keep their own.",
+        },
+        {
           name: 'ongoing',
           kind: 'state',
           doc: 'Everyone in any call in the space on screen, as avatar faces { image, hash, initials, did }, whether or not this agent has joined.',
@@ -3493,6 +3511,7 @@ export const contextData: ContextData = {
           kind: 'state',
           doc: 'Why the call could not start or a device could not be reached, as a sentence to show, or null.',
         },
+        { name: 'qualityPreference', kind: 'state', doc: 'The SFU quality layer this agent prefers.' },
         {
           name: 'reconnectPeer',
           kind: 'action',
@@ -3510,17 +3529,25 @@ export const contextData: ContextData = {
           doc: 'Go back to the space the call is in; does nothing outside a call.',
           ambient: true,
         },
+        { name: 'saveCallConfig', kind: 'action', doc: 'Replace the entire call config.' },
         {
           name: 'setArrangement',
           kind: 'action',
           doc: 'Report the { columns, rows } a stage grid settled on, so fit-to-content can solve for it.',
           ambient: true,
         },
+        { name: 'setCallConfigField', kind: 'action', doc: 'Write one field of the call config.' },
         {
           name: 'setDevice',
           kind: 'action',
           doc: 'Use a different microphone or camera; an empty id means whatever the system offers.',
         },
+        {
+          name: 'setNewCallsUseSfu',
+          kind: 'action',
+          doc: "Make this space's new calls start on the SFU (true) or as a mesh (false). Running calls are not touched.",
+        },
+        { name: 'setQualityPreference', kind: 'action', doc: 'Set the SFU quality layer preference.' },
         {
           name: 'solo',
           kind: 'state',
@@ -3530,6 +3557,16 @@ export const contextData: ContextData = {
           name: 'startCall',
           kind: 'action',
           doc: 'Start a new call in the space on screen, optionally about the record whose id is given; resolves once joined.',
+        },
+        {
+          name: 'switchingTopology',
+          kind: 'state',
+          doc: 'Whether this call is reconnecting everyone onto another topology, after somebody switched it.',
+        },
+        {
+          name: 'switchTopology',
+          kind: 'action',
+          doc: "Switch this call to 'mesh' or 'sfu' for everyone in it, for this call only. Everyone reconnects at once.",
         },
         {
           name: 'tiles',
@@ -3557,6 +3594,16 @@ export const contextData: ContextData = {
           name: 'toggleVideo',
           kind: 'action',
           doc: 'Turn this agent’s camera on or off, reporting through problem when it is refused.',
+        },
+        {
+          name: 'topology',
+          kind: 'state',
+          doc: "Whether this call runs through the SFU relay ('sfu') or the peer-to-peer mesh ('mesh').",
+        },
+        {
+          name: 'topologySwitchedBy',
+          kind: 'state',
+          doc: 'The DID of whoever switched this call to its topology by hand, or null if it runs on the one it started with.',
         },
         {
           name: 'videoDevice',

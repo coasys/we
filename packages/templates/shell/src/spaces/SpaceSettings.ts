@@ -916,6 +916,71 @@ const moduleSettingsSection: SchemaNode = {
 };
 
 /**
+ * Call topology default — whether new calls in this space start on the SFU or as a mesh.
+ *
+ * Stored as a link in the neighbourhood (not WE module settings), so every member reads the
+ * same configuration. Only shown when the call module runs here AND the executor supports SFU
+ * configuration.
+ *
+ * One switch: mesh, or the SFU on the executor the members share. The executor also takes
+ * `gateway` and `cascaded` (SFUs across executors) and a mesh limit; neither is offered, because a
+ * call never migrates on its own — it runs on what it started with until somebody in it switches
+ * it (the call's own settings popover). The mesh limit keeps its stored value, which only sizes an
+ * SFU room at four times it.
+ *
+ * Only the space's creator can change it: the executor refuses anyone else's write, and the
+ * call store shows that refusal.
+ */
+const callSettingsSection: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'modules.call.callConfigSupported && space.canAdminister' },
+    then: {
+      type: 'Column',
+      props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
+      children: [
+        {
+          type: 'Row',
+          props: { ax: 'between', ay: 'center', gap: '300' },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '100' },
+              children: [
+                { type: 'we-text', props: { variant: 'label' }, children: ['Start calls on the SFU'] },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint' },
+                  children: [
+                    'Off: a call connects everyone directly (mesh), best for small calls. On: a call goes through the executor the members share, which carries more people; everyone in the call must be signed in to that executor.',
+                  ],
+                },
+              ],
+            },
+            {
+              type: 'we-switch',
+              props: {
+                size: 'sm',
+                checked: { $: 'modules.call.newCallsUseSfu' },
+                disabled: { $: 'modules.call.callConfigSaving' },
+                onChange: { $action: 'modules.call.setNewCallsUseSfu', args: [{ $: 'event.detail' }] },
+              },
+            },
+          ],
+        },
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-faint' },
+          children: [
+            'Only calls that start after a change use it. A call never switches on its own: anyone in a call can switch that call from its settings, and everyone in it then reconnects.',
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/**
  * Whether new conversations here start out extracted automatically — a community default, and
  * priced like one.
  *
@@ -1393,6 +1458,7 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                             $: 'space.canAdminister',
                           }),
                           moduleSettingsSection,
+                          callSettingsSection,
                           autoInterpretSection,
                           extractionTargetsSection,
                           threadModeSection,

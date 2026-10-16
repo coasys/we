@@ -80,3 +80,11 @@ export {
   transcriptScopeQuery,
 } from './interpretationAdapter';
 export { type Ad4mCapability, capabilitiesFromToken, createCapabilityCheck } from './capabilities';
+export { createCallSessionFactory } from './callSessionAdapter';
+export {
+  createCallConfigAccessors,
+  DEFAULT_CALL_CONFIG,
+  type CallConfig,
+  type CallConfigMode,
+  type CallConfigIceServer,
+} from './callConfigAdapter';
