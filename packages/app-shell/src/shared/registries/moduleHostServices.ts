@@ -93,7 +93,10 @@ export interface ModuleHostServices {
    * through `createModuleStoreDeps` as `createBackend`. Absent on a backend without session
    * support; the call module falls back to its own peer-to-peer mesh.
    */
-  createCallBackend?: (callId: string, options?: { iceServers?: RTCIceServer[] }) => Promise<unknown>;
+  createCallBackend?: (
+    callId: string,
+    options?: { iceServers?: RTCIceServer[]; topology?: 'mesh' | 'sfu' },
+  ) => Promise<unknown>;
   /**
    * Read the neighbourhood's call configuration (SFU topology defaults).
    *

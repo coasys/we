@@ -11,15 +11,14 @@ import type { IceServer, PerspectiveProxy, Session, SessionTopology, SfuConfig, 
 import type { DatasetHandle } from '@we/backend-shared';
 
 /**
- * The topology a session is asked for, from the mode the space's moderator chose.
+ * The topology a session is asked for, from the mode the space's creator chose.
  *
- * The session takes `mesh`, `sfu` or `auto`; the space's config has four modes. `mesh` means
- * "never use an SFU" and is passed as it is. The three SFU modes are passed as `auto` together with
- * the config itself: the session's auto resolution then follows the config's mode and uses the SFU,
- * while a space with no config still auto-discovers.
+ * Always `mesh` or `sfu`, never the session's `auto`: a call runs on what was asked for and never
+ * migrates on its own. The three SFU modes run through this executor's SFU; no config (an executor
+ * without SFU support) is mesh.
  */
 function topologyFor(mode: SfuMode | undefined): SessionTopology {
-  return mode === 'mesh' ? 'mesh' : 'auto';
+  return !mode || mode === 'mesh' ? 'mesh' : 'sfu';
 }
 
 /** The browser's ICE server shape, whose `urls` may be one string, as the SDK's, which is always a list. */
@@ -29,6 +28,12 @@ function toIceServer(server: RTCIceServer): IceServer {
     ...(server.username ? { username: server.username } : {}),
     ...(typeof server.credential === 'string' && server.credential ? { credential: server.credential } : {}),
   };
+}
+
+/** What the call module asks of a session: its ICE servers, and the topology a running call is on. */
+export interface CallSessionOptions {
+  iceServers?: RTCIceServer[];
+  topology?: 'mesh' | 'sfu';
 }
 
 /**
@@ -56,8 +61,8 @@ export function createCallSessionFactory(
   _getBackendClient: () => unknown,
   getCurrentDataset: () => DatasetHandle | null,
   _getSelfId: () => string | null,
-): (callId: string, options?: { iceServers?: RTCIceServer[] }) => Promise<Session> {
-  return async (callId: string, options?: { iceServers?: RTCIceServer[] }) => {
+): (callId: string, options?: CallSessionOptions) => Promise<Session> {
+  return async (callId: string, options?: CallSessionOptions) => {
     const dataset = getCurrentDataset();
     if (!dataset) throw new Error('Cannot create call session — no active dataset');
 
@@ -65,18 +70,18 @@ export function createCallSessionFactory(
     const neighbourhoodUrl = proxy.sharedUrl ?? '';
     const nhProxy = proxy.getNeighbourhoodProxy();
 
-    // An executor that predates the SFU answers with an error here; auto resolution is right then.
-    // With a config, the session's auto resolution follows its mode: any SFU mode uses the SFU.
+    // An executor that predates the SFU answers with an error here, and the call is a mesh.
     let sfuConfig: SfuConfig | undefined;
     try {
       sfuConfig = await nhProxy.sfuConfig(neighbourhoodUrl);
     } catch {
-      // Non-fatal — fall back to auto topology resolution.
+      // Non-fatal — no config means mesh.
     }
 
     return await nhProxy.createSession(callId, {
       neighbourhoodUrl,
-      topology: topologyFor(sfuConfig?.mode),
+      // A running call's own topology (a joiner's adoption, or a switch) wins over the space's.
+      topology: options?.topology ?? topologyFor(sfuConfig?.mode),
       ...(sfuConfig ? { sfuConfig } : {}),
       ...(options?.iceServers?.length ? { iceServers: options.iceServers.map(toIceServer) } : {}),
     });

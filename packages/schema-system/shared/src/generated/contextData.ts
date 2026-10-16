@@ -3481,6 +3481,11 @@ export const contextData: ContextData = {
           doc: 'Ask for a device once so this machine will say what its hardware is called.',
         },
         {
+          name: 'newCallsUseSfu',
+          kind: 'state',
+          doc: "Whether this space's new calls start on the SFU rather than as a mesh. Running calls keep their own.",
+        },
+        {
           name: 'ongoing',
           kind: 'state',
           doc: 'Everyone in any call in the space on screen, as avatar faces { image, hash, initials, did }, whether or not this agent has joined.',
@@ -3522,6 +3527,11 @@ export const contextData: ContextData = {
           kind: 'action',
           doc: 'Use a different microphone or camera; an empty id means whatever the system offers.',
         },
+        {
+          name: 'setNewCallsUseSfu',
+          kind: 'action',
+          doc: "Make this space's new calls start on the SFU (true) or as a mesh (false). Running calls are not touched.",
+        },
         { name: 'setQualityPreference', kind: 'action', doc: 'Set the SFU quality layer preference.' },
         {
           name: 'solo',
@@ -3532,6 +3542,16 @@ export const contextData: ContextData = {
           name: 'startCall',
           kind: 'action',
           doc: 'Start a new call in the space on screen, optionally about the record whose id is given; resolves once joined.',
+        },
+        {
+          name: 'switchingTopology',
+          kind: 'state',
+          doc: 'Whether this call is reconnecting everyone onto another topology, after somebody switched it.',
+        },
+        {
+          name: 'switchTopology',
+          kind: 'action',
+          doc: "Switch this call to 'mesh' or 'sfu' for everyone in it, for this call only. Everyone reconnects at once.",
         },
         {
           name: 'tiles',
@@ -3564,6 +3584,11 @@ export const contextData: ContextData = {
           name: 'topology',
           kind: 'state',
           doc: "Whether this call runs through the SFU relay ('sfu') or the peer-to-peer mesh ('mesh').",
+        },
+        {
+          name: 'topologySwitchedBy',
+          kind: 'state',
+          doc: 'The DID of whoever switched this call to its topology by hand, or null if it runs on the one it started with.',
         },
         {
           name: 'videoDevice',

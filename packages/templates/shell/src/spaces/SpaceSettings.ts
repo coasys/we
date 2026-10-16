@@ -915,32 +915,21 @@ const moduleSettingsSection: SchemaNode = {
   },
 };
 
-// ── Mode options for the call topology selector ────────────────────────────
-
 /**
- * The modes offered: mesh, and an SFU on the executor the members share. The executor also takes
- * `gateway` and `cascaded`, for SFUs across executors; they are not offered until that works end to
- * end. A space that already has one of them shows as SFU, which is what it runs today.
- */
-const CALL_MODE_OPTIONS = [
-  { label: 'Mesh', value: 'mesh' },
-  { label: 'SFU', value: 'designated' },
-];
-
-/**
- * Call topology defaults — how new calls in this space connect participants.
+ * Call topology default — whether new calls in this space start on the SFU or as a mesh.
  *
  * Stored as a link in the neighbourhood (not WE module settings), so every member reads the
  * same configuration. Only shown when the call module runs here AND the executor supports SFU
- * configuration (feat/embedded-sfu builds).
+ * configuration.
  *
- * The space holds only its policy: the mode and the mesh limit. Which SFU nodes cascade, their
- * capacity and ICE servers belong to each executor (its `--sfu-*` flags), and the executor refuses
- * them here — so this section has no fields for them.
+ * One switch: mesh, or the SFU on the executor the members share. The executor also takes
+ * `gateway` and `cascaded` (SFUs across executors) and a mesh limit; neither is offered, because a
+ * call never migrates on its own — it runs on what it started with until somebody in it switches
+ * it (the call's own settings popover). The mesh limit keeps its stored value, which only sizes an
+ * SFU room at four times it.
  *
  * Only the space's creator can change it: the executor refuses anyone else's write, and the
- * call store shows that refusal. Members see the result (the topology indicator in the call
- * bar).
+ * call store shows that refusal.
  */
 const callSettingsSection: SchemaNode = {
   type: '$if',
@@ -950,55 +939,40 @@ const callSettingsSection: SchemaNode = {
       type: 'Column',
       props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
       children: [
-        { type: 'we-text', props: { variant: 'label' }, children: ['Call topology'] },
+        {
+          type: 'Row',
+          props: { ax: 'between', ay: 'center', gap: '300' },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '100' },
+              children: [
+                { type: 'we-text', props: { variant: 'label' }, children: ['Start calls on the SFU'] },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint' },
+                  children: [
+                    'Off: a call connects everyone directly (mesh), best for small calls. On: a call goes through the executor the members share, which carries more people; everyone in the call must be signed in to that executor.',
+                  ],
+                },
+              ],
+            },
+            {
+              type: 'we-switch',
+              props: {
+                size: 'sm',
+                checked: { $: 'modules.call.newCallsUseSfu' },
+                disabled: { $: 'modules.call.callConfigSaving' },
+                onChange: { $action: 'modules.call.setNewCallsUseSfu', args: [{ $: 'event.detail' }] },
+              },
+            },
+          ],
+        },
         {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint' },
           children: [
-            'How new calls in this space connect participants. Mesh connects everyone directly: best for small calls. SFU routes the call through the executor the members share, which handles more participants; everyone in the call must be on that executor.',
-          ],
-        },
-
-        // ── Topology mode ──────────────────────────────────────────────
-        {
-          type: 'we-form-field',
-          props: { label: 'Connection' },
-          children: [
-            {
-              type: 'we-select',
-              props: {
-                size: 'sm',
-                value: { $: "modules.call.callConfig.mode == 'mesh' ? 'mesh' : 'designated'" },
-                options: CALL_MODE_OPTIONS,
-                onChange: {
-                  $action: 'modules.call.setCallConfigField',
-                  args: ['mode', { $: 'event.detail' }],
-                },
-              },
-            },
-          ],
-        },
-
-        // ── Max mesh participants ──────────────────────────────────────
-        {
-          type: 'we-form-field',
-          props: { label: 'Max mesh participants', description: 'An SFU call room holds four times this.' },
-          children: [
-            {
-              type: 'we-input',
-              props: {
-                size: 'sm',
-                type: 'number',
-                // The executor refuses anything outside 2–32: a room's SFU capacity is four times this.
-                min: '2',
-                max: '32',
-                value: { $: 'modules.call.callConfig.maxMeshParticipants' },
-                onBlur: {
-                  $action: 'modules.call.setCallConfigField',
-                  args: ['maxMeshParticipants', { $: 'Number(event.target.value)' }],
-                },
-              },
-            },
+            'Only calls that start after a change use it. A call never switches on its own: anyone in a call can switch that call from its settings, and everyone in it then reconnects.',
           ],
         },
       ],

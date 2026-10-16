@@ -1462,11 +1462,87 @@ const qualitySelector: SchemaNode = {
 };
 
 /**
+ * Switch this call between mesh and SFU — for everyone in it, for this call only.
+ *
+ * A switch drops every participant's audio and video until the new connections come up, so it is
+ * never automatic and never one click: the button asks, and the confirmation says what happens before
+ * anyone is disconnected. Offered only on a session backend whose executor has an SFU to switch to.
+ * Uses the popover's `confirmSwitch` local state.
+ */
+const topologySwitch: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: {
+      $: 'modules.call.hasSessionBackend && modules.call.callConfigSupported && !modules.call.switchingTopology',
+    },
+    then: {
+      type: '$if',
+      props: {
+        condition: { $: 'local.confirmSwitch' },
+        then: {
+          type: 'Column',
+          props: { gap: '200', p: '300', bg: 'surface', r: '200', border: '1px solid border' },
+          children: [
+            {
+              type: 'we-text',
+              props: { variant: 'body' },
+              children: [
+                {
+                  $: "modules.call.topology == 'sfu' ? 'Switch this call to a peer-to-peer mesh?' : 'Switch this call to the SFU relay?'",
+                },
+              ],
+            },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: [
+                "Everyone in the call disconnects and reconnects now. Audio and video stop for a few seconds. Only this call changes; the space's setting stays the same.",
+              ],
+            },
+            {
+              type: 'Row',
+              props: { gap: '200', ax: 'end' },
+              children: [
+                {
+                  type: 'we-button',
+                  props: { size: 'sm', variant: 'ghost', onClick: { $setLocal: 'confirmSwitch', value: false } },
+                  children: ['Cancel'],
+                },
+                {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    variant: 'primary',
+                    onClick: [
+                      { $setLocal: 'confirmSwitch', value: false },
+                      {
+                        $action: 'modules.call.switchTopology',
+                        args: [{ $: "modules.call.topology == 'sfu' ? 'mesh' : 'sfu'" }],
+                      },
+                    ],
+                  },
+                  children: ['Reconnect everyone'],
+                },
+              ],
+            },
+          ],
+        },
+        else: {
+          type: 'we-button',
+          props: { size: 'sm', variant: 'secondary', onClick: { $setLocal: 'confirmSwitch', value: true } },
+          children: [{ $: "modules.call.topology == 'sfu' ? 'Switch to mesh…' : 'Switch to SFU relay…'" }],
+        },
+      },
+    },
+  },
+};
+
+/**
  * In-call settings popover — topology info and quality selection.
  *
- * Triggered by a gear icon in the call bar.  Shows the current topology as read-only info and
- * offers a proper three-option quality selector (replacing the cycling button with a deliberate
- * choice).  Participants and connection summary fill the rest.
+ * Triggered by a gear icon in the call bar.  Shows the current topology with the switch to the other
+ * one ({@link topologySwitch}), and offers a proper three-option quality selector (replacing the
+ * cycling button with a deliberate choice).  Participants and connection summary fill the rest.
  *
  * Uses `$localState` for open/close, same pattern as `moreMenu`.  The popover anchors to its
  * trigger button, so it floats above the call bar without taking layout space.
@@ -1477,7 +1553,7 @@ const callSettingsPopover: SchemaNode = {
     condition: { $: 'modules.call.active' },
     then: {
       type: 'Column',
-      $localState: { open: { type: 'boolean', initial: false } },
+      $localState: { open: { type: 'boolean', initial: false }, confirmSwitch: { type: 'boolean', initial: false } },
       children: [
         // Trigger button — gear icon
         {
@@ -1564,12 +1640,24 @@ const callSettingsPopover: SchemaNode = {
                           props: { variant: 'body' },
                           children: [
                             {
-                              $: "modules.call.topology == 'sfu' ? 'SFU relay' : 'Peer-to-peer mesh'",
+                              $: "modules.call.switchingTopology ? 'Reconnecting everyone…' : modules.call.topology == 'sfu' ? 'SFU relay' : 'Peer-to-peer mesh'",
                             },
                           ],
                         },
                       ],
                     },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: 'modules.call.topologySwitchedBy && !modules.call.switchingTopology' },
+                        then: {
+                          type: 'we-text',
+                          props: { variant: 'footnote', color: 'text-faint' },
+                          children: ["Switched for this call only. The space's setting is unchanged."],
+                        },
+                      },
+                    },
+                    topologySwitch,
                   ],
                 },
 

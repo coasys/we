@@ -220,6 +220,22 @@ export type CallDockEdge = 'left' | 'right' | 'top' | 'bottom';
 /** The call topology in use — mesh (peer-to-peer) or sfu (relay server). */
 export type CallTopology = 'mesh' | 'sfu';
 
+/** The topology a running call agreed on: since when, and who switched it, if somebody did. */
+export interface CallTopologyChoice {
+  mode: CallTopology;
+  /** Milliseconds since the epoch; the newest choice wins. */
+  at: number;
+  /** The agent who switched the call by hand. Absent for the topology the call started on. */
+  by?: string;
+}
+
+/** A topology choice out of a peer's call activity, or null when it carries none or a malformed one. */
+export function parseTopologyChoice(raw: unknown): CallTopologyChoice | null {
+  const value = raw as Partial<CallTopologyChoice> | null | undefined;
+  if (!value || (value.mode !== 'mesh' && value.mode !== 'sfu') || typeof value.at !== 'number') return null;
+  return { mode: value.mode, at: value.at, ...(typeof value.by === 'string' ? { by: value.by } : {}) };
+}
+
 /** Topology modes a moderator can choose from. */
 export type CallConfigMode = 'mesh' | 'designated' | 'gateway' | 'cascaded';
 
@@ -964,8 +980,172 @@ export function createCallStore(deps: ModuleStoreDeps) {
       ...(callRecord() ? { record: callRecord() } : {}),
       // And whether that record pre-existed the call — see `continuedRecord`.
       ...(callRecord() && callRecord() === continuedRecord ? { continued: true } : {}),
+      // The topology this call runs on, so a joiner adopts it — see `callTopology`.
+      ...(callTopology() ? { topology: callTopology() } : {}),
     });
   }
+
+  /**
+   * The topology this call runs on, as its participants agree it — not the space's setting.
+   *
+   * The space's setting only decides how a *new* call starts. Once a call runs, every participant
+   * publishes the topology it joined with in its call activity, and a joiner adopts the newest one,
+   * so changing the setting mid-call cannot split the call between mesh and SFU. `by` is set only
+   * when somebody switched this call by hand: that is the one change everyone else follows, so a
+   * call reconnects only because a person asked it to. It ends with the call — nothing is stored.
+   */
+  const [callTopology, setCallTopology] = signal<CallTopologyChoice | null>(null);
+  /** A switch is tearing the session down and building the next one. */
+  const [switchingTopology, setSwitchingTopology] = signal(false);
+
+  /** The newest topology another participant of call `id` publishes; only hand-made switches when `switchesOnly`. */
+  function newestCallTopology(id: string, switchesOnly = false): CallTopologyChoice | null {
+    const me = selfId?.() ?? null;
+    let newest: CallTopologyChoice | null = null;
+    for (const { peer, activity } of liveCallActivities()) {
+      if (activity.id !== id || peer.agentId === me) continue;
+      const choice = parseTopologyChoice((activity as { topology?: unknown }).topology);
+      if (!choice || (switchesOnly && !choice.by)) continue;
+      if (!newest || choice.at > newest.at) newest = choice;
+    }
+    return newest;
+  }
+
+  /**
+   * Listen to one session: its participants, peer repairs, topology and data. Returns the function
+   * that reads its participants into the tiles.
+   */
+  function attachSession(session: CallBackend): () => void {
+    // A session can still emit while it is being destroyed, after `teardown` has reset the state
+    // these handlers write — so each answers only while its session is the current one.
+    const on = (event: string, handler: (...args: unknown[]) => void) =>
+      session.on(event, (...args) => {
+        if (backend === session) handler(...args);
+      });
+
+    const syncStreams = () => {
+      remoteStreams = new Map(session.participants.map((p) => [p.agentDid, p.stream]));
+      rebuildTiles();
+    };
+    // `participant-updated`: a rebuilt connection has a new stream object, and a track that stops
+    // receiving goes muted rather than ended — neither adds or removes a stream.
+    for (const event of [
+      'participant-joined',
+      'participant-left',
+      'stream-added',
+      'stream-removed',
+      'participant-updated',
+    ]) {
+      on(event, syncStreams);
+    }
+    // Per-peer connection state and repairs, kept as the mesh path keeps them (`onPeerStateChanged`).
+    on('peer-state', (peerId, state) => {
+      if (typeof peerId !== 'string') return;
+      peerStates.set(peerId, state as RTCPeerConnectionState);
+      if (state === 'connected') {
+        recovering.delete(peerId);
+        void session.transportOf?.(peerId).then((kind) => {
+          if (!kind || backend !== session) return;
+          transports.set(peerId, kind);
+          rebuildTiles();
+        });
+      }
+      if (state === 'closed') transports.delete(peerId);
+      rebuildTiles();
+    });
+    on('peer-recovery', (peerId, attempt) => {
+      if (typeof peerId !== 'string') return;
+      recovering.set(peerId, attempt as { rung: RecoveryRung; attempts: number });
+      rebuildTiles();
+    });
+    on('topology-changed', (topo) => {
+      if (topo !== 'mesh' && topo !== 'sfu') return;
+      setTopology(topo);
+      // The first to run a call says what it runs on; a joiner adopted it already.
+      if (!callTopology()) {
+        setCallTopology({ mode: topo, at: Date.now() });
+        publishActivity();
+      }
+    });
+    session.on('error', (err: unknown) => console.error('call: backend error', err));
+
+    // Subscribe to data channel messages from other participants.
+    dataUnsubscribe = session.onData((msg) => {
+      for (const cb of dataListeners) {
+        try {
+          cb(msg);
+        } catch (e) {
+          console.error('call: data listener error', e);
+        }
+      }
+    });
+    return syncStreams;
+  }
+
+  /**
+   * Leave the call's session and join a new one on `mode`, on the same devices and in the same call.
+   *
+   * Every participant's media stops until the new session connects: this runs only when somebody
+   * switched the call by hand, here or on another participant's screen.
+   */
+  async function reconnectSession(mode: CallTopology) {
+    const id = callId();
+    const old = backend;
+    const media = controller;
+    if (!id || !old || !media || !deps.createBackend) return;
+    setSwitchingTopology(true);
+    backend = null;
+    backendJoined = false;
+    dataUnsubscribe?.();
+    dataUnsubscribe = null;
+    remoteStreams = new Map();
+    peerStates = new Map();
+    recovering.clear();
+    transports.clear();
+    rebuildTiles();
+    await old.destroy().catch((err) => console.error('call: backend destroy', err));
+    try {
+      const next = (await deps.createBackend(id, { iceServers: iceServers(), topology: mode })) as CallBackend;
+      // Left, or switched again, while the session was being built.
+      if (callId() !== id || controller !== media || backend) {
+        next.destroy().catch((err) => console.error('call: backend destroy', err));
+        return;
+      }
+      backend = next;
+      const syncStreams = attachSession(next);
+      await next.join(media.displayStream() ?? media.localStream() ?? new MediaStream());
+      if (backend !== next) return;
+      backendJoined = true;
+      if (qualityIsManual) await next.setQualityPreference(qualityPreference());
+      syncStreams();
+    } catch (err) {
+      console.error('call: switching topology failed', err);
+      setProblem(`Could not reconnect the call ${mode === 'sfu' ? 'through the SFU' : 'as a mesh'}.`);
+    } finally {
+      if (callId() === id) setSwitchingTopology(false);
+    }
+  }
+
+  /** Switch this call to `mode` for everyone in it. Each of them reconnects at once. */
+  async function switchTopology(mode: CallTopology) {
+    if (!callId() || !backend || switchingTopology() || mode === topology()) return;
+    if (mode !== 'mesh' && mode !== 'sfu') return;
+    setCallTopology({ mode, at: Date.now(), by: selfId?.() ?? 'unknown' });
+    publishActivity();
+    await reconnectSession(mode);
+  }
+
+  // Follow a switch somebody else made in this call: adopt it, republish it, reconnect.
+  effect?.(() => {
+    const id = callId();
+    if (!id || !backend || switchingTopology()) return;
+    const next = newestCallTopology(id, true);
+    const mine = callTopology();
+    if (!next || (mine && next.at <= mine.at)) return;
+    setCallTopology(next);
+    publishActivity();
+    if (next.mode !== topology()) void reconnectSession(next.mode);
+  });
 
   function teardown() {
     const id = callId();
@@ -993,6 +1173,8 @@ export function createCallStore(deps: ModuleStoreDeps) {
     if (id) presence?.clearActivity('call', id);
     setCallId(null);
     setTopology('mesh');
+    setCallTopology(null);
+    setSwitchingTopology(false);
     setHasSessionBackend(false);
     qualityIsManual = false;
     anchor = undefined;
@@ -1332,9 +1514,16 @@ export function createCallStore(deps: ModuleStoreDeps) {
     // specific call room, which is how the AD4M host wires topology, signalling and SFU config.
     // A static `backend` serves tests and hosts that already hold a Session.
     if (deps.createBackend) {
+      // A call already running keeps its topology: a joiner adopts it rather than the space's
+      // setting, which may have changed since, so the call cannot split.
+      const adopted = newestCallTopology(id);
+      setCallTopology(adopted);
       try {
         // The same ICE servers the mesh path would use.
-        const created = (await deps.createBackend(id, { iceServers: iceServers() })) as CallBackend;
+        const created = (await deps.createBackend(id, {
+          iceServers: iceServers(),
+          ...(adopted ? { topology: adopted.mode } : {}),
+        })) as CallBackend;
         // Left while the session was being built: `teardown` has run and will not see this one.
         if (controller !== started) {
           created.destroy().catch((err) => console.error('call: backend destroy', err));
@@ -1358,63 +1547,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
       // The backend (Session from @coasys/ad4m) manages topology, signalling, roster polling,
       // and peer connections internally. The store only drives lifecycle and reads participants.
       const session = backend;
-      // A session can still emit while it is being destroyed, after `teardown` has reset the state
-      // these handlers write — so each answers only while its session is the current one.
-      const on = (event: string, handler: (...args: unknown[]) => void) =>
-        session.on(event, (...args) => {
-          if (backend === session) handler(...args);
-        });
-
-      const syncStreams = () => {
-        remoteStreams = new Map(session.participants.map((p) => [p.agentDid, p.stream]));
-        rebuildTiles();
-      };
-      // `participant-updated`: a rebuilt connection has a new stream object, and a track that stops
-      // receiving goes muted rather than ended — neither adds or removes a stream.
-      for (const event of [
-        'participant-joined',
-        'participant-left',
-        'stream-added',
-        'stream-removed',
-        'participant-updated',
-      ]) {
-        on(event, syncStreams);
-      }
-      // Per-peer connection state and repairs, kept as the mesh path keeps them (`onPeerStateChanged`).
-      on('peer-state', (peerId, state) => {
-        if (typeof peerId !== 'string') return;
-        peerStates.set(peerId, state as RTCPeerConnectionState);
-        if (state === 'connected') {
-          recovering.delete(peerId);
-          void session.transportOf?.(peerId).then((kind) => {
-            if (!kind || backend !== session) return;
-            transports.set(peerId, kind);
-            rebuildTiles();
-          });
-        }
-        if (state === 'closed') transports.delete(peerId);
-        rebuildTiles();
-      });
-      on('peer-recovery', (peerId, attempt) => {
-        if (typeof peerId !== 'string') return;
-        recovering.set(peerId, attempt as { rung: RecoveryRung; attempts: number });
-        rebuildTiles();
-      });
-      on('topology-changed', (topo) => {
-        if (topo === 'mesh' || topo === 'sfu') setTopology(topo);
-      });
-      session.on('error', (err: unknown) => console.error('call: backend error', err));
-
-      // Subscribe to data channel messages from other participants.
-      dataUnsubscribe = session.onData((msg) => {
-        for (const cb of dataListeners) {
-          try {
-            cb(msg);
-          } catch (e) {
-            console.error('call: data listener error', e);
-          }
-        }
-      });
+      const syncStreams = attachSession(session);
 
       // Announce before acquiring devices, same as the mesh path.
       publishActivity();
@@ -1865,6 +1998,18 @@ export function createCallStore(deps: ModuleStoreDeps) {
       "Whether this call runs through the SFU relay ('sfu') or the peer-to-peer mesh ('mesh').",
     ),
     hasSessionBackend: state(hasSessionBackend, 'Whether this call uses a Session backend.'),
+    switchingTopology: state(
+      switchingTopology,
+      'Whether this call is reconnecting everyone onto another topology, after somebody switched it.',
+    ),
+    topologySwitchedBy: state(
+      () => callTopology()?.by ?? null,
+      'The DID of whoever switched this call to its topology by hand, or null if it runs on the one it started with.',
+    ),
+    switchTopology: action(
+      (mode: CallTopology) => switchTopology(mode),
+      "Switch this call to 'mesh' or 'sfu' for everyone in it, for this call only. Everyone reconnects at once.",
+    ),
     qualityPreference: state(qualityPreference, 'The SFU quality layer this agent prefers.'),
     relayInfo: (): RelayInfo => ({
       relayActive: topology() === 'sfu',
@@ -2551,6 +2696,15 @@ export function createCallStore(deps: ModuleStoreDeps) {
     ),
 
     saveCallConfig: action((config: CallConfigState) => writeCallConfig(config), 'Replace the entire call config.'),
+
+    newCallsUseSfu: state(
+      () => callConfig().mode !== 'mesh',
+      "Whether this space's new calls start on the SFU rather than as a mesh. Running calls keep their own.",
+    ),
+    setNewCallsUseSfu: action(
+      (on: boolean) => writeCallConfig({ ...callConfig(), mode: on ? 'designated' : 'mesh' }),
+      "Make this space's new calls start on the SFU (true) or as a mesh (false). Running calls are not touched.",
+    ),
 
     connectionInfo: () => ({
       topology: topology(),

@@ -4,8 +4,9 @@
  * Verifies that the session factory correctly:
  * - Reads the moderator's SFU config before creating a session
  * - Passes the correct topology to `createSession`
- * - Passes 'mesh' explicitly when the config says mesh, and an SFU mode as 'auto'
- * - Falls back to 'auto' when the config read fails
+ * - Passes 'mesh' when the config says mesh, and an SFU mode as 'sfu' — never 'auto'
+ * - Falls back to 'mesh' when the config read fails
+ * - Lets a running call's topology override the space's
  * - Throws when no dataset exists
  */
 import { describe, expect, it, vi } from 'vitest';
@@ -32,10 +33,10 @@ function mockDataset(overrides?: { sharedUrl?: string; sfuConfigMode?: string })
 
 describe('createCallSessionFactory', () => {
   /*
-    The session takes mesh, sfu or auto. An SFU mode goes as auto with the config beside it: the
-    session's auto resolution follows the config, so the space's choice decides the topology.
+    The session takes mesh, sfu or auto. Only mesh and sfu are asked for: a call runs on what was
+    chosen and never migrates on its own.
   */
-  it('reads config and passes an SFU mode as auto, with the config', async () => {
+  it('reads config and passes an SFU mode as sfu, with the config', async () => {
     const ds = mockDataset({ sfuConfigMode: 'designated' });
     const factory = createCallSessionFactory(
       () => null,
@@ -48,7 +49,7 @@ describe('createCallSessionFactory', () => {
     expect(ds._nhProxy.sfuConfig).toHaveBeenCalledWith('neighbourhood://test-space');
     expect(ds._nhProxy.createSession).toHaveBeenCalledWith('test-call-123', {
       neighbourhoodUrl: 'neighbourhood://test-space',
-      topology: 'auto',
+      topology: 'sfu',
       sfuConfig: { mode: 'designated' },
     });
   });
@@ -70,7 +71,7 @@ describe('createCallSessionFactory', () => {
     });
   });
 
-  it('falls back to auto when sfuConfig read fails', async () => {
+  it('falls back to mesh when sfuConfig read fails', async () => {
     const ds = mockDataset();
     (ds._nhProxy.sfuConfig as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('config unavailable'));
     const factory = createCallSessionFactory(
@@ -83,11 +84,11 @@ describe('createCallSessionFactory', () => {
 
     expect(ds._nhProxy.createSession).toHaveBeenCalledWith('call-2', {
       neighbourhoodUrl: 'neighbourhood://test-space',
-      topology: 'auto',
+      topology: 'mesh',
     });
   });
 
-  it('passes cascaded as auto too', async () => {
+  it('passes cascaded as sfu too', async () => {
     const ds = mockDataset({ sfuConfigMode: 'cascaded' });
     const factory = createCallSessionFactory(
       () => null,
@@ -99,8 +100,26 @@ describe('createCallSessionFactory', () => {
 
     expect(ds._nhProxy.createSession).toHaveBeenCalledWith('call-4', {
       neighbourhoodUrl: 'neighbourhood://test-space',
-      topology: 'auto',
+      topology: 'sfu',
       sfuConfig: { mode: 'cascaded' },
+    });
+  });
+
+  it("passes a running call's topology over the space's", async () => {
+    // A joiner adopting the call's topology, or a switch made in the call.
+    const ds = mockDataset({ sfuConfigMode: 'mesh' });
+    const factory = createCallSessionFactory(
+      () => null,
+      () => ds as never,
+      () => null,
+    );
+
+    await factory('call-6', { topology: 'sfu' });
+
+    expect(ds._nhProxy.createSession).toHaveBeenCalledWith('call-6', {
+      neighbourhoodUrl: 'neighbourhood://test-space',
+      topology: 'sfu',
+      sfuConfig: { mode: 'mesh' },
     });
   });
 
@@ -123,7 +142,7 @@ describe('createCallSessionFactory', () => {
 
     expect(ds._nhProxy.createSession).toHaveBeenCalledWith('call-5', {
       neighbourhoodUrl: 'neighbourhood://test-space',
-      topology: 'auto',
+      topology: 'mesh',
       iceServers: [
         { urls: ['turn:relay.example.org:3478'], username: 'alice', credential: 's3cret' },
         { urls: ['stun:a.example.org', 'stun:b.example.org'] },
