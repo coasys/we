@@ -608,8 +608,7 @@ export function ShapeStoreProvider(props: ParentProps) {
       // the diff-first idempotent path, a read in the common case.
       await ports.ensure(dataset, Shape);
       trace('shapes', 'catalogue', { space: uuid, ms: lap() });
-      // The backend's cheapest read where it has one — see `SchemaPort.readShapes` — else the ORM's.
-      const records = ports.readShapes ? await ports.readShapes(dataset) : await Shape.findAll(dataset);
+      const records = await Shape.findAll(dataset);
       trace('shapes', 'records', { space: uuid, count: records.length, ms: lap() });
       if (!stillWanted()) return; // navigated away while loading
 

@@ -30,19 +30,6 @@ import type { TranscriptionPort } from './transcription';
  * stores manifests directly. Only the adapter that minted a payload interprets it, the
  * same rule as `DatasetHandle`.
  */
-/** A space's own model definition as stored — see `SchemaPort.readShapes`. */
-export interface ShapeRecord {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  shapeId: string;
-  version: number;
-  forkedFrom: string;
-  /** The stored definition as a `data:` URL, or null when it could not be read. */
-  definition: string | null;
-}
-
 export interface SchemaPort {
   /**
    * Install the host's root-dataset schemas — the app's configuration entities, and nothing else.
@@ -84,17 +71,6 @@ export interface SchemaPort {
   prepare?(dataset: DatasetHandle): void;
   /** Whether the dataset has any schema at all (the auto-install trigger check). */
   hasAnySchema(dataset: DatasetHandle): Promise<boolean>;
-  /**
-   * The space's own model definitions — its `Shape` records — read for the cheapest way this backend
-   * has, with `definition` as the entity reads it back (a `data:` URL of the stored JSON).
-   *
-   * Optional, because `Shape.findAll` already answers it. It exists because that answer can be slow
-   * where a backend resolves file properties on every query: a definition is a stored file, its
-   * address names its content, so a backend with a content cache can read the records without the
-   * files and the files through the cache. Read on every entry to a space, before its models can be
-   * queried — which, after a reload, is time somebody spends looking at an empty list.
-   */
-  readShapes?(dataset: DatasetHandle): Promise<ShapeRecord[]>;
   /**
    * Discover schemas foreign to the host (another app's entities synced into the dataset),
    * registering them for name-based query resolution and returning their manifest entries.

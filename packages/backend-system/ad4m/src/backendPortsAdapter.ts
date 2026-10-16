@@ -58,13 +58,13 @@ import {
   warmSchemaReads,
   warmStoredShapes,
 } from './sdnaEntities';
-import { readShapeRecords } from './shapeRecords';
 import { createAd4mTranscriptionPort } from './transcriptionAdapter';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
 
 export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
   const client = backendClient as Ad4mClient;
+  void client; // schema install operates on dataset handles; the client stays for future needs
 
   return {
     installRoot: (dataset) => installRootSdna(proxy(dataset)),
@@ -78,7 +78,6 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
       return isEntityRegistered(proxy(dataset), Space as never);
     },
     prepare: (dataset) => warmSchemaReads(proxy(dataset)),
-    readShapes: (dataset) => readShapeRecords(client, proxy(dataset)),
     hasAnySchema: async (dataset) => (await proxy(dataset).getShaclNames()).length > 0,
 
     async foreignSchemas(dataset): Promise<EntityManifestEntry[]> {
