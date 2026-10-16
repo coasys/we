@@ -400,6 +400,8 @@ export function DatasetStoreProvider(props: ParentProps) {
         () => session.client(),
         () => currentDataset()?.handle ?? null,
         () => session.me()?.did ?? null,
+        // The call's own space, which a participant following a switch may have navigated away from.
+        (uri) => datasets().find((d) => d.sharedUri === uri)?.handle ?? null,
       ),
       // Call config accessors — topology defaults stored on Social DNA.
       // Same late-binding pattern: every accessor reads the current dataset at call time.

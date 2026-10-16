@@ -95,7 +95,7 @@ export interface ModuleHostServices {
    */
   createCallBackend?: (
     callId: string,
-    options?: { iceServers?: RTCIceServer[]; topology?: 'mesh' | 'sfu' },
+    options?: { iceServers?: RTCIceServer[]; topology?: 'mesh' | 'sfu'; datasetUri?: string },
   ) => Promise<unknown>;
   /**
    * Read the neighbourhood's call configuration (SFU topology defaults).

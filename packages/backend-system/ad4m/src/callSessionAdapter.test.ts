@@ -54,6 +54,42 @@ describe('createCallSessionFactory', () => {
     });
   });
 
+  /*
+    A participant following a topology switch reconnects wherever they are looking, which need not
+    be the call's space. Built in the space on screen, the new session was a call nobody was in.
+  */
+  it('builds the session in the call’s own space, not the one on screen', async () => {
+    const onScreen = mockDataset({ sharedUrl: 'neighbourhood://elsewhere' });
+    const callSpace = mockDataset({ sharedUrl: 'neighbourhood://test-space' });
+    const factory = createCallSessionFactory(
+      () => null,
+      () => onScreen as never,
+      () => null,
+      (uri) => (uri === 'neighbourhood://test-space' ? (callSpace as never) : null),
+    );
+
+    await factory('call-1', { topology: 'mesh', datasetUri: 'neighbourhood://test-space' });
+
+    expect(callSpace._nhProxy.createSession).toHaveBeenCalledWith(
+      'call-1',
+      expect.objectContaining({ neighbourhoodUrl: 'neighbourhood://test-space', topology: 'mesh' }),
+    );
+    expect(onScreen._nhProxy.createSession).not.toHaveBeenCalled();
+  });
+
+  it('refuses rather than falling back to the space on screen when the call’s is not joined', async () => {
+    const onScreen = mockDataset({ sharedUrl: 'neighbourhood://elsewhere' });
+    const factory = createCallSessionFactory(
+      () => null,
+      () => onScreen as never,
+      () => null,
+      () => null,
+    );
+
+    await expect(factory('call-1', { datasetUri: 'neighbourhood://gone' })).rejects.toThrow(/not joined/);
+    expect(onScreen._nhProxy.createSession).not.toHaveBeenCalled();
+  });
+
   it('passes mesh explicitly when config mode says mesh', async () => {
     const ds = mockDataset({ sfuConfigMode: 'mesh' });
     const factory = createCallSessionFactory(
