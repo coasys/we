@@ -28,7 +28,11 @@ export interface BundleJudgeDeps {
   moduleInstalled(id: string): boolean;
   /** What a module is called, for the screen. */
   moduleName(id: string): string;
-  /** Record types a bundle's own may refer to: the core vocabulary, and whatever the space already has. */
+  /**
+   * The names a bundle's record types may refer to and must not take: WE's own vocabulary. Not a
+   * space's — an install writes to a person's library, and whether a record type fits a space is
+   * asked of each space as it is set up (`shapeStore.addRecordTypes`).
+   */
   knownEntities: readonly string[];
 }
 
@@ -98,13 +102,13 @@ export function judgeBundle(bundle: Bundle, deps: BundleJudgeDeps): BundleJudgem
   for (const template of [...shells, ...sections])
     judge(template, SPACE_TIER, `"${template.meta?.name ?? template.id}"`);
 
-  // A record type is validated against the core vocabulary, what the space already has, and the
-  // bundle's other record types — so a sighting may point at a species the same bundle brings.
+  // A record type is validated against the core vocabulary and the bundle's other record types — so
+  // a sighting may point at a species the same bundle brings.
   const recordNames = (bundle.recordTypes ?? []).map((type) => type.name);
   for (const type of bundle.recordTypes ?? []) {
     const clash = deps.knownEntities.includes(type.name);
     if (clash) {
-      refusals.push(`Its record type "${type.name}" has the name of one that already exists here`);
+      refusals.push(`Its record type "${type.name}" has the name of one WE already has`);
       continue;
     }
     const gate = validateManifest(type.manifest as EntityManifest, {

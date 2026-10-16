@@ -1133,7 +1133,8 @@ export function ShapeStoreProvider(props: ParentProps) {
       const shapeId = `we://shapes/bundle/${bundleId}/${type.name}`;
       const already = present.get(type.name);
       if (already) {
-        if (already.shapeId !== shapeId) problems.push(`"${type.name}" is already a different kind of record here`);
+        if (already.shapeId !== shapeId)
+          problems.push(`it already has a kind of record called "${type.name}" that this app did not bring`);
         continue;
       }
       const known = onScreen ? knownEntityNames() : [...Object.keys(CORE_MANIFEST.entities), ...present.keys()];

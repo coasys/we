@@ -61,6 +61,10 @@ editing one forks it, and it is removed with the app.
 
 **Setting a space up** adds the app's record types (`shapeStore.addRecordTypes`, recognised by
 `shapeId: we://shapes/bundle/<id>/<name>` so it never adds one twice) and switches its sections on.
+A space that already has a record type of the same name it did not get from this app is not set up
+at all — sections reading somebody else's `Species` would draw its records as though they were this
+app's — and says so. That is decided per space, never at install: installing writes only to a
+person's library, so the install checks a record type's name against WE's own vocabulary alone.
 An installed app's sections are first **copied into the space**, because a section switched on is a
 section every member is shown, and they live only in one person's library. Which spaces is asked, as
 a checklist of the spaces the installer runs (`bundleStore.spaceChoices`), with the one on screen

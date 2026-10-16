@@ -294,15 +294,13 @@ export function BundleStoreProvider(props: ParentProps) {
       hasModule: (id) => moduleRegistry.has(id),
       moduleInstalled: (id) => spaceStore.installedModules().includes(id),
       moduleName: (id) => moduleRegistry.get(id)?.definition.manifest.name ?? id,
-      knownEntities: [
-        ...Object.keys(CORE_MANIFEST.entities),
-        ...datasetStore.currentDatasetEntities().map((entity) => entity.name),
-        // A space's own record types count only when they are this bundle's, from an earlier install.
-        ...shapeStore
-          .spaceShapes()
-          .filter((shape) => !shape.shapeId?.startsWith(`we://shapes/bundle/${bundle.id}/`))
-          .map((shape) => shape.name),
-      ],
+      /*
+        WE's own vocabulary only. Installing writes to this agent's library, not to a space; a record
+        type that clashes with something a space already has is that space's question, answered as it
+        is set up. Judging it against the space on screen refused a reinstall over its own earlier
+        record types, which every space's model list carries once adopted.
+      */
+      knownEntities: Object.keys(CORE_MANIFEST.entities),
     });
     if (judged.refusals.length) {
       console.warn(`The app “${bundle.name}” cannot be installed:`, judged.refusals);
@@ -413,7 +411,7 @@ export function BundleStoreProvider(props: ParentProps) {
     for (const space of spaces) {
       try {
         const left = await setUpSpace(source, space.id);
-        if (left.length) problems.push(`in “${space.name}”: ${left[0]}`);
+        if (left.length) problems.push(`“${space.name}” was not set up: ${left[0]}`);
       } catch (error) {
         problems.push(explain(error, `“${space.name}” could not be set up`));
       }
@@ -428,6 +426,12 @@ export function BundleStoreProvider(props: ParentProps) {
     const problems = source.recordTypes.length
       ? await shapeStore.addRecordTypes(source.id, source.recordTypes, spaceId)
       : [];
+    // A section reading a record type the space holds under another definition would draw its
+    // records as though they were this app's, so a space that refused one gets no sections either.
+    if (problems.length) {
+      console.warn(`Not setting a space up for “${source.name}”:`, problems);
+      return problems;
+    }
     /*
       A section switched on is a section every member is shown, so every member has to have it: an
       installed app's sections are copied into the space, as a space's own templates are stored.
@@ -445,7 +449,6 @@ export function BundleStoreProvider(props: ParentProps) {
     const enabled = new Set((row?.views ?? []).filter((view) => view.enabled).map((view) => view.id));
     for (const section of source.sections)
       if (!enabled.has(section)) await spaceStore.setViewEnabled(section, true, spaceId);
-    if (problems.length) console.warn(`Setting a space up for “${source.name}”:`, problems);
     return problems;
   }
 
@@ -465,7 +468,7 @@ export function BundleStoreProvider(props: ParentProps) {
     setBusy(true);
     try {
       const problems = await setUpSpaces(source.id, spaces);
-      if (problems.length) toastService.error(`Set up for “${source.name}”, except ${problems[0]}`);
+      if (problems.length) toastService.error(problems[0]);
       else toastService.success(`${spacesAre(spaces)} set up for “${source.name}”`);
     } finally {
       setBusy(false);
