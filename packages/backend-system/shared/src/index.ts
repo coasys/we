@@ -115,8 +115,8 @@ export type { AdapterCapabilities, AggregateFn, Disposition, CapabilityGap, Quer
 export { compileQuery, irToFlatQuery } from './queryCompiler';
 export type { FlatQuery, CompileResult } from './queryCompiler';
 export { routeQuery } from './queryRouting';
-export { combineEntityRows, entityNamesOf } from './queryUnion';
-export type { EntityRows } from './queryUnion';
+export { combineEntityRows, entityNamesOf, unionByFanOut } from './queryUnion';
+export type { EntityRows, UnionPart } from './queryUnion';
 export type { QueryDiagnostic, QueryRouting } from './queryRouting';
 export { executeQueryIR } from './queryEngine';
 export { rangeCompare, isRangeOp, RANGE_OPS } from './rangeCompare';

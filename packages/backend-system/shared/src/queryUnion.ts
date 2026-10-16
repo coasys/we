@@ -7,11 +7,13 @@
  * puts the answers back together as the single list the template asked for.
  *
  * Above the adapters on purpose. Every backend gets it without implementing anything, and one that
- * can answer a union natively later only replaces the fan-out — the combined list it must produce is
- * the one described here.
+ * can answer a union natively only replaces the fan-out — the combined list it must produce is the
+ * one described here, through `$getEntitiesForDataset`; {@link unionByFanOut} is the same handle
+ * for a backend that cannot.
  *
- * Pure: rows in, rows out. The renderer owns asking, subscribing and cancelling.
+ * `combineEntityRows` is pure: rows in, rows out. The renderer owns asking, subscribing and cancelling.
  */
+import type { DatasetHandle, EntityClass, QueryOptions, QuerySubscription } from './dataSource';
 import { RECORD_TYPE_KEY } from './recordContract';
 
 /**
@@ -92,4 +94,95 @@ export function combineEntityRows(
   }
 
   return typeof options.limit === 'number' && options.limit >= 0 ? combined.slice(0, options.limit) : combined;
+}
+
+/** One entity a fan-out asks, with the relations it declares — which of an `include`'s keys it can answer. */
+export interface UnionPart {
+  entity: string;
+  Model: EntityClass;
+  relations: ReadonlySet<string>;
+}
+
+/**
+ * Several entities as one handle, for a backend that answers one entity at a time: each is asked
+ * separately and the answers are combined by {@link combineEntityRows}, so the list is the one a
+ * native union answers with.
+ *
+ * An `include` key, or a `$` projection, over a relation an entity does not declare is left out of
+ * that entity's read rather than sent — which is what a native union does with it, and what keeps
+ * one kind that cannot answer a count from taking every kind off the list.
+ *
+ * A live read emits once every entity has answered, then on any change to any of them. A one-shot
+ * read in which some entities fail answers with the rest, and fails only when all of them do.
+ * `offset` is refused: a page of a union needs `offset + limit` rows from every entity, which is a
+ * cost to design for rather than to pay silently.
+ */
+export function unionByFanOut(parts: readonly UnionPart[]): EntityClass {
+  const combine = (answers: readonly (readonly unknown[])[], opts: QueryOptions) =>
+    combineEntityRows(
+      parts.map((part, i) => ({ entity: part.entity, rows: answers[i] ?? [] })),
+      { order: opts.order, limit: opts.limit },
+    );
+  const refuseOffset = (opts: QueryOptions) => {
+    if (opts.offset !== undefined) throw new Error('A read over several entities cannot take an offset');
+  };
+
+  return {
+    query(dataset: DatasetHandle, opts: QueryOptions): QuerySubscription {
+      refuseOffset(opts);
+      const subscriptions = parts.map((part) => part.Model.query(dataset, optionsFor(part, opts)));
+      return {
+        subscribe(cb) {
+          const answers: (readonly unknown[])[] = parts.map(() => []);
+          let primed = false;
+          return Promise.all(
+            subscriptions.map((subscription, i) =>
+              subscription
+                .subscribe((rows) => {
+                  answers[i] = rows;
+                  if (primed) cb(combine(answers, opts));
+                })
+                .then((rows) => {
+                  answers[i] = rows;
+                }),
+            ),
+          ).then(() => {
+            primed = true;
+            const rows = combine(answers, opts);
+            cb(rows);
+            return rows;
+          });
+        },
+        dispose() {
+          for (const subscription of subscriptions) subscription.dispose();
+        },
+      };
+    },
+
+    async findAll(dataset, opts, ctl) {
+      refuseOffset(opts);
+      const settled = await Promise.allSettled(
+        parts.map((part) => part.Model.findAll(dataset, optionsFor(part, opts), ctl)),
+      );
+      const failed = settled.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+      if (failed && settled.every((result) => result.status === 'rejected')) throw failed.reason;
+      return combine(
+        settled.map((result) => (result.status === 'fulfilled' ? result.value : [])),
+        opts,
+      );
+    },
+  };
+}
+
+/** The read one entity of a union is sent: the union's, less what it cannot answer. */
+function optionsFor(part: UnionPart, opts: QueryOptions): QueryOptions {
+  if (!opts.include) return opts;
+  const include = Object.fromEntries(
+    Object.entries(opts.include).filter(([key, spec]) => {
+      const from = key.startsWith('$') ? (spec as { from?: unknown } | null)?.from : key;
+      return typeof from !== 'string' || part.relations.has(from);
+    }),
+  );
+  const { include: _include, ...rest } = opts;
+  return Object.keys(include).length ? { ...rest, include } : rest;
 }

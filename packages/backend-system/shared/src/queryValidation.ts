@@ -133,8 +133,17 @@ function validateInclude(
     if (spec === true) continue;
     const target = rel.target;
     const sub = `${path}.${key}`;
+    // Under an untyped relation there is no one class to check a count against: each member answers
+    // for its own, and one whose class lacks the relation carries no value.
+    const targetSchema = manifest.entities[target];
+    if (spec.aggregate && targetSchema) {
+      spec.aggregate.forEach((agg, i) =>
+        validateAggregate(agg, target, targetSchema, manifest, `${sub}.aggregate.${i}`, errors),
+      );
+    }
+    const aliases = new Set((spec.aggregate ?? []).map((a) => a.as));
     if (spec.filter) validateFilter(spec.filter, target, manifest, `${sub}.filter`, errors);
-    if (spec.sort) validateSort(spec.sort, target, manifest, new Set(), `${sub}.sort`, errors);
+    if (spec.sort) validateSort(spec.sort, target, manifest, aliases, `${sub}.sort`, errors);
     if (spec.select) validateSelect(spec.select, target, manifest, `${sub}.select`, errors);
     if (spec.include) validateInclude(spec.include, target, manifest, `${sub}.include`, errors);
   }

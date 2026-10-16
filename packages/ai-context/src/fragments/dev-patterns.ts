@@ -587,11 +587,12 @@ What the SDK and executor do around a subscription, so a watch can rely on it:
   the changes after it.
 - After a websocket reconnect, the SDK re-subscribes and hands the current result to every
   callback, so a watch hears a refresh rather than nothing.
-- The executor shares one server-side subscription between identical queries from the same user.
-  Disposing one ends it for the other too, until the other's 30-second keepalive fails and
-  re-subscribes. So hold one subscription per perspective and query, count its holders, and dispose
-  it a grace period after the last one lets go — \`onProposalsChanged\` shows how. The grace matters:
-  a dispose racing a fresh subscribe with the same text can land after it and end that one too.
+- A subscription belongs to the subscriber that opened it and to its socket: identical queries are
+  independent, and each ends when it is disposed or its socket closes. Independent is not free — the
+  executor evaluates every one of them on each change that matches — so still hold one subscription
+  per perspective and query, count its holders, and dispose it a grace period after the last one
+  lets go, so a surface remounting does not tear one down and open another. \`onProposalsChanged\`
+  shows how.
 
 ### Reading shapes from \`@we/backend-ad4m\`
 

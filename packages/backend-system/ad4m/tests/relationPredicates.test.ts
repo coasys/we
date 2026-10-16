@@ -69,6 +69,8 @@ describe('a parent by relation, on the model layer', () => {
       create: (...args: unknown[]) => (seen.create = args),
       findAll: (...args: unknown[]) => (seen.findAll = args),
       paginate: (...args: unknown[]) => (seen.paginate = args),
+      findAllOf: (...args: unknown[]) => (seen.findAllOf = args),
+      queryOf: (...args: unknown[]) => (seen.queryOf = args),
     };
     return { model, seen };
   }
@@ -83,6 +85,21 @@ describe('a parent by relation, on the model layer', () => {
     expect(seen.create[2]).toEqual({ parent: { id: 'n1', predicate: 'we://signal' }, batchId: 'b' });
     expect(seen.findAll[1]).toEqual({ parent: { id: 'c1', predicate: CONTAINMENT_PREDICATE } });
     expect(seen.paginate[3]).toEqual({ parent: { id: 'n1', predicate: 'we://response' } });
+  });
+
+  it('translates the parent of a read over several classes, which takes the classes second', () => {
+    const { model, seen } = fakeModel();
+    installParentByRelation(model as never);
+    model.findAllOf('dataset', ['TaskBlock'], {
+      parent: { id: 'c1', relation: 'children', entity: 'CollectionBlock' },
+    });
+    model.queryOf('dataset', ['TaskBlock'], {
+      parent: { id: 'c1', relation: 'children', entity: 'CollectionBlock' },
+      limit: 10,
+    });
+
+    expect(seen.findAllOf[2]).toEqual({ parent: { id: 'c1', predicate: CONTAINMENT_PREDICATE } });
+    expect(seen.queryOf[2]).toEqual({ parent: { id: 'c1', predicate: CONTAINMENT_PREDICATE }, limit: 10 });
   });
 
   it("passes a predicate-named parent through — this package's own drill-downs build those", () => {

@@ -1001,7 +1001,7 @@ export interface GraphHostBindings {
    * Optional: a host with no change notification omits it and the graph stays as loaded. The engine
    * decides what to watch from the reads its seeds performed — nothing calls this directly.
    */
-  watch?(request: { entity: string; dataset?: string }, onChange: () => void): () => void;
+  watch?(request: { entity: string | string[]; dataset?: string }, onChange: () => void): () => void;
   /**
    * Say what happened inside a load, for whoever is debugging an empty canvas.
    *

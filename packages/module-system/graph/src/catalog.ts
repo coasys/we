@@ -68,7 +68,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           name: 'contains',
           type: 'string[]',
           description:
-            'Types the canvas may hold beyond whatever its placements name — one query each. Defaults to the block vocabulary; anything *placed* is loaded whether or not it is listed.',
+            'Types the canvas may hold beyond whatever its placements name — read together, in one query. Defaults to the block vocabulary; anything *placed* is loaded whether or not it is listed.',
         },
         { name: 'via', type: 'string', description: 'Relation holding the contents. Defaults to "children".' },
         {
@@ -111,7 +111,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           name: 'counts',
           type: 'string[]',
           description:
-            'Relations to count on each card, read onto its data as `<name>Count` — `["signals", "responses"]` for "what have people made of this". The projections ride in the read the seed already makes, so a canvas of three hundred cards pays nothing extra; a query per card would be three hundred subscriptions. A type that does not declare the relation is asked for no count rather than refusing the read, since a refusal would take that whole type off the canvas. Absent for a count of zero, like every other unset field, so a rule can ask whether it is there.',
+            'Relations to count on each card, read onto its data as `<name>Count` — `["signals", "responses"]` for "what have people made of this". The projections ride in the read the seed already makes, so a canvas of three hundred cards pays nothing extra; a query per card would be three hundred subscriptions. A type that does not declare the relation carries no count rather than refusing the read, since a refusal would take that whole type off the canvas. Absent for a count of zero, like every other unset field, so a rule can ask whether it is there.',
         },
         {
           name: 'weigh',

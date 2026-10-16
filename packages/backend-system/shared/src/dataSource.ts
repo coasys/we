@@ -121,6 +121,17 @@ export interface RendererDataBindings {
    * type. This is what lets the renderer treat a handle as fully opaque.
    */
   $getEntityForDataset?: (name: string, dataset?: DatasetHandle) => EntityClass | undefined;
+  /**
+   * One handle over several entities, for a backend that answers a read of all of them as one query:
+   * one round trip, and one subscription, where a handle per entity costs one of each.
+   *
+   * Its rows are the list `combineEntityRows` describes — each tagged with its entity, a record
+   * shared by two listed once, `where`/`order`/`limit` applied over the whole — and an `include` over
+   * a relation one entity lacks is left off that entity's rows. Optional: a caller without it builds
+   * the same handle by fan-out with `unionByFanOut`. A name the dataset cannot resolve is left out;
+   * `undefined` when none resolves.
+   */
+  $getEntitiesForDataset?: (names: string[], dataset?: DatasetHandle) => EntityClass | undefined;
   /** Surface a data-layer error to the host UI. */
   $onError?: (message: string) => void;
   /** Mutation surface for `record.create` / `update` / `delete` actions. */

@@ -29,6 +29,7 @@ import {
   itemFor,
   RECORD_TYPE_KEY,
   type RendererDataBindings,
+  unionByFanOut,
 } from '@we/backend-shared';
 import { getEntity } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
@@ -81,6 +82,8 @@ export const CONFORMANCE_CASES = [
   'relations.create-links-many',
   'relations.replace-whole',
   'relations.member-type',
+  'relations.member-counts',
+  'queries.several-entities',
   'live.pushes-writes',
   'live.dispose-stops',
   'live.included-child-edit',
@@ -105,6 +108,7 @@ interface Row {
 
 interface Instance extends Row {
   addChildren(child: unknown): Promise<void>;
+  addSignals(signal: unknown): Promise<void>;
   delete(): Promise<void>;
 }
 
@@ -198,7 +202,9 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
       const pushes: Row[][] = [];
       const handle = reader(entityName).query(subject.dataset, query);
       live.push(handle);
-      await handle.subscribe((rows) => void pushes.push(rows));
+      // The initial page is what `subscribe` resolves with, and the callback hears only later
+      // changes — so it goes first, ahead of any change that arrived before it resolved.
+      pushes.unshift(await handle.subscribe((rows) => void pushes.push(rows)));
       const dispose = () => {
         const at = live.indexOf(handle);
         if (at >= 0) live.splice(at, 1);
@@ -599,6 +605,67 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
         });
         expect((row.children as Row[])[0][RECORD_TYPE_KEY]).toBe('TaskBlock');
       });
+
+      test('relations.member-counts', 'counts on each member of a heterogeneous relation', async () => {
+        // A card brought by its placement, a post's blocks: records read through a relation that
+        // names no type, each with what people made of it. Counted in the read that brings them,
+        // rather than asked again per member.
+        const Collection = model('CollectionBlock');
+        const post = await Collection.create(subject.dataset, { kind: 'post' });
+        const liked = await model('TextBlock').create(subject.dataset, { text: 'liked' });
+        const quiet = await Collection.create(subject.dataset, { kind: 'text' });
+        await post.addChildren(liked);
+        await post.addChildren(quiet);
+        for (let i = 0; i < 2; i++) {
+          await liked.addSignals(await model('Signal').create(subject.dataset, { signalTypeId: 'like', value: 1 }));
+        }
+
+        const [row] = await reader('CollectionBlock').findAll(subject.dataset, {
+          where: { id: post.id },
+          include: { children: { include: { $likes: { from: 'signals', count: true } } } },
+        });
+        const likes = Object.fromEntries((row.children as Row[]).map((child) => [child.id, child.$likes ?? 0]));
+        expect(likes).toEqual({ [liked.id]: 2, [quiet.id]: 0 });
+      });
+    });
+
+    describe('several entities', () => {
+      test(
+        'queries.several-entities',
+        'reads several entities as one list, and follows it live, each row saying what it is',
+        async () => {
+          // One read where there would be one per kind, and one subscription — what a canvas's tray
+          // is. A backend that answers it natively hands out `$getEntitiesForDataset`; one that does
+          // not gets the same list by fan-out, and the two have to agree.
+          const Collection = model('CollectionBlock');
+          const channel = await Collection.create(subject.dataset, { kind: 'channel' });
+          const inside = { parent: { id: channel.id, relation: 'children' } };
+          const task = await model('TaskBlock').create(subject.dataset, { title: 'Ship it' }, inside);
+          const note = await Collection.create(subject.dataset, { kind: 'post' }, inside);
+          await model('TaskBlock').create(subject.dataset, { title: 'Elsewhere' });
+
+          const names = ['TaskBlock', 'CollectionBlock'];
+          const union =
+            bindings.$getEntitiesForDataset?.(names, subject.dataset) ??
+            unionByFanOut(
+              names.map((entity) => ({ entity, Model: bindings.$getEntity!(entity), relations: new Set<string>() })),
+            );
+          const kinds = (rows: readonly unknown[] | undefined) =>
+            Object.fromEntries(((rows ?? []) as Row[]).map((row) => [row.id, row[RECORD_TYPE_KEY]]));
+
+          expect(kinds(await union.findAll(subject.dataset, { ...inside, limit: 10 }))).toEqual({
+            [task.id]: 'TaskBlock',
+            [note.id]: 'CollectionBlock',
+          });
+
+          const pushes: (readonly unknown[])[] = [];
+          const watching = union.query(subject.dataset, { ...inside, limit: 10 });
+          live.push(watching as LiveQuery);
+          await watching.subscribe((rows) => void pushes.push(rows));
+          const later = await model('TaskBlock').create(subject.dataset, { title: 'Later' }, inside);
+          await eventually(() => expect(kinds(pushes.at(-1))[later.id]).toBe('TaskBlock'), settle);
+        },
+      );
     });
 
     describe('live queries', () => {

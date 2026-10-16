@@ -2764,35 +2764,31 @@ export function SpaceStoreProvider(props: ParentProps) {
       })) as Signal[];
 
       /*
-      Withdrawing a reaction removes the record; changing one replaces it.
+        Withdrawing a reaction removes the record; changing one edits it in place.
 
-      Replaces, not edits — and that is not the obvious choice. Editing is one write where this is
-      two, and it keeps the record's id and `createdAt` for what is plainly the same person's same
-      reaction differently weighted. It was written that way, and it made changing a rating do
-      nothing anybody could see.
+        In place, so it keeps the record's id and `createdAt` for what is plainly the same person's
+        same reaction differently weighted, and in one write. It used to be a remove and an add,
+        because an edit to a record read through `include` notified nobody: a subscription over the
+        reacted-to record was triggered by that record's own predicates and not by `we://value` on
+        the included Signal, so every reader went on showing the old number. The replacement touched
+        `we://signal` twice to be seen, at the cost of a flicker — a rating moved from 3 to 4 passed
+        through "nobody has rated this" for a round trip. A subscription now follows what its query
+        includes, so the edit is heard and the flicker has no reason left.
 
-      The reason is in the executor. A model subscription's trigger is built by
-      `build_model_trigger_predicates`, which collects the predicates of the SUBSCRIBED class's own
-      shape plus the parent predicate — it does not walk `include`. Every surface reads reactions as
-      `include: { signals: true }` on the record, so the live query is over CollectionBlock, whose
-      predicates cover `we://signal`: adding or removing one fires the trigger, and the row re-reads.
-      A property of the included Signal does not. `we://value` is not in that set, so an in-place
-      edit changes the store, notifies nobody, and every reader — the author included — goes on
-      showing the old number until something else re-runs the query.
+        Any further reactions of mine on this type are removed, so a pair that was written twice
+        heals on the next change rather than staying doubled for good.
 
-      So a change is a remove and an add, which touches `we://signal` twice and is therefore visible.
-      The cost is the flicker the edit-in-place was introduced to remove: a rating moved from 3 to 4
-      passes through "nobody has rated this" for a round trip, so the mean dips and comes back. A
-      figure that is briefly wrong is worth more than one that is permanently wrong, and the real fix
-      is an executor that triggers on the shapes a query includes.
-
-      A withdrawal — `null` — removes the record rather than storing anything, which is what keeps a
-      withdrawn reaction absent everywhere instead of being a row every count has to remember to
-      exclude. A zero is now an ordinary value and is stored like any other.
-    */
+        A withdrawal — `null` — removes the record rather than storing anything, which is what keeps a
+        withdrawn reaction absent everywhere instead of being a row every count has to remember to
+        exclude. A zero is an ordinary value and is stored like any other.
+      */
       try {
-        for (const signal of mine) await signal.delete();
-        if (value !== null) {
+        const kept = value === null ? undefined : mine[0];
+        for (const signal of mine) if (signal !== kept) await signal.delete();
+        if (kept) {
+          kept.value = value as number;
+          await kept.save();
+        } else if (value !== null) {
           await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, relation: 'signals' } });
         }
         // The write is back. Not a release — what retires a hold is the data moving — but it ends

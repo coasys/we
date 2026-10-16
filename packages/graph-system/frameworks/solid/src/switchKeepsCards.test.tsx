@@ -89,17 +89,34 @@ async function run(delay: number, withSimulate: boolean, change: 'none' | 'signa
   const tables = JSON.parse(JSON.stringify(TABLES)) as typeof TABLES;
   let latency = 0;
   const host = {
-    query: async (request: { entity: string; where?: Record<string, unknown>; scope?: { anchorId?: string } }) => {
+    query: async (request: {
+      entity: string | string[];
+      where?: Record<string, unknown>;
+      scope?: { anchorId?: string };
+      include?: { node?: unknown };
+    }) => {
       if (latency) await new Promise((resolve) => setTimeout(resolve, latency));
-      const rows = tables[request.entity] ?? [];
       const where = request.where;
-      if (where) {
-        return rows.filter((row) =>
-          Object.entries(where).every(([f, v]) => (Array.isArray(v) ? v.includes(row[f]) : row[f] === v)),
-        );
-      }
-      if (request.scope?.anchorId && request.scope.anchorId !== 'b1') return [];
-      return rows;
+      // A read over several kinds tags each row with the kind it was read as, and a placement read
+      // with its `node` included carries the card itself.
+      const several = Array.isArray(request.entity);
+      return (several ? (request.entity as string[]) : [request.entity as string]).flatMap((entity) => {
+        let rows = tables[entity] ?? [];
+        if (where) {
+          rows = rows.filter((row) =>
+            Object.entries(where).every(([f, v]) => (Array.isArray(v) ? v.includes(row[f]) : row[f] === v)),
+          );
+        } else if (request.scope?.anchorId && request.scope.anchorId !== 'b1') {
+          rows = [];
+        }
+        if (entity === 'Placement' && request.include?.node) {
+          rows = rows.map((row) => {
+            const card = tables.CollectionBlock.find((c) => c.id === row.node);
+            return { ...row, node: card ? { ...card, __subjectClass: 'CollectionBlock' } : null };
+          });
+        }
+        return several ? rows.map((row) => ({ ...row, __subjectClass: entity })) : rows;
+      });
     },
     models: () => SHAPES,
     defaultDataset: () => 'ds',

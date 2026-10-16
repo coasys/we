@@ -3,20 +3,16 @@
  *
  * ## Why the renderer shares them
  *
- * The AD4M executor already shares them — and that is the problem. Two model subscriptions with the
- * same class and the same query JSON are handed the *same* subscription id, with no count of how many
- * callers hold it, so the first caller to dispose ends it for everyone. Its client keeps one listener
- * per id as well, so the second caller's registration replaces the first's.
+ * Because a backend pays for every live question separately. A subscription belongs to whoever opened
+ * it and is re-run on each change that touches it, so two nodes asking the same thing cost two runs per
+ * change for one answer. The workshop asks `{ entity: 'Involvement' }` twice — once for the kanban's
+ * faces and once for the inspector's People — and a question asked per card is asked once per card.
  *
- * The workshop asks `{ entity: 'Involvement' }` twice: once for the kanban's faces and once for the
- * inspector's People. Pressing a card re-runs the inspector's query, which disposed the shared
- * subscription — and the kanban stopped hearing about involvements at all. Marking yourself as
- * reviewing showed for as long as the optimistic hold lasted and then vanished until the page was
- * rebuilt.
- *
- * So identical questions are asked once here, and the subscription is disposed only when nobody is
- * left asking. Keeping the count on this side is the fix that does not wait on the executor; the
- * executor counting its own holders is the fix that covers callers outside the renderer.
+ * They were shared first for a worse reason, and the count is what made that safe: a backend that
+ * handed identical subscriptions one id with no record of who held it ended the subscription for
+ * everyone on the first dispose. Pressing a card re-ran the inspector's query, and the kanban stopped
+ * hearing about involvements at all. So identical questions are asked once here, and the subscription
+ * is disposed only when nobody is left asking — which is right whichever kind of backend is underneath.
  *
  * ## Keyed by what is asked, never by the object asking
  *
