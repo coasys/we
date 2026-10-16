@@ -5,12 +5,17 @@
  * reads a core model, with a `$query` and an `include` for the places and photos they point at.
  */
 import type { TemplateSchema } from '@we/schema-shared';
+import { emptyState, recordFormModal } from '@we/template-kit';
 
+import { addButton } from '../parts.ts';
 import { GROUPS } from './model.ts';
 
 const GROUP_ICON =
   "{ bird: 'bird', mammal: 'paw-print', insect: 'bug', plant: 'flower', fungus: 'tree', reptile: 'feather' }";
 const page = { width: '100%', maxWidth: 'var(--we-layout-lg)', px: '600', py: '500', gap: '500' };
+
+const recordForm = recordFormModal({ entityPicker: false });
+const filteredSpecies = "local.species.filter(s, local.group == '' || s.group == local.group)";
 
 export const speciesSection: TemplateSchema & { id: string } = {
   id: 'field-guide-species',
@@ -29,36 +34,56 @@ export const speciesSection: TemplateSchema & { id: string } = {
       children: [
         {
           type: 'Row',
-          props: { gap: '200', wrap: true },
+          props: { gap: '300', ay: 'center', ax: 'between', wrap: true },
           children: [
             {
-              type: 'we-button',
-              props: {
-                variant: { $: "local.group == '' ? 'secondary' : 'ghost'" },
-                size: 'sm',
-                onClick: { $setLocal: 'group', value: '' },
-              },
-              children: ['All'],
-            },
-            {
-              type: '$each',
-              props: { items: [...GROUPS], as: 'g' },
+              type: 'Row',
+              props: { gap: '200', wrap: true, flex: '1', minWidth: '0' },
               children: [
                 {
                   type: 'we-button',
                   props: {
-                    variant: { $: "local.group == g ? 'secondary' : 'ghost'" },
+                    variant: { $: "local.group == '' ? 'secondary' : 'ghost'" },
                     size: 'sm',
-                    onClick: { $setLocal: 'group', value: { $: 'g' } },
+                    onClick: { $setLocal: 'group', value: '' },
                   },
+                  children: ['All'],
+                },
+                {
+                  type: '$each',
+                  props: { items: [...GROUPS], as: 'g' },
                   children: [
-                    { type: 'we-icon', props: { name: { $: `${GROUP_ICON}[g]` } } },
-                    { type: 'we-text', props: { textTransform: 'capitalize' }, children: [{ $: 'g' }] },
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: { $: "local.group == g ? 'secondary' : 'ghost'" },
+                        size: 'sm',
+                        onClick: { $setLocal: 'group', value: { $: 'g' } },
+                      },
+                      children: [
+                        { type: 'we-icon', props: { name: { $: `${GROUP_ICON}[g]` } } },
+                        { type: 'we-text', props: { textTransform: 'capitalize' }, children: [{ $: 'g' }] },
+                      ],
+                    },
                   ],
                 },
               ],
             },
+            addButton('Add a species', 'Species', 'plus'),
           ],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: `local.speciesLoaded && !count(${filteredSpecies})` },
+            then: emptyState({
+              icon: 'leaf',
+              label: 'species',
+              message: {
+                $: "local.group ? `No ${local.group} species yet — add the first one.` : 'No species yet — add the first one.'",
+              },
+            }),
+          },
         },
         {
           type: 'Grid',
@@ -66,7 +91,7 @@ export const speciesSection: TemplateSchema & { id: string } = {
           children: [
             {
               type: '$each',
-              props: { items: { $: "local.species.filter(s, local.group == '' || s.group == local.group)" }, as: 'sp' },
+              props: { items: { $: filteredSpecies }, as: 'sp' },
               children: [
                 {
                   type: 'Column',
@@ -132,6 +157,7 @@ export const speciesSection: TemplateSchema & { id: string } = {
         },
       ],
     },
+    recordForm,
   ],
 };
 
@@ -154,6 +180,22 @@ export const sightingsSection: TemplateSchema & { id: string } = {
       type: 'Column',
       props: { ...page, maxWidth: 'var(--we-layout-md)', gap: '300' },
       children: [
+        {
+          type: 'Row',
+          props: { ax: 'end' },
+          children: [addButton('Log a sighting', 'Sighting', 'binoculars')],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'local.sightingsLoaded && !count(local.sightings)' },
+            then: emptyState({
+              icon: 'binoculars',
+              label: 'sightings',
+              message: 'No sightings yet — log the first one.',
+            }),
+          },
+        },
         {
           type: '$each',
           props: { items: { $: 'local.sightings' }, as: 's' },
@@ -233,6 +275,7 @@ export const sightingsSection: TemplateSchema & { id: string } = {
         },
       ],
     },
+    recordForm,
   ],
 };
 
@@ -253,24 +296,47 @@ export const mapSection: TemplateSchema & { id: string } = {
   },
   children: [
     {
-      type: 'CesiumGlobe',
-      props: {
-        backgroundLayers: [{ factory: 'proceduralStarsLayer', options: { count: 1500 } }],
-        planetLayers: [
-          {
-            factory: 'pointLocationsLayer',
-            id: 'sightings',
-            options: {
-              locations: {
-                $: 'local.sightings.map(s, { id: s.id, name: s.title, latitude: s.place.latitude, longitude: s.place.longitude })',
-              },
-              markerSize: 18,
-              defaultColor: '#2f9e6b',
+      type: 'Row',
+      props: { gap: '300', ay: 'center', ax: 'between', px: '400', py: '300', wrap: true },
+      children: [
+        {
+          type: 'we-text',
+          props: { color: 'text-muted', flex: '1', minWidth: '0' },
+          children: [
+            {
+              $: "!local.sightingsLoaded ? '' : count(local.sightings) ? `${count(local.sightings)} ${plural(count(local.sightings), 'sighting', 'sightings')}` : 'No sightings yet — log the first one to see it here.'",
             },
-          },
-          { factory: 'countryOutlinesLayer', options: { color: '#ffffff', opacity: 0.4, width: 1 } },
-        ],
-      },
+          ],
+        },
+        addButton('Log a sighting', 'Sighting', 'binoculars'),
+      ],
     },
+    {
+      type: 'Column',
+      props: { flex: '1', minHeight: '0' },
+      children: [
+        {
+          type: 'CesiumGlobe',
+          props: {
+            backgroundLayers: [{ factory: 'proceduralStarsLayer', options: { count: 1500 } }],
+            planetLayers: [
+              {
+                factory: 'pointLocationsLayer',
+                id: 'sightings',
+                options: {
+                  locations: {
+                    $: 'local.sightings.map(s, { id: s.id, name: s.title, latitude: s.place.latitude, longitude: s.place.longitude })',
+                  },
+                  markerSize: 18,
+                  defaultColor: '#2f9e6b',
+                },
+              },
+              { factory: 'countryOutlinesLayer', options: { color: '#ffffff', opacity: 0.4, width: 1 } },
+            ],
+          },
+        },
+      ],
+    },
+    recordForm,
   ],
 };

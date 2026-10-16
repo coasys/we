@@ -135,35 +135,88 @@
           "children": [
             {
               "type": "Row",
-              "props": { "gap": "200", "wrap": true },
+              "props": { "gap": "300", "ay": "center", "ax": "between", "wrap": true },
               "children": [
                 {
-                  "type": "we-button",
-                  "props": {
-                    "size": "sm",
-                    "variant": { "$": "local.category == '' ? 'primary' : 'outline'" },
-                    "onClick": { "$setLocal": "category", "value": "" }
-                  },
-                  "children": ["Everything"]
-                },
-                {
-                  "type": "$each",
-                  "props": { "items": ["garden", "power", "hand", "kitchen", "camping"], "as": "c" },
+                  "type": "Row",
+                  "props": { "gap": "200", "wrap": true, "flex": "1", "minWidth": "0" },
                   "children": [
                     {
                       "type": "we-button",
                       "props": {
                         "size": "sm",
-                        "variant": { "$": "local.category == c ? 'primary' : 'outline'" },
-                        "onClick": { "$setLocal": "category", "value": { "$": "c" } }
+                        "variant": { "$": "local.category == '' ? 'primary' : 'outline'" },
+                        "onClick": { "$setLocal": "category", "value": "" }
                       },
+                      "children": ["Everything"]
+                    },
+                    {
+                      "type": "$each",
+                      "props": { "items": ["garden", "power", "hand", "kitchen", "camping"], "as": "c" },
                       "children": [
-                        { "type": "we-text", "props": { "textTransform": "capitalize" }, "children": [{ "$": "c" }] }
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "size": "sm",
+                            "variant": { "$": "local.category == c ? 'primary' : 'outline'" },
+                            "onClick": { "$setLocal": "category", "value": { "$": "c" } }
+                          },
+                          "children": [
+                            {
+                              "type": "we-text",
+                              "props": { "textTransform": "capitalize" },
+                              "children": [{ "$": "c" }]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "variant": "primary",
+                    "size": "sm",
+                    "flexShrink": "0",
+                    "onClick": { "$action": "recordStore.openRecordForm", "args": ["Item"] }
+                  },
+                  "children": [
+                    { "type": "we-icon", "props": { "name": "plus" } },
+                    { "type": "we-text", "children": ["Add an item"] }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "$if",
+              "props": {
+                "condition": {
+                  "$": "local.itemsLoaded && !count(local.items.filter(i, local.category == '' || i.category == local.category))"
+                },
+                "then": {
+                  "type": "$animate",
+                  "props": { "enterTransition": { "type": "fade", "duration": 200, "delay": 400 } },
+                  "children": [
+                    {
+                      "type": "Column",
+                      "props": { "ax": "center", "ay": "center", "gap": "200", "p": "600", "width": "100%" },
+                      "children": [
+                        { "type": "we-icon", "props": { "name": "wrench", "size": "lg", "color": "text-faint" } },
+                        {
+                          "type": "we-text",
+                          "props": { "color": "text-faint", "textAlign": "center" },
+                          "children": [
+                            {
+                              "$": "local.category ? `Nothing in ${local.category} yet — add the first one.` : 'Nothing to lend yet — add the first item.'"
+                            }
+                          ]
+                        }
                       ]
                     }
                   ]
                 }
-              ]
+              }
             },
             {
               "type": "Grid",
@@ -273,6 +326,1360 @@
               ]
             }
           ]
+        },
+        {
+          "type": "$if",
+          "props": {
+            "condition": { "$": "recordStore.recordDraft" },
+            "then": {
+              "type": "we-modal",
+              "props": {
+                "size": "md",
+                "close": {
+                  "$if": {
+                    "condition": { "$": "recordStore.recordDraftDirty" },
+                    "then": { "$setLocal": "confirmDiscardOpen", "value": true },
+                    "else": { "$action": "recordStore.cancelRecordForm" }
+                  }
+                }
+              },
+              "$queries": { "relationshipKinds": { "entity": "RelationshipType", "order": { "name": "asc" } } },
+              "$localState": { "confirmDiscardOpen": { "type": "boolean", "initial": false } },
+              "children": [
+                {
+                  "type": "Row",
+                  "props": { "gap": "300", "ay": "center", "width": "100%" },
+                  "slot": "header",
+                  "children": [
+                    {
+                      "type": "Column",
+                      "props": {
+                        "width": "56px",
+                        "height": "56px",
+                        "flexShrink": "0",
+                        "r": "full",
+                        "ax": "center",
+                        "ay": "center",
+                        "bg": "surface-sunken"
+                      },
+                      "children": [
+                        {
+                          "type": "we-icon",
+                          "props": { "name": { "$": "recordStore.recordDraft.icon" }, "color": "text" }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "we-text",
+                      "props": { "variant": "heading-md" },
+                      "children": [{ "$": "`New ${recordStore.recordDraft.label}`" }]
+                    }
+                  ]
+                },
+                {
+                  "type": "$if",
+                  "props": {
+                    "condition": { "$": "recordStore.pendingLink" },
+                    "then": {
+                      "type": "Row",
+                      "props": {
+                        "gap": "200",
+                        "ay": "center",
+                        "wrap": true,
+                        "width": "100%",
+                        "bg": "surface-sunken",
+                        "r": "300",
+                        "px": "300",
+                        "py": "200"
+                      },
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "props": { "variant": "label", "truncate": true },
+                          "children": [{ "$": "recordStore.pendingLink.sourceLabel" }]
+                        },
+                        { "type": "we-icon", "props": { "name": "arrow-right", "size": "xs", "color": "text-faint" } },
+                        {
+                          "type": "we-text",
+                          "props": { "variant": "label", "truncate": true },
+                          "children": [{ "$": "recordStore.pendingLink.targetLabel" }]
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "$if",
+                  "props": {
+                    "condition": { "$": "recordStore.pendingLink && count(local.relationshipKinds)" },
+                    "then": {
+                      "type": "we-form-field",
+                      "props": { "label": "Kind", "width": "100%" },
+                      "children": [
+                        {
+                          "type": "Row",
+                          "props": { "gap": "200", "ay": "center", "width": "100%" },
+                          "children": [
+                            {
+                              "type": "we-select",
+                              "props": {
+                                "flex": "1",
+                                "minWidth": "0",
+                                "placeholder": "Unnamed kind",
+                                "options": {
+                                  "$": "local.relationshipKinds.map(item, { label: item.name, value: item.id, icon: item.icon })"
+                                },
+                                "value": { "$": "recordStore.relationshipKind" },
+                                "onChange": {
+                                  "$action": "recordStore.setRelationshipKind",
+                                  "args": [{ "$": "event.detail" }]
+                                }
+                              }
+                            },
+                            {
+                              "type": "$if",
+                              "props": {
+                                "condition": { "$": "recordStore.relationshipKind" },
+                                "then": {
+                                  "type": "we-tooltip",
+                                  "props": { "content": "Leave the kind unnamed" },
+                                  "children": [
+                                    {
+                                      "type": "we-button",
+                                      "props": {
+                                        "variant": "ghost",
+                                        "square": true,
+                                        "label": "Leave the kind unnamed",
+                                        "flexShrink": "0",
+                                        "onClick": { "$action": "recordStore.setRelationshipKind", "args": [""] }
+                                      },
+                                      "children": [{ "type": "we-icon", "props": { "name": "x" } }]
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "$if",
+                  "props": {
+                    "condition": {
+                      "$": "recordStore.recordDraft.fields.exists(f, f.name == 'latitude') && recordStore.recordDraft.fields.exists(f, f.name == 'longitude')"
+                    },
+                    "then": {
+                      "type": "we-form-field",
+                      "props": { "label": "Location", "width": "100%" },
+                      "children": [
+                        {
+                          "type": "we-location-picker",
+                          "props": {
+                            "width": "100%",
+                            "latitude": {
+                              "$": "find(recordStore.recordDraft.fields, { name: 'latitude' }).value == '' ? null : find(recordStore.recordDraft.fields, { name: 'latitude' }).value"
+                            },
+                            "longitude": {
+                              "$": "find(recordStore.recordDraft.fields, { name: 'longitude' }).value == '' ? null : find(recordStore.recordDraft.fields, { name: 'longitude' }).value"
+                            },
+                            "placeholder": "Pin it on the map…",
+                            "onChange": { "$action": "recordStore.setRecordPlace", "args": [{ "$": "arg.detail" }] }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "$each",
+                  "props": {
+                    "items": {
+                      "$": "recordStore.recordDraft.fields.filter(f, !(recordStore.recordDraft.fields.exists(f, f.name == 'latitude') && recordStore.recordDraft.fields.exists(f, f.name == 'longitude')) || !(f.name in ['latitude', 'longitude']))"
+                    },
+                    "as": "field"
+                  },
+                  "children": [
+                    {
+                      "type": "Column",
+                      "props": { "width": "100%" },
+                      "children": [
+                        {
+                          "type": "$if",
+                          "props": {
+                            "condition": { "$": "field.control == 'text'" },
+                            "then": {
+                              "type": "we-form-field",
+                              "props": {
+                                "label": { "$": "field.label" },
+                                "required": { "$": "field.required" },
+                                "width": "100%"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-input",
+                                  "props": {
+                                    "value": { "$": "field.value" },
+                                    "width": "100%",
+                                    "onInput": {
+                                      "$action": "recordStore.setRecordField",
+                                      "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                    },
+                                    "placeholder": { "$": "field.placeholder" }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "$if",
+                          "props": {
+                            "condition": { "$": "field.control == 'url'" },
+                            "then": {
+                              "type": "we-form-field",
+                              "props": {
+                                "label": { "$": "field.label" },
+                                "required": { "$": "field.required" },
+                                "width": "100%"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-input",
+                                  "props": {
+                                    "value": { "$": "field.value" },
+                                    "width": "100%",
+                                    "onInput": {
+                                      "$action": "recordStore.setRecordField",
+                                      "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                    },
+                                    "type": "url",
+                                    "placeholder": { "$": "field.placeholder" }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "$if",
+                          "props": {
+                            "condition": { "$": "field.control == 'textarea'" },
+                            "then": {
+                              "type": "we-form-field",
+                              "props": {
+                                "label": { "$": "field.label" },
+                                "required": { "$": "field.required" },
+                                "width": "100%"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-textarea",
+                                  "props": {
+                                    "value": { "$": "field.value" },
+                                    "width": "100%",
+                                    "onInput": {
+                                      "$action": "recordStore.setRecordField",
+                                      "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                    },
+                                    "rows": 3,
+                                    "placeholder": { "$": "field.placeholder" }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "$if",
+                          "props": {
+                            "condition": { "$": "field.control == 'number'" },
+                            "then": {
+                              "type": "we-form-field",
+                              "props": {
+                                "label": { "$": "field.label" },
+                                "required": { "$": "field.required" },
+                                "width": "100%"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-number-input",
+                                  "props": {
+                                    "value": { "$": "field.value" },
+                                    "width": "12rem",
+                                    "maxWidth": "100%",
+                                    "alignSelf": "start",
+                                    "onChange": {
+                                      "$action": "recordStore.setRecordField",
+                                      "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                    },
+                                    "placeholder": { "$": "field.placeholder" }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "$if",
+                          "props": {
+                            "condition": { "$": "field.control == 'switch'" },
+                            "then": {
+                              "type": "we-form-field",
+                              "props": {
+                                "label": { "$": "field.label" },
+                                "required": { "$": "field.required" },
+                                "width": "100%"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-switch",
+                                  "props": {
+                                    "checked": { "$": "field.value" },
+                                    "width": "100%",
+                                    "onChange": {
+                                      "$action": "recordStore.setRecordField",
+                                      "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "$if",
+                          "props": {
+                            "condition": { "$": "field.control == 'select'" },
+                            "then": {
+                              "type": "we-form-field",
+                              "props": {
+                                "label": { "$": "field.label" },
+                                "required": { "$": "field.required" },
+                                "width": "100%"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-select",
+                                  "props": {
+                                    "value": { "$": "field.value" },
+                                    "width": "12rem",
+                                    "maxWidth": "100%",
+                                    "alignSelf": "start",
+                                    "onChange": {
+                                      "$action": "recordStore.setRecordField",
+                                      "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                    },
+                                    "options": { "$": "field.options" }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "$if",
+                          "props": {
+                            "condition": { "$": "field.control == 'date'" },
+                            "then": {
+                              "type": "we-form-field",
+                              "props": {
+                                "label": { "$": "field.label" },
+                                "required": { "$": "field.required" },
+                                "width": "100%"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-date-picker",
+                                  "props": {
+                                    "value": { "$": "field.value" },
+                                    "width": "100%",
+                                    "onChange": {
+                                      "$action": "recordStore.setRecordField",
+                                      "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                    },
+                                    "placeholder": { "$": "field.placeholder" }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "$if",
+                          "props": {
+                            "condition": { "$": "field.control == 'datetime'" },
+                            "then": {
+                              "type": "we-form-field",
+                              "props": {
+                                "label": { "$": "field.label" },
+                                "required": { "$": "field.required" },
+                                "width": "100%"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-date-picker",
+                                  "props": {
+                                    "value": { "$": "field.value" },
+                                    "width": "100%",
+                                    "onChange": {
+                                      "$action": "recordStore.setRecordField",
+                                      "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                    },
+                                    "showTime": true,
+                                    "placeholder": { "$": "field.placeholder" }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "$if",
+                          "props": {
+                            "condition": { "$": "field.control == 'color'" },
+                            "then": {
+                              "type": "we-form-field",
+                              "props": {
+                                "label": { "$": "field.label" },
+                                "required": { "$": "field.required" },
+                                "width": "100%"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-color-picker",
+                                  "props": {
+                                    "value": { "$": "field.value" },
+                                    "width": "100%",
+                                    "onChange": {
+                                      "$action": "recordStore.setRecordField",
+                                      "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "$if",
+                          "props": {
+                            "condition": { "$": "field.control == 'icon'" },
+                            "then": {
+                              "type": "we-form-field",
+                              "props": {
+                                "label": { "$": "field.label" },
+                                "required": { "$": "field.required" },
+                                "width": "100%"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-icon-picker",
+                                  "props": {
+                                    "value": { "$": "field.value" },
+                                    "width": "100%",
+                                    "onChange": {
+                                      "$action": "recordStore.setRecordField",
+                                      "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "$if",
+                          "props": {
+                            "condition": { "$": "field.control == 'file'" },
+                            "then": {
+                              "type": "we-form-field",
+                              "props": {
+                                "label": { "$": "field.label" },
+                                "required": { "$": "field.required" },
+                                "width": "100%"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-file-upload",
+                                  "props": {
+                                    "width": "100%",
+                                    "onChange": {
+                                      "$action": "recordStore.setRecordField",
+                                      "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                    },
+                                    "accept": { "$": "field.accept" }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "$if",
+                          "props": {
+                            "condition": { "$": "field.control == 'relation'" },
+                            "then": {
+                              "type": "we-form-field",
+                              "props": { "label": { "$": "field.label" }, "width": "100%" },
+                              "children": [
+                                {
+                                  "type": "$if",
+                                  "props": {
+                                    "condition": { "$": "field.inline == 'location'" },
+                                    "then": {
+                                      "type": "Column",
+                                      "props": { "gap": "200", "width": "100%" },
+                                      "children": [
+                                        {
+                                          "type": "we-location-picker",
+                                          "props": {
+                                            "width": "100%",
+                                            "latitude": {
+                                              "$": "field.many ? null : first(field.entries).fields.latitude"
+                                            },
+                                            "longitude": {
+                                              "$": "field.many ? null : first(field.entries).fields.longitude"
+                                            },
+                                            "placeholder": { "$": "`Pin ${lower(field.label)} on the map…`" },
+                                            "onChange": {
+                                              "$action": "recordStore.setRelationLocation",
+                                              "args": [{ "$": "field.name" }, { "$": "arg.detail" }]
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "type": "$if",
+                                          "props": {
+                                            "condition": { "$": "!field.many && count(field.entries)" },
+                                            "then": {
+                                              "type": "Row",
+                                              "props": { "gap": "300", "wrap": true, "width": "100%" },
+                                              "children": [
+                                                {
+                                                  "type": "we-form-field",
+                                                  "props": { "label": "Name", "flex": "1 1 12rem", "minWidth": "0" },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-input",
+                                                      "props": {
+                                                        "size": "sm",
+                                                        "value": { "$": "first(field.entries).fields.name ?? ''" },
+                                                        "onInput": {
+                                                          "$action": "recordStore.setRelationEntryField",
+                                                          "args": [
+                                                            { "$": "field.name" },
+                                                            { "$": "first(field.entries).key" },
+                                                            "name",
+                                                            { "$": "event.detail" }
+                                                          ]
+                                                        }
+                                                      }
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "type": "we-form-field",
+                                                  "props": { "label": "Address", "flex": "1 1 12rem", "minWidth": "0" },
+                                                  "children": [
+                                                    {
+                                                      "type": "we-input",
+                                                      "props": {
+                                                        "size": "sm",
+                                                        "value": { "$": "first(field.entries).fields.address ?? ''" },
+                                                        "onInput": {
+                                                          "$action": "recordStore.setRelationEntryField",
+                                                          "args": [
+                                                            { "$": "field.name" },
+                                                            { "$": "first(field.entries).key" },
+                                                            "address",
+                                                            { "$": "event.detail" }
+                                                          ]
+                                                        }
+                                                      }
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "else": {
+                                      "type": "$if",
+                                      "props": {
+                                        "condition": { "$": "field.inline == 'image'" },
+                                        "then": {
+                                          "type": "$if",
+                                          "props": {
+                                            "condition": { "$": "field.many" },
+                                            "then": {
+                                              "type": "Row",
+                                              "props": { "gap": "200", "wrap": true, "width": "100%" },
+                                              "children": [
+                                                {
+                                                  "type": "$each",
+                                                  "props": { "items": { "$": "field.entries" }, "as": "entry" },
+                                                  "children": [
+                                                    {
+                                                      "type": "Column",
+                                                      "props": {
+                                                        "position": "relative",
+                                                        "width": "96px",
+                                                        "height": "96px",
+                                                        "r": "surface",
+                                                        "overflow": "hidden"
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "type": "we-image",
+                                                          "props": {
+                                                            "src": { "$": "entry.preview" },
+                                                            "alt": { "$": "entry.label" },
+                                                            "fit": "cover",
+                                                            "width": "96px",
+                                                            "height": "96px"
+                                                          }
+                                                        },
+                                                        {
+                                                          "type": "Row",
+                                                          "props": {
+                                                            "position": "absolute",
+                                                            "top": "100",
+                                                            "right": "100"
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "type": "we-button",
+                                                              "props": {
+                                                                "variant": "secondary",
+                                                                "size": "xs",
+                                                                "square": true,
+                                                                "label": { "$": "`Remove ${entry.label}`" },
+                                                                "onClick": {
+                                                                  "$action": "recordStore.removeRelationEntry",
+                                                                  "args": [{ "$": "field.name" }, { "$": "entry.key" }]
+                                                                }
+                                                              },
+                                                              "children": [
+                                                                { "type": "we-icon", "props": { "name": "x" } }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "type": "EditableImage",
+                                                  "props": {
+                                                    "fit": "cover",
+                                                    "width": "96px",
+                                                    "height": "96px",
+                                                    "r": "surface",
+                                                    "placeholderIcon": "image",
+                                                    "uploadLabel": { "$": "`Add ${lower(field.targetLabel)}`" },
+                                                    "onImageChange": {
+                                                      "$action": "recordStore.addRelationImage",
+                                                      "args": [{ "$": "field.name" }, { "$": "event" }]
+                                                    }
+                                                  }
+                                                }
+                                              ]
+                                            },
+                                            "else": {
+                                              "type": "EditableImage",
+                                              "props": {
+                                                "src": { "$": "first(field.entries).preview" },
+                                                "alt": { "$": "field.label" },
+                                                "fit": "cover",
+                                                "width": "100%",
+                                                "height": "200px",
+                                                "r": "surface",
+                                                "placeholderIcon": "image",
+                                                "uploadLabel": { "$": "`Add ${lower(field.targetLabel)}`" },
+                                                "editLabel": { "$": "`Change ${lower(field.targetLabel)}`" },
+                                                "onImageChange": {
+                                                  "$action": "recordStore.addRelationImage",
+                                                  "args": [{ "$": "field.name" }, { "$": "event" }]
+                                                },
+                                                "onImageRemove": {
+                                                  "$action": "recordStore.removeRelationEntry",
+                                                  "args": [{ "$": "field.name" }, { "$": "first(field.entries).key" }]
+                                                }
+                                              }
+                                            }
+                                          }
+                                        },
+                                        "else": {
+                                          "type": "Column",
+                                          "props": { "gap": "200", "width": "100%" },
+                                          "children": [
+                                            {
+                                              "type": "$if",
+                                              "props": {
+                                                "condition": { "$": "count(field.entries)" },
+                                                "then": {
+                                                  "type": "Row",
+                                                  "props": { "gap": "200", "wrap": true, "width": "100%" },
+                                                  "children": [
+                                                    {
+                                                      "type": "$each",
+                                                      "props": { "items": { "$": "field.entries" }, "as": "entry" },
+                                                      "children": [
+                                                        {
+                                                          "type": "Row",
+                                                          "props": {
+                                                            "gap": "100",
+                                                            "ay": "center",
+                                                            "bg": "surface-sunken",
+                                                            "r": "control",
+                                                            "pl": "300",
+                                                            "pr": "100",
+                                                            "py": "100",
+                                                            "maxWidth": "100%"
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "type": "we-icon",
+                                                              "props": {
+                                                                "name": {
+                                                                  "$": "recordStore.displays[entry.entity].icon ?? 'cube'"
+                                                                },
+                                                                "size": "xs",
+                                                                "color": "text-muted"
+                                                              }
+                                                            },
+                                                            {
+                                                              "type": "we-text",
+                                                              "props": {
+                                                                "variant": "label",
+                                                                "truncate": true,
+                                                                "minWidth": "0"
+                                                              },
+                                                              "children": [{ "$": "entry.label" }]
+                                                            },
+                                                            {
+                                                              "type": "we-button",
+                                                              "props": {
+                                                                "variant": "ghost",
+                                                                "size": "xs",
+                                                                "square": true,
+                                                                "label": { "$": "`Remove ${entry.label}`" },
+                                                                "onClick": {
+                                                                  "$action": "recordStore.removeRelationEntry",
+                                                                  "args": [{ "$": "field.name" }, { "$": "entry.key" }]
+                                                                }
+                                                              },
+                                                              "children": [
+                                                                { "type": "we-icon", "props": { "name": "x" } }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              }
+                                            },
+                                            {
+                                              "type": "$if",
+                                              "props": {
+                                                "condition": { "$": "field.many || !count(field.entries)" },
+                                                "then": {
+                                                  "type": "Row",
+                                                  "props": {
+                                                    "gap": "200",
+                                                    "ay": "center",
+                                                    "width": "100%",
+                                                    "wrap": true
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "type": "$if",
+                                                      "props": {
+                                                        "condition": { "$": "field.canPick" },
+                                                        "then": {
+                                                          "type": "Row",
+                                                          "props": { "flex": "1 1 12rem", "minWidth": "0" },
+                                                          "$queries": {
+                                                            "candidates": {
+                                                              "entity": { "$": "field.target" },
+                                                              "limit": 200
+                                                            }
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "type": "we-select",
+                                                              "props": {
+                                                                "width": "100%",
+                                                                "searchable": true,
+                                                                "placeholder": {
+                                                                  "$": "`Choose ${lower(field.targetLabel)}…`"
+                                                                },
+                                                                "options": {
+                                                                  "$": "local.candidates.map(row, { label: row[recordStore.displays[field.target].title] ?? row.id, value: row.id })"
+                                                                },
+                                                                "value": "",
+                                                                "onChange": {
+                                                                  "$action": "recordStore.pickRelation",
+                                                                  "args": [
+                                                                    { "$": "field.name" },
+                                                                    { "$": "event.detail" }
+                                                                  ]
+                                                                }
+                                                              }
+                                                            }
+                                                          ]
+                                                        }
+                                                      }
+                                                    },
+                                                    {
+                                                      "type": "$if",
+                                                      "props": {
+                                                        "condition": { "$": "field.canCreate" },
+                                                        "then": {
+                                                          "type": "we-button",
+                                                          "props": {
+                                                            "variant": "secondary",
+                                                            "size": "sm",
+                                                            "onClick": {
+                                                              "$action": "recordStore.openRelationForm",
+                                                              "args": [{ "$": "field.name" }]
+                                                            }
+                                                          },
+                                                          "children": [
+                                                            { "type": "we-icon", "props": { "name": "plus" } },
+                                                            { "$": "`Add ${lower(field.targetLabel)}`" }
+                                                          ]
+                                                        }
+                                                      }
+                                                    }
+                                                  ]
+                                                }
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "$if",
+                  "props": {
+                    "condition": { "$": "count(recordStore.recordErrors)" },
+                    "then": {
+                      "type": "Column",
+                      "props": { "gap": "100", "width": "100%" },
+                      "children": [
+                        {
+                          "type": "$each",
+                          "props": { "items": { "$": "recordStore.recordErrors" }, "as": "problem" },
+                          "children": [
+                            {
+                              "type": "we-text",
+                              "props": { "variant": "footnote", "color": "danger-text" },
+                              "children": [{ "$": "problem" }]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "Row",
+                  "props": { "gap": "300", "ax": "end", "width": "100%" },
+                  "slot": "footer",
+                  "children": [
+                    {
+                      "type": "we-button",
+                      "props": {
+                        "variant": "secondary",
+                        "onClick": {
+                          "$if": {
+                            "condition": { "$": "recordStore.recordDraftDirty" },
+                            "then": { "$setLocal": "confirmDiscardOpen", "value": true },
+                            "else": { "$action": "recordStore.cancelRecordForm" }
+                          }
+                        }
+                      },
+                      "children": ["Cancel"]
+                    },
+                    {
+                      "type": "we-button",
+                      "props": {
+                        "variant": "primary",
+                        "loading": { "$": "recordStore.savingRecord" },
+                        "disabled": { "$": "recordStore.savingRecord" },
+                        "onClick": { "$action": "recordStore.saveRecord" }
+                      },
+                      "children": ["Create"]
+                    }
+                  ]
+                },
+                {
+                  "type": "$if",
+                  "props": {
+                    "condition": { "$": "recordStore.relationDraft" },
+                    "then": {
+                      "type": "we-modal",
+                      "props": { "size": "sm", "close": { "$action": "recordStore.cancelRelationForm" } },
+                      "children": [
+                        {
+                          "type": "Row",
+                          "props": { "gap": "300", "ay": "center", "width": "100%" },
+                          "slot": "header",
+                          "children": [
+                            { "type": "we-icon", "props": { "name": { "$": "recordStore.relationDraft.icon" } } },
+                            {
+                              "type": "we-text",
+                              "props": { "variant": "heading-md" },
+                              "children": [{ "$": "`New ${lower(recordStore.relationDraft.label)}`" }]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "$each",
+                          "props": { "items": { "$": "recordStore.relationDraft.fields" }, "as": "field" },
+                          "children": [
+                            {
+                              "type": "Column",
+                              "props": { "width": "100%" },
+                              "children": [
+                                {
+                                  "type": "$if",
+                                  "props": {
+                                    "condition": { "$": "field.control == 'text'" },
+                                    "then": {
+                                      "type": "we-form-field",
+                                      "props": {
+                                        "label": { "$": "field.label" },
+                                        "required": { "$": "field.required" },
+                                        "width": "100%"
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-input",
+                                          "props": {
+                                            "value": { "$": "field.value" },
+                                            "width": "100%",
+                                            "onInput": {
+                                              "$action": "recordStore.setRelationField",
+                                              "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                            },
+                                            "placeholder": { "$": "field.placeholder" }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "$if",
+                                  "props": {
+                                    "condition": { "$": "field.control == 'url'" },
+                                    "then": {
+                                      "type": "we-form-field",
+                                      "props": {
+                                        "label": { "$": "field.label" },
+                                        "required": { "$": "field.required" },
+                                        "width": "100%"
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-input",
+                                          "props": {
+                                            "value": { "$": "field.value" },
+                                            "width": "100%",
+                                            "onInput": {
+                                              "$action": "recordStore.setRelationField",
+                                              "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                            },
+                                            "type": "url",
+                                            "placeholder": { "$": "field.placeholder" }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "$if",
+                                  "props": {
+                                    "condition": { "$": "field.control == 'textarea'" },
+                                    "then": {
+                                      "type": "we-form-field",
+                                      "props": {
+                                        "label": { "$": "field.label" },
+                                        "required": { "$": "field.required" },
+                                        "width": "100%"
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-textarea",
+                                          "props": {
+                                            "value": { "$": "field.value" },
+                                            "width": "100%",
+                                            "onInput": {
+                                              "$action": "recordStore.setRelationField",
+                                              "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                            },
+                                            "rows": 3,
+                                            "placeholder": { "$": "field.placeholder" }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "$if",
+                                  "props": {
+                                    "condition": { "$": "field.control == 'number'" },
+                                    "then": {
+                                      "type": "we-form-field",
+                                      "props": {
+                                        "label": { "$": "field.label" },
+                                        "required": { "$": "field.required" },
+                                        "width": "100%"
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-number-input",
+                                          "props": {
+                                            "value": { "$": "field.value" },
+                                            "width": "12rem",
+                                            "maxWidth": "100%",
+                                            "alignSelf": "start",
+                                            "onChange": {
+                                              "$action": "recordStore.setRelationField",
+                                              "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                            },
+                                            "placeholder": { "$": "field.placeholder" }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "$if",
+                                  "props": {
+                                    "condition": { "$": "field.control == 'switch'" },
+                                    "then": {
+                                      "type": "we-form-field",
+                                      "props": {
+                                        "label": { "$": "field.label" },
+                                        "required": { "$": "field.required" },
+                                        "width": "100%"
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-switch",
+                                          "props": {
+                                            "checked": { "$": "field.value" },
+                                            "width": "100%",
+                                            "onChange": {
+                                              "$action": "recordStore.setRelationField",
+                                              "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "$if",
+                                  "props": {
+                                    "condition": { "$": "field.control == 'select'" },
+                                    "then": {
+                                      "type": "we-form-field",
+                                      "props": {
+                                        "label": { "$": "field.label" },
+                                        "required": { "$": "field.required" },
+                                        "width": "100%"
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-select",
+                                          "props": {
+                                            "value": { "$": "field.value" },
+                                            "width": "12rem",
+                                            "maxWidth": "100%",
+                                            "alignSelf": "start",
+                                            "onChange": {
+                                              "$action": "recordStore.setRelationField",
+                                              "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                            },
+                                            "options": { "$": "field.options" }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "$if",
+                                  "props": {
+                                    "condition": { "$": "field.control == 'date'" },
+                                    "then": {
+                                      "type": "we-form-field",
+                                      "props": {
+                                        "label": { "$": "field.label" },
+                                        "required": { "$": "field.required" },
+                                        "width": "100%"
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-date-picker",
+                                          "props": {
+                                            "value": { "$": "field.value" },
+                                            "width": "100%",
+                                            "onChange": {
+                                              "$action": "recordStore.setRelationField",
+                                              "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                            },
+                                            "placeholder": { "$": "field.placeholder" }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "$if",
+                                  "props": {
+                                    "condition": { "$": "field.control == 'datetime'" },
+                                    "then": {
+                                      "type": "we-form-field",
+                                      "props": {
+                                        "label": { "$": "field.label" },
+                                        "required": { "$": "field.required" },
+                                        "width": "100%"
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-date-picker",
+                                          "props": {
+                                            "value": { "$": "field.value" },
+                                            "width": "100%",
+                                            "onChange": {
+                                              "$action": "recordStore.setRelationField",
+                                              "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                            },
+                                            "showTime": true,
+                                            "placeholder": { "$": "field.placeholder" }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "$if",
+                                  "props": {
+                                    "condition": { "$": "field.control == 'color'" },
+                                    "then": {
+                                      "type": "we-form-field",
+                                      "props": {
+                                        "label": { "$": "field.label" },
+                                        "required": { "$": "field.required" },
+                                        "width": "100%"
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-color-picker",
+                                          "props": {
+                                            "value": { "$": "field.value" },
+                                            "width": "100%",
+                                            "onChange": {
+                                              "$action": "recordStore.setRelationField",
+                                              "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "$if",
+                                  "props": {
+                                    "condition": { "$": "field.control == 'icon'" },
+                                    "then": {
+                                      "type": "we-form-field",
+                                      "props": {
+                                        "label": { "$": "field.label" },
+                                        "required": { "$": "field.required" },
+                                        "width": "100%"
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-icon-picker",
+                                          "props": {
+                                            "value": { "$": "field.value" },
+                                            "width": "100%",
+                                            "onChange": {
+                                              "$action": "recordStore.setRelationField",
+                                              "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "$if",
+                                  "props": {
+                                    "condition": { "$": "field.control == 'file'" },
+                                    "then": {
+                                      "type": "we-form-field",
+                                      "props": {
+                                        "label": { "$": "field.label" },
+                                        "required": { "$": "field.required" },
+                                        "width": "100%"
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-file-upload",
+                                          "props": {
+                                            "width": "100%",
+                                            "onChange": {
+                                              "$action": "recordStore.setRelationField",
+                                              "args": [{ "$": "field.name" }, { "$": "event.detail" }]
+                                            },
+                                            "accept": { "$": "field.accept" }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "$each",
+                          "props": { "items": { "$": "recordStore.relationErrors" }, "as": "problem" },
+                          "children": [
+                            {
+                              "type": "we-text",
+                              "props": { "variant": "footnote", "color": "danger-text" },
+                              "children": [{ "$": "problem" }]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "Row",
+                          "props": { "gap": "300", "ax": "end", "width": "100%" },
+                          "slot": "footer",
+                          "children": [
+                            {
+                              "type": "we-button",
+                              "props": {
+                                "variant": "secondary",
+                                "onClick": { "$action": "recordStore.cancelRelationForm" }
+                              },
+                              "children": ["Cancel"]
+                            },
+                            {
+                              "type": "we-button",
+                              "props": {
+                                "variant": "primary",
+                                "onClick": { "$action": "recordStore.saveRelationForm" }
+                              },
+                              "children": ["Add"]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "$if",
+                  "props": {
+                    "condition": { "$": "local.confirmDiscardOpen" },
+                    "then": {
+                      "type": "we-modal",
+                      "props": { "size": "sm", "close": { "$setLocal": "confirmDiscardOpen", "value": false } },
+                      "children": [
+                        {
+                          "type": "Row",
+                          "slot": "header",
+                          "props": { "gap": "300", "ay": "center" },
+                          "children": [
+                            { "type": "we-icon", "props": { "name": "warning", "color": "danger-text" } },
+                            {
+                              "type": "we-text",
+                              "props": { "variant": "heading-sm" },
+                              "children": ["Discard this entry?"]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "Column",
+                          "props": { "gap": "300" },
+                          "children": [
+                            {
+                              "type": "we-text",
+                              "children": [
+                                "What you have filled in will be lost. Nothing has been saved to the space yet."
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "Row",
+                          "slot": "footer",
+                          "props": { "ax": "end", "gap": "300" },
+                          "children": [
+                            {
+                              "type": "we-button",
+                              "props": {
+                                "variant": "secondary",
+                                "onClick": { "$setLocal": "confirmDiscardOpen", "value": false }
+                              },
+                              "children": ["Keep editing"]
+                            },
+                            {
+                              "type": "we-button",
+                              "props": {
+                                "variant": "danger",
+                                "onClick": {
+                                  "$action": "recordStore.cancelRecordForm",
+                                  "onSuccess": [{ "$setLocal": "confirmDiscardOpen", "value": false }]
+                                }
+                              },
+                              "children": ["Discard"]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
         }
       ]
     },
@@ -338,6 +1745,17 @@
                           "children": [{ "$": "count(local.loans.filter(l, l.status == col.key))" }]
                         }
                       ]
+                    },
+                    {
+                      "type": "$if",
+                      "props": {
+                        "condition": { "$": "local.loansLoaded && !count(local.loans.filter(l, l.status == col.key))" },
+                        "then": {
+                          "type": "we-text",
+                          "props": { "variant": "footnote", "color": "text-muted", "italic": true },
+                          "children": ["None"]
+                        }
+                      }
                     },
                     {
                       "type": "$each",
