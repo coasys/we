@@ -354,6 +354,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     currentDatasetCid: state('content'),
     currentDatasetEntities: state('content'),
     isWeSpace: state('navigation'),
+    // Where a switch is going, before it has arrived: for a store to start reading early, not for a
+    // template to render from.
+    arrivingDataset: WIRING,
     joinedSpaceCids: state('navigation'),
     datasetsLoaded: state('navigation'),
     systemDatasetUuids: state('navigation'),

@@ -161,6 +161,7 @@ export type {
   ProfileDirectoryPort,
   ReferencePort,
   SchemaPort,
+  ShapeRecord,
   UploadFile,
 } from './backendPorts';
 export type {
