@@ -42,7 +42,7 @@ describe('AD4M agent session — unlock that outlasts the RPC timeout', () => {
 
   it('waits for the executor to announce the unlock, and resolves', async () => {
     const { client, emitStatus } = fakeClient(timedOut);
-    const unlocking = createAd4mAgentSession(client).unlock('pw');
+    const unlocking = createAd4mAgentSession(client).signIn({ kind: 'password', password: 'pw' });
 
     await vi.advanceTimersByTimeAsync(60_000);
     emitStatus({ isUnlocked: true, did: 'did:key:zAgent' });
@@ -52,7 +52,7 @@ describe('AD4M agent session — unlock that outlasts the RPC timeout', () => {
 
   it('does not count a status event that is still locked', async () => {
     const { client, emitStatus } = fakeClient(timedOut);
-    const unlocking = createAd4mAgentSession(client).unlock('pw');
+    const unlocking = createAd4mAgentSession(client).signIn({ kind: 'password', password: 'pw' });
     const outcome = unlocking.then(
       () => 'resolved',
       () => 'rejected',
@@ -68,7 +68,7 @@ describe('AD4M agent session — unlock that outlasts the RPC timeout', () => {
 
   it('gives up with a SessionTimeoutError when the executor never announces it', async () => {
     const { client } = fakeClient(timedOut);
-    const unlocking = createAd4mAgentSession(client).unlock('pw');
+    const unlocking = createAd4mAgentSession(client).signIn({ kind: 'password', password: 'pw' });
     const settled = unlocking.catch((err: unknown) => err);
 
     await vi.advanceTimersByTimeAsync(150_000);
@@ -90,7 +90,7 @@ describe('AD4M agent session — unlock that outlasts the RPC timeout', () => {
     const { client, emitStatus } = fakeClient(() =>
       Promise.reject(new BundledRpcError(408, "RPC call 'agent.unlock' timed out after 30000ms")),
     );
-    const unlocking = createAd4mAgentSession(client).unlock('pw');
+    const unlocking = createAd4mAgentSession(client).signIn({ kind: 'password', password: 'pw' });
 
     await vi.advanceTimersByTimeAsync(60_000);
     emitStatus({ isUnlocked: true, did: 'did:key:zAgent' });
@@ -102,6 +102,38 @@ describe('AD4M agent session — unlock that outlasts the RPC timeout', () => {
     const refusal = new RpcError(500, 'aead::Error');
     const { client } = fakeClient(() => Promise.reject(refusal));
 
-    await expect(createAd4mAgentSession(client).unlock('wrong')).rejects.toBe(refusal);
+    await expect(createAd4mAgentSession(client).signIn({ kind: 'password', password: 'wrong' })).rejects.toBe(refusal);
+  });
+});
+
+describe('AD4M agent session — signing out', () => {
+  function lockingClient() {
+    const locks: string[] = [];
+    const client = {
+      agent: { unlock: async () => ({}), lock: async (passphrase: string) => void locks.push(passphrase) },
+      on: () => () => {},
+    };
+    return { client, locks };
+  }
+
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('locks with the passphrase it was signed in with', async () => {
+    const { client, locks } = lockingClient();
+    const session = createAd4mAgentSession(client);
+    await session.signIn({ kind: 'password', password: 'right' });
+
+    await expect(session.signOut()).resolves.toBe(true);
+    expect(locks).toEqual(['right']);
+  });
+
+  it('answers false, and locks nothing, for a session it did not begin', async () => {
+    // A wrong passphrase would re-key the running agent, so there is no guess to send.
+    const { client, locks } = lockingClient();
+    await expect(createAd4mAgentSession(client).signOut()).resolves.toBe(false);
+    expect(locks).toEqual([]);
   });
 });

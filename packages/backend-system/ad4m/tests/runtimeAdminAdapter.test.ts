@@ -9,6 +9,7 @@
 import { ExceptionType } from '@coasys/ad4m';
 import { describe, expect, it, vi } from 'vitest';
 
+import { createAd4mModelAdmin } from '../src/modelAdminAdapter';
 import { createAd4mRuntimeAdmin } from '../src/runtimeAdminAdapter';
 
 /** Just enough of an Ad4mClient for the members under test. */
@@ -35,7 +36,6 @@ describe('what a connection is allowed to administer', () => {
     expect(port.trustedAgents).toBeDefined();
     expect(port.networkMetrics).toBeDefined();
     expect(port.languages).toBeDefined();
-    expect(port.aiModels).toBeDefined();
     expect(port.authorizedApps).toBeDefined();
     expect(port.onConsentRequest).toBeDefined();
     expect(port.approve).toBeDefined();
@@ -85,27 +85,27 @@ describe('what a connection is allowed to administer', () => {
     // The case that proved a single boolean too coarse. AD4M grants a hosted user AI READ and
     // refuses UPDATE/DELETE; WE hid the whole section, so a transcription model the node was happily
     // running looked to the user like no model at all.
-    const port = createAd4mRuntimeAdmin(stubClient(), {
+    const port = createAd4mModelAdmin(stubClient(), {
       administersNode: false,
       capabilities: [{ with: { domain: 'artificial intelligence', pointers: ['*'] }, can: ['READ'] }],
     });
 
-    expect(port.aiModels).toBeDefined();
-    expect(port.aiModelStatus).toBeDefined();
+    expect(port.list).toBeDefined();
+    expect(port.status).toBeDefined();
 
-    expect(port.addAiModel).toBeUndefined();
-    expect(port.updateAiModel).toBeUndefined();
-    expect(port.removeAiModel).toBeUndefined();
-    expect(port.setDefaultAiModel).toBeUndefined();
+    expect(port.add).toBeUndefined();
+    expect(port.update).toBeUndefined();
+    expect(port.remove).toBeUndefined();
+    expect(port.setDefault).toBeUndefined();
   });
 
   it('hides AI entirely when the grant does not include it', () => {
-    const port = createAd4mRuntimeAdmin(stubClient(), {
+    const port = createAd4mModelAdmin(stubClient(), {
       administersNode: false,
       capabilities: [{ with: { domain: 'perspective', pointers: ['*'] }, can: ['READ'] }],
     });
 
-    expect(port.aiModels).toBeUndefined();
+    expect(port.list).toBeUndefined();
   });
 
   it('treats an unreadable grant as permitted, so a local host keeps its settings page', () => {
@@ -113,19 +113,20 @@ describe('what a connection is allowed to administer', () => {
     // holds ALL_CAPABILITY. Reading "no capabilities I can parse" as "no capabilities" would empty
     // the settings page on exactly the hosts that own the node.
     const port = createAd4mRuntimeAdmin(stubClient(), { capabilities: null });
+    const models = createAd4mModelAdmin(stubClient(), { capabilities: null });
 
-    expect(port.aiModels).toBeDefined();
-    expect(port.addAiModel).toBeDefined();
+    expect(models.list).toBeDefined();
+    expect(models.add).toBeDefined();
     expect(port.languages).toBeDefined();
   });
 
   it('honours a wildcard grant', () => {
-    const port = createAd4mRuntimeAdmin(stubClient(), {
+    const port = createAd4mModelAdmin(stubClient(), {
       capabilities: [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }],
     });
 
-    expect(port.aiModels).toBeDefined();
-    expect(port.addAiModel).toBeDefined();
+    expect(port.list).toBeDefined();
+    expect(port.add).toBeDefined();
   });
 });
 
@@ -189,12 +190,12 @@ describe('remote models', () => {
         api: { baseUrl: 'https://api.anthropic.com', apiKey: 'sk-ant', model: 'claude-sonnet-5', apiType: 'ANTHROPIC' },
       },
     ]);
-    const port = createAd4mRuntimeAdmin(client, { capabilities: null });
+    const port = createAd4mModelAdmin(client, { capabilities: null });
 
-    const [model] = await port.aiModels!();
+    const [model] = await port.list!();
     expect(model.source).toMatchObject({ kind: 'api', protocol: 'anthropic' });
 
-    await port.updateAiModel!('m1', { name: 'Claude, renamed', kind: 'llm', source: model.source });
+    await port.update!('m1', { name: 'Claude, renamed', kind: 'llm', source: model.source });
     expect(added[0]).toMatchObject({ api: { apiType: 'ANTHROPIC' } });
   });
 
@@ -209,19 +210,19 @@ describe('remote models', () => {
         api: { baseUrl: 'http://localhost:11434', apiKey: '', model: 'qwen3:4b', apiType: 'OLLAMA', maxNumCtx: 40960 },
       },
     ]);
-    const port = createAd4mRuntimeAdmin(client, { capabilities: null });
+    const port = createAd4mModelAdmin(client, { capabilities: null });
 
-    const [model] = await port.aiModels!();
+    const [model] = await port.list!();
     expect(model.source).toMatchObject({ kind: 'api', protocol: 'ollama', maxContext: 40960 });
 
-    await port.updateAiModel!('m1', { name: 'Qwen, renamed', kind: 'llm', source: model.source });
+    await port.update!('m1', { name: 'Qwen, renamed', kind: 'llm', source: model.source });
     expect(added[0]).toMatchObject({ api: { apiType: 'OLLAMA', maxNumCtx: 40960 } });
   });
 
   it('sends no ceiling for a model that has none', async () => {
     const { client, added } = aiClient();
-    const port = createAd4mRuntimeAdmin(client, { capabilities: null });
-    await port.addAiModel!({
+    const port = createAd4mModelAdmin(client, { capabilities: null });
+    await port.add!({
       name: 'Qwen',
       kind: 'llm',
       source: { kind: 'api', protocol: 'ollama', baseUrl: 'http://localhost:11434', apiKey: '', model: 'qwen3:4b' },
@@ -233,17 +234,17 @@ describe('remote models', () => {
     const { client } = aiClient([
       { id: 'm1', name: 'Old', modelType: 'LLM', api: { baseUrl: 'u', apiKey: '', model: 'x', apiType: 'OPEN_AI' } },
     ]);
-    const [model] = await createAd4mRuntimeAdmin(client, { capabilities: null }).aiModels!();
+    const [model] = await createAd4mModelAdmin(client, { capabilities: null }).list!();
     expect(model.source).toMatchObject({ protocol: 'openai' });
   });
 
   it('lists an endpoint’s models where the client can ask, in the executor’s spelling', async () => {
     const discoverModels = vi.fn(async () => ['claude-sonnet-5']);
     const { client } = aiClient([], { discoverModels });
-    const port = createAd4mRuntimeAdmin(client, { capabilities: null });
+    const port = createAd4mModelAdmin(client, { capabilities: null });
 
     await expect(
-      port.discoverAiModels!({ protocol: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: '' }),
+      port.discover!({ protocol: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: '' }),
     ).resolves.toEqual(['claude-sonnet-5']);
     // An empty key is sent as none, which the executor reads as a keyless endpoint.
     expect(discoverModels).toHaveBeenCalledWith('https://api.anthropic.com', undefined, 'ANTHROPIC');
@@ -251,7 +252,7 @@ describe('remote models', () => {
 
   it('offers no listing on a client that predates it', () => {
     const { client } = aiClient();
-    expect(createAd4mRuntimeAdmin(client, { capabilities: null }).discoverAiModels).toBeUndefined();
+    expect(createAd4mModelAdmin(client, { capabilities: null }).discover).toBeUndefined();
   });
 });
 

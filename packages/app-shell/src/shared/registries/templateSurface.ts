@@ -496,7 +496,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     mutedDids: state('content'),
     mutedAgents: state('content'),
     setAgentMuted: action('content'),
-    getSubgroupMessages: ambient('content'),
     exportCallTranscript: action('content'),
     exportExtractionLog: action('content'),
     // A board is a collection like a call, and arranging one is content work rather than
@@ -605,8 +604,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     spaceDefaultThemeId: state('space-settings'),
     creatingSpace: state('space-admin'),
     foreignSpacePrefill: state('space-settings'),
-    linkLanguageTemplateOptions: state('space-admin'),
-    defaultLinkLanguageTemplate: state('space-admin'),
+    sharingOptions: state('space-admin'),
+    defaultSharing: state('space-admin'),
     enabledModules: state('space-admin'),
     /*
       Reading it is `space-settings`, writing it is still admin-gated below.

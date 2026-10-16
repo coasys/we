@@ -1,0 +1,42 @@
+{
+  "name": "@we/module-flux",
+  "version": "0.1.0",
+  "description": "Flux interop module — reads Flux's own data where WE's models cannot reach it",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "peerDependencies": {
+    "@coasys/ad4m": "*",
+    "@we/module-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@coasys/ad4m": "0.13.1-staging.1",
+    "@we/cli": "workspace:*",
+    "@we/module-shared": "workspace:*",
+    "@we/module-testing": "workspace:*",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.2"
+  },
+  "we": {
+    "module": true
+  }
+}

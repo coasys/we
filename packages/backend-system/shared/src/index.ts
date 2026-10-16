@@ -137,12 +137,13 @@ export type {
 } from './queryIR';
 export type {
   AgentIdentity,
+  AgentCredentials,
   AgentSessionPort,
   AgentSessionStatus,
   DatasetChangeHandlers,
   DatasetLifecyclePort,
   DatasetRef,
-  LinkLanguageTemplate,
+  SharingOption,
 } from './lifecycle';
 export { isSessionTimeout, SessionTimeoutError } from './lifecycle';
 export { manifestEntries } from './manifestEntry';
@@ -152,7 +153,6 @@ export type { NameableProperty } from './recordName';
 export { ANONYMOUS_AGENT_NAME, displayName, isProfileEmpty } from './profileTypes';
 export type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 export type {
-  BackendInterop,
   BackendPorts,
   BackendPortsContext,
   DataBindingDeps,
@@ -160,6 +160,7 @@ export type {
   ProfileDirectoryPort,
   ReferencePort,
   SchemaPort,
+  UploadFile,
 } from './backendPorts';
 export type {
   AiApiProtocol,
@@ -170,12 +171,15 @@ export type {
   AiModelSource,
   AiModelStatus,
   AiTask,
+  ModelAdminPort,
+  TokenizerSource,
+} from './modelAdmin';
+export type {
   AuthorizedApp,
   ConsentRequest,
   InstalledLanguage,
   PeerRecords,
   RuntimeAdminPort,
-  TokenizerSource,
   UnsupportedCapability,
 } from './runtimeAdmin';
 export type {

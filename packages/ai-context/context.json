@@ -7329,10 +7329,10 @@
         "viewNav": {
           "type": "array"
         },
-        "linkLanguageTemplateOptions": {
+        "sharingOptions": {
           "type": "array"
         },
-        "defaultLinkLanguageTemplate": {
+        "defaultSharing": {
           "type": "string"
         },
         "mutedDids": {
@@ -7456,19 +7456,11 @@
         "canAdministerSpace",
         "copyShareLink",
         "copyGuestLink",
-        "getSubgroupMessages",
         "exportCallTranscript",
         "exportExtractionLog",
         "removeSpaceFromGlobal"
       ],
-      "ambient": [
-        "autoExtractFor",
-        "canSetExtractionFor",
-        "navigateToSpace",
-        "openRecordRef",
-        "canAdministerSpace",
-        "getSubgroupMessages"
-      ],
+      "ambient": ["autoExtractFor", "canSetExtractionFor", "navigateToSpace", "openRecordRef", "canAdministerSpace"],
       "destructive": ["removeSpace", "deleteCollection", "removeSpaceFromGlobal"]
     },
     {
@@ -9276,6 +9268,35 @@
       "settings": [],
       "activities": {},
       "components": ["GraphView"],
+      "functions": [],
+      "views": [],
+      "blocks": [],
+      "entities": []
+    },
+    {
+      "id": "flux",
+      "name": "Flux",
+      "description": "Reads conversations a Flux community keeps, in a space synced in from Flux.",
+      "icon": "chats-circle",
+      "scope": "space",
+      "requires": {
+        "backends": ["ad4m"]
+      },
+      "capabilities": [],
+      "members": [
+        {
+          "name": "subgroupMessages",
+          "kind": "action",
+          "doc": "The messages in one of Flux’s conversation subgroups, oldest first — { id, author, timestamp, body }. Read when asked, since a subgroup’s messages are not a relation a $query can follow.",
+          "ambient": true
+        }
+      ],
+      "parts": [],
+      "panels": [],
+      "launchers": [],
+      "settings": [],
+      "activities": {},
+      "components": [],
       "functions": [],
       "views": [],
       "blocks": [],

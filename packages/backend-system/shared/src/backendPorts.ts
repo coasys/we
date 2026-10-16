@@ -16,6 +16,7 @@ import type { LanguageModelPort } from './languageModel';
 import type { AgentSessionPort, DatasetLifecyclePort } from './lifecycle';
 import type { EntityManifest } from './manifest';
 import type { EntityManifestEntry } from './manifestEntry';
+import type { ModelAdminPort } from './modelAdmin';
 import type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 import type { RuntimeAdminPort } from './runtimeAdmin';
 import type { TranscriptionPort } from './transcription';
@@ -141,6 +142,14 @@ export interface SchemaPort {
   dedupe?(dataset: DatasetHandle): Promise<{ removed: number; authors: string[] }>;
 }
 
+/** A file to store, as `ProfileDirectoryPort.uploadFile` takes it. */
+export interface UploadFile {
+  /** The bytes, base64-encoded with no `data:` prefix. */
+  base64: string;
+  mimeType: string;
+  name: string;
+}
+
 /** What `SchemaPort.interpretationHints` answers — one entity's stored hint state in one dataset. */
 export interface EntityHintState {
   classHint?: string;
@@ -158,8 +167,8 @@ export interface EntityHintState {
 export interface ProfileDirectoryPort {
   get(id: string): Promise<AgentProfileSummary>;
   publish(fields: PublishProfileFields): Promise<void>;
-  /** Store a serialized file payload; returns a URL the profile can reference. */
-  uploadFile(serialized: string): Promise<string>;
+  /** Store a file; returns a URL the profile can reference. */
+  uploadFile(file: UploadFile): Promise<string>;
 }
 
 /** What the host hands the backend to build the renderer's data bindings. */
@@ -190,17 +199,6 @@ export interface BackendPortsContext {
   selfId(): string | undefined;
 }
 
-/**
- * Ecosystem-specific interop the shell feature-detects — dialect queries against apps that share
- * the backend but not the host's schema conventions. Absent members degrade like presence.
- */
-export interface BackendInterop {
-  fluxSubgroupMessages?(
-    dataset: DatasetHandle,
-    subgroupId: string,
-  ): Promise<Array<{ id: string; author: string; timestamp: string; body: string }>>;
-}
-
 export interface BackendPorts {
   agentSession: AgentSessionPort;
   lifecycle: DatasetLifecyclePort;
@@ -209,12 +207,16 @@ export interface BackendPorts {
   ephemeral: EphemeralPort;
   /** Build the renderer's data bindings over host-supplied accessors. */
   dataBindings(deps: DataBindingDeps): RendererDataBindings;
-  interop?: BackendInterop;
   /**
    * Backend-process administration — trust, peer network, authorized apps, consent. Optional and
    * feature-detected member by member; see {@link RuntimeAdminPort}.
    */
   runtime?: RuntimeAdminPort;
+  /**
+   * The models the backend runs, and changing them. Optional, and feature-detected member by member;
+   * see {@link ModelAdminPort}.
+   */
+  models?: ModelAdminPort;
   /**
    * Speech to text. Optional: a backend with no transcription model, or none at all, simply omits it
    * and anything that wanted to listen says so rather than failing silently.

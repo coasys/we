@@ -40,14 +40,15 @@ export interface DatasetChangeHandlers {
   onRemoved?: (id: string) => void;
 }
 
-/** A template a shared dataset's sync layer can be instantiated from, as `publish` accepts it. */
-export interface LinkLanguageTemplate {
-  address: string;
+/** One way a shared dataset can sync, as `publish` accepts it. */
+export interface SharingOption {
+  /** What `publish` is given to choose it. Opaque — only the backend that listed it reads it. */
+  id: string;
   /** The backend's own name for it — technical, for a detail line rather than a label. */
   name: string;
   /**
    * How a dataset published with it syncs: directly between members' devices, or through a server.
-   * What a person choosing between templates actually needs to know, so it is what a picker labels.
+   * What a person choosing between options actually needs to know, so it is what a picker labels.
    */
   kind: 'peer-to-peer' | 'server';
   /** The server it syncs through, for `kind: 'server'`. */
@@ -71,11 +72,10 @@ export interface DatasetLifecyclePort {
   create(name: string): Promise<DatasetRef>;
   remove(id: string): Promise<void>;
   /**
-   * Publish an existing local dataset for sharing. Pass `linkLanguageTemplate` to choose
-   * which link language backs the shared dataset; omit (or pass '') to use the first of
-   * `linkLanguageTemplates`.
+   * Publish an existing local dataset for sharing. `sharing` chooses how it syncs, by the id of one
+   * of `sharingOptions`; omit it (or pass '') for the first of them.
    */
-  publish?(id: string, linkLanguageTemplate?: string): Promise<{ uri: string; sharedId: string }>;
+  publish?(id: string, options?: { sharing?: string }): Promise<{ uri: string; sharedId: string }>;
   /**
    * Join a shared dataset. Accepts the backend's full URI or a bare shared id — normalization is
    * the adapter's dialect, not the caller's.
@@ -84,11 +84,10 @@ export interface DatasetLifecyclePort {
   /** Other agents holding a shared dataset (member roster), by dataset id. */
   members?(id: string): Promise<string[]>;
   /**
-   * The templates `publish` can use, default first — the first is what `publish` picks when given
-   * none. Templates needing parameters `publish` cannot supply are
-   * left out.
+   * The ways `publish` can share a dataset, default first — the first is what `publish` picks when
+   * given none. An option needing settings this deployment has not supplied is left out.
    */
-  linkLanguageTemplates?(): Promise<LinkLanguageTemplate[]>;
+  sharingOptions?(): Promise<SharingOption[]>;
   /** Subscribe to change events. Returns an unsubscribe function. */
   subscribe(handlers: DatasetChangeHandlers): () => void;
 }
@@ -127,26 +126,41 @@ export function isSessionTimeout(err: unknown): err is SessionTimeoutError {
 }
 
 /**
- * The agent session — whether the backend's identity is present and usable, and the create/unlock/
- * lock operations around it. Connection *establishment* stays with the host-supplied connector (it
+ * The agent session — whether the backend's identity is present and usable, and signing up, in
+ * and out around it. Connection *establishment* stays with the host-supplied connector (it
  * is platform-specific); this port is what the shell needs once a connection exists.
  *
- * `generate` and `unlock` reject with {@link SessionTimeoutError} when the backend is still working
+ * `signUp` and `signIn` reject with {@link SessionTimeoutError} when the backend is still working
  * after the adapter has waited as long as it will, and with any other error when it refused.
  */
 export interface AgentSessionPort {
   status(): Promise<AgentSessionStatus>;
   /**
-   * Create this backend's identity, encrypted under `password`, and leave it unlocked.
+   * Create this backend's identity from `credentials`, and leave the session signed in.
    *
    * The other half of `status().hasAgent === false`: without it the shell can detect a first run
    * but not resolve one, which is what left the desktop hosts stranded on a boot screen with no
    * way forward once the launcher stopped being in the picture. Every backend has some notion of
-   * "no identity yet, make one", so it belongs beside unlock rather than in an adapter-specific
+   * "no identity yet, make one", so it belongs beside signing in rather than in an adapter-specific
    * side channel.
    */
-  generate(password: string): Promise<void>;
-  unlock(password: string): Promise<void>;
-  lock(password: string): Promise<void>;
+  signUp(credentials: AgentCredentials): Promise<void>;
+  /** Sign in as the identity that exists. Rejects when the credentials are refused. */
+  signIn(credentials: AgentCredentials): Promise<void>;
+  /**
+   * End the session this port began.
+   *
+   * Takes nothing, so the shell need not keep a password after signing in: a backend that needs one
+   * to end a session keeps what `signIn` or `signUp` was given. Answers false when there was nothing
+   * here to end — the session was already open when the app arrived, so nothing this port was given
+   * can close it, and the caller ends the connection instead.
+   */
+  signOut(): Promise<boolean>;
   me(): Promise<AgentIdentity>;
 }
+
+/**
+ * What proves who an agent is. A tagged union so a backend can take a kind of credential other than
+ * a password without the shell's sign-in path changing shape — today every backend takes one.
+ */
+export type AgentCredentials = { kind: 'password'; password: string };

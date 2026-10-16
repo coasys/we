@@ -11,8 +11,8 @@ import {
   type DatasetChangeHandlers,
   type DatasetLifecyclePort,
   type DatasetRef,
-  type LinkLanguageTemplate,
   SessionTimeoutError,
+  type SharingOption,
 } from '@we/backend-shared';
 
 import { ensureFileStorageLanguage } from './agentHelpers';
@@ -304,7 +304,7 @@ export function createAd4mDatasetLifecycle(
    * templates by address, which is a hash. So templates syncing through a server go last. Sending a
    * community's links to a server should be something somebody chose, not what a hash decided.
    */
-  async function publishableTemplates(): Promise<LinkLanguageTemplate[]> {
+  async function publishableTemplates(): Promise<SharingOption[]> {
     await registerDevServerTemplate();
     const addresses = (await client.runtime.knownLinkLanguageTemplates()) ?? [];
     const templates = await Promise.all(
@@ -312,8 +312,8 @@ export function createAd4mDatasetLifecycle(
         const { name, params } = await templateMeta(address);
         if (params && unfillableParams(params).length) return null;
         return params?.includes('SERVER_URL')
-          ? { address, name, kind: 'server' as const, serverUrl: options.linkServerUrl }
-          : { address, name, kind: 'peer-to-peer' as const };
+          ? { id: address, name, kind: 'server' as const, serverUrl: options.linkServerUrl }
+          : { id: address, name, kind: 'peer-to-peer' as const };
       }),
     );
     return templates
@@ -370,10 +370,11 @@ export function createAd4mDatasetLifecycle(
      * Publish a local dataset as a neighbourhood. The returned URL is captured by the caller —
      * the proxy's own `sharedUrl` is not updated in place.
      */
-    async publish(id: string, linkLanguageTemplate?: string) {
+    /** `sharing` is a link-language template's address, as `sharingOptions` lists them. */
+    async publish(id: string, publishOptions?: { sharing?: string }) {
       const p = await proxyFor(id);
       if (!p) throw new Error(`publish: no dataset with id ${id}`);
-      const templateAddress = linkLanguageTemplate || (await publishableTemplates())[0]?.address;
+      const templateAddress = publishOptions?.sharing || (await publishableTemplates())[0]?.id;
       if (!templateAddress) throw new Error('No link language templates available to publish neighbourhood.');
       const { params } = await templateMeta(templateAddress);
       const missing = params ? unfillableParams(params) : [];
@@ -392,7 +393,7 @@ export function createAd4mDatasetLifecycle(
       return { uri, sharedId: uri.replace(SCHEME, '') };
     },
 
-    linkLanguageTemplates: publishableTemplates,
+    sharingOptions: publishableTemplates,
 
     async join(idOrUri) {
       // Accept a bare shared id: this backend's URIs carry the neighbourhood scheme.
@@ -485,11 +486,14 @@ export function createAd4mAgentSession(backendClient: unknown): AgentSessionPort
     }
   }
 
+  /** What `signIn` or `signUp` was given, held for `signOut` — and only here, never in the shell. */
+  let passphrase = '';
+
   return {
     async status() {
       const status = await client.agent.status();
       // Covers the boot path where the executor was left running and the agent is already
-      // unlocked — neither generate() nor unlock() is called in that case.
+      // unlocked — neither signUp() nor signIn() is called in that case.
       if (status.isUnlocked) void ensureFileStorage();
       return { hasAgent: !!status.did, unlocked: !!status.isUnlocked };
     },
@@ -499,18 +503,32 @@ export function createAd4mAgentSession(backendClient: unknown): AgentSessionPort
      * the executor holds the freshly derived keys in memory. Holochain is started as part of the
      * same call, matching what `unlock(password, true)` does on the returning-agent path.
      */
-    async generate(password) {
-      await settleSessionCall(() => client.agent.generate(password));
+    async signUp(credentials) {
+      await settleSessionCall(() => client.agent.generate(credentials.password));
+      passphrase = credentials.password;
       await ensureFileStorage();
     },
 
-    async unlock(password) {
-      await settleSessionCall(() => client.agent.unlock(password, true));
+    async signIn(credentials) {
+      await settleSessionCall(() => client.agent.unlock(credentials.password, true));
+      passphrase = credentials.password;
       await ensureFileStorage();
     },
 
-    async lock(password) {
-      await client.agent.lock(password);
+    /**
+     * The executor locks only with the passphrase, so this keeps the one it was signed in with.
+     *
+     * Never with anything else: `lock` re-encrypts the wallet's in-memory keys under whatever it is
+     * given, so a wrong passphrase silently re-keys the running agent, and the real one then fails
+     * to decrypt it (`aead::Error`) until the executor restarts. A session already open when the
+     * port was made — after a reload — has no passphrase here, so this answers false and the shell
+     * ends the session another way.
+     */
+    async signOut() {
+      if (!passphrase) return false;
+      await client.agent.lock(passphrase);
+      passphrase = '';
+      return true;
     },
 
     /**
