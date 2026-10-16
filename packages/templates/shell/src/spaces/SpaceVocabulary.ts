@@ -2,6 +2,7 @@ import type { SchemaNode } from '@we/schema-shared';
 import { createSignalTypeModal, sectionCard } from '@we/template-kit';
 
 import { modelsSection } from './vocabulary/EntitiesSection.ts';
+import { focusRow } from './vocabulary/focusRow';
 import { involvementTypesSection } from './vocabulary/InvolvementTypesSection.ts';
 import { relationshipTypesSection } from './vocabulary/RelationshipTypesSection.ts';
 import { signalTypeCard } from './vocabulary/SignalTypeCard.ts';
@@ -83,7 +84,7 @@ const signalTypesSection: SchemaNode = sectionCard({
     {
       type: '$each',
       props: { items: { $query: { entity: 'SignalType', subscribe: true } }, as: 'signalType' },
-      children: [signalTypeCard],
+      children: [focusRow('signalType', signalTypeCard)],
     },
     // Carries its own `$if` — see `formModal`.
     createSignalTypeModal({
@@ -110,6 +111,10 @@ export const spaceVocabularySection: SchemaNode = {
         // The state being edited, by slug — a name per row is impossible when the rows come from
         // data, and only one can be open at a time. See `editModal` in TaskStatesSection.
         editTaskStateSlug: { type: 'string', initial: '' },
+        guardTaskStateSlug: { type: 'string', initial: '' },
+        // The edited state's requirements until its Save — here rather than in the edit form, because
+        // the form that adds one is a modal of its own beside it. See `editModal` in TaskStatesSection.
+        editTaskStateGuards: { type: 'array', initial: [] },
         createInvolvementTypeOpen: { type: 'boolean', initial: false },
         editInvolvementTypeSlug: { type: 'string', initial: '' },
       },

@@ -193,6 +193,15 @@ export class Space extends WeNode {
   @Property({ through: 'we://archived_flows' })
   archivedFlows: string = '';
 
+  /**
+   * How a task may move between this space's states, in their order: empty for anywhere (a board
+   * lets a card go to any column), `next` for on to the next state only, `next-and-back` for on or
+   * back one. Anything but empty runs the states as a flow, so a move it does not allow is refused
+   * on the board rather than made.
+   */
+  @Property({ through: 'we://task_flow_rule' })
+  taskFlowRule: string = '';
+
   @HasOne(() => LocationBlock, { through: 'we://location' })
   location?: LocationBlock;
 

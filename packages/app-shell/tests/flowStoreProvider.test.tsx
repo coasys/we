@@ -110,3 +110,18 @@ describe('edits a form submits', () => {
     await expect(store.addStep(0, 'Review', 'start')).rejects.toThrow();
   });
 });
+
+describe('a requirement the form adds', () => {
+  it('stores "a comment" as a reply post, said in words', async () => {
+    const store = mount();
+    await store.newFlow('blank', 'Checks');
+    await store.addGuard('done', 'comment', 'responses');
+    const done = store
+      .draft()
+      ?.lanes.flatMap((lane) => lane.steps)
+      .find((step) => step.name === 'done');
+    expect(done?.requires).toContain('at least 1 comment in response to it');
+    // The key alone would read the same in words; what matters is the record it asks for.
+    expect(done?.guards).toEqual([expect.objectContaining({ entity: 'CollectionBlock', tie: 'responses' })]);
+  });
+});

@@ -15,6 +15,8 @@ import {
   unreadContainerIds,
 } from '@shared/containerActivity';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
+import { guardLabel, refusalWords } from '@shared/flowViews';
+import { guardSubjectOf } from '@shared/guardSubjects';
 import { buildGuestLink } from '@shared/guestLink';
 import {
   type AmendmentEntry,
@@ -61,6 +63,7 @@ import { readSpaceRoles, writeSpaceRole } from '@shared/spaceRoles';
 import {
   applyStarterRecords,
   defaultSpaceStarter,
+  linkSpaceRelations,
   SPACE_COLLECTION_KIND,
   type SpaceStarter,
   starterSettings,
@@ -80,7 +83,10 @@ import {
   flowStateOf,
   needsAgreement,
   openMoveOf,
+  parseTaskStateGuards,
+  storeTaskStateGuards,
   TASK_FLOW,
+  type TaskFlowRule,
   type TaskStateRule,
 } from '@shared/taskFlow';
 import { taskFlowLive } from '@shared/taskFlowLive';
@@ -360,6 +366,17 @@ export interface TaskStateView {
   approvals: number;
   /** The involvement kind whose holders' agreement counts, or empty for any member's. */
   approverKind: string;
+  /**
+   * What must be there before a task enters this state, each with a sentence saying so — see
+   * `TaskState.guards`. `tie` is the relation the task holds them through, empty for anywhere.
+   */
+  guards: {
+    entity: string;
+    where?: Record<string, string | number | boolean>;
+    tie: string;
+    min: number;
+    label: string;
+  }[];
 }
 
 export interface SpaceMetaUpdate {
@@ -923,8 +940,20 @@ export interface SpaceStore {
       semantic?: TaskStateView['semantic'];
       approvals?: number;
       approverKind?: string;
+      guards?: { entity: string; where?: Record<string, string | number | boolean>; tie?: string; min?: number }[];
     },
   ) => Promise<void>;
+  /**
+   * How a task may move between this space's states, in their order — `''` for anywhere, `next`, or
+   * `next-and-back` (see `Space.taskFlowRule`). Only whoever administers the space; rejects otherwise.
+   */
+  setTaskFlowRule: (rule: '' | 'next' | 'next-and-back') => Promise<void>;
+  /** Add something that must be there before a task enters this state — see `TaskState.guards`. */
+  addTaskStateGuard: (slug: string, guard: { entity: string; tie?: string; min?: number }) => Promise<void>;
+  /** Take away the state's guard at that position in its `guards`. */
+  removeTaskStateGuard: (slug: string, index: number) => Promise<void>;
+  /** How a task may move between this space's states — see `setTaskFlowRule`. */
+  taskFlowRule: Accessor<'' | 'next' | 'next-and-back'>;
   /**
    * Whether this space's task states ask for agreement — some state needs more than one approval, or
    * names whose approval counts. Where they do, a card dragged into such a state waits rather than
@@ -1718,15 +1747,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         return (made as { id: string }).id;
       },
       role: (name, nodeId) => writeSpaceRole(dataset, space.id, name, nodeId),
-      linkSpace: async (relations) => {
-        // A list is written in order, which is what an ordered relation (the space's task states)
-        // keeps; a single id is the same thing with one entry.
-        for (const [relation, value] of Object.entries(relations)) {
-          for (const id of Array.isArray(value) ? value : [value]) {
-            await Space.addRelation(dataset, space.id, relation, id);
-          }
-        }
-      },
+      linkSpace: (relations) => linkSpaceRelations(Space, dataset, space.id, relations),
       /*
         A post is seeded as the blocks inside it, and its stored document is derived from those here,
         unless the starter wrote one itself. Anything else has nothing to derive.
@@ -2246,6 +2267,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       stateOf: (taskId) => flowStateOf(taskFlowLive.view(), taskId),
       move: (taskId, from, to) => taskFlow.move(taskId, from, to),
       entryFor: (to) => taskFlow.entryFor(to),
+      explain: (from, to, outcome) => explainTaskMove(from, to, outcome ?? ''),
     },
     /*
       A staged suggestion for one property, dropped — see `BoardDeps.resolveSuggestion`. Checked
@@ -3121,6 +3143,13 @@ export function SpaceStoreProvider(props: ParentProps) {
           // A record written before these existed has neither: one approval, from anybody.
           approvals: approvalsOf({ slug: '', approvals: r.approvals }),
           approverKind: r.approverKind || '',
+          guards: parseTaskStateGuards(r.guards).map((g) => ({
+            entity: g.entity,
+            ...(g.where ? { where: g.where } : {}),
+            tie: g.tie && 'relation' in g.tie ? g.tie.relation : '',
+            min: g.min ?? 1,
+            label: guardLabel(g),
+          })),
         })),
       );
     } catch (error) {
@@ -3214,7 +3243,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     a.icon === b.icon &&
     a.retired === b.retired &&
     a.approvals === b.approvals &&
-    a.approverKind === b.approverKind;
+    a.approverKind === b.approverKind &&
+    JSON.stringify(a.guards) === JSON.stringify(b.guards);
 
   /**
    * The states this space uses, as screens read them.
@@ -3270,11 +3300,29 @@ export function SpaceStoreProvider(props: ParentProps) {
     not know it could not move that work out of it.
   */
   const taskFlowRules = createMemo<TaskStateRule[]>(
-    () => taskStates().map((s) => ({ slug: s.slug, approvals: s.approvals, approverKind: s.approverKind })),
+    () =>
+      taskStates().map((s) => ({
+        slug: s.slug,
+        approvals: s.approvals,
+        approverKind: s.approverKind,
+        guards: parseTaskStateGuards(storeTaskStateGuards(s.guards)),
+      })),
     [],
     { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
   );
-  const taskFlowDefinition = createMemo(() => compileTaskFlow(taskFlowRules()));
+  const taskFlowRule = createMemo<TaskFlowRule>(() => {
+    const rule = currentSpace()?.taskFlowRule ?? '';
+    return rule === 'next' || rule === 'next-and-back' ? rule : '';
+  });
+  const taskFlowDefinition = createMemo(() => compileTaskFlow(taskFlowRules(), taskFlowRule()));
+  /** Why a task's move was refused, naming the rule — in the community's own words for its states. */
+  const explainTaskMove = (from: string, to: string, outcome: string): string | null => {
+    const names = new Map(taskStates().map((state) => [state.slug, state.name]));
+    return refusalWords(untrack(taskFlowDefinition), from, to, outcome, {
+      state: (slug) => names.get(slug) ?? slug,
+      kind: (slug) => slug,
+    });
+  };
   const taskFlowEnabled = (): boolean =>
     Boolean(taskFlowDefinition() && session.backendPorts()?.flows && datasetStore.isWeSpace());
   const [taskFlowView, setTaskFlowView] = createSignal<FlowView | null>(null);
@@ -3283,6 +3331,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     dataset: () => datasetStore.currentDataset()?.handle,
     port: () => (taskFlowEnabled() ? session.backendPorts()?.flows : undefined),
     states: () => taskFlowRules(),
+    rule: () => taskFlowRule(),
   });
 
   /*
@@ -3387,9 +3436,11 @@ export function SpaceStoreProvider(props: ParentProps) {
         // moves the card when it is.
         toastService.info('The node is still counting your approval — the card will move when it has');
       } else if (outcome === 'unmet') {
-        toastService.error('Not yet — what that column asks for is not there');
+        toastService.error(
+          explainTaskMove(from, move.to, outcome) ?? 'Not yet — what that column asks for is not there',
+        );
       } else if (outcome === 'not-allowed') {
-        toastService.error('That card cannot move there from where it is');
+        toastService.error(explainTaskMove(from, move.to, outcome) ?? 'That card cannot move there from where it is');
       }
     } catch (error) {
       console.error('SpaceStore: could not agree with that move', error);
@@ -3428,6 +3479,47 @@ export function SpaceStoreProvider(props: ParentProps) {
             archivedFlows: archivedFlowsJson,
           }) as Space)
         : prev,
+    );
+  }
+
+  /** The state's guards as stored, for an edit that adds or takes one away. */
+  const guardsOfState = (slug: string) =>
+    (taskStates().find((t) => t.slug === slug)?.guards ?? []).map(({ entity, where, tie, min }) => ({
+      entity,
+      ...(where ? { where } : {}),
+      tie,
+      min,
+    }));
+
+  async function addTaskStateGuard(slug: string, guard: { entity: string; tie?: string; min?: number }): Promise<void> {
+    if (!guard?.entity) return;
+    // `entity` is what the requirement form picked — a key such as "comment" — or an entity name.
+    const what = guardSubjectOf(guard.entity);
+    await updateTaskState(slug, { guards: [...guardsOfState(slug), { ...guard, ...what }] });
+  }
+
+  async function removeTaskStateGuard(slug: string, index: number): Promise<void> {
+    await updateTaskState(slug, { guards: guardsOfState(slug).filter((_, i) => i !== index) });
+  }
+
+  /** See the interface. Persisted on the space the way `setFlowArchived` is. */
+  async function setTaskFlowRule(rule: '' | 'next' | 'next-and-back'): Promise<void> {
+    const ds = datasetStore.currentDataset();
+    const space = currentSpace();
+    if (!ds || !space) return;
+    if (!canAdministerCurrentSpace()) throw new Error('Only whoever administers this space can change how tasks move');
+    const next = rule === 'next' || rule === 'next-and-back' ? rule : '';
+    if ((space.taskFlowRule ?? '') === next) return;
+    try {
+      await Space.update(ds.handle, space.id, { taskFlowRule: next });
+    } catch (error) {
+      console.error('SpaceStore: could not persist taskFlowRule', error);
+      toastService.error('Could not save this change for the space.');
+      throw error;
+    }
+    updateSpaceInCache(ds, { taskFlowRule: next } as never);
+    setCurrentSpace((prev) =>
+      prev ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, { taskFlowRule: next }) as Space) : prev,
     );
   }
 
@@ -3614,6 +3706,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       semantic?: TaskStateView['semantic'];
       approvals?: number;
       approverKind?: string;
+      guards?: { entity: string; where?: Record<string, string | number | boolean>; tie?: string; min?: number }[];
     },
   ): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
@@ -3635,6 +3728,11 @@ export function SpaceStoreProvider(props: ParentProps) {
       */
       if (updates.approvals !== undefined) record.approvals = approvalsOf({ slug, approvals: updates.approvals });
       if (updates.approverKind !== undefined) record.approverKind = updates.approverKind;
+      // A form's list may hold keys ("comment") beside guards read back off the record; both store as records.
+      if (Array.isArray(updates.guards))
+        record.guards = storeTaskStateGuards(
+          updates.guards.map((guard) => ({ ...guard, ...guardSubjectOf(guard.entity) })),
+        );
       await record.save();
       await loadTaskStates();
       await syncTaskStateHint();
@@ -5657,6 +5755,10 @@ export function SpaceStoreProvider(props: ParentProps) {
     taskFlowEnabled,
     archivedFlows,
     setFlowArchived,
+    taskFlowRule,
+    setTaskFlowRule,
+    addTaskStateGuard,
+    removeTaskStateGuard,
     approveTaskMove,
     withdrawTaskMove,
     reorderTaskStates,

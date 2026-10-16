@@ -4968,6 +4968,12 @@
           "type": "string",
           "predicate": "we://archived_flows",
           "required": false
+        },
+        {
+          "name": "taskFlowRule",
+          "type": "string",
+          "predicate": "we://task_flow_rule",
+          "required": false
         }
       ],
       "relations": [
@@ -5225,6 +5231,12 @@
           "name": "approverKind",
           "type": "string",
           "predicate": "we://approver_kind",
+          "required": false
+        },
+        {
+          "name": "guards",
+          "type": "string",
+          "predicate": "we://guards",
           "required": false
         },
         {
@@ -7044,6 +7056,9 @@
         "spaceSettingsTab": {
           "type": "string"
         },
+        "spaceSettingsFocus": {
+          "type": "string"
+        },
         "dockGeometry": {
           "type": "object"
         },
@@ -7251,11 +7266,11 @@
         },
         "taskStates": {
           "type": "array",
-          "properties": ["id", "name", "slug", "semantic", "color", "retired", "approvals", "approverKind"]
+          "properties": ["id", "name", "slug", "semantic", "color", "retired", "approvals", "approverKind", "guards"]
         },
         "offeredTaskStates": {
           "type": "array",
-          "properties": ["id", "name", "slug", "semantic", "color", "retired", "approvals", "approverKind"]
+          "properties": ["id", "name", "slug", "semantic", "color", "retired", "approvals", "approverKind", "guards"]
         },
         "taskStatesLoaded": {
           "type": "boolean"
@@ -7357,6 +7372,9 @@
         "extractionTargets": {
           "type": "array"
         },
+        "taskFlowRule": {
+          "type": "string"
+        },
         "taskFlowEnabled": {
           "type": "boolean"
         },
@@ -7418,6 +7436,9 @@
         "setSignalTypeRetired",
         "createTaskState",
         "updateTaskState",
+        "setTaskFlowRule",
+        "addTaskStateGuard",
+        "removeTaskStateGuard",
         "approveTaskMove",
         "withdrawTaskMove",
         "setFlowArchived",
@@ -7670,6 +7691,12 @@
     "WeCube"
   ],
   "sources": [
+    {
+      "name": "requirementLabel",
+      "params": ["options"],
+      "doc": "What a step or a task state asks to be there first, in the words the app uses for it (\"at least 1 comment in response to it\"). For a form holding requirements it has not saved yet. Options: entity (comment, call, task, file, link, image, or an entity name), tie (\"responses\", or empty for anywhere in the space), min.",
+      "example": "requirementLabel({ entity: local.guardEntity, tie: local.guardTie, min: local.guardMin })"
+    },
     {
       "name": "calendarMonth",
       "params": ["options?"],
