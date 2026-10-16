@@ -12,7 +12,7 @@ import { reserveId } from '@shared/templateIdentity';
 import { withLibrary } from '@shared/templateLists';
 import { explain } from '@shared/userMessage';
 import { deepClone } from '@shared/utils';
-import type { NewRecord } from '@we/backend-shared';
+import { type NewRecord, trace } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/entities';
 import {
@@ -611,7 +611,14 @@ export function TemplateStoreProvider(props: ParentProps) {
   async function loadSpaceTemplates(dataset: AppDataset): Promise<void> {
     clearSpaceTemplates();
     try {
+      const readStarted = performance.now();
       const spaceDbTemplates = await Template.findAll(dataset.handle);
+      // Each record's schema is a stored file the backend resolves as it reads, so the count is the cost.
+      trace('dataset', 'space:templates', {
+        dataset: dataset.id,
+        count: spaceDbTemplates.length,
+        ms: Math.round(performance.now() - readStarted),
+      });
       const schemas: TemplateSchema[] = [];
       const models = new Map<string, Template>();
 
