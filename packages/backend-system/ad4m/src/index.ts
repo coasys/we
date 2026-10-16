@@ -46,7 +46,6 @@ export { type NeutralManifestResult, toNeutralManifest } from './neutralManifest
 export * from './interpretationHints';
 export * from './perspectiveHelpers';
 export * from './sdnaEntities';
-export * from './syncHelpers';
 export {
   buildEntityFromEntry,
   compileManifest,
@@ -55,6 +54,7 @@ export {
   manifestToEntries,
 } from './manifestCompiler';
 export { type Ad4mLifecycleOptions, createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
+export { createAd4mModelAdmin } from './modelAdminAdapter';
 export { type Ad4mRuntimeOptions, createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
 export {
   type Ad4mConnectionOptions,

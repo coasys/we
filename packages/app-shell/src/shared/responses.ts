@@ -1,8 +1,8 @@
 /**
  * What a response needs beyond the link that makes it one.
  *
- * A record becomes a response by being written with `parent: { id: subject, predicate:
- * PREDICATES.RESPONSE }` — the subject's `responses` holds it, and its own `respondsTo` reads it back.
+ * A record becomes a response by being written with `parent: { id: subject, relation: 'responses' }`
+ * — the subject's `responses` holds it, and its own `respondsTo` reads it back.
  * One more fact follows from that, and nothing a writer passes says it, so the host works it out
  * once, here, for every path that writes a response:
  *
@@ -22,7 +22,7 @@
  * thread it leaves an ordinary response that its subject's `responses` still holds. Logged, never
  * thrown into the press that wrote it.
  */
-import { type DatasetProxy, getEntityForDataset, PREDICATES } from '@we/entities';
+import { type DatasetProxy, getEntityForDataset } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
 type NodeRow = { id: string; inThread?: unknown };
@@ -95,6 +95,6 @@ export async function completeResponse(
 
 /** Whether a write's `parent` option makes the record a response. */
 export function respondsThrough(options: unknown): string {
-  const parent = (options as { parent?: { id?: unknown; predicate?: unknown } } | undefined)?.parent;
-  return parent?.predicate === PREDICATES.RESPONSE && typeof parent.id === 'string' ? parent.id : '';
+  const parent = (options as { parent?: { id?: unknown; relation?: unknown } } | undefined)?.parent;
+  return parent?.relation === 'responses' && typeof parent.id === 'string' ? parent.id : '';
 }

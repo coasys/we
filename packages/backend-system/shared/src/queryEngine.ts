@@ -202,6 +202,20 @@ function computeAggregate(row: Row, entity: string, agg: Aggregation, data: InMe
   }
 }
 
+/**
+ * An included record with its counts on it. A count over a relation the record's class does not
+ * declare is left off rather than answered 0: under an untyped relation the members are of several
+ * classes, and "this kind has no such relation" is not "nobody has responded".
+ */
+function withAggregates(row: Row, entity: string, aggregates: Aggregation[], data: InMemoryDataset): Row {
+  const out: Row = { ...row };
+  for (const agg of aggregates) {
+    if (!data.relations?.[entity]?.[agg.over]) continue;
+    out[agg.as] = computeAggregate(row, entity, agg, data);
+  }
+  return out;
+}
+
 // ─── scope (drill-down) ───────────────────────────────────────────────────────────
 
 /** Restrict rows to those reached from `anchorId` via the anchor's `via` relation. */
@@ -318,13 +332,18 @@ function hydrate(row: Row, entity: string, include: IncludeMap, data: InMemoryDa
     }
     let rows = resolved.rows;
     if (spec !== true) {
+      // Below an untyped relation each member is read as its own class, which is what decides the
+      // relations its counts and includes can follow.
+      const classOf = (r: Row) => resolved.rel.target || String(r[RECORD_TYPE_KEY] ?? '');
       if (spec.filter) rows = rows.filter((r) => matchesFilter(r, spec.filter!, resolved.rel.target, data));
+      // Before the sort, as at the top level, so the included records can be ordered by a count.
+      if (spec.aggregate) rows = rows.map((r) => withAggregates(r, classOf(r), spec.aggregate!, data));
       if (spec.sort) rows = applySort(rows, spec.sort, resolved.rel.target, data);
       if (spec.page) {
         const offset = 'offset' in spec.page ? (spec.page.offset ?? 0) : 0;
         rows = rows.slice(offset, offset + spec.page.limit);
       }
-      if (spec.include) rows = rows.map((r) => hydrate(r, resolved.rel.target, spec.include!, data));
+      if (spec.include) rows = rows.map((r) => hydrate(r, classOf(r), spec.include!, data));
     }
     const asObject = resolved.rel.cardinality === 'one' || (spec !== true && spec.first === true);
     out[key] = asObject ? (rows[0] ?? null) : rows;

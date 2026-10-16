@@ -68,8 +68,8 @@ export function composerModal(opts: {
   kind: string;
   /** Id of the node to attach to. Omit for a post, which sits loose in the space. */
   parentId?: SchemaProp;
-  /** `we://child` (inside a container) or `we://response` (a reply). */
-  predicate?: string;
+  /** `'children'` (inside a container, the default) or `'responses'` (a reply). */
+  relation?: string;
   saveLabel?: string;
   /**
    * Handlers run after a successful save, beside the kit's own close — `result` is what `createPost`
@@ -90,7 +90,7 @@ export function composerModal(opts: {
         {
           kind: opts.kind,
           ...(opts.parentId !== undefined && { parentId: opts.parentId }),
-          ...(opts.predicate && { predicate: opts.predicate }),
+          ...(opts.relation && { relation: opts.relation }),
         },
       ],
     },
@@ -141,7 +141,7 @@ export function newContainerModal(opts: {
         },
         // Inside the container named, or else at the space's top level — its collection — so a new
         // channel is one of the space's children rather than a record nothing contains.
-        { parent: { id: opts.parentId ?? { $: 'spaceStore.root' }, predicate: 'we://child' } },
+        { parent: { id: opts.parentId ?? { $: 'spaceStore.root' }, relation: 'children', entity: 'CollectionBlock' } },
       ],
       ...(opts.navigateTo && {
         onSuccess: [{ $action: 'routeStore.navigate', args: [expr`${opts.navigateTo} + result.id`] }],

@@ -14,10 +14,11 @@ import type {
   FlowStep,
   FlowTie,
 } from '@we/backend-shared';
-import { approvalsFor, guardsFor } from '@we/backend-shared';
+import { allowedMoves, approvalsFor, guardsFor } from '@we/backend-shared';
 
 import { stateLabelOf } from './flowDraft';
 import { finalStates, type FlowLanes, type FlowSequenceRule, toLanes, walkOf } from './flowLanes';
+import { subjectOfGuard } from './guardSubjects';
 
 /** The role task states and the flow editor both write: holders of an involvement kind on the record. */
 export function involvementRole(kind: string): FlowRole {
@@ -55,6 +56,11 @@ export interface StepView {
   /** Everything entering it takes, as one short phrase each. */
   requires: string[];
   hint: string;
+  /**
+   * The steps a move nothing else covers comes in from (an exception), by name as a person reads it —
+   * so a map of lanes can say "also from Draft" on the step it leads into rather than only in a list.
+   */
+  alsoFrom: string[];
 }
 
 export interface LaneView {
@@ -66,6 +72,19 @@ export interface LaneView {
   rejoinsLabel: string;
   /** A branch with nowhere to rejoin: its last step is final. */
   ends: boolean;
+  /**
+   * Where along the line the lane's first step stands, in step widths from the main line's first — so
+   * a branch can be drawn under the step it leaves, as a line on a map rather than a list below it. A
+   * branch starts one along from the step it leaves; the main line at 0.
+   */
+  column: number;
+  /** The column of the lane's last step. */
+  lastColumn: number;
+  /** The column of the step it rejoins at, or -1 for a lane that does not rejoin. */
+  rejoinsColumn: number;
+  /** Which lane the step it leaves is on, and the step it rejoins at — so a line can climb to it. -1 for none. */
+  leavesLane: number;
+  rejoinsLane: number;
   steps: StepView[];
 }
 
@@ -101,7 +120,8 @@ export const defaultLabels: FlowLabels = { state: stateLabelOf, kind: stateLabel
 
 const tieOf = (tie: FlowTie | undefined) => (!tie ? '' : 'relation' in tie ? tie.relation : tie.field);
 
-function guardLabel(guard: FlowGuard): string {
+/** A guard in words: "at least 1 TextBlock in response to it". */
+export function guardLabel(guard: FlowGuard): string {
   const min = guard.min ?? 1;
   const count = guard.max !== undefined ? `${min}–${guard.max}` : `at least ${min}`;
   const where =
@@ -112,7 +132,41 @@ function guardLabel(guard: FlowGuard): string {
       : guard.tie
         ? ` naming it as ${guard.tie.field}`
         : '';
-  return `${count} ${guard.entity}${where}`;
+  const subject = subjectOfGuard(guard);
+  const noun = subject ? (guard.max === undefined && min === 1 ? subject.one : subject.many) : guard.entity;
+  return `${count} ${noun}${where}`;
+}
+
+/** "A", "A or B", "A, B or C". */
+const orList = (words: string[]) =>
+  words.length < 2 ? (words[0] ?? '') : `${words.slice(0, -1).join(', ')} or ${words[words.length - 1]}`;
+
+/**
+ * Why a move was refused, as a sentence — or `null` where there is not enough to say more than that
+ * it was. A refusal that only says "not allowed" leaves a person guessing which rule stopped them,
+ * and the flow already knows: where a record may go from where it stands, and what a step asks for.
+ */
+export function refusalWords(
+  definition: FlowDefinition | null | undefined,
+  from: string | null | undefined,
+  to: string,
+  reason: string,
+  labels: FlowLabels = defaultLabels,
+): string | null {
+  if (!definition) return null;
+  if (reason === 'not-allowed') {
+    if (!from) return null;
+    const allowed = allowedMoves(definition, from).map(labels.state);
+    return allowed.length
+      ? `From ${labels.state(from)} it can only move to ${orList(allowed)}.`
+      : `Nothing moves on from ${labels.state(from)}.`;
+  }
+  if (reason === 'unmet') {
+    const guards = guardsFor(definition.states.find((s) => s.name === to));
+    if (!guards.length) return null;
+    return `Not yet — ${labels.state(to)} needs ${guards.map(guardLabel).join(' and ')}.`;
+  }
+  return null;
 }
 
 function stepView(definition: FlowDefinition, name: string, labels: FlowLabels, finals: Set<string>): StepView {
@@ -145,6 +199,8 @@ function stepView(definition: FlowDefinition, name: string, labels: FlowLabels, 
     guards,
     requires,
     hint: state?.hint ?? '',
+    // Filled in where the lanes are known — see `editorView`.
+    alsoFrom: [],
   };
 }
 
@@ -163,7 +219,8 @@ export function editorView(
     hint: definition.hint ?? '',
     rule: read.model.rule,
     fits: read.fits,
-    lanes: read.model.lanes.map((lane, index) => ({
+    // `columnOf` is complete once every lane is placed, which it is by the time these are built.
+    lanes: lanesWithColumns(read.model.lanes).map(({ lane, column, columnOf, laneOf }, index) => ({
       index,
       main: index === 0,
       leaves: lane.leaves ?? '',
@@ -171,7 +228,15 @@ export function editorView(
       rejoins: lane.rejoins ?? '',
       rejoinsLabel: label(lane.rejoins),
       ends: index > 0 && !lane.rejoins,
-      steps: lane.states.map((name) => stepView(definition, name, labels, finals)),
+      column,
+      lastColumn: column + Math.max(0, lane.states.length - 1),
+      rejoinsColumn: lane.rejoins ? (columnOf.get(lane.rejoins) ?? -1) : -1,
+      leavesLane: lane.leaves ? (laneOf.get(lane.leaves) ?? -1) : -1,
+      rejoinsLane: lane.rejoins ? (laneOf.get(lane.rejoins) ?? -1) : -1,
+      steps: lane.states.map((name) => ({
+        ...stepView(definition, name, labels, finals),
+        alsoFrom: read.model.exceptions.filter((m) => m.to === name).map((m) => labels.state(m.from)),
+      })),
     })),
     exceptions: read.model.exceptions.map((m) => ({
       from: m.from,
@@ -204,6 +269,23 @@ export interface RecordView {
   }[];
   walk: { name: string; label: string; at: 'done' | 'current' | 'ahead' }[];
   next: { name: string; label: string }[];
+}
+
+/**
+ * Each lane with the column its first step stands in — see `LaneView.column`. A lane leaving a step not
+ * placed yet (written before the lane it leaves) is placed after the main line's first step.
+ */
+function lanesWithColumns(lanes: readonly FlowLanes['lanes'][number][]) {
+  const columnOf = new Map<string, number>();
+  const laneOf = new Map<string, number>();
+  return lanes.map((lane, index) => {
+    const column = index === 0 ? 0 : (columnOf.get(lane.leaves ?? '') ?? 0) + 1;
+    lane.states.forEach((name, i) => {
+      if (!columnOf.has(name)) columnOf.set(name, column + i);
+      if (!laneOf.has(name)) laneOf.set(name, index);
+    });
+    return { lane, column, columnOf, laneOf };
+  });
 }
 
 /** One record going through a flow, as a row draws it. */

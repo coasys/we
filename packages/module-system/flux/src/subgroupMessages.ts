@@ -1,11 +1,6 @@
-/**
- * Ecosystem interop helpers — raw AD4M/Flux dialect queries the shell feature-detects through
- * `BackendInterop`. The WE-domain space-sync logic that previously lived here moved to the shell
- * (`app-shell/src/shared/spaceSync.ts`): it is model-layer code, not backend dialect.
- */
-
 import { parseLit, type PerspectiveProxy } from '@coasys/ad4m';
 
+/** One message in a Flux conversation subgroup. */
 export interface FluxSubgroupMessage {
   id: string;
   author: string;
@@ -14,15 +9,15 @@ export interface FluxSubgroupMessage {
 }
 
 /**
- * Flux's ConversationSubgroup has no typed HasMany relation to its items — they're heterogeneous
- * (messages/posts/tasks), linked only via the raw `flux://has_item` predicate and resolved in
- * Flux's own code through ad-hoc SPARQL (see ConversationSubgroup.itemsData() in
- * @coasys/flux-api). The normal $query/include/parent path can't reach them, since it only knows
- * relations registered in the target model's shape. This mirrors that same SPARQL shape directly
- * against the dataset, scoped to messages only, without depending on the flux package. Lives in
- * the adapter because it is raw backend dialect — the shell has no business holding SPARQL.
+ * The messages in one of Flux's conversation subgroups, oldest first.
+ *
+ * Flux's `ConversationSubgroup` has no typed relation to its items. They are mixed (messages, posts,
+ * tasks), linked only through `flux://has_item`, and Flux reads them with its own SPARQL (see
+ * `ConversationSubgroup.itemsData()` in `@coasys/flux-api`). A `$query` only knows relations a
+ * model's shape registers, so it cannot reach them. This asks the same question Flux does, for
+ * messages only, without depending on Flux's package.
  */
-export async function getFluxSubgroupMessages(dataset: unknown, subgroupId: string): Promise<FluxSubgroupMessage[]> {
+export async function subgroupMessages(dataset: unknown, subgroupId: string): Promise<FluxSubgroupMessage[]> {
   const p = dataset as PerspectiveProxy;
   const sparqlQuery = `
     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>

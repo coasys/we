@@ -6,7 +6,16 @@ import { describe, expect, it } from 'vitest';
 
 import { definitionOf, presetDraft } from '../src/shared/flowDraft';
 import { toLanes } from '../src/shared/flowLanes';
-import { approvalsRule, editorView, historyView, involvementRole, kindOf, recordView } from '../src/shared/flowViews';
+import {
+  approvalsRule,
+  editorView,
+  guardLabel,
+  historyView,
+  involvementRole,
+  kindOf,
+  recordView,
+  refusalWords,
+} from '../src/shared/flowViews';
 
 const proposal = definitionOf(presetDraft('proposal', 'Proposal', ['TextBlock']));
 
@@ -51,9 +60,27 @@ describe('editorView', () => {
       transitions: [{ from: 'draft', to: 'review' }],
     };
     const review = editorView(definition, { state: (n) => n.toUpperCase(), kind: () => 'Reviewers' }).lanes[0].steps[1];
-    expect(review.requires).toEqual(['2 approvals from Reviewers', 'at least 1 FileBlock in response to it']);
+    expect(review.requires).toEqual(['2 approvals from Reviewers', 'at least 1 file in response to it']);
     expect(review.approverKind).toBe('reviewer');
     expect(review.label).toBe('REVIEW');
+  });
+
+  it('says a comment requirement as a comment, and anything else by its entity', () => {
+    expect(
+      guardLabel({
+        kind: 'guard',
+        entity: 'CollectionBlock',
+        where: { kind: 'reply' },
+        tie: { relation: 'responses' },
+      }),
+    ).toBe('at least 1 comment in response to it');
+    expect(guardLabel({ kind: 'guard', entity: 'CollectionBlock', where: { kind: 'reply' }, min: 2 })).toBe(
+      'at least 2 comments',
+    );
+    // A collection of another kind is not a comment — a call held about a record is one too.
+    expect(guardLabel({ kind: 'guard', entity: 'CollectionBlock', where: { kind: 'note' } })).toBe(
+      'at least 1 CollectionBlock',
+    );
   });
 });
 
@@ -116,5 +143,69 @@ describe('rules from the editor', () => {
         note: '',
       },
     ]);
+  });
+});
+
+describe('lanes on a line', () => {
+  // A branch was drawn as a list under the main line, matched to where it left only by name.
+  it('places a branch one along from the step it leaves, and knows where it rejoins', () => {
+    const view = editorView(definitionOf(presetDraft('proposal', 'Proposal', [])));
+    const [main, ...branches] = view.lanes;
+    expect(main.column).toBe(0);
+    for (const branch of branches) {
+      const leaves = view.lanes.flatMap((lane) => lane.steps.map((step, i) => [step.name, lane.column + i] as const));
+      const at = new Map(leaves).get(branch.leaves)!;
+      expect(branch.column).toBe(at + 1);
+      expect(branch.lastColumn).toBe(branch.column + branch.steps.length - 1);
+      if (branch.rejoins) expect(branch.rejoinsColumn).toBe(new Map(leaves).get(branch.rejoins));
+      else expect(branch.rejoinsColumn).toBe(-1);
+      // Every branch of the Proposal leaves a step on the main line.
+      expect(branch.leavesLane).toBe(0);
+    }
+  });
+
+  // "Other moves" were listed under the lanes, apart from the steps they lead into.
+  it('says on a step which steps an exception comes in from', () => {
+    const view = editorView(definitionOf(presetDraft('proposal', 'Proposal', [])));
+    const withdrawn = view.lanes.flatMap((lane) => lane.steps).find((step) => step.name === 'withdrawn');
+    expect(withdrawn?.alsoFrom).toEqual(['Draft']);
+  });
+});
+
+describe('why a move was refused', () => {
+  const board: FlowDefinition = {
+    name: 'TaskStates',
+    subjects: ['TaskBlock'],
+    states: [
+      { name: 'todo' },
+      { name: 'doing' },
+      {
+        name: 'done',
+        requires: [
+          { kind: 'guard', entity: 'CollectionBlock', where: { kind: 'reply' }, tie: { relation: 'responses' } },
+        ],
+      },
+    ],
+    transitions: [
+      { from: 'todo', to: 'doing' },
+      { from: 'doing', to: 'done' },
+      { from: 'doing', to: 'todo' },
+    ],
+  };
+
+  it('names where a record can go instead', () => {
+    expect(refusalWords(board, 'todo', 'done', 'not-allowed')).toBe('From Todo it can only move to Doing.');
+    expect(refusalWords(board, 'doing', 'doing', 'not-allowed')).toBe('From Doing it can only move to Done or Todo.');
+  });
+
+  it('names what a step still needs', () => {
+    expect(refusalWords(board, 'doing', 'done', 'unmet')).toBe(
+      'Not yet — Done needs at least 1 comment in response to it.',
+    );
+  });
+
+  it('says nothing more where it has nothing more to say', () => {
+    expect(refusalWords(null, 'todo', 'done', 'not-allowed')).toBeNull();
+    expect(refusalWords(board, 'todo', 'doing', 'unmet')).toBeNull();
   });
 });

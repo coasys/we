@@ -44,14 +44,7 @@ import { createCallStore } from './store';
 
 export { createCallMesh, type CallMesh, type SignallingChannel } from './mesh';
 export { createMediaController, type MediaController, type MediaState } from './media';
-export {
-  CALL_KIND,
-  RESPONSE_PREDICATE,
-  CALL_PROTOCOL_VERSION,
-  callRecordId,
-  parseCallMessage,
-  recordCallId,
-} from './protocol';
+export { CALL_KIND, CALL_PROTOCOL_VERSION, callRecordId, parseCallMessage, recordCallId } from './protocol';
 export {
   type BackendDataMessage,
   type BackendQuality,

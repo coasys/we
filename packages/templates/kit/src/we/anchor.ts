@@ -130,11 +130,6 @@ export function anchorBanner(opts: AnchorBannerOptions): SchemaNode {
 }
 
 /**
- * The predicate a `CollectionBlock`'s children hang off. The one place a schema needs to name it.
- */
-const CHILDREN_PREDICATE = 'we://child';
-
-/**
  * The options a `record.create` needs to put what it makes *inside* the anchored container.
  *
  * The write half of {@link anchorScope}, and it has to exist for the same reason the scope does: a
@@ -148,6 +143,6 @@ const CHILDREN_PREDICATE = 'we://child';
  */
 export function anchorParent(anchorExpr = `routeStore.params.${ANCHOR_PARAM}`): { $: string } {
   return {
-    $: `(${anchorExpr}) ? { parent: { id: ${anchorExpr}, predicate: '${CHILDREN_PREDICATE}' } } : {}`,
+    $: `(${anchorExpr}) ? { parent: { id: ${anchorExpr}, relation: 'children', entity: 'CollectionBlock' } } : {}`,
   };
 }

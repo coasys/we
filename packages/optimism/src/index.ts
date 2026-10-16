@@ -83,9 +83,9 @@
  * One thing worth knowing if that day comes: an overlay whose retirement condition is "the data
  * moved" is only sound if the write is *guaranteed* to move the data. Where a backend has a write
  * that changes the store and notifies nobody, a hold over it stands until its TTL and then snaps
- * back — visibly worse than the lag it replaced. (WE has one: an in-place property edit on a record
- * read through `include`, since an AD4M model subscription's trigger does not walk the include tree.
- * `upsertSignal` deletes and re-creates for exactly this reason.)
+ * back — visibly worse than the lag it replaced. (WE had one: an in-place property edit on a record
+ * read through `include`, while a subscription's trigger did not follow the include tree.
+ * `upsertSignal` deleted and re-created a reaction for exactly that reason until it did.)
  */
 
 /** One held write, and what the data read as when it was issued. */

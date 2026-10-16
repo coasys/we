@@ -320,6 +320,16 @@ who count — its reviewers, say). The first state that asks for any turns the s
 flow port (`FlowPort` in `@we/backend-shared`; see [flows.md](./flows.md)); what task states mean as a
 flow is `packages/app-shell/src/shared/taskFlow.ts`.
 
+**A state can also ask for something to be there, and the states can have a rule.** `TaskState.guards`
+says what must exist before a task enters the state — "a document in response to it" — and a drop
+into it is refused until it does. `Space.taskFlowRule` says how a card may move between the states in
+their order: anywhere (the default), on to the next, or on and back one. A move the rule does not allow
+is refused on the board before anything is sent, since every member holds the rule and the answer
+would be the same after a round trip. Both are edited in the space's Vocabulary settings with the
+fields a flow's step uses in the Flows editor (`stepRequirementFields` in the template kit), and both
+compile through the same lanes compiler a written flow does, so "on and back one" means the same thing
+on a board and in a flow.
+
 **A drop asks rather than writes.** Into a state that asks for nothing, it moves the card as before,
 drawn ahead of the round trip. Into a state that asks for agreement, nothing is written and nothing
 is drawn ahead: the card stays in its column and gains a line saying where it asked to go, how many

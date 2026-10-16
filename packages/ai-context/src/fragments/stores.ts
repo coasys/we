@@ -373,17 +373,18 @@ export const storeEntries: StoreEntry[] = [
       },
       taskStates: {
         type: 'array',
-        properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'approvals', 'approverKind'],
+        properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'approvals', 'approverKind', 'guards'],
       },
       offeredTaskStates: {
         type: 'array',
-        properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'approvals', 'approverKind'],
+        properties: ['id', 'name', 'slug', 'semantic', 'color', 'retired', 'approvals', 'approverKind', 'guards'],
       },
       taskStatesLoaded: { type: 'boolean' },
       root: { type: 'string' },
       roles: { type: 'object' },
       taskFlowEnabled: { type: 'boolean' },
       archivedFlows: { type: 'array' },
+      taskFlowRule: { type: 'string' },
       involvementTypes: {
         type: 'array',
         properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired'],
@@ -427,6 +428,9 @@ export const storeEntries: StoreEntry[] = [
       'approveTaskMove',
       'withdrawTaskMove',
       'setFlowArchived',
+      'setTaskFlowRule',
+      'addTaskStateGuard',
+      'removeTaskStateGuard',
       'setInvolvement',
       'respondTo',
       'createInvolvementType',
@@ -439,7 +443,6 @@ export const storeEntries: StoreEntry[] = [
       'canAdministerSpace',
       'copyShareLink',
       'copyGuestLink',
-      'getSubgroupMessages',
       'exportCallTranscript',
       'exportExtractionLog',
       'setModuleEnabled',
@@ -607,7 +610,10 @@ export const storeEntries: StoreEntry[] = [
       available: { type: 'boolean' },
       capabilities: { type: 'object' },
       canEdit: { type: 'boolean' },
-      flows: { type: 'array', properties: ['name', 'label', 'editable', 'records', 'managedBy', 'archived'] },
+      flows: {
+        type: 'array',
+        properties: ['name', 'label', 'editable', 'records', 'managedBy', 'archived', 'steps', 'moves'],
+      },
       startable: { type: 'array', properties: ['name', 'label', 'subjects'] },
       open: { type: 'object' },
       draft: { type: 'object' },
@@ -1171,13 +1177,15 @@ export function generateStoresText(entries: StoreEntry[]): string {
         installedModules:
           'string[] — ids of the feature modules THIS AGENT wants available anywhere. Personal, held in the root dataset; unset means "not decided" and falls back to every registered module',
         taskStates:
-          '{ id, name, slug, semantic, color, retired, approvals, approverKind }[] — the states this community\u2019s work moves through: its TaskState records, which a new space\u2019s starter writes. A space with none has none. Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community\u2019s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `approvals` is how many distinct people must agree before a task enters the state (1 is a plain drop) and `approverKind` the involvement kind whose holders\u2019 agreement counts (empty: anybody\u2019s) — see taskFlowEnabled',
+          '{ id, name, slug, semantic, color, retired, approvals, approverKind }[] — the states this community\u2019s work moves through: its TaskState records, which a new space\u2019s starter writes. A space with none has none. Ordered by the community’s own arrangement where it has one, otherwise by what each state counts as — what is coming, what is happening, what is stuck, what is finished, what was dropped. `slug` is what TaskBlock.status holds; `semantic` is the closed fact underneath a community\u2019s own word, so "is this outstanding?" stays answerable after a rename. Includes withdrawn states, because a task sitting in one still has to resolve — offer offeredTaskStates instead. `approvals` is how many distinct people must agree before a task enters the state (1 is a plain drop) and `approverKind` the involvement kind whose holders\u2019 agreement counts (empty: anybody\u2019s) — see taskFlowEnabled. `guards` ({ entity, tie, min, label }[]) is what must be there first — `label` says it in words',
         offeredTaskStates:
           '{ id, name, slug, semantic, color, retired, approvals, approverKind }[] — the same list without the withdrawn ones. What a state picker or a new board column should offer',
         taskStatesLoaded:
           'boolean — the space has been asked for its states. An empty list is otherwise indistinguishable from "not fetched yet"; gate an empty state on it',
         taskFlowEnabled:
           'boolean — this space\u2019s task states ask for agreement: some state needs more than one approval, or names whose approval counts. Where true, a card dragged into such a state waits instead of moving, and arrangedBoard(…).flow[card.id] describes what it is waiting on. Gate an explanation of the waiting on it; the board needs nothing else',
+        taskFlowRule:
+          "'' | 'next' | 'next-and-back' — how a task may move between this space's states, in their order: anywhere, on to the next only, or on and back one. Anything but '' runs the states as a flow, so a move the rule does not allow is refused on the board — say so beside a picker of states",
         archivedFlows:
           'string[] — the names of the flows this space has put away. An archived flow keeps its records, which still show and can still finish, but is not offered for starting on anything new; flowStore.flows marks each one `archived`',
         involvementTypes:
@@ -1188,10 +1196,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
         templateOverrideOptions:
           '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
         themeOverrideOptions: '{ label, value }[] — the same, for themes',
-        linkLanguageTemplateOptions:
-          '{ label, value, icon, description }[] — how a shared space can sync (its link language), for a we-select, default first; value is the template address. Labelled by how it syncs ("Peer-to-peer", "Server (host)") rather than by the template’s package name, and `description` is one sentence on what choosing it means — bind a we-form-field’s description to the selected entry’s. Only templates publishing can fill in are listed. Empty until the backend answers, and on a backend with no choice to offer',
-        defaultLinkLanguageTemplate:
-          'string — address of the template publishing uses when none is chosen: the backend’s default, empty until it answers. Show it as the picker’s value while nothing is chosen — { $: "local.linkLanguage ? local.linkLanguage : spaceStore.defaultLinkLanguageTemplate" } — and pass the bare choice to createSpace, rather than copying it into local state, which freezes whatever it was at that moment',
+        sharingOptions:
+          '{ label, value, icon, description }[] — how a shared space can sync, for a we-select, default first; value is what createSpace takes. Labelled by how it syncs ("Peer-to-peer", "Server (host)") rather than by the backend’s own name for it, and `description` is one sentence on what choosing it means — bind a we-form-field’s description to the selected entry’s. Only options this deployment can fill in are listed. Empty until the backend answers, and on a backend with no choice to offer',
+        defaultSharing:
+          'string — the option publishing uses when none is chosen: the backend’s default, empty until it answers. Show it as the picker’s value while nothing is chosen — { $: "local.sharing ? local.sharing : spaceStore.defaultSharing" } — and pass the bare choice to createSpace, rather than copying it into local state, which freezes whatever it was at that moment',
         canAdministerCurrentSpace:
           'boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space',
         spaceThemePinned:
@@ -1245,7 +1253,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         removeSpaceFromGlobal:
           "(spaceUuid: string): withdraws a space's listing from the global discovery space, leaving the space itself alone. Only its author may; removeSpace does this for you",
         createSpace:
-          "(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, linkLanguageTemplate?): creates a new space with full setup. linkLanguageTemplate is an address from linkLanguageTemplateOptions and only matters for a shared space; empty uses the backend's default",
+          "(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, sharing?): creates a new space with full setup. sharing is a value from sharingOptions and only matters for a shared space; empty uses the backend's default",
         joinSpace:
           '(id: string, focus = true): joins a shared space by share link, neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in. Rejects when the join could not be completed, so onSuccess means what it says; watch joiningSpace/joinSlow/joinError for what to show while it runs. A join whose network call times out keeps going: the backend usually finishes anyway, and this waits for that before believing the failure',
         initializeAsWeSpace:
@@ -1284,13 +1292,19 @@ export function generateStoresText(entries: StoreEntry[]): string {
         createTaskState:
           '(config: { name, semantic?, color?, icon? }): names a state this community\u2019s work moves through — "Blocked", "In review". The counterpart to createSignalType one concept along. A slug the space already has is refused. The space\u2019s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards',
         updateTaskState:
-          '(slug: string, updates: { name?, icon?, color?, semantic?, approvals?, approverKind? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. `approvals` (a whole number, 1–20) and `approverKind` (an involvement kind\u2019s slug, or empty) set what agreement the state asks for — the first state that asks for any turns the space\u2019s states into a flow, see taskFlowEnabled. By slug, which is what a task and a screen both hold',
+          '(slug: string, updates: { name?, icon?, color?, semantic?, approvals?, approverKind?, guards? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. `approvals` (a whole number, 1–20) and `approverKind` (an involvement kind\u2019s slug, or empty) set what agreement the state asks for, and `guards` ({ entity, tie?, min? }[], the whole list) what must be there first — the first state that asks for either turns the space\u2019s states into a flow, see taskFlowEnabled. By slug, which is what a task and a screen both hold',
         setTaskStateRetired:
           '(slug: string, retired: boolean): withdraws a state from use, or brings it back. Never touches the work sitting in it — a task names its state by slug, so deleting the state would leave the work holding a word nothing defines. The same decision setSignalTypeRetired makes. By slug, which is what a task and a screen both hold',
         approveTaskMove:
           '(taskId: string): agrees with the move a task is waiting on — the same as dragging the card there yourself, so it counts toward the state\u2019s approvals when the agent is one whose approval counts. Offer it where arrangedBoard(…).flow[card.id].canApprove',
         withdrawTaskMove:
           '(taskId: string): takes back this agent\u2019s own vote on the move a task is waiting on, never anybody else\u2019s. Offer it where arrangedBoard(…).flow[card.id].mine',
+        setTaskFlowRule:
+          "(rule: '' | 'next' | 'next-and-back'): how a task may move between this space's states — see taskFlowRule. Only whoever administers the space; rejects otherwise",
+        addTaskStateGuard:
+          "(slug: string, guard: { entity, tie?, min? }): something that must be there before a task enters the state — at least `min` of `entity`, held by the task through the relation `tie` ('responses' for what was made in response to it), or anywhere when `tie` is empty. `entity` is 'comment', 'call', 'task', 'file', 'link' or 'image' — a comment is a reply post, not the text inside one — or an entity name. The first guard turns the space's states into a flow",
+        removeTaskStateGuard:
+          '(slug: string, index: number): takes away the state\u2019s guard at that position in its `guards`',
         setFlowArchived:
           '(name: string, archived: boolean): puts a flow away, or brings it back. Only whoever administers the space; rejects otherwise. Archiving never touches the records going through the flow — offer it in place of deleting one that has any',
         setInvolvement:
@@ -1330,8 +1344,6 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "(uuid: string): copies that space's guest invite link — a URL that creates an account on the space's host and joins, with no sign-up and no download. Empty, and the control hidden, unless BOTH this app's origin and the node's URL are addresses a recipient could reach: a loopback address on either half resolves to the reader's own machine. Read `spaceList[].guestLink` to decide whether to offer it; `shareLink` is the one for somebody who already has WE",
         canAdministerSpace:
           '(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to me.did, so the answer can grow (multiple admins, roles) without every template changing',
-        getSubgroupMessages:
-          "(subgroupId: string): messages belonging to one of Flux's conversation subgroups, fetched on demand. A dialect query against a foreign schema rather than a WE model, so it goes through the backend's interop surface instead of $query — which is why it is a store method and not a relation you can drill into",
         exportCallTranscript:
           "(callId: string): writes the call's transcript to a .txt file (one line per utterance: name, timestamp, text) and downloads it. Read-only and client-side — it reads the shared record and writes to the caller's own device",
         exportExtractionLog:
@@ -1482,7 +1494,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         nameOptions:
           '{ label, value }[] — "Work it out" plus every named property of the open draft, for the naming-field picker. A different first entry from identityOptions on purpose: no identity means no dedup key, where no naming field means the name is DERIVED (a property called name or title, else whichever string is required or first) — there is no such thing as a record with no name',
         hintEditor:
-          'the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal',
+          'the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal',
         hintBusy: 'boolean — the hint editor is loading or saving',
         memberOptions:
           "{ rowId, options }[] — each member's default-value picker entries. Read with find(shapeStore.memberOptions, { rowId: member.rowId }) rather than off member: rows are mutated in place while typing, so values hanging off the row cannot be reactive",
@@ -1536,7 +1548,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(): closes the hint editor, discarding unsaved edits. Pair it with hintEditorDirty in a discardGuard rather than wiring it to a modal’s close directly',
         hintEditorDirty:
           'whether the open hint editor holds edits that closing would lose. What a discard guard reads: the rows come from the model’s declaration, so a schema has no set of local names it could test. Compares against the state the editor opened in, so an editor somebody only read closes without a question',
-        setHintDraft: "(key, value): sets one hint in the open editor — key is 'class' or a property predicate",
+        setHintDraft: "(key, value): sets one hint in the open editor — key is 'class' or a property's name",
         saveHintEditor:
           '(): writes the hints to this space and marks them customized, so schema refreshes stop reverting them',
         resetHintEditor: "(): back to the declaration's hints; release improvements flow again",
@@ -1634,6 +1646,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'boolean — the space-settings panel is open. It configures whichever space is open, so it needs no id; bind a launcher\u2019s active state to this',
         spaceSettingsTab:
           "string — the tab the space-settings panel opens on ('about' | 'features' | 'vocabulary'). A starting position read once as the panel mounts, not a controlled value: somebody who then walks to another tab stays there. Set it by passing a tab to openSpaceSettings",
+        spaceSettingsFocus:
+          "string — the record the space-settings panel was opened about, by id, or ''. A vocabulary row for it marks itself, and the panel scrolls to it — give the row's element the DOM id `vocab-<record id>`. Set by openSpaceSettings' second argument; cleared when the panel closes",
         pendingDestructive:
           "the destructive action a space template just asked for ({ path, title, body }), or null. The host raises its own confirmation in front of every one of them — a space template arrives from a stranger, so whether it asks before deleting is not the stranger's decision. Host chrome renders it; a template writing its own dialog for a destructive store action would be a second question about one click",
         layoutPinned:
@@ -1762,7 +1776,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(name: string): puts the arrangement back to a saved layout. What the layout does not mention returns to what meta.panels declared, exactly as a reset would leave it',
         deleteLayout: '(name: string): forgets a saved layout',
         openSpaceSettings:
-          '(): opens that panel without closing it again. For a control that sits on the very fields it leads to (the About view\u2019s pencil), where a toggle would break the promise to show them',
+          '(tab?: string, focus?: string): opens that panel, on a tab and about a record when given them, without closing it again. For a control that sits on the very fields it leads to (the About view\u2019s pencil), where a toggle would break the promise to show them',
         closeSpaceSettings: '(): closes the space-settings panel',
         scrollToId: '(id: string): smooth-scrolls the element with that DOM id into view',
       },
@@ -1819,14 +1833,16 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "{ requirements, enforcement, sealedEvidence, contention } | null — what this backend can do with flows. `requirements` lists the kinds of rule it enforces ('approvals', 'guard'); `enforcement` is 'server' (one authority applies every rule) or 'peers' (every member's software applies them, so a member running other software can write past one — say so beside a rule); `contention` is 'stall' when two moves out of one step both agreed leave a record stuck until somebody withdraws, or 'first' when the earlier wins",
         canEdit: 'boolean — the viewer may save, delete and archive flows here: whoever administers the space',
         flows:
-          "{ name, label, editable, records, managedBy, archived }[] — every flow in the space, archived ones included. `editable` is false for one written by something that uses more than this editor shows, and for the task-state flow; `managedBy` is 'task-states' for the flow the board's task states write, which is edited in the space's settings and moved on the board, never here; `records` is how many records are going through it",
+          "{ name, label, editable, records, managedBy, archived, steps, moves }[] — every flow in the space, archived ones included. `editable` is false for one written by something that uses more than this editor shows, and for the task-state flow; `managedBy` is 'task-states' for the flow the board's task states write, which is edited in the space's settings and moved on the board, never here; `records` is how many records are going through it; `steps` ({ name, label, final }[]) and `moves` ({ from, to }[]) are its definition once read — what a map of the space's flows draws",
+        flowsLoaded:
+          'boolean — the backend has answered with this space\'s flows. An empty `flows` before then is not yet an answer: gate a "no flows" sentence on it and draw the list as loading until it is true',
         startable:
           '{ name, label, subjects }[] — flows a record can be put through: not archived, not written by something else. `subjects` are the entity names a flow is for, empty for any record — filter with `card.__subjectClass in flow.subjects || !count(flow.subjects)`',
         open: "{ name, label, hint, subjects, rule, fits, editable, managedBy, archived, lanes, exceptions, steps, records, history } | null — the flow opened with openFlow. `lanes` is the flow as a main line and branches: each { index, main, leaves, leavesLabel, rejoins, rejoinsLabel, ends, steps }, every step { name, label, final, approvals, approverKind, approverLabel, guards, requires, hint }, `requires` being each thing entering it takes as a short phrase. `rule` is 'next', 'next-and-back' or 'any'; `exceptions` the moves nothing else covers, { from, to, fromLabel, toLabel, name }. `records` are what is going through it, newest first: { subject, title, startedAt, state, stateLabel, stalled, waiting, walk, next }, `startedAt` an ISO date for a we-timestamp (empty when unknown), `walk` its path as { name, label, at } with `at` 'done', 'current' or 'ahead' — a stepper — and `next` where it may be asked to go, `waiting` each move asked for { to, toLabel, voters, needs, note, mine }. `recordsLoaded` says the records have been read — gate anything offered only for a flow with none on it. `history[subject]` is filled by loadHistory: { from, to, fromLabel, toLabel, voters, at, when, evidence, note }[], `when` being `at` as an ISO date",
         draft:
           '{ …the shape of open’s lanes, label, isNew, dirty, problems } | null — the flow being written, after newFlow or editFlow. `problems` are sentences saying what saving would be refused for; saveDraft refuses while there are any, so show them beside the button',
         recordFlows:
-          'Record<recordId, { flow, label, state, stateLabel, waiting, stalled }[]> — by record, every startable flow it is going through and where it stands: what a chip on a card shows. Read as `flowStore.recordFlows[card.id]`, which is undefined for a record in none',
+          'Record<recordId, { flow, label, state, stateLabel, waiting, stalled, next, asks }[]> — by record, every startable flow it is going through and where it stands: what a chip on a card shows. `next` ({ name, label }[]) is where it may be asked to go, for moveRecord; `asks` ({ to, toLabel, voters, needs, note, mine }[]) the moves waiting on agreement — offer withdrawRecord where `mine`, moveRecord to the same `to` to agree. Read as `flowStore.recordFlows[card.id]`, which is undefined for a record in none',
       },
       actions: {
         refreshFlows: '(): asks the backend for the flow list again — after something another member did',
@@ -1870,7 +1886,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setApprovals:
           "(name: string, count: number, kind?: string): how many people must agree before a record enters the step, and whose agreement counts — an involvement kind's slug, or '' for anybody's. 1 and '' is a plain ask",
         addGuard:
-          "(name: string, entity: string, tie?: string, min?: number): something that must be there before a record enters the step — at least `min` records of `entity`, held by the record through the relation `tie` ('responses' for what was made in response to it), or anywhere when `tie` is ''",
+          "(name: string, entity: string, tie?: string, min?: number): something that must be there before a record enters the step — at least `min` of `entity`, held by the record through the relation `tie` ('responses' for what was made in response to it), or anywhere when `tie` is ''. `entity` is 'comment', 'call', 'task', 'file', 'link' or 'image' — a comment is a reply post, not the text inside one — or an entity name",
         removeGuard: "(name: string, index: number): takes away the step's guard at that position in its `guards`",
       },
     },

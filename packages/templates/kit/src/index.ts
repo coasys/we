@@ -84,6 +84,12 @@ export {
   OFFERED_SIGNAL_TYPES,
 } from './we/signalTypes.ts';
 export { signalDisplay } from './we/signalDisplay.ts';
+export {
+  guardModal,
+  type GuardModalOptions,
+  stepRequirementFields,
+  type StepRequirementOptions,
+} from './we/stepRequirements.ts';
 export type { SignalDisplayOptions } from './we/signalDisplay.ts';
 export { createSignalTypeModal, newSignalTypeButton } from './we/signalTypeForm.ts';
 export type { CreateSignalTypeModalOptions } from './we/signalTypeForm.ts';

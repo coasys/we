@@ -41,10 +41,10 @@ export interface PublishProfileFields {
   lastName?: string;
   handle?: string;
   bio?: string;
-  /** Raw storage URL for the avatar image (from `ProfileDirectoryPort.uploadFile`). undefined = remove. */
-  avatarExpressionUrl?: string;
-  /** Raw storage URL for the cover image. undefined = remove. */
-  coverImageExpressionUrl?: string;
+  /** Where the avatar image is stored (from `ProfileDirectoryPort.uploadFile`). undefined = remove. */
+  avatarUrl?: string;
+  /** Where the cover image is stored. undefined = remove. */
+  coverImageUrl?: string;
   /** Location object to write, or null to remove. Omit to leave unchanged. */
   location?: { latitude: number; longitude: number; city?: string; country?: string } | null;
 }

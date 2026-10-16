@@ -28,7 +28,7 @@ import type {
   InterpretationProposal,
   InterpretationRequest,
   InterpretationResult,
-  InterpretationScope,
+  ParentRef,
   TranscriptTurn,
   WatchRequest,
 } from '@we/backend-shared';
@@ -37,6 +37,7 @@ import { getEntity, getEntityForDataset, getEntityTargetClass, getRegisteredEnti
 
 import { recordMissingMethod } from './missingMethods';
 import { readShapeProperties } from './perspectiveHelpers';
+import { parentPredicate } from './relationPredicates';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
 
@@ -109,8 +110,8 @@ const prefixFor = (conversation: string) => `${DEFAULT_BASE_PREFIX}${encodeURICo
 export function provenanceLink(
   id: string,
   prefix: string,
-  provenance: { id: string; predicate: string } | undefined,
-  recognised: { id: string; predicate: string } | undefined,
+  provenance: Linked | undefined,
+  recognised: Linked | undefined,
 ): { id: string; predicate: string } | undefined {
   if (!provenance) return undefined;
   return recognised && !id.startsWith(prefix) ? recognised : provenance;
@@ -496,10 +497,7 @@ async function assertEndpointsAreLocal(perspective: PerspectiveProxy, overlayId:
  * test. Falls open — everything passes — if the children cannot be read at all, because a review
  * list that silently empties on a failed read is worse than one showing too much.
  */
-async function scopeFilter(
-  perspective: PerspectiveProxy,
-  scope: InterpretationScope,
-): Promise<(base: string) => boolean> {
+async function scopeFilter(perspective: PerspectiveProxy, scope: LinkedScope): Promise<(base: string) => boolean> {
   /*
     By the conversation where the caller names one. When every conversation files into one shared
     collection, containment admits every call's suggestions at once, so the narrowing has to come
@@ -649,7 +647,58 @@ function passIdOf(event: { batchKey?: string | null; processorId: string }): str
 const UNSUPPORTED_WATCH =
   'This runtime cannot run a standing interpretation watch. Extraction still works when somebody ' + 'presses Extract.';
 
+/** A link as this adapter writes it: the record it hangs off, and the predicate it is stored under. */
+type Linked = { id: string; predicate: string };
+/** A request with its relation-named references translated — what the implementation below reads. */
+type ByPredicate<T> = Omit<T, 'parent' | 'provenance' | 'recognised'> & {
+  parent?: Linked;
+  provenance?: Linked;
+  recognised?: Linked;
+};
+type LinkedRequest = ByPredicate<InterpretationRequest>;
+type LinkedWatch = ByPredicate<WatchRequest>;
+type LinkedScope = { parent: Linked; provenance?: Linked };
+
+/** A relation-named reference as a link, or absent. */
+const linked = (ref: ParentRef | undefined): Linked | undefined => (ref ? parentPredicate(ref) : undefined);
+
+function linkedRequest<T extends InterpretationRequest>(request: T): ByPredicate<T> {
+  const { parent, provenance, recognised, ...rest } = request;
+  return {
+    ...rest,
+    ...(parent ? { parent: linked(parent) } : {}),
+    ...(provenance ? { provenance: linked(provenance) } : {}),
+    ...(recognised ? { recognised: linked(recognised) } : {}),
+  } as ByPredicate<T>;
+}
+
+/**
+ * The interpretation port. The contract names where a pass files what it makes by relation
+ * (`ParentRef`); the engine links by predicate. So each method that takes a reference translates it
+ * here, once, through `relationPredicates.ts`, and the implementation below — which writes links and
+ * builds SPARQL — works in predicates throughout, as only this adapter may.
+ */
 export function createAd4mInterpretationPort(selfId?: () => string | undefined): InterpretationPort {
+  const inner = createLinkedInterpretationPort(selfId);
+  return {
+    ...inner,
+    interpret: (dataset, turns, request, ctl) => inner.interpret(dataset, turns, linkedRequest(request), ctl),
+    proposals: (dataset, scope) =>
+      inner.proposals(
+        dataset,
+        scope
+          ? {
+              parent: parentPredicate(scope.parent),
+              ...(scope.provenance ? { provenance: linked(scope.provenance) } : {}),
+            }
+          : undefined,
+      ),
+    watch: (dataset, request) => inner.watch(dataset, linkedRequest(request)),
+    reconcile: (dataset, request) => inner.reconcile(dataset, linkedRequest(request)),
+  };
+}
+
+function createLinkedInterpretationPort(selfId?: () => string | undefined) {
   /*
     What each watch is hanging its results on, so the listener below can finish the job the engine
     does not do.
@@ -664,8 +713,8 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
     {
       id: string;
       predicate: string;
-      provenance?: { id: string; predicate: string };
-      recognised?: { id: string; predicate: string };
+      provenance?: Linked;
+      recognised?: Linked;
       prefix: string;
     }
   >();
@@ -697,12 +746,12 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
   /**
    * One staged-suggestion watch per perspective, shared by every holder.
    *
-   * The executor hands identical subscriptions from one user the same server-side subscription, with
-   * no count of who holds it, so disposing one ends it for all. Two watches on a perspective are
-   * ordinary: a space switch away and back inside a round trip has the first watch finish starting
-   * after the second, and its late stop silenced the live one until the keepalive noticed. So the
-   * watch is shared here and disposed when its last holder lets go — after a grace, because a
-   * dispose racing a fresh subscribe with the same text can land after it and end that one too.
+   * Two watches on a perspective are ordinary — a space switch away and back inside a round trip has
+   * the first finish starting after the second — and the executor runs every subscription it holds on
+   * each change that matches, so two watches cost two runs for one answer. (They were shared first
+   * because the executor used to hand identical subscriptions one id with no count of its holders, so
+   * the late stop silenced the live watch.) So the watch is shared here and disposed when its last
+   * holder lets go — after a grace, so a remount does not stop one subscription and start another.
    */
   const proposalWatches = new Map<
     PerspectiveProxy,
@@ -981,7 +1030,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
     async interpret(
       dataset: DatasetHandle,
       turns: TranscriptTurn[],
-      request: InterpretationRequest,
+      request: LinkedRequest,
       ctl?: { signal?: AbortSignal },
     ): Promise<InterpretationResult> {
       const perspective = proxy(dataset);
@@ -996,7 +1045,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       // Confine what this pass mints to the node it belongs to, so two calls on one post do not
       // share a URI space and a later reader can tell where an instance came from.
       const conversation = conversationOf(request);
-      const basePrefix = request.basePrefix ?? (conversation ? prefixFor(conversation) : DEFAULT_BASE_PREFIX);
+      const basePrefix = conversation ? prefixFor(conversation) : DEFAULT_BASE_PREFIX;
 
       /*
         Report the pass while it runs, not only when it returns.
@@ -1089,7 +1138,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       return () => stream.observers.delete(entry);
     },
 
-    async proposals(dataset: DatasetHandle, scope?: InterpretationScope): Promise<InterpretationProposal[]> {
+    async proposals(dataset: DatasetHandle, scope?: LinkedScope): Promise<InterpretationProposal[]> {
       // Empty rather than thrown: a review surface asking "anything pending?" on a runtime that
       // cannot propose anything has its answer, and it is "no" — not an error worth a toast on
       // every render.
@@ -1220,7 +1269,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       };
     },
 
-    async watch(dataset: DatasetHandle, request: WatchRequest): Promise<void> {
+    async watch(dataset: DatasetHandle, request: LinkedWatch): Promise<void> {
       const perspective = proxy(dataset);
       if (!runtimeSupportsAutoProcessing(dataset)) throw new Error(UNSUPPORTED_WATCH);
       if (!request.classes.length) throw new Error('interpretation: no classes given');
@@ -1235,7 +1284,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         ...request.parent,
         provenance: request.provenance,
         recognised: request.recognised,
-        prefix: request.basePrefix ?? prefixFor(conversationOf(request)!),
+        prefix: prefixFor(conversationOf(request)!),
       });
       attachListener(perspective);
 
@@ -1296,7 +1345,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         await perspective.addAutoProcessor({
           processorId: request.watchId,
           sourceScopeQuery,
-          basePrefix: request.basePrefix ?? prefixFor(conversationOf(request)!),
+          basePrefix: prefixFor(conversationOf(request)!),
           interpretationClasses,
           debounceMs: request.debounceMs ?? WATCH_DEFAULTS.debounceMs,
           batchMin: request.batchMin ?? WATCH_DEFAULTS.batchMin,
@@ -1331,10 +1380,10 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       }
     },
 
-    async reconcile(dataset: DatasetHandle, request: InterpretationRequest): Promise<number> {
+    async reconcile(dataset: DatasetHandle, request: LinkedRequest): Promise<number> {
       if (!request.parent || !runtimeSupportsInterpretation(dataset)) return 0;
       const perspective = proxy(dataset);
-      const prefix = request.basePrefix ?? prefixFor(conversationOf(request)!);
+      const prefix = prefixFor(conversationOf(request)!);
       const provenance = request.provenance;
       const produced = provenance
         ? new Set(

@@ -1,6 +1,8 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { field, formModal, sectionCard } from '@we/template-kit';
 
+import { focusRow } from './focusRow';
+
 /**
  * What this community is about — the subjects it returns to.
  *
@@ -180,7 +182,7 @@ export const topicsSection: SchemaNode = sectionCard({
     {
       type: '$each',
       props: { items: { $query: { entity: 'Topic', order: { name: 'asc' }, subscribe: true } }, as: 'topic' },
-      children: [topicRow],
+      children: [focusRow('topic', topicRow)],
     },
     // Carries its own `$if` — see `formModal`.
     createModal,

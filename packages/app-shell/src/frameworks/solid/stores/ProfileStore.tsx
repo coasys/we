@@ -7,6 +7,7 @@
  * the DID) belongs to SessionStore — this store is about the human-facing profile data.
  */
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
+import { uploadOf } from '@shared/uploadOf';
 import { type AgentProfileSummary, displayName, isProfileEmpty, type PublishProfileFields } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { compressImageToFileData, dataURIToFileData, shrinkDataUri } from '@we/entities';
@@ -316,7 +317,7 @@ export function ProfileStoreProvider(props: ParentProps) {
     // data_base64 from compressImageToFileData is raw base64 (no "data:" prefix) — rebuild the data URI
     // the same way the read path does when resolving it back after a refetch.
     const dataUri = `data:${fileData.file_type};base64,${fileData.data_base64}`;
-    const expressionUrl = await profilePort.uploadFile(JSON.stringify(fileData));
+    const expressionUrl = await profilePort.uploadFile(uploadOf(fileData));
 
     markLocallyWritten(myDid);
     setProfiles((prev) => {
@@ -325,7 +326,7 @@ export function ProfileStoreProvider(props: ParentProps) {
       return [...prev.filter((a) => a.did !== myDid), { ...existing, [field]: dataUri }];
     });
 
-    const publishKey = field === 'avatar' ? 'avatarExpressionUrl' : 'coverImageExpressionUrl';
+    const publishKey = field === 'avatar' ? 'avatarUrl' : 'coverImageUrl';
     await profilePort.publish({ [publishKey]: expressionUrl } as PublishProfileFields);
 
     // Mirror the picture onto the account so the locked sign-in screen stays current. Avatar only
@@ -352,7 +353,7 @@ export function ProfileStoreProvider(props: ParentProps) {
       return [...prev.filter((a) => a.did !== myDid), { ...existing, [field]: undefined }];
     });
 
-    const publishKey = field === 'avatar' ? 'avatarExpressionUrl' : 'coverImageExpressionUrl';
+    const publishKey = field === 'avatar' ? 'avatarUrl' : 'coverImageUrl';
     await profilePort.publish({ [publishKey]: '' } as PublishProfileFields);
 
     // The sign-in screen caches the avatar so a locked session has something to show; clearing the
@@ -538,7 +539,7 @@ export function ProfileStoreProvider(props: ParentProps) {
     if (!myDid || !profilePort) return;
 
     const fileData = dataURIToFileData(dataUri, 'profile-image');
-    const expressionUrl = await profilePort.uploadFile(JSON.stringify(fileData));
+    const expressionUrl = await profilePort.uploadFile(uploadOf(fileData));
 
     markLocallyWritten(myDid);
     setProfiles((prev) => {
@@ -547,7 +548,7 @@ export function ProfileStoreProvider(props: ParentProps) {
       return [...prev.filter((a) => a.did !== myDid), { ...base, avatar: dataUri }];
     });
 
-    await profilePort.publish({ avatarExpressionUrl: expressionUrl } as PublishProfileFields);
+    await profilePort.publish({ avatarUrl: expressionUrl } as PublishProfileFields);
     void cacheAvatarOnAccount(dataUri);
   }
 

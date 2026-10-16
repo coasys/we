@@ -34,7 +34,7 @@
  * (which, per the note above, refuses) — see {@link Disposition}. The real fix is upstream; when it
  * lands, grep `sort:needs-limit` and delete that block.
  */
-import type { PerspectiveProxy } from '@coasys/ad4m';
+import { Ad4mModel, type PerspectiveProxy, type Query } from '@coasys/ad4m';
 import type {
   AdapterCapabilities,
   CapabilityGap,
@@ -113,6 +113,25 @@ export function toRendererEntity(Model: Ad4mEntityClass): RendererEntityClass {
 }
 
 /**
+ * Several model classes as one handle, which the executor answers as one query: `findAllOf` for a
+ * read and `queryOf` for a live one, whose single subscription re-runs on a change to any of them.
+ * Each row comes back as the class the executor read it as, under `__subjectClass`.
+ */
+export function toRendererUnion(Models: Ad4mEntityClass[]): RendererEntityClass {
+  const classes = Models as unknown as (typeof Ad4mModel)[];
+  return {
+    query: (dataset, opts) =>
+      Ad4mModel.queryOf(asPerspective(dataset), classes, opts as Query) as unknown as ReturnType<
+        RendererEntityClass['query']
+      >,
+    findAll: (dataset, opts, ctl) =>
+      Ad4mModel.findAllOf(asPerspective(dataset), classes, opts as Query, ctl) as unknown as ReturnType<
+        RendererEntityClass['findAll']
+      >,
+  };
+}
+
+/**
  * What the AD4M adapter needs from the host to satisfy the data contract.
  *
  * Declared structurally rather than as `AdamStore` on purpose: that interface lives under
@@ -165,7 +184,13 @@ export function createAd4mDataBindings(
   deps: Ad4mAdapterDeps,
 ): Pick<
   RendererDataBindings,
-  '$getEntity' | '$getEntityForDataset' | '$currentDataset' | '$identities' | '$queryAdapter' | '$ephemeral'
+  | '$getEntity'
+  | '$getEntityForDataset'
+  | '$getEntitiesForDataset'
+  | '$currentDataset'
+  | '$identities'
+  | '$queryAdapter'
+  | '$ephemeral'
 > {
   return {
     // Adapted, not raw: AD4M's model statics take a `PerspectiveProxy` and AD4M's own query shape,
@@ -174,6 +199,12 @@ export function createAd4mDataBindings(
     $getEntityForDataset: (name, dataset) => {
       const model = getEntityForDataset(name, dataset);
       return model ? toRendererEntity(model) : undefined;
+    },
+    $getEntitiesForDataset: (names, dataset) => {
+      const models = names
+        .map((name) => getEntityForDataset(name, dataset))
+        .filter((model): model is Ad4mEntityClass => Boolean(model));
+      return models.length ? toRendererUnion(models) : undefined;
     },
     // The renderer treats this as opaque and hands it straight back, so the proxy passes through
     // untouched — no flattening to an id, no re-resolution on the way in.

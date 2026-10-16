@@ -37,7 +37,7 @@ export interface BackendHostInfo {
   /**
    * AI models the host advertises it can run.
    *
-   * Worth carrying separately from `RuntimeAdminPort.aiModels`: this comes from the host directory
+   * Worth carrying separately from `ModelAdminPort.list`: this comes from the host directory
    * and is readable without any capability at all, so it can answer "can this node transcribe?" even
    * where the executor would refuse to list its models.
    */

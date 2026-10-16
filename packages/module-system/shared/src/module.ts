@@ -541,8 +541,12 @@ export interface DatasetTarget {
 
 /** Where a newly created record should be attached, and nothing else. */
 export interface CreateEntityOptions extends DatasetTarget {
-  /** The record to link this one under, by id and predicate. Creating it parented leaves no window where a crash orphans it. */
-  parent?: { id: string; predicate: string };
+  /**
+   * The record to attach this one under, and the relation of that record's it joins, by name —
+   * `{ id: call.id, relation: 'children' }`. Creating it parented leaves no window where a crash
+   * orphans it. See `ParentRef` in `@we/backend-shared`.
+   */
+  parent?: { id: string; relation: string; entity?: string };
   /**
    * File the record at the space's top level — inside its space collection, where everything
    * top-level in a space lives. For a record that belongs to the space rather than to anything in

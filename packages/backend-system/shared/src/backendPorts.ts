@@ -16,6 +16,7 @@ import type { LanguageModelPort } from './languageModel';
 import type { AgentSessionPort, DatasetLifecyclePort } from './lifecycle';
 import type { EntityManifest } from './manifest';
 import type { EntityManifestEntry } from './manifestEntry';
+import type { ModelAdminPort } from './modelAdmin';
 import type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 import type { RuntimeAdminPort } from './runtimeAdmin';
 import type { TranscriptionPort } from './transcription';
@@ -117,8 +118,8 @@ export interface SchemaPort {
   ): Record<string, unknown>;
   /**
    * The interpretation hints a dataset currently stores for one entity, or null when the entity
-   * has no installed schema there. Property hints are keyed by predicate — the stable storage
-   * key; hosts map display names to predicates through the manifest entries they already hold.
+   * has no installed schema there. Property hints are keyed by property name, as the entity
+   * declares it — how a backend stores a property is its own business.
    */
   interpretationHints(dataset: DatasetHandle, entity: string): Promise<EntityHintState | null>;
   /**
@@ -141,10 +142,18 @@ export interface SchemaPort {
   dedupe?(dataset: DatasetHandle): Promise<{ removed: number; authors: string[] }>;
 }
 
+/** A file to store, as `ProfileDirectoryPort.uploadFile` takes it. */
+export interface UploadFile {
+  /** The bytes, base64-encoded with no `data:` prefix. */
+  base64: string;
+  mimeType: string;
+  name: string;
+}
+
 /** What `SchemaPort.interpretationHints` answers — one entity's stored hint state in one dataset. */
 export interface EntityHintState {
   classHint?: string;
-  /** Property hints keyed by predicate (the storage key, not the display name). */
+  /** Property hints keyed by property name. */
   propHints: Record<string, string>;
   /** Whether this dataset has customized the hints (they are space-owned there). */
   customized: boolean;
@@ -158,8 +167,8 @@ export interface EntityHintState {
 export interface ProfileDirectoryPort {
   get(id: string): Promise<AgentProfileSummary>;
   publish(fields: PublishProfileFields): Promise<void>;
-  /** Store a serialized file payload; returns a URL the profile can reference. */
-  uploadFile(serialized: string): Promise<string>;
+  /** Store a file; returns a URL the profile can reference. */
+  uploadFile(file: UploadFile): Promise<string>;
 }
 
 /** What the host hands the backend to build the renderer's data bindings. */
@@ -190,17 +199,6 @@ export interface BackendPortsContext {
   selfId(): string | undefined;
 }
 
-/**
- * Ecosystem-specific interop the shell feature-detects — dialect queries against apps that share
- * the backend but not the host's schema conventions. Absent members degrade like presence.
- */
-export interface BackendInterop {
-  fluxSubgroupMessages?(
-    dataset: DatasetHandle,
-    subgroupId: string,
-  ): Promise<Array<{ id: string; author: string; timestamp: string; body: string }>>;
-}
-
 export interface BackendPorts {
   agentSession: AgentSessionPort;
   lifecycle: DatasetLifecyclePort;
@@ -209,12 +207,16 @@ export interface BackendPorts {
   ephemeral: EphemeralPort;
   /** Build the renderer's data bindings over host-supplied accessors. */
   dataBindings(deps: DataBindingDeps): RendererDataBindings;
-  interop?: BackendInterop;
   /**
    * Backend-process administration — trust, peer network, authorized apps, consent. Optional and
    * feature-detected member by member; see {@link RuntimeAdminPort}.
    */
   runtime?: RuntimeAdminPort;
+  /**
+   * The models the backend runs, and changing them. Optional, and feature-detected member by member;
+   * see {@link ModelAdminPort}.
+   */
+  models?: ModelAdminPort;
   /**
    * Speech to text. Optional: a backend with no transcription model, or none at all, simply omits it
    * and anything that wanted to listen says so rather than failing silently.
@@ -243,17 +245,20 @@ export interface BackendPorts {
 }
 
 /**
- * The records that link to one value through one predicate, newest first.
+ * The records that hold one value through one relation, newest first.
  *
  * The question a query cannot ask: "which messages mention this agent" is a relation whose target
  * is a DID rather than a record, so "has a linked record matching…" has nothing to match against.
  * Asked from the target's end it is one lookup on a store indexed by link, however many messages the
  * space holds — which is what makes a mentions inbox affordable rather than a scan.
+ *
+ * The relation is named as the holding entity declares it (`{ relation: 'mentions' }`), with
+ * `entity` where the name alone does not decide — never by how a backend stores it.
  */
 export interface ReferencePort {
   referrers(
     dataset: DatasetHandle,
-    predicate: string,
+    relation: { relation: string; entity?: string },
     target: string,
     opts?: { limit?: number },
   ): Promise<{ id: string; author: string; at: string }[]>;

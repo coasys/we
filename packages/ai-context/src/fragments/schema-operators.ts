@@ -436,13 +436,15 @@ Sub-query include — filter, sort, or limit the related records:
 
 Nested include — hydrate relations of relations:
 { "$query": { "entity": "Channel", "include": { "conversations": { "include": { "messages": true } } } } }
-Nesting can go as deep as needed. Each level adds one batched fetch (not N+1). Two limits, both silent
-rather than refused, so keep clear of them:
-- A $-prefixed projection (below) works only at the TOP level of include. Written inside a nested
-  include it is dropped: the query succeeds and the field is simply absent.
-- Below an UNTYPED relation (see "include works with an UNTYPED relation" below), only a TYPED
-  relation can be nested. Nesting another untyped one fails the whole query the moment any member has
-  something in it — so it works on an empty board and breaks on the first card.
+Nesting can go as deep as needed. Each level adds one batched fetch (not N+1).
+A $-prefixed projection (below) works at any level, so a count rides on each included record:
+{ "include": { "conversations": { "include": { "$messageCount": { "from": "messages", "count": true } } } } }
+Below an UNTYPED relation each member answers it for its own type, and a member whose type has no
+such relation simply carries no count.
+One limit, silent rather than refused, so keep clear of it: below an UNTYPED relation (see "include
+works with an UNTYPED relation" below), only a TYPED relation can be nested. Nesting another untyped
+one fails the whole query the moment any member has something in it — so it works on an empty board
+and breaks on the first card.
 
 Count projection — add a derived numeric field:
 { "$query": { "entity": "Post", "include": { "$likeCount": { "from": "likes", "count": true } } } }

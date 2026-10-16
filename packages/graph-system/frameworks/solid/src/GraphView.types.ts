@@ -296,6 +296,12 @@ export interface GraphViewProps {
     recordId?: string;
     recordType?: string;
     /**
+     * The card is on the graph only because a card was opened into it — a note's blocks, opened out
+     * of the note. Its position is the opening's, not the canvas's: written as a placement, the card
+     * would join the canvas in its own right and stay behind when its parent closed.
+     */
+    opened?: boolean;
+    /**
      * What a folded card brought with it — every record hidden under it, at the place it now sits.
      *
      * Absent unless the card that was dragged is a fold holding something (see `folded`), so a
@@ -543,6 +549,27 @@ export interface GraphViewProps {
     folded: boolean;
     count: number;
   }) => void;
+  /**
+   * Nodes held open — opened from their caret and kept that way across a reload. Node addresses, as
+   * `onNodeOpen` reports them: a bucket or a field has no record id to name it by.
+   *
+   * An address the graph does not hold yet is opened when it arrives, so a field opened under a field
+   * comes back once the first is open again. One taken out of the list is closed.
+   *
+   * View state, like `folded`: WE's canvas keeps it in the address.
+   */
+  open?: string[];
+  /**
+   * The caret on a card opened or closed it — `open` says which way.
+   *
+   * The other half of the fold's bargain. A card whose children are already on the graph folds; one
+   * whose children are not yet loaded, where an expander the spec allows claims it, **opens** — the
+   * graph fetches them itself through `expansion.expanders` — and one it opened closes again. Binding
+   * this is what offers the opening half at all, for the reason `onNodeFold` gives: where the open set
+   * is kept is the interface's business, and a graph that reopened nothing after a reload would be a
+   * caret that visibly forgets.
+   */
+  onNodeOpen?: (payload: { id: string; recordId?: string; recordType?: string; open: boolean }) => void;
   /**
    * The delete key, pressed while the graph holds focus and something is selected.
    *
@@ -974,7 +1001,7 @@ export interface GraphHostBindings {
    * Optional: a host with no change notification omits it and the graph stays as loaded. The engine
    * decides what to watch from the reads its seeds performed — nothing calls this directly.
    */
-  watch?(request: { entity: string; dataset?: string }, onChange: () => void): () => void;
+  watch?(request: { entity: string | string[]; dataset?: string }, onChange: () => void): () => void;
   /**
    * Say what happened inside a load, for whoever is debugging an empty canvas.
    *

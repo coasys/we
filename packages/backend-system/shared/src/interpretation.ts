@@ -39,6 +39,7 @@
 
 import type { DatasetHandle } from './dataSource';
 import type { InterpretationActivity } from './interpretationActivity';
+import type { ParentRef } from './recordContract';
 
 /**
  * One thing somebody said.
@@ -83,7 +84,7 @@ export interface InterpretationRequest {
    * is real, queryable, and invisible in a UI that reaches content by traversal. Mirrors the
    * `parent` option on the module contract's `createEntity` for the same reason.
    */
-  parent?: { id: string; predicate: string };
+  parent?: ParentRef;
   /**
    * A second link written beside `parent`, saying the same node *produced* what the pass wrote.
    *
@@ -93,7 +94,7 @@ export interface InterpretationRequest {
    * exactly when it matters, since a task composed into a call by hand is contained and not
    * extracted.
    *
-   * Named by the caller rather than known here, for the reason `parent` is: the predicate is the
+   * Named by the caller rather than known here, for the reason `parent` is: the relation is the
    * host's vocabulary, and an interpretation port that hard-coded one would be a backend deciding
    * what a relation in somebody else's graph is called. Omit it and nothing extra is written.
    *
@@ -104,7 +105,7 @@ export interface InterpretationRequest {
    * one shared collection: each call is still read on its own and still tells its items apart from
    * every other call's. Absent, `parent` is both.
    */
-  provenance?: { id: string; predicate: string };
+  provenance?: ParentRef;
   /**
    * Where a record the pass *recognised* — already in the space, made by another conversation or by
    * hand — is linked from, instead of `provenance`.
@@ -115,13 +116,7 @@ export interface InterpretationRequest {
    * claiming to have produced it. Named by the caller for `provenance`'s reason. Omit it and a
    * recognised record is linked as `provenance`, as before.
    */
-  recognised?: { id: string; predicate: string };
-  /**
-   * URI namespace new instances are minted under. Backend-specific and usually best left to the
-   * adapter, which derives one from the conversation (`provenance`, else `parent`) so a call's
-   * extractions are confined to that call.
-   */
-  basePrefix?: string;
+  recognised?: ParentRef;
 }
 
 export interface InterpretationResult {
@@ -160,7 +155,7 @@ export interface InterpretationResult {
 }
 
 /**
- * Which node's suggestions are being asked about — the same `{ id, predicate }` a pass was parented
+ * Which node's suggestions are being asked about — the same `{ id, relation }` a pass was parented
  * by, so a caller that ran one already holds it.
  *
  * A parent rather than a filter over the proposals themselves, because containment is what a pass
@@ -168,7 +163,7 @@ export interface InterpretationResult {
  * else about the staged values says which conversation they came from.
  */
 export interface InterpretationScope {
-  parent: { id: string; predicate: string };
+  parent: ParentRef;
   /**
    * The conversation the suggestions came from, where it is not the node they were filed in.
    *
@@ -177,7 +172,7 @@ export interface InterpretationScope {
    * conversation names it here, and a backend narrows by this link (and by the namespace it minted
    * under) instead of by containment.
    */
-  provenance?: { id: string; predicate: string };
+  provenance?: ParentRef;
 }
 
 /** A staged suggestion waiting on a human. */

@@ -15,6 +15,8 @@ import {
   unreadContainerIds,
 } from '@shared/containerActivity';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
+import { guardLabel, refusalWords } from '@shared/flowViews';
+import { guardSubjectOf } from '@shared/guardSubjects';
 import { buildGuestLink } from '@shared/guestLink';
 import {
   type AmendmentEntry,
@@ -23,7 +25,7 @@ import {
   type PassEntry,
   transcriptLine,
 } from '@shared/interpretation/callExport';
-import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
+import { gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
 import { involvementOptimism } from '@shared/involvementOptimism';
 import {
   createInvolvementActions,
@@ -32,7 +34,6 @@ import {
   parseAppliesTo,
   resolveInvolvementTypes,
 } from '@shared/involvements';
-import { type LinkLanguageOption, linkLanguageOptions } from '@shared/linkLanguageOptions';
 import {
   clearSetting,
   type LevelValues,
@@ -57,10 +58,12 @@ import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry'
 import { completeResponse } from '@shared/responses';
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
+import { type SharingPickerOption, sharingPickerOptions } from '@shared/sharingOptions';
 import { readSpaceRoles, writeSpaceRole } from '@shared/spaceRoles';
 import {
   applyStarterRecords,
   defaultSpaceStarter,
+  linkSpaceRelations,
   SPACE_COLLECTION_KIND,
   type SpaceStarter,
   starterSettings,
@@ -80,11 +83,15 @@ import {
   flowStateOf,
   needsAgreement,
   openMoveOf,
+  parseTaskStateGuards,
+  storeTaskStateGuards,
   TASK_FLOW,
+  type TaskFlowRule,
   type TaskStateRule,
 } from '@shared/taskFlow';
 import { taskFlowLive } from '@shared/taskFlowLive';
 import { resolveSpaceTheme, type ThemeResolutionInput } from '@shared/themeResolution';
+import { uploadOf } from '@shared/uploadOf';
 import { copyText, deriveSlug } from '@shared/utils';
 import type { ViewSetting } from '@shared/viewResolution';
 import {
@@ -122,7 +129,6 @@ import {
   InvolvementType,
   LocationBlock,
   MutedAgent,
-  PREDICATES,
   ReadMarker,
   RelationshipType,
   Signal,
@@ -360,6 +366,17 @@ export interface TaskStateView {
   approvals: number;
   /** The involvement kind whose holders' agreement counts, or empty for any member's. */
   approverKind: string;
+  /**
+   * What must be there before a task enters this state, each with a sentence saying so — see
+   * `TaskState.guards`. `tie` is the relation the task holds them through, empty for anywhere.
+   */
+  guards: {
+    entity: string;
+    where?: Record<string, string | number | boolean>;
+    tie: string;
+    min: number;
+    label: string;
+  }[];
 }
 
 export interface SpaceMetaUpdate {
@@ -382,17 +399,11 @@ export interface CreatePostOptions {
   /** Id of the node to attach to. Omit for a post, which sits in the space unattached. */
   parentId?: string;
   /**
-   * How it attaches. Defaults to `we://child` — containment, which is what a channel message
-   * wants. Pass `we://response` for a reply, which hangs off a node rather than sitting inside it.
+   * The relation it joins on that node. Defaults to `'children'` — containment, which is what a
+   * channel message wants. Pass `'responses'` for a reply, which hangs off a node rather than
+   * sitting inside it.
    */
-  predicate?: string;
-}
-
-export interface FluxSubgroupMessage {
-  id: string;
-  author: string;
-  timestamp: string;
-  body: string;
+  relation?: string;
 }
 
 // Space.avatar/coverImage are typed as string (resolved data URI on read) but accept FileData on write.
@@ -642,9 +653,9 @@ export interface SpaceStore {
   /** The same list as a nav strip reads it — one source, so routes and nav cannot disagree. */
   viewNav: Accessor<{ id: string; segment: string; label: string; icon: string; path: string }[]>;
   /** How a shared space can sync, as picker entries: label, icon and a description per template. */
-  linkLanguageTemplateOptions: Accessor<LinkLanguageOption[]>;
+  sharingOptions: Accessor<SharingPickerOption[]>;
   /** Address of the link language template publishing uses when none is chosen. */
-  defaultLinkLanguageTemplate: Accessor<string>;
+  defaultSharing: Accessor<string>;
 
   // Actions
   createSpace: (
@@ -655,7 +666,7 @@ export interface SpaceStore {
     avatarFile?: File,
     coverImageFile?: File,
     location?: LocationData | null,
-    linkLanguageTemplate?: string,
+    sharing?: string,
   ) => Promise<void>;
   /**
    * Join a shared dataset. `focus` defaults to true; pass false to join without navigating to it.
@@ -923,8 +934,20 @@ export interface SpaceStore {
       semantic?: TaskStateView['semantic'];
       approvals?: number;
       approverKind?: string;
+      guards?: { entity: string; where?: Record<string, string | number | boolean>; tie?: string; min?: number }[];
     },
   ) => Promise<void>;
+  /**
+   * How a task may move between this space's states, in their order — `''` for anywhere, `next`, or
+   * `next-and-back` (see `Space.taskFlowRule`). Only whoever administers the space; rejects otherwise.
+   */
+  setTaskFlowRule: (rule: '' | 'next' | 'next-and-back') => Promise<void>;
+  /** Add something that must be there before a task enters this state — see `TaskState.guards`. */
+  addTaskStateGuard: (slug: string, guard: { entity: string; tie?: string; min?: number }) => Promise<void>;
+  /** Take away the state's guard at that position in its `guards`. */
+  removeTaskStateGuard: (slug: string, index: number) => Promise<void>;
+  /** How a task may move between this space's states — see `setTaskFlowRule`. */
+  taskFlowRule: Accessor<'' | 'next' | 'next-and-back'>;
   /**
    * Whether this space's task states ask for agreement — some state needs more than one approval, or
    * names whose approval counts. Where they do, a card dragged into such a state waits rather than
@@ -993,7 +1016,6 @@ export interface SpaceStore {
   copyShareLink: (uuid: string) => Promise<void>;
   /** Copy a guest invite link — auto-creates account, auto-joins the space. No-op without a host. */
   copyGuestLink: (uuid: string) => Promise<void>;
-  getSubgroupMessages: (subgroupId: string) => Promise<FluxSubgroupMessage[]>;
   /**
    * Write a call's transcript to a `.txt` file and download it.
    *
@@ -1610,7 +1632,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         .filter((s): s is Space => !!s)
         .sort((a, b) => Number(a.createdAt) - Number(b.createdAt));
       setMySpaces(filteredSpaces);
-      void loadLinkLanguageTemplates();
+      void loadSharingOptions();
     } catch (error) {
       console.error('SpaceStore: loadSpaces error', error);
     }
@@ -1625,20 +1647,20 @@ export function SpaceStoreProvider(props: ParentProps) {
     void templateStore.preloadSpaceTemplates(ds).catch(() => {});
   }
 
-  const [linkLanguageTemplateOptions, setLinkLanguageTemplateOptions] = createSignal<LinkLanguageOption[]>([]);
-  const [defaultLinkLanguageTemplate, setDefaultLinkLanguageTemplate] = createSignal('');
+  const [sharingOptions, setSharingOptions] = createSignal<SharingPickerOption[]>([]);
+  const [defaultSharing, setDefaultSharing] = createSignal('');
 
-  async function loadLinkLanguageTemplates(): Promise<void> {
+  async function loadSharingOptions(): Promise<void> {
     const lifecycle = session.lifecycle();
-    if (!lifecycle?.linkLanguageTemplates) return;
+    if (!lifecycle?.sharingOptions) return;
     try {
-      const templates = await lifecycle.linkLanguageTemplates();
+      const options = await lifecycle.sharingOptions();
       // The backend lists its default first — what publishing uses unprompted — and the picker
       // keeps that order, so the default is also the first option.
-      setDefaultLinkLanguageTemplate(templates[0]?.address ?? '');
-      setLinkLanguageTemplateOptions(linkLanguageOptions(templates));
+      setDefaultSharing(options[0]?.id ?? '');
+      setSharingOptions(sharingPickerOptions(options));
     } catch (e) {
-      console.error('SpaceStore: loadLinkLanguageTemplates error', e);
+      console.error('SpaceStore: loadSharingOptions error', e);
     }
   }
 
@@ -1713,20 +1735,12 @@ export function SpaceStoreProvider(props: ParentProps) {
         const made = await Model.create(
           dataset,
           fields as never,
-          (parentId ? { parent: { id: parentId, predicate: PREDICATES.CHILDREN } } : {}) as never,
+          (parentId ? { parent: { id: parentId, relation: 'children', entity: 'CollectionBlock' } } : {}) as never,
         );
         return (made as { id: string }).id;
       },
       role: (name, nodeId) => writeSpaceRole(dataset, space.id, name, nodeId),
-      linkSpace: async (relations) => {
-        // A list is written in order, which is what an ordered relation (the space's task states)
-        // keeps; a single id is the same thing with one entry.
-        for (const [relation, value] of Object.entries(relations)) {
-          for (const id of Array.isArray(value) ? value : [value]) {
-            await Space.addRelation(dataset, space.id, relation, id);
-          }
-        }
-      },
+      linkSpace: (relations) => linkSpaceRelations(Space, dataset, space.id, relations),
       /*
         A post is seeded as the blocks inside it, and its stored document is derived from those here,
         unless the starter wrote one itself. Anything else has nothing to derive.
@@ -1746,7 +1760,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     avatarFile?: File,
     coverImageFile?: File,
     location?: LocationData | null,
-    linkLanguageTemplate?: string,
+    sharing?: string,
   ): Promise<void> {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return;
@@ -1766,7 +1780,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       // (the dataset handle's own sharedUrl is not updated in-place).
       if (access === 'shared') {
         if (!lifecycle.publish) throw new Error('This backend cannot publish shared datasets.');
-        const published = await lifecycle.publish(spaceRef.id, linkLanguageTemplate);
+        const published = await lifecycle.publish(spaceRef.id, { sharing });
         publishedSharedId = published.sharedId;
         // Patch the ref so trackDataset sees the sharedId — the proxy's sharedUrl is not
         // updated in-place by publish, so the ref captured at create time would otherwise
@@ -2123,22 +2137,26 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!p) return;
 
     // The anchor is what makes one action serve every composed artifact. A post has none — it sits
-    // in the space. A message names its channel through `we://child`; a reply names whatever it
-    // answers through `we://response`. Both arrive from a schema as ids, which is all a template
+    // in the space. A message names its channel through `children`; a reply names whatever it
+    // answers through `responses`. Both arrive from a schema as ids, which is all a template
     // has, and both are `$each`/route values rather than anything the store could derive.
     // With no anchor named, a post goes in the space collection — the space's top level — rather than
     // nowhere. Read at the call, not destructured as a default, so a space entered after this store
     // was built still gets its own.
-    const { kind = 'post', predicate = PREDICATES.CHILDREN } = options;
+    const { kind = 'post', relation = 'children' } = options;
     const parentId = options.parentId ?? (spaceRoot() || undefined);
 
     // The action arrives from a schema as unknown; the composer produced it, so it is a content document.
     const root = await createBlocks(p, json as ContentInput, {
       kind,
-      ...(parentId && { anchor: { id: parentId, predicate } }),
+      // A message's parent is a collection; a reply's may be any record, and `responses` is the
+      // same relation on every one of them, so it needs no entity to say which.
+      ...(parentId && {
+        anchor: { id: parentId, relation, ...(relation === 'children' && { entity: 'CollectionBlock' }) },
+      }),
     });
     // A reply is linked into its thread, and is a child of nothing — see `@shared/responses`.
-    if (root?.id && parentId && predicate === PREDICATES.RESPONSE) void completeResponse(p, root.id, parentId);
+    if (root?.id && parentId && relation === 'responses') void completeResponse(p, root.id, parentId);
     return root?.id;
   }
 
@@ -2246,6 +2264,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       stateOf: (taskId) => flowStateOf(taskFlowLive.view(), taskId),
       move: (taskId, from, to) => taskFlow.move(taskId, from, to),
       entryFor: (to) => taskFlow.entryFor(to),
+      explain: (from, to, outcome) => explainTaskMove(from, to, outcome ?? ''),
     },
     /*
       A staged suggestion for one property, dropped — see `BoardDeps.resolveSuggestion`. Checked
@@ -2740,41 +2759,37 @@ export function SpaceStoreProvider(props: ParentProps) {
         it rather than assuming it.
       */
       const mine = (await Signal.findAll(p, {
-        parent: { id: nodeId, predicate: 'we://signal' },
+        parent: { id: nodeId, relation: 'signals' },
         where: { signalTypeId, author: myDid },
       })) as Signal[];
 
       /*
-      Withdrawing a reaction removes the record; changing one replaces it.
+        Withdrawing a reaction removes the record; changing one edits it in place.
 
-      Replaces, not edits — and that is not the obvious choice. Editing is one write where this is
-      two, and it keeps the record's id and `createdAt` for what is plainly the same person's same
-      reaction differently weighted. It was written that way, and it made changing a rating do
-      nothing anybody could see.
+        In place, so it keeps the record's id and `createdAt` for what is plainly the same person's
+        same reaction differently weighted, and in one write. It used to be a remove and an add,
+        because an edit to a record read through `include` notified nobody: a subscription over the
+        reacted-to record was triggered by that record's own predicates and not by `we://value` on
+        the included Signal, so every reader went on showing the old number. The replacement touched
+        `we://signal` twice to be seen, at the cost of a flicker — a rating moved from 3 to 4 passed
+        through "nobody has rated this" for a round trip. A subscription now follows what its query
+        includes, so the edit is heard and the flicker has no reason left.
 
-      The reason is in the executor. A model subscription's trigger is built by
-      `build_model_trigger_predicates`, which collects the predicates of the SUBSCRIBED class's own
-      shape plus the parent predicate — it does not walk `include`. Every surface reads reactions as
-      `include: { signals: true }` on the record, so the live query is over CollectionBlock, whose
-      predicates cover `we://signal`: adding or removing one fires the trigger, and the row re-reads.
-      A property of the included Signal does not. `we://value` is not in that set, so an in-place
-      edit changes the store, notifies nobody, and every reader — the author included — goes on
-      showing the old number until something else re-runs the query.
+        Any further reactions of mine on this type are removed, so a pair that was written twice
+        heals on the next change rather than staying doubled for good.
 
-      So a change is a remove and an add, which touches `we://signal` twice and is therefore visible.
-      The cost is the flicker the edit-in-place was introduced to remove: a rating moved from 3 to 4
-      passes through "nobody has rated this" for a round trip, so the mean dips and comes back. A
-      figure that is briefly wrong is worth more than one that is permanently wrong, and the real fix
-      is an executor that triggers on the shapes a query includes.
-
-      A withdrawal — `null` — removes the record rather than storing anything, which is what keeps a
-      withdrawn reaction absent everywhere instead of being a row every count has to remember to
-      exclude. A zero is now an ordinary value and is stored like any other.
-    */
+        A withdrawal — `null` — removes the record rather than storing anything, which is what keeps a
+        withdrawn reaction absent everywhere instead of being a row every count has to remember to
+        exclude. A zero is an ordinary value and is stored like any other.
+      */
       try {
-        for (const signal of mine) await signal.delete();
-        if (value !== null) {
-          await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
+        const kept = value === null ? undefined : mine[0];
+        for (const signal of mine) if (signal !== kept) await signal.delete();
+        if (kept) {
+          kept.value = value as number;
+          await kept.save();
+        } else if (value !== null) {
+          await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, relation: 'signals' } });
         }
         // The write is back. Not a release — what retires a hold is the data moving — but it ends
         // the hold's exemption from what the next draw says. See `@we/optimism`.
@@ -2800,20 +2815,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     await upsertSignal(nodeId, signalTypeId, null);
   }
 
-  // Ecosystem dialect, feature-detected through the connector's interop surface — a backend
-  // without it simply returns nothing.
-  async function getSubgroupMessages(subgroupId: string): Promise<FluxSubgroupMessage[]> {
-    const ds = datasetStore.currentDataset();
-    const fetchMessages = session.backendPorts()?.interop?.fluxSubgroupMessages;
-    if (!ds || !fetchMessages) return [];
-    try {
-      return await fetchMessages(ds.handle, subgroupId);
-    } catch (err) {
-      console.error('SpaceStore: getSubgroupMessages failed', err);
-      return [];
-    }
-  }
-
   /**
    * A call's transcript, through the same gather extraction runs on rather than a second reading of
    * the same shape. What a turn is — which entities can be one, which rows are too broken to keep,
@@ -2822,18 +2823,11 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   async function callTranscript(p: DatasetProxy, callId: string) {
     const modelFor = (entity: string) => getEntityForDataset(entity, p);
-    const predicate = containmentPredicate(modelFor, datasetStore.currentDatasetEntities());
-    const turns = predicate
-      ? await gatherTranscriptTurns(
-          {
-            modelFor: (entity) => modelFor(entity) as TurnRecord | undefined,
-            handle: p,
-            containmentPredicate: predicate,
-          },
-          callId,
-        )
-      : [];
-    return { turns, predicate };
+    const turns = await gatherTranscriptTurns(
+      { modelFor: (entity) => modelFor(entity) as TurnRecord | undefined, handle: p },
+      callId,
+    );
+    return { turns };
   }
 
   /**
@@ -2934,12 +2928,13 @@ export function SpaceStoreProvider(props: ParentProps) {
           const amendments = (Array.isArray(row?.amendments) ? row.amendments : []) as AmendmentEntry[];
           if (!passes.length) return null;
 
-          const { turns, predicate } = await callTranscript(p, callId);
+          const { turns } = await callTranscript(p, callId);
           // Scoped to this call, as the review list is; best effort, since a log without the waiting
           // suggestions is still the log.
           const port = session.backendPorts()?.interpretation;
-          const proposals =
-            port && predicate ? await port.proposals(p, { parent: { id: callId, predicate } }).catch(() => []) : [];
+          const proposals = port
+            ? await port.proposals(p, { parent: { id: callId, relation: 'children' } }).catch(() => [])
+            : [];
           const authors = records.map((record) => (record as { author?: unknown }).author);
           const nameFor = await labelsFor(
             [
@@ -3121,6 +3116,13 @@ export function SpaceStoreProvider(props: ParentProps) {
           // A record written before these existed has neither: one approval, from anybody.
           approvals: approvalsOf({ slug: '', approvals: r.approvals }),
           approverKind: r.approverKind || '',
+          guards: parseTaskStateGuards(r.guards).map((g) => ({
+            entity: g.entity,
+            ...(g.where ? { where: g.where } : {}),
+            tie: g.tie && 'relation' in g.tie ? g.tie.relation : '',
+            min: g.min ?? 1,
+            label: guardLabel(g),
+          })),
         })),
       );
     } catch (error) {
@@ -3214,7 +3216,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     a.icon === b.icon &&
     a.retired === b.retired &&
     a.approvals === b.approvals &&
-    a.approverKind === b.approverKind;
+    a.approverKind === b.approverKind &&
+    JSON.stringify(a.guards) === JSON.stringify(b.guards);
 
   /**
    * The states this space uses, as screens read them.
@@ -3270,11 +3273,29 @@ export function SpaceStoreProvider(props: ParentProps) {
     not know it could not move that work out of it.
   */
   const taskFlowRules = createMemo<TaskStateRule[]>(
-    () => taskStates().map((s) => ({ slug: s.slug, approvals: s.approvals, approverKind: s.approverKind })),
+    () =>
+      taskStates().map((s) => ({
+        slug: s.slug,
+        approvals: s.approvals,
+        approverKind: s.approverKind,
+        guards: parseTaskStateGuards(storeTaskStateGuards(s.guards)),
+      })),
     [],
     { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
   );
-  const taskFlowDefinition = createMemo(() => compileTaskFlow(taskFlowRules()));
+  const taskFlowRule = createMemo<TaskFlowRule>(() => {
+    const rule = currentSpace()?.taskFlowRule ?? '';
+    return rule === 'next' || rule === 'next-and-back' ? rule : '';
+  });
+  const taskFlowDefinition = createMemo(() => compileTaskFlow(taskFlowRules(), taskFlowRule()));
+  /** Why a task's move was refused, naming the rule — in the community's own words for its states. */
+  const explainTaskMove = (from: string, to: string, outcome: string): string | null => {
+    const names = new Map(taskStates().map((state) => [state.slug, state.name]));
+    return refusalWords(untrack(taskFlowDefinition), from, to, outcome, {
+      state: (slug) => names.get(slug) ?? slug,
+      kind: (slug) => slug,
+    });
+  };
   const taskFlowEnabled = (): boolean =>
     Boolean(taskFlowDefinition() && session.backendPorts()?.flows && datasetStore.isWeSpace());
   const [taskFlowView, setTaskFlowView] = createSignal<FlowView | null>(null);
@@ -3283,6 +3304,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     dataset: () => datasetStore.currentDataset()?.handle,
     port: () => (taskFlowEnabled() ? session.backendPorts()?.flows : undefined),
     states: () => taskFlowRules(),
+    rule: () => taskFlowRule(),
   });
 
   /*
@@ -3387,9 +3409,11 @@ export function SpaceStoreProvider(props: ParentProps) {
         // moves the card when it is.
         toastService.info('The node is still counting your approval — the card will move when it has');
       } else if (outcome === 'unmet') {
-        toastService.error('Not yet — what that column asks for is not there');
+        toastService.error(
+          explainTaskMove(from, move.to, outcome) ?? 'Not yet — what that column asks for is not there',
+        );
       } else if (outcome === 'not-allowed') {
-        toastService.error('That card cannot move there from where it is');
+        toastService.error(explainTaskMove(from, move.to, outcome) ?? 'That card cannot move there from where it is');
       }
     } catch (error) {
       console.error('SpaceStore: could not agree with that move', error);
@@ -3428,6 +3452,47 @@ export function SpaceStoreProvider(props: ParentProps) {
             archivedFlows: archivedFlowsJson,
           }) as Space)
         : prev,
+    );
+  }
+
+  /** The state's guards as stored, for an edit that adds or takes one away. */
+  const guardsOfState = (slug: string) =>
+    (taskStates().find((t) => t.slug === slug)?.guards ?? []).map(({ entity, where, tie, min }) => ({
+      entity,
+      ...(where ? { where } : {}),
+      tie,
+      min,
+    }));
+
+  async function addTaskStateGuard(slug: string, guard: { entity: string; tie?: string; min?: number }): Promise<void> {
+    if (!guard?.entity) return;
+    // `entity` is what the requirement form picked — a key such as "comment" — or an entity name.
+    const what = guardSubjectOf(guard.entity);
+    await updateTaskState(slug, { guards: [...guardsOfState(slug), { ...guard, ...what }] });
+  }
+
+  async function removeTaskStateGuard(slug: string, index: number): Promise<void> {
+    await updateTaskState(slug, { guards: guardsOfState(slug).filter((_, i) => i !== index) });
+  }
+
+  /** See the interface. Persisted on the space the way `setFlowArchived` is. */
+  async function setTaskFlowRule(rule: '' | 'next' | 'next-and-back'): Promise<void> {
+    const ds = datasetStore.currentDataset();
+    const space = currentSpace();
+    if (!ds || !space) return;
+    if (!canAdministerCurrentSpace()) throw new Error('Only whoever administers this space can change how tasks move');
+    const next = rule === 'next' || rule === 'next-and-back' ? rule : '';
+    if ((space.taskFlowRule ?? '') === next) return;
+    try {
+      await Space.update(ds.handle, space.id, { taskFlowRule: next });
+    } catch (error) {
+      console.error('SpaceStore: could not persist taskFlowRule', error);
+      toastService.error('Could not save this change for the space.');
+      throw error;
+    }
+    updateSpaceInCache(ds, { taskFlowRule: next } as never);
+    setCurrentSpace((prev) =>
+      prev ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, { taskFlowRule: next }) as Space) : prev,
     );
   }
 
@@ -3614,6 +3679,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       semantic?: TaskStateView['semantic'];
       approvals?: number;
       approverKind?: string;
+      guards?: { entity: string; where?: Record<string, string | number | boolean>; tie?: string; min?: number }[];
     },
   ): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
@@ -3635,6 +3701,11 @@ export function SpaceStoreProvider(props: ParentProps) {
       */
       if (updates.approvals !== undefined) record.approvals = approvalsOf({ slug, approvals: updates.approvals });
       if (updates.approverKind !== undefined) record.approverKind = updates.approverKind;
+      // A form's list may hold keys ("comment") beside guards read back off the record; both store as records.
+      if (Array.isArray(updates.guards))
+        record.guards = storeTaskStateGuards(
+          updates.guards.map((guard) => ({ ...guard, ...guardSubjectOf(guard.entity) })),
+        );
       await record.save();
       await loadTaskStates();
       await syncTaskStateHint();
@@ -4504,7 +4575,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     setMentionRows(null);
     if (!ds || !did || !references) return;
     void references
-      .referrers(ds.handle, 'we://mention', did, { limit: 50 })
+      .referrers(ds.handle, { relation: 'mentions' }, did, { limit: 50 })
       .then((rows) => {
         if (datasetStore.currentDataset() !== ds) return;
         setMentionRows(rows.map((row) => ({ id: row.id, author: row.author, createdAt: Date.parse(row.at) || 0 })));
@@ -4542,7 +4613,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         : // Non-images go through unchanged. `dataURIToFileData` is the same decode the image path
           // ends with, so both arrive at the port in one shape.
           dataURIToFileData(await readAsDataURI(file), name ?? file.name);
-      return await profiles.uploadFile(JSON.stringify(fileData));
+      return await profiles.uploadFile(uploadOf(fileData));
     } catch (error) {
       console.error('SpaceStore: upload failed', error);
       toastService.error('Could not upload that file.');
@@ -5595,8 +5666,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     enabledViewIds,
     viewNav,
     foreignSpacePrefill,
-    linkLanguageTemplateOptions,
-    defaultLinkLanguageTemplate,
+    sharingOptions,
+    defaultSharing,
 
     // Actions
     createSpace,
@@ -5657,6 +5728,10 @@ export function SpaceStoreProvider(props: ParentProps) {
     taskFlowEnabled,
     archivedFlows,
     setFlowArchived,
+    taskFlowRule,
+    setTaskFlowRule,
+    addTaskStateGuard,
+    removeTaskStateGuard,
     approveTaskMove,
     withdrawTaskMove,
     reorderTaskStates,
@@ -5673,7 +5748,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     canAdministerCurrentSpace,
     copyShareLink,
     copyGuestLink,
-    getSubgroupMessages,
     exportCallTranscript,
     exportExtractionLog,
     removeSpaceFromGlobal,

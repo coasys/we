@@ -1,8 +1,6 @@
 import { loadMore, panelHeader, panelScroll, recordCard } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 
-import { POCKET_PREDICATES } from './entities';
-
 /**
  * Everything the Pocket draws, as data.
  *
@@ -783,7 +781,7 @@ const newFolderForm: SchemaNode = {
                   { name: { $: 'local.newFolderName' } },
                   {
                     dataset: PERSONAL,
-                    parent: { id: currentFolder, predicate: POCKET_PREDICATES.folders },
+                    parent: { id: currentFolder, relation: 'folders', entity: 'PocketFolder' },
                   },
                 ],
                 onSuccess: [

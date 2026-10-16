@@ -532,25 +532,26 @@ contextually narrows it to the \`true\` literal, so it needs no \`as const\`.
 
 ---
 
-### Signal Predicate
+### Parents by relation name
 
-Signals on any \`WeNode\` subclass (Space, AgentProfile, TextBlock, …) use the
-predicate **\`we://signal\`** — the relation is declared as:
+A record created under another — a signal on a node, a message in a channel, a reply to a post —
+names where it goes by the RELATION it joins, as the parent entity declares it, never by how a
+backend stores that relation:
 \`\`\`ts
-@HasMany(() => Signal, { through: 'we://signal' })
-signals: string[] = [];
-\`\`\`
-
-When creating a signal manually (not via the ORM relation helpers), pass the
-correct predicate to the \`parent\` option:
-\`\`\`ts
-await Signal.create(perspective, { signalTypeId, value }, {
-  parent: { id: nodeId, predicate: 'we://signal' },
+await Signal.create(dataset, { signalTypeId, value }, {
+  parent: { id: nodeId, relation: 'signals' },
+});
+await TextBlock.create(dataset, { text }, {
+  parent: { id: channelId, relation: 'children', entity: 'CollectionBlock' },
 });
 \`\`\`
 
-**\`we://has_signals\` is wrong** — it is a different predicate that the ORM does not
-know about. Using it creates orphaned links invisible to \`include: { signals: true }\`.
+Add \`entity\` where the name alone does not decide — \`children\` is declared on more than one
+entity, so name \`CollectionBlock\`. \`signals\` and \`responses\` live on \`WeNode\` and mean the same
+thing on every record, so they need none. An unknown or ambiguous name is refused with what to add,
+rather than written somewhere a query will never look. The same shape (\`ParentRef\` in
+\`@we/backend-shared\`) is what a module's \`createEntity\`, a referrer lookup and an interpretation
+scope take.
 
 ---
 
@@ -586,11 +587,12 @@ What the SDK and executor do around a subscription, so a watch can rely on it:
   the changes after it.
 - After a websocket reconnect, the SDK re-subscribes and hands the current result to every
   callback, so a watch hears a refresh rather than nothing.
-- The executor shares one server-side subscription between identical queries from the same user.
-  Disposing one ends it for the other too, until the other's 30-second keepalive fails and
-  re-subscribes. So hold one subscription per perspective and query, count its holders, and dispose
-  it a grace period after the last one lets go — \`onProposalsChanged\` shows how. The grace matters:
-  a dispose racing a fresh subscribe with the same text can land after it and end that one too.
+- A subscription belongs to the subscriber that opened it and to its socket: identical queries are
+  independent, and each ends when it is disposed or its socket closes. Independent is not free — the
+  executor evaluates every one of them on each change that matches — so still hold one subscription
+  per perspective and query, count its holders, and dispose it a grace period after the last one
+  lets go, so a surface remounting does not tear one down and open another. \`onProposalsChanged\`
+  shows how.
 
 ### Reading shapes from \`@we/backend-ad4m\`
 
