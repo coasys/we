@@ -33,6 +33,7 @@ import {
 import { FILE_STORAGE_LANGUAGE } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
+import { toAd4mPredicate } from './containment';
 import type { EntityManifestEntry } from './manifestTypes';
 
 /** A manifest entry plus the declared extras the neutral projection has no place for. */
@@ -132,7 +133,7 @@ export function buildEntityFromEntry(
       const resolver = opts?.classResolver;
       const related = p.relatedEntity;
       // A reverse relation reads a link the other end owns, which AD4M spells `@BelongsTo*` — the
-      // same predicate, read the other way. As `@HasOne`, `partOf` through `we://child` would read
+      // same predicate, read the other way. As `@HasOne`, `partOf` through containment would read
       // this record's own children rather than its container (see generateClasses.mjs).
       const decorator = p.reverse ? (p.isCollection ? BelongsToMany : BelongsToOne) : p.isCollection ? HasMany : HasOne;
       if (p.isCollection) {
@@ -140,7 +141,9 @@ export function buildEntityFromEntry(
         fieldDefaults[p.name] = [];
       }
       decorator({
-        through: p.predicate,
+        // Entries speak the neutral vocabulary (they are also what `schemas.entries` reports); the
+        // stored predicate is this backend's — containment becomes `has_child` here.
+        through: toAd4mPredicate(p.predicate),
         ...(resolver && related !== undefined ? { target: () => resolver(related) as never } : {}),
         // The declaration says the members are in a chosen order; the strategy naming *how* that
         // order survives concurrent edits is AD4M's, and belongs here rather than in the manifest.
@@ -253,8 +256,9 @@ export function manifestToEntries(manifest: EntityManifest, opts: CompileManifes
         })),
         ...Object.entries(entity.relations).map(([relName, spec]) => ({
           name: relName,
-          // Containment is one predicate on every backend, whatever a manifest spelled — see
-          // `RelationSchema.containment`.
+          // Containment has one name on every backend, whatever a manifest spelled — see
+          // `RelationSchema.containment`. The name, not the stored predicate: these entries are
+          // also what `schemas.entries` reports, and the compiled class translates it.
           predicate: spec.containment ? CONTAINMENT_PREDICATE : (spec.predicate ?? resolvePredicate(name, relName)),
           type: 'uri' as const,
           isCollection: spec.cardinality === 'many',

@@ -357,10 +357,11 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
 
     describe('containment', () => {
       /*
-        Containment is the one relation every backend stores under the same predicate, so a space has
-        one graph shape whatever holds it, and anything walking up from a record finds its context.
-        A backend that minted its own would still pass every relation case above — reads by name do
-        not care what the link is called — and would quietly hand a space a different shape.
+        Containment is the one relation every backend names the same way, so a space has one graph
+        shape whatever holds it, and anything walking up from a record finds its context. A backend
+        may store it under its own containment predicate, but it reports and accepts the shared
+        name; one that minted a name of its own would still pass every relation case above — reads by
+        name do not care what the link is called — and would quietly hand a space a different shape.
       */
       test(
         'schema.containment-predicate',

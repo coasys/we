@@ -30,6 +30,7 @@ import { createAd4mDataBindings } from './ad4mAdapter';
 import { createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
 import { createFileExpression, getProfile, publishProfileToPublicPerspective } from './agentHelpers';
 import { installClearOnEmpty } from './clearOnEmpty';
+import { installContainmentPredicate } from './containment';
 import { Space } from './entities';
 import { createAd4mFlowPort } from './flowPort';
 import { createAd4mInterpretationPort } from './interpretationAdapter';
@@ -168,6 +169,9 @@ export function createAd4mBackendPorts(
   // "this relation's membership is now that list", and every model class — generated, compiled
   // or built from foreign SHACL — inherits the ability to carry it out. See `relationWrites.ts`.
   installRelationWrites(Ad4mModel);
+  // And containment: AD4M stores it as `has_child`, so a `parent` scope that names the neutral key
+  // is translated before any model sees it. See `containment.ts`.
+  installContainmentPredicate(Ad4mModel);
   // And a parent named by the relation it joins, which is how the contract names one — translated to
   // the predicate AD4M stores it under before any model sees it. See `parentByRelation.ts`.
   installParentByRelation(Ad4mModel);

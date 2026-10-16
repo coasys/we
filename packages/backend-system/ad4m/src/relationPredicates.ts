@@ -16,6 +16,8 @@
 import { CONTAINMENT_PREDICATE, type EntityManifestEntry, type EntitySchema } from '@we/backend-shared';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
+import { toAd4mPredicate } from './containment';
+
 /** An entity's relations, with what it inherits — every WeNode's own included. */
 export function relationsOf(entity: string): EntitySchema['relations'] {
   const schema = CORE_MANIFEST.entities[entity];
@@ -47,9 +49,12 @@ export const coreEntities = (): string[] =>
     .filter(([, schema]) => !schema.abstract)
     .map(([name]) => name);
 
-/** How a relation is stored, or `undefined` for one read backwards from the other end. */
+/**
+ * How a relation is stored, or `undefined` for one read backwards from the other end. In AD4M's
+ * spelling: containment, which the manifest names by the neutral key, is `has_child` here.
+ */
 const storedAs = (spec: EntitySchema['relations'][string]): string | undefined =>
-  spec.reverseOf ? undefined : spec.containment ? CONTAINMENT_PREDICATE : spec.predicate;
+  spec.reverseOf ? undefined : toAd4mPredicate(spec.containment ? CONTAINMENT_PREDICATE : spec.predicate);
 
 /**
  * The predicate a relation is stored under. `among` narrows where an unnamed entity is looked for —
@@ -73,7 +78,7 @@ export function predicateOfRelation(relation: string, entity?: string, among?: r
       continue;
     }
     const assigned = declared.get(name)?.get(relation);
-    if (assigned) note(assigned, name);
+    if (assigned) note(toAd4mPredicate(assigned), name);
   }
   if (found.size === 1) return [...found.keys()][0];
   if (found.size > 1) {
@@ -89,11 +94,15 @@ export function predicateOfRelation(relation: string, entity?: string, among?: r
   throw new Error(`no ${entity ?? 'record'} WE declares holds a relation called "${relation}"`);
 }
 
-/** A relation's name, from the predicate it is stored under — {@link predicateOfRelation} backwards. */
+/**
+ * A relation's name, from the predicate it is stored under — {@link predicateOfRelation} backwards.
+ * Containment is found under either spelling.
+ */
 export function relationOfPredicate(predicate: string, among?: readonly string[]): string | undefined {
+  const stored = toAd4mPredicate(predicate);
   for (const name of among?.length ? among : coreEntities()) {
     for (const [relation, spec] of Object.entries(relationsOf(name))) {
-      if (storedAs(spec) === predicate) return relation;
+      if (storedAs(spec) === stored) return relation;
     }
   }
   return undefined;

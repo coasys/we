@@ -31,6 +31,9 @@ const { CORE_DEFS } = await import(resolve(here, '../../../entities/src/manifest
 // Imported rather than reimplemented: the default for an untyped relation is stated once, so a
 // generated class and a compiled one cannot disagree about which relations are polymorphic.
 const { CONTAINMENT_PREDICATE, resolvesPolymorphically } = await import(resolve(here, '../../shared/src/manifest.ts'));
+// Containment is stored as AD4M's own `has_child`; the same translation the compiler applies, so
+// a generated class and a compiled one write the same links.
+const { toAd4mPredicate } = await import(resolve(here, '../src/containment.ts'));
 
 const ENTITY_DIR = resolve(here, '../src/entities');
 const MANIFEST_DIR = resolve(here, '../../../entities/src/manifest');
@@ -72,7 +75,7 @@ const TS_TYPE = {
 
 function propertyDecorator(spec) {
   // Containment is one predicate on every backend — see `RelationSchema.containment`.
-  const opts = [`through: ${q(spec.containment ? CONTAINMENT_PREDICATE : spec.predicate)}`];
+  const opts = [`through: ${q(toAd4mPredicate(spec.containment ? CONTAINMENT_PREDICATE : spec.predicate))}`];
   if (spec.required) opts.push('required: true');
   if (spec.identity) opts.push('identity: true');
   if (spec.format === 'file') opts.push('resolveLanguage: FILE_STORAGE_LANGUAGE');
@@ -90,7 +93,7 @@ function propertyDecorator(spec) {
  * rather than tested against an empty target here, so the default lives in one place.
  */
 function relationOptions(spec) {
-  const opts = [`through: ${q(spec.predicate)}`];
+  const opts = [`through: ${q(toAd4mPredicate(spec.predicate))}`];
   if (spec.cardinality === 'many' && spec.ordered) opts.push(`ordering: { strategy: 'linkedList' }`);
   if (resolvesPolymorphically(spec)) opts.push('polymorphic: true');
   if (spec.interpretationHint !== undefined) opts.push(`interpretationHint: ${q(spec.interpretationHint)}`);

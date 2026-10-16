@@ -5,6 +5,7 @@
 import { CONTAINMENT_PREDICATE } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
+import { AD4M_CONTAINMENT_PREDICATE } from '../src/containment';
 import { installParentByRelation } from '../src/parentByRelation';
 import {
   parentPredicate,
@@ -19,8 +20,13 @@ describe('a relation by name', () => {
     expect(predicateOfRelation('responses')).toBe('we://response');
   });
 
-  it("resolves a collection's children to containment", () => {
-    expect(predicateOfRelation('children', 'CollectionBlock')).toBe(CONTAINMENT_PREDICATE);
+  it("resolves a collection's children to containment, as AD4M stores it", () => {
+    expect(predicateOfRelation('children', 'CollectionBlock')).toBe(AD4M_CONTAINMENT_PREDICATE);
+  });
+
+  it('reads containment back to its relation under either spelling', () => {
+    expect(relationOfPredicate(AD4M_CONTAINMENT_PREDICATE, ['CollectionBlock'])).toBe('children');
+    expect(relationOfPredicate(CONTAINMENT_PREDICATE, ['CollectionBlock'])).toBe('children');
   });
 
   it('resolves an inherited relation on the entity named', () => {
@@ -83,7 +89,7 @@ describe('a parent by relation, on the model layer', () => {
     model.paginate('dataset', 10, 1, { parent: { id: 'n1', relation: 'responses' } });
 
     expect(seen.create[2]).toEqual({ parent: { id: 'n1', predicate: 'we://signal' }, batchId: 'b' });
-    expect(seen.findAll[1]).toEqual({ parent: { id: 'c1', predicate: CONTAINMENT_PREDICATE } });
+    expect(seen.findAll[1]).toEqual({ parent: { id: 'c1', predicate: AD4M_CONTAINMENT_PREDICATE } });
     expect(seen.paginate[3]).toEqual({ parent: { id: 'n1', predicate: 'we://response' } });
   });
 
@@ -98,8 +104,8 @@ describe('a parent by relation, on the model layer', () => {
       limit: 10,
     });
 
-    expect(seen.findAllOf[2]).toEqual({ parent: { id: 'c1', predicate: CONTAINMENT_PREDICATE } });
-    expect(seen.queryOf[2]).toEqual({ parent: { id: 'c1', predicate: CONTAINMENT_PREDICATE }, limit: 10 });
+    expect(seen.findAllOf[2]).toEqual({ parent: { id: 'c1', predicate: AD4M_CONTAINMENT_PREDICATE } });
+    expect(seen.queryOf[2]).toEqual({ parent: { id: 'c1', predicate: AD4M_CONTAINMENT_PREDICATE }, limit: 10 });
   });
 
   it("passes a predicate-named parent through — this package's own drill-downs build those", () => {

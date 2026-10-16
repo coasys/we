@@ -159,10 +159,12 @@ export interface RelationSchema {
    *
    * A fact about the data, and the one a reader outside WE most needs: an agent asked about an
    * utterance finds its context by walking up containment, and a backend that stores a space finds
-   * the space's shape by it. So containment is stored under one predicate on every backend,
-   * {@link CONTAINMENT_PREDICATE}: a backend stores a containment relation under it whatever the
-   * relation's own `predicate` says, and {@link validateManifest} refuses a manifest that names a
-   * different one, so a WE space has the same graph shape whatever holds it.
+   * the space's shape by it. So containment has one name on every backend,
+   * {@link CONTAINMENT_PREDICATE}: callers name a containment relation by it whatever the relation's
+   * own `predicate` says, and {@link validateManifest} refuses a manifest that names a different one,
+   * so a WE space has the same graph shape whatever holds it. A backend whose store has a
+   * containment predicate of its own stores the relation under that one, translating at its
+   * boundary, so its native tooling sees WE's containment as containment.
    *
    * Replies are deliberately *not* containment in this sense, though an agent reading context treats
    * both alike. A node's parts and the replies to it render, count, query and delete differently, and
@@ -229,7 +231,9 @@ export interface RelationSchema {
  * failed one: with no target there is no shape to hydrate against.
  */
 /**
- * The one predicate containment is stored under, on every backend — see `RelationSchema.containment`.
+ * The one name containment goes by above the backend — see `RelationSchema.containment`. What a
+ * caller passes as `parent.predicate`, and what `schemas.entries` reports; a backend may store it
+ * under its own containment predicate.
  *
  * Singular, as every relation predicate is: a link names one member.
  */
@@ -584,7 +588,7 @@ export function validateManifest(
       if (rel.containment && rel.predicate !== undefined && rel.predicate !== CONTAINMENT_PREDICATE) {
         errors.push({
           path: `${base}.predicate`,
-          message: `"${relName}" is containment, so it is stored as ${CONTAINMENT_PREDICATE} on every backend`,
+          message: `"${relName}" is containment, so it is named ${CONTAINMENT_PREDICATE} on every backend`,
         });
       }
       // An empty target is an untyped reference, not a broken one.

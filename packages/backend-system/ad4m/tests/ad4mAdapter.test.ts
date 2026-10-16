@@ -5,7 +5,7 @@
 
 import type { EntityManifestEntry } from '@we/backend-ad4m';
 import { ad4mCapabilities, createAd4mQueryAdapter } from '@we/backend-ad4m';
-import type { QueryIR } from '@we/backend-shared';
+import { CONTAINMENT_PREDICATE, type QueryIR, type Scope } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
 // A minimal perspective manifest: Conversation has a `subgroupEntities` relation bound to a predicate.
@@ -188,6 +188,36 @@ describe('adapter.lower — scope → parent (Tier-2 adapter-rewrite)', () => {
 
   it('plan treats scope as native (AD4M does drill-down)', () => {
     expect(adapter.plan(scopedIr()).gaps).toEqual([]);
+  });
+
+  it('stores a core containment scope under AD4M’s has_child, whichever form it lowers to', () => {
+    // A core entry names containment by its neutral key; the query has to read the predicate the
+    // models wrote, or every drill-down into a container answers empty.
+    const core = createAd4mQueryAdapter(() => [
+      {
+        name: 'CollectionBlock',
+        targetClass: 'we://collection_block',
+        properties: [
+          {
+            name: 'children',
+            predicate: CONTAINMENT_PREDICATE,
+            type: 'uri',
+            isCollection: true,
+            required: false,
+            writable: true,
+          },
+        ],
+      },
+    ]);
+    const scoped = (extra: Partial<Scope> = {}): QueryIR => ({
+      irVersion: 1,
+      entity: 'TextBlock',
+      scope: { anchor: 'CollectionBlock', via: 'children', anchorId: 'c1', ...extra },
+    });
+    expect(core.lower(scoped())).toMatchObject({ parent: { id: 'c1', predicate: 'ad4m://has_child' } });
+    expect(core.lower(scoped({ levels: [10, 5] }))).toMatchObject({
+      parent: { ids: ['c1'], predicate: 'ad4m://has_child', levels: [10, 5] },
+    });
   });
 
   it('throws (surfaced, not silent) when the relation is not in the manifest', () => {

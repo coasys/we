@@ -1208,7 +1208,7 @@ describe('what a collection extracts', () => {
    *
    * And the one fact a watch needs that only the AD4M classes report: which predicate a collection's
    * children are under, read off the class's SHACL. In-memory classes generate none, so it is stood
-   * in for here — the same `we://child` every backend stores containment under.
+   * in for here — `we://child`, the name every backend accepts for containment.
    */
   function watchPort() {
     const watched: string[] = [];
