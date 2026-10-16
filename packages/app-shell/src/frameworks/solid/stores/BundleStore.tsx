@@ -348,6 +348,8 @@ export function BundleStoreProvider(props: ParentProps) {
     if (!request) return;
     // Read before the prompt closes: the list is about the app the prompt is showing.
     const spaces = settingUp();
+    // An update also refreshes the spaces already set up for it, which nobody can tick again.
+    const alreadySetUp = request.view.updates ? spaceChoices().filter((choice) => choice.done) : [];
     setPending(null);
     const { bundle, view } = request;
     setBusy(true);
@@ -376,6 +378,20 @@ export function BundleStoreProvider(props: ParentProps) {
 
       if (pieces.app) await templateStore.setAppTemplate(pieces.app.id);
       const unset = await setUpSpaces(bundle.id, spaces);
+      /*
+        The sections a space was set up with are copies, so without this an update reached the
+        installer's own library and no one else: every other member of a space set up for the old
+        version went on seeing it. Copying the sections again is all an update needs — the record
+        types are recognised by where they came from and left alone.
+      */
+      const source = sources().find((s) => s.id === bundle.id);
+      for (const space of source ? alreadySetUp : []) {
+        try {
+          await copySectionsInto(source!, space.id);
+        } catch (error) {
+          unset.push(explain(error, `“${space.name}” still has the previous version`));
+        }
+      }
 
       const done = view.updates ? `“${bundle.name}” updated to ${bundle.version}` : `“${bundle.name}” installed`;
       if (!unset.length) toastService.success(spaces.length ? `${done}, and ${spacesAre(spaces)} set up for it` : done);
@@ -419,6 +435,21 @@ export function BundleStoreProvider(props: ParentProps) {
     return problems;
   }
 
+  /*
+    A section switched on is a section every member is shown, so every member has to have it: an
+    installed app's sections are copied into the space, as a space's own templates are stored. From
+    this agent's library, which holds the version they installed — so a set-up after an update, or
+    the update itself, replaces the copy.
+  */
+  async function copySectionsInto(source: SetUpSource, spaceId: string): Promise<void> {
+    if (!source.copySections) return;
+    const wanted = new Set(source.sections);
+    const sections = templateStore
+      .allTemplates()
+      .filter((template) => !template._fromSpace && wanted.has(template.id ?? ''));
+    if (sections.length) await templateStore.writeSpaceTemplates(sections, 'bundle', spaceId);
+  }
+
   /** Add a bundle's record types to one space this agent runs, copy its sections in, and switch them on. */
   async function setUpSpace(source: SetUpSource, spaceId: string): Promise<string[]> {
     if (!spacesYouRun().some((row) => row.uuid === spaceId))
@@ -432,19 +463,7 @@ export function BundleStoreProvider(props: ParentProps) {
       console.warn(`Not setting a space up for “${source.name}”:`, problems);
       return problems;
     }
-    /*
-      A section switched on is a section every member is shown, so every member has to have it: an
-      installed app's sections are copied into the space, as a space's own templates are stored.
-      From this agent's library, which holds the version they installed; a later set-up after an
-      update replaces the copy.
-    */
-    if (source.copySections) {
-      const wanted = new Set(source.sections);
-      const sections = templateStore
-        .allTemplates()
-        .filter((template) => !template._fromSpace && wanted.has(template.id ?? ''));
-      if (sections.length) await templateStore.writeSpaceTemplates(sections, 'bundle', spaceId);
-    }
+    await copySectionsInto(source, spaceId);
     const row = spacesYouRun().find((r) => r.uuid === spaceId);
     const enabled = new Set((row?.views ?? []).filter((view) => view.enabled).map((view) => view.id));
     for (const section of source.sections)
