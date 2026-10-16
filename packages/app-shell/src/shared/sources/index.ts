@@ -23,6 +23,7 @@ import { formatJson } from './formatJson';
 import { involvement } from './involvement';
 import { involvementMenu } from './involvementMenu';
 import { reactors } from './reactors';
+import { requirementLabel } from './requirementLabel';
 import { reactions, signalTally } from './signalTally';
 import { signalTypesByUse } from './signalTypesByUse';
 import { voices, voicesParam } from './voices';
@@ -44,6 +45,13 @@ export interface HostSource {
  * them: `monthLabel({ offset: local.offset })`.
  */
 export const hostSources: readonly HostSource[] = [
+  {
+    name: 'requirementLabel',
+    params: ['options'],
+    doc: 'What a step or a task state asks to be there first, in the words the app uses for it ("at least 1 comment in response to it"). For a form holding requirements it has not saved yet. Options: entity (comment, call, task, file, link, image, or an entity name), tie ("responses", or empty for anywhere in the space), min.',
+    example: 'requirementLabel({ entity: local.guardEntity, tie: local.guardTie, min: local.guardMin })',
+    fn: requirementLabel,
+  },
   {
     name: 'calendarMonth',
     params: ['options?'],

@@ -8,6 +8,7 @@
  * canvas for every card, which reads as duplicate content.
  */
 import type { EntityShape, ExpanderContext, ExpanderQuery } from '@we/graph-protocol';
+import { NODE_TYPE_KEY } from '@we/graph-protocol';
 import { describe, expect, it } from 'vitest';
 
 import { canvasSeed, PLACEMENT_UNSET } from './canvas';
@@ -98,6 +99,44 @@ const SHAPES: EntityShape[] = [
  * one that only answered drill-downs would make a placed-but-unowned record look unreachable when it
  * is precisely the case the split exists for.
  */
+function answer(
+  tables: Record<string, Record<string, unknown>[]>,
+  request: ExpanderQuery,
+  canvas: string,
+): Record<string, unknown>[] {
+  const several = Array.isArray(request.entity);
+  const where = request.where as Record<string, unknown> | undefined;
+  const withCards = Boolean((request.include as { node?: unknown } | undefined)?.node);
+  return (several ? (request.entity as string[]) : [request.entity as string]).flatMap((entity) => {
+    let rows = tables[entity] ?? [];
+    if (where) {
+      // A bare array is set membership, on a relation field as much as on `id` — the backend
+      // emits a SPARQL `VALUES` clause either way.
+      rows = rows.filter((row) =>
+        Object.entries(where).every(([field, expected]) =>
+          Array.isArray(expected) ? expected.includes(row[field]) : row[field] === expected,
+        ),
+      );
+    } else if (request.scope?.anchorId !== canvas) {
+      rows = [];
+    }
+    // A placement's `node` is an untyped to-one, so an include reads it as whatever kind it is.
+    if (withCards && entity === 'Placement') rows = rows.map((row) => ({ ...row, node: cardFor(tables, row.node) }));
+    // A read over several kinds says which each row was read as.
+    return several ? rows.map((row) => ({ ...row, [NODE_TYPE_KEY]: entity })) : rows;
+  });
+}
+
+/** The record a placement names, as the kind it is — or nothing, for one that is not there. */
+function cardFor(tables: Record<string, Record<string, unknown>[]>, id: unknown) {
+  for (const [entity, rows] of Object.entries(tables)) {
+    if (entity === 'Placement') continue;
+    const row = rows.find((candidate) => candidate.id === id);
+    if (row) return { ...row, [NODE_TYPE_KEY]: entity };
+  }
+  return null;
+}
+
 function context(tables: Record<string, Record<string, unknown>[]>, rounds?: string[][], canvas = 'b1') {
   const asked: string[] = [];
   const warnings: string[] = [];
@@ -127,22 +166,11 @@ function context(tables: Record<string, Record<string, unknown>[]>, rounds?: str
     warnings,
     context: {
       query: async (request: ExpanderQuery) => {
-        asked.push(request.entity);
-        openRound(request.entity);
+        const entities = Array.isArray(request.entity) ? request.entity : [request.entity];
+        asked.push(...entities);
+        openRound(entities.join('+'));
         if (rounds) await new Promise((resolve) => setTimeout(resolve, 0));
-        const rows = tables[request.entity] ?? [];
-        const where = request.where as Record<string, unknown> | undefined;
-        if (where) {
-          // A bare array is set membership, on a relation field as much as on `id` — the backend
-          // emits a SPARQL `VALUES` clause either way.
-          return rows.filter((row) =>
-            Object.entries(where).every(([field, expected]) =>
-              Array.isArray(expected) ? expected.includes(row[field]) : row[field] === expected,
-            ),
-          );
-        }
-        if (request.scope?.anchorId !== canvas) return [];
-        return rows;
+        return answer(tables, request, canvas);
       },
       defaultDataset: () => 'ds',
       models: () => SHAPES,
@@ -179,7 +207,8 @@ describe('canvasSeed', () => {
 
   it('loads a placed type nobody listed, so a canvas can hold a model the template never heard of', async () => {
     // The whole reason placements are read first: they *are* the membership, and a community's own
-    // models are not in any list a template could have written.
+    // models are not in any list a template could have written. Each one brings its card, so the
+    // card's kind is never asked for by name at all.
     const { context: ctx, asked } = context({
       Placement: [{ id: 'p1', node: 's1', nodeType: 'Sighting', x: 10, y: 20 }],
       Sighting: [{ id: 's1', name: 'Heron' }],
@@ -187,7 +216,7 @@ describe('canvasSeed', () => {
 
     const { nodes } = await canvasSeed().seed({ canvas: 'b1' }, ctx);
 
-    expect(asked).toContain('Sighting');
+    expect(asked).not.toContain('Sighting');
     expect(nodes.find((n) => n.type === 'Sighting')?.data).toMatchObject({ x: 10, y: 20 });
   });
 
@@ -248,9 +277,10 @@ describe('canvasSeed', () => {
     expect(nodes[0].data?.responsesCount).toBeUndefined();
   });
 
-  it('asks a type for no count it cannot answer, rather than losing the type to a refused query', async () => {
-    // A count over a relation an entity does not declare is a refused read, and the refusal would
-    // take every card of that type off the canvas — cards, lines and all — to save a number.
+  it('draws a kind that cannot answer a count, rather than losing it to a refused read', async () => {
+    // The cards come through the placements, several kinds in one read, so the counts are asked of
+    // every kind and one without the relation simply carries none — where a refusal would take every
+    // card of that kind off the canvas, cards, lines and all, to save a number.
     const asked: ExpanderQuery[] = [];
     const { context: ctx } = context({
       Placement: [
@@ -268,10 +298,10 @@ describe('canvasSeed', () => {
 
     const { nodes } = await canvasSeed().seed({ canvas: 'b1', counts: ['signals', 'responses'] }, ctx);
 
-    expect(asked.find((q) => q.entity === 'CollectionBlock')?.include).toMatchObject({
-      $signalsCount: { from: 'signals', count: true },
+    const furniture = asked.find((q) => Array.isArray(q.entity) && q.entity.includes('Placement'));
+    expect(furniture?.include).toMatchObject({
+      node: { include: { $signalsCount: { from: 'signals', count: true } } },
     });
-    expect(asked.find((q) => q.entity === 'Sighting')?.include).toBeUndefined();
     expect(nodes.find((n) => n.type === 'Sighting')).toBeDefined();
   });
 
@@ -356,14 +386,15 @@ describe('canvasSeed', () => {
     expect(nodes.find((n) => n.type === 'CodeBlock')).toBeUndefined();
   });
 
-  it('reads the whole canvas in three rounds, whatever it holds', async () => {
+  it('reads the whole canvas in two rounds and three reads, whatever it holds', async () => {
     /*
-      What decides how long a canvas takes to appear is the number of *sequential* rounds, not the
-      number of queries: every read is a round trip to a peer-to-peer data layer. Five kinds of thing
-      on a canvas used to be five queries deep before anything was drawn.
+      What decides how long a canvas takes to appear is the number of *sequential* rounds: every
+      read is a round trip to a peer-to-peer data layer. And what it costs while open is the number
+      of reads, since each one is also a standing subscription. Five kinds of thing on a canvas used
+      to be five queries deep before anything was drawn, then three rounds and up to eleven reads.
 
-      Three is the floor, and each genuinely waits on the one before: what is placed, then the
-      records it names, then the connections between them.
+      Two is the floor. The placements bring their cards, so the records they name need no round of
+      their own; only the connections genuinely wait, for the ends to be known.
     */
     const rounds: string[][] = [];
     const { context: ctx } = context(
@@ -384,14 +415,9 @@ describe('canvasSeed', () => {
 
     await canvasSeed().seed({ canvas: 'b1', connections: 'Relationship', typeStyles: 'TypeStyle' }, ctx);
 
-    // Placements and the key together; then every record type together — including the second
-    // `CollectionBlock` read, which is the tray, asked by containment rather than by id; then the
-    // connections, which could not be asked for until the ends were known.
-    expect(rounds).toEqual([
-      ['Placement', 'TypeStyle'],
-      ['CollectionBlock', 'TaskBlock', 'CodeBlock', 'CollectionBlock'],
-      ['Relationship'],
-    ]);
+    // The placements with their cards, and the key, in one read; the tray beside it, asked by
+    // containment; then the connections, which could not be asked for until the ends were known.
+    expect(rounds).toEqual([['Placement+TypeStyle', 'CollectionBlock'], ['Relationship']]);
   });
 
   it("colours a node by its type, from the canvas's own key", async () => {
@@ -833,11 +859,12 @@ describe('canvas connection routes', () => {
     expect(edges[0].data).not.toHaveProperty('sourceAnchor');
   });
 
-  it('costs no extra round trip, being keyed by a record id rather than by what is on the canvas', async () => {
+  it('costs no extra round trip or read, being keyed by a record id rather than by what is on the canvas', async () => {
     /*
       What decides how long a canvas takes to appear is the number of *sequential* rounds. A route
-      names its connection by id, so it can be read in round one beside the placements — waiting for
-      the connections it describes would add a fourth round to every canvas that has any.
+      names its connection by id, so it can be read in round one with the placements — in the same
+      read, even — where waiting for the connections it describes would add a round to every canvas
+      that has any.
     */
     const rounds: string[][] = [];
     const { context: ctx } = context(
@@ -850,8 +877,8 @@ describe('canvas connection routes', () => {
       ctx,
     );
 
-    expect(rounds[0]).toEqual(['Placement', 'TypeStyle', 'EdgeRoute']);
-    expect(rounds).toHaveLength(3);
+    expect(rounds[0]).toEqual(['Placement+TypeStyle+EdgeRoute', 'CollectionBlock']);
+    expect(rounds).toHaveLength(2);
   });
 
   it('is not drawn as a node, being bookkeeping rather than content', async () => {
@@ -937,21 +964,28 @@ describe('the canvas seed’s reads', () => {
     expect(asked.filter((entity) => entity === 'TaskBlock')).toHaveLength(1);
   });
 
-  it('still asks twice for a type that is both placed and owned, which is two questions', async () => {
+  it('still reads the tray for a type that is placed, since placed and owned are two questions', async () => {
     /*
-      The dedup is exact repeats only, and this is why. "The ones positioned here", by id, and "the
-      ones this canvas owns", by containment, are different questions — the second is what finds a
-      card nobody has placed yet. They cannot be merged into one query either: one is a `where` and
-      the other a `scope`, and the grammar has no union of the two.
+      "The ones positioned here", through the placements, and "the ones this canvas owns", by
+      containment, are different questions — the second is what finds a card nobody has placed yet.
+      A type the placements already brought is still asked the second, and a card answering both is
+      drawn once, where it was placed.
     */
     const { context: ctx, asked } = context({
-      Placement: [{ id: 'p1', node: 't1', nodeType: 'TaskBlock', x: 0, y: 0 }],
-      TaskBlock: [{ id: 't1', title: 'One' }],
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'TaskBlock', x: 30, y: 40 }],
+      TaskBlock: [
+        { id: 't1', title: 'Placed' },
+        { id: 't2', title: 'Not yet' },
+      ],
     });
 
-    await canvasSeed().seed({ canvas: 'b1', contains: ['TaskBlock'] }, ctx);
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', contains: ['TaskBlock'] }, ctx);
 
-    expect(asked.filter((entity) => entity === 'TaskBlock')).toHaveLength(2);
+    expect(asked.filter((entity) => entity === 'TaskBlock')).toHaveLength(1);
+    expect(nodes.map((n) => [n.label, n.data?.x])).toEqual([
+      ['Placed', 30],
+      ['Not yet', undefined],
+    ]);
   });
 
   it('says so when there are more placed cards than it is allowed to read', async () => {
@@ -1138,14 +1172,15 @@ describe('canvas seed — weighing', () => {
     const { nodes } = seed.derive!(await seed.seed(options, ctx), options);
 
     /*
-      A projection on the reads the seed already makes — not a query per card. Two of them for this type
-      rather than one, which is the pair the seed always issues for it: the cards positioned here, by
-      id, and the ones this canvas owns and nobody has placed. Both carry the projection, so a card in
-      the tray is weighed exactly like a card on the board.
+      A projection on the reads the seed already makes — not a query per card. Both of the reads that
+      bring cards carry it: the placements, for the cards positioned here, and the tray, for the ones
+      this canvas owns and nobody has placed — so a card in the tray is weighed exactly like a card on
+      the board.
     */
-    const reads = asked.filter((q) => q.entity === 'CollectionBlock');
-    expect(reads).toHaveLength(2);
-    expect(reads.every((q) => (q.include as Record<string, unknown> | undefined)?.signals === true)).toBe(true);
+    const placed = asked.find((q) => Array.isArray(q.entity) && q.entity.includes('Placement'));
+    const tray = asked.find((q) => Array.isArray(q.entity) && q.entity.includes('CollectionBlock'));
+    expect(placed?.include).toMatchObject({ node: { include: { signals: true } } });
+    expect(tray?.include).toMatchObject({ signals: true });
     expect(nodes[0].data).toMatchObject({ weight: 2, weightCount: 2 });
   });
 
@@ -1270,27 +1305,23 @@ describe('a canvas over another record’s members', () => {
   ];
 
   function spaceContext() {
-    const asked: { entity: string; anchor?: string; via?: string; include?: unknown }[] = [];
+    const asked: { entities: string[]; anchor?: string; via?: string; include?: unknown }[] = [];
+    const tagged = (entity: string, rows: Record<string, unknown>[]) =>
+      rows.map((row) => ({ ...row, [NODE_TYPE_KEY]: entity }));
     const ctx = {
       query: async (request: ExpanderQuery) => {
-        asked.push({
-          entity: request.entity,
-          anchor: request.scope?.anchorId,
-          via: request.scope?.via,
-          include: request.include,
-        });
-        const where = request.where as { id?: string[] } | undefined;
-        if (request.entity === 'Placement' && request.scope?.anchorId === 'canvas-1') {
-          return [{ id: 'p1', node: 't1', nodeType: 'TaskBlock', x: 5, y: 6 }];
+        const entities = Array.isArray(request.entity) ? request.entity : [request.entity];
+        asked.push({ entities, anchor: request.scope?.anchorId, via: request.scope?.via, include: request.include });
+        if (entities.includes('Placement') && request.scope?.anchorId === 'canvas-1') {
+          // The card comes with its placement, carrying where it came from as the relation's id.
+          const card = { id: 't1', title: 'Placed', extractedFrom: 'call-2', [NODE_TYPE_KEY]: 'TaskBlock' };
+          return tagged('Placement', [{ id: 'p1', node: card, nodeType: 'TaskBlock', x: 5, y: 6 }]);
         }
-        if (request.entity === 'TaskBlock' && where?.id) {
-          return [{ id: 't1', title: 'Placed', extractedFrom: 'call-2' }];
-        }
-        if (request.entity === 'TaskBlock' && request.scope?.anchorId === 'root' && request.scope.via === 'children') {
-          return [
+        if (entities.includes('TaskBlock') && request.scope?.anchorId === 'root' && request.scope.via === 'children') {
+          return tagged('TaskBlock', [
             { id: 't1', title: 'Placed', extractedFrom: 'call-2' },
             { id: 't2', title: 'Loose', extractedFrom: { id: 'call-1' } },
-          ];
+          ]);
         }
         return [];
       },
@@ -1316,7 +1347,7 @@ describe('a canvas over another record’s members', () => {
       ['Placed', 5, 'call-2'],
       ['Loose', undefined, 'call-1'],
     ]);
-    expect(asked.filter((a) => a.entity === 'Placement').map((a) => a.anchor)).toEqual(['canvas-1']);
+    expect(asked.filter((a) => a.entities.includes('Placement')).map((a) => a.anchor)).toEqual(['canvas-1']);
     // Where each came from rides in the read the canvas makes anyway.
     expect(asked.find((a) => a.anchor === 'root')?.include).toMatchObject({ extractedFrom: true });
   });

@@ -86,6 +86,39 @@ export interface ModuleHostServices {
    */
   view?: ViewKernel;
   transcription?: TranscriptionPort;
+  /**
+   * Factory that creates a call backend (Session) for a specific call room.
+   *
+   * Bound by the store that owns the AD4M client, dataset, and agent identity — then forwarded
+   * through `createModuleStoreDeps` as `createBackend`. Absent on a backend without session
+   * support; the call module falls back to its own peer-to-peer mesh.
+   */
+  createCallBackend?: (
+    callId: string,
+    options?: { iceServers?: RTCIceServer[]; topology?: 'mesh' | 'sfu' },
+  ) => Promise<unknown>;
+  /**
+   * Read the neighbourhood's call configuration (SFU topology defaults).
+   *
+   * Returns the `SfuConfig` stored as a link in the neighbourhood — its creator's topology
+   * decisions.
+   * Absent when the backend has no SFU support; the call module uses mesh defaults.
+   */
+  getCallConfig?: () => Promise<unknown>;
+  /**
+   * Write the neighbourhood's call configuration.
+   *
+   * Stored as a link in the neighbourhood, so every member's executor reads the same config.
+   * The executor accepts it only from the neighbourhood's creator and rejects anyone else.
+   */
+  setCallConfig?: (config: unknown) => Promise<boolean>;
+  /**
+   * Synchronous probe: does the current backend support call configuration?
+   *
+   * Returns `false` when the executor lacks SFU types (pre-feat/embedded-sfu builds).
+   * The settings UI hides the Call section entirely when this returns false.
+   */
+  callConfigSupported?: () => boolean;
   interpretation?: InterpretationPort;
   languageModel?: LanguageModelPort;
   /** Where a module's `notify` lands — a toast, in this host. */
@@ -648,6 +681,20 @@ export function createModuleStoreDeps(framework: {
     },
 
     kernels,
+
+    // Late-bound call session factory, forwarded to the call module as `CallStoreDeps.createBackend`.
+    get createBackend() {
+      return services.createCallBackend;
+    },
+    get getCallConfig() {
+      return services.getCallConfig;
+    },
+    get setCallConfig() {
+      return services.setCallConfig;
+    },
+    get callConfigSupported() {
+      return services.callConfigSupported;
+    },
   };
 }
 

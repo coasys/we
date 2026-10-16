@@ -96,6 +96,7 @@ import {
   newNoteModal,
   newThingChooser,
 } from './WorkshopCards.ts';
+import { FLOWS_LOCALS, flowsPage, flowsSection } from './WorkshopFlows.ts';
 import {
   CANVAS_FILL,
   FOLD_FROM_GRAPH,
@@ -129,6 +130,18 @@ import {
   TREE_WEIGHTS,
   treeStrip,
 } from './WorkshopTree.ts';
+import {
+  CANVAS_EXPANSION,
+  FIELD_NODE_RULE,
+  OPEN_FROM_GRAPH,
+  OPEN_NODES,
+  OPEN_QUERY,
+  VOCAB_ON,
+  VOCAB_QUERY,
+  vocabularyCanvas,
+  vocabularyEditLink,
+  vocabularyToggle,
+} from './WorkshopVocabulary.ts';
 
 /**
  * The call on screen — **named in the address**, or the one being recorded when it names none.
@@ -250,7 +263,11 @@ const pageWithCall = (callExpr: string): SchemaProp => ({
     that spelt only the call would turn the lens back to its default on every change of call.
   */
   $action: 'routeStore.navigate',
-  args: [{ $: `\`\${spaceStore.spacePath}/\${${PAGE_EXPR}}?call=\${${callExpr}}${LENS_QUERY}${FOLD_QUERY}\`` }],
+  args: [
+    {
+      $: `\`\${spaceStore.spacePath}/\${${PAGE_EXPR}}?call=\${${callExpr}}${LENS_QUERY}${FOLD_QUERY}${OPEN_QUERY}${VOCAB_QUERY}\``,
+    },
+  ],
 });
 
 /** Look at a call, wherever you are. */
@@ -298,7 +315,7 @@ const openLiveCall: SchemaProp = pageWithCall("''");
  * word covers equally well. `BoardsView` keeps its name: it lists board records, has a picker, and
  * has no canvas beside it. See `docs/architecture/boards.md`.
  */
-const ROUTE = { canvas: 'canvas', kanban: 'kanban', calendar: 'calendar' } as const;
+const ROUTE = { canvas: 'canvas', kanban: 'kanban', calendar: 'calendar', flows: 'flows' } as const;
 
 const NAV = [
   { segment: ROUTE.canvas, icon: 'graph', label: 'Canvas' },
@@ -306,6 +323,9 @@ const NAV = [
   // already used this one, so the strip and the page it led to disagreed about what was there.
   { segment: ROUTE.kanban, icon: 'kanban', label: 'Kanban' },
   { segment: ROUTE.calendar, icon: 'calendar', label: 'Calendar' },
+  // The space's flows and what is going through them — see `WorkshopFlows.ts`. Named for what it
+  // lists, unlike its neighbours: a flow has no arrangement of its own to name the page after.
+  { segment: ROUTE.flows, icon: 'flow-arrow', label: 'Flows' },
 ];
 
 /**
@@ -326,7 +346,7 @@ const NAV = [
  * switch that spelt its query without it would silently put the colours back to the default.
  */
 const navPath = {
-  $: `\`\${spaceStore.spacePath}/\${nav.segment}?call=\${routeStore.params.call ?? ''}${LENS_QUERY}${FOLD_QUERY}${FROM_QUERY}${SCOPE_QUERY}\``,
+  $: `\`\${spaceStore.spacePath}/\${nav.segment}?call=\${routeStore.params.call ?? ''}${LENS_QUERY}${FOLD_QUERY}${OPEN_QUERY}${VOCAB_QUERY}${FROM_QUERY}${SCOPE_QUERY}\``,
 };
 
 /**
@@ -2329,6 +2349,7 @@ const inspectorPanel: SchemaNode = {
     connectionsOpen: { type: 'boolean', initial: false, persist: 'inspector.connectionsSection' },
     connectsOpen: { type: 'boolean', initial: false, persist: 'inspector.connectsSection' },
     peopleOpen: { type: 'boolean', initial: false, persist: 'inspector.peopleSection' },
+    flowsOpen: { type: 'boolean', initial: false, persist: 'inspector.flowsSection' },
     reactionsOpen: { type: 'boolean', initial: false, persist: 'inspector.reactionsSection' },
     discussionOpen: { type: 'boolean', initial: false, persist: 'inspector.discussionSection' },
   },
@@ -2826,7 +2847,15 @@ const inspectorPanel: SchemaNode = {
                     emptyFields,
                     // After the record's own fields and before its connections: who is on this record
                     // is about the record, and connections are about other records.
+                    // A vocabulary record is edited where the space's words are — see `WorkshopVocabulary`.
+                    vocabularyEditLink(CARD_TYPE),
                     peopleSection,
+                    // Beside who is on it: which flows it is going through is also about this record.
+                    flowsSection({
+                      type: CARD_TYPE,
+                      open: { field: 'flowsOpen' },
+                      flowsPath: { $: '`${spaceStore.spacePath}/flows`' },
+                    }),
                     // After the disclosure: that is about this record's own fields, and connections
                     // are about other records.
                     connectionsSection,
@@ -3497,8 +3526,14 @@ const canvas: SchemaNode = {
         weights: TREE_WEIGHTS,
       },
     },
-    // Nothing opens automatically: a card's own blocks are fragments of it, not more cards.
-    expansion: { defaultDepth: 0 },
+    /*
+      Nothing opens automatically: a card's own blocks are fragments of it, not more cards. The caret
+      on a selected card opens it into its fields, and the open set rides in the address beside the
+      fold — see `WorkshopVocabulary`.
+    */
+    expansion: { ...CANVAS_EXPANSION },
+    open: { $: OPEN_NODES },
+    onNodeOpen: OPEN_FROM_GRAPH,
     /*
       A card's size, so a card nobody has placed is parked in a slot it fits — the default slot was
       narrower than a card, which is why new suggestions arrived overlapping — and clear of the cards
@@ -3559,6 +3594,8 @@ const canvas: SchemaNode = {
         the order it is. See `TREE_CARD_STYLE`.
       */
       { style: TREE_CARD_STYLE },
+      // A field opened out of a card is not a record: no record content, no lens colour.
+      FIELD_NODE_RULE,
       /*
         Last, so it survives the card's own colour: a suggestion is faded whatever shade it is.
 
@@ -3820,9 +3857,14 @@ const canvas: SchemaNode = {
       an entity, and so does `recordStore.displays`. The graph carries both on the payload, which is
       the reason `recordType` is on a single click at all.
     */
+    /*
+      A node that stands for no record — a field opened out of a card — clears the selection rather
+      than storing what it lacks: an absent type written to the address read back as the word
+      "undefined", and the inspector asked for a model by that name.
+    */
     onNodeClick: [
-      { $setLocal: 'inspecting', value: { $: 'event.recordId' } },
-      { $setLocal: 'inspectingType', value: { $: 'event.recordType' } },
+      { $setLocal: 'inspecting', value: { $: "event.recordId ?? ''" } },
+      { $setLocal: 'inspectingType', value: { $: "event.recordType ?? ''" } },
     ],
     /*
       Double-click opens a note in the composer. The first click has already selected it, so the
@@ -3855,8 +3897,8 @@ const canvas: SchemaNode = {
       nothing to say about.
     */
     onEdgeClick: [
-      { $setLocal: 'inspecting', value: { $: 'event.recordId' } },
-      { $setLocal: 'inspectingType', value: { $: 'event.recordType' } },
+      { $setLocal: 'inspecting', value: { $: "event.recordId ?? ''" } },
+      { $setLocal: 'inspectingType', value: { $: "event.recordType ?? ''" } },
     ],
     /*
       Delete, on whatever is selected — a card, several cards, or a line.
@@ -4249,9 +4291,15 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
   */
   children: [
     canvas,
+    /*
+      The map of what the space has defined, over the canvas rather than instead of it — see
+      `WorkshopVocabulary`. The canvas stays mounted underneath, so coming back finds its camera, its
+      selection and every card where it was, rather than a canvas built again from nothing.
+    */
+    { type: '$if', props: { condition: { $: VOCAB_ON }, then: vocabularyCanvas } },
     // How the canvas is read: the mode, and what the tree is made of. Over the canvas's own corner
     // rather than in a panel, because a panel can be closed and this is the only way out of the mode.
-    treeStrip({ below: CALL_CHROME_BAND.bottom, controls: [fromLensControl] }),
+    treeStrip({ below: CALL_CHROME_BAND.bottom, controls: [fromLensControl, vocabularyToggle] }),
     /*
       Where a connection is actually written down.
 
@@ -4518,6 +4566,8 @@ const kanbanRoute: RouteSchema = {
                             there is something to open, which is what a preview owes a reader.
                           */
                       social: true,
+                      // A chip per flow the task is going through, beside the board's own.
+                      flows: true,
                       // Put away what extraction made and nobody has kept — shared with the canvas and calendar.
                       suggestions: true,
                       /*
@@ -4898,7 +4948,7 @@ const eventList: SchemaNode = {
             startDate: { $: "local.day + 'T' + local.draftTime" },
             description: { $: 'local.draftDescription' },
           },
-          { parent: { id: { $: 'spaceStore.root' }, predicate: 'we://child' } },
+          { parent: { id: { $: 'spaceStore.root' }, relation: 'children', entity: 'CollectionBlock' } },
         ],
       },
     }),
@@ -5144,6 +5194,16 @@ const eventList: SchemaNode = {
  * but position 0. It is a `filter()` over the month's own hoisted query rather than a `$query` per
  * cell: one subscription sifted 42 times, against 42 subscriptions for rows already in hand.
  */
+/**
+ * Every flow in the space, the records going through each, and the editor. The page is in
+ * `WorkshopFlows.ts`; this gives it the route's padding under the pinned chrome.
+ */
+const flowsRoute: RouteSchema = {
+  path: '/flows',
+  $localState: { ...FLOWS_LOCALS },
+  ...flowsPage({ ...ROUTE_BAND }),
+};
+
 const calendarRoute: RouteSchema = {
   path: '/calendar',
   type: 'Column',
@@ -5809,6 +5869,7 @@ export const workshopTemplate: TemplateSchema = {
     canvasRoute,
     kanbanRoute,
     calendarRoute,
+    flowsRoute,
     /*
       An address this template has no screen for goes to the canvas, rather than saying so.
 

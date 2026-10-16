@@ -10,8 +10,7 @@
  * `compileQuery` returns the IR *and* an `unsupported` list. Most shapes map losslessly — including
  * single/filtered `$`-projections (→ an aliased `include` with `over`). `unsupported` flags the shapes
  * that don't: `parent` drill-down (a neutral `scope` needs the anchor *type*, which neither flat form
- * carries — see the gap-handling note in the portability docs), a nested count-projection, and
- * `offset` without `limit`. Surfacing them as data rather than mis-translating silently is deliberate.
+ * carries — see the gap-handling note in the portability docs), and `offset` without `limit`. Surfacing them as data rather than mis-translating silently is deliberate.
  *
  * Reference for the flat `$query` grammar: the `$query` docs in `CLAUDE.md`.
  */
@@ -149,8 +148,7 @@ function translateIncludeSpec(spec: Record<string, unknown>, path: string, unsup
   if (spec.include) {
     const nested = translateInclude(spec.include as Record<string, unknown>, `${path}.include`, unsupported);
     if (Object.keys(nested.map).length) out.include = nested.map;
-    if (nested.aggregates.length)
-      unsupported.push(`${path}.include: nested count-projection (IncludeSpec has no aggregate)`);
+    if (nested.aggregates.length) out.aggregate = nested.aggregates;
   }
   return out;
 }
@@ -327,14 +325,28 @@ function flatIncludeEntry(spec: IncludeSpec): Record<string, unknown> {
     out.limit = spec.page.limit;
     if ('offset' in spec.page && spec.page.offset !== undefined) out.offset = spec.page.offset;
   }
-  if (spec.include) out.include = flatIncludeFromMap(spec.include);
+  const include = flatIncludeFromMap(spec.include ?? {}, spec.aggregate);
+  if (Object.keys(include).length) out.include = include;
   return out;
 }
 
-function flatIncludeFromMap(include: IncludeMap): Record<string, unknown> {
+/**
+ * The flat `include` at one level: plain and aliased includes, and that level's count aggregates
+ * back under their `$` keys — which is where the flat dialect spells them, at the top and below it.
+ */
+function flatIncludeFromMap(include: IncludeMap, aggregate: Aggregation[] = []): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, spec] of Object.entries(include)) {
     out[key] = spec === true ? true : flatIncludeEntry(spec);
+  }
+  for (const agg of aggregate) {
+    if (agg.fn !== 'count') {
+      throw new Error(`irToFlatQuery: aggregate fn "${agg.fn}" has no flat projection (only count does)`);
+    }
+    const entry: Record<string, unknown> = { from: agg.over, count: true };
+    if (agg.transitive) entry.transitive = true;
+    if (agg.filter) entry.where = whereFromFilter(agg.filter);
+    out[agg.as] = entry;
   }
   return out;
 }
@@ -351,17 +363,7 @@ export function irToFlatQuery(ir: QueryIR): FlatQuery {
   }
 
   // `include` is reconstructed from plain/aliased includes plus count aggregates (which lived there).
-  const include: Record<string, unknown> = {};
-  if (ir.include) Object.assign(include, flatIncludeFromMap(ir.include));
-  for (const agg of ir.aggregate ?? []) {
-    if (agg.fn !== 'count') {
-      throw new Error(`irToFlatQuery: aggregate fn "${agg.fn}" has no flat projection (only count does)`);
-    }
-    const entry: Record<string, unknown> = { from: agg.over, count: true };
-    if (agg.transitive) entry.transitive = true;
-    if (agg.filter) entry.where = whereFromFilter(agg.filter);
-    include[agg.as] = entry;
-  }
+  const include = flatIncludeFromMap(ir.include ?? {}, ir.aggregate);
   if (Object.keys(include).length) flat.include = include;
 
   if (ir.scope) {

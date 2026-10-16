@@ -1,6 +1,8 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { field, formModal, sectionCard } from '@we/template-kit';
 
+import { focusRow } from './focusRow';
+
 /**
  * The kinds of connection this community makes.
  *
@@ -226,7 +228,7 @@ export const relationshipTypesSection: SchemaNode = sectionCard({
     {
       type: '$each',
       props: { items: { $query: { entity: 'RelationshipType', order: { name: 'asc' } } }, as: 'kind' },
-      children: [kindRow],
+      children: [focusRow('kind', kindRow)],
     },
     createModal,
   ],

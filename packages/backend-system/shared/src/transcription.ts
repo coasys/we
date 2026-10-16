@@ -56,6 +56,11 @@ export interface TranscriptionModelOffer {
  * to emit a word the moment it is heard, while the transcript of record would rather wait and be
  * right. Every field is optional and the backend's defaults are reasonable; a caller that does not
  * care should pass nothing.
+ *
+ * **Advisory.** These describe one way of finding speech — a loudness detector with hysteresis — and
+ * a backend that finds it another way (a model that segments by itself, a service that streams
+ * words as they come) is free to ignore any of them. A caller may not rely on a field having had an
+ * effect, only on the stream still producing text.
  */
 export interface TranscriptionTuning {
   /** Loudness at which speech is considered to have begun. Lower catches quieter speakers. */

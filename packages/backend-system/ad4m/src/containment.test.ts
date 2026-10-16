@@ -7,6 +7,7 @@ import { CONTAINMENT_PREDICATE } from '@we/backend-shared';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AD4M_CONTAINMENT_PREDICATE, installContainmentPredicate, toAd4mPredicate, toAd4mScope } from './containment';
+import { installParentByRelation } from './parentByRelation';
 
 describe('toAd4mPredicate', () => {
   it('stores the neutral containment key as has_child', () => {
@@ -60,6 +61,8 @@ describe('installContainmentPredicate', () => {
       static count = record('count');
       static query = record('query');
       static paginate = record('paginate');
+      static findAllOf = record('findAllOf');
+      static queryOf = record('queryOf');
     }
     return { FakeModel, seen };
   }
@@ -78,8 +81,12 @@ describe('installContainmentPredicate', () => {
     FakeModel.count('p', { parent: neutral });
     FakeModel.query('p', { parent: neutral });
     FakeModel.paginate('p', 10, 1, { parent: neutral });
+    FakeModel.findAllOf('p', ['A', 'B'], { parent: neutral });
+    FakeModel.queryOf('p', ['A', 'B'], { parent: neutral });
 
     expect(seen.create).toEqual(['p', { text: 'hi' }, { parent: stored, batchId: 'b' }]);
+    expect(seen.findAllOf).toEqual(['p', ['A', 'B'], { parent: stored }]);
+    expect(seen.queryOf).toEqual(['p', ['A', 'B'], { parent: stored }]);
     expect(seen.findAll).toEqual(['p', { parent: stored, include: { children: true } }]);
     expect(seen.findOne).toEqual(['p', { parent: stored }]);
     expect(seen.findAllAndCount).toEqual(['p', { parent: stored }]);
@@ -100,6 +107,24 @@ describe('installContainmentPredicate', () => {
     expect(Sub.findAll('p', { parent: neutral })).toBe(Sub);
     expect(findAll).toHaveBeenCalledWith('p', { parent: stored });
   });
+
+  it.each([
+    ['containment first', [installContainmentPredicate, installParentByRelation]],
+    ['relations first', [installParentByRelation, installContainmentPredicate]],
+  ] as const)(
+    'stores containment as has_child however the parent is named, beside the relation translation (%s)',
+    (_, installs) => {
+      // Both wrap the same statics. A relation-named parent resolves to `has_child` itself, so the
+      // order they are installed in decides nothing.
+      const { FakeModel, seen } = makeModelClass();
+      for (const install of installs) install(FakeModel as never);
+
+      FakeModel.create('p', {}, { parent: { id: 'channel-1', relation: 'children', entity: 'CollectionBlock' } });
+      expect(seen.create).toEqual(['p', {}, { parent: stored }]);
+      FakeModel.findAll('p', { parent: neutral });
+      expect(seen.findAll).toEqual(['p', { parent: stored }]);
+    },
+  );
 
   it('installs once, however many times it is asked', () => {
     const { FakeModel, seen } = makeModelClass();

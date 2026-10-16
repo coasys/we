@@ -63,6 +63,12 @@ export interface IncludeSpec {
   page?: Page;
   select?: string[];
   include?: IncludeMap;
+  /**
+   * Counts on each included record, exactly as `QueryIR.aggregate` puts them on each result row —
+   * "these posts, and each one's comment count". Without it the number needed a second read of the
+   * included records, or was not shown.
+   */
+  aggregate?: Aggregation[];
   /** Unwrap a to-many relation to a single `object | null`. */
   first?: boolean;
 }
@@ -207,6 +213,7 @@ const includeSpecSchema: z.ZodType<IncludeSpec> = z.lazy(() =>
     page: pageSchema.optional(),
     select: z.array(z.string()).optional(),
     include: includeMapSchema.optional(),
+    aggregate: z.array(aggregationSchema).optional(),
     first: z.boolean().optional(),
   }),
 );

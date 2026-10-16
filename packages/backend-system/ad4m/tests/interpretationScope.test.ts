@@ -17,7 +17,6 @@ import { describe, expect, it } from 'vitest';
 
 const CALL = 'we://collection/today';
 const OLDER = 'we://collection/this-morning';
-const CHILDREN = 'we://child';
 
 /** A base minted by a pass over `parent`, in the namespace the adapter derives from it. */
 const mintedUnder = (parent: string, name: string) => `we://interpreted/${encodeURIComponent(parent)}/${name}`;
@@ -64,7 +63,7 @@ describe('proposals, scoped to one conversation', () => {
       ['we://task/mine'],
     );
 
-    const scoped = await idsOf(port.proposals(p.handle, { parent: { id: CALL, predicate: CHILDREN } }));
+    const scoped = await idsOf(port.proposals(p.handle, { parent: { id: CALL, relation: 'children' } }));
 
     expect(scoped).toEqual(['we://task/mine']);
     // One read for the whole list, not one per overlay: the children are fetched once and every
@@ -85,7 +84,7 @@ describe('proposals, scoped to one conversation', () => {
       [],
     );
 
-    const scoped = await idsOf(port.proposals(p.handle, { parent: { id: CALL, predicate: CHILDREN } }));
+    const scoped = await idsOf(port.proposals(p.handle, { parent: { id: CALL, relation: 'children' } }));
 
     expect(scoped).toEqual([mintedUnder(CALL, 'task-1')]);
   });
@@ -107,8 +106,8 @@ describe('proposals, scoped to one conversation', () => {
 
     const scoped = await idsOf(
       port.proposals(p.handle, {
-        parent: { id: SPACE, predicate: CHILDREN },
-        provenance: { id: CALL, predicate: EXTRACTED },
+        parent: { id: SPACE, relation: 'children' },
+        provenance: { id: CALL, relation: 'extracted' },
       }),
     );
 
@@ -130,7 +129,7 @@ describe('proposals, scoped to one conversation', () => {
     // found nothing, and sends somebody looking for a bug in extraction.
     const p = perspectiveWith([{ base: 'we://task/mine', kind: 'create' }], [], { linksFail: true });
 
-    const scoped = await idsOf(port.proposals(p.handle, { parent: { id: CALL, predicate: CHILDREN } }));
+    const scoped = await idsOf(port.proposals(p.handle, { parent: { id: CALL, relation: 'children' } }));
 
     expect(scoped).toEqual(['we://task/mine']);
   });

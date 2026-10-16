@@ -8,6 +8,7 @@
  * than arithmetic.
  */
 import type { Layout, LayoutInput, LayoutResult, Placement, Point } from '@we/graph-protocol';
+import { CONTAINMENT_EDGE_TYPES } from '@we/graph-protocol';
 
 /** Roots are nodes nothing points at; failing that, the first node, so a cycle still draws. */
 function findRoots(input: LayoutInput): string[] {
@@ -250,6 +251,12 @@ export interface ManualLayoutOptions {
    * was 160 and a canvas card is 180 wide.
    */
   size?: { width: number; height: number };
+  /**
+   * The box a node of one kind takes, where it is not the card `size` — a card's opened field is a
+   * one-line box, and given a card's room a column of them ran into the next card and spilled into
+   * the tray. Keyed by node kind (`property`, `literal`, …).
+   */
+  kindSizes?: Record<string, { width: number; height: number }>;
   /** Data fields holding a node's own size, for a card somebody resized. */
   widthField?: string;
   heightField?: string;
@@ -292,6 +299,15 @@ function trayPosition(input: LayoutInput, index: number, pitch: { x: number; y: 
   };
 }
 
+/** Edges whose target goes in the column to its source's left — what a node says about itself, its properties. */
+const LEFT_EDGE_TYPES: readonly string[] = ['property', 'value'];
+
+/** How far out from its card a column of opened fields sits, in gaps. */
+const BESIDE_GAPS = 6;
+
+/** How many slots beside a parent are tried before a node goes to the tray. */
+const SLOT_TRIES = 12;
+
 /** A node's box around its centre, as edges. */
 interface Box {
   left: number;
@@ -319,9 +335,10 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
   const sizeOf = (node: LayoutInput['nodes'][number]) => {
     const width = Number(options.widthField ? node.data?.[options.widthField] : undefined);
     const height = Number(options.heightField ? node.data?.[options.heightField] : undefined);
+    const base = options.kindSizes?.[node.kind ?? ''] ?? size;
     return {
-      width: Number.isFinite(width) && width > 0 ? width : size.width,
-      height: Number.isFinite(height) && height > 0 ? height : size.height,
+      width: Number.isFinite(width) && width > 0 ? width : base.width,
+      height: Number.isFinite(height) && height > 0 ? height : base.height,
     };
   };
   /*
@@ -439,6 +456,68 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
         const own = sizeOf(node);
         taken.push(boxAround(at, own.width, own.height));
       }
+      /*
+        A node opened out of another goes beside it: a card's fields in a column to its right, one
+        under the next, and what it contains — a note's blocks — in a row below it.
+
+        Parked in the tray, a field landed wherever the tray had room, which on a busy canvas is
+        across the view from the card it is a field of, and the line between them was all that said
+        so. Placed in the order the graph holds them, which is the order the expander returned, so a
+        card's fields read top to bottom as its model declares them. A slot that would cover something
+        is skipped for the next one along; only a node with nowhere near its parent goes to the tray.
+      */
+      const openedFrom = new Map<string, { parent: string; left: boolean }>();
+      for (const edge of input.edges) {
+        if (CONTAINMENT_EDGE_TYPES.includes(edge.type) && !openedFrom.has(edge.target))
+          openedFrom.set(edge.target, { parent: edge.source, left: LEFT_EDGE_TYPES.includes(edge.type) });
+      }
+      const nextSlot = new Map<string, number>();
+      const stillToPark: LayoutInput['nodes'] = [];
+      const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
+      for (const node of toPark) {
+        const from = openedFrom.get(node.id);
+        const parentAt = from ? positions.get(from.parent) : undefined;
+        const parent = from ? nodeById.get(from.parent) : undefined;
+        if (!from || !parentAt || !parent) {
+          stillToPark.push(node);
+          continue;
+        }
+        const own = sizeOf(node);
+        const parentSize = sizeOf(parent);
+        const gap = Math.max(12, margin || 16);
+        const key = `${from.parent}\u0000${from.left ? 'left' : 'right'}`;
+        /*
+          A column each side, from the card's top down: its properties to the left, what it contains to
+          the right. They used to share the right and a row below, and grew into each other — a note's
+          blocks displaced its properties and the other way round. Two columns cannot meet.
+
+          Further out than the gap between them, because the lines to a column fan out from the card's
+          edge, and at one gap they arrived bunched against it.
+        */
+        const reach = parentSize.width / 2 + gap * BESIDE_GAPS + own.width / 2;
+        const slotAt = (index: number): Point => ({
+          x: parentAt.x + (from.left ? -reach : reach),
+          y: parentAt.y - parentSize.height / 2 + own.height / 2 + index * (own.height + gap / 2),
+        });
+        let index = nextSlot.get(key) ?? 0;
+        let placed: Point | undefined;
+        for (let tries = 0; tries < SLOT_TRIES && !placed; tries++, index++) {
+          const candidate = slotAt(index);
+          if (!taken.some((other) => overlaps(other, boxAround(candidate, own.width, own.height)))) placed = candidate;
+        }
+        if (!placed) {
+          stillToPark.push(node);
+          continue;
+        }
+        positions.set(node.id, { ...placed, fixed: true });
+        taken.push(boxAround(placed, own.width, own.height));
+        nextSlot.set(key, index);
+        parked.add(node.id);
+        unplaced += 1;
+      }
+      toPark.length = 0;
+      toPark.push(...stillToPark);
+
       const visible = input.visible;
       const viewColumns = Math.max(1, Math.floor((visible?.width ?? pitch.x * 5) / pitch.x));
       const columns = Math.max(viewColumns, Math.ceil(Math.sqrt(toPark.length)));

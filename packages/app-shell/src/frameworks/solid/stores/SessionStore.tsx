@@ -191,8 +191,6 @@ export function SessionStoreProvider(props: ParentProps) {
   const platform = usePlatform();
   const backend = useBackend();
 
-  let sessionPassword = '';
-
   const [bootState, setBootState] = createSignal<BootState>('initialising');
   const [bootError, setBootError] = createSignal('');
   const [passwordError, setPasswordError] = createSignal(false);
@@ -353,7 +351,6 @@ export function SessionStoreProvider(props: ParentProps) {
       return;
     }
 
-    sessionPassword = password;
     setLoginLoading(true);
     setPasswordError(false);
     setLoginError('');
@@ -361,7 +358,7 @@ export function SessionStoreProvider(props: ParentProps) {
     try {
       // Only this can be wrong about the password. Everything after it has already been let in.
       try {
-        await session.unlock(password);
+        await session.signIn({ kind: 'password', password });
       } catch (err) {
         console.error('SessionStore: agent unlock failed', err);
         // Except when it timed out, which is a verdict on the backend rather than the password.
@@ -397,13 +394,7 @@ export function SessionStoreProvider(props: ParentProps) {
     credential.clear();
   }
 
-  /**
-   * Create the agent, then run the same post-unlock load login does.
-   *
-   * The password is kept as the session password on success for the same reason login keeps it:
-   * `lock()` needs it, and a freshly created agent is already unlocked, so there is no later
-   * unlock to capture it from.
-   */
+  /** Create the agent, then run the same post-sign-in load login does. */
   async function createAgent(password: string): Promise<void> {
     const session = agentSession();
     if (!session) {
@@ -416,7 +407,7 @@ export function SessionStoreProvider(props: ParentProps) {
 
     try {
       try {
-        await session.generate(password);
+        await session.signUp({ kind: 'password', password });
       } catch (err) {
         console.error('SessionStore: agent creation failed', err);
         // Leave bootState on 'createAgent' so the user can retry against the same screen.
@@ -431,7 +422,6 @@ export function SessionStoreProvider(props: ParentProps) {
         throw err;
       }
 
-      sessionPassword = password;
       settingUp = true;
 
       /*
@@ -464,22 +454,13 @@ export function SessionStoreProvider(props: ParentProps) {
   }
 
   /**
-   * End the session, by locking the agent when that is possible and by restarting the backend when
-   * it is not.
+   * End the session, through the session port when it can and by ending the connection or
+   * restarting the backend when it cannot.
    *
-   * `lock` takes the password, and this renderer only has it when *it* was the one that unlocked
-   * the agent. Reloading the page during a session loses it while leaving the backend unlocked —
-   * which is why the reloaded app walks straight in without asking — and there is then no password
-   * to hand back.
+   * The session port ends only a session it began: one already open when the app arrived — after a
+   * reload, say — was begun by nobody here, and nothing this renderer holds can close it.
    *
-   * Sending anything else is not a harmless failed attempt: AD4M's `lock` re-encrypts the wallet's
-   * in-memory keys under whatever it is given, so a wrong password silently re-keys the running
-   * agent, and the real password then fails to decrypt it (`aead::Error`) until the executor is
-   * restarted. Logging out after a reload made the account unopenable for the rest of the session.
-   * (The keystore on disk is saved under the true passphrase first, which is why restarting the app
-   * recovers it, and why nothing is lost.)
-   *
-   * So when the password is not in hand, the session ends whichever other way this backend offers:
+   * So when the port has nothing to end, the session ends whichever other way this backend offers:
    * the connector can end the connection (web, where the agent may be on someone else's node and
    * the session *is* the connection), or the host can restart the backend it started, which locks
    * it by construction. With neither, this returns to the sign-in screen with the backend still
@@ -493,8 +474,8 @@ export function SessionStoreProvider(props: ParentProps) {
     }
 
     try {
-      if (sessionPassword) {
-        await session.lock(sessionPassword);
+      if (await session.signOut()) {
+        // Ended by the port.
       } else if (disconnectBackend) {
         // The session is the connection: no lock to close, so end the connection and start over.
         // Returning to the sign-in form instead asks for a password against a keystore that is not
@@ -506,15 +487,12 @@ export function SessionStoreProvider(props: ParentProps) {
       } else if (platform.executor) {
         await platform.executor.restart();
       } else {
-        console.warn(
-          'SessionStore: logging out without the session password and with no way to end the session — the agent stays unlocked',
-        );
+        console.warn('SessionStore: logging out with no way to end the session — the agent stays signed in');
       }
     } catch (err) {
       console.error('SessionStore: could not end the session cleanly', err);
     } finally {
       setMe(undefined);
-      sessionPassword = '';
       settingUp = false;
       setBootState('login');
     }

@@ -156,6 +156,27 @@ describe('irToFlatQuery', () => {
     });
   });
 
+  /**
+   * A count on each included record — a placement's card with its responses counted. It was refused
+   * as unsupported, which took the whole query down; it has to arrive at the backend where the flat
+   * dialect spells it, inside the nested include.
+   */
+  it('carries a count inside a nested include through to the flat query', () => {
+    const { ir, unsupported } = compileQuery({
+      entity: 'Placement',
+      include: { node: { include: { $responsesCount: { from: 'responses', count: true }, signals: true } } },
+    });
+    expect(unsupported).toEqual([]);
+    expect(ir.include?.node).toEqual({
+      include: { signals: true },
+      aggregate: [{ as: '$responsesCount', over: 'responses', fn: 'count' }],
+    });
+
+    expect(irToFlatQuery(ir).include).toEqual({
+      node: { include: { signals: true, $responsesCount: { from: 'responses', count: true } } },
+    });
+  });
+
   it('leaves an ordinary count projection alone', () => {
     const { ir } = compileQuery({ entity: 'Post', include: { $likes: { from: 'signals', count: true } } });
     expect(ir.aggregate?.[0]).not.toHaveProperty('transitive');

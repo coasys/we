@@ -13,6 +13,7 @@
     "notes",
     "globe",
     "graph",
+    "flux",
     {
       "id": "polls",
       "enabled": false

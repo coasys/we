@@ -67,20 +67,26 @@ describe('createInMemoryLifecycle', () => {
 });
 
 describe('createInMemoryAgentSession', () => {
-  it('walks the boot state machine: locked → unlock → me → lock', async () => {
+  it('walks the boot state machine: locked → sign in → me → sign out', async () => {
     const session = createInMemoryAgentSession({ id: 'did:test:james', password: 'pw' });
 
     expect(await session.status()).toEqual({ hasAgent: true, unlocked: false });
     await expect(session.me()).rejects.toThrow(/locked/);
-    await expect(session.unlock('wrong')).rejects.toThrow(/invalid password/);
+    await expect(session.signIn({ kind: 'password', password: 'wrong' })).rejects.toThrow(/invalid password/);
 
-    await session.unlock('pw');
+    await session.signIn({ kind: 'password', password: 'pw' });
     expect(await session.status()).toEqual({ hasAgent: true, unlocked: true });
     // `did` mirrors `id` so template-facing vocabulary ($me.did) keeps working.
     expect(await session.me()).toEqual({ id: 'did:test:james', did: 'did:test:james' });
 
-    await session.lock('pw');
+    expect(await session.signOut()).toBe(true);
     expect((await session.status()).unlocked).toBe(false);
+  });
+
+  it('ends only a session it began', async () => {
+    const session = createInMemoryAgentSession({ unlocked: true });
+    expect(await session.signOut()).toBe(false);
+    expect((await session.status()).unlocked).toBe(true);
   });
 
   it('models the first-run flow (no agent yet)', async () => {

@@ -1,8 +1,6 @@
 import { formatAgentRef, formatRef, HERE, parseRef } from '@we/backend-shared';
 import type { ModuleStoreDeps } from '@we/module-shared';
 
-import { POCKET_PREDICATES } from './entities';
-
 /** What the panel and the cards read back off a stored item. */
 export interface PocketRow {
   id: string;
@@ -360,7 +358,7 @@ export function createPocketStore(deps: ModuleStoreDeps) {
         withinEntity: row.withinEntity ?? '',
         withinId: row.withinId ?? '',
       },
-      { parent: { id: target, predicate: POCKET_PREDICATES.items } },
+      { parent: { id: target, relation: 'items', entity: 'PocketFolder' } },
     );
     if (!moved) return row.id;
     await data.remove('PocketItem', origin.id);
@@ -402,7 +400,7 @@ export function createPocketStore(deps: ModuleStoreDeps) {
         // which is not when the thing was made and not when the record happened to sync.
         gatheredAt: new Date().toISOString(),
       },
-      { parent: { id: parent, predicate: POCKET_PREDICATES.items } },
+      { parent: { id: parent, relation: 'items', entity: 'PocketFolder' } },
     );
     return id ?? '';
   }

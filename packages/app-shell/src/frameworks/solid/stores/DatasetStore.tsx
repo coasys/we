@@ -17,41 +17,53 @@
  */
 import { sameDataset } from '@shared/datasetIdentity';
 import { hostListeners, hostSlot } from '@shared/hostSlot';
-import { containmentPredicate, gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
+import { gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
 import { isSystemDataset, SYSTEM_DATASET_NAMES, SYSTEM_DATASETS } from '@shared/systemDatasets';
-import { type DatasetHandle, datasetKey, type DatasetRef, type EntityManifestEntry, trace } from '@we/backend-shared';
+import { createCallConfigAccessors, createCallSessionFactory } from '@we/backend-ad4m';
+import {
+  type DatasetHandle,
+  datasetKey,
+  type DatasetRef,
+  type EntityManifestEntry,
+  type ParentRef,
+  trace,
+} from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { AgentSettings, type DatasetProxy, ExtractionPass, getEntityForDataset } from '@we/entities';
 import { Accessor, batch, createContext, createMemo, createSignal, onCleanup, ParentProps, useContext } from 'solid-js';
 
 import { useSessionStore } from './SessionStore';
 
-/** Where a pass hangs off the collection it read — `CollectionBlock.extractionPasses`. */
-const EXTRACTION_PASS_PREDICATE = 'we://extraction_pass_record';
+/*
+  Where a pass files what it read, by the relations of `CollectionBlock` that hold each — named, not
+  stored: how a relation is stored is the backend's business.
 
-/**
- * The relation saying a record came out of reading a collection — `CollectionBlock.extracted`.
- *
- * Written beside containment rather than instead of it. `children` is ownership, and the call's
- * board gathers through it, so a record that stopped being a child would vanish from the board it
- * exists to appear on. This is the other fact about the same record: a model proposed it from the
- * conversation, rather than somebody typing it there.
- *
- * Named here because it is WE's vocabulary. The interpretation port takes the predicate as an
- * argument for the same reason it takes `parent` as one — a backend that hard-coded it would be
- * deciding what a relation in somebody else's graph is called.
- */
-const EXTRACTED_PREDICATE = 'we://extracted';
+  - `extractionPasses` — a record of each pass, hung off the collection it read.
+  - `extracted` — a record a model proposed from reading the collection. Written beside containment
+    rather than instead of it: `children` is ownership, and the call's board gathers through it, so a
+    record that stopped being a child would vanish from the board it exists to appear on. This is the
+    other fact about the same record: a model proposed it from the conversation, rather than somebody
+    typing it there.
+  - `recognised` — a record a pass matched rather than made, so the conversation's own view can say
+    "already in the space" rather than claiming it as made here.
 
-/**
- * Where a record a pass recognised rather than made is linked from — `CollectionBlock.recognised`.
- * A pass over this conversation that matches something already in the space links it here, so the
- * conversation's own view can say "already in the space" rather than claiming it as made here.
- */
-const RECOGNISED_PREDICATE = 'we://recognised';
+  Named here because they are WE's vocabulary. The interpretation port takes them as arguments for the
+  same reason it takes `parent` as one — a backend that hard-coded them would be deciding what a
+  relation in somebody else's graph is called.
+*/
+const extractedFrom = (collectionId: string) => ({
+  id: collectionId,
+  relation: 'extracted',
+  entity: 'CollectionBlock',
+});
+const recognisedBy = (collectionId: string) => ({
+  id: collectionId,
+  relation: 'recognised',
+  entity: 'CollectionBlock',
+});
 
 export type { EntityManifestEntry, EntityManifestProperty } from '@we/backend-shared';
 
@@ -321,9 +333,8 @@ export function DatasetStoreProvider(props: ParentProps) {
    * so a failed *note* about it must not turn a successful extraction into a rejected one. Logged
    * rather than swallowed, because a note that never lands is a history that quietly stays empty.
    *
-   * Written by the host rather than by the module for the same reason `interpretCollection` is: the
-   * containment predicate is resolved from the dataset's own models, which a module has no read for
-   * and must never learn.
+   * Written by the host rather than by the module for the same reason `interpretCollection` is: where
+   * a pass is filed is the host's to say, and a module names a collection and nothing else.
    */
   async function recordPass(
     handle: DatasetProxy,
@@ -351,7 +362,7 @@ export function DatasetStoreProvider(props: ParentProps) {
           prompt: pass.prompt ?? '',
           response: pass.response ?? '',
         } as never,
-        { parent: { id: collectionId, predicate: EXTRACTION_PASS_PREDICATE } } as never,
+        { parent: { id: collectionId, relation: 'extractionPasses', entity: 'CollectionBlock' } },
       );
     } catch (error) {
       console.warn('[interpretation] could not record that a pass ran', error);
@@ -382,6 +393,24 @@ export function DatasetStoreProvider(props: ParentProps) {
       },
       selfId: () => session.me()?.did ?? null,
       ephemeral: session.ephemeralPort,
+      // Late-bound call session factory — the call module reads it as `createBackend`. All three
+      // accessors dereference at join time, so the factory is safe to construct before the backend
+      // connects or the user navigates to a space.
+      createCallBackend: createCallSessionFactory(
+        () => session.client(),
+        () => currentDataset()?.handle ?? null,
+        () => session.me()?.did ?? null,
+      ),
+      // Call config accessors — topology defaults stored on Social DNA.
+      // Same late-binding pattern: every accessor reads the current dataset at call time.
+      ...(() => {
+        const accessors = createCallConfigAccessors(() => currentDataset()?.handle ?? null);
+        return {
+          getCallConfig: accessors.getCallConfig,
+          setCallConfig: accessors.setCallConfig,
+          callConfigSupported: accessors.callConfigSupported,
+        };
+      })(),
       // Read through `backendPorts()` on every call rather than captured: the backend connects after
       // this store is constructed, and a backend that cannot transcribe simply never sets it.
       transcription: {
@@ -471,29 +500,21 @@ export function DatasetStoreProvider(props: ParentProps) {
         if (!dataset) throw new Error('interpretation: no dataset to interpret into');
 
         const modelFor = (entity: string) => getEntityForDataset(entity, dataset.handle);
-        const predicate = containmentPredicate(modelFor, currentDatasetEntities());
-        if (!predicate)
-          throw new Error('interpretation: this space has no collection schema to read a transcript from');
-
         const turns = await gatherTranscriptTurns(
-          {
-            modelFor: (entity) => modelFor(entity) as TurnRecord | undefined,
-            handle: dataset.handle,
-            containmentPredicate: predicate,
-          },
+          { modelFor: (entity) => modelFor(entity) as TurnRecord | undefined, handle: dataset.handle },
           collectionId,
         );
 
         // The host resolves the class list, because the three layers that decide it — candidacy, the
         // space's default, this call's own — are all host state. A module names a collection and
-        // nothing else, exactly as it does for the watch id and the containment predicate.
+        // nothing else, exactly as it does for the watch id and where a pass is filed.
         const classes = targetsForCollection(collectionId);
         try {
           const result = await port.interpret(dataset.handle, turns, {
             classes,
-            parent: await filedUnder(dataset.handle, collectionId, predicate),
-            provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
-            recognised: { id: collectionId, predicate: RECOGNISED_PREDICATE },
+            parent: await filedUnder(dataset.handle, collectionId),
+            provenance: extractedFrom(collectionId),
+            recognised: recognisedBy(collectionId),
           });
           await recordPass(dataset.handle, collectionId, {
             // Nothing to look for is not a failure and not a quiet meeting — it is a call whose
@@ -530,9 +551,8 @@ export function DatasetStoreProvider(props: ParentProps) {
       /*
         The staged suggestions belonging to one call, rather than to the whole space.
 
-        Here rather than on the port wrapper above for the same reason `interpretCollection` is: the
-        scope is a containment predicate, and resolving one needs the dataset's models — which the
-        port has not got and a module must never learn.
+        Here rather than on the port wrapper above for the same reason `interpretCollection` is: where
+        a call's passes were filed is the host's to say, and a module must never have to.
 
         A proposal outlives the pass that made it, so an unresolved one from this morning's call is
         still staged this afternoon. Unscoped, it arrived in the next call's review list looking like
@@ -542,20 +562,14 @@ export function DatasetStoreProvider(props: ParentProps) {
 
         The dataset is the *caller's*, not `currentDataset()`: a call outlives the space on screen,
         and answering about wherever the reader wandered to is the bug `targeted` exists to prevent.
-        The predicate is resolved against that same dataset for the same reason.
       */
       proposalsForCollection: async (dataset, collectionId) => {
         const port = session.backendPorts()?.interpretation;
         if (!port) return [];
-        const modelFor = (entity: string) => getEntityForDataset(entity, dataset);
-        const predicate = containmentPredicate(modelFor, currentDatasetEntities());
-        // Unscoped rather than empty when containment cannot be named here: too many suggestions is
-        // a nuisance, none is a review surface that looks broken.
-        if (!predicate) return port.proposals(dataset);
         return port.proposals(dataset, {
-          parent: await filedUnder(dataset, collectionId, predicate),
+          parent: await filedUnder(dataset, collectionId),
           // The conversation, which is what narrows once every call files into one collection.
-          provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
+          provenance: extractedFrom(collectionId),
         });
       },
 
@@ -564,7 +578,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         surface.
 
         A module names a collection worth watching; everything else is the host's — the watch id, the
-        dataset, the containment predicate, and the lifetime. That split is what keeps this from being
+        dataset, where the pass is filed, and the lifetime. That split is what keeps this from being
         "a module holding a watch", which the module contract refuses: a watch is a *dataset-level*
         registration shared with every peer, and a module store whose lifetime is a panel being open
         would leave one behind every time somebody closed it.
@@ -587,15 +601,11 @@ export function DatasetStoreProvider(props: ParentProps) {
         const dataset = currentDataset();
         if (!port?.reconcile || !dataset) return 0;
 
-        const modelFor = (entity: string) => getEntityForDataset(entity, dataset.handle);
-        const predicate = containmentPredicate(modelFor, currentDatasetEntities());
-        if (!predicate) return 0;
-
         return port.reconcile(dataset.handle, {
           classes: targetsForCollection(collectionId),
-          parent: await filedUnder(dataset.handle, collectionId, predicate),
-          provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
-          recognised: { id: collectionId, predicate: RECOGNISED_PREDICATE },
+          parent: await filedUnder(dataset.handle, collectionId),
+          provenance: extractedFrom(collectionId),
+          recognised: recognisedBy(collectionId),
         });
       },
 
@@ -633,10 +643,6 @@ export function DatasetStoreProvider(props: ParentProps) {
     const handle = target ?? currentDataset()?.handle;
     if (!handle) throw new Error('interpretation: no dataset to interpret into');
 
-    const modelFor = (entity: string) => getEntityForDataset(entity, handle);
-    const predicate = containmentPredicate(modelFor, currentDatasetEntities());
-    if (!predicate) throw new Error('interpretation: this space has no collection schema to read a transcript from');
-
     const classes = targetsForCollection(collectionId);
     // Refused rather than registered empty: the executor rejects a processor with no classes, and
     // "this space has marked nothing for extraction" is a sentence worth saying in its own words.
@@ -645,9 +651,9 @@ export function DatasetStoreProvider(props: ParentProps) {
     await port.watch(handle, {
       watchId: watchIdFor(collectionId),
       classes,
-      parent: await filedUnder(handle, collectionId, predicate),
-      provenance: { id: collectionId, predicate: EXTRACTED_PREDICATE },
-      recognised: { id: collectionId, predicate: RECOGNISED_PREDICATE },
+      parent: await filedUnder(handle, collectionId),
+      provenance: extractedFrom(collectionId),
+      recognised: recognisedBy(collectionId),
     });
   }
 
@@ -675,11 +681,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     collection is written at creation and never changes.
   */
   const spaceRoots = new WeakMap<object, string>();
-  async function filedUnder(
-    handle: unknown,
-    conversation: string,
-    predicate: string,
-  ): Promise<{ id: string; predicate: string }> {
+  async function filedUnder(handle: unknown, conversation: string): Promise<ParentRef> {
     let root = spaceRoots.get(handle as object);
     if (root === undefined) {
       try {
@@ -692,7 +694,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       }
       if (root) spaceRoots.set(handle as object, root);
     }
-    return { id: root || conversation, predicate };
+    return { id: root || conversation, relation: 'children', entity: 'CollectionBlock' };
   }
 
   /*

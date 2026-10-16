@@ -1,16 +1,18 @@
 /**
  * Containment, stored the way AD4M stores it.
  *
- * The rest of WE names containment as `CONTAINMENT_PREDICATE` — a backend-neutral key that every
- * caller, template and module passes as `parent.predicate` and that `schemas.entries` reports. On
- * this backend that relation is AD4M's own `ad4m://has_child`, so a container written here is a
+ * The rest of WE names containment as `CONTAINMENT_PREDICATE` — the backend-neutral key the manifest
+ * declares and `schemas.entries` reports. Callers name it by relation (`{ id, relation: 'children' }`).
+ * On this backend that relation is AD4M's own `ad4m://has_child`, so a container written here is a
  * container to anything else reading the perspective, and the executor's native containment
  * (ancestor wake-ups, declared roles) applies to it without a mapping triple.
  *
- * The neutral key is translated at the boundary, here and nowhere else: the decorators the manifest
- * compiles to, the `parent` scope every model static accepts, and the links the interpretation port
- * writes by hand. The translation is idempotent, so a caller that already holds the AD4M spelling —
- * `containmentPredicate` reads it back off the native shape — passes through unchanged.
+ * The neutral key is translated at the boundary, through this file and nowhere else: the decorators
+ * the manifest compiles to, `relationPredicates.ts` (which every relation-named reference resolves
+ * through, so `parent: { relation: 'children' }` lands on `has_child`), and a `parent` scope that
+ * arrives already naming a predicate. The translation is idempotent, so a caller that already holds
+ * the AD4M spelling — `containmentPredicate` reads it back off the native shape — passes through
+ * unchanged.
  */
 import type { Ad4mModel } from '@coasys/ad4m';
 import { CONTAINMENT_PREDICATE } from '@we/backend-shared';
@@ -46,7 +48,10 @@ function withAd4mParent<O>(options: O): O {
   return translated === parent ? options : { ...options, parent: translated };
 }
 
-/** Where each `Ad4mModel` static that takes a `parent` scope carries it, by argument position. */
+/**
+ * Where each `Ad4mModel` static that takes a `parent` scope carries it, by argument position. The
+ * union reads, `findAllOf` and `queryOf`, take their classes second and the query third.
+ */
 const PARENT_ARGUMENT: Record<string, number> = {
   create: 2,
   findAll: 1,
@@ -55,6 +60,8 @@ const PARENT_ARGUMENT: Record<string, number> = {
   count: 1,
   query: 1,
   paginate: 3,
+  findAllOf: 2,
+  queryOf: 2,
 };
 
 const INSTALLED = Symbol.for('we.ad4m.containmentPredicate');
