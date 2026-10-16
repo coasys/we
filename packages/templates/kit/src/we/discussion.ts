@@ -918,7 +918,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
                           // of it, which is what lets a reply be a composition with children.
                           args: [
                             { $: 'arg' },
-                            { kind: 'reply', parentId: { $: anchor }, predicate: 'we://response' } as SchemaProp,
+                            { kind: 'reply', parentId: { $: anchor }, relation: 'responses' } as SchemaProp,
                           ],
                           onSuccess: [
                             { $setLocal: COMPOSER_KEY, value: { $: `local.${COMPOSER_KEY} + 1` } },
@@ -1005,7 +1005,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
           // be a full composition with children of its own.
           args: [
             { $: 'arg' },
-            { kind: 'reply', parentId: { $: `local.${REPLY_TO}` }, predicate: 'we://response' } as SchemaProp,
+            { kind: 'reply', parentId: { $: `local.${REPLY_TO}` }, relation: 'responses' } as SchemaProp,
           ],
         },
       }),

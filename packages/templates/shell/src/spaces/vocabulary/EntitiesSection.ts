@@ -1109,7 +1109,7 @@ const hintEditorModal: SchemaNode = {
                     value: { $: 'row.hint' },
                     onInput: {
                       $action: 'shapeStore.setHintDraft',
-                      args: [{ $: 'row.predicate' }, { $: 'arg.detail' }],
+                      args: [{ $: 'row.name' }, { $: 'arg.detail' }],
                     },
                   },
                 },

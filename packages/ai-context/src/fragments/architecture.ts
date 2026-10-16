@@ -214,4 +214,10 @@ extraction pass writes appears on every board without anyone placing it, why del
 never delete its cards, and why the link state can be inconsistent after a partition and the board
 still renders one answer. The same doc records where new per-column state goes, so the entity does
 not accrete a scalar per feature.
+
+**Before changing anything about flows, read docs/architecture/flows.md.** \`FlowPort\` speaks in
+rules and moves — a state's \`requires\`, \`move\` answering moved, waiting, refused, stalled or pending —
+and never in how a backend enforces them: runs, proposals and an entry state stay in the AD4M
+adapter, and where backends differ they say so in \`FlowPort.capabilities\`. A flow is edited as lanes
+that are read back out of the stored definition, never stored themselves.
 `;

@@ -117,7 +117,7 @@ describe('EntityManifest', () => {
     });
 
     it('rejects containment under any other predicate', () => {
-      // Containment is the one relation every backend stores the same way, so a space reads the same
+      // Containment is the one relation every backend names the same way, so a space reads the same
       // whatever holds it. A manifest spelling its own would be overruled silently by the backend.
       const result = validateManifest({
         version: '1',

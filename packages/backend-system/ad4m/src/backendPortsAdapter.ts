@@ -30,6 +30,7 @@ import { createAd4mDataBindings } from './ad4mAdapter';
 import { createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
 import { createFileExpression, getProfile, publishProfileToPublicPerspective } from './agentHelpers';
 import { installClearOnEmpty } from './clearOnEmpty';
+import { installContainmentPredicate } from './containment';
 import { Space } from './entities';
 import { createAd4mFlowPort } from './flowPort';
 import { createAd4mInterpretationPort } from './interpretationAdapter';
@@ -37,8 +38,11 @@ import { readInterpretationHints, resetInterpretationHints, writeInterpretationH
 import { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './languageModelPort';
 import { type Ad4mLifecycleOptions, createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 import { compileManifest, manifestToEntries } from './manifestCompiler';
+import { createAd4mModelAdmin } from './modelAdminAdapter';
+import { installParentByRelation } from './parentByRelation';
 import { buildEntityClasses, buildEntityManifest, getForeignShacl } from './perspectiveHelpers';
 import { createAd4mReferencePort } from './referencePort';
+import { registerDeclaredRelations } from './relationPredicates';
 import { installRelationWrites } from './relationWrites';
 import { type Ad4mRuntimeOptions, createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
 import {
@@ -54,7 +58,6 @@ import {
   warmSchemaReads,
   warmStoredShapes,
 } from './sdnaEntities';
-import { getFluxSubgroupMessages } from './syncHelpers';
 import { createAd4mTranscriptionPort } from './transcriptionAdapter';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
@@ -80,7 +83,10 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
     async foreignSchemas(dataset): Promise<EntityManifestEntry[]> {
       const shapes = await getForeignShacl(proxy(dataset));
       registerDynamicEntities(proxy(dataset).uuid, buildEntityClasses(shapes));
-      return buildEntityManifest(shapes);
+      const entries = buildEntityManifest(shapes);
+      // Another app's relations are named like WE's own, so a drill-down into one resolves.
+      registerDeclaredRelations(entries);
+      return entries;
     },
 
     declare(manifest: EntityManifest, opts) {
@@ -97,6 +103,8 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
           (opts.resolveExternal?.(name) ?? getEntityForDataset(name)) as typeof Ad4mModel | undefined,
       });
       for (const [name, cls] of Object.entries(classes)) registerEntity(name, cls as EntityClass);
+      // So a module's relations can be named in `parent` like any of WE's own.
+      registerDeclaredRelations(manifestToEntries(manifest, opts as never));
       return classes;
     },
 
@@ -115,6 +123,7 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
         resolveExternal: (name) => getEntityForDataset(name, dataset) as typeof Ad4mModel | undefined,
       });
       mergeDynamicEntities(proxy(dataset).uuid, classes as Record<string, EntityClass>);
+      registerDeclaredRelations(manifestToEntries(manifest, opts as never));
       return classes;
     },
 
@@ -130,7 +139,7 @@ export function createAd4mProfileDirectory(backendClient: unknown): ProfileDirec
   return {
     get: (id) => getProfile(id, backendClient),
     publish: (fields) => publishProfileToPublicPerspective(fields, backendClient),
-    uploadFile: (serialized) => createFileExpression(backendClient, serialized),
+    uploadFile: (file) => createFileExpression(backendClient, file),
   };
 }
 
@@ -160,6 +169,12 @@ export function createAd4mBackendPorts(
   // "this relation's membership is now that list", and every model class — generated, compiled
   // or built from foreign SHACL — inherits the ability to carry it out. See `relationWrites.ts`.
   installRelationWrites(Ad4mModel);
+  // And containment: AD4M stores it as `has_child`, so a `parent` scope that names the neutral key
+  // is translated before any model sees it. See `containment.ts`.
+  installContainmentPredicate(Ad4mModel);
+  // And a parent named by the relation it joins, which is how the contract names one — translated to
+  // the predicate AD4M stores it under before any model sees it. See `parentByRelation.ts`.
+  installParentByRelation(Ad4mModel);
   // Register the native model classes for name-based $query resolution. Previously a module-load
   // side effect in the shell; it belongs to the backend choice. Use .className (set by @Model)
   // rather than .name — bundlers mangle the native .name in production builds.
@@ -191,12 +206,13 @@ export function createAd4mBackendPorts(
     schemas: createAd4mSchemaPort(backendClient),
     profiles: createAd4mProfileDirectory(backendClient),
     runtime: createAd4mRuntimeAdmin(backendClient, options),
+    models: createAd4mModelAdmin(backendClient, options),
     transcription: createAd4mTranscriptionPort(backendClient, options),
     languageModel: createAd4mLanguageModelPort(backendClient, options.connection),
     // Takes no client: interpretation is entirely a per-dataset operation, and every call already
     // carries the dataset handle it needs.
     interpretation: createAd4mInterpretationPort(ctx.selfId),
-    flows: createAd4mFlowPort(),
+    flows: createAd4mFlowPort(ctx.selfId),
     references: createAd4mReferencePort(),
     ephemeral,
     dataBindings: (deps: DataBindingDeps) =>
@@ -208,8 +224,5 @@ export function createAd4mBackendPorts(
         fetchAgent: deps.fetchProfile,
         ephemeralPort: deps.ephemeral,
       }),
-    interop: {
-      fluxSubgroupMessages: getFluxSubgroupMessages,
-    },
   };
 }

@@ -34,6 +34,7 @@ import {
   useClockStore,
   useDatasetStore,
   useEditorStore,
+  useFlowStore,
   useInterpretationStore,
   usePresenceStore,
   useProfileStore,
@@ -54,7 +55,7 @@ import { type ContentInput, copyableContent, createBlocks, deleteBlocks, reconci
 import { BlockDisplayOverrides, BlockHostProvider, colorFor } from '@we/block-solid';
 import { toastService } from '@we/components/solid';
 import type { DatasetProxy } from '@we/entities';
-import { CollectionBlock, getEntity, PREDICATES, Space } from '@we/entities';
+import { CollectionBlock, getEntity, Space } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import type { DocumentAccess } from '@we/module-shared';
 import { holdTopLayer, installTopLayerGuard } from '@we/primitives/top-layer';
@@ -101,6 +102,7 @@ export default function TemplateProvider() {
   const interpretationStore = useInterpretationStore();
   const clockStore = useClockStore();
   const bundleStore = useBundleStore();
+  const flowStore = useFlowStore();
 
   // Set CSS custom properties on :root so position:fixed elements (e.g. CesiumGlobe canvas)
   // can consume the shell's own furniture without hard-coding it.
@@ -209,7 +211,7 @@ export default function TemplateProvider() {
   function withinAsParent(query: unknown): Record<string, unknown> {
     const { within, ...rest } = (query ?? {}) as { within?: unknown } & Record<string, unknown>;
     return typeof within === 'string' && within
-      ? { ...rest, parent: { id: within, predicate: PREDICATES.CHILDREN } }
+      ? { ...rest, parent: { id: within, relation: 'children', entity: 'CollectionBlock' } }
       : rest;
   }
 
@@ -332,7 +334,7 @@ export default function TemplateProvider() {
         const { dataset: _dataset, topLevel, ...rest } = (options ?? {}) as Record<string, unknown>;
         if (topLevel && !rest.parent) {
           const root = await spaceRootOf(perspective);
-          if (root) rest.parent = { id: root, predicate: PREDICATES.CHILDREN };
+          if (root) rest.parent = { id: root, relation: 'children', entity: 'CollectionBlock' };
         }
         const created = (await createInDataset(entity, fields, perspective, rest)) as { id?: string } | undefined;
         // A line written with marks mentions whoever they name — see `lineMentions`.
@@ -502,6 +504,7 @@ export default function TemplateProvider() {
     interpretationStore,
     clockStore,
     bundleStore,
+    flowStore,
     // Always present, even with no modules registered: a read of `modules.x` resolves through the
     // single-segment path, which indexes the store object without a guard and would throw on a
     // missing `modules` key rather than returning undefined.

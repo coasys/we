@@ -277,6 +277,8 @@ describe('transport and device lifetime', () => {
       settings?: Record<string, string>;
       /** What the machine has to capture with, for a test about choosing between them. */
       devices?: { deviceId: string; kind: 'audioinput' | 'videoinput'; label: string; groupId: string }[];
+      /** Makes the session the host hands over for each call, as the AD4M host does; its arguments land in `backendArgs`. */
+      backend?: () => unknown;
     } = {},
   ) {
     const signal = <T>(initial: T): [() => T, (next: T) => void] => {
@@ -314,7 +316,13 @@ describe('transport and device lifetime', () => {
      * build a connection for. `joinedBy` below fills this in and re-runs the reconcile effect, which
      * is what a heartbeat would have done.
      */
-    let roster: { agentId: string; liveness?: string; activities: { type: string; id: string }[] }[] = [];
+    let roster: {
+      agentId: string;
+      liveness?: string;
+      activities: ({ type: string; id: string } & Record<string, unknown>)[];
+    }[] = [];
+    /** Every call activity this store published, in order. */
+    const activities: Record<string, unknown>[] = [];
 
     const disposers: Array<() => void> = [];
     let created = 0;
@@ -337,11 +345,20 @@ describe('transport and device lifetime', () => {
     */
     const publishedMedia: (MediaStream | null)[] = [];
     const mic = fakeMicStream();
+    const backendArgs: unknown[][] = [];
     const store = createCallStore({
       signal,
       state: markState,
       action: markAction,
       settings: () => options.settings ?? {},
+      ...(options.backend
+        ? {
+            createBackend: async (...args: unknown[]) => {
+              backendArgs.push(args);
+              return options.backend!();
+            },
+          }
+        : {}),
       effect: (fn: () => void) => {
         effects.push(fn);
         fn();
@@ -364,7 +381,11 @@ describe('transport and device lifetime', () => {
       // Exactly the kernels the manifest names, as the host would hand them over.
       kernels: {
         ephemeral: () => (options.personal ? null : scope),
-        presence: { peers: () => roster, setActivity: () => {}, clearActivity: () => {} },
+        presence: {
+          peers: () => roster,
+          setActivity: (activity: Record<string, unknown>) => void activities.push(activity),
+          clearActivity: () => {},
+        },
         records: {
           create: async (...args: unknown[]) => {
             createdWith.push(args);
@@ -420,6 +441,7 @@ describe('transport and device lifetime', () => {
       store,
       mic,
       configs,
+      backendArgs,
       signalling: published,
       published: publishedMedia,
       scopeDisposals: () => disposed,
@@ -427,9 +449,18 @@ describe('transport and device lifetime', () => {
       createdWith,
       disposers,
       removeDataset: (uri: string) => notifyRemoved?.(uri),
+      activities,
       /** Somebody else joins the call this store is in, and the roster catches up. */
       joinedBy: (agentId: string) => {
         roster = [...roster, { agentId, activities: [{ type: 'call', id: store.callId() ?? '' }] }];
+        for (const run of effects) run();
+      },
+      /** Somebody publishes a call activity for `callId` carrying `fields`, replacing their last one. */
+      publishesCall: (agentId: string, callId: string, fields: Record<string, unknown> = {}) => {
+        roster = [
+          ...roster.filter((peer) => peer.agentId !== agentId),
+          { agentId, activities: [{ type: 'call', id: callId, ...fields }] },
+        ];
         for (const run of effects) run();
       },
       /**
@@ -869,6 +900,233 @@ describe('transport and device lifetime', () => {
 
     connectionBecomes('disconnected');
     expect(stateOf()?.connecting, 'a pair that dropped is not a pair on its way').toBe(false);
+  });
+
+  /*
+    A call the host runs through a session — the AD4M SDK's — rather than the module's own mesh.
+
+    The session's mesh reports per-pair connection state and repairs as events instead of callbacks.
+    A tile has to read them exactly as it reads the module's own mesh, or a call on the AD4M host
+    loses "Reconnecting…", the transport badge and the reconnect button that the mesh path has.
+  */
+  describe('through a session backend', () => {
+    function fakeSession() {
+      const handlers = new Map<string, ((...args: unknown[]) => void)[]>();
+      const reconnected: string[] = [];
+      const session = {
+        participants: [] as { agentDid: string; stream: MediaStream }[],
+        joinedWith: null as MediaStream | null,
+        destroyed: false,
+        join: async (stream: MediaStream) => void (session.joinedWith = stream),
+        leave: async () => {},
+        destroy: async () => void (session.destroyed = true),
+        replaceTrack: async () => {},
+        setQualityPreference: async () => {},
+        getState: () => 'active',
+        on: (event: string, cb: (...args: unknown[]) => void) => {
+          handlers.set(event, [...(handlers.get(event) ?? []), cb]);
+        },
+        off: () => {},
+        sendData: async () => {},
+        onData: () => () => {},
+        reconnect: (peerId: string) => void reconnected.push(peerId),
+        transportOf: async () => 'relay',
+      };
+      const fire = (event: string, ...args: unknown[]) => {
+        for (const cb of handlers.get(event) ?? []) cb(...args);
+      };
+      return { session, reconnected, fire };
+    }
+
+    async function inCallWith(peerId: string, settings?: Record<string, string>) {
+      // One session per call, as the host builds them; `fire` reaches the first.
+      const sessions: ReturnType<typeof fakeSession>[] = [];
+      const harness = callable({
+        backend: () => sessions[sessions.push(fakeSession()) - 1]!.session,
+        ...(settings ? { settings } : {}),
+      });
+      await harness.store.startCall();
+      await Promise.resolve();
+      harness.joinedBy(peerId);
+      const stateOf = () =>
+        harness.store.tileStates().find((tile: { id: string }) => tile.id === peerId) as
+          { connection?: string; retrying: boolean; transport: string } | undefined;
+      return { ...harness, ...sessions[0]!, sessions, stateOf };
+    }
+
+    it('hands the session the ICE servers the mesh would have used', async () => {
+      const { backendArgs } = await inCallWith('did:someone', {
+        iceServers: 'turn:alice:s3cret@relay.example.org:3478',
+      });
+
+      expect(backendArgs[0]?.[1]).toEqual({
+        iceServers: [{ urls: 'turn:relay.example.org:3478', username: 'alice', credential: 's3cret' }],
+      });
+    });
+
+    it('shows a repair the session attempts, and clears it once the pair connects', async () => {
+      const { fire, stateOf } = await inCallWith('did:someone');
+
+      fire('peer-state', 'did:someone', 'disconnected');
+      fire('peer-recovery', 'did:someone', { rung: 'ice-restart', attempts: 1 });
+      expect(stateOf()?.connection).toBe('disconnected');
+      expect(stateOf()?.retrying, 'a pair the session is repairing says so').toBe(true);
+
+      fire('peer-state', 'did:someone', 'connected');
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(stateOf()?.retrying).toBe(false);
+      expect(stateOf()?.transport, 'read from the session once the pair connects').toBe('relay');
+    });
+
+    it('reconnects a peer through the session', async () => {
+      const { store, reconnected, stateOf } = await inCallWith('did:someone');
+
+      store.reconnectPeer('did:someone');
+
+      expect(reconnected).toEqual(['did:someone']);
+      expect(stateOf()?.retrying).toBe(true);
+    });
+
+    it('follows a participant whose stream the session replaced', async () => {
+      // A rebuilt pair has a new stream object. Holding the old one renders a dead stream.
+      const { store, session, fire } = await inCallWith('did:someone');
+      const streamOf = () =>
+        store.tiles().find((tile: { id: string }) => tile.id === 'did:someone')?.stream as MediaStream | null;
+
+      const rebuilt = new MediaStream();
+      session.participants = [{ agentDid: 'did:someone', stream: rebuilt }];
+      fire('participant-updated', { did: 'did:someone', stream: rebuilt });
+
+      expect(streamOf()).toBe(rebuilt);
+    });
+
+    it('ignores a session still emitting after the call is left', async () => {
+      // Destroying a session closes its pairs, which it reports — into state the next call inherits.
+      const { store, fire, sessions, joinedBy, stateOf } = await inCallWith('did:someone');
+      await store.leave();
+      fire('peer-state', 'did:someone', 'failed');
+      fire('peer-recovery', 'did:someone', { rung: 'rebuild', attempts: 3 });
+
+      // The next call is a different session, so the old one's handlers no longer answer.
+      await store.startCall();
+      await Promise.resolve();
+      joinedBy('did:someone');
+      sessions[1]!.fire('peer-state', 'did:someone', 'connecting');
+
+      expect(stateOf()?.connection).toBe('connecting');
+      expect(stateOf()?.retrying, 'a repair the old session reported is not this call’s').toBe(false);
+    });
+
+    /*
+      A call runs on one topology until somebody in it switches it. The space's setting only starts a
+      call; after that the call's own topology travels in every participant's call activity.
+    */
+    describe('the topology a call runs on', () => {
+      const settle = async () => {
+        for (let i = 0; i < 6; i++) await Promise.resolve();
+      };
+      const lastTopology = (activities: Record<string, unknown>[]) => activities.at(-1)?.topology;
+
+      it('starts on the space’s topology and tells the call which one it is', async () => {
+        const { backendArgs, fire, activities } = await inCallWith('did:someone');
+
+        expect(backendArgs[0]?.[1], 'a new call asks for nothing: the space decides').not.toHaveProperty('topology');
+        fire('topology-changed', 'mesh');
+        expect(lastTopology(activities)).toMatchObject({ mode: 'mesh' });
+        expect(lastTopology(activities), 'nobody switched it').not.toHaveProperty('by');
+      });
+
+      it('joins a running call on the topology its participants publish, not the space’s', async () => {
+        const sessions: ReturnType<typeof fakeSession>[] = [];
+        const harness = callable({ backend: () => sessions[sessions.push(fakeSession()) - 1]!.session });
+        harness.publishesCall('did:old', 'call-1', { topology: { mode: 'sfu', at: 1 } });
+        harness.publishesCall('did:new', 'call-1', { topology: { mode: 'mesh', at: 2, by: 'did:new' } });
+
+        harness.store.joinCall('call-1');
+        await settle();
+
+        expect(harness.backendArgs[0]?.[1], 'the newest wins').toMatchObject({ topology: 'mesh' });
+      });
+
+      it('switches everyone: a new session on the other topology, on the same devices', async () => {
+        const { store, backendArgs, sessions, fire, activities } = await inCallWith('did:someone');
+        fire('topology-changed', 'mesh');
+        await settle();
+        const joinedWith = sessions[0]!.session.joinedWith;
+
+        await store.switchTopology('sfu');
+
+        expect(sessions[0]!.session.destroyed, 'the old session is left').toBe(true);
+        expect(backendArgs[1]?.[1]).toMatchObject({ topology: 'sfu' });
+        expect(sessions[1]!.session.joinedWith, 'the same local stream, no new device prompt').toBe(joinedWith);
+        expect(lastTopology(activities), 'the switch is published for the others to follow').toMatchObject({
+          mode: 'sfu',
+          by: 'did:test:me',
+        });
+        expect(store.switchingTopology()).toBe(false);
+      });
+
+      it('follows a switch another participant made, once', async () => {
+        const { store, backendArgs, fire, publishesCall } = await inCallWith('did:someone');
+        fire('topology-changed', 'mesh');
+        const id = store.callId() as string;
+
+        publishesCall('did:someone', id, { topology: { mode: 'sfu', at: Date.now() + 1000, by: 'did:someone' } });
+        await settle();
+        publishesCall('did:someone', id, { topology: { mode: 'sfu', at: Date.now() + 1000, by: 'did:someone' } });
+        await settle();
+
+        expect(backendArgs.map((args) => (args[1] as { topology?: string }).topology)).toEqual([undefined, 'sfu']);
+      });
+
+      it('never reconnects for a topology nobody switched to', async () => {
+        // A participant who joined on another topology, say after the space's setting changed.
+        const { store, backendArgs, fire, publishesCall } = await inCallWith('did:someone');
+        fire('topology-changed', 'mesh');
+
+        publishesCall('did:someone', store.callId() as string, { topology: { mode: 'sfu', at: Date.now() + 1000 } });
+        await settle();
+
+        expect(backendArgs).toHaveLength(1);
+      });
+
+      it('does nothing when asked to switch to the topology it already runs on', async () => {
+        const { store, backendArgs, fire } = await inCallWith('did:someone');
+        fire('topology-changed', 'sfu');
+
+        await store.switchTopology('sfu');
+
+        expect(backendArgs).toHaveLength(1);
+      });
+    });
+  });
+});
+
+describe('a space’s default for new calls', () => {
+  it('is one switch between the SFU and a mesh', async () => {
+    const written: unknown[] = [];
+    const store = createCallStore({
+      signal: <T>(initial: T): [() => T, (next: T) => void] => {
+        let value = initial;
+        return [() => value, (next: T) => (value = next)];
+      },
+      state: markState,
+      action: markAction,
+      settings: () => ({}),
+      setCallConfig: async (config: unknown) => {
+        written.push(config);
+        return true;
+      },
+      kernels: {},
+    } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
+
+    expect(store.newCallsUseSfu()).toBe(false);
+    await store.setNewCallsUseSfu(true);
+    expect(written.at(-1)).toMatchObject({ mode: 'designated' });
+    expect(store.newCallsUseSfu()).toBe(true);
+    await store.setNewCallsUseSfu(false);
+    expect(written.at(-1)).toMatchObject({ mode: 'mesh' });
   });
 });
 

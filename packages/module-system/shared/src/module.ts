@@ -541,8 +541,12 @@ export interface DatasetTarget {
 
 /** Where a newly created record should be attached, and nothing else. */
 export interface CreateEntityOptions extends DatasetTarget {
-  /** The record to link this one under, by id and predicate. Creating it parented leaves no window where a crash orphans it. */
-  parent?: { id: string; predicate: string };
+  /**
+   * The record to attach this one under, and the relation of that record's it joins, by name —
+   * `{ id: call.id, relation: 'children' }`. Creating it parented leaves no window where a crash
+   * orphans it. See `ParentRef` in `@we/backend-shared`.
+   */
+  parent?: { id: string; relation: string; entity?: string };
   /**
    * File the record at the space's top level — inside its space collection, where everything
    * top-level in a space lives. For a record that belongs to the space rather than to anything in
@@ -648,6 +652,21 @@ export interface ModuleStoreDeps {
 
   /** The kernels this module declared, and no others. See `kernels.ts`. */
   kernels: Partial<ModuleKernels>;
+
+  // ── SFU / call backend ports ──────────────────────────────────────────
+  /** Factory that creates a call backend for a specific call room, with the ICE servers to use. */
+  createBackend?: (
+    callId: string,
+    options?: { iceServers?: RTCIceServer[]; topology?: 'mesh' | 'sfu' },
+  ) => Promise<unknown>;
+  /** Read the neighbourhood's call configuration (SFU topology defaults). */
+  getCallConfig?: () => Promise<unknown>;
+  /** Write the neighbourhood's call configuration. */
+  setCallConfig?: (config: unknown) => Promise<boolean>;
+  /** Whether the current backend supports call configuration. */
+  callConfigSupported?: () => boolean;
+  /** A pre-existing call backend instance (tests / hosts that already hold a Session). */
+  backend?: unknown;
 }
 
 // ── Derived facts about a definition ────────────────────────────────────────

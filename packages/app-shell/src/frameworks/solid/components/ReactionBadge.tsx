@@ -129,7 +129,7 @@ export function ReactionBadge(props: {
     const found = (await Signal.findAll(
       dataset.handle as never,
       {
-        parent: { id: record(), predicate: 'we://signal' },
+        parent: { id: record(), relation: 'signals' },
       } as never,
     )) as unknown as ReactionRow[];
     setRows(

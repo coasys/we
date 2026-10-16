@@ -593,16 +593,16 @@ describe('a board over task states that ask for agreement', () => {
   const todoCol: Col = { id: 'c1', slug: 'todo', arranges: [] };
   const doingCol: Col = { id: 'c2', slug: 'doing', arranges: [] };
   const doneCol: Col = { id: 'c3', slug: 'done', arranges: [] };
-  // `status` still says todo; the run has moved on. The run is what the board shows.
+  // `status` still says todo; the flow has moved on. The flow is what the board shows.
   const moved = { id: 't1', status: 'todo' };
   const waitingCard = { id: 't2', status: 'doing' };
   const flow = {
-    snapshot: {
-      runs: [
-        { id: 'r1', subject: 't1', state: 'doing', startedAt: 1 },
-        { id: 'r2', subject: 't2', state: 'doing', startedAt: 2 },
+    view: {
+      flow: 'TaskStates',
+      items: [
+        { subject: 't1', state: 'doing', since: 1, waiting: [], stalled: false },
+        { subject: 't2', state: 'doing', since: 2, waiting: [{ to: 'done', voters: [ANA] }], stalled: false },
       ],
-      proposals: [{ id: 'p1', run: 'r2', from: 'doing', to: 'done', proposer: ANA, voters: [ANA], settled: false }],
     },
     rules: { done: { approvals: 1, approverKind: 'reviewer' } },
   };
@@ -615,7 +615,7 @@ describe('a board over task states that ask for agreement', () => {
     flow,
   };
 
-  it('puts a card in the column its run is in, whatever its status says', () => {
+  it('puts a card in the column the flow has it in, whatever its status says', () => {
     const view = arrangedBoard({ ...base, me: ANA });
     expect(view.contents.c2.unarranged.map((r) => r.id)).toEqual(['t1', 't2']);
     expect(view.contents.c1.count).toBe(0);

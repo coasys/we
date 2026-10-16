@@ -20,6 +20,19 @@ function edge(source: string, target: string) {
 }
 
 describe('ExpansionState', () => {
+  it('says which nodes are held only by an opening, and not by a seed', () => {
+    const state = new ExpansionState();
+    state.attribute(SEED_OPENER, ['a'], []);
+    state.attribute('a', ['c'], []);
+    state.attribute('a', ['a2'], []);
+    state.attribute(SEED_OPENER, ['a2'], []);
+
+    expect(state.heldOnlyByOpening('c')).toBe(true);
+    expect(state.heldOnlyByOpening('a')).toBe(false);
+    // Opened and also seeded: the canvas holds it in its own right.
+    expect(state.heldOnlyByOpening('a2')).toBe(false);
+  });
+
   it('keeps a node that a second opener is also holding', () => {
     const store = new GraphStore();
     const state = new ExpansionState();

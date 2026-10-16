@@ -249,6 +249,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const pendingConsent = createMemo(() => consentQueue()[0] ?? null);
 
   const runtime = () => session.backendPorts()?.runtime;
+  const modelAdmin = () => session.backendPorts()?.models;
 
   const canAdminister = createMemo(() => !!runtime());
   const canManageTrust = createMemo(() => !!runtime()?.trustedAgents);
@@ -256,7 +257,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const canRestartNetwork = createMemo(() => !!runtime()?.restartNetwork);
   const canManageApps = createMemo(() => !!runtime()?.authorizedApps);
   const canManageLanguages = createMemo(() => !!runtime()?.languages);
-  const canManageAi = createMemo(() => !!runtime()?.aiModels);
+  const canManageAi = createMemo(() => !!modelAdmin()?.list);
   /**
    * Whether the models can be *changed*, not merely listed.
    *
@@ -264,8 +265,8 @@ export function RuntimeStoreProvider(props: ParentProps) {
    * `UPDATE`/`DELETE` — AD4M's own boundary, not ours. Read and write used to be one flag, so the
    * whole section vanished on a node that was perfectly happy to answer what models it runs.
    */
-  const canConfigureAi = createMemo(() => !!runtime()?.addAiModel);
-  const canDiscoverAiModels = createMemo(() => !!runtime()?.discoverAiModels);
+  const canConfigureAi = createMemo(() => !!modelAdmin()?.add);
+  const canDiscoverAiModels = createMemo(() => !!modelAdmin()?.discover);
 
   const executorHost = () => platform.executor;
   const canConfigureExecutor = createMemo(() => !!executorHost());
@@ -575,7 +576,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
   // ── AI models ────────────────────────────────────────────────────────────────
 
   async function loadAiModels(): Promise<void> {
-    const models = await run('loadAiModels', () => runtime()?.aiModels?.());
+    const models = await run('loadAiModels', () => modelAdmin()?.list?.());
     if (!models.ok || !models.value) return;
     // Statuses arrive separately and asynchronously; describe with what is known now, and let the
     // poll below fill them in. Rendering the list only once every status has landed would hide the
@@ -592,8 +593,8 @@ export function RuntimeStoreProvider(props: ParentProps) {
    * status read is also not worth reporting — the model row already says what it knows.
    */
   async function refreshAiStatuses(): Promise<void> {
-    const port = runtime();
-    if (!port?.aiModelStatus) return;
+    const port = modelAdmin();
+    if (!port?.status) return;
 
     const pending = aiModels().filter((model) => model.source.kind !== 'api' && !model.ready);
     if (!pending.length) return;
@@ -601,7 +602,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     const statuses = await Promise.all(
       pending.map(async (model) => {
         try {
-          return [model.id, await port.aiModelStatus?.(model.id)] as const;
+          return [model.id, await port.status?.(model.id)] as const;
         } catch {
           // A model the backend does not recognise yet — it stays on 'Checking…'.
           return [model.id, undefined] as const;
@@ -618,13 +619,13 @@ export function RuntimeStoreProvider(props: ParentProps) {
   }
 
   async function loadAiTasks(): Promise<void> {
-    const tasks = await run('loadAiTasks', () => runtime()?.aiTasks?.());
+    const tasks = await run('loadAiTasks', () => modelAdmin()?.tasks?.());
     if (tasks.ok && tasks.value) setAiTasks(tasks.value);
   }
 
   async function loadAiPresets(kind: AiModelKind): Promise<void> {
     if (aiPresets()[kind]) return;
-    const names = await run('loadAiPresets', () => runtime()?.aiModelPresets?.(kind));
+    const names = await run('loadAiPresets', () => modelAdmin()?.presets?.(kind));
     if (names.ok && names.value) setAiPresets((cache) => ({ ...cache, [kind]: names.value as string[] }));
   }
 
@@ -656,7 +657,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     if (!form?.apiBaseUrl.trim()) return;
     const endpoint = endpointOf(form);
     const found = await run('discoverAiModels', () =>
-      runtime()?.discoverAiModels?.({
+      modelAdmin()?.discover?.({
         protocol: form.apiProtocol,
         baseUrl: form.apiBaseUrl.trim(),
         apiKey: form.apiKey,
@@ -682,7 +683,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     if (!form || !formComplete(form)) return;
     const draft = toDraft(form);
     const saved = await run('saveAiModel', () =>
-      form.id ? runtime()?.updateAiModel?.(form.id, draft) : runtime()?.addAiModel?.(draft),
+      form.id ? modelAdmin()?.update?.(form.id, draft) : modelAdmin()?.add?.(draft),
     );
     // The form stays open on failure, holding what was typed — the error slot above it says why.
     if (!saved.ok) return;
@@ -691,15 +692,15 @@ export function RuntimeStoreProvider(props: ParentProps) {
   }
 
   async function removeAiModel(id: string): Promise<void> {
-    if ((await run('removeAiModel', () => runtime()?.removeAiModel?.(id))).ok) await loadAiModels();
+    if ((await run('removeAiModel', () => modelAdmin()?.remove?.(id))).ok) await loadAiModels();
   }
 
   async function setDefaultAiModel(id: string): Promise<void> {
-    if ((await run('setDefaultAiModel', () => runtime()?.setDefaultAiModel?.(id))).ok) await loadAiModels();
+    if ((await run('setDefaultAiModel', () => modelAdmin()?.setDefault?.(id))).ok) await loadAiModels();
   }
 
   async function removeAiTask(id: string): Promise<void> {
-    if ((await run('removeAiTask', () => runtime()?.removeAiTask?.(id))).ok) await loadAiTasks();
+    if ((await run('removeAiTask', () => modelAdmin()?.removeTask?.(id))).ok) await loadAiTasks();
   }
 
   // ── Settings ─────────────────────────────────────────────────────────────────

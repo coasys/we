@@ -1,6 +1,4 @@
 import { gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
-import { containmentPredicate } from '@shared/interpretation/transcriptTurns';
-import type { EntityManifestEntry } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
 function model(rows: Record<string, unknown>[], spy?: (options: Record<string, unknown>) => void): TurnRecord {
@@ -15,11 +13,10 @@ function model(rows: Record<string, unknown>[], spy?: (options: Record<string, u
 const deps = (rows: Record<string, unknown>[], spy?: (o: Record<string, unknown>) => void) => ({
   modelFor: (entity: string) => (entity === 'TextBlock' ? model(rows, spy) : undefined),
   handle: {},
-  containmentPredicate: 'we://child',
 });
 
 describe('gatherTranscriptTurns', () => {
-  it('reads children through the containment predicate the caller resolved', async () => {
+  it('reads a collection’s parts by the relation that holds them, never by how it is stored', async () => {
     let seen: Record<string, unknown> | undefined;
     await gatherTranscriptTurns(
       deps([], (options) => {
@@ -27,7 +24,7 @@ describe('gatherTranscriptTurns', () => {
       }),
       'call-1',
     );
-    expect(seen?.parent).toEqual({ id: 'call-1', predicate: 'we://child' });
+    expect(seen?.parent).toEqual({ id: 'call-1', relation: 'children', entity: 'CollectionBlock' });
     // With each line's thread, which is where its replies are.
     expect(seen?.include).toEqual({ thread: true });
   });
@@ -51,11 +48,6 @@ describe('gatherTranscriptTurns', () => {
       'c',
     );
     expect(turns.map((t) => t.text)).toEqual(['lunch at 1?', 'yes', 'later']);
-  });
-
-  it('returns nothing when the caller could not resolve one — a foreign space, not a bug', async () => {
-    const turns = await gatherTranscriptTurns({ ...deps([{ text: 'hi' }]), containmentPredicate: '' }, 'call-1');
-    expect(turns).toEqual([]);
   });
 
   it('normalises the epoch milliseconds the ORM parses timestamps into', async () => {
@@ -123,55 +115,6 @@ describe('gatherTranscriptTurns', () => {
       'c',
     );
     expect(turns.map((t) => t.text)).toEqual(['said', 'typed', 'mended']);
-  });
-});
-
-/**
- * Resolving the containment predicate.
- *
- * The regression this exists for: reading a *native* model's predicate from the dataset manifest,
- * which carries foreign schemas only. It always missed, so extraction gathered nothing and reported
- * "0 records found" — indistinguishable from a conversation with nothing in it — and left the parent
- * link unset, so anything written would have been invisible everywhere.
- */
-describe('containmentPredicate', () => {
-  const nativeCollection = {
-    generateSHACL: () => ({ shape: { properties: [{ name: 'children', path: 'we://child' }] } }),
-  };
-
-  const foreignManifest: EntityManifestEntry[] = [
-    {
-      name: 'CollectionBlock',
-      targetClass: 'other://CollectionBlock',
-      properties: [
-        {
-          name: 'children',
-          predicate: 'other://children',
-          type: 'uri',
-          isCollection: true,
-          required: false,
-          writable: true,
-        },
-      ],
-    },
-  ];
-
-  it('answers from the native model, which the manifest never carries', () => {
-    // The manifest is empty here exactly as it is in a real WE space: native schemas are
-    // deliberately absent from it, so this is the only source that can answer.
-    expect(containmentPredicate(() => nativeCollection, [])).toBe('we://child');
-  });
-
-  it('falls back to the manifest for a container the native registry never heard of', () => {
-    expect(containmentPredicate(() => undefined, foreignManifest)).toBe('other://children');
-  });
-
-  it('prefers the native model when both could answer', () => {
-    expect(containmentPredicate(() => nativeCollection, foreignManifest)).toBe('we://child');
-  });
-
-  it('gives up rather than guessing when neither knows', () => {
-    expect(containmentPredicate(() => undefined, [])).toBeUndefined();
   });
 });
 

@@ -14,8 +14,8 @@
  * task brought here" impossible to tell apart: putting an existing record on a canvas would have
  * reparented it, and a note the canvas owned could not be removed from view without deleting it.
  *
- * So placed records are fetched **by id**, from the placements. Containment is still read, but only
- * for what the canvas *owns* and nobody has positioned — the tray, which is a recovery surface rather
+ * So placed records are read **through the placements**. Containment is still read, but only for
+ * what the canvas *owns* and nobody has positioned — the tray, which is a recovery surface rather
  * than a third kind of membership: a placement that failed to write, or a card composed before
  * anybody said where it goes.
  *
@@ -34,17 +34,13 @@
  * queried whether or not the template anticipated it. The two together are what let a canvas hold a
  * `Sighting` nobody had heard of when this file was written.
  *
- * Placements are read first for that reason, and their node references are read as bare URIs rather
- * than hydrated: the records come back in one query per type — `where: { id: [...] }`, which is
- * native on AD4M and pushes down to a SPARQL `VALUES` clause — and are matched up here.
- *
- * Not because the reference cannot be hydrated. An untyped to-one does come back through `include`
- * as one record of its own class; what cannot come with it yet is the `counts` each card carries,
- * since a count projection written inside a nested include is dropped. Hydrating the placements
- * would therefore cost the counts, or a second pass to get them back — the same round this saves.
+ * Each placement brings its card with it: `node` is an untyped to-one, so it comes back through
+ * `include` as one record of its own class, with the `counts` the card carries computed on it. The
+ * placements, the canvas's colours and its routes are one read over all three; the tray is a second,
+ * beside it; the connections between the cards are the only round that has to wait.
  */
 import type { GraphEdge, GraphNode, GraphValue, SeedSource } from '@we/graph-protocol';
-import { entityAddress, parseAddress } from '@we/graph-protocol';
+import { entityAddress, NODE_TYPE_KEY, parseAddress } from '@we/graph-protocol';
 
 import { rowToNode } from './nodes';
 import { placementsFor, resolvePlacement } from './placements';
@@ -86,11 +82,11 @@ export interface CanvasSeedOptions {
   /** Entity holding coordinates. */
   placementEntity?: string;
   /**
-   * Types the canvas may hold, beyond whatever its placements name.
+   * Types the canvas may hold, beyond whatever its placements name — what the tray is read for.
    *
-   * One drill-down query each, so this is a real cost rather than a free "list everything" — the
-   * same bargain the collection expander makes, and the reason it is a list rather than every
-   * entity the dataset declares.
+   * One read over all of them, so a longer list costs rows rather than round trips, but it still
+   * costs rows: it is a list rather than every entity the dataset declares for the bargain the
+   * collection expander makes.
    */
   contains?: string[];
   /**
@@ -166,9 +162,11 @@ export interface CanvasSeedOptions {
    * between one more projection on a read the seed already makes and two hundred subscriptions on a
    * canvas somebody dragged three hundred things onto.
    *
-   * Only for a relation the type actually declares. A count over a relation an entity does not have
-   * is a refused query, and the refusal would take that whole type off the canvas — cards, lines and
-   * all — to save a number. A type that cannot answer simply carries no count.
+   * Only for a relation the type actually declares. A type that cannot answer simply carries no
+   * count: cards are read several kinds at a time, where a kind without the relation is left out of
+   * the count, and connections alone, where they are asked for only what they declare — since there
+   * a count over a missing relation refuses the read, and would take every line off the canvas to
+   * save a number.
    *
    * Absent for a count of zero, like every other unset field here, so a rule or a card can ask
    * whether the field is there rather than comparing it.
@@ -250,8 +248,8 @@ export interface CanvasSeedOptions {
  *
  * One, deliberately. Everything that is on a canvas is placed; the only way to be owned by one and
  * have no position is to be a card composed onto it before anybody said where, which is always a
- * `CollectionBlock`. Listing more would cost a drill-down query each, on every load and every
- * refresh, looking for what cannot be there.
+ * `CollectionBlock`. Listing more would widen the tray's read, on every load and every refresh,
+ * looking for what cannot be there.
  */
 const DEFAULT_CONTAINS = ['CollectionBlock'];
 
@@ -462,66 +460,34 @@ export function canvasSeed(): SeedSource {
         : scope;
 
       const read = (
-        entity: string,
+        entity: string | string[],
         where?: Record<string, unknown>,
         include?: Record<string, unknown>,
         from: typeof scope = scope,
+        cap = limit,
       ) =>
         context
           .query({
             entity,
             dataset,
-            limit,
+            limit: cap,
             signal,
             ...(include ? { include } : {}),
             ...(where ? { where } : { scope: from }),
           })
           .catch((error: unknown) => {
-            context.warn(`canvas: cannot read ${entity}: ${error instanceof Error ? error.message : String(error)}`);
+            const named = Array.isArray(entity) ? entity.join(', ') : entity;
+            context.warn(`canvas: cannot read ${named}: ${error instanceof Error ? error.message : String(error)}`);
             return [] as Record<string, unknown>[];
           });
 
-      const declared = (entity: string | undefined) => Boolean(entity) && shapes.some((s) => s.name === entity);
-
-      /*
-        Round one: what is on this canvas, and how this canvas draws things.
-
-        Both together, because neither needs the other — and every read here is a round trip to a
-        peer-to-peer data layer, so what decides how long a canvas takes to appear is the number of
-        *sequential* rounds rather than the number of queries. Three rounds is the floor: what is
-        placed, then the records it names, then the connections between them, each genuinely waiting
-        on the one before.
-      */
-      const [placements, styles, routes] = await Promise.all([
-        declared(placementEntity) ? read(placementEntity) : [],
-        declared(options.typeStyles) ? read(options.typeStyles as string) : [],
-        declared(options.routes) ? read(options.routes as string) : [],
-      ]);
-
-      /*
-        The one cap worth saying out loud.
-
-        Every read here is bounded at `limit`, and for most of them hitting it means some cards of
-        that kind are missing — visible, and obviously a truncation. The placements read is not like
-        the others: it is what tells round two which records to ask for, so exceeding it does not
-        drop the overflow cards, it makes them *invisible to the rest of the load entirely*. Nothing
-        else ever learns they exist.
-
-        What that looks like from the outside is a canvas that silently stops at some number of cards
-        and a person wondering where the rest of their work went. A warning cannot fetch them, but it
-        can say which of those two things happened — and the status strip already has somewhere to
-        put it.
-
-        Compared with `>=` rather than `>`: a read that came back exactly at its limit is a read that
-        was cut off, or one that happened to fill it exactly, and nothing here can tell those apart.
-        Saying so on the boundary is the honest side to err on.
-      */
-      if (placements.length >= limit) {
-        context.warn(
-          `canvas: stopped at ${limit} placed cards — anything beyond that is not on this canvas. ` +
-            `Raise the seed's \`limit\` to see the rest.`,
-        );
-      }
+      const declared = (entity: string | undefined): entity is string =>
+        Boolean(entity) && shapes.some((s) => s.name === entity);
+      /** The entity a row of a read over several was read as. */
+      const typeOfRow = (row: Record<string, unknown>): string => {
+        const entity = row[NODE_TYPE_KEY];
+        return typeof entity === 'string' ? entity : '';
+      };
 
       /*
         Which of the records on this canvas are still only suggestions — see `pending` in the options.
@@ -537,12 +503,107 @@ export function canvasSeed(): SeedSource {
       /** Types left off entirely — see `hiddenTypes`. */
       const hiddenTypes = idSet(options.hiddenTypes);
 
+      /**
+       * What a card is read with beyond its own fields: its counts — see `counts` — and, where a
+       * weight is wanted, the reactions themselves.
+       *
+       * The reactions are hydrated rather than counted, because the *values* are what an aggregate
+       * reads: a count says how many people answered, which is only one of the four things a community
+       * can mean by a reaction type.
+       *
+       * Asked of every kind at once, with no check that the kind declares the relation: a card is
+       * read through a placement whose `node` may be any kind, or in a read over several kinds, and in
+       * both a kind without the relation simply carries no count rather than refusing the read.
+       */
+      const cardFields = (weighed = true): Record<string, unknown> => ({
+        ...Object.fromEntries((options.counts ?? []).map((name) => [`$${name}Count`, { from: name, count: true }])),
+        ...(weighed && options.weigh?.signalTypeId ? { signals: true } : {}),
+      });
+      const orNothing = (fields: Record<string, unknown>) => (Object.keys(fields).length ? fields : undefined);
+
       /*
-        Placements *are* the membership: which records are on this canvas, of what type, and where.
-        Everything after this is looking those records up.
+        Round one: everything this canvas says about itself, and everything it owns. Two reads, together.
+
+        Every read here is a round trip to a peer-to-peer data layer, and each one is also a standing
+        subscription, since the engine watches the reads its seeds make. So what decides how long a
+        canvas takes to appear is the number of *sequential* rounds, and what decides what it costs
+        while it is open is the number of reads. A canvas used to take three rounds and up to eleven
+        reads: its placements, then the records they named one query per kind, then the connections.
+
+        The first read is the canvas's own furniture — its placements, colours and routes — in one
+        query over all three. Each placement brings the card it positions, with that card's counts:
+        placement is what puts a record on a canvas, so the placements already name every card, and
+        asking for the cards again by id was a whole round spent learning what the first one held.
+
+        The second is the tray: what the canvas owns and nobody has positioned, by containment, in
+        one query over every kind it can hold. It needs nothing the first one answers, so they go
+        together. Only the connections are left for a round of their own, since they cannot be asked
+        for until the ends are known.
+      */
+      const furniture = [...new Set([placementEntity, options.typeStyles, options.routes].filter(declared))];
+      const trayTypes = [
+        ...new Set(
+          (options.contains ?? DEFAULT_CONTAINS).filter(
+            // Never the entity drawn as lines: a connection is not also a card. The workshop passes the
+            // call's extraction targets here, and a call can extract connections as well as things.
+            (entity) =>
+              entity !== options.connections &&
+              entity !== placementEntity &&
+              declared(entity) &&
+              !hiddenTypes.has(entity),
+          ),
+        ),
+      ];
+      const origin = options.origin ? { [options.origin]: true } : undefined;
+      const [furnished, owned] = await Promise.all([
+        furniture.length
+          ? read(furniture, undefined, { node: { include: cardFields() } }, scope, limit * furniture.length)
+          : [],
+        trayTypes.length
+          ? read(
+              trayTypes,
+              undefined,
+              orNothing({ ...cardFields(), ...origin }),
+              membersScope,
+              limit * trayTypes.length,
+            )
+          : [],
+      ]);
+      const placements = furnished.filter((row) => typeOfRow(row) === placementEntity);
+      const styles = furnished.filter((row) => typeOfRow(row) === options.typeStyles);
+      const routes = furnished.filter((row) => typeOfRow(row) === options.routes);
+
+      /*
+        The one cap worth saying out loud.
+
+        Every read here is bounded, and for most of them hitting the bound means some cards of that
+        kind are missing — visible, and obviously a truncation. The placements are not like the
+        others: they are the membership, so exceeding the bound does not drop the overflow cards, it
+        makes them *invisible to the rest of the load entirely*. Nothing else ever learns they exist.
+
+        What that looks like from the outside is a canvas that silently stops at some number of cards
+        and a person wondering where the rest of their work went. A warning cannot fetch them, but it
+        can say which of those two things happened — and the status strip already has somewhere to
+        put it. The placements share a read with the canvas's colours and routes, so the read coming
+        back full says the same thing: something in it was cut, and it may have been a placement.
+
+        Compared with `>=` rather than `>`: a read that came back exactly at its limit is a read that
+        was cut off, or one that happened to fill it exactly, and nothing here can tell those apart.
+        Saying so on the boundary is the honest side to err on.
+      */
+      if (placements.length >= limit || (furniture.length && furnished.length >= limit * furniture.length)) {
+        context.warn(
+          `canvas: stopped at ${limit} placed cards — anything beyond that is not on this canvas. ` +
+            `Raise the seed's \`limit\` to see the rest.`,
+        );
+      }
+
+      /*
+        Placements *are* the membership: which records are on this canvas, of what type, and where —
+        and, read with their cards, the records themselves.
       */
       const positions = new Map<string, Placed>();
-      const placedIds = new Map<string, string[]>();
+      const placed: { entity: string; row: Record<string, unknown> }[] = [];
       /*
         Grouped and resolved, rather than `find`-ed.
 
@@ -552,12 +613,19 @@ export function canvasSeed(): SeedSource {
       */
       for (const [node, rows] of placementsFor(placements)) {
         const row = resolvePlacement(rows);
-        const nodeType = typeof row?.nodeType === 'string' ? row.nodeType : '';
-        // A placement whose node never linked names a type and points at nothing. Skipped rather
-        // than half-drawn, and left for a sweep — the record it meant is not knowable from here.
-        if (!row || !nodeType) continue;
+        const card = row?.node;
+        // A placement whose node never linked names a type and points at nothing, and one whose card
+        // has since been deleted points at a record that is not there. Both are skipped rather than
+        // half-drawn, and left for a sweep — the record either meant is not knowable from here.
+        if (!row || !card || typeof card !== 'object') continue;
+        const record = card as Record<string, unknown>;
+        // The kind the card was read as, which is a fact; the one the placement stored is a claim, and
+        // only the fallback.
+        const entity = typeOfRow(record) || (typeof row.nodeType === 'string' ? row.nodeType : '');
+        // A hidden type is not drawn, and a type this dataset does not declare cannot be.
+        if (!declared(entity) || hiddenTypes.has(entity) || entity === placementEntity) continue;
         positions.set(node, { x: Number(row.x) || 0, y: Number(row.y) || 0, style: placementStyle(row) });
-        placedIds.set(nodeType, [...(placedIds.get(nodeType) ?? []), node]);
+        placed.push({ entity, row: record });
       }
 
       /*
@@ -578,9 +646,8 @@ export function canvasSeed(): SeedSource {
       /*
         How each connection is drawn here, by the connection's own id.
 
-        Loaded in round one with the placements, because it needs nothing they need: it is keyed by a
-        record id, so it can be built long before the connections themselves are read. What decides
-        how long a canvas takes to appear is the number of *sequential* rounds, and this adds none.
+        Read in round one with the placements, because it needs nothing they need: it is keyed by a
+        record id, so it can be built long before the connections themselves are read.
       */
       const routeFor = new Map<string, Record<string, GraphValue>>();
       for (const row of routes) {
@@ -625,88 +692,6 @@ export function canvasSeed(): SeedSource {
         return entity ? entityAddress(dataset, entity, id) : undefined;
       };
 
-      /*
-        Two passes, because a canvas answers two questions.
-
-        Placed records come back by id — one query per type, `where: { id: [...] }`, native on AD4M
-        and pushed down as a SPARQL `VALUES` clause. By id rather than by containment because
-        placement is what puts something on a canvas: a task owned by a call belongs on this canvas
-        without being reparented into it, which asking for the canvas's children could never express.
-
-        Owned-but-unplaced records come back by containment, and are the tray.
-      */
-      const passes: { entity: string; where?: Record<string, unknown> }[] = [
-        ...[...placedIds].map(([entity, ids]) => ({ entity, where: { id: ids } })),
-        // Never the entity drawn as lines: a connection is not also a card. The workshop passes the
-        // call's extraction targets here, and a call can extract connections as well as things.
-        ...(options.contains ?? DEFAULT_CONTAINS)
-          .filter((entity) => entity !== options.connections)
-          .map((entity) => ({ entity })),
-      ];
-
-      /*
-        Round two: the records themselves, all at once.
-
-        Issued together and consumed in order, which keeps the dedup below meaning what it says — the
-        placed pass wins over the owned one — while paying one round trip for the lot instead of one
-        each. A canvas holding five kinds of thing was five sequential queries deep before anything
-        appeared.
-      */
-      // A hidden type is not asked for at all — nothing of it is drawn, so there is nothing to read.
-      const askable = passes.filter(
-        (pass) => pass.entity !== placementEntity && declared(pass.entity) && !hiddenTypes.has(pass.entity),
-      );
-
-      /*
-        The same question twice is one query.
-
-        `contains` comes from a caller — on the workshop's canvas it is the call's extraction targets,
-        which is a stored list — so a repeated entry is a thing that can happen, and every repeat cost
-        a round trip *and* a standing subscription, since the engine keys its watches on the read.
-
-        Only exact repeats. A type that is both placed and in `contains` appears twice here on
-        purpose and must stay twice: those are two different questions — "the ones positioned here",
-        by id, and "the ones this canvas owns", by containment — and the second is what finds a card
-        nobody has placed yet. They cannot be merged into one query either, because one is a `where`
-        and the other a `scope`, and the grammar has no way to ask for their union. That is a real
-        cost and it is an ad4m-side one; this only stops us paying it twice for one question.
-      */
-      const seenPass = new Set<string>();
-      const wanted = askable.filter((pass) => {
-        const key = `${pass.entity}|${JSON.stringify(pass.where ?? null)}`;
-        if (seenPass.has(key)) return false;
-        seenPass.add(key);
-        return true;
-      });
-
-      /**
-       * The count projections one type can answer — see `counts`.
-       *
-       * Filtered against the type's own declared relations, so a model with no `responses` is asked
-       * for none rather than refusing the read and vanishing off the canvas.
-       */
-      const countsFor = (entity: string, weighed = true): Record<string, unknown> | undefined => {
-        const relations = new Set((shapes.find((s) => s.name === entity)?.relations ?? []).map((r) => r.name));
-        const asked = options.counts ?? [];
-        const projections: Record<string, unknown> = Object.fromEntries(
-          asked.filter((name) => relations.has(name)).map((name) => [`$${name}Count`, { from: name, count: true }]),
-        );
-        /*
-          The reactions themselves, where a weight is wanted — see `weigh`.
-
-          Hydrated rather than counted, because the *values* are what an aggregate reads: a count says
-          how many people answered, which is only one of the four things a community can mean by a
-          reaction type. It rides in the read the seed already makes, so a canvas of three hundred cards
-          pays one projection rather than three hundred queries.
-
-          Guarded on the type declaring `signals`, exactly as a count is: a model that cannot answer is
-          asked for nothing, since a refused read would take that whole kind off the canvas rather than
-          merely leaving its cards unweighed.
-        */
-        if (weighed && options.weigh?.signalTypeId && relations.has('signals')) projections.signals = true;
-        return Object.keys(projections).length ? projections : undefined;
-      };
-
       /** What those projections answered, named as a card reads them, and only where there is any. */
       const countsOf = (row: Record<string, unknown>): Record<string, GraphValue> => {
         const data: Record<string, GraphValue> = {};
@@ -716,19 +701,6 @@ export function canvasSeed(): SeedSource {
         }
         return data;
       };
-
-      /** What a read of one type asks for beyond its fields: the counts, and where it came from. */
-      const includeFor = (entity: string): Record<string, unknown> | undefined => {
-        const counted = countsFor(entity);
-        const relations = new Set((shapes.find((s) => s.name === entity)?.relations ?? []).map((r) => r.name));
-        const origin = options.origin && relations.has(options.origin) ? { [options.origin]: true } : undefined;
-        return counted || origin ? { ...counted, ...origin } : undefined;
-      };
-
-      // A placed pass asks by id; an owned one asks the members' source — see `members`.
-      const results = await Promise.all(
-        wanted.map((pass) => read(pass.entity, pass.where, includeFor(pass.entity), membersScope)),
-      );
 
       /** Where a row came from, as an id — an included record or a bare reference, either way. */
       const originOf = (row: Record<string, unknown>): string | undefined => {
@@ -747,57 +719,64 @@ export function canvasSeed(): SeedSource {
       */
       let dropped = 0;
 
-      for (const [index, pass] of wanted.entries()) {
-        const entity = pass.entity;
+      /*
+        The placed cards first and then the tray, which is what keeps the dedup below meaning what it
+        says: a record both placed and owned answers both reads, and the placed one is the one
+        carrying a position.
+      */
+      const cards = [
+        ...placed,
+        ...owned.flatMap((row) => {
+          const entity = typeOfRow(row);
+          return entity ? [{ entity, row }] : [];
+        }),
+      ];
+      for (const { entity, row } of cards) {
         const shape = shapes.find((s) => s.name === entity);
-        for (const row of results[index]) {
-          const node = rowToNode(row, entity, dataset, shape, 'canvas');
-          if (!node) {
-            dropped += 1;
-            context.trace?.('canvas:row-dropped', { entity, keys: Object.keys(row).slice(0, 8) });
-            continue;
-          }
-          // A record both placed and owned answers both passes; the first one wins, and it is the
-          // placed one, which is the one carrying a position.
-          if (seen.has(node.id)) continue;
-          seen.add(node.id);
-          if (typeof row.id === 'string' && hidden.has(row.id)) continue;
-          // Seen first, so a record answering both passes is still left off by the first.
-          if (options.onlyFrom && originOf(row) !== options.onlyFrom) continue;
-          const at = typeof row.id === 'string' ? positions.get(row.id) : undefined;
-          /*
-            Coordinates land in `data`, where the `manual` layout reads them.
+        const node = rowToNode(row, entity, dataset, shape, 'canvas');
+        if (!node) {
+          dropped += 1;
+          context.trace?.('canvas:row-dropped', { entity, keys: Object.keys(row).slice(0, 8) });
+          continue;
+        }
+        if (seen.has(node.id)) continue;
+        seen.add(node.id);
+        if (typeof row.id === 'string' && hidden.has(row.id)) continue;
+        // Seen first, so a record answering both reads is still left off by the first.
+        if (options.onlyFrom && originOf(row) !== options.onlyFrom) continue;
+        const at = typeof row.id === 'string' ? positions.get(row.id) : undefined;
+        /*
+          Coordinates land in `data`, where the `manual` layout reads them.
 
-            Merged into the node rather than passed beside it because that is the contract a layout
-            has: it is handed nodes and returns positions, and a seed that needed its own channel to
-            the layout would be a seed only one layout could use.
-          */
-          // Type colour first, so a card's own colour lands in front of it — and both are dropped
-          // when unset, which is what lets a style rule defer to the one above it.
-          const typeColor = typeColors.get(entity);
-          const data = {
-            ...node.data,
-            // Before the canvas's own fields: a count is the record's, and nothing a placement
-            // carries is named like one, so the order is only a statement of which layer owns what.
-            ...countsOf(row),
-            // Beside the counts, and for the same reason they are before the canvas's own fields: a
-            // weight is a fact about the record rather than about this canvas's arrangement of it.
-            // What each person answered, weighed by `derive` — see `answersOn`.
-            ...(options.weigh?.signalTypeId ? answersOn(row.signals, options.weigh.signalTypeId) : {}),
-            ...(typeColor ? { canvasTypeColor: typeColor } : {}),
-            // Only when true, so a style rule matching `{ pending: true }` and one matching nothing
-            // are the two states — an explicit `false` on every other card would make "not pending"
-            // a value a rule could accidentally match on.
-            ...(typeof row.id === 'string' && pending.has(row.id) ? { pending: true } : {}),
-            ...(typeof row.id === 'string' && changed.has(row.id) ? { changed: true } : {}),
-            ...(originOf(row) ? { origin: originOf(row)! } : {}),
-            ...(at ? { ...at.style, x: at.x, y: at.y } : {}),
-          };
-          nodes.push({ ...node, data });
-          if (typeof row.id === 'string') {
-            onCanvas.add(row.id);
-            typeOf.set(row.id, entity);
-          }
+          Merged into the node rather than passed beside it because that is the contract a layout
+          has: it is handed nodes and returns positions, and a seed that needed its own channel to
+          the layout would be a seed only one layout could use.
+        */
+        // Type colour first, so a card's own colour lands in front of it — and both are dropped
+        // when unset, which is what lets a style rule defer to the one above it.
+        const typeColor = typeColors.get(entity);
+        const data = {
+          ...node.data,
+          // Before the canvas's own fields: a count is the record's, and nothing a placement
+          // carries is named like one, so the order is only a statement of which layer owns what.
+          ...countsOf(row),
+          // Beside the counts, and for the same reason they are before the canvas's own fields: a
+          // weight is a fact about the record rather than about this canvas's arrangement of it.
+          // What each person answered, weighed by `derive` — see `answersOn`.
+          ...(options.weigh?.signalTypeId ? answersOn(row.signals, options.weigh.signalTypeId) : {}),
+          ...(typeColor ? { canvasTypeColor: typeColor } : {}),
+          // Only when true, so a style rule matching `{ pending: true }` and one matching nothing
+          // are the two states — an explicit `false` on every other card would make "not pending"
+          // a value a rule could accidentally match on.
+          ...(typeof row.id === 'string' && pending.has(row.id) ? { pending: true } : {}),
+          ...(typeof row.id === 'string' && changed.has(row.id) ? { changed: true } : {}),
+          ...(originOf(row) ? { origin: originOf(row)! } : {}),
+          ...(at ? { ...at.style, x: at.x, y: at.y } : {}),
+        };
+        nodes.push({ ...node, data });
+        if (typeof row.id === 'string') {
+          onCanvas.add(row.id);
+          typeOf.set(row.id, entity);
         }
       }
 
@@ -822,7 +801,14 @@ export function canvasSeed(): SeedSource {
           remove one can tell, before it is let go, that this one has been discussed. Not weighed: a weight
           is what orders cards, and nothing orders lines.
         */
-        for (const row of await read(connections, { source: ends }, countsFor(connections, false))) {
+        // Read alone, so asked only for what the type declares: a count over a relation it does not
+        // have refuses a one-entity read, and that would take every line off the canvas to save a number.
+        const relations = new Set((shapes.find((s) => s.name === connections)?.relations ?? []).map((r) => r.name));
+        const counted = Object.entries(cardFields(false)).filter(([key, spec]) =>
+          relations.has(key.startsWith('$') ? (spec as { from: string }).from : key),
+        );
+        const include = counted.length ? Object.fromEntries(counted) : undefined;
+        for (const row of await read(connections, { source: ends }, include)) {
           const source = typeof row.source === 'string' ? row.source : undefined;
           const target = typeof row.target === 'string' ? row.target : undefined;
           if (!source || !target || !onCanvas.has(source) || !onCanvas.has(target)) continue;
@@ -863,7 +849,12 @@ export function canvasSeed(): SeedSource {
       context.trace?.('canvas:built', {
         canvas: options.canvas,
         placements: placements.length,
-        rows: Object.fromEntries(wanted.map((pass, index) => [pass.entity, results[index].length])),
+        rows: Object.fromEntries(
+          [...placed.map((card) => card.entity), ...owned.map(typeOfRow)].reduce(
+            (tally, entity) => tally.set(entity, (tally.get(entity) ?? 0) + 1),
+            new Map<string, number>(),
+          ),
+        ),
         nodes: nodes.length,
         edges: edges.length,
         routes: routeFor.size,

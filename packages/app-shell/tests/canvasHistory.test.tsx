@@ -185,6 +185,14 @@ describe('undoing a move', () => {
     expect(spotOf('n1')).toEqual({ x: 900, y: 900 });
   });
 
+  // A card only an opening put on the canvas — a note's blocks — written as a placement joined the
+  // canvas in its own right, and stayed behind, cut off, when the note closed.
+  it('writes nothing for a card that is on the canvas only because its parent was opened', async () => {
+    const store = mount();
+    await store.dragOnCanvas(CANVAS, { recordId: 'b1', recordType: 'TextBlock', x: 40, y: 40, opened: true });
+    expect(spotOf('b1')).toBeNull();
+  });
+
   it('undoes a multi-card drag on one press', async () => {
     // Twelve cards dragged as one have to come back as one press. A stack that recorded them
     // separately would need twelve, which is not undo, it is counting.

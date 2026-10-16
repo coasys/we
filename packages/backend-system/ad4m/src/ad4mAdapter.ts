@@ -34,7 +34,7 @@
  * (which, per the note above, refuses) — see {@link Disposition}. The real fix is upstream; when it
  * lands, grep `sort:needs-limit` and delete that block.
  */
-import type { PerspectiveProxy } from '@coasys/ad4m';
+import { Ad4mModel, type PerspectiveProxy, type Query } from '@coasys/ad4m';
 import type {
   AdapterCapabilities,
   CapabilityGap,
@@ -51,6 +51,7 @@ import type {
 import { irToFlatQuery, planQuery } from '@we/backend-shared';
 import { type EntityClass as Ad4mEntityClass, getEntity, getEntityForDataset } from '@we/entities';
 
+import { toAd4mPredicate } from './containment';
 import type { EntityManifestEntry } from './manifestTypes';
 
 /**
@@ -113,6 +114,25 @@ export function toRendererEntity(Model: Ad4mEntityClass): RendererEntityClass {
 }
 
 /**
+ * Several model classes as one handle, which the executor answers as one query: `findAllOf` for a
+ * read and `queryOf` for a live one, whose single subscription re-runs on a change to any of them.
+ * Each row comes back as the class the executor read it as, under `__subjectClass`.
+ */
+export function toRendererUnion(Models: Ad4mEntityClass[]): RendererEntityClass {
+  const classes = Models as unknown as (typeof Ad4mModel)[];
+  return {
+    query: (dataset, opts) =>
+      Ad4mModel.queryOf(asPerspective(dataset), classes, opts as Query) as unknown as ReturnType<
+        RendererEntityClass['query']
+      >,
+    findAll: (dataset, opts, ctl) =>
+      Ad4mModel.findAllOf(asPerspective(dataset), classes, opts as Query, ctl) as unknown as ReturnType<
+        RendererEntityClass['findAll']
+      >,
+  };
+}
+
+/**
  * What the AD4M adapter needs from the host to satisfy the data contract.
  *
  * Declared structurally rather than as `AdamStore` on purpose: that interface lives under
@@ -165,7 +185,13 @@ export function createAd4mDataBindings(
   deps: Ad4mAdapterDeps,
 ): Pick<
   RendererDataBindings,
-  '$getEntity' | '$getEntityForDataset' | '$currentDataset' | '$identities' | '$queryAdapter' | '$ephemeral'
+  | '$getEntity'
+  | '$getEntityForDataset'
+  | '$getEntitiesForDataset'
+  | '$currentDataset'
+  | '$identities'
+  | '$queryAdapter'
+  | '$ephemeral'
 > {
   return {
     // Adapted, not raw: AD4M's model statics take a `PerspectiveProxy` and AD4M's own query shape,
@@ -174,6 +200,12 @@ export function createAd4mDataBindings(
     $getEntityForDataset: (name, dataset) => {
       const model = getEntityForDataset(name, dataset);
       return model ? toRendererEntity(model) : undefined;
+    },
+    $getEntitiesForDataset: (names, dataset) => {
+      const models = names
+        .map((name) => getEntityForDataset(name, dataset))
+        .filter((model): model is Ad4mEntityClass => Boolean(model));
+      return models.length ? toRendererUnion(models) : undefined;
     },
     // The renderer treats this as opaque and hands it straight back, so the proxy passes through
     // untouched — no flattening to an id, no re-resolution on the way in.
@@ -273,14 +305,16 @@ function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): Reco
     scope.direction === 'in' ||
     scope.limitPerAnchor !== undefined ||
     scope.levels !== undefined;
-  if (!bounded) return { id: scope.anchorId, predicate: prop.predicate };
+  // A core entry names containment by its neutral key; a foreign one already holds the AD4M spelling.
+  const predicate = toAd4mPredicate(prop.predicate);
+  if (!bounded) return { id: scope.anchorId, predicate };
 
   // Anything more is the executor's traverse form, which names its anchors as `ids`. An empty list
   // stays an empty list rather than being dropped: "the replies to none of these" answers with
   // nothing, where omitting the scope would answer with the whole space.
   return {
     ids: Array.isArray(scope.anchorId) ? scope.anchorId : [scope.anchorId],
-    predicate: prop.predicate,
+    predicate,
     ...(scope.transitive ? { transitive: true } : {}),
     ...(scope.direction === 'in' ? { direction: 'in' } : {}),
     ...(scope.limitPerAnchor !== undefined ? { limitPerAnchor: scope.limitPerAnchor } : {}),

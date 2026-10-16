@@ -219,6 +219,31 @@ export type IncludeExtras<T extends RecordInstance, I> =
         }
     : unknown;
 
+// ── Where a record is attached ────────────────────────────────────────────────────────────────────
+
+/**
+ * A record to attach under, and the relation of that record's it joins — by **name**, as the parent's
+ * entity declares it: `{ id: post.id, relation: 'children' }`, `{ id: task.id, relation: 'responses' }`.
+ *
+ * Never by how the relation is stored. A predicate is one backend's address for a relation, and a
+ * contract that took one made every caller spell that backend's storage, and every other backend map
+ * it back to a relation by searching for it. `entity` names the parent's entity where the name alone
+ * does not decide — two entities declaring a relation of the same name stored differently — and is
+ * otherwise left out.
+ */
+export interface ParentRef {
+  id: string;
+  relation: string;
+  entity?: string;
+}
+
+/** What a write may say besides its fields: where it goes, and the batch it belongs to. */
+export interface CreateOptions {
+  parent?: ParentRef;
+  batchId?: string;
+  [option: string]: unknown;
+}
+
 // ── Query and statics ──────────────────────────────────────────────────────────────────────────
 
 export interface TypedEntityQuery<T extends RecordInstance> {
@@ -234,8 +259,8 @@ export interface TypedEntityQuery<T extends RecordInstance> {
   limit?: number;
   offset?: number;
   count?: boolean;
-  /** Backend-specific parent/scope handle — resolved by the adapter, opaque here. */
-  parent?: Record<string, unknown>;
+  /** Only records held under this one, through this relation — see {@link ParentRef}. */
+  parent?: ParentRef;
   deepQuery?: boolean;
 }
 
@@ -323,7 +348,7 @@ export interface EntityStatic<T extends RecordInstance> {
    * instances carry relation keys holding whatever the relation held at that instant). The narrower
    * type is the promise every backend can keep, and the wider one was read as a guarantee.
    */
-  create(dataset: unknown, properties: WriteProperties<T>, options?: Record<string, unknown>): Promise<NewRecord<T>>;
+  create(dataset: unknown, properties: WriteProperties<T>, options?: CreateOptions): Promise<NewRecord<T>>;
   findAll<Q extends TypedEntityQuery<T>>(dataset: unknown, query?: Q): Promise<(T & IncludeExtras<T, IncludeOf<Q>>)[]>;
   findOne<Q extends TypedEntityQuery<T>>(
     dataset: unknown,

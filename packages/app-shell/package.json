@@ -43,7 +43,7 @@
     }
   },
   "dependencies": {
-    "@coasys/ad4m": "0.13.1-staging.1",
+    "@coasys/ad4m": "0.13.1-staging.2",
     "@solidjs/router": "^0.16.3",
     "@we/ai-context": "workspace:*",
     "@we/backend-ad4m": "workspace:*",
@@ -63,6 +63,7 @@
     "@we/history": "workspace:*",
     "@we/module-call": "workspace:*",
     "@we/module-globe": "workspace:*",
+    "@we/module-flux": "workspace:*",
     "@we/module-graph": "workspace:*",
     "@we/module-live": "workspace:*",
     "@we/module-notes": "workspace:*",

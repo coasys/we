@@ -20,6 +20,7 @@ ships is the seed's `modules` list; which a space enables and which an agent ins
 | `@we/module-call`       | WebRTC calls: the module built on kernels (`presence`, `ephemeral`, `media`, `peerConnection`)                                              |
 | `@we/module-transcribe` | Speech-to-text and extraction over the backend's ports, with two panels and a `restrict` setting                                            |
 | `@we/module-graph`      | Placeable graph fragments and the plugin catalogue over `packages/graph-system/`; contributes `GraphView`                                   |
+| `@we/module-flux`       | Reads a Flux subgroup's messages, which no shape declares — the module that needs one backend (`backends: ['ad4m']`) and says so            |
 | globe family            | `globe/module` (`@we/module-globe`) · `globe/protocol` · `globe/layers` · `globe/widget` — the Cesium globe as module + layer plugin system |
 
 ## The contract in one paragraph

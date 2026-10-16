@@ -28,6 +28,12 @@ export type EntityManifestProperty = {
    * of an entry reads the answer rather than re-deriving the default from an empty `relatedEntity`.
    */
   polymorphic?: boolean;
+  /**
+   * Relations only: the link belongs to the other end, and this one reads it backwards — see
+   * `RelationSchema.reverseOf`. A backend needs it to read the relation the right way round: without
+   * it, `partOf` through `we://child` reads this record's own children instead of its container.
+   */
+  reverse?: boolean;
 };
 
 export type EntityManifestEntry = {
@@ -134,6 +140,7 @@ export function manifestEntries(
             ...(spec.target ? { relatedEntity: spec.target } : {}),
             ...(spec.ordered ? { ordered: true } : {}),
             ...(resolvesPolymorphically(spec) ? { polymorphic: true } : {}),
+            ...(spec.reverseOf ? { reverse: true } : {}),
             ...(spec.interpretationHint ? { interpretationHint: spec.interpretationHint } : {}),
           })),
       ],

@@ -771,7 +771,11 @@
     top: var(--we-space-100);
   }
 
-  &::after {
+  /*
+    Only where the content runs past the card — measured by the renderer, see `watchOverflow`. Over a
+    one-line card the fade's fixed height covered half the text.
+  */
+  &--overflows::after {
     content: '';
     position: absolute;
     inset: auto 0 0;
@@ -808,6 +812,9 @@
   -webkit-line-clamp: 5;
   -webkit-box-orient: vertical;
   overflow: hidden;
+
+  // A label written on several lines keeps them — a flow's step, its rules under its name.
+  white-space: pre-line;
 }
 
 .we-graph__more--card {
@@ -815,6 +822,18 @@
   right: var(--we-space-200);
   bottom: var(--we-space-200);
   color: inherit;
+}
+
+/*
+  A card's caret, where it is the card's only control — see `caretInCorner`. Inside the card's top-right
+  corner, above its content, taking its own presses like the badge below.
+*/
+.we-graph__corner-caret {
+  position: absolute;
+  top: var(--we-space-100);
+  right: var(--we-space-100);
+  z-index: 2;
+  pointer-events: auto;
 }
 
 /*

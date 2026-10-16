@@ -133,7 +133,6 @@ export interface HintEntityView {
 
 export interface HintEditorRow {
   name: string;
-  predicate: string;
   hint: string;
   /** What the declaration ships — the value reset returns to. */
   defaultHint: string;
@@ -335,7 +334,7 @@ export interface ShapeStore {
    * `recordStore.recordDraftDirty` exists.
    */
   hintEditorDirty: () => boolean;
-  /** key is 'class' for the class hint, or a property predicate. */
+  /** key is 'class' for the class hint, or a property's name. */
   setHintDraft: (key: string, value: string) => void;
   saveHintEditor: () => Promise<void>;
   /** Back to the declaration's hints; release improvements flow again. */
@@ -1159,7 +1158,7 @@ export function ShapeStoreProvider(props: ParentProps) {
   /** The declared (shipped) hints for an entity, from whichever manifest declares it. */
   function declaredHintSource(entity: string): {
     classHint: string;
-    rows: { name: string; predicate: string; hint: string }[];
+    rows: { name: string; hint: string }[];
   } {
     const shape = spaceShapes().find((s) => s.name === entity && s.manifest);
     const manifest = shape?.manifest ?? CORE_MANIFEST;
@@ -1168,7 +1167,7 @@ export function ShapeStoreProvider(props: ParentProps) {
       classHint: entry?.interpretationHint ?? '',
       rows: (entry?.properties ?? [])
         .filter((p) => p.type !== 'uri')
-        .map((p) => ({ name: p.name, predicate: p.predicate, hint: p.interpretationHint ?? '' })),
+        .map((p) => ({ name: p.name, hint: p.interpretationHint ?? '' })),
     };
   }
 
@@ -1189,8 +1188,7 @@ export function ShapeStoreProvider(props: ParentProps) {
         defaultClassHint: declared.classHint,
         rows: declared.rows.map((row) => ({
           name: row.name,
-          predicate: row.predicate,
-          hint: hintToDisplay({ stored: stored?.propHints[row.predicate], declared: row.hint, customized }),
+          hint: hintToDisplay({ stored: stored?.propHints[row.name], declared: row.hint, customized }),
           defaultHint: row.hint,
         })),
         customized,
@@ -1243,7 +1241,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     if (key === 'class') {
       editor.classHint = value;
     } else {
-      const row = editor.rows.find((r) => r.predicate === key);
+      const row = editor.rows.find((r) => r.name === key);
       if (row) row.hint = value;
     }
   }
@@ -1257,7 +1255,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     try {
       await ports.setInterpretationHints(dataset, editor.entity, {
         classHint: editor.classHint,
-        propHints: Object.fromEntries(editor.rows.map((row) => [row.predicate, row.hint])),
+        propHints: Object.fromEntries(editor.rows.map((row) => [row.name, row.hint])),
       });
       setHintEditor(null);
       toastService.success(`Hints for ${editor.entity} saved for this space`);

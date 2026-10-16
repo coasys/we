@@ -17,6 +17,7 @@ import type {
   AiModelDraft,
   BackendPorts,
   ConsentRequest,
+  ModelAdminPort,
   PeerRecords,
   RuntimeAdminPort,
 } from '@we/backend-shared';
@@ -321,25 +322,25 @@ describe('AI models', () => {
     source: { kind: 'preset', name: 'llama_8b' },
   };
 
-  /** A runtime port with the AI members, recording what it was asked. */
-  function aiPort(overrides: Partial<RuntimeAdminPort> = {}) {
+  /** A model admin port, recording what it was asked. */
+  function aiPort(overrides: Partial<ModelAdminPort> = {}) {
     const calls: string[] = [];
-    const port: RuntimeAdminPort = {
-      async aiModels() {
-        calls.push('aiModels');
+    const port: ModelAdminPort = {
+      async list() {
+        calls.push('list');
         return [gpt, local];
       },
-      async aiModelPresets() {
+      async presets() {
         calls.push('presets');
         return ['llama_8b', 'mistral_7b'];
       },
-      async addAiModel(draft) {
+      async add(draft) {
         calls.push(`add:${draft.name}`);
       },
-      async updateAiModel(id, draft) {
+      async update(id, draft) {
         calls.push(`update:${id}:${draft.name}`);
       },
-      async aiModelStatus() {
+      async status() {
         calls.push('status');
         return { downloaded: false, loaded: false, progress: 30, status: 'fetching' };
       },
@@ -349,7 +350,7 @@ describe('AI models', () => {
   }
 
   it('sets protocol and URL from a named service, and keeps them as a starting point for a custom one', () => {
-    ports = { runtime: aiPort().port };
+    ports = { models: aiPort().port };
     const store = mount();
 
     store.newAiModel();
@@ -371,11 +372,11 @@ describe('AI models', () => {
   it('saves an Ollama model with its context limit, and says why a limit it cannot read holds Save', async () => {
     const saved: AiModelDraft[] = [];
     const { port } = aiPort({
-      async addAiModel(draft) {
+      async add(draft) {
         saved.push(draft);
       },
     });
-    ports = { runtime: port };
+    ports = { models: port };
     const store = mount();
 
     store.newAiModel();
@@ -396,19 +397,19 @@ describe('AI models', () => {
   });
 
   it('offers no model listing where the backend cannot ask', () => {
-    ports = { runtime: aiPort().port };
+    ports = { models: aiPort().port };
     expect(mount().canDiscoverAiModels()).toBe(false);
   });
 
   it('lists the models an endpoint serves, and forgets them when the endpoint changes', async () => {
     const asked: unknown[] = [];
     const { port } = aiPort({
-      async discoverAiModels(query) {
+      async discover(query) {
         asked.push(query);
         return ['claude-sonnet-5', 'claude-haiku-4-5'];
       },
     });
-    ports = { runtime: port };
+    ports = { models: port };
     const store = mount();
 
     store.newAiModel();
@@ -429,11 +430,11 @@ describe('AI models', () => {
 
   it('says why a listing failed, and offers nothing to pick', async () => {
     const { port } = aiPort({
-      async discoverAiModels() {
+      async discover() {
         throw new Error('Anthropic API error 401: invalid x-api-key');
       },
     });
-    ports = { runtime: port };
+    ports = { models: port };
     const store = mount();
 
     store.newAiModel();
@@ -446,7 +447,7 @@ describe('AI models', () => {
 
   it('polls status only for models the backend hosts', async () => {
     const { port, calls } = aiPort();
-    ports = { runtime: port };
+    ports = { models: port };
     const store = mount();
 
     await store.loadAiModels();
@@ -460,7 +461,7 @@ describe('AI models', () => {
 
   it('saves a new model as an add, and an edited one as an update', async () => {
     const { port, calls } = aiPort();
-    ports = { runtime: port };
+    ports = { models: port };
     const store = mount();
     await store.loadAiModels();
 
@@ -481,7 +482,7 @@ describe('AI models', () => {
 
   it('refuses to save a form that is missing what its source needs', async () => {
     const { port, calls } = aiPort();
-    ports = { runtime: port };
+    ports = { models: port };
     const store = mount();
 
     store.newAiModel();
@@ -496,11 +497,11 @@ describe('AI models', () => {
 
   it('keeps the form open when the save fails, so the typing is not lost', async () => {
     const { port } = aiPort({
-      async addAiModel() {
+      async add() {
         throw new Error('model type not supported');
       },
     });
-    ports = { runtime: port };
+    ports = { models: port };
     const store = mount();
 
     store.newAiModel();
@@ -515,12 +516,12 @@ describe('AI models', () => {
   it('offers presets for the kind the form is on, and refetches when it changes', async () => {
     const asked: string[] = [];
     const { port } = aiPort({
-      async aiModelPresets(kind) {
+      async presets(kind) {
         asked.push(kind);
         return kind === 'llm' ? ['llama_8b'] : ['whisper_small'];
       },
     });
-    ports = { runtime: port };
+    ports = { models: port };
     const store = mount();
 
     store.newAiModel();

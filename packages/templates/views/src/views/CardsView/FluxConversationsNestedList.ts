@@ -29,8 +29,9 @@ const caretIcon = (openField: string): SchemaNode => ({
 
 // Subgroup's messages disclosure — messages have no typed relation on ConversationSubgroup
 // (they're heterogeneous: message/post/task), so they can't be reached via $query/parent.
-// Fetched lazily on first expand through spaceStore.getSubgroupMessages, a raw SPARQL query
-// mirroring Flux's own ConversationSubgroup.itemsData(). subgroupMessages stays null until
+// Fetched lazily on first expand through the flux module's subgroupMessages, which asks the way
+// Flux's own ConversationSubgroup.itemsData() does. Where that module is not installed the action
+// reads as nothing and the disclosure stays empty. subgroupMessages stays null until
 // loaded, then holds the (possibly empty) array — an empty array is still truthy in JS, so
 // local.subgroupMessages alone distinguishes "not yet loaded" from "loaded".
 const subgroupMessagesToggle: SchemaNode = {
@@ -46,7 +47,7 @@ const subgroupMessagesToggle: SchemaNode = {
         $if: {
           condition: { $: '!local.subgroupMessages' },
           then: {
-            $action: 'spaceStore.getSubgroupMessages',
+            $action: 'modules.flux.subgroupMessages',
             args: [{ $: 'subgroup.id' }],
             onSuccess: [{ $setLocal: 'subgroupMessages', value: { $: 'result' } }],
           },
