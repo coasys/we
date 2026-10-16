@@ -28,9 +28,12 @@
  * agreed. A vote is an `acceptedBy` link naming its voter, and counts only when that voter signed it
  * — the engine's own rule, which stops one agent writing votes for others. Read here the same way.
  *
- * **There is no flow subscription.** A run's state is a cache the executor rewrites when it derives
- * one — after a local vote, or ~300 ms after a peer's arrives — so watching means watching the links
- * that change when anything about a run does, and re-reading.
+ * **A run's state is not on the graph.** The executor derives it and keeps what each agent last
+ * derived in its own tables, with which proposals settled a move. Neither is a link a query can see:
+ * the state is read through `FlowInstance`, the settled proposals through `flowFired`, and a change
+ * to either arrives as a `flow-state-changed` event — after a local vote, ~300 ms after a peer's
+ * arrives, or when the executor first derives a run that synced in. Watching is that event plus the
+ * links of what has not settled yet (a run begun, a proposal, a vote), then a re-read.
  *
  * **Refusals are sentences.** The engine names why it refused a move only in its message, so the
  * three it gives — not reachable, guard unmet, contested — are read out of it here and nowhere else.
@@ -92,8 +95,6 @@ export const AD4M_FLOW_CAPABILITIES: FlowCapabilities = {
 const HAS_STATE = 'ad4m://hasState';
 const HAS_TRANSITION = 'ad4m://hasTransition';
 const ACCEPTED_BY = 'ad4m://acceptedBy';
-const RESOLVED_AS = 'ad4m://flow/resolved_as';
-const FIRED = 'fired';
 /** The engine's name for the record a run is about, substituted where a rule or guard is read. */
 const BASE = '$flow.base';
 
@@ -125,17 +126,12 @@ const DEFINITION_PREDICATES = new Set([
 ]);
 
 /**
- * The links whose change means something about a run changed: a run begun, a proposal made, a vote,
- * a move marked, a state re-derived. One subscription each, written as the plainest SPARQL there is
- * — the executor decides which diffs re-run a subscription from the predicates named in its text.
+ * The links whose change means something about a run changed before anything settles: a run begun, a
+ * proposal made, a vote. A move and a re-derived state are not links; they arrive as
+ * `flow-state-changed`. One subscription each, written as the plainest SPARQL there is — the executor
+ * decides which diffs re-run a subscription from the predicates named in its text.
  */
-const WATCHED_PREDICATES = [
-  'ad4m://flow/base',
-  'ad4m://flow/to_state',
-  ACCEPTED_BY,
-  RESOLVED_AS,
-  'ad4m://flow/current_state',
-];
+const WATCHED_PREDICATES = ['ad4m://flow/base', 'ad4m://flow/to_state', ACCEPTED_BY];
 
 /** How long a watch with nobody listening lingers, for a watcher that is about to come straight back. */
 const WATCH_GRACE_MS = 1500;
@@ -425,10 +421,12 @@ async function readProposals(perspective: PerspectiveProxy, runs: readonly Run[]
   const mine = rows.filter((row) => runIds.has(row.flowInstance));
   if (!mine.length) return [];
 
-  // Two reads for every proposal at once, rather than two per proposal.
-  const [votes, marks] = await Promise.all([
+  // One read for every vote at once, and one per run with proposals for what settled — the executor
+  // answers settled proposals per run, and keeps them per agent, so there is no link to read instead.
+  const runsWithProposals = [...new Set(mine.map((row) => row.flowInstance))];
+  const [votes, firedPerRun] = await Promise.all([
     perspective.get(new LinkQuery({ predicate: ACCEPTED_BY })),
-    perspective.get(new LinkQuery({ predicate: RESOLVED_AS })),
+    Promise.all(runsWithProposals.map((run) => perspective.flowFired(run))),
   ]);
   const votersOf = new Map<string, string[]>();
   for (const vote of votes as LinkExpression[]) {
@@ -440,9 +438,7 @@ async function readProposals(perspective: PerspectiveProxy, runs: readonly Run[]
     if (!list.includes(voter)) list.push(voter);
     votersOf.set(vote.data.source, list);
   }
-  const fired = new Set(
-    (marks as LinkExpression[]).filter((mark) => didOf(mark.data.target) === FIRED).map((mark) => mark.data.source),
-  );
+  const fired = new Set(firedPerRun.flat());
 
   return mine.map((row) => {
     const proposedAt = millisOf((row as { createdAt?: unknown }).createdAt);
@@ -645,17 +641,21 @@ export function createAd4mFlowPort(selfId: () => string | undefined = () => unde
     let watch = watches.get(perspective);
     if (!watch) {
       const listeners = new Set<() => void>();
-      const started = Promise.all(
-        WATCHED_PREDICATES.map((predicate) =>
+      const notify = (cause: string) => {
+        trace('flows', 'changed', { cause });
+        for (const listener of [...listeners]) listener();
+      };
+      const started = Promise.all([
+        ...WATCHED_PREDICATES.map((predicate) =>
           perspective.subscribeQuery(`SELECT ?s ?o WHERE { ?s <${predicate}> ?o }`).then((sub) => {
-            sub.onResult(() => {
-              trace('flows', 'changed', { predicate });
-              for (const listener of [...listeners]) listener();
-            });
+            sub.onResult(() => notify(predicate));
             return sub;
           }),
         ),
-      );
+        // Every flow on the perspective at once, and only this agent's: the executor delivers a
+        // state change to the sockets of the agent whose pass derived it.
+        Promise.resolve({ dispose: perspective.onFlowStateChanged(() => notify('flow-state-changed')) }),
+      ]);
       const created: Watch = { listeners, started };
       watches.set(perspective, created);
       // A watch that never started holds nothing; the next caller asks again.
