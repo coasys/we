@@ -2898,14 +2898,19 @@ AppStore:
 
 BundleStore:
 - State:
-  - pendingInstall: { name, icon, version, author, fileName, updates, adds, capabilities, blocked, modulesToTurnOn, modulesNotInBuild, recordTypes, recordTypesHere, spaceName, display } | null — the app an install prompt is asking about, everything already in the words a person reads. `author` is what the file claims and nothing attests to it; `updates` is the version already installed, empty for a first install; `recordTypesHere` is `add` (added to the space on screen), `ask` (this agent does not run it) or `none`; `display` is `ours` (every space opens in the app’s template while it is in use) or `theirs`. Host chrome only: an app must never draw the prompt vouching for it
-  - installed: { id, name, icon, version, from, setUp }[] — the apps this agent has installed (`from: file`) and those built into the deployment (`from: deployment`, which cannot be removed). `setUp` says whether the space on screen has the record types and sections the app needs: `done`, `available` (you run it — offer setUpSpace), `ask` (someone else runs it) or `none`
+  - pendingInstall: { name, icon, version, author, fileName, updates, adds, capabilities, blocked, modulesToTurnOn, modulesNotInBuild, recordTypes, needsSpace, display } | null — the app an install prompt is asking about, everything already in the words a person reads. `author` is what the file claims and nothing attests to it; `updates` is the version already installed, empty for a first install; `needsSpace` says it brings record types or sections, so the prompt lists spaceChoices; `display` is `ours` (every space opens in the app’s template while it is in use) or `theirs`. Host chrome only: an app must never draw the prompt vouching for it
+  - installed: { id, name, icon, version, from, setUp }[] — the apps this agent has installed (`from: file`) and those built into the deployment (`from: deployment`, which cannot be removed). `setUp` says whether the spaces this agent runs have the record types and sections the app needs: `done` (all of them), `available` (offer openSetUp) or `none` (it needs nothing, or this agent runs no space)
   - busy: boolean — an install, a set-up or a removal is in flight
+  - spaceChoices: { id, name, avatar, chosen, done, here }[] — the spaces this agent runs, for the app the install prompt or the set-up picker is about; empty with neither open. A checklist: `chosen` is ticked (toggleSpace), `done` is already set up and has nothing to tick, `here` is the space on screen — ticked to start with, since that is where somebody asked from
+  - setUpPicker: { id, name, icon } | null — the app the set-up picker is open for. Its non-nullness is what mounts the picker
 - Actions:
   - installFromFile(file: File): reads an app from a file — a we-file-upload’s change event passes it as event.detail — and raises the install prompt, or a toast saying why it cannot be installed. Writes nothing
-  - confirmInstall(): installs what the prompt is showing — its app, templates and theme into this agent’s library, the modules it needs turned on, its record types added to the space on screen when this agent runs it — and makes its app the one in use. Host chrome only
+  - confirmInstall(): installs what the prompt is showing — its app, templates and theme into this agent’s library, the modules it needs turned on, its record types and sections into every space ticked in spaceChoices — and makes its app the one in use. Host chrome only
   - cancelInstall(): closes the install prompt without installing
-  - setUpSpace(bundleId: string): adds an app’s record types to the space on screen and switches its sections on. Only for whoever runs the space
+  - toggleSpace(spaceId: string): ticks or unticks one space in spaceChoices
+  - openSetUp(bundleId: string): opens the set-up picker for an app, with the space on screen ticked when this agent runs it
+  - closeSetUp(): closes the set-up picker without setting anything up
+  - confirmSetUp(): adds the picker’s app’s record types to every ticked space, copies its sections in and switches them on — for everybody in each. Only spaces this agent runs are ever offered
   - removeBundle(bundleId: string): removes an installed app: its app, templates and theme. Never its record types, which hold the records people made with it
 
 ClockStore:

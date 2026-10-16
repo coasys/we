@@ -2247,9 +2247,24 @@ export const contextData: ContextData = {
     },
     {
       name: 'bundleStore',
-      state: { pendingInstall: { type: 'object' }, installed: { type: 'array' }, busy: { type: 'boolean' } },
-      actions: ['installFromFile', 'confirmInstall', 'cancelInstall', 'setUpSpace', 'removeBundle'],
-      ambient: ['cancelInstall'],
+      state: {
+        pendingInstall: { type: 'object' },
+        installed: { type: 'array' },
+        busy: { type: 'boolean' },
+        spaceChoices: { type: 'array' },
+        setUpPicker: { type: 'object' },
+      },
+      actions: [
+        'installFromFile',
+        'confirmInstall',
+        'cancelInstall',
+        'toggleSpace',
+        'openSetUp',
+        'closeSetUp',
+        'confirmSetUp',
+        'removeBundle',
+      ],
+      ambient: ['cancelInstall', 'toggleSpace', 'openSetUp', 'closeSetUp'],
       destructive: ['removeBundle'],
     },
     {

@@ -1253,16 +1253,21 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     Apps installed as data. All `library`, so at the chrome tier only — the app a person is in, its
     install prompt and its removal are theirs, never a space's. The prompt is host chrome for the
     reason `templateStore.pendingInstall` is (a dialog vouching for an app must not be drawn by one), and
-    `setUpSpace` writes into the space on screen but checks for itself that whoever presses it runs it.
+    `confirmSetUp` writes only into spaces `spaceChoices` offered, which are the ones this agent runs.
   */
   bundleStore: {
     pendingInstall: state('library'),
     installed: state('library'),
     busy: state('library'),
+    spaceChoices: state('library'),
+    setUpPicker: state('library'),
     installFromFile: action('library'),
     confirmInstall: action('library'),
     cancelInstall: ambient('library'),
-    setUpSpace: action('library'),
+    toggleSpace: ambient('library'),
+    openSetUp: ambient('library'),
+    closeSetUp: ambient('library'),
+    confirmSetUp: action('library'),
     removeBundle: destructive('library'),
   },
 

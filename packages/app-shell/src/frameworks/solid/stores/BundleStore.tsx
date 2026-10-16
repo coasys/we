@@ -12,9 +12,10 @@
  *
  * A file is the weakest provenance there is — nothing attests to who made it — so the prompt says so,
  * and shows only what was worked out from the bundle's templates (`judgeBundle`), never what the file
- * says about itself. Its record types are added to the space on screen, but only for whoever runs it:
- * they change what a shared space can hold, for everybody in it. Anyone else installs the app and is
- * told to ask; whoever runs another space sets it up later, from Settings.
+ * says about itself. Its record types and sections belong to spaces, and change what a shared space
+ * holds for everybody in it, so they go only into spaces this agent runs and only the ones ticked: the
+ * prompt lists them, with the one on screen ticked when there is one. Any other is set up later, from
+ * Settings, through the same list.
  *
  * A seed's bundles are built in rather than installed (see `seedBundles.ts`), so they are never asked
  * about and cannot be removed — but a space can be set up for one all the same, and it is listed.
@@ -64,9 +65,8 @@ export interface PendingBundleInstall {
   /** Modules this deployment does not have at all, by id: those parts of the app stay empty. */
   modulesNotInBuild: string[];
   recordTypes: string[];
-  /** `add` — they are added to the space on screen; `ask` — this agent does not run it; `none` — nothing to add, or no space open. */
-  recordTypesHere: 'add' | 'ask' | 'none';
-  spaceName: string;
+  /** Whether the app needs a space set up for it — it brings record types or sections. */
+  needsSpace: boolean;
   /** `ours` — every space opens in the app's own template while it is the app in use; `theirs` — spaces keep theirs. */
   display: 'ours' | 'theirs' | '';
 }
@@ -79,20 +79,41 @@ export interface InstalledBundleView {
   /** `file` — this agent installed it; `deployment` — it is built in, and cannot be removed. */
   from: 'file' | 'deployment';
   /**
-   * Whether the space on screen has what the app needs — its record types and sections. `done`; `available`
-   * for whoever runs the space; `ask` for anyone else; `none` when it needs nothing or no space is open.
+   * Whether the spaces this agent runs have what the app needs — its record types and sections.
+   * `none` when it needs nothing or this agent runs no space; `done` when every one of them is set up;
+   * `available` otherwise.
    */
-  setUp: 'done' | 'available' | 'ask' | 'none';
+  setUp: 'done' | 'available' | 'none';
+}
+
+/** A space this agent runs, as the set-up list shows it. */
+export interface BundleSpaceChoice {
+  id: string;
+  name: string;
+  avatar: string;
+  /** Ticked: it will be set up when the prompt or the picker is confirmed. */
+  chosen: boolean;
+  /** Already set up for the app in question, so there is nothing to tick. */
+  done: boolean;
+  /** The space on screen. */
+  here: boolean;
 }
 
 export interface BundleStore {
   pendingInstall: Accessor<PendingBundleInstall | null>;
   installed: Accessor<InstalledBundleView[]>;
   busy: Accessor<boolean>;
+  /** The spaces this agent runs, for the app the prompt or the picker is about; empty with neither open. */
+  spaceChoices: Accessor<BundleSpaceChoice[]>;
+  /** The app the set-up picker is open for, or null. */
+  setUpPicker: Accessor<{ id: string; name: string; icon: string } | null>;
   installFromFile: (file: unknown) => Promise<void>;
   confirmInstall: () => Promise<void>;
   cancelInstall: () => void;
-  setUpSpace: (bundleId: string) => Promise<void>;
+  toggleSpace: (spaceId: string) => void;
+  openSetUp: (bundleId: string) => void;
+  closeSetUp: () => void;
+  confirmSetUp: () => Promise<void>;
   removeBundle: (bundleId: string) => Promise<void>;
 }
 
@@ -150,17 +171,33 @@ export function BundleStoreProvider(props: ParentProps) {
     })),
   ];
 
-  /** Whether the space on screen has everything a bundle needs. */
-  const isSetUp = (source: SetUpSource) => {
+  const [chosen, setChosen] = createSignal<string[]>([]);
+  const [pickerFor, setPickerFor] = createSignal<string | null>(null);
+
+  /** The spaces this agent runs — the only ones an app's record types and sections may go into. */
+  const spacesYouRun = createMemo(() => spaceStore.spaceList().filter((row) => row.isWeSpace && row.canAdminister));
+
+  const needsSpace = (source: Pick<SetUpSource, 'recordTypes' | 'sections'>) =>
+    source.recordTypes.length > 0 || source.sections.length > 0;
+
+  /**
+   * Whether one space has what a bundle needs. Its sections switched on is the sign, since set-up
+   * switches them on last; the space on screen also has its record types checked, which are loaded
+   * for it and for no other.
+   */
+  const isSetUpIn = (source: Pick<SetUpSource, 'recordTypes' | 'sections'>, spaceId: string) => {
+    const row = spacesYouRun().find((r) => r.uuid === spaceId);
+    if (!row) return false;
+    const enabled = new Set(row.views.filter((view) => view.enabled).map((view) => view.id));
+    if (!source.sections.every((id) => enabled.has(id))) return false;
+    if (spaceId !== datasetStore.currentDataset()?.id) return source.sections.length > 0;
     const shapes = new Set(shapeStore.spaceShapes().map((shape) => shape.name));
-    const enabled = new Set(spaceStore.enabledViewIds());
-    return source.recordTypes.every((type) => shapes.has(type.name)) && source.sections.every((id) => enabled.has(id));
+    return source.recordTypes.every((type) => shapes.has(type.name));
   };
 
   const setUpState = (source: SetUpSource): InstalledBundleView['setUp'] => {
-    if (!datasetStore.currentDataset() || (!source.recordTypes.length && !source.sections.length)) return 'none';
-    if (isSetUp(source)) return 'done';
-    return spaceStore.canAdministerCurrentSpace() ? 'available' : 'ask';
+    if (!needsSpace(source) || !spacesYouRun().length) return 'none';
+    return spacesYouRun().every((row) => isSetUpIn(source, row.uuid)) ? 'done' : 'available';
   };
 
   const installed = createMemo<InstalledBundleView[]>(() => [
@@ -181,6 +218,49 @@ export function BundleStoreProvider(props: ParentProps) {
       setUp: setUpState(sources().find((s) => s.id === entry.id)!),
     })),
   ]);
+
+  /** What the list is about: the app being installed, or the one the picker was opened for. */
+  const subject = (): Pick<SetUpSource, 'recordTypes' | 'sections'> | null => {
+    const request = pending();
+    if (request) {
+      const pieces = bundlePieces(request.bundle);
+      return {
+        recordTypes: request.bundle.recordTypes ?? [],
+        sections: pieces.sections.map((section) => section.id ?? ''),
+      };
+    }
+    const id = pickerFor();
+    return id ? (sources().find((s) => s.id === id) ?? null) : null;
+  };
+
+  const spaceChoices = createMemo<BundleSpaceChoice[]>(() => {
+    const about = subject();
+    if (!about || !needsSpace(about)) return [];
+    const ticked = new Set(chosen());
+    const here = datasetStore.currentDataset()?.id;
+    return spacesYouRun().map((row) => {
+      const done = isSetUpIn(about, row.uuid);
+      return {
+        id: row.uuid,
+        name: row.name,
+        avatar: row.avatar,
+        chosen: !done && ticked.has(row.uuid),
+        done,
+        here: row.uuid === here,
+      };
+    });
+  });
+
+  /** The space on screen, ticked to start with when it is one this agent runs: where they asked from. */
+  const startingChoice = () => {
+    const here = datasetStore.currentDataset()?.id;
+    return here && spacesYouRun().some((row) => row.uuid === here) ? [here] : [];
+  };
+
+  const toggleSpace = (spaceId: string) =>
+    setChosen((list) => (list.includes(spaceId) ? list.filter((id) => id !== spaceId) : [...list, spaceId]));
+
+  const settingUp = () => spaceChoices().filter((choice) => choice.chosen);
 
   async function installFromFile(input: unknown): Promise<void> {
     const file = fileOf(input);
@@ -240,7 +320,6 @@ export function BundleStoreProvider(props: ParentProps) {
       adds.push(`${plural(judged.adds.sections.length, 'section', 'sections')}: ${named(judged.adds.sections)}`);
     if (judged.adds.theme) adds.push(`A theme, “${judged.adds.theme}”`);
 
-    const space = datasetStore.currentDataset();
     const recordTypes = judged.adds.recordTypes;
     const previous = installedList().find((entry) => entry.id === bundle.id);
     setPending({
@@ -258,17 +337,19 @@ export function BundleStoreProvider(props: ParentProps) {
         modulesToTurnOn: judged.modulesToTurnOn.map((module) => module.name),
         modulesNotInBuild: judged.modulesNotInBuild,
         recordTypes,
-        recordTypesHere:
-          !recordTypes.length || !space ? 'none' : spaceStore.canAdministerCurrentSpace() ? 'add' : 'ask',
-        spaceName: spaceStore.currentSpace()?.name ?? '',
+        needsSpace: recordTypes.length > 0 || judged.adds.sections.length > 0,
         display: bundle.display?.spaces ?? '',
       },
     });
+    setPickerFor(null);
+    setChosen(startingChoice());
   }
 
   async function confirmInstall(): Promise<void> {
     const request = pending();
     if (!request) return;
+    // Read before the prompt closes: the list is about the app the prompt is showing.
+    const spaces = settingUp();
     setPending(null);
     const { bundle, view } = request;
     setBusy(true);
@@ -296,11 +377,11 @@ export function BundleStoreProvider(props: ParentProps) {
       });
 
       if (pieces.app) await templateStore.setAppTemplate(pieces.app.id);
-      if (view.recordTypesHere === 'add') await setUpSpace(bundle.id, { quiet: true });
+      const unset = await setUpSpaces(bundle.id, spaces);
 
-      toastService.success(
-        view.updates ? `“${bundle.name}” updated to ${bundle.version}` : `“${bundle.name}” installed`,
-      );
+      const done = view.updates ? `“${bundle.name}” updated to ${bundle.version}` : `“${bundle.name}” installed`;
+      if (!unset.length) toastService.success(spaces.length ? `${done}, and ${spacesAre(spaces)} set up for it` : done);
+      else toastService.error(`${done}, but ${unset[0]}`);
     } catch (error) {
       toastService.error(explain(error, `Could not install “${bundle.name}”`));
     } finally {
@@ -317,39 +398,75 @@ export function BundleStoreProvider(props: ParentProps) {
     return [...ids].filter((id) => moduleRegistry.has(id) && !spaceStore.installedModules().includes(id));
   }
 
-  async function setUpSpace(bundleId: string, options: { quiet?: boolean } = {}): Promise<void> {
+  /** “Garden” is, or 3 spaces are — the subject of a sentence about what was set up. */
+  const spacesAre = (spaces: readonly BundleSpaceChoice[]) =>
+    spaces.length === 1 ? `“${spaces[0].name}” is` : `${spaces.length} spaces are`;
+
+  /**
+   * Set each chosen space up for a bundle, one after another. Resolves with what went wrong, a
+   * sentence each, so a caller can say it once; a space that fails leaves the rest to go on.
+   */
+  async function setUpSpaces(bundleId: string, spaces: readonly BundleSpaceChoice[]): Promise<string[]> {
     const source = sources().find((s) => s.id === bundleId);
-    if (!source || !datasetStore.currentDataset()) return;
-    if (!spaceStore.canAdministerCurrentSpace()) {
-      toastService.error('Only whoever runs this space can set it up for an app');
-      return;
+    if (!source) return [];
+    const problems: string[] = [];
+    for (const space of spaces) {
+      try {
+        const left = await setUpSpace(source, space.id);
+        if (left.length) problems.push(`in “${space.name}”: ${left[0]}`);
+      } catch (error) {
+        problems.push(explain(error, `“${space.name}” could not be set up`));
+      }
     }
+    return problems;
+  }
+
+  /** Add a bundle's record types to one space this agent runs, copy its sections in, and switch them on. */
+  async function setUpSpace(source: SetUpSource, spaceId: string): Promise<string[]> {
+    if (!spacesYouRun().some((row) => row.uuid === spaceId))
+      return ['only whoever runs a space can set it up for an app'];
+    const problems = source.recordTypes.length
+      ? await shapeStore.addRecordTypes(source.id, source.recordTypes, spaceId)
+      : [];
+    /*
+      A section switched on is a section every member is shown, so every member has to have it: an
+      installed app's sections are copied into the space, as a space's own templates are stored.
+      From this agent's library, which holds the version they installed; a later set-up after an
+      update replaces the copy.
+    */
+    if (source.copySections) {
+      const wanted = new Set(source.sections);
+      const sections = templateStore
+        .allTemplates()
+        .filter((template) => !template._fromSpace && wanted.has(template.id ?? ''));
+      if (sections.length) await templateStore.writeSpaceTemplates(sections, 'bundle', spaceId);
+    }
+    const row = spacesYouRun().find((r) => r.uuid === spaceId);
+    const enabled = new Set((row?.views ?? []).filter((view) => view.enabled).map((view) => view.id));
+    for (const section of source.sections)
+      if (!enabled.has(section)) await spaceStore.setViewEnabled(section, true, spaceId);
+    if (problems.length) console.warn(`Setting a space up for “${source.name}”:`, problems);
+    return problems;
+  }
+
+  function openSetUp(bundleId: string): void {
+    if (!sources().some((s) => s.id === bundleId)) return;
+    setPending(null);
+    setPickerFor(bundleId);
+    setChosen(startingChoice());
+  }
+
+  async function confirmSetUp(): Promise<void> {
+    const bundleId = pickerFor();
+    const source = sources().find((s) => s.id === bundleId);
+    const spaces = settingUp();
+    setPickerFor(null);
+    if (!source || !spaces.length) return;
     setBusy(true);
     try {
-      const problems = source.recordTypes.length ? await shapeStore.addRecordTypes(source.id, source.recordTypes) : [];
-      /*
-        A section switched on is a section every member is shown, so every member has to have it: an
-        installed app's sections are copied into the space, as a space's own templates are stored.
-        From this agent's library, which holds the version they installed; a later set-up after an
-        update replaces the copy.
-      */
-      if (source.copySections) {
-        const wanted = new Set(source.sections);
-        const sections = templateStore
-          .allTemplates()
-          .filter((template) => !template._fromSpace && wanted.has(template.id ?? ''));
-        if (sections.length) await templateStore.writeSpaceTemplates(sections, 'bundle');
-      }
-      const enabled = new Set(spaceStore.enabledViewIds());
-      for (const section of source.sections) if (!enabled.has(section)) await spaceStore.setViewEnabled(section, true);
-      if (problems.length) {
-        console.warn(`Setting this space up for “${source.name}”:`, problems);
-        toastService.error(`Set up “${source.name}” here, except: ${problems[0]}`);
-      } else if (!options.quiet) {
-        toastService.success(`This space is set up for “${source.name}”`);
-      }
-    } catch (error) {
-      toastService.error(explain(error, `Could not set this space up for “${source.name}”`));
+      const problems = await setUpSpaces(source.id, spaces);
+      if (problems.length) toastService.error(`Set up for “${source.name}”, except ${problems[0]}`);
+      else toastService.success(`${spacesAre(spaces)} set up for “${source.name}”`);
     } finally {
       setBusy(false);
     }
@@ -382,10 +499,19 @@ export function BundleStoreProvider(props: ParentProps) {
     pendingInstall: () => pending()?.view ?? null,
     installed,
     busy,
+    spaceChoices,
+    setUpPicker: () => {
+      const id = pickerFor();
+      const view = id ? installed().find((entry) => entry.id === id) : undefined;
+      return view ? { id: view.id, name: view.name, icon: view.icon } : null;
+    },
     installFromFile,
     confirmInstall,
     cancelInstall: () => setPending(null),
-    setUpSpace: (bundleId) => setUpSpace(bundleId),
+    toggleSpace,
+    openSetUp,
+    closeSetUp: () => setPickerFor(null),
+    confirmSetUp,
     removeBundle,
   };
 

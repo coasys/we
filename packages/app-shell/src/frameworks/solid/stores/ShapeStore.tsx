@@ -315,11 +315,12 @@ export interface ShapeStore {
   /** Validate, store and adopt the draft. Errors land in `draftErrors`; success closes the wizard. */
   saveShapeDraft: () => Promise<void>;
   /**
-   * Write record types a bundle brings into the space on screen and adopt them, skipping any the space
-   * already has from the same bundle. Resolves with why each could not be added (empty when all were).
-   * The caller decides who may: this is wiring, not template API.
+   * Write record types a bundle brings into a space — the one on screen, or the joined dataset
+   * `datasetId` names — and adopt them, skipping any the space already has from the same bundle.
+   * Resolves with why each could not be added (empty when all were). The caller decides who may: this
+   * is wiring, not template API.
    */
-  addRecordTypes: (bundleId: string, types: readonly BundleRecordType[]) => Promise<string[]>;
+  addRecordTypes: (bundleId: string, types: readonly BundleRecordType[], datasetId?: string) => Promise<string[]>;
   /** Delete a shape record. Its SDNA and data remain in the space (uninstall semantics are deliberate). */
   deleteShape: (shapeRecordId: string) => Promise<void>;
 
@@ -538,9 +539,12 @@ export function ShapeStoreProvider(props: ParentProps) {
 
   // ── The adoption rail ─────────────────────────────────────────────────────────
 
-  async function adoptShape(view: { name: string; shapeId: string }, manifest: EntityManifest): Promise<void> {
+  async function adoptShape(
+    view: { name: string; shapeId: string },
+    manifest: EntityManifest,
+    dataset = handle(),
+  ): Promise<void> {
     const ports = schemas();
-    const dataset = handle();
     if (!ports || !dataset) return;
     const classes = ports.declareInDataset(dataset, manifest, { moduleId: `shape/${view.shapeId}` });
     for (const cls of Object.values(classes)) await ports.ensure(dataset, cls);
@@ -1103,11 +1107,26 @@ export function ShapeStoreProvider(props: ParentProps) {
     }
   }
 
-  async function addRecordTypes(bundleId: string, types: readonly BundleRecordType[]): Promise<string[]> {
-    const dataset = handle();
-    if (!dataset || !schemas()) return ['There is no space open to add them to'];
+  async function addRecordTypes(
+    bundleId: string,
+    types: readonly BundleRecordType[],
+    datasetId?: string,
+  ): Promise<string[]> {
+    const current = datasetStore.currentDataset();
+    const target = datasetId ? datasetStore.datasets().find((d) => d.id === datasetId) : current;
+    const ports = schemas();
+    if (!target || !ports) return ['There is no space open to add them to'];
+    const dataset = target.handle;
+    const onScreen = target.id === current?.id;
     const problems: string[] = [];
-    const present = new Map(spaceShapes().map((shape) => [shape.name, shape]));
+    // A space not on screen has no loaded list, so its own records say what it already has.
+    let present: Map<string, { shapeId?: string }>;
+    if (onScreen) {
+      present = new Map(spaceShapes().map((shape) => [shape.name, shape]));
+    } else {
+      await ports.ensure(dataset, Shape);
+      present = new Map((await Shape.findAll(dataset)).map((record) => [record.name, record]));
+    }
     const names = types.map((type) => type.name);
     for (const type of types) {
       // Recognised by where it came from, so a second install or set-up adds nothing twice.
@@ -1117,8 +1136,9 @@ export function ShapeStoreProvider(props: ParentProps) {
         if (already.shapeId !== shapeId) problems.push(`"${type.name}" is already a different kind of record here`);
         continue;
       }
+      const known = onScreen ? knownEntityNames() : [...Object.keys(CORE_MANIFEST.entities), ...present.keys()];
       const gate = validateManifest(type.manifest, {
-        externalEntities: [...knownEntityNames(), ...names.filter((name) => name !== type.name)],
+        externalEntities: [...known, ...names.filter((name) => name !== type.name)],
       });
       if (!gate.valid) {
         problems.push(`"${type.name}" is not a valid definition — ${gate.errors[0]?.message}`);
@@ -1133,9 +1153,9 @@ export function ShapeStoreProvider(props: ParentProps) {
         definition: asFileField(encodeJsonFileData(gate.manifest, 'shape-definition.json')),
       });
       // The record's own shapeId, as `loadShapes` adopts it on every later visit.
-      await adoptShape({ name: type.name, shapeId }, gate.manifest);
+      await adoptShape({ name: type.name, shapeId }, gate.manifest, dataset);
     }
-    await loadShapes();
+    if (onScreen) await loadShapes();
     return problems;
   }
 

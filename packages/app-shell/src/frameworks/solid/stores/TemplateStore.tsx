@@ -162,11 +162,12 @@ export interface TemplateStore {
    */
   writeLibraryTemplates: (templates: TemplateSchema[], origin: string) => Promise<void>;
   /**
-   * Write templates into the space on screen under the ids they carry, updating any already there —
-   * so every member has them, as a space's own templates are had. How an app's sections reach a space
-   * it is set up in. Throws if any write fails. Wiring, not template API.
+   * Write templates into a space — the one on screen, or the joined dataset `datasetId` names — under
+   * the ids they carry, updating any already there, so every member has them, as a space's own
+   * templates are had. How an app's sections reach a space it is set up in. Throws if any write
+   * fails. Wiring, not template API.
    */
-  writeSpaceTemplates: (templates: TemplateSchema[], origin: string) => Promise<void>;
+  writeSpaceTemplates: (templates: TemplateSchema[], origin: string, datasetId?: string) => Promise<void>;
   deleteRefusedTemplate: (recordId: string) => Promise<void>;
   installTemplate: (templateId: string) => Promise<void>;
   uninstallTemplate: (templateId: string) => Promise<void>;
@@ -1151,16 +1152,22 @@ export function TemplateStoreProvider(props: ParentProps) {
     await loadSavedTemplates();
   }
 
-  async function writeSpaceTemplates(templates: TemplateSchema[], origin: string): Promise<void> {
-    const dataset = datasetStore.currentDataset();
-    if (!dataset) throw new Error('There is no space open');
+  async function writeSpaceTemplates(templates: TemplateSchema[], origin: string, datasetId?: string): Promise<void> {
+    const current = datasetStore.currentDataset();
+    const dataset = datasetId ? datasetStore.datasets().find((d) => d.id === datasetId) : current;
+    if (!dataset) throw new Error(datasetId ? 'That space is not joined here' : 'There is no space open');
+    const onScreen = dataset.id === current?.id;
+    // A space not on screen has nothing in the map, so its own records are read to update in place.
+    const records = onScreen
+      ? spaceTemplateMap
+      : new Map((await Template.findAll(dataset.handle)).map((record) => [record.slug, record] as const));
     for (const template of templates) {
       const id = template.id;
       if (!id) continue;
       // The space's copy carries nothing of where it was read from but the bundle it came in.
       const { _fromSpace: _ignored, ...clean } = template;
       const schema = asFileField(encodeTemplateSchema(clean as TemplateSchema));
-      const existing = spaceTemplateMap.get(id);
+      const existing = records.get(id);
       if (existing) {
         existing.schema = schema;
         existing.name = template.meta.name;
@@ -1179,7 +1186,9 @@ export function TemplateStoreProvider(props: ParentProps) {
         role: roleOf(template),
       });
     }
-    await loadSpaceTemplates(dataset);
+    // The next visit to another space reads it afresh rather than from what was cached before.
+    spaceTemplateCache.delete(dataset.id);
+    if (onScreen) await loadSpaceTemplates(dataset);
   }
 
   async function performPersonalInstall(request: PendingInstall): Promise<void> {

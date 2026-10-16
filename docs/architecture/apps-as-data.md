@@ -54,16 +54,19 @@ editing one forks it, and it is removed with the app.
 
 ## Whose is what
 
-| Piece                       | Belongs to | So                                                                         |
-| --------------------------- | ---------- | -------------------------------------------------------------------------- |
-| App, space templates, theme | The person | In their library; another member of the same space may be in another app.  |
-| Record types, sections      | The space  | Added to one by whoever runs it ("Set up this space"), for everyone in it. |
+| Piece                       | Belongs to | So                                                                        |
+| --------------------------- | ---------- | ------------------------------------------------------------------------- |
+| App, space templates, theme | The person | In their library; another member of the same space may be in another app. |
+| Record types, sections      | The space  | Added to the spaces their installer runs and ticks, for everyone in each. |
 
 **Setting a space up** adds the app's record types (`shapeStore.addRecordTypes`, recognised by
 `shapeId: we://shapes/bundle/<id>/<name>` so it never adds one twice) and switches its sections on.
 An installed app's sections are first **copied into the space**, because a section switched on is a
-section every member is shown, and they live only in one person's library. An install does this for
-the space on screen when its installer runs it; anywhere else it is a button in Settings.
+section every member is shown, and they live only in one person's library. Which spaces is asked, as
+a checklist of the spaces the installer runs (`bundleStore.spaceChoices`), with the one on screen
+ticked to start with: the install prompt carries it, and Settings → Apps → "Set up a space…" opens
+it on its own for an app already installed. Nobody is offered a space they do not run, and a space
+already set up is shown as such rather than offered again.
 
 **Removing an app** removes its app, templates and theme. Never its record types, which hold what
 people made with it, in spaces other people share — and never the sections a space was set up with,

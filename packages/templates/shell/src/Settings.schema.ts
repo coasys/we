@@ -9,6 +9,7 @@ import { expr } from '@we/schema-shared';
 
 import { accountSettings } from './AccountSettings.schema.ts';
 import { aiSection } from './AiSettings.schema.ts';
+import { spaceChecklist } from './BundlePrompt.schema.ts';
 import { hostSection } from './HostSettings.schema.ts';
 import { languagesLocalState, languagesSection } from './LanguageSettings.schema.ts';
 import {
@@ -169,9 +170,55 @@ const appSection: SchemaNode = {
  * Apps — installed from a file, or built into this deployment — and setting a space up for one.
  *
  * Installing only reads the file and asks: the prompt is host chrome (`BundlePrompt.schema.ts`), and
- * nothing is written until it is answered. An app's record types belong to spaces, so whoever runs a
- * space adds them here, for the space on screen; everyone else is told whose decision it is.
+ * nothing is written until it is answered. An app's record types and sections belong to spaces, so
+ * "Set up a space…" lists the spaces this agent runs and sets up the ones ticked — the same list the
+ * prompt shows — and nobody is offered a space they do not run.
  */
+/** Setting more spaces up for an app already installed — the prompt's checklist, on its own. */
+const setUpPicker: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'bundleStore.setUpPicker' },
+    then: {
+      type: 'we-modal',
+      props: { size: 'sm', close: { $action: 'bundleStore.closeSetUp' } },
+      children: [
+        {
+          type: 'we-text',
+          slot: 'header',
+          props: { variant: 'heading-sm', tag: 'h2' },
+          children: [{ $: '`Set up spaces for ${bundleStore.setUpPicker.name}`' }],
+        },
+        spaceChecklist([
+          'Each space you tick gets the kinds of record and the sections the app works with, for everyone in it.',
+        ]),
+        {
+          type: 'Row',
+          slot: 'footer',
+          props: { ax: 'end', gap: '200' },
+          children: [
+            {
+              type: 'we-button',
+              props: { variant: 'ghost', onClick: { $action: 'bundleStore.closeSetUp' } },
+              children: ['Cancel'],
+            },
+            {
+              type: 'we-button',
+              props: {
+                variant: 'primary',
+                disabled: { $: '!bundleStore.spaceChoices.exists(c, c.chosen)' },
+                loading: { $: 'bundleStore.busy' },
+                onClick: { $action: 'bundleStore.confirmSetUp' },
+              },
+              children: ['Set up'],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 const appsSection: SchemaNode = {
   type: 'Column',
   props: { gap: '300' },
@@ -229,9 +276,9 @@ const appsSection: SchemaNode = {
                     variant: 'secondary',
                     size: 'sm',
                     disabled: { $: 'bundleStore.busy' },
-                    onClick: { $action: 'bundleStore.setUpSpace', args: [{ $: 'app.id' }] },
+                    onClick: { $action: 'bundleStore.openSetUp', args: [{ $: 'app.id' }] },
                   },
-                  children: ['Set up this space'],
+                  children: ['Set up a space…'],
                 },
               },
             },
@@ -239,18 +286,7 @@ const appsSection: SchemaNode = {
               type: '$if',
               props: {
                 condition: { $: "app.setUp == 'done'" },
-                then: { type: 'we-tag', props: { variant: 'success' }, children: ['Set up here'] },
-              },
-            },
-            {
-              type: '$if',
-              props: {
-                condition: { $: "app.setUp == 'ask'" },
-                then: {
-                  type: 'we-text',
-                  props: { variant: 'label', color: 'text-muted' },
-                  children: ['Whoever runs this space can set it up'],
-                },
+                then: { type: 'we-tag', props: { variant: 'success' }, children: ['Set up in your spaces'] },
               },
             },
             {
@@ -298,6 +334,7 @@ const appsSection: SchemaNode = {
         },
       ],
     },
+    setUpPicker,
   ],
 };
 

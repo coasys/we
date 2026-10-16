@@ -11,8 +11,8 @@ import type { SchemaNode } from '@we/schema-shared';
  *
  * The four things a person is agreeing to, each in its own words, because each has its own
  * consequence: what the app will be able to do; which modules it turns on, as against which this
- * deployment does not have and nothing here can fix; the kinds of record it adds to a shared space,
- * which outlast the app; and how it shows spaces.
+ * deployment does not have and nothing here can fix; the spaces it sets up — the kinds of record it
+ * adds to each, which outlast the app — ticked one by one; and how it shows spaces.
  */
 const pending = 'bundleStore.pendingInstall';
 
@@ -82,26 +82,79 @@ const capabilities: SchemaNode = {
   ],
 };
 
-/** The kinds of record it adds — to this space, or not, and why. */
-const recordTypes: SchemaNode = {
+/**
+ * The spaces this agent runs, ticked to be set up for an app. Shared by the install prompt and the
+ * Settings picker, which both read `bundleStore.spaceChoices` for whichever app they are about.
+ * Only spaces this agent runs are listed: a space's record types and sections are its community's,
+ * so nobody else's is offered.
+ */
+export function spaceChecklist(intro: SchemaNode['children']): SchemaNode {
+  return {
+    type: 'Column',
+    props: { gap: '200' },
+    children: [
+      { type: 'we-text', props: { variant: 'label', color: 'text-muted' }, children: ['Set up spaces for it'] },
+      { type: 'we-text', children: intro },
+      {
+        type: '$if',
+        props: {
+          condition: { $: 'count(bundleStore.spaceChoices)' },
+          then: {
+            type: 'Column',
+            props: { gap: '200', bg: 'surface', r: '400', p: '400' },
+            children: [
+              {
+                type: '$each',
+                props: { items: { $: 'bundleStore.spaceChoices' }, as: 'choice' },
+                children: [
+                  {
+                    type: 'Row',
+                    props: { gap: '300', ay: 'center' },
+                    children: [
+                      {
+                        type: 'we-checkbox',
+                        props: {
+                          flex: '1',
+                          label: { $: 'choice.name' },
+                          checked: { $: 'choice.chosen || choice.done' },
+                          disabled: { $: 'choice.done' },
+                          onChange: { $action: 'bundleStore.toggleSpace', args: [{ $: 'choice.id' }] },
+                        },
+                        // `label` names the control for a screen reader; what is seen is the slot.
+                        children: [{ $: 'choice.name' }],
+                      },
+                      {
+                        type: 'we-text',
+                        props: { variant: 'footnote', color: 'text-muted' },
+                        children: [{ $: "choice.done ? 'Already set up' : choice.here ? 'This space' : ''" }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          else: {
+            type: 'we-text',
+            props: { color: 'text-muted' },
+            children: ['You do not run any spaces, so there are none to set up. Whoever runs one can, from Settings.'],
+          },
+        },
+      },
+    ],
+  };
+}
+
+/** Where its record types and sections go: the spaces ticked, and only those. */
+const spaces: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: `count(${pending}.recordTypes)` },
-    then: {
-      type: 'Column',
-      props: { gap: '200' },
-      children: [
-        { type: 'we-text', props: { variant: 'label', color: 'text-muted' }, children: ['Kinds of record'] },
-        {
-          type: 'we-text',
-          children: [
-            {
-              $: `${pending}.recordTypesHere == 'add' ? \`Sets “\${${pending}.spaceName}” up for it, for everyone in it: adds \${join(${pending}.recordTypes, ', ')} and turns its sections on. They stay if you remove the app, because they hold what people make with it.\` : ${pending}.recordTypesHere == 'ask' ? \`It works with \${join(${pending}.recordTypes, ', ')}, which this space does not have. Whoever runs it can set it up for the app from Settings.\` : \`It works with \${join(${pending}.recordTypes, ', ')}. Whoever runs a space can set it up for the app from Settings.\``,
-            },
-          ],
-        },
-      ],
-    },
+    condition: { $: `${pending}.needsSpace` },
+    then: spaceChecklist([
+      {
+        $: `count(${pending}.recordTypes) ? \`It adds \${join(${pending}.recordTypes, ', ')} and its sections to each space you tick, for everyone in it. They stay if you remove the app, because they hold what people make with it.\` : 'It adds its sections to each space you tick, for everyone in it.'`,
+      },
+    ]),
   },
 };
 
@@ -192,7 +245,7 @@ export const bundlePrompt: SchemaNode = {
             capabilities,
             listSection('It turns on', `${pending}.modulesToTurnOn`, 'toggle-right', 'text-muted'),
             missingModules,
-            recordTypes,
+            spaces,
             {
               type: '$if',
               props: {

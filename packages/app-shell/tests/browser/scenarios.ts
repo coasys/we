@@ -1331,7 +1331,7 @@ const foldingSection = (): Scenario => ({
 
 /**
  * The host's prompt for an app installed from a file, with everything it can say in it: provenance,
- * what it adds, what it will be able to do, modules turned on and missing, record types for this space,
+ * what it adds, what it will be able to do, modules turned on and missing, the spaces to set up,
  * the display policy and inert references. What the buttons do is marked on the body.
  */
 const bundleInstallPrompt = (): Scenario => ({
@@ -1355,10 +1355,15 @@ const bundleInstallPrompt = (): Scenario => ({
         modulesToTurnOn: ['Polls'],
         modulesNotInBuild: ['globe'],
         recordTypes: ['Species', 'Sighting'],
-        recordTypesHere: 'add',
-        spaceName: 'Somerset Levels',
+        needsSpace: true,
         display: 'ours',
       },
+      spaceChoices: [
+        { id: 'levels', name: 'Somerset Levels', avatar: '', chosen: true, done: false, here: true },
+        { id: 'garden', name: 'Garden Club', avatar: '', chosen: false, done: true, here: false },
+        { id: 'allotment', name: 'Allotment', avatar: '', chosen: false, done: false, here: false },
+      ],
+      toggleSpace: (id: string) => document.body.setAttribute('data-bundle-toggled', id),
       confirmInstall: () => document.body.setAttribute('data-bundle-confirmed', ''),
       cancelInstall: () => document.body.setAttribute('data-bundle-cancelled', ''),
     },
