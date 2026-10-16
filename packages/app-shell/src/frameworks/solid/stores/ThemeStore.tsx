@@ -1518,6 +1518,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       await existing.save();
       const updated = modelToThemeData(existing);
       setInstalledThemes((prev) => prev.map((t) => (t.id === existing.id ? updated : t)));
+      setVisibleThemeIds((prev) => new Set([...prev, existing.id]));
       return existing.id;
     }
     const model = await Theme.create(rootPerspective, {
@@ -1531,6 +1532,13 @@ export function ThemeStoreProvider(props: ParentProps) {
     });
     themeRecordMap.set(model.id, model);
     setInstalledThemes((prev) => [...prev, modelToThemeData(model)]);
+    /*
+      Visible as well as installed. Once anything is on the visible list, a theme that is not on it is
+      left out of `allThemes`, which is where every theme id is looked up — so an app's templates
+      named a theme nothing could find, and fell back to the agent's own until a reload re-read the
+      list. A marketplace install does the same, for the same reason.
+    */
+    setVisibleThemeIds((prev) => new Set([...prev, model.id]));
     const settings = datasetStore.agentSettings();
     if (settings) await settings.addInstalledThemes(model);
     return model.id;

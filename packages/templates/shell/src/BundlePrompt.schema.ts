@@ -266,10 +266,19 @@ export const bundlePrompt: SchemaNode = {
           slot: 'footer',
           props: { ax: 'end', gap: '200' },
           children: [
-            { type: 'we-button', props: { variant: 'ghost', onClick: close }, children: ['Cancel'] },
             {
               type: 'we-button',
-              props: { variant: 'primary', onClick: { $action: 'bundleStore.confirmInstall' } },
+              props: { variant: 'ghost', disabled: { $: 'bundleStore.busy' }, onClick: close },
+              children: ['Cancel'],
+            },
+            {
+              type: 'we-button',
+              props: {
+                variant: 'primary',
+                loading: { $: 'bundleStore.busy' },
+                disabled: { $: 'bundleStore.busy' },
+                onClick: { $action: 'bundleStore.confirmInstall' },
+              },
               children: [{ $: `${pending}.updates ? 'Update' : 'Install'` }],
             },
           ],

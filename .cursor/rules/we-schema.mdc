@@ -2905,8 +2905,8 @@ BundleStore:
   - setUpPicker: { id, name, icon } | null — the app the set-up picker is open for. Its non-nullness is what mounts the picker
 - Actions:
   - installFromFile(file: File): reads an app from a file — a we-file-upload’s change event passes it as event.detail — and raises the install prompt, or a toast saying why it cannot be installed. Writes nothing
-  - confirmInstall(): installs what the prompt is showing — its app, templates and theme into this agent’s library, the modules it needs turned on, its record types and sections into every space ticked in spaceChoices — and makes its app the one in use. Host chrome only
-  - cancelInstall(): closes the install prompt without installing
+  - confirmInstall(): installs what the prompt is showing — its app, templates and theme into this agent’s library, the modules it needs turned on, its record types and sections into every space ticked in spaceChoices — and makes its app the one in use. The prompt stays up until it is done, so give its button `loading: bundleStore.busy`. Host chrome only
+  - cancelInstall(): closes the install prompt without installing. Does nothing while an install is running
   - toggleSpace(spaceId: string): ticks or unticks one space in spaceChoices
   - openSetUp(bundleId: string): opens the set-up picker for an app, with the space on screen ticked when this agent runs it
   - closeSetUp(): closes the set-up picker without setting anything up

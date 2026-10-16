@@ -345,13 +345,15 @@ export function BundleStoreProvider(props: ParentProps) {
 
   async function confirmInstall(): Promise<void> {
     const request = pending();
-    if (!request) return;
-    // Read before the prompt closes: the list is about the app the prompt is showing.
+    if (!request || busy()) return;
+    // Read at the press: the list is about the app the prompt is showing, and goes on changing as
+    // the spaces it ticked are set up.
     const spaces = settingUp();
     // An update also refreshes the spaces already set up for it, which nobody can tick again.
     const alreadySetUp = request.view.updates ? spaceChoices().filter((choice) => choice.done) : [];
-    setPending(null);
     const { bundle, view } = request;
+    // The prompt stays up, its button spinning, until the install is done: closing it at the press
+    // left several seconds of writes with nothing on screen to say anything was happening.
     setBusy(true);
     try {
       const pieces = bundlePieces(bundle);
@@ -400,6 +402,7 @@ export function BundleStoreProvider(props: ParentProps) {
       toastService.error(explain(error, `Could not install “${bundle.name}”`));
     } finally {
       setBusy(false);
+      setPending(null);
     }
   }
 
@@ -529,7 +532,10 @@ export function BundleStoreProvider(props: ParentProps) {
     },
     installFromFile,
     confirmInstall,
-    cancelInstall: () => setPending(null),
+    // Not while installing: closing then would hide the writes, not stop them.
+    cancelInstall: () => {
+      if (!busy()) setPending(null);
+    },
     toggleSpace,
     openSetUp,
     closeSetUp: () => setPickerFor(null),
