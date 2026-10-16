@@ -179,9 +179,11 @@ export type {
   UnsupportedCapability,
 } from './runtimeAdmin';
 export type {
+  CreateOptions,
   IncludeExtras,
   IncludeOf,
   NewRecord,
+  ParentRef,
   RecordDataKeys,
   RecordInstance,
   EntityStatic,

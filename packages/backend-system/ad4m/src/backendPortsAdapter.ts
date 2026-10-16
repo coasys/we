@@ -37,8 +37,10 @@ import { readInterpretationHints, resetInterpretationHints, writeInterpretationH
 import { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './languageModelPort';
 import { type Ad4mLifecycleOptions, createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 import { compileManifest, manifestToEntries } from './manifestCompiler';
+import { installParentByRelation } from './parentByRelation';
 import { buildEntityClasses, buildEntityManifest, getForeignShacl } from './perspectiveHelpers';
 import { createAd4mReferencePort } from './referencePort';
+import { registerDeclaredRelations } from './relationPredicates';
 import { installRelationWrites } from './relationWrites';
 import { type Ad4mRuntimeOptions, createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
 import {
@@ -80,7 +82,10 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
     async foreignSchemas(dataset): Promise<EntityManifestEntry[]> {
       const shapes = await getForeignShacl(proxy(dataset));
       registerDynamicEntities(proxy(dataset).uuid, buildEntityClasses(shapes));
-      return buildEntityManifest(shapes);
+      const entries = buildEntityManifest(shapes);
+      // Another app's relations are named like WE's own, so a drill-down into one resolves.
+      registerDeclaredRelations(entries);
+      return entries;
     },
 
     declare(manifest: EntityManifest, opts) {
@@ -97,6 +102,8 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
           (opts.resolveExternal?.(name) ?? getEntityForDataset(name)) as typeof Ad4mModel | undefined,
       });
       for (const [name, cls] of Object.entries(classes)) registerEntity(name, cls as EntityClass);
+      // So a module's relations can be named in `parent` like any of WE's own.
+      registerDeclaredRelations(manifestToEntries(manifest, opts as never));
       return classes;
     },
 
@@ -115,6 +122,7 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
         resolveExternal: (name) => getEntityForDataset(name, dataset) as typeof Ad4mModel | undefined,
       });
       mergeDynamicEntities(proxy(dataset).uuid, classes as Record<string, EntityClass>);
+      registerDeclaredRelations(manifestToEntries(manifest, opts as never));
       return classes;
     },
 
@@ -160,6 +168,9 @@ export function createAd4mBackendPorts(
   // "this relation's membership is now that list", and every model class — generated, compiled
   // or built from foreign SHACL — inherits the ability to carry it out. See `relationWrites.ts`.
   installRelationWrites(Ad4mModel);
+  // And a parent named by the relation it joins, which is how the contract names one — translated to
+  // the predicate AD4M stores it under before any model sees it. See `parentByRelation.ts`.
+  installParentByRelation(Ad4mModel);
   // Register the native model classes for name-based $query resolution. Previously a module-load
   // side effect in the shell; it belongs to the backend choice. Use .className (set by @Model)
   // rather than .name — bundlers mangle the native .name in production builds.

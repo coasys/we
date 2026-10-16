@@ -230,7 +230,7 @@ describe('the call record', () => {
     expect(h.created[0].fields.text).toBe('hello');
     // Parented, not loose. A block written flat into the space is how transcripts used to end up in
     // the Cards route's Text list next to authored prose.
-    expect(h.created[0].options?.parent).toEqual({ id: RECORD, predicate: 'we://child' });
+    expect(h.created[0].options?.parent).toEqual({ id: RECORD, relation: 'children', entity: 'CollectionBlock' });
   });
 
   it('reuses the same record for the rest of the call', async () => {
@@ -419,7 +419,11 @@ describe('continuing a call', () => {
     await h.say('picking this back up');
 
     expect(h.created.filter((c) => c.entity === 'CollectionBlock')).toHaveLength(0);
-    expect(h.created[0].options?.parent).toEqual({ id: 'the-old-record', predicate: 'we://child' });
+    expect(h.created[0].options?.parent).toEqual({
+      id: 'the-old-record',
+      relation: 'children',
+      entity: 'CollectionBlock',
+    });
   });
 
   it('announces the record it adopted, so the rest of the call converges on it too', () => {
@@ -2066,7 +2070,11 @@ describe('staged suggestions', () => {
 
       await h.store.applyChange('task-1', 'status');
 
-      expect(amendments(h)[0].options?.parent).toEqual({ id: RECORD, predicate: 'we://extraction_amendment' });
+      expect(amendments(h)[0].options?.parent).toEqual({
+        id: RECORD,
+        relation: 'amendments',
+        entity: 'CollectionBlock',
+      });
     });
 
     it('writes nothing for a value equal to what the record already held', async () => {
@@ -2519,7 +2527,7 @@ describe('typing into a transcript', () => {
     expect(block?.fields).toEqual({ text: 'Sam is joining late', source: 'typed' });
     // Into the call's own record, which exists from its first second — a message does not require
     // somebody to have spoken first.
-    expect(block?.options?.parent).toEqual({ id: RECORD, predicate: 'we://child' });
+    expect(block?.options?.parent).toEqual({ id: RECORD, relation: 'children', entity: 'CollectionBlock' });
   });
 
   it('writes nothing for an empty message', async () => {
@@ -2546,7 +2554,7 @@ describe('typing into a transcript', () => {
     await h.store.addMessage('past-call', 'watched this back');
 
     const block = h.created.find((c) => c.entity === 'TextBlock');
-    expect(block?.options?.parent).toEqual({ id: 'past-call', predicate: 'we://child' });
+    expect(block?.options?.parent).toEqual({ id: 'past-call', relation: 'children', entity: 'CollectionBlock' });
     // And in the space on screen, not in whichever space a live call happens to be running in.
     expect(block?.options?.dataset).toBeUndefined();
   });
@@ -3194,7 +3202,7 @@ describe('the feed and replies', () => {
       {
         entity: 'TextBlock',
         fields: { text: 'see you all on Friday', source: 'typed', marks: '[{"start":0,"end":3,"type":"strong"}]' },
-        options: { parent: { id: 'root-1', predicate: 'we://child' } },
+        options: { parent: { id: 'root-1', relation: 'children', entity: 'CollectionBlock' } },
       },
     ]);
   });
@@ -3215,7 +3223,7 @@ describe('the feed and replies', () => {
     expect(h.created[0]).toMatchObject({
       entity: 'TextBlock',
       fields: { text: 'I do', source: 'typed' },
-      options: { parent: { id: 'line-1', predicate: 'we://response' } },
+      options: { parent: { id: 'line-1', relation: 'responses' } },
     });
     expect(h.store.replyingTo()).toBeNull();
   });

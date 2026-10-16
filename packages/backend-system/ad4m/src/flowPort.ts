@@ -55,7 +55,6 @@ import {
 } from '@coasys/ad4m';
 import type {
   DatasetHandle,
-  EntitySchema,
   FlowApprovals,
   FlowCapabilities,
   FlowDefinition,
@@ -69,18 +68,14 @@ import type {
   FlowStep,
   FlowSummary,
 } from '@we/backend-shared';
-import {
-  approvalsFor,
-  CONTAINMENT_PREDICATE,
-  guardsFor,
-  trace,
-  tracing,
-  validateFlowDefinition,
-} from '@we/backend-shared';
-import { CORE_MANIFEST } from '@we/entities/manifest';
+import { approvalsFor, guardsFor, trace, tracing, validateFlowDefinition } from '@we/backend-shared';
 
 import { ENTRY_STATE, itemOf, openMoves, type Proposal, type Run, runFor, stateOf, stepsOf } from './flowRuns';
 import { recordMissingMethod } from './missingMethods';
+import { coreEntities, predicateOfRelation, relationOfPredicate } from './relationPredicates';
+
+/** The entities a flow's records may be: its subjects, or any WE declares. */
+const subjectEntities = (subjects: readonly string[]) => (subjects.length ? subjects : coreEntities());
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
 
@@ -149,52 +144,6 @@ const REREAD_DEBOUNCE_MS = 60;
 /** How long a definition read back from the dataset is trusted before it is read again. */
 const DEFINITION_TTL_MS = 10_000;
 
-// ─── Relations by name ─────────────────────────────────────────────────────────
-
-/** An entity's relations, with what it inherits — every WeNode's own included. */
-function relationsOf(entity: string): EntitySchema['relations'] {
-  const schema = CORE_MANIFEST.entities[entity];
-  if (!schema) return {};
-  return { ...(schema.extends ? relationsOf(schema.extends) : {}), ...schema.relations };
-}
-
-const subjectEntities = (subjects: readonly string[]) =>
-  subjects.length
-    ? subjects
-    : Object.entries(CORE_MANIFEST.entities)
-        .filter(([, schema]) => !schema.abstract)
-        .map(([name]) => name);
-
-/**
- * The predicate a relation of the flow's records is stored under, for the engine's `linkedTo`.
- *
- * Only a relation the record holds: `linkedTo` follows a link *from* the record, and a relation read
- * backwards (`reverseOf`) is a link from the other end, which it cannot express.
- */
-function predicateOf(relation: string, subjects: readonly string[]): string {
-  for (const entity of subjectEntities(subjects)) {
-    const spec = relationsOf(entity)[relation];
-    if (!spec) continue;
-    if (spec.reverseOf) {
-      throw new Error(`flows: "${relation}" is read backwards on ${entity}, so a guard cannot be tied through it`);
-    }
-    const predicate = spec.containment ? CONTAINMENT_PREDICATE : spec.predicate;
-    if (predicate) return predicate;
-  }
-  throw new Error(`flows: no record a flow over ${subjects.join(', ') || 'any record'} moves holds "${relation}"`);
-}
-
-/** The relation a predicate stores, among the flow's records — {@link predicateOf} backwards. */
-function relationOf(predicate: string, subjects: readonly string[]): string | undefined {
-  for (const entity of subjectEntities(subjects)) {
-    for (const [name, spec] of Object.entries(relationsOf(entity))) {
-      if (spec.reverseOf) continue;
-      if ((spec.containment ? CONTAINMENT_PREDICATE : spec.predicate) === predicate) return name;
-    }
-  }
-  return undefined;
-}
-
 // ─── Definition ────────────────────────────────────────────────────────────────
 
 /** Conditions in a fixed order, because the engine compares rules and guards by their text. */
@@ -235,7 +184,7 @@ function guardQuery(guard: FlowGuard, subjects: readonly string[]): ModelQuery {
   if (min !== 1 || guard.max !== undefined)
     query.count = { min, ...(guard.max !== undefined ? { max: guard.max } : {}) };
   if (guard.tie && 'relation' in guard.tie)
-    query.linkedTo = { via: predicateOf(guard.tie.relation, subjects), to: 'base' };
+    query.linkedTo = { via: predicateOfRelation(guard.tie.relation, undefined, subjectEntities(subjects)), to: 'base' };
   return query;
 }
 
@@ -312,7 +261,10 @@ export function fromShaclFlow(flow: SHACLFlow): FlowDefinition {
         if (Object.keys(rest).length) guard.where = rest;
         if (query.count?.min !== undefined && query.count.min !== 1) guard.min = query.count.min;
         if (query.count?.max !== undefined) guard.max = query.count.max;
-        const via = typeof query.linkedTo === 'object' ? relationOf(query.linkedTo.via, subjects) : undefined;
+        const via =
+          typeof query.linkedTo === 'object'
+            ? relationOfPredicate(query.linkedTo.via, subjectEntities(subjects))
+            : undefined;
         if (via) guard.tie = { relation: via };
         else if (field) guard.tie = { field };
         requires.push(guard);

@@ -3266,7 +3266,7 @@ ShapeStore:
   - relationshipTargets: { label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent
   - identityOptions: { label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can map options but cannot prepend one
   - nameOptions: { label, value }[] — "Work it out" plus every named property of the open draft, for the naming-field picker. A different first entry from identityOptions on purpose: no identity means no dedup key, where no naming field means the name is DERIVED (a property called name or title, else whichever string is required or first) — there is no such thing as a record with no name
-  - hintEditor: the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal
+  - hintEditor: the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal
   - hintBusy: boolean — the hint editor is loading or saving
   - extractionNeedsIdentity: boolean — the open draft would be extracted into and has no field to recognise what it already wrote, so every pass duplicates everything. A warning to put beside the switch, not a refusal: the wizard saves either way
   - memberOptions: { rowId, options }[] — each member's default-value picker entries. Read with find(shapeStore.memberOptions, { rowId: member.rowId }) rather than off member: rows are mutated in place while typing, so values hanging off the row cannot be reactive
@@ -3300,7 +3300,7 @@ ShapeStore:
   - deleteShape(shapeRecordId): removes a model definition from the space. Existing entries keep their data; only the definition goes
   - openHintEditor(entity): opens per-space AI-hint tuning for an entity (core or space-defined)
   - closeHintEditor(): closes the hint editor, discarding unsaved edits. Pair it with hintEditorDirty in a discardGuard rather than wiring it to a modal’s close directly
-  - setHintDraft(key, value): sets one hint in the open editor — key is 'class' or a property predicate
+  - setHintDraft(key, value): sets one hint in the open editor — key is 'class' or a property's name
   - saveHintEditor(): writes the hints to this space and marks them customized, so schema refreshes stop reverting them
   - resetHintEditor(): back to the declaration's hints; release improvements flow again
 
@@ -5893,25 +5893,26 @@ contextually narrows it to the `true` literal, so it needs no `as const`.
 
 ---
 
-### Signal Predicate
+### Parents by relation name
 
-Signals on any `WeNode` subclass (Space, AgentProfile, TextBlock, …) use the
-predicate **`we://signal`** — the relation is declared as:
+A record created under another — a signal on a node, a message in a channel, a reply to a post —
+names where it goes by the RELATION it joins, as the parent entity declares it, never by how a
+backend stores that relation:
 ```ts
-@HasMany(() => Signal, { through: 'we://signal' })
-signals: string[] = [];
-```
-
-When creating a signal manually (not via the ORM relation helpers), pass the
-correct predicate to the `parent` option:
-```ts
-await Signal.create(perspective, { signalTypeId, value }, {
-  parent: { id: nodeId, predicate: 'we://signal' },
+await Signal.create(dataset, { signalTypeId, value }, {
+  parent: { id: nodeId, relation: 'signals' },
+});
+await TextBlock.create(dataset, { text }, {
+  parent: { id: channelId, relation: 'children', entity: 'CollectionBlock' },
 });
 ```
 
-**`we://has_signals` is wrong** — it is a different predicate that the ORM does not
-know about. Using it creates orphaned links invisible to `include: { signals: true }`.
+Add `entity` where the name alone does not decide — `children` is declared on more than one
+entity, so name `CollectionBlock`. `signals` and `responses` live on `WeNode` and mean the same
+thing on every record, so they need none. An unknown or ambiguous name is refused with what to add,
+rather than written somewhere a query will never look. The same shape (`ParentRef` in
+`@we/backend-shared`) is what a module's `createEntity`, a referrer lookup and an interpretation
+scope take.
 
 ---
 
