@@ -130,7 +130,7 @@ function FlowBadges(props: { node: GraphNode }) {
       <Row gap="100" wrap pb="100">
         <For each={flows()}>
           {(inFlow) => (
-            <we-badge size="sm" variant={inFlow.waiting || inFlow.stalled ? 'warning' : 'neutral'}>
+            <we-badge size="xs" variant={inFlow.waiting || inFlow.stalled ? 'warning' : 'neutral'}>
               <Row gap="100" ay="center">
                 <we-icon name="flow-arrow" size="xs" />
                 {inFlow.stateLabel ? `${inFlow.label} · ${inFlow.stateLabel}` : inFlow.label}
@@ -140,6 +140,37 @@ function FlowBadges(props: { node: GraphNode }) {
         </For>
       </Row>
     </Show>
+  );
+}
+
+/**
+ * A property, as its name and its value — the `content: 'property'` a style rule names.
+ *
+ * The node's label says both in one string ("status: todo", "title · string"), and drawn as one they
+ * read with equal weight, when what a reader scans for is the value. So the name is drawn quietly and
+ * the value plainly and bold, split at the separator the expander wrote.
+ */
+function PropertyCard(props: { node: GraphNode }) {
+  const parts = createMemo(() => {
+    const label = props.node.label ?? '';
+    for (const separator of [': ', ' · ', ' → ']) {
+      const at = label.indexOf(separator);
+      if (at > 0) return { name: label.slice(0, at), value: label.slice(at + separator.length), separator };
+    }
+    return { name: '', value: label, separator: '' };
+  });
+  return (
+    <span class="we-graph__card-text">
+      <Show when={parts().name}>
+        <we-text color="text-muted" inline>
+          {parts().name}
+          {parts().separator === ' → ' ? ' → ' : ' '}
+        </we-text>
+      </Show>
+      <we-text fontWeight="semibold" inline>
+        {parts().value}
+      </we-text>
+    </span>
   );
 }
 
@@ -448,7 +479,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
   });
 
   const host: GraphViewProps['host'] = {
-    nodeContent: { block: BlockCard, record: RecordCard },
+    nodeContent: { block: BlockCard, record: RecordCard, property: PropertyCard },
     // A card's score for the reaction a tree is ordered by, and the reader's own answer — see `ReactionBadge`.
     nodeBadges: { reaction: ReactionBadge },
     // The header controls a template may name — colour, shape, scale. See `graphControls`.

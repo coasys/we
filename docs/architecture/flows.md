@@ -91,6 +91,14 @@ their own ask. Archived flows are listed on the space (`Space.archivedFlows`).
 The task-state flow is listed and shown read-only: it is written from the space's task states and
 moved on the board.
 
+## Drawn as a graph
+
+The same definition, as nodes and lines, in two places: the Flows page's **Graph** view (a read-only
+tree of the open flow's steps, laid out from the first), and the workshop canvas's **Vocabulary** map,
+whose Flows bucket opens into one node per flow and each flow into its steps and moves (the
+`vocabulary` seed and expander in `@we/graph-expanders`). Neither edits: lanes are where a flow is
+written. `flowStore.flows` carries each flow's `steps` and `moves` for both.
+
 ## Not built yet
 
 - Flow-level AI context, a step's AI check (`semanticCheck`) and a final step's outputs with

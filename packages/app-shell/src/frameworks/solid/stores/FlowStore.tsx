@@ -78,6 +78,10 @@ export interface FlowSummaryView {
   /** What writes it, when something other than this editor does. Empty otherwise. */
   managedBy: '' | 'task-states';
   archived: boolean;
+  /** Its steps, in order — empty until its definition has been read. */
+  steps: { name: string; label: string; final: boolean }[];
+  /** The moves between them. */
+  moves: { from: string; to: string }[];
 }
 
 /** The flow on screen, and the records going through it. */
@@ -117,6 +121,10 @@ export interface RecordFlowChip {
   /** Moves asked for and not made. */
   waiting: number;
   stalled: boolean;
+  /** Where it may be asked to go from here — empty until the flow's definition is read. */
+  next: RecordView['next'];
+  /** Each move asked for, with who asked and whether the viewer did — what Agree and Withdraw act on. */
+  asks: RecordView['waiting'];
 }
 
 export interface FlowStore {
@@ -128,6 +136,11 @@ export interface FlowStore {
   canEdit: Accessor<boolean>;
   /** Every flow in the space, archived ones included. */
   flows: Accessor<FlowSummaryView[]>;
+  /**
+   * The backend has answered with this space's flows. Until it has, an empty `flows` is not yet an
+   * answer, and the list is drawn as loading rather than as "no flows".
+   */
+  flowsLoaded: Accessor<boolean>;
   /** Flows a record can be started on: not archived, not written by something else. */
   startable: Accessor<{ name: string; label: string; subjects: string[] }[]>;
   /** The flow on screen, or `null`. */
@@ -146,7 +159,7 @@ export interface FlowStore {
   moveRecord: (flow: string, recordId: string, to: string, note?: string) => Promise<string>;
   withdrawRecord: (flow: string, recordId: string) => Promise<void>;
 
-  newFlow: (preset: FlowPreset, label: string, subjects?: string[]) => void;
+  newFlow: (preset: FlowPreset, label: string, subjects?: string[]) => Promise<void>;
   editFlow: () => void;
   cancelDraft: () => void;
   saveDraft: () => Promise<void>;
@@ -155,7 +168,7 @@ export interface FlowStore {
   setDraftLabel: (label: string) => void;
   setDraftHint: (hint: string) => void;
   setDraftSubjects: (subjects: string[]) => void;
-  addStep: (lane: number, label: string, after?: string) => void;
+  addStep: (lane: number, label: string, after?: string) => Promise<void>;
   removeStep: (name: string) => void;
   moveStep: (name: string, by: number) => void;
   renameStep: (name: string, label: string) => void;
@@ -164,14 +177,17 @@ export interface FlowStore {
    * A step's name, hint and approvals at once — what a step's edit form saves. Applied as one edit,
    * so a refusal (a name already used) leaves the step exactly as it was.
    */
-  updateStep: (name: string, changes: { label?: string; hint?: string; approvals?: number; kind?: string }) => void;
-  addBranch: (from: string, label: string, rejoins?: string) => void;
+  updateStep: (
+    name: string,
+    changes: { label?: string; hint?: string; approvals?: number; kind?: string },
+  ) => Promise<void>;
+  addBranch: (from: string, label: string, rejoins?: string) => Promise<void>;
   setBranchEnd: (lane: number, rejoins: string) => void;
   setRule: (rule: FlowSequenceRule) => void;
   addException: (from: string, to: string) => void;
   removeException: (from: string, to: string) => void;
   setApprovals: (name: string, count: number, kind?: string) => void;
-  addGuard: (name: string, entity: string, tie?: string, min?: number) => void;
+  addGuard: (name: string, entity: string, tie?: string, min?: number) => Promise<void>;
   removeGuard: (name: string, index: number) => void;
 }
 
@@ -236,18 +252,36 @@ export function FlowStoreProvider(props: ParentProps) {
   // ─── The list ────────────────────────────────────────────────────────────────
 
   const [summaries, setSummaries] = createSignal<FlowSummary[]>([]);
+  /*
+    Which space the list last answered for, rather than a flag: a switch of space has to make the list
+    unanswered again at once, and a slow answer for the space somebody just left must not count for
+    the one they are in. On a shared node listing flows takes seconds, and "no flows" for those
+    seconds read as the space having lost them.
+  */
+  const [listedFor, setListedFor] = createSignal<string | null>(null);
+  const flowsLoaded = () => listedFor() === datasetId();
 
   async function refreshFlows(): Promise<void> {
     const p = port();
     const h = handle();
+    const asked = datasetId();
     if (!p || !h) {
       setSummaries([]);
+      setListedFor(asked);
       return;
     }
     try {
-      setSummaries(await p.list(h));
+      const listed = await p.list(h);
+      if (datasetId() !== asked) return;
+      setSummaries(listed);
+      setListedFor(asked);
+      // Every definition, once: the list says which flows there are, and a map of the space's flows
+      // draws their steps — a handful of flows, each read once and kept until the space changes.
+      for (const summary of listed) void definitionOfFlow(summary.name).catch(() => {});
     } catch (error) {
       console.warn('FlowStore: could not list the flows', error);
+      // An answer of a kind: waiting on a list that failed would spin for ever.
+      if (datasetId() === asked) setListedFor(asked);
     }
   }
 
@@ -255,28 +289,14 @@ export function FlowStoreProvider(props: ParentProps) {
   createEffect(() => {
     datasetId();
     available();
+    untrack(() => setSummaries([]));
     void untrack(refreshFlows);
-  });
-
-  const flows = createMemo<FlowSummaryView[]>(() => {
-    const archived = new Set(spaceStore.archivedFlows());
-    return summaries()
-      .map((s) => {
-        const managedBy = s.name === TASK_FLOW ? ('task-states' as const) : ('' as const);
-        return {
-          name: s.name,
-          label: flowLabelOf(s.name),
-          editable: s.editable && !managedBy,
-          records: s.records,
-          managedBy,
-          archived: archived.has(s.name),
-        };
-      })
-      .sort((a, b) => Number(Boolean(b.managedBy)) - Number(Boolean(a.managedBy)) || a.label.localeCompare(b.label));
   });
 
   // ─── Definitions, read once per flow and kept ────────────────────────────────
 
+  // Declared before `flows`, which reads them: a memo runs as soon as it is made, and a signal
+  // declared below it does not exist yet at that moment.
   const [definitions, setDefinitions] = createSignal<Record<string, FlowDefinition>>({});
   const definitionOfFlow = async (name: string): Promise<FlowDefinition | null> => {
     const known = untrack(definitions)[name];
@@ -291,6 +311,33 @@ export function FlowStoreProvider(props: ParentProps) {
   createEffect(() => {
     datasetId();
     setDefinitions({});
+  });
+
+  const flows = createMemo<FlowSummaryView[]>(() => {
+    const archived = new Set(spaceStore.archivedFlows());
+    const defs = definitions();
+    return summaries()
+      .map((s) => {
+        const managedBy = s.name === TASK_FLOW ? ('task-states' as const) : ('' as const);
+        const definition = defs[s.name];
+        const labels = labelsFor(s.name);
+        const leaving = new Set(definition?.transitions.map((t) => t.from) ?? []);
+        return {
+          name: s.name,
+          label: flowLabelOf(s.name),
+          editable: s.editable && !managedBy,
+          records: s.records,
+          managedBy,
+          archived: archived.has(s.name),
+          steps: (definition?.states ?? []).map((state) => ({
+            name: state.name,
+            label: labels.state(state.name),
+            final: !leaving.has(state.name),
+          })),
+          moves: (definition?.transitions ?? []).map((t) => ({ from: t.from, to: t.to })),
+        };
+      })
+      .sort((a, b) => Number(Boolean(b.managedBy)) - Number(Boolean(a.managedBy)) || a.label.localeCompare(b.label));
   });
 
   const startableNames = createMemo(
@@ -447,15 +494,22 @@ export function FlowStoreProvider(props: ParentProps) {
   const recordFlows = createMemo<Record<string, RecordFlowChip[]>>(() => {
     const out: Record<string, RecordFlowChip[]> = {};
     const all = items();
+    const defs = definitions();
     for (const name of startableNames()) {
+      const definition = defs[name];
+      const model = definition ? toLanes(definition).model : null;
+      const labels = labelsFor(name);
       for (const item of all[name] ?? []) {
+        const view = definition && model ? recordView(definition, model, item, '', me(), labels) : null;
         (out[item.subject] ??= []).push({
           flow: name,
           label: flowLabelOf(name),
           state: item.state,
-          stateLabel: item.state ? labelsFor(name).state(item.state) : '',
+          stateLabel: item.state ? labels.state(item.state) : '',
           waiting: item.waiting.length,
           stalled: item.stalled,
+          next: view?.next ?? [],
+          asks: view?.waiting ?? [],
         });
       }
     }
@@ -533,19 +587,30 @@ export function FlowStoreProvider(props: ParentProps) {
     };
   });
 
-  /** Apply one edit to the draft, or say why it cannot be made. */
-  const edit = (change: (draft: FlowDraft) => DraftEdit) => {
+  /** Apply one edit to the draft, or say why it cannot be made. Answers whether it applied. */
+  const edit = (change: (draft: FlowDraft) => DraftEdit): boolean => {
     const state = draftState();
-    if (!state) return;
+    if (!state) return false;
     const next = change(state.draft);
     if (isRefusal(next)) {
       toastService.error(next.refused);
-      return;
+      return false;
     }
     setDraftState({ ...state, draft: next });
+    return true;
   };
 
-  function newFlow(preset: FlowPreset, label: string, subjects: string[] = ['TaskBlock']): void {
+  /*
+    The same edit, for an edit a form submits. A form closes in its action's `onSuccess`, which only
+    a promise has, so these resolve when the edit applied and reject when it was refused: the form
+    closes on the one and stays open, holding what was typed, on the other. The refusal has already
+    been said in a toast.
+  */
+  const submitted = async (change: (draft: FlowDraft) => DraftEdit): Promise<void> => {
+    if (!edit(change)) throw new Error('That change was not made');
+  };
+
+  async function newFlow(preset: FlowPreset, label: string, subjects: string[] = ['TaskBlock']): Promise<void> {
     const name = flowNameOf(label) || 'NewFlow';
     setDraftState({ draft: presetDraft(preset, name, subjects), saved: null });
   }
@@ -621,6 +686,7 @@ export function FlowStoreProvider(props: ParentProps) {
     capabilities,
     canEdit,
     flows,
+    flowsLoaded,
     startable,
     open,
     draft,
@@ -646,13 +712,13 @@ export function FlowStoreProvider(props: ParentProps) {
       }),
     setDraftHint: (hint) => edit((d) => ({ ...d, ...(hint.trim() ? { hint: hint.trim() } : { hint: undefined }) })),
     setDraftSubjects: (subjects) => edit((d) => ({ ...d, subjects: [...new Set(subjects.filter(Boolean))] })),
-    addStep: (lane, label, after) => edit((d) => draftEdits.addStep(d, lane, label, after || undefined)),
+    addStep: (lane, label, after) => submitted((d) => draftEdits.addStep(d, lane, label, after || undefined)),
     removeStep: (name) => edit((d) => draftEdits.removeStep(d, name)),
     moveStep: (name, by) => edit((d) => draftEdits.moveStep(d, name, by < 0 ? -1 : 1)),
     renameStep: (name, label) => edit((d) => draftEdits.renameStep(d, name, label)),
     setStepHint: (name, hint) => edit((d) => draftEdits.setStepHint(d, name, hint)),
     updateStep: (name, changes) =>
-      edit((d) => {
+      submitted((d) => {
         let next: DraftEdit = d;
         if (changes.hint !== undefined) next = draftEdits.setStepHint(next, name, changes.hint);
         if (!isRefusal(next) && (changes.approvals !== undefined || changes.kind !== undefined)) {
@@ -667,7 +733,7 @@ export function FlowStoreProvider(props: ParentProps) {
         if (!isRefusal(next) && changes.label !== undefined) next = draftEdits.renameStep(next, name, changes.label);
         return next;
       }),
-    addBranch: (from, label, rejoins) => edit((d) => draftEdits.addBranch(d, from, label, rejoins || undefined)),
+    addBranch: (from, label, rejoins) => submitted((d) => draftEdits.addBranch(d, from, label, rejoins || undefined)),
     setBranchEnd: (lane, rejoins) => edit((d) => draftEdits.setBranchEnd(d, lane, rejoins || undefined)),
     setRule: (rule) => edit((d) => draftEdits.setRule(d, rule)),
     addException: (from, to) => edit((d) => draftEdits.addException(d, from, to)),
@@ -679,7 +745,7 @@ export function FlowStoreProvider(props: ParentProps) {
         return draftEdits.setRequirements(d, name, rule ? [rule, ...rest] : rest);
       }),
     addGuard: (name, entity, tie, min = 1) =>
-      edit((d) => {
+      submitted((d) => {
         if (!entity) return { refused: 'Say what kind of record has to be there.' };
         const guard: FlowRequirement = {
           kind: 'guard',

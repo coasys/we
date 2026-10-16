@@ -155,6 +155,11 @@ export class Travel {
     return this.drawnRoutes.get(id);
   }
 
+  /** Where a travelling card is going, or undefined for one that is not travelling. */
+  destination(id: string): Point | undefined {
+    return this.running ? this.cards.get(id)?.to : undefined;
+  }
+
   // — In between ————————————————————————————————————————————————————————————————————————————————————
 
   /** How a node is drawn this frame, given how the rules draw it now. */

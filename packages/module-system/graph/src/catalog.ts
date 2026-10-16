@@ -130,6 +130,22 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `{ "source": "canvas", "options": { "canvas": { "$": "local.canvasId" } } }`,
     },
     {
+      id: 'vocabulary',
+      category: 'seed',
+      description:
+        "What a space has DEFINED rather than what it holds — its signal types, task states, kinds of part, connection kinds, models and flows — drawn as buckets that open. These records are found by type, never by containment, so a canvas seeded from a space's collection cannot reach them; this is how a map of the vocabulary does. Each bucket opens through the `vocabulary` expander: a bucket of records into those records, a bucket of models into type nodes (which `schema-properties` opens into their fields), a bucket of flows into one node per flow and each flow into its steps and moves. Pair with layout: forest, buckets as roots.",
+      options: [
+        {
+          name: 'buckets',
+          type: '{ key, label, entity? | models? | flows?, opens? }[]',
+          description:
+            "The buckets, in order. `entity` names a record type whose records fill it; `models` is `[{ name, label? }]`; `flows` is `[{ name, label, steps: [{ name, label, final? }], moves: [{ from, to }] }]`. `opens` — `{ entity, field, key }` beside an `entity` — is what one of its records opens into: the records of `entity` whose `field` holds the record's `key`, so a task state opens into its tasks with `{ entity: 'TaskBlock', field: 'status', key: 'slug' }`. `key` must stay the same between loads — it is part of the bucket's address.",
+        },
+        { name: 'limit', type: 'number', description: 'Records read per entity bucket. Default 200.' },
+      ],
+      example: `{ "source": "vocabulary", "options": { "buckets": [{ "key": "signals", "label": "Signal types", "entity": "SignalType" }] } }`,
+    },
+    {
       id: 'dataset',
       category: 'seed',
       description: 'Seeds a single node for the current space — the starting point for exploring outward.',
@@ -170,15 +186,60 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `"seeds": { "source": "schema" }, "expansion": { "expanders": ["schema", "entity"] }`,
     },
     {
+      id: 'schema-instances',
+      category: 'expander',
+      description:
+        "Opens the Records node a model was opened into (by `schema-properties`) into that model's instances. The `schema` expander's question asked one click later, so opening a model shows what it is before it shows everything there is of it.",
+      options: [{ name: 'limit', type: 'number', description: 'Instances loaded. Default 25.' }],
+      example: `"expansion": { "expanders": ["schema-properties", "schema-instances"] }`,
+    },
+    {
+      id: 'schema-properties',
+      category: 'expander',
+      description:
+        'Opens a type node into what the type IS — one node per field, labelled with its kind, one per relation naming what it points at — and a Records node that `schema-instances` opens into its instances. The question a map of a vocabulary asks first.',
+      options: [],
+      example: `"expansion": { "expanders": ["vocabulary", "schema-properties", "schema-instances"] }`,
+    },
+    {
+      id: 'vocabulary',
+      category: 'expander',
+      description:
+        'Opens a bucket the `vocabulary` seed drew into what is in it, and a flow into its steps, with a line for each move between them.',
+      options: [],
+      example: `"seeds": { "source": "vocabulary", "options": { "buckets": [] } }, "expansion": { "expanders": ["vocabulary"] }`,
+    },
+    {
+      id: 'vocabulary-records',
+      category: 'expander',
+      description:
+        'Opens a record in a vocabulary bucket that names `opens` into the records that use it — a task state into its tasks. A line from each says the field that put it there ("status"). Separate from `vocabulary` so a flow\'s steps are not offered a caret that opens nothing.',
+      options: [],
+      example: `"expansion": { "expanders": ["vocabulary", "vocabulary-records"] }`,
+    },
+    {
       id: 'property',
       category: 'expander',
       description:
         'Opens an instance out into its own scalar fields, and optionally into shared value nodes so instances converge on common values. The resolution level below an entity.',
       options: [
         { name: 'properties', type: 'string[]', description: 'Only show these fields.' },
-        { name: 'valueNodes', type: 'boolean', description: 'Promote values to shared nodes. Defaults to true.' },
+        {
+          name: 'valueNodes',
+          type: 'boolean',
+          description:
+            'Promote values to shared nodes. Defaults to false; name `property-values` instead for a map where instances converging on a value is the point.',
+        },
       ],
       example: `"expansion": { "expanders": ["property"] }`,
+    },
+    {
+      id: 'property-values',
+      category: 'expander',
+      description:
+        'The `property` expander with every value promoted to a shared node, so three tasks marked "blocked" meet at one "blocked" node. For a map where convergence is the point; a canvas of work wants `property`, whose fields are leaves.',
+      options: [{ name: 'properties', type: 'string[]', description: 'Only show these fields.' }],
+      example: `"expansion": { "expanders": ["property-values"] }`,
     },
 
     // ─── Layouts ───────────────────────────────────────────────────────────────
@@ -222,6 +283,12 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
             'Which connections make a parent a parent — one field of a line and the value it must hold. `{ "field": "data.relationshipTypeId", "value": "<id>" }` follows one kind a community named. Absent follows every line, which is right only where they are all one kind. Every other line is still drawn; it simply does not decide where a card goes.',
         },
         {
+          name: 'containment',
+          type: 'string[]',
+          description:
+            'Line types that make a parent whatever the spine says — a card\'s opened fields, a bucket\'s members. Default ["contains", "property", "value", "instance"]; [] to follow the spine alone.',
+        },
+        {
           name: 'sortBy',
           type: 'string',
           description:
@@ -259,8 +326,9 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
         },
         {
           name: 'unattached',
-          type: '"right" | "bottom"',
-          description: 'Where cards on no tree go. Default "right"; "bottom" suits a narrow screen.',
+          type: '"right" | "bottom" | "trees"',
+          description:
+            'Where cards on no tree go. Default "right"; "bottom" suits a narrow screen. "trees" makes each a one-card tree in line with the others — for roots that are given rather than found, such as the categories of a vocabulary map, where one with nothing in it is still a root.',
         },
         { name: 'unattachedColumns', type: 'number', description: 'How many cards wide that zone is. Default 3.' },
         {
@@ -301,7 +369,13 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           name: 'size',
           type: '{ width: number; height: number }',
           description:
-            'The box a card takes. A node with no stored position is parked in the view, in the first slot clear of every card already there — pass the card size so slots do not overlap. Absent means a 160-sided square.',
+            'The box a card takes. A node with no stored position is parked in the view, in the first slot clear of every card already there — pass the card size so slots do not overlap. A node opened out of a placed card goes beside it instead: a field in a column to its right, what it contains in a row below. Absent means a 160-sided square.',
+        },
+        {
+          name: 'kindSizes',
+          type: '{ [kind]: { width: number; height: number } }',
+          description:
+            'The box a node of one kind takes where it is not `size` — `{ property: { width: 170, height: 44 } }` for a card’s opened fields, matching the style rule that draws them, so a column of them fits beside the card.',
         },
         {
           name: 'widthField',
@@ -354,7 +428,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       id: 'content',
       category: 'style',
       description:
-        "Node style, cards only. Names a host-supplied component to draw INSIDE the card instead of a text label — WE registers `block`, which renders a CollectionBlock's composed content the way a post card does, and `record`, which does the same for a note and draws any other record as its kind, its name and every value it holds. A label can only ever be the first line, so a card holding an image and three paragraphs shows sixty characters and gives no sign the rest exists. Clipped, not scrolled: a card is a preview, and what does not fit is reached by opening it. Falls back to the label when the host supplies no component by that name.",
+        "Node style, cards only. Names a host-supplied component to draw INSIDE the card instead of a text label — WE registers `block`, which renders a CollectionBlock's composed content the way a post card does, `record`, which does the same for a note and draws any other record as its kind, its name and every value it holds, and `property`, which draws a property node's name quietly and its value in bold. A label can only ever be the first line, so a card holding an image and three paragraphs shows sixty characters and gives no sign the rest exists. Clipped, not scrolled: a card is a preview, and what does not fit is reached by opening it. Falls back to the label when the host supplies no component by that name.",
       example: `"nodeStyle": [{ "style": { "shape": "card", "width": 180, "content": "block" } }]`,
     },
     {

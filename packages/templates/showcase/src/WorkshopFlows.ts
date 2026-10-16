@@ -34,6 +34,7 @@ export const FLOWS_LOCALS = {
   excTo: { type: 'string', initial: '' },
   historyOf: { type: 'string', initial: '' },
   showArchived: { type: 'boolean', initial: false },
+  flowAsGraph: { type: 'boolean', initial: false },
 } as const;
 
 const text = (content: string | { $: string }, props: Record<string, SchemaProp> = {}): SchemaNode => ({
@@ -347,13 +348,13 @@ const walk: SchemaNode = {
               type: '$if',
               props: {
                 condition: { $: 'index > 0' },
+                // A divider rather than a sized box: a Row keeps a height of its own and drew an oval.
                 then: {
-                  type: 'Row',
+                  type: 'we-divider',
                   props: {
-                    width: '20px',
-                    height: '2px',
-                    r: 'full',
-                    bg: { $: "step.at == 'ahead' ? 'border' : 'accent'" },
+                    width: '24px',
+                    thickness: '3px',
+                    color: { $: "step.at == 'ahead' ? 'border' : 'accent'" },
                   },
                 },
               },
@@ -702,13 +703,91 @@ const openHeader: SchemaNode = {
   ],
 };
 
+/** The open flow's steps and moves, as `flowStore.flows` holds them once its definition is read. */
+const OPEN_DEFINITION = `flowStore.flows.find(f, f.name == ${OPEN}.name)`;
+
+/**
+ * The open flow as a graph: one node per step, a line per move, laid out as a tree from the first.
+ *
+ * Read-only, and a second way of looking rather than a second editor: lanes are where a flow is
+ * written. What a graph shows that lanes do not is a flow that does not fit them — one written by
+ * another app, all moves and no line — and the shape of the wiring at a glance.
+ */
+const flowGraph: SchemaNode = {
+  type: 'Column',
+  props: { width: '100%', height: '480px', r: 'card', border: '1px solid border', overflow: 'hidden' },
+  children: [
+    {
+      type: 'GraphView',
+      props: {
+        seeds: {
+          literal: true,
+          nodes: {
+            $: `(${OPEN_DEFINITION}.steps ?? []).map(s, { id: 'step:' + s.name, kind: 'cluster', type: 'flow-step', label: s.label, data: { final: s.final } })`,
+          },
+          edges: {
+            $: `(${OPEN_DEFINITION}.moves ?? []).map(m, { id: m.from + '>' + m.to, source: 'step:' + m.from, target: 'step:' + m.to, type: 'move' })`,
+          },
+        },
+        /*
+          Room between steps for the lines to read. The tree's gaps are centre to centre, and at its
+          defaults a 150-wide step sat 120 from the next — overlapping — so a move back or a branch had
+          nowhere to go but a sharp bend. A step's width plus 120 along, its height plus 70 across.
+        */
+        layout: { type: 'tree', options: { direction: 'right', levelGap: 270, siblingGap: 122 } },
+        nodeStyle: [
+          { style: { shape: 'card', width: 150, height: 52, color: 'surface-raised' } },
+          { when: { 'data.final': true }, style: { borderColor: 'accent-text', borderWidth: 2 } },
+        ],
+        edgeStyle: [{ style: { color: 'accent-text' } }],
+        controls: ['zoom-in', 'zoom-out', 'fit'],
+        behaviours: ['pan-zoom'],
+      },
+    },
+  ],
+};
+
 const openFlow: SchemaNode = {
   type: 'Column',
   props: { gap: '500', width: '100%' },
   children: [
     openHeader,
-    lanes(OPEN, false),
-    exceptions(OPEN, false),
+    {
+      type: 'Row',
+      props: { gap: '200' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            size: 'sm',
+            variant: { $: "local.flowAsGraph ? 'ghost' : 'secondary'" },
+            onClick: { $setLocal: 'flowAsGraph', value: false },
+          },
+          children: [text('Lanes')],
+        },
+        {
+          type: 'we-button',
+          props: {
+            size: 'sm',
+            variant: { $: "local.flowAsGraph ? 'secondary' : 'ghost'" },
+            onClick: { $setLocal: 'flowAsGraph', value: true },
+          },
+          children: [text('Graph')],
+        },
+      ],
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'local.flowAsGraph' },
+        then: flowGraph,
+        else: {
+          type: 'Column',
+          props: { gap: '500', width: '100%' },
+          children: [lanes(OPEN, false), exceptions(OPEN, false)],
+        },
+      },
+    },
     { type: 'we-divider' },
     {
       type: 'Row',
@@ -810,8 +889,13 @@ const draftHeader: SchemaNode = {
               type: 'we-select',
               props: {
                 value: { $: `${DRAFT}.subjects[0] ?? ''` },
+                /*
+                  A note and a post are each a collection (`CollectionBlock`), not the text inside one
+                  (`TextBlock`), which is what this used to name — so a flow for "notes and posts" was
+                  offered on none of them. "Collections" picked the same records, and goes.
+                */
                 options: {
-                  $: "[{ label: 'Any record', value: '' }, { label: 'Tasks', value: 'TaskBlock' }, { label: 'Notes and posts', value: 'TextBlock' }, { label: 'Events', value: 'EventBlock' }, { label: 'Collections', value: 'CollectionBlock' }]",
+                  $: "[{ label: 'Any record', value: '' }, { label: 'Tasks', value: 'TaskBlock' }, { label: 'Notes and posts', value: 'CollectionBlock' }, { label: 'Events', value: 'EventBlock' }]",
                 },
                 onChange: {
                   $action: 'flowStore.setDraftSubjects',
@@ -919,7 +1003,7 @@ const newFlowModal: SchemaNode = formModal({
     args: [
       { $: 'local.flowPreset' },
       { $: 'local.flowLabel' },
-      { $: "local.flowPreset == 'proposal' ? ['TextBlock'] : ['TaskBlock']" },
+      { $: "local.flowPreset == 'proposal' ? ['CollectionBlock'] : ['TaskBlock']" },
     ],
   },
 });
@@ -1218,11 +1302,30 @@ const flowList: SchemaNode = {
       props: { items: { $: 'flowStore.flows.filter(f, !f.archived)' }, as: 'flow' },
       children: [flowButton],
     },
+    /*
+      Loading, then the list or "No flows yet." — never "No flows yet." while the list is still being
+      read. On a shared node the read takes seconds, and the empty sentence said the space had lost
+      its flows until they arrived.
+    */
     {
       type: '$if',
       props: {
-        condition: { $: '!count(flowStore.flows)' },
-        then: text('No flows yet.', { variant: 'footnote', color: 'text-faint' }),
+        condition: { $: 'flowStore.flowsLoaded' },
+        then: {
+          type: '$if',
+          props: {
+            condition: { $: '!count(flowStore.flows)' },
+            then: text('No flows yet.', { variant: 'footnote', color: 'text-faint' }),
+          },
+        },
+        else: {
+          type: 'Column',
+          props: { gap: '200' },
+          children: [
+            { type: 'we-skeleton', props: { height: '28px' } },
+            { type: 'we-skeleton', props: { height: '28px', width: '80%' } },
+          ],
+        },
       },
     },
     {
@@ -1321,14 +1424,101 @@ export function flowsPage(band: Record<string, string>): SchemaNode {
 // ─── The inspector's section ───────────────────────────────────────────────────
 
 /**
+ * What can be done to a record in one flow from its inspector: the moves waiting on agreement, with
+ * Agree or Withdraw, and where it may be asked to go next. `inFlow` is one of its `recordFlows`.
+ */
+const inspectorMoves: SchemaNode = {
+  type: 'Column',
+  props: { gap: '100', pl: '600' },
+  children: [
+    {
+      type: '$each',
+      props: { items: { $: 'inFlow.asks' }, as: 'ask' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', wrap: true },
+          children: [
+            text(
+              { $: '`Asked to move to ${ask.toLabel} · ${count(ask.voters)} of ${ask.needs}`' },
+              { variant: 'footnote', color: 'text-muted' },
+            ),
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'ask.mine' },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    size: 'xs',
+                    variant: 'ghost',
+                    onClick: { $action: 'flowStore.withdrawRecord', args: [{ $: 'inFlow.flow' }, { $: 'row.id' }] },
+                  },
+                  children: [text('Withdraw')],
+                },
+                else: {
+                  type: 'we-button',
+                  props: {
+                    size: 'xs',
+                    variant: 'secondary',
+                    onClick: {
+                      $action: 'flowStore.moveRecord',
+                      args: [{ $: 'inFlow.flow' }, { $: 'row.id' }, { $: 'ask.to' }],
+                    },
+                  },
+                  children: [text('Agree')],
+                },
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'count(inFlow.next)' },
+        then: {
+          type: 'Row',
+          props: { gap: '100', ay: 'center', wrap: true },
+          children: [
+            text('Move to', { variant: 'footnote', color: 'text-muted' }),
+            {
+              type: '$each',
+              props: { items: { $: 'inFlow.next' }, as: 'to' },
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    size: 'xs',
+                    variant: 'ghost',
+                    onClick: {
+                      $action: 'flowStore.moveRecord',
+                      args: [{ $: 'inFlow.flow' }, { $: 'row.id' }, { $: 'to.name' }],
+                    },
+                  },
+                  children: [text({ $: 'to.label' })],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  ],
+};
+
+/**
  * The flows a record is going through, in its inspector, and the one control that starts another.
  *
  * Shown wherever the space has flows. `row` is the record the inspector's loop binds, `type` the
  * expression naming its entity. Where it stands in each is read from `flowStore.recordFlows`, which
  * watches every startable flow, so a card and its inspector agree without either asking.
  *
- * "Open" goes to the Flows page with that flow open — the one place a record's moves are asked for
- * and its history read, so the inspector does not grow a second copy of the stepper.
+ * Each flow offers what can be done to the record from here — move it on, agree with a move somebody
+ * asked for, or take back one's own ask — so moving a record does not mean leaving it. "Open" goes to
+ * the Flows page with that flow open, where its whole walk and its history are read: the inspector
+ * does not grow a second copy of the stepper.
  */
 export function flowsSection(opts: { type: string; open: { field: string }; flowsPath: SchemaProp }): SchemaNode {
   const mine = 'flowStore.recordFlows[row.id] ?? []';
@@ -1374,39 +1564,46 @@ export function flowsSection(opts: { type: string; open: { field: string }; flow
                     props: { items: { $: mine }, as: 'inFlow' },
                     children: [
                       {
-                        type: 'Row',
-                        props: { gap: '200', ay: 'center', wrap: true },
+                        type: 'Column',
+                        props: { gap: '100' },
                         children: [
-                          { type: 'we-icon', props: { name: 'flow-arrow', size: 'sm' } },
-                          text({ $: 'inFlow.label' }, { variant: 'label' }),
-                          text(
-                            { $: "inFlow.stateLabel ? inFlow.stateLabel : 'Not placed yet'" },
-                            { variant: 'footnote', color: 'text-muted' },
-                          ),
                           {
-                            type: '$if',
-                            props: {
-                              condition: { $: 'inFlow.waiting' },
-                              then: chip({ $: '`${inFlow.waiting} waiting`' }, 'warning-surface'),
-                            },
+                            type: 'Row',
+                            props: { gap: '200', ay: 'center', wrap: true },
+                            children: [
+                              { type: 'we-icon', props: { name: 'flow-arrow', size: 'sm' } },
+                              text({ $: 'inFlow.label' }, { variant: 'label' }),
+                              text(
+                                { $: "inFlow.stateLabel ? inFlow.stateLabel : 'Not placed yet'" },
+                                { variant: 'footnote', color: 'text-muted' },
+                              ),
+                              {
+                                type: '$if',
+                                props: {
+                                  condition: { $: 'inFlow.waiting' },
+                                  then: chip({ $: '`${inFlow.waiting} waiting`' }, 'warning-surface'),
+                                },
+                              },
+                              {
+                                type: '$if',
+                                props: { condition: { $: 'inFlow.stalled' }, then: chip('Stuck', 'warning-surface') },
+                              },
+                              { type: 'Row', props: { flex: '1' } },
+                              {
+                                type: 'we-button',
+                                props: {
+                                  size: 'xs',
+                                  variant: 'ghost',
+                                  onClick: [
+                                    { $action: 'flowStore.openFlow', args: [{ $: 'inFlow.flow' }] },
+                                    { $action: 'routeStore.navigate', args: [opts.flowsPath] },
+                                  ],
+                                },
+                                children: [text('Open')],
+                              },
+                            ],
                           },
-                          {
-                            type: '$if',
-                            props: { condition: { $: 'inFlow.stalled' }, then: chip('Stuck', 'warning-surface') },
-                          },
-                          { type: 'Row', props: { flex: '1' } },
-                          {
-                            type: 'we-button',
-                            props: {
-                              size: 'xs',
-                              variant: 'ghost',
-                              onClick: [
-                                { $action: 'flowStore.openFlow', args: [{ $: 'inFlow.flow' }] },
-                                { $action: 'routeStore.navigate', args: [opts.flowsPath] },
-                              ],
-                            },
-                            children: [text('Open')],
-                          },
+                          inspectorMoves,
                         ],
                       },
                     ],

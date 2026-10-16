@@ -86,6 +86,7 @@ import { Dynamic } from 'solid-js/web';
 
 import type { GraphViewProps, NodeBadge, NodeContent } from './GraphView.types';
 import { isSettled, patched } from './pending';
+import { isRecordAddress } from './recordAddress';
 import { type Grip, HANDLES, resizeBox } from './resize';
 
 /** Matches the engine's own floor, so a drag cannot leave a card the style layer would refuse. */
@@ -587,7 +588,7 @@ export function GraphView(props: GraphViewProps) {
             // type an id is, and neither can `recordStore.displays`. Double-click and the node
             // actions both carried it already; this was the one that made a caller reach for the
             // double-click handler to answer a single click's question.
-            ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+            ...(isRecordAddress(at) && { recordId: at.id, recordType: at.type }),
             fields: readableFields(node),
           });
           break;
@@ -601,7 +602,7 @@ export function GraphView(props: GraphViewProps) {
           const opened = parseAddress(node.id);
           props.onNodeDoubleClick?.({
             ...node,
-            ...(opened?.kind === 'entity' && { recordId: opened.id, recordType: opened.type }),
+            ...(isRecordAddress(opened) && { recordId: opened.id, recordType: opened.type }),
           });
           break;
         }
@@ -615,7 +616,7 @@ export function GraphView(props: GraphViewProps) {
           const behind = edge.reifiedAs ? parseAddress(edge.reifiedAs) : null;
           props.onEdgeClick?.({
             ...edge,
-            ...(behind?.kind === 'entity' && { recordId: behind.id, recordType: behind.type }),
+            ...(isRecordAddress(behind) && { recordId: behind.id, recordType: behind.type }),
           });
           break;
         }
@@ -669,7 +670,7 @@ export function GraphView(props: GraphViewProps) {
           /** One card that moved with the drag, as a record, or nothing when it does not stand for one. */
           const asRecord = (id: string, x: number, y: number) => {
             const address = parseAddress(id);
-            if (address?.kind !== 'entity' || !address.id) return [];
+            if (!isRecordAddress(address) || !address.id) return [];
             return [{ recordId: address.id, recordType: address.type ?? '', x, y }];
           };
           /*
@@ -695,7 +696,8 @@ export function GraphView(props: GraphViewProps) {
             id: event.node.id,
             x: event.position.x,
             y: event.position.y,
-            ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+            ...(isRecordAddress(at) && { recordId: at.id, recordType: at.type }),
+            ...(engine.expansion.heldOnlyByOpening(event.node.id) && { opened: true }),
             ...(carried.length ? { carried } : {}),
           });
           break;
@@ -1167,7 +1169,7 @@ export function GraphView(props: GraphViewProps) {
           id: target.owner,
           folded: false,
           count: engine.foldedCount(target.owner),
-          ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+          ...(isRecordAddress(at) && { recordId: at.id, recordType: at.type }),
         });
       }
       return;
@@ -1466,7 +1468,7 @@ export function GraphView(props: GraphViewProps) {
   const selectedRecords = createMemo(() =>
     selectedRows().flatMap(({ entry }) => {
       const at = parseAddress(entry.node.id);
-      return at?.kind === 'entity' && at.id ? [{ recordId: at.id, recordType: at.type ?? '' }] : [];
+      return isRecordAddress(at) && at.id ? [{ recordId: at.id, recordType: at.type ?? '' }] : [];
     }),
   );
 
@@ -1746,6 +1748,8 @@ export function GraphView(props: GraphViewProps) {
     return engine.drawnEdges().flatMap((edge) => {
       const route = geometry.get(edge.id);
       if (!route) return [];
+      // Drawn when the card lands, in a tree — see `hidesLinesTo`.
+      if (engine.hidesLinesTo(edge.source) || engine.hidesLinesTo(edge.target)) return [];
       const visual = edgeVisual(edge, resolveStyle(edge, props.edgeStyle, metrics), metrics);
       // The gap is the arrowhead's own length, in world units — the marker scales with stroke width,
       // so the stroke has to give up the same amount it takes.
@@ -2131,9 +2135,150 @@ export function GraphView(props: GraphViewProps) {
       id: entry.node.id,
       folded: !entry.folded,
       count: engine.foldImpact(entry.node.id),
-      ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+      ...(isRecordAddress(at) && { recordId: at.id, recordType: at.type }),
     });
   }
+
+  /**
+   * What the caret on a card does — one control for everything under it, whatever put it there.
+   *
+   * Two things can be under a card: what is already on the graph and hangs off it (a seed drew it, and
+   * a fold hides it), and what the graph fetches when the card is opened (its properties, what it
+   * contains). They used to be one answer or the other — whichever came first — so a card that had been
+   * opened could no longer fold its connections from the caret. Now:
+   *
+   * - **close** — something is showing under it: closes what was opened and folds what can fold.
+   * - **open** — something is hidden: unfolds it and opens the card.
+   *
+   * Folding is offered only to an interface listening on `onNodeFold`, and opening only to one on
+   * `onNodeOpen` — where each is kept is the interface's, and a caret that forgot on reload would be
+   * worse than none.
+   */
+  const caretSays = (
+    entry: NodeEntry,
+  ): { mode: 'close' | 'open' | null; folds: boolean; opens: boolean; enabled: boolean } => {
+    version();
+    const fold = foldSays(entry);
+    const opened = !!props.onNodeOpen && engine.expansion.isExpanded(entry.node.id);
+    const canOpen = !!props.onNodeOpen && engine.canExpand(entry.node.id);
+    const unfolded = fold.show && !entry.folded;
+    if (opened || unfolded) {
+      return { mode: 'close', folds: unfolded, opens: opened, enabled: opened || fold.enabled };
+    }
+    if (entry.folded || canOpen) return { mode: 'open', folds: entry.folded, opens: canOpen, enabled: true };
+    return { mode: null, folds: false, opens: false, enabled: false };
+  };
+
+  /** Press the caret: everything under the card the one way or the other — see {@link caretSays}. */
+  function pressCaret(entry: NodeEntry): void {
+    const says = caretSays(entry);
+    if (says.mode === 'close') {
+      if (says.opens) toggleOpen(entry, false);
+      if (says.folds && foldSays(entry).enabled) reportFold(entry);
+    } else if (says.mode === 'open') {
+      if (says.folds) reportFold(entry);
+      if (says.opens) toggleOpen(entry, true);
+    }
+  }
+
+  /** What the caret is called, and says on hover — in the fold's words where only a fold is involved. */
+  const caretLabel = (entry: NodeEntry): string => {
+    const says = caretSays(entry);
+    if (says.mode === 'close') return says.opens ? 'Close' : 'Fold';
+    return says.folds && !says.opens ? 'Unfold' : 'Open';
+  };
+  const caretTitle = (entry: NodeEntry): string => {
+    const says = caretSays(entry);
+    if (says.folds && !says.opens) return foldTitle(entry, foldSays(entry));
+    return says.mode === 'close' ? 'Close what is open under this card' : 'Open what is in this card';
+  };
+
+  /**
+   * Whether a card's caret sits in its own corner rather than in the bar above it.
+   *
+   * The bar is for a selected card's actions, and is the right place while there are several. With
+   * nothing in it but the caret — a map whose cards only open and close — it was a toolbar floating
+   * over each card to hold one disclosure, and only once the card was selected. In the corner the
+   * caret is on every card that has something inside, where the eye already is.
+   */
+  const caretInCorner = (entry: NodeEntry): boolean =>
+    // A card has a corner; a dot does not, and keeps its caret in the bar.
+    entry.visual.shape === 'card' &&
+    caretSays(entry).mode !== null &&
+    actionsFor(entry.node).length === 0 &&
+    !props.carry;
+
+  /*
+    Which cards' content runs past the bottom of the card — the only ones the fade there is for.
+
+    Measured, because only measuring can say it: a one-line property and a long note can both be drawn
+    as content, and a fade on every card with content covered half the line of a short one. One observer
+    for the whole graph, watching each card's content box and what is inside it, so a document that
+    finishes rendering after the card mounts is measured again when it grows.
+  */
+  const markOverflow = (scale: Element) =>
+    scale.parentElement?.classList.toggle(
+      'we-graph__card-content--overflows',
+      scale.scrollHeight > scale.clientHeight + 1,
+    );
+  const overflowWatch =
+    typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver((entries) => {
+          for (const entry of entries) {
+            const scale = entry.target?.closest?.('.we-graph__card-scale');
+            if (scale) markOverflow(scale);
+          }
+        });
+  onCleanup(() => overflowWatch?.disconnect());
+  function watchOverflow(scale: HTMLElement): void {
+    if (!overflowWatch) return;
+    overflowWatch.observe(scale);
+    // Its content is drawn after this ref runs.
+    queueMicrotask(() => {
+      for (const child of Array.from(scale.children)) overflowWatch.observe(child);
+      markOverflow(scale);
+    });
+  }
+
+  /** Open or close a card from its caret, and tell the interface so it can keep the open set. */
+  function toggleOpen(entry: NodeEntry, open: boolean): void {
+    const at = parseAddress(entry.node.id);
+    if (open) void engine.expand(entry.node.id, 'out');
+    else engine.collapse(entry.node.id);
+    props.onNodeOpen?.({
+      id: entry.node.id,
+      open,
+      ...(isRecordAddress(at) && { recordId: at.id, recordType: at.type }),
+    });
+  }
+
+  /*
+    The open set, kept in step with the graph.
+
+    An address is opened once it is on the graph and not open yet — so a field opened under a field
+    comes back when the first has reopened, and a reload reopens everything that was open. Asked once
+    per address per arrival: an expansion that found nothing must not be retried on every redraw. One
+    taken out of the list is closed, but only if it was this list that opened it; a double-click's
+    expansion is the reader's, not the address's.
+  */
+  const openedFromProp = new Set<string>();
+  createEffect(() => {
+    version();
+    const wanted = new Set(props.open ?? []);
+    untrack(() => {
+      for (const id of wanted) {
+        if (openedFromProp.has(id) || !engine.store.node(id) || engine.expansion.isExpanded(id)) continue;
+        openedFromProp.add(id);
+        void engine.expand(id, 'out');
+      }
+      for (const id of [...openedFromProp]) {
+        if (wanted.has(id)) continue;
+        openedFromProp.delete(id);
+        if (engine.expansion.isExpanded(id)) engine.collapse(id);
+      }
+    });
+  });
 
   const status = createMemo(() => {
     statusVersion();
@@ -2473,7 +2618,7 @@ export function GraphView(props: GraphViewProps) {
       setGesturing(null);
       setHovered(null);
       const behind = edge.reifiedAs ? parseAddress(edge.reifiedAs) : null;
-      const connection = behind?.kind === 'entity' ? { recordId: behind.id, recordType: behind.type } : {};
+      const connection = isRecordAddress(behind) ? { recordId: behind.id, recordType: behind.type } : {};
       const arrived = landing ? parseAddress(landing) : null;
       /*
         A re-attachment rewrites the *claim*; an anchor rewrites how one canvas draws it.
@@ -2611,7 +2756,7 @@ export function GraphView(props: GraphViewProps) {
       props.onEdgeReroute?.({
         id: edgeId,
         points,
-        ...(behind?.kind === 'entity' && { recordId: behind.id, recordType: behind.type }),
+        ...(isRecordAddress(behind) && { recordId: behind.id, recordType: behind.type }),
       });
     };
 
@@ -2672,7 +2817,7 @@ export function GraphView(props: GraphViewProps) {
     props.onEdgeReroute?.({
       id: edgeId,
       points,
-      ...(behind?.kind === 'entity' && { recordId: behind.id, recordType: behind.type }),
+      ...(isRecordAddress(behind) && { recordId: behind.id, recordType: behind.type }),
     });
   }
 
@@ -2762,7 +2907,7 @@ export function GraphView(props: GraphViewProps) {
         y: Math.round(box.y),
         width: Math.round(box.width),
         height: Math.round(box.height),
-        ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+        ...(isRecordAddress(at) && { recordId: at.id, recordType: at.type }),
       });
     };
 
@@ -2979,7 +3124,7 @@ export function GraphView(props: GraphViewProps) {
       report({
         count: 1,
         kind: 'edge',
-        ...(behind?.kind === 'entity' && { recordId: behind.id, recordType: behind.type }),
+        ...(isRecordAddress(behind) && { recordId: behind.id, recordType: behind.type }),
       });
       return;
     }
@@ -2995,7 +3140,7 @@ export function GraphView(props: GraphViewProps) {
       count: ids.length,
       kind: 'node',
       // Still filled for a selection of one, which is what every existing consumer reads.
-      ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+      ...(isRecordAddress(at) && { recordId: at.id, recordType: at.type }),
       ...(records.length ? { records } : {}),
     });
   }
@@ -3890,7 +4035,7 @@ export function GraphView(props: GraphViewProps) {
                         The fallback label lives in the same box as a document, so it flows to the
                         shape the same way — it used to sit outside, where no float could reach it.
                       */}
-                        <div class="we-graph__card-scale">
+                        <div class="we-graph__card-scale" ref={watchOverflow}>
                           {/*
                           For a shape with an outline, two floats hugging its edges — the exterior
                           on each side — so every line wraps to it. `shape-inside` does not exist;
@@ -3921,6 +4066,29 @@ export function GraphView(props: GraphViewProps) {
                       the surface beneath the drawn layers, which are inert, so a badge that takes the
                       pointer is the only thing a press on it reaches.
                     */}
+                    <Show when={caretInCorner(entry)}>
+                      {/*
+                        Its presses are its own for the badge's reason below: the canvas takes presses
+                        on the surface beneath the drawn layers, which are inert. Down to open, up to
+                        close, since what it opens grows below the card.
+                      */}
+                      <div class="we-graph__corner-caret">
+                        <we-tooltip content={caretTitle(entry)}>
+                          <we-button
+                            variant="ghost"
+                            size="xs"
+                            square
+                            label={caretLabel(entry)}
+                            disabled={!caretSays(entry).enabled}
+                            color="text-muted"
+                            prop:hoverProps={{ color: 'text' }}
+                            onClick={() => pressCaret(entry)}
+                          >
+                            <we-icon name={caretSays(entry).mode === 'close' ? 'caret-up' : 'caret-down'} />
+                          </we-button>
+                        </we-tooltip>
+                      </div>
+                    </Show>
                     <Show when={cardBadge(entry.visual)}>
                       {(Badge) => {
                         const at = parseAddress(entry.node.id);
@@ -3946,7 +4114,7 @@ export function GraphView(props: GraphViewProps) {
                               component={Badge()}
                               node={entry.node}
                               keepStill={(on: boolean) => engine.keepStill(opened, on)}
-                              {...(at?.kind === 'entity' && at.id ? { recordId: at.id, recordType: at.type } : {})}
+                              {...(isRecordAddress(at) && at.id ? { recordId: at.id, recordType: at.type } : {})}
                             />
                           </div>
                         );
@@ -4069,7 +4237,13 @@ export function GraphView(props: GraphViewProps) {
                   )}
                 </For>
               </Show>
-              <Show when={actionsFor(entry.node).length > 0 || foldSays(entry).show || props.carry}>
+              <Show
+                when={
+                  actionsFor(entry.node).length > 0 ||
+                  (caretSays(entry).mode !== null && !caretInCorner(entry)) ||
+                  props.carry
+                }
+              >
                 {/*
                   `pointerdown` stopped, as well as the click — on the bar, once, for everything in
                   it. The canvas hit-tests in world space from a pointer press on the layer beneath,
@@ -4110,25 +4284,27 @@ export function GraphView(props: GraphViewProps) {
                       does not take the count away with the chip it replaces. Icons rather than words:
                       the caret points the way the contents are about to go.
                     */}
-                    <Show when={foldSays(entry).show}>
-                      <we-tooltip content={foldTitle(entry, foldSays(entry))}>
+                    <Show when={caretSays(entry).mode !== null}>
+                      <we-tooltip content={caretTitle(entry)}>
                         <we-button
                           variant="ghost"
                           size="md"
                           // Square only while there is no count beside the caret.
                           square={!entry.folded}
-                          label={entry.folded ? 'Unfold' : 'Fold'}
+                          label={caretLabel(entry)}
                           /*
-                            Shown and refused, rather than absent. Where everything under a card is
-                            held elsewhere there is nothing a fold may take — and a control that
-                            simply was not there said that about the card instead of about the rule.
+                            Shown and refused, rather than absent. Where everything under a card is held
+                            elsewhere there is nothing a fold may take — and a control that simply was not
+                            there said that about the card instead of about the rule.
                           */
-                          disabled={!foldSays(entry).enabled}
-                          color={entry.folded ? 'accent-text' : 'text-muted'}
-                          prop:hoverProps={{ color: entry.folded ? 'accent' : 'text' }}
-                          onClick={() => reportFold(entry)}
+                          disabled={!caretSays(entry).enabled}
+                          color={caretSays(entry).mode === 'open' && entry.folded ? 'accent-text' : 'text-muted'}
+                          prop:hoverProps={{
+                            color: caretSays(entry).mode === 'open' && entry.folded ? 'accent' : 'text',
+                          }}
+                          onClick={() => pressCaret(entry)}
                         >
-                          <we-icon name={entry.folded ? 'caret-right' : 'caret-down'} />
+                          <we-icon name={caretSays(entry).mode === 'close' ? 'caret-down' : 'caret-right'} />
                           <Show when={entry.folded && entry.foldedCount > 0}>
                             <we-text variant="label" color="accent-text">
                               {String(entry.foldedCount)}
@@ -4146,7 +4322,7 @@ export function GraphView(props: GraphViewProps) {
                             id: entry.node.id,
                             x: entry.at.x,
                             y: entry.at.y,
-                            ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+                            ...(isRecordAddress(at) && { recordId: at.id, recordType: at.type }),
                             ...extra,
                           });
                         };

@@ -607,7 +607,10 @@ export const storeEntries: StoreEntry[] = [
       available: { type: 'boolean' },
       capabilities: { type: 'object' },
       canEdit: { type: 'boolean' },
-      flows: { type: 'array', properties: ['name', 'label', 'editable', 'records', 'managedBy', 'archived'] },
+      flows: {
+        type: 'array',
+        properties: ['name', 'label', 'editable', 'records', 'managedBy', 'archived', 'steps', 'moves'],
+      },
       startable: { type: 'array', properties: ['name', 'label', 'subjects'] },
       open: { type: 'object' },
       draft: { type: 'object' },
@@ -1819,14 +1822,16 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "{ requirements, enforcement, sealedEvidence, contention } | null — what this backend can do with flows. `requirements` lists the kinds of rule it enforces ('approvals', 'guard'); `enforcement` is 'server' (one authority applies every rule) or 'peers' (every member's software applies them, so a member running other software can write past one — say so beside a rule); `contention` is 'stall' when two moves out of one step both agreed leave a record stuck until somebody withdraws, or 'first' when the earlier wins",
         canEdit: 'boolean — the viewer may save, delete and archive flows here: whoever administers the space',
         flows:
-          "{ name, label, editable, records, managedBy, archived }[] — every flow in the space, archived ones included. `editable` is false for one written by something that uses more than this editor shows, and for the task-state flow; `managedBy` is 'task-states' for the flow the board's task states write, which is edited in the space's settings and moved on the board, never here; `records` is how many records are going through it",
+          "{ name, label, editable, records, managedBy, archived, steps, moves }[] — every flow in the space, archived ones included. `editable` is false for one written by something that uses more than this editor shows, and for the task-state flow; `managedBy` is 'task-states' for the flow the board's task states write, which is edited in the space's settings and moved on the board, never here; `records` is how many records are going through it; `steps` ({ name, label, final }[]) and `moves` ({ from, to }[]) are its definition once read — what a map of the space's flows draws",
+        flowsLoaded:
+          'boolean — the backend has answered with this space\'s flows. An empty `flows` before then is not yet an answer: gate a "no flows" sentence on it and draw the list as loading until it is true',
         startable:
           '{ name, label, subjects }[] — flows a record can be put through: not archived, not written by something else. `subjects` are the entity names a flow is for, empty for any record — filter with `card.__subjectClass in flow.subjects || !count(flow.subjects)`',
         open: "{ name, label, hint, subjects, rule, fits, editable, managedBy, archived, lanes, exceptions, steps, records, history } | null — the flow opened with openFlow. `lanes` is the flow as a main line and branches: each { index, main, leaves, leavesLabel, rejoins, rejoinsLabel, ends, steps }, every step { name, label, final, approvals, approverKind, approverLabel, guards, requires, hint }, `requires` being each thing entering it takes as a short phrase. `rule` is 'next', 'next-and-back' or 'any'; `exceptions` the moves nothing else covers, { from, to, fromLabel, toLabel, name }. `records` are what is going through it, newest first: { subject, title, startedAt, state, stateLabel, stalled, waiting, walk, next }, `startedAt` an ISO date for a we-timestamp (empty when unknown), `walk` its path as { name, label, at } with `at` 'done', 'current' or 'ahead' — a stepper — and `next` where it may be asked to go, `waiting` each move asked for { to, toLabel, voters, needs, note, mine }. `recordsLoaded` says the records have been read — gate anything offered only for a flow with none on it. `history[subject]` is filled by loadHistory: { from, to, fromLabel, toLabel, voters, at, when, evidence, note }[], `when` being `at` as an ISO date",
         draft:
           '{ …the shape of open’s lanes, label, isNew, dirty, problems } | null — the flow being written, after newFlow or editFlow. `problems` are sentences saying what saving would be refused for; saveDraft refuses while there are any, so show them beside the button',
         recordFlows:
-          'Record<recordId, { flow, label, state, stateLabel, waiting, stalled }[]> — by record, every startable flow it is going through and where it stands: what a chip on a card shows. Read as `flowStore.recordFlows[card.id]`, which is undefined for a record in none',
+          'Record<recordId, { flow, label, state, stateLabel, waiting, stalled, next, asks }[]> — by record, every startable flow it is going through and where it stands: what a chip on a card shows. `next` ({ name, label }[]) is where it may be asked to go, for moveRecord; `asks` ({ to, toLabel, voters, needs, note, mine }[]) the moves waiting on agreement — offer withdrawRecord where `mine`, moveRecord to the same `to` to agree. Read as `flowStore.recordFlows[card.id]`, which is undefined for a record in none',
       },
       actions: {
         refreshFlows: '(): asks the backend for the flow list again — after something another member did',

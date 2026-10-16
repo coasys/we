@@ -440,6 +440,41 @@ describe('GraphView folding', () => {
     expect(leaf.querySelector('.we-graph__actions')).toBeNull();
   });
 
+  it('puts the only control a card has in its corner, on every card with something under it', async () => {
+    // A bar floating above a card to hold one caret, and only once the card was selected.
+    const host = mount({
+      seeds: literal,
+      layout: { type: 'manual' },
+      nodeStyle: [{ style: { shape: 'card', width: 160, height: 60 } }],
+      onNodeFold: () => undefined,
+    });
+    await until(() => host.querySelector('.we-graph__corner-caret') !== null);
+
+    expect(host.querySelectorAll('.we-graph__corner-caret')).toHaveLength(1);
+    expect(propOf(host, '.we-graph__corner-caret we-button', 'label')).toBe('Fold');
+    expect(host.querySelector('.we-graph__actions')).toBeNull();
+  });
+
+  // An opened card could no longer fold its connections from the caret: the opening answered first.
+  it('closes what was opened and folds what can fold, from one caret', async () => {
+    const folds: boolean[] = [];
+    const opens: boolean[] = [];
+    const host = mount({
+      seeds: literal,
+      layout: { type: 'manual' },
+      focus: 'parent',
+      open: [entityAddress('ds', 'TaskBlock', 'parent')],
+      onNodeOpen: (payload) => opens.push(payload.open),
+      onNodeFold: (payload) => folds.push(payload.folded),
+    });
+    await until(() => propOf(host, '.we-graph__actions we-button', 'label') === 'Close');
+
+    (host.querySelector('.we-graph__actions we-button') as HTMLElement).click();
+
+    expect(opens).toEqual([false]);
+    expect(folds).toEqual([true]);
+  });
+
   it('says what a fold will leave behind, rather than half working in silence', async () => {
     /*
       `shared` is held by `outside` as well, so folding `parent` may take `own` and may not take
