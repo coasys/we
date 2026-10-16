@@ -10,9 +10,8 @@
  * The neutral key is translated at the boundary, through this file and nowhere else: the decorators
  * the manifest compiles to, `relationPredicates.ts` (which every relation-named reference resolves
  * through, so `parent: { relation: 'children' }` lands on `has_child`), and a `parent` scope that
- * arrives already naming a predicate. The translation is idempotent, so a caller that already holds
- * the AD4M spelling — `containmentPredicate` reads it back off the native shape — passes through
- * unchanged.
+ * arrives already naming a predicate. The translation is idempotent, so a predicate that already
+ * has the AD4M spelling — a foreign shape's relation, say — passes through unchanged.
  */
 import type { Ad4mModel } from '@coasys/ad4m';
 import { CONTAINMENT_PREDICATE } from '@we/backend-shared';
