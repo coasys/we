@@ -20,6 +20,7 @@
  * A seed's bundles are built in rather than installed (see `seedBundles.ts`), so they are never asked
  * about and cannot be removed — but a space can be set up for one all the same, and it is listed.
  */
+import { selectBootSnapshot, writeBootSnapshot } from '@shared/bundles/bootSnapshot';
 import { bundlePieces } from '@shared/bundles/bundlePieces';
 import {
   installedEntry,
@@ -34,9 +35,18 @@ import { explain } from '@shared/userMessage';
 import { toastService } from '@we/components/solid';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { type Bundle, type BundleRecordType, readBundle, type TemplateSchema } from '@we/schema-shared';
-import { type Accessor, createContext, createMemo, createSignal, type ParentProps, useContext } from 'solid-js';
+import {
+  type Accessor,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  type ParentProps,
+  useContext,
+} from 'solid-js';
 
 import { useDatasetStore } from './DatasetStore';
+import { useSessionStore } from './SessionStore';
 import { useShapeStore } from './ShapeStore';
 import { useSpaceStore } from './SpaceStore';
 import { useTemplateStore } from './TemplateStore';
@@ -148,6 +158,30 @@ export function BundleStoreProvider(props: ParentProps) {
   const shapeStore = useShapeStore();
   const spaceStore = useSpaceStore();
   const datasetStore = useDatasetStore();
+  const session = useSessionStore();
+
+  /*
+    Keep what the app somebody is in was drawn with, for the first frame of the next reload — see
+    `bundles/bootSnapshot.ts`. Only once the settings and the library have both answered, so a
+    snapshot is never written from the stand-in it is itself standing in for; and only when it
+    changes, since the template list moves on every space switch.
+  */
+  const snapshot = createMemo(() => {
+    const settings = datasetStore.agentSettings();
+    if (!settings || templateStore.loading()) return null;
+    return JSON.stringify(
+      selectBootSnapshot({
+        appTemplateId: settings.appTemplateId ?? '',
+        installedBundles: settings.installedBundles ?? '',
+        library: templateStore.allTemplates(),
+        installedThemes: themeStore.installedThemes(),
+      }),
+    );
+  });
+  createEffect(() => {
+    const json = snapshot();
+    if (json) writeBootSnapshot(session.me()?.did, JSON.parse(json));
+  });
 
   const [pending, setPending] = createSignal<{ bundle: Bundle; view: PendingBundleInstall } | null>(null);
   const [busy, setBusy] = createSignal(false);

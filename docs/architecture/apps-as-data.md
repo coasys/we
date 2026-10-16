@@ -85,6 +85,16 @@ WE's app chooses again, falling back to the agent's default template — nothing
 nothing has to be undone (`shared/bundles/display.ts`, used where `TemplateStore` picks a space's
 template).
 
+## The first frame after a reload
+
+The app, its templates and its theme live in the agent's library and settings, which answer seconds
+after the app starts drawing — so a reload showed WE's chrome and then swapped to the app. A snapshot
+of exactly those pieces is kept on the device per agent (`shared/bundles/bootSnapshot.ts`, written by
+`BundleStore` once the library and settings have both loaded) and stands in for them until they
+answer. Each template in it goes through the same acceptance as the library's, and safe mode ignores
+it. When the display policy decides a space's template, that template is shown at once; reading the
+space's own templates and the agent's override for it still has the last word.
+
 ## Not yet
 
 Bundles from the marketplace, with an author behind them. Upgrades and re-consent (an install of a

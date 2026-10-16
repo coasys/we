@@ -1,3 +1,4 @@
+import { readBootSnapshot } from '@shared/bundles/bootSnapshot';
 import type { ThemeKey } from '@shared/registries/themeRegistry';
 import { isValidThemeKey, themeRegistry } from '@shared/registries/themeRegistry';
 import { explain } from '@shared/userMessage';
@@ -524,6 +525,21 @@ export function ThemeStoreProvider(props: ParentProps) {
   const [themesLoaded, setThemesLoaded] = createSignal(false);
   // IDs of custom themes visible in pickers (subset of installedThemes)
   const [visibleThemeIds, setVisibleThemeIds] = createSignal<Set<string>>(new Set());
+
+  /*
+    The theme the app somebody is in was drawn with last time, until the installed themes have loaded
+    — the other half of `TemplateStore`'s boot snapshot, which brings the templates naming it. Without
+    it the app arrived on time and in the agent's own theme, and changed colour a few seconds later.
+    Loading the real list replaces it; `themesLoaded` is left alone, so nothing else mistakes this
+    for the answer.
+  */
+  createEffect(() => {
+    if (themesLoaded()) return;
+    const remembered = readBootSnapshot(session.me()?.did)?.themes;
+    if (!remembered?.length) return;
+    setInstalledThemes(remembered);
+    setVisibleThemeIds(new Set(remembered.map((theme) => theme.id)));
+  });
   const [spaceThemes, setSpaceThemes] = createSignal<ThemeData[]>([]);
   const systemScheme = createSystemScheme();
 

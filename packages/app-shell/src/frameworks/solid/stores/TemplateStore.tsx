@@ -1,3 +1,4 @@
+import { readBootSnapshot } from '@shared/bundles/bootSnapshot';
 import { appSpaceTemplate, followedTemplateId } from '@shared/bundles/display';
 import { displaySourceOf, readInstalledBundles } from '@shared/bundles/installedBundles';
 import { appTemplateRegistry, DEFAULT_APP_ID, resolveAppTemplate } from '@shared/registries/appTemplates';
@@ -361,6 +362,30 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   // State
   const [allTemplates, setAllTemplates] = createSignal<TemplateSchema[]>([...builtInTemplates]);
+
+  /*
+    What the last session on this device was drawn with, standing in for the library and the settings
+    until they answer — so a reload opens in the app somebody is in rather than in WE's for the
+    seconds the library takes. See `bundles/bootSnapshot.ts`. Each template in it is accepted exactly
+    as the library's are, and the whole of it is dropped the moment the library has loaded.
+  */
+  const [libraryLoaded, setLibraryLoaded] = createSignal(false);
+  const bootSnapshot = createMemo(() => (libraryLoaded() ? null : readBootSnapshot(session.me()?.did)));
+  createEffect(() => {
+    const snapshot = bootSnapshot();
+    if (!snapshot?.templates.length) return;
+    const accepted = snapshot.templates.flatMap((raw) => {
+      const result = acceptTemplate(raw, { origin: 'your library', grants: CHROME_TIER });
+      return result.schema ? [{ ...result.schema, id: raw.id }] : [];
+    });
+    const ids = new Set(accepted.map((t) => t.id));
+    setAllTemplates((prev) => withLibrary(prev, [...builtInTemplates.filter((t) => !ids.has(t.id)), ...accepted]));
+  });
+  /** A setting as the agent's settings have it, or as the snapshot remembers it until they arrive. */
+  const settingOrRemembered = (key: 'appTemplateId' | 'installedBundles') => {
+    const settings = datasetStore.agentSettings();
+    return settings ? settings[key] : bootSnapshot()?.[key];
+  };
   const [installedIds, setInstalledIds] = createSignal<Set<string>>(new Set());
   const [spaceTemplateIdSet, setSpaceTemplateIdSet] = createSignal<Set<string>>(new Set());
   const [loading, setLoading] = createSignal(true);
@@ -414,7 +439,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   const appTemplate = createMemo<TemplateSchema>(() => {
     const found = resolveAppTemplate({
       safe: safe.on,
-      chosen: datasetStore.agentSettings()?.appTemplateId,
+      chosen: settingOrRemembered('appTemplateId'),
       seed: getSeed().host?.ui?.app || seedBundleAppId,
       own: ownApps(),
     });
@@ -440,7 +465,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   const appSpaceTemplateId = createMemo(() =>
     appSpaceTemplate(appTemplateId(), [
       ...seedBundlePieces,
-      ...readInstalledBundles(datasetStore.agentSettings()?.installedBundles).map(displaySourceOf),
+      ...readInstalledBundles(settingOrRemembered('installedBundles')).map(displaySourceOf),
     ]),
   );
   function setAppTemplate(id: string): Promise<boolean> {
@@ -535,6 +560,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       const savedIds = new Set(savedTemplates.map((t) => t.id));
       const filteredCore = builtInTemplates.filter((t) => !savedIds.has(t.id));
       setAllTemplates((prev) => withLibrary(prev, [...filteredCore, ...savedTemplates]));
+      setLibraryLoaded(true);
 
       // Build installed ID set from AgentSettings HasMany relation
       // HasMany without .include() returns raw URI strings, not model instances.
@@ -727,11 +753,20 @@ export function TemplateStoreProvider(props: ParentProps) {
       }
       setTemplateResolvedFor(perspective.id);
     } else {
+      /*
+        The app's display policy decides this space's template whenever the agent follows the space,
+        which is nearly always — so it is shown now rather than after the space's templates and this
+        agent's override for it have been read, seconds later on a reload. The read below still has
+        the last word: an override for this space replaces it.
+      */
+      const policy = untrack(appSpaceTemplateId);
+      const early = policy ? untrack(allTemplates).find((t) => t.id === policy) : undefined;
+      if (early) replaceTemplate(early);
       // Deep link or first boot — async path. Settled on every way out, a failure included: the
       // template on screen is then the answer, and anything waiting on one should stop waiting. Only
       // while still in that space: a slow answer for one already left must not overwrite the
       // answer for the space now open, which would leave it pending for good.
-      void applySpaceTemplate(perspective).finally(() => {
+      void applySpaceTemplate(perspective, undefined, { shownEarly: !!early }).finally(() => {
         if (lastSpacePerspectiveUuid === perspective.id) setTemplateResolvedFor(perspective.id);
       });
     }
@@ -776,7 +811,11 @@ export function TemplateStoreProvider(props: ParentProps) {
     return templateId;
   }
 
-  async function applySpaceTemplate(perspective: AppDataset, fallback?: string): Promise<void> {
+  async function applySpaceTemplate(
+    perspective: AppDataset,
+    fallback?: string,
+    options: { shownEarly?: boolean } = {},
+  ): Promise<void> {
     // preloadSpaceTemplates handles cache hit (sync restore) or miss (AD4M fetch)
     await preloadSpaceTemplates(perspective);
 
@@ -793,7 +832,12 @@ export function TemplateStoreProvider(props: ParentProps) {
     // The override names *which* template this agent wants here, so it answers on its own —
     // including when the space set no default at all, which the community-default path cannot act
     // on. `AGENT_DEFAULT` means "whatever my default is", so leave whatever is already applied.
-    if (templateOverride === AGENT_DEFAULT) return;
+    if (templateOverride === AGENT_DEFAULT) {
+      // "Leave it" means the agent's default, not the app's template shown while this was read.
+      const own = options.shownEarly ? allTemplates().find((t) => t.id === defaultTemplateId()) : undefined;
+      if (own && datasetStore.currentDataset()?.id === perspective.id) replaceTemplate(own);
+      return;
+    }
     const spaceTemplateId =
       (templateOverride === FOLLOW_SPACE
         ? followedTemplateId(cachedSpace?.defaultTemplateId, appSpaceTemplateId())
