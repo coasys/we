@@ -33,7 +33,10 @@ function translate(parent: unknown): unknown {
   });
 }
 
-/** The argument holding `parent`, by static: `create`'s options, a read's query. */
+/**
+ * The argument holding `parent`, by static: `create`'s options, a read's query. The union reads,
+ * `findAllOf` and `queryOf`, take their classes second and the query third.
+ */
 const PARENT_AT: Record<string, number> = {
   create: 2,
   findAll: 1,
@@ -42,6 +45,8 @@ const PARENT_AT: Record<string, number> = {
   count: 1,
   query: 1,
   paginate: 3,
+  findAllOf: 2,
+  queryOf: 2,
 };
 
 export function installParentByRelation(model: typeof Ad4mModel): void {

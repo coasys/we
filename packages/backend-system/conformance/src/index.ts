@@ -202,7 +202,9 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
       const pushes: Row[][] = [];
       const handle = reader(entityName).query(subject.dataset, query);
       live.push(handle);
-      await handle.subscribe((rows) => void pushes.push(rows));
+      // The initial page is what `subscribe` resolves with, and the callback hears only later
+      // changes — so it goes first, ahead of any change that arrived before it resolved.
+      pushes.unshift(await handle.subscribe((rows) => void pushes.push(rows)));
       const dispose = () => {
         const at = live.indexOf(handle);
         if (at >= 0) live.splice(at, 1);
