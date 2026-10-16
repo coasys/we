@@ -68,7 +68,13 @@ const STORAGE_KEY = 'we:trace';
  * under, which is exactly one line per read and worth nothing until somebody is staring at an empty
  * canvas.
  */
-export const TRACE_SCOPES = ['presence', 'ephemeral', 'dataset', 'space', 'graph'] as const;
+/*
+ * `shapes` times reading a space's own models on entry — the wait a query for one of them sits out
+ * after a reload. One line per step, so which step the time goes to is the reading: `catalogue`,
+ * `records`, then per model `adopt` split into `declare` (in memory) and `ensure` (round trips to
+ * the backend), and `ready` with the total and how long after the page started it was.
+ */
+export const TRACE_SCOPES = ['presence', 'ephemeral', 'dataset', 'space', 'graph', 'shapes'] as const;
 
 function enabledScopes(): Set<string> | null {
   if (typeof localStorage === 'undefined') return null;

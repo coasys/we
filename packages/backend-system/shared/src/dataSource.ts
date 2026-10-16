@@ -199,6 +199,18 @@ export interface RendererDataBindings {
    * reach and a module can contribute its own.
    */
   $sources?: Record<string, (options: Record<string, unknown>) => unknown>;
+  /**
+   * Whether a dataset's own models are still being read, so a query for one the renderer does not
+   * know yet waits rather than reporting it missing.
+   *
+   * A community defines its own models as records in its space, and a host can only turn those into
+   * classes once it has read them — which is after the first frame. A query asked before then cannot
+   * tell "not loaded yet" from "does not exist" on its own. With this it waits, silently, and is asked
+   * again the moment the answer turns false; a model still unknown then is reported as missing.
+   *
+   * Must read reactively. Absent means nothing is ever pending, which is the old behaviour.
+   */
+  $modelsPending?: (dataset: unknown) => boolean;
 }
 
 /**

@@ -341,6 +341,9 @@ function runQuery(request: {
     try {
       Model = dynamicCls ?? getEntity(entity);
     } catch {
+      // Not known *yet*: the space's own models are still being read. Read inside the caller's
+      // effect, so the query is asked again when they have been — see `$modelsPending`.
+      if (stores.$modelsPending?.(dataset)) return false;
       stores.$onError?.(`Model "${entity}" is not available in this perspective`);
       if (union) continue;
       return false;

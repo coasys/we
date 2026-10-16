@@ -21,7 +21,7 @@
  *    customized/reset lifecycle that decides whether release improvements still flow.
  */
 import { hostSlot } from '@shared/hostSlot';
-import { type EntityManifest, extractableEntities, manifestEntries, validateManifest } from '@we/backend-shared';
+import { type EntityManifest, extractableEntities, manifestEntries, trace, validateManifest } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { asFileField, decodeFileAsJson, encodeJsonFileData, Shape } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
@@ -546,8 +546,16 @@ export function ShapeStoreProvider(props: ParentProps) {
   ): Promise<void> {
     const ports = schemas();
     if (!ports || !dataset) return;
+    const started = performance.now();
     const classes = ports.declareInDataset(dataset, manifest, { moduleId: `shape/${view.shapeId}` });
+    const declared = performance.now();
     for (const cls of Object.values(classes)) await ports.ensure(dataset, cls);
+    trace('shapes', 'adopt', {
+      name: view.name,
+      classes: Object.keys(classes).length,
+      declareMs: Math.round(declared - started),
+      ensureMs: Math.round(performance.now() - declared),
+    });
   }
 
   async function loadShapes(): Promise<void> {
@@ -560,11 +568,21 @@ export function ShapeStoreProvider(props: ParentProps) {
       return;
     }
     setShapesLoaded(false);
+    const started = performance.now();
+    let step = started;
+    const lap = () => {
+      const now = performance.now();
+      const ms = Math.round(now - step);
+      step = now;
+      return ms;
+    };
     try {
       // Spaces created before the Shape entity existed never ran installSpace again — ensure is
       // the diff-first idempotent path, a read in the common case.
       await ports.ensure(dataset, Shape);
+      trace('shapes', 'catalogue', { space: uuid, ms: lap() });
       const records = await Shape.findAll(dataset);
+      trace('shapes', 'records', { space: uuid, count: records.length, ms: lap() });
       if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
 
       const views: SpaceShapeView[] = [];
@@ -609,6 +627,7 @@ export function ShapeStoreProvider(props: ParentProps) {
         views.push(view);
       }
 
+      trace('shapes', 'validated', { space: uuid, ms: lap() });
       for (const view of views) {
         if (!view.manifest || view.problems.length || adopted.has(view.name)) continue;
         adopted.add(view.name);
@@ -618,6 +637,13 @@ export function ShapeStoreProvider(props: ParentProps) {
           view.problems = [`adoption failed: ${err instanceof Error ? err.message : String(err)}`];
         }
       }
+      trace('shapes', 'ready', {
+        space: uuid,
+        models: adopted.size,
+        adoptMs: lap(),
+        totalMs: Math.round(performance.now() - started),
+        sincePageStartMs: Math.round(performance.now()),
+      });
       if (datasetStore.currentDataset()?.id === uuid) setSpaceShapes(views);
     } catch (err) {
       console.error('ShapeStore: loading space shapes failed', err);

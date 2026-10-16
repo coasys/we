@@ -529,6 +529,10 @@ export default function TemplateProvider() {
     // Host wiring, not backend adaptation — any backend would wire these the same way, so they stay
     // here rather than pretending to be AD4M-specific.
     $onError: (msg: string) => toastService.error(msg),
+    // The space on screen has its own models, read from its Shape records after the first frame. A
+    // query for one waits until they have been, rather than reporting it missing.
+    $modelsPending: (dataset: unknown) =>
+      !!dataset && dataset === datasetStore.currentDataset()?.handle && !shapeStore.shapesLoaded(),
     // The router binding behind $localState's syncParam: view state a template
     // mirrors into the URL (?type=…&sort=…) so a shared link reproduces the view.
     $routeParams: {
