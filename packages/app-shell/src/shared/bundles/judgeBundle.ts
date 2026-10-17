@@ -44,6 +44,10 @@ export interface BundleJudgement {
   adds: { app?: string; spaceTemplates: string[]; sections: string[]; theme?: string; recordTypes: string[] };
   /** What it will be able to do, in the words a person reads. */
   capabilities: string[];
+  /** The same, as the groups those words describe — what a later version is compared against. */
+  groups: CapabilityGroup[];
+  /** Every module it needs, by id, whether on, off or absent. */
+  modules: string[];
   /** References it makes that its tier does not grant, which will resolve to nothing. */
   blocked: string[];
   /** Modules it needs that this agent has turned off, which installing turns on. */
@@ -132,6 +136,8 @@ export function judgeBundle(bundle: Bundle, deps: BundleJudgeDeps): BundleJudgem
       recordTypes: recordNames,
     },
     capabilities: describeCapabilities([...groups]),
+    groups: [...groups].sort(),
+    modules: needed,
     blocked: [...blocked],
     modulesToTurnOn: needed
       .filter((id) => deps.hasModule(id) && !deps.moduleInstalled(id))

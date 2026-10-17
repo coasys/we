@@ -1029,6 +1029,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // template has no use for either and, in safe mode, is not what is rendering anyway.
     safeMode: state('session'),
     leaveSafeMode: action('session'),
+    // Library rather than session: it chooses the app the agent is in, as setAppTemplate does.
+    leaveSafeModeInto: action('library'),
     getTemplateRecord: WIRING,
   },
 

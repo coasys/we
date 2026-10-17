@@ -13,6 +13,11 @@ import type { SchemaNode } from '@we/schema-shared';
  * consequence: what the app will be able to do; which modules it turns on, as against which this
  * deployment does not have and nothing here can fix; the spaces it sets up — the kinds of record it
  * adds to each, which outlast the app — ticked one by one; and how it shows spaces.
+ *
+ * An update is compared with what the person agreed to for the version installed. What it asks for
+ * beyond that comes first and on its own; what was agreed already is folded away under its own name,
+ * so nothing reads as being added twice. A file the same as the one installed changes nothing, and
+ * the prompt says that and offers nothing to press.
  */
 const pending = 'bundleStore.pendingInstall';
 
@@ -158,6 +163,64 @@ const spaces: SchemaNode = {
   },
 };
 
+/**
+ * On an update, what this version asks for that the installed one was never agreed to — first, and on
+ * its own, because a new power listed among everything already agreed reads as one more line of the
+ * same. Or, when it asks for nothing new, that it changes the app and can do nothing more. Only drawn
+ * where an agreement was kept: a first install, and an update of something installed before
+ * agreements were, show the full list and nothing else.
+ */
+const newInVersion: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: `${pending}.newInVersion` },
+    then: {
+      type: '$if',
+      props: {
+        condition: {
+          $: `count(${pending}.newInVersion.capabilities) || count(${pending}.newInVersion.modules) || count(${pending}.newInVersion.recordTypes)`,
+        },
+        then: {
+          type: 'we-alert',
+          props: { variant: 'warning' },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '300' },
+              children: [
+                {
+                  type: 'Column',
+                  props: { gap: '100' },
+                  children: [
+                    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['This version asks for more'] },
+                    { type: 'we-text', children: ['You haven’t agreed to these for the version you have.'] },
+                  ],
+                },
+                listSection('It will also be able to', `${pending}.newInVersion.capabilities`, 'plus', 'warning-text'),
+                listSection('It also uses', `${pending}.newInVersion.modules`, 'puzzle-piece', 'warning-text'),
+                listSection(
+                  'It also brings kinds of record',
+                  `${pending}.newInVersion.recordTypes`,
+                  'shapes',
+                  'warning-text',
+                ),
+              ],
+            },
+          ],
+        },
+        else: {
+          type: 'we-text',
+          children: [
+            {
+              $: `${pending}.updates == ${pending}.version ? 'This file has the same version number as the one you have, with different contents. It can do nothing the one you have could not.' : 'This version changes how the app looks and works. It can do nothing the one you have could not.'`,
+            },
+          ],
+        },
+      },
+    },
+  },
+};
+
 /** Modules this deployment does not have: a part of the app that will be empty, which nothing here fixes. */
 const missingModules: SchemaNode = {
   type: '$if',
@@ -202,6 +265,97 @@ const blocked: SchemaNode = {
   },
 };
 
+/** What the app adds and what it will be able to do — the whole of what installing it agrees to. */
+const consentList: SchemaNode = {
+  type: 'Column',
+  props: { gap: '500' },
+  children: [listSection('It adds', `${pending}.adds`, 'plus', 'text-muted'), capabilities],
+};
+
+/**
+ * On an update with an agreement to compare against: what is new, then everything already agreed to,
+ * folded. Folded rather than dropped, so it can still be checked; named for what it is, so it never
+ * reads as something the update brings.
+ */
+const agreedAlready: SchemaNode = {
+  type: 'Column',
+  $localState: { agreedOpen: { type: 'boolean', initial: false } },
+  props: { gap: '300' },
+  children: [
+    {
+      type: 'we-button',
+      props: {
+        variant: 'ghost',
+        size: 'sm',
+        alignSelf: 'start',
+        expanded: { $: 'local.agreedOpen' },
+        onClick: { $toggleLocal: 'agreedOpen' },
+      },
+      children: [
+        { type: 'we-icon', props: { name: { $: "local.agreedOpen ? 'caret-down' : 'caret-right'" } } },
+        'What you already agreed to',
+      ],
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'local.agreedOpen' },
+        enterTransition: [
+          { type: 'reveal', duration: 250 },
+          { type: 'fade', duration: 180 },
+        ],
+        exitTransition: [
+          { type: 'reveal', duration: 250 },
+          { type: 'fade', duration: 180 },
+        ],
+        then: consentList,
+      },
+    },
+  ],
+};
+
+/** The body of an install or an update: what it brings and what happens. */
+const changes: SchemaNode = {
+  type: 'Column',
+  props: { gap: '500' },
+  children: [
+    {
+      type: '$if',
+      props: {
+        condition: { $: `${pending}.newInVersion` },
+        then: { type: 'Column', props: { gap: '500' }, children: [newInVersion, agreedAlready] },
+        else: consentList,
+      },
+    },
+    listSection('It turns on', `${pending}.modulesToTurnOn`, 'toggle-right', 'text-muted'),
+    missingModules,
+    spaces,
+    {
+      type: '$if',
+      props: {
+        condition: { $: `${pending}.display == 'ours'` },
+        then: {
+          type: 'we-text',
+          children: [
+            'While it is the app you are in, every space opens in its own template, unless you chose one for that space yourself. Switching back to WE’s app puts every space back.',
+          ],
+        },
+      },
+    },
+    blocked,
+  ],
+};
+
+/** The same file as the one installed: nothing to agree to and nothing to press. */
+const unchanged: SchemaNode = {
+  type: 'we-text',
+  children: [
+    {
+      $: `${pending}.needsSpace ? 'This file is the same as the one you installed, so installing it again would change nothing. To set the app up in another space, use “Set up a space…” in Settings → Apps.' : 'This file is the same as the one you installed, so installing it again would change nothing.'`,
+    },
+  ],
+};
+
 export const bundlePrompt: SchemaNode = {
   type: '$if',
   props: {
@@ -221,7 +375,7 @@ export const bundlePrompt: SchemaNode = {
               props: { variant: 'heading-sm', tag: 'h2' },
               children: [
                 {
-                  $: `${pending}.updates ? \`Update \${${pending}.name} to \${${pending}.version}?\` : \`Install \${${pending}.name}?\``,
+                  $: `${pending}.unchanged ? \`\${${pending}.name} \${${pending}.version} is already installed\` : ${pending}.updates ? \`Update \${${pending}.name} to \${${pending}.version}?\` : \`Install \${${pending}.name}?\``,
                 },
               ],
             },
@@ -241,24 +395,7 @@ export const bundlePrompt: SchemaNode = {
                 },
               ],
             },
-            listSection('It adds', `${pending}.adds`, 'plus', 'text-muted'),
-            capabilities,
-            listSection('It turns on', `${pending}.modulesToTurnOn`, 'toggle-right', 'text-muted'),
-            missingModules,
-            spaces,
-            {
-              type: '$if',
-              props: {
-                condition: { $: `${pending}.display == 'ours'` },
-                then: {
-                  type: 'we-text',
-                  children: [
-                    'While it is the app you are in, every space opens in its own template, unless you chose one for that space yourself. Switching back to WE’s app puts every space back.',
-                  ],
-                },
-              },
-            },
-            blocked,
+            { type: '$if', props: { condition: { $: `${pending}.unchanged` }, then: unchanged, else: changes } },
           ],
         },
         {
@@ -267,19 +404,32 @@ export const bundlePrompt: SchemaNode = {
           props: { ax: 'end', gap: '200' },
           children: [
             {
-              type: 'we-button',
-              props: { variant: 'ghost', disabled: { $: 'bundleStore.busy' }, onClick: close },
-              children: ['Cancel'],
-            },
-            {
-              type: 'we-button',
+              type: '$if',
               props: {
-                variant: 'primary',
-                loading: { $: 'bundleStore.busy' },
-                disabled: { $: 'bundleStore.busy' },
-                onClick: { $action: 'bundleStore.confirmInstall' },
+                condition: { $: `${pending}.unchanged` },
+                then: { type: 'we-button', props: { variant: 'secondary', onClick: close }, children: ['Close'] },
+                else: {
+                  type: 'Row',
+                  props: { gap: '200' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: { variant: 'ghost', disabled: { $: 'bundleStore.busy' }, onClick: close },
+                      children: ['Cancel'],
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'primary',
+                        loading: { $: 'bundleStore.busy' },
+                        disabled: { $: 'bundleStore.busy' },
+                        onClick: { $action: 'bundleStore.confirmInstall' },
+                      },
+                      children: [{ $: `${pending}.updates ? 'Update' : 'Install'` }],
+                    },
+                  ],
+                },
               },
-              children: [{ $: `${pending}.updates ? 'Update' : 'Install'` }],
             },
           ],
         },
