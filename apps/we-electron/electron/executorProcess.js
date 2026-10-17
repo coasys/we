@@ -66,13 +66,17 @@ async function exitedWithin(pid, ms) {
 /**
  * SIGTERM, wait up to `timeoutMs`, then SIGKILL the process group (the executor is spawned as a
  * group leader) and the process. Resolves with how it ended: 'SIGTERM', 'SIGKILL' or 'gone' when it
- * was not running.
+ * was not running. Rejects when the process is running and may not be signalled (another user's), so
+ * startup stops there rather than clearing locks a live executor holds.
  */
 export async function stopProcess(pid, { timeoutMs = 10_000 } = {}) {
   try {
     process.kill(pid, 'SIGTERM');
-  } catch {
-    return 'gone';
+  } catch (err) {
+    // Only ESRCH means it is not running. EPERM is a process we may not signal, which `isAlive`
+    // counts as running: reporting it gone would let the cleanup remove its locks.
+    if (err.code === 'ESRCH') return 'gone';
+    throw err;
   }
   if (await exitedWithin(pid, timeoutMs)) return 'SIGTERM';
   for (const target of [-pid, pid]) {
@@ -91,7 +95,9 @@ export async function stopExecutorsFor(dataPath, log = console.log) {
   if (process.platform === 'win32') return;
   let psOutput;
   try {
-    psOutput = execFileSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+    // `ww`: without it, `ps` cuts each line to `COLUMNS` when that is set, which drops
+    // `--app-data-path` (it comes after the binary path and the admin credential) and the match misses.
+    psOutput = execFileSync('ps', ['-axwwo', 'pid=,command='], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
   } catch (err) {
     log(`[main] Could not list processes, not stopping a previous executor: ${err.message}`);
     return;
