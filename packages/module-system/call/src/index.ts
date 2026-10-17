@@ -2203,9 +2203,10 @@ const anchoredCallButton: SchemaNode = {
  * Which call the surface is showing: the one named in the address, else the one running.
  *
  * The address alone was wrong, and the way it was wrong is the reason this button used to vanish.
- * A surface showing a *live* call usually has no `?call=` at all — the parameter is how somebody
- * opens a meeting that has finished — so reading it alone meant the control disappeared for the
- * whole of every call, which is the state it now has the most to say in.
+ * A surface showing a *live* call could have no `?call=` at all — it is written when this agent
+ * joins a call only where the address is in the call's space, and a template can clear it to mean
+ * "the call I am in" — so reading it alone meant the control disappeared for the whole of a call,
+ * which is the state it has the most to say in.
  *
  * The same fallback every other surface about a call uses, which is what keeps this button talking
  * about the thing beside it rather than about the address.
@@ -2262,8 +2263,8 @@ const CONTINUE_LABEL =
  * ## It stays put, and changes colour
  *
  * It used to be absent whenever a call was running, which made it the only thing on a pill that
- * came and went — and it went at the moment the pill had the most to say, since a live call is
- * usually shown with no `?call=` in the address at all.
+ * came and went — and it went at the moment the pill had the most to say, since a live call can be
+ * shown with no `?call=` in the address at all (see `CALL_ON_SCREEN`).
  *
  * So the control is always there while there is a call to be about, and the four things it can mean
  * are carried by its colour, its label and whether it can be pressed. Red for the call you are in,

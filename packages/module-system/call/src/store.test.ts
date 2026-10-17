@@ -428,6 +428,8 @@ describe('transport and device lifetime', () => {
     const publishedMedia: (MediaStream | null)[] = [];
     const mic = fakeMicStream();
     const backendArgs: unknown[][] = [];
+    /** What the store asked the host to name in the address, as `[record, space]`. */
+    const shown: unknown[][] = [];
     const store = createCallStore({
       signal,
       state: markState,
@@ -440,6 +442,7 @@ describe('transport and device lifetime', () => {
       },
       dataset: () => ({ id: 'ds' }),
       datasetUri: () => 'inmemory://ds',
+      showCallOnScreen: (...args: unknown[]) => void shown.push(args),
       datasets: {
         get: () => undefined,
         open: () => {},
@@ -530,6 +533,7 @@ describe('transport and device lifetime', () => {
       mic,
       configs,
       backendArgs,
+      shown,
       signalling: published,
       published: publishedMedia,
       scopeDisposals: () => disposed,
@@ -617,6 +621,31 @@ describe('transport and device lifetime', () => {
     store.leave();
 
     expect(store.stageOpen()).toBe(false);
+  });
+
+  /*
+    coasys/we#304. Only picking a call from a list put it in the address, so a call started from a
+    button, the rail or the bar left a copied link naming no call. The host owns the address; the
+    store says which record, from the one place every way into a call arrives.
+  */
+  it('asks the host to name the call it started in the address', async () => {
+    const { store, shown } = callable();
+
+    await store.startCall();
+    await Promise.resolve();
+
+    expect(store.callRecordId()).toBeTruthy();
+    expect(shown).toEqual([[store.callRecordId(), 'inmemory://ds']]);
+  });
+
+  it('asks the same when joining a call somebody else started', async () => {
+    const { store, shown, publishesCall } = callable();
+    publishesCall('did:peer', 'call-live', { record: 'rec-live', anchor: { datasetUri: 'inmemory://ds' } });
+
+    await store.joinCall('call-live');
+    await Promise.resolve();
+
+    expect(shown).toEqual([['rec-live', 'inmemory://ds']]);
   });
 
   it('publishes the microphone it opens, and withdraws it when the call ends', async () => {
