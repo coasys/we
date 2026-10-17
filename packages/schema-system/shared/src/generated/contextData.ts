@@ -3190,6 +3190,7 @@ export const contextData: ContextData = {
         'publishToMarketplace',
         'refreshSpaceTemplates',
         'leaveSafeMode',
+        'leaveSafeModeInto',
       ],
       ambient: ['cancelInstall', 'refreshSpaceTemplates'],
       destructive: ['removeTemplate', 'deleteTemplate', 'deleteRefusedTemplate', 'deleteMarketplaceTemplate'],
@@ -3375,7 +3376,7 @@ export const contextData: ContextData = {
       icon: 'phone-call',
       scope: 'space',
       requires: {
-        kernels: ['records', 'presence', 'ephemeral', 'media', 'peerConnection'],
+        kernels: ['records', 'presence', 'ephemeral', 'media', 'peerConnection', 'call'],
         permissions: ['microphone', 'camera', 'screen-share'],
       },
       capabilities: [
@@ -3387,6 +3388,7 @@ export const contextData: ContextData = {
         'kernel:ephemeral',
         'kernel:media',
         'kernel:peerConnection',
+        'kernel:call',
         'dock',
         'slot:dock-bottom',
         'slot:overlay',

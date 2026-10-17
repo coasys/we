@@ -2,7 +2,12 @@
  * What a reload draws first: the app somebody is in, the bundle it came in, and the theme those name
  * — kept per agent, and refused when it is not something this build wrote.
  */
-import { readBootSnapshot, selectBootSnapshot, writeBootSnapshot } from '@shared/bundles/bootSnapshot';
+import {
+  forgetBootSnapshot,
+  readBootSnapshot,
+  selectBootSnapshot,
+  writeBootSnapshot,
+} from '@shared/bundles/bootSnapshot';
 import type { ThemeData } from '@we/entities';
 import type { TemplateSchema } from '@we/schema-shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -107,5 +112,13 @@ describe('reading and writing it', () => {
       selectBootSnapshot({ appTemplateId: '', installedBundles: '[]', library, installedThemes: [] }),
     );
     expect(readBootSnapshot('did:key:anna')).toBeNull();
+  });
+
+  it('forgets one agent’s on request — leaving safe mode into another app — and no one else’s', () => {
+    writeBootSnapshot('did:key:anna', kept);
+    writeBootSnapshot('did:key:ben', kept);
+    forgetBootSnapshot('did:key:anna');
+    expect(readBootSnapshot('did:key:anna')).toBeNull();
+    expect(readBootSnapshot('did:key:ben')).toEqual(kept);
   });
 });

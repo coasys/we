@@ -7586,7 +7586,8 @@
         "deleteMarketplaceTemplate",
         "publishToMarketplace",
         "refreshSpaceTemplates",
-        "leaveSafeMode"
+        "leaveSafeMode",
+        "leaveSafeModeInto"
       ],
       "ambient": ["cancelInstall", "refreshSpaceTemplates"],
       "destructive": ["removeTemplate", "deleteTemplate", "deleteRefusedTemplate", "deleteMarketplaceTemplate"]
@@ -7820,7 +7821,7 @@
       "icon": "phone-call",
       "scope": "space",
       "requires": {
-        "kernels": ["records", "presence", "ephemeral", "media", "peerConnection"],
+        "kernels": ["records", "presence", "ephemeral", "media", "peerConnection", "call"],
         "permissions": ["microphone", "camera", "screen-share"]
       },
       "capabilities": [
@@ -7832,6 +7833,7 @@
         "kernel:ephemeral",
         "kernel:media",
         "kernel:peerConnection",
+        "kernel:call",
         "dock",
         "slot:dock-bottom",
         "slot:overlay"

@@ -34,6 +34,7 @@ import type {
 } from '@we/backend-shared';
 import type {
   AgentDataKernel,
+  CallKernel,
   CopiedIn,
   CreateEntityOptions,
   DatasetTarget,
@@ -87,38 +88,10 @@ export interface ModuleHostServices {
   view?: ViewKernel;
   transcription?: TranscriptionPort;
   /**
-   * Factory that creates a call backend (Session) for a specific call room.
-   *
-   * Bound by the store that owns the AD4M client, dataset, and agent identity — then forwarded
-   * through `createModuleStoreDeps` as `createBackend`. Absent on a backend without session
-   * support; the call module falls back to its own peer-to-peer mesh.
+   * Calls run by the backend, built over its `CallPort` — see `shared/callKernel.ts`, which decides
+   * which space a call is in. Forwarded as the `call` kernel.
    */
-  createCallBackend?: (
-    callId: string,
-    options?: { iceServers?: RTCIceServer[]; topology?: 'mesh' | 'sfu' },
-  ) => Promise<unknown>;
-  /**
-   * Read the neighbourhood's call configuration (SFU topology defaults).
-   *
-   * Returns the `SfuConfig` stored as a link in the neighbourhood — its creator's topology
-   * decisions.
-   * Absent when the backend has no SFU support; the call module uses mesh defaults.
-   */
-  getCallConfig?: () => Promise<unknown>;
-  /**
-   * Write the neighbourhood's call configuration.
-   *
-   * Stored as a link in the neighbourhood, so every member's executor reads the same config.
-   * The executor accepts it only from the neighbourhood's creator and rejects anyone else.
-   */
-  setCallConfig?: (config: unknown) => Promise<boolean>;
-  /**
-   * Synchronous probe: does the current backend support call configuration?
-   *
-   * Returns `false` when the executor lacks SFU types (pre-feat/embedded-sfu builds).
-   * The settings UI hides the Call section entirely when this returns false.
-   */
-  callConfigSupported?: () => boolean;
+  call?: CallKernel;
   interpretation?: InterpretationPort;
   languageModel?: LanguageModelPort;
   /** Where a module's `notify` lands — a toast, in this host. */
@@ -353,6 +326,7 @@ export const HOST_KERNELS: readonly KernelName[] = [
   'ephemeral',
   'media',
   'peerConnection',
+  'call',
   'transcription',
   'languageModel',
   'interpretation',
@@ -526,6 +500,28 @@ export function createModuleStoreDeps(framework: {
       },
     },
 
+    // Present whatever backend is connected, like transcription below: `available` is how the call
+    // module asks whether to use the backend's session or run its own mesh.
+    call: {
+      available: () => services.call?.available() ?? false,
+      session: (callId, request) => {
+        const call = services.call;
+        if (!call) return Promise.reject(new Error('call: this host cannot run a call'));
+        return call.session(callId, request);
+      },
+      config: () => {
+        const call = services.call;
+        if (!call) return Promise.reject(new Error('call: this host cannot read a call policy'));
+        return call.config();
+      },
+      setConfig: (config) => {
+        const call = services.call;
+        if (!call) return Promise.reject(new Error('call: this host cannot store a call policy'));
+        return call.setConfig(config);
+      },
+      configurable: () => services.call?.configurable() ?? false,
+    },
+
     // The wrapper is always present so late binding works; `available` is how a module asks whether
     // there is anything behind it.
     transcription: {
@@ -681,20 +677,6 @@ export function createModuleStoreDeps(framework: {
     },
 
     kernels,
-
-    // Late-bound call session factory, forwarded to the call module as `CallStoreDeps.createBackend`.
-    get createBackend() {
-      return services.createCallBackend;
-    },
-    get getCallConfig() {
-      return services.getCallConfig;
-    },
-    get setCallConfig() {
-      return services.setCallConfig;
-    },
-    get callConfigSupported() {
-      return services.callConfigSupported;
-    },
   };
 }
 

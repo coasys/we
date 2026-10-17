@@ -8,6 +8,10 @@ import type { SchemaNode } from '@we/schema-shared';
  * vanished, so this says what happened and that nothing was lost — and, for the automatic case,
  * which template did not finish loading, since that is the one to change before leaving.
  *
+ * With more than one app to be in, it also offers which to leave into. Leaving goes back to the app
+ * the agent chose, and an app can be what is wrong — one that hides every way out of it, or one that
+ * does not finish loading — so leaving into it again would only reopen the problem.
+ *
  * Chrome, at the bottom of the window and above the content, because it describes the whole app
  * rather than one space.
  */
@@ -17,6 +21,8 @@ export const safeModeBanner: SchemaNode = {
     condition: { $: 'templateStore.safeMode.on' },
     then: {
       type: 'Row',
+      // Empty is the app the agent chose, which is where leaving goes unless another is picked.
+      $localState: { leaveInto: { type: 'string', initial: '' } },
       props: {
         position: 'fixed',
         bottom: '400',
@@ -58,8 +64,37 @@ export const safeModeBanner: SchemaNode = {
           },
         },
         {
+          type: '$if',
+          props: {
+            condition: { $: 'count(templateStore.appTemplateOptions) > 1' },
+            then: {
+              type: 'we-select',
+              props: {
+                size: 'sm',
+                flexShrink: '0',
+                label: 'App to leave into',
+                placeholder: 'The app you chose',
+                options: { $: 'templateStore.appTemplateOptions' },
+                value: { $: 'local.leaveInto' },
+                onChange: { $setLocal: 'leaveInto', value: { $: 'event.detail' } },
+              },
+            },
+          },
+        },
+        {
           type: 'we-button',
-          props: { variant: 'secondary', size: 'sm', onClick: { $action: 'templateStore.leaveSafeMode' } },
+          props: {
+            variant: 'secondary',
+            size: 'sm',
+            flexShrink: '0',
+            onClick: {
+              $if: {
+                condition: { $: 'local.leaveInto' },
+                then: { $action: 'templateStore.leaveSafeModeInto', args: [{ $: 'local.leaveInto' }] },
+                else: { $action: 'templateStore.leaveSafeMode' },
+              },
+            },
+          },
           children: ['Leave safe mode'],
         },
       ],

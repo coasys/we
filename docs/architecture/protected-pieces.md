@@ -112,6 +112,12 @@ somebody leaves it. Nothing is changed or deleted. There are four ways in:
   bundled template in place of anything else, and the second lists only the built-in themes. The
   settings page still lists custom themes, so they can be deleted from safe mode.
 
+**Leaving** goes back to what was chosen, unless the agent picks another app on the way out —
+the banner offers one when there is more than one app to be in (`templateStore.leaveSafeModeInto`).
+An app can be the problem, one that hides every way out or does not finish loading, and leaving into
+it again would only reopen it. The device's reload snapshot is dropped as the choice is written, so
+the first frame after leaving cannot be the app just left.
+
 On the web the address bar is the one piece of the window a page cannot draw over. On the desktop it
 is the menu bar. Both doors lead to the same `?safe` address.
 

@@ -51,7 +51,7 @@ describe('call module — declared coupling', () => {
 
   it('names the kernels it reaches, so a host without them refuses it with a reason', () => {
     const kernels = callModule.manifest.requires?.kernels ?? [];
-    expect(kernels).toEqual(expect.arrayContaining(['presence', 'ephemeral', 'peerConnection', 'media']));
+    expect(kernels).toEqual(expect.arrayContaining(['presence', 'ephemeral', 'peerConnection', 'media', 'call']));
     const plan = checkModuleCompatibility(callModule, { ...host, kernels: ['records'] });
     expect(plan.compatible).toBe(false);
     expect(plan.problems[0]).toContain('kernel');

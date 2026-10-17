@@ -166,11 +166,12 @@ describe('moduleRegistry — registration', () => {
   });
 
   it('hands a store host services bound after it registered', async () => {
-    // Module stores mount before the AD4M stores bind the call ports. A store that read them at
-    // registration would see `undefined` for good — the call never got a session backend.
+    // Module stores mount before the session stores bind the backend's call port. A kernel that read
+    // it at registration would answer "no backend" for good — the call never got a session.
     let deps: ModuleStoreDeps | undefined;
     moduleRegistry.register(
       mod('call', {
+        manifest: { id: 'call', name: 'Call', requires: { kernels: ['call'] } },
         createStore: (d) => {
           deps = d;
           return {};
@@ -179,15 +180,25 @@ describe('moduleRegistry — registration', () => {
       host,
       storeDeps,
     );
-    expect((deps as { createBackend?: unknown }).createBackend).toBeUndefined();
+    const call = deps!.kernels.call!;
+    expect(call.available()).toBe(false);
+    expect(call.configurable()).toBe(false);
 
-    const createCallBackend = vi.fn(async () => ({}));
-    const unbind = provideModuleHostServices({ createCallBackend, callConfigSupported: () => true });
+    const session = vi.fn(async () => ({}) as never);
+    const unbind = provideModuleHostServices({
+      call: {
+        available: () => true,
+        session,
+        config: async () => ({}),
+        setConfig: async () => true,
+        configurable: () => true,
+      },
+    });
     try {
-      const late = deps as { createBackend?: (id: string) => Promise<unknown>; callConfigSupported?: () => boolean };
-      await late.createBackend?.('room');
-      expect(createCallBackend).toHaveBeenCalledWith('room');
-      expect(late.callConfigSupported?.()).toBe(true);
+      expect(call.available()).toBe(true);
+      await call.session('room');
+      expect(session).toHaveBeenCalledWith('room', undefined);
+      expect(call.configurable()).toBe(true);
     } finally {
       unbind();
     }

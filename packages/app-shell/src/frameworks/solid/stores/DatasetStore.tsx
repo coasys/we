@@ -15,6 +15,7 @@
  * which layers on top of this store and reacts to dataset changes via `onDatasetRemoved` and the
  * `currentDataset` signal.
  */
+import { createCallKernel } from '@shared/callKernel';
 import { sameDataset } from '@shared/datasetIdentity';
 import { hostListeners, hostSlot } from '@shared/hostSlot';
 import { gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
@@ -22,7 +23,6 @@ import { provideModuleHostServices } from '@shared/registries/moduleHostServices
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
 import { isSystemDataset, SYSTEM_DATASET_NAMES, SYSTEM_DATASETS } from '@shared/systemDatasets';
-import { createCallConfigAccessors, createCallSessionFactory } from '@we/backend-ad4m';
 import {
   type DatasetHandle,
   datasetKey,
@@ -393,24 +393,14 @@ export function DatasetStoreProvider(props: ParentProps) {
       },
       selfId: () => session.me()?.did ?? null,
       ephemeral: session.ephemeralPort,
-      // Late-bound call session factory — the call module reads it as `createBackend`. All three
-      // accessors dereference at join time, so the factory is safe to construct before the backend
-      // connects or the user navigates to a space.
-      createCallBackend: createCallSessionFactory(
-        () => session.client(),
-        () => currentDataset()?.handle ?? null,
-        () => session.me()?.did ?? null,
-      ),
-      // Call config accessors — topology defaults stored on Social DNA.
-      // Same late-binding pattern: every accessor reads the current dataset at call time.
-      ...(() => {
-        const accessors = createCallConfigAccessors(() => currentDataset()?.handle ?? null);
-        return {
-          getCallConfig: accessors.getCallConfig,
-          setCallConfig: accessors.setCallConfig,
-          callConfigSupported: accessors.callConfigSupported,
-        };
-      })(),
+      // Calls, over the backend's call port — read on every call, like transcription below. The
+      // module asks without a dataset; the kernel chooses it: the call's own space when the module
+      // names one, which a participant following a switch may have navigated away from.
+      call: createCallKernel({
+        port: () => session.backendPorts()?.call,
+        current: () => currentDataset()?.handle ?? null,
+        byUri: (uri) => datasets().find((d) => d.sharedUri === uri)?.handle ?? null,
+      }),
       // Read through `backendPorts()` on every call rather than captured: the backend connects after
       // this store is constructed, and a backend that cannot transcribe simply never sets it.
       transcription: {
