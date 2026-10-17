@@ -87,36 +87,28 @@ export interface ModuleHostServices {
   view?: ViewKernel;
   transcription?: TranscriptionPort;
   /**
-   * Factory that creates a call backend (Session) for a specific call room.
-   *
-   * Bound by the store that owns the AD4M client, dataset, and agent identity — then forwarded
-   * through `createModuleStoreDeps` as `createBackend`. Absent on a backend without session
-   * support; the call module falls back to its own peer-to-peer mesh.
+   * Build the backend's session for one call, forwarded through `createModuleStoreDeps` as
+   * `createBackend`. Built over the backend's `CallPort` (see `shared/callServices.ts`): in the space
+   * `datasetUri` names, or the space on screen when it names none. Rejects where the backend has no
+   * call port, and where the named space is not joined.
    */
   createCallBackend?: (
     callId: string,
     options?: { iceServers?: RTCIceServer[]; topology?: 'mesh' | 'sfu'; datasetUri?: string },
   ) => Promise<unknown>;
   /**
-   * Read the neighbourhood's call configuration (SFU topology defaults).
-   *
-   * Returns the `SfuConfig` stored as a link in the neighbourhood — its creator's topology
-   * decisions.
-   * Absent when the backend has no SFU support; the call module uses mesh defaults.
+   * Read the space on screen's call policy — its creator's topology decisions. The call module
+   * parses it, and falls back to mesh when the read fails.
    */
   getCallConfig?: () => Promise<unknown>;
   /**
-   * Write the neighbourhood's call configuration.
-   *
-   * Stored as a link in the neighbourhood, so every member's executor reads the same config.
-   * The executor accepts it only from the neighbourhood's creator and rejects anyone else.
+   * Write the space on screen's call policy. Every member reads the same policy, and the backend
+   * may refuse a write from anyone but the space's creator, which resolves false.
    */
   setCallConfig?: (config: unknown) => Promise<boolean>;
   /**
-   * Synchronous probe: does the current backend support call configuration?
-   *
-   * Returns `false` when the executor lacks SFU types (pre-feat/embedded-sfu builds).
-   * The settings UI hides the Call section entirely when this returns false.
+   * Synchronous probe: is there a call policy to configure here? False with no call port and in a
+   * personal space. The settings UI hides the Call section when it is false.
    */
   callConfigSupported?: () => boolean;
   interpretation?: InterpretationPort;
