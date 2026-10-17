@@ -20,8 +20,9 @@
  *
  * - **No TURN server.** Peers behind symmetric NAT will not connect. TURN is infrastructure someone
  *   has to run, so it is a deployment decision rather than a module one.
- * - **Session backend.** When the host provides a {@link CallBackend} (satisfied by `Session` from
- *   `@coasys/ad4m`), the call delegates topology, signalling, and roster management to the SDK.
+ * - **Session backend.** Where the `call` kernel says the backend can run a call, the call is a
+ *   {@link CallBackend} session the backend runs, and it delegates topology, signalling and roster
+ *   management to it.
  *   The store exposes `topology` and `qualityPreference` for the template to surface the mode.
  * - **No camera *and* screen at once.** Sharing replaces the camera track — see `media.ts`.
  */
@@ -2378,10 +2379,12 @@ export const callModule = defineModule({
         constructor the mesh used to get from a private extension on the deps bag; and `media` is
         both how the camera and microphone are reached and how the microphone is *published* — the
         transcriber reads `media.input()` where it used to be handed whatever `audioSource` named.
+        `call` is a session the backend runs, where it can run one — four fields on the deps bag
+        until it was declared, handed to every module whether it asked or not.
         A kernel not listed here is absent from `deps.kernels`, so adding a reach means adding it
         here first, which is the point.
       */
-      kernels: ['records', 'presence', 'ephemeral', 'media', 'peerConnection'],
+      kernels: ['records', 'presence', 'ephemeral', 'media', 'peerConnection', 'call'],
       // Displayed at install, never scored. These three are the whole reason a user should think
       // twice before installing a call module from a stranger. The rest of what used to be an
       // authored `capabilities` list — the dock, the bottom slot — is derived from `contributes`

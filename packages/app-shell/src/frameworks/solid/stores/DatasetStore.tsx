@@ -15,7 +15,7 @@
  * which layers on top of this store and reacts to dataset changes via `onDatasetRemoved` and the
  * `currentDataset` signal.
  */
-import { createCallServices } from '@shared/callServices';
+import { createCallKernel } from '@shared/callKernel';
 import { sameDataset } from '@shared/datasetIdentity';
 import { hostListeners, hostSlot } from '@shared/hostSlot';
 import { gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
@@ -394,9 +394,9 @@ export function DatasetStoreProvider(props: ParentProps) {
       selfId: () => session.me()?.did ?? null,
       ephemeral: session.ephemeralPort,
       // Calls, over the backend's call port — read on every call, like transcription below. The
-      // module asks without a dataset; these choose it: the call's own space when the module names
-      // one, which a participant following a switch may have navigated away from.
-      ...createCallServices({
+      // module asks without a dataset; the kernel chooses it: the call's own space when the module
+      // names one, which a participant following a switch may have navigated away from.
+      call: createCallKernel({
         port: () => session.backendPorts()?.call,
         current: () => currentDataset()?.handle ?? null,
         byUri: (uri) => datasets().find((d) => d.sharedUri === uri)?.handle ?? null,

@@ -1,9 +1,9 @@
 /**
- * The host's call services — which dataset a call is in, and what happens without a call port.
+ * The host's `call` kernel — which dataset a call is in, and what happens without a call port.
  *
  * What the port does with a dataset is tested beside the port (`@we/backend-ad4m`'s `callPort`).
  */
-import { createCallServices } from '@shared/callServices';
+import { createCallKernel } from '@shared/callKernel';
 import type { CallPort, DatasetHandle } from '@we/backend-shared';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -19,9 +19,9 @@ function fakePort(): CallPort & { [K in keyof CallPort]: ReturnType<typeof vi.fn
   };
 }
 
-function services(over: { port?: CallPort | undefined; current?: DatasetHandle | null } = {}) {
+function kernel(over: { port?: CallPort | undefined; current?: DatasetHandle | null } = {}) {
   const port = 'port' in over ? over.port : fakePort();
-  return createCallServices({
+  return createCallKernel({
     port: () => port,
     current: () => ('current' in over ? (over.current ?? null) : onScreen),
     byUri: (uri) => (uri === 'neighbourhood://call-space' ? callSpace : null),
@@ -32,7 +32,7 @@ describe('a session', () => {
   it('is built in the space on screen when the call names none', async () => {
     const port = fakePort();
 
-    const session = await services({ port }).createCallBackend('call-1', { topology: 'sfu' });
+    const session = await kernel({ port }).session('call-1', { topology: 'sfu' });
 
     expect(session).toEqual({ session: true });
     expect(port.createSession).toHaveBeenCalledWith(onScreen, 'call-1', { topology: 'sfu' });
@@ -45,7 +45,7 @@ describe('a session', () => {
   it('is built in the call’s own space, not the one on screen', async () => {
     const port = fakePort();
 
-    await services({ port }).createCallBackend('call-1', {
+    await kernel({ port }).session('call-1', {
       topology: 'mesh',
       datasetUri: 'neighbourhood://call-space',
     });
@@ -56,9 +56,9 @@ describe('a session', () => {
   it('is refused rather than built in the space on screen when the call’s is not joined', async () => {
     const port = fakePort();
 
-    await expect(
-      services({ port }).createCallBackend('call-1', { datasetUri: 'neighbourhood://gone' }),
-    ).rejects.toThrow(/not joined/);
+    await expect(kernel({ port }).session('call-1', { datasetUri: 'neighbourhood://gone' })).rejects.toThrow(
+      /not joined/,
+    );
     expect(port.createSession).not.toHaveBeenCalled();
   });
 
@@ -66,37 +66,47 @@ describe('a session', () => {
     const port = fakePort();
     const iceServers = [{ urls: 'stun:a.example.org' }];
 
-    await services({ port }).createCallBackend('call-1', { iceServers, datasetUri: 'neighbourhood://call-space' });
+    await kernel({ port }).session('call-1', { iceServers, datasetUri: 'neighbourhood://call-space' });
 
     expect(port.createSession).toHaveBeenCalledWith(callSpace, 'call-1', { iceServers });
   });
 
   it('throws when no dataset is open', async () => {
-    await expect(services({ current: null }).createCallBackend('call-x')).rejects.toThrow('no active dataset');
+    await expect(kernel({ current: null }).session('call-x')).rejects.toThrow('no active dataset');
   });
 
   it('throws when the backend has no call port', async () => {
-    await expect(services({ port: undefined }).createCallBackend('call-x')).rejects.toThrow('cannot run calls');
+    await expect(kernel({ port: undefined }).session('call-x')).rejects.toThrow('cannot run calls');
   });
 
   it('reads the port when asked, not when built — the backend connects later', async () => {
     let port: CallPort | undefined;
-    const later = createCallServices({ port: () => port, current: () => onScreen, byUri: () => null });
+    const later = createCallKernel({ port: () => port, current: () => onScreen, byUri: () => null });
     port = fakePort();
 
-    await later.createCallBackend('call-1');
+    await later.session('call-1');
 
     expect(port.createSession).toHaveBeenCalled();
+  });
+});
+
+describe('available', () => {
+  it('follows the port, so a backend without one sends the call module to its own mesh', () => {
+    let port: CallPort | undefined;
+    const late = createCallKernel({ port: () => port, current: () => onScreen, byUri: () => null });
+    expect(late.available()).toBe(false);
+    port = fakePort();
+    expect(late.available()).toBe(true);
   });
 });
 
 describe('the policy', () => {
   it('is read and written for the space on screen', async () => {
     const port = fakePort();
-    const call = services({ port });
+    const call = kernel({ port });
 
-    expect(await call.getCallConfig()).toEqual({ mode: 'designated' });
-    expect(await call.setCallConfig({ mode: 'mesh' })).toBe(true);
+    expect(await call.config()).toEqual({ mode: 'designated' });
+    expect(await call.setConfig({ mode: 'mesh' })).toBe(true);
 
     expect(port.config).toHaveBeenCalledWith(onScreen);
     expect(port.setConfig).toHaveBeenCalledWith(onScreen, { mode: 'mesh' });
@@ -106,16 +116,16 @@ describe('the policy', () => {
     const port = fakePort();
     port.configurable.mockReturnValue(false);
 
-    expect(services({ port }).callConfigSupported()).toBe(false);
-    expect(services().callConfigSupported()).toBe(true);
+    expect(kernel({ port }).configurable()).toBe(false);
+    expect(kernel().configurable()).toBe(true);
   });
 
   it('has nothing to configure with no dataset open or no call port', () => {
-    expect(services({ current: null }).callConfigSupported()).toBe(false);
-    expect(services({ port: undefined }).callConfigSupported()).toBe(false);
+    expect(kernel({ current: null }).configurable()).toBe(false);
+    expect(kernel({ port: undefined }).configurable()).toBe(false);
   });
 
   it('refuses a read with no dataset open', async () => {
-    await expect(services({ current: null }).getCallConfig()).rejects.toThrow('no active dataset');
+    await expect(kernel({ current: null }).config()).rejects.toThrow('no active dataset');
   });
 });

@@ -1,5 +1,5 @@
 /**
- * The call services the host lends feature modules, over the backend's `CallPort`.
+ * The `call` kernel, built over the backend's `CallPort`.
  *
  * The port takes a dataset on every operation; the call module asks without one. Choosing the
  * dataset is the host's job, and this is where it is done:
@@ -11,13 +11,12 @@
  * - **The policy** is the space on screen's — what space settings configure.
  *
  * The port is read on every call rather than captured, because the backend connects after the host
- * builds these. A backend without one refuses a session and reports nothing to configure.
+ * builds this. A backend without one is not available, which sends the call module to its own mesh.
  */
 import type { CallPort, DatasetHandle } from '@we/backend-shared';
+import type { CallKernel, CallSession } from '@we/module-shared';
 
-import type { ModuleHostServices } from './registries/moduleHostServices';
-
-export interface CallServicesDeps {
+export interface CallKernelDeps {
   /** The backend's call port, or nothing where it has none or has not connected. */
   port: () => CallPort | undefined;
   /** The dataset on screen. */
@@ -26,11 +25,7 @@ export interface CallServicesDeps {
   byUri: (sharedUri: string) => DatasetHandle | null;
 }
 
-export type CallServices = Required<
-  Pick<ModuleHostServices, 'createCallBackend' | 'getCallConfig' | 'setCallConfig' | 'callConfigSupported'>
->;
-
-export function createCallServices({ port, current, byUri }: CallServicesDeps): CallServices {
+export function createCallKernel({ port, current, byUri }: CallKernelDeps): CallKernel {
   const requirePort = (): CallPort => {
     const found = port();
     if (!found) throw new Error('call: this backend cannot run calls');
@@ -44,21 +39,23 @@ export function createCallServices({ port, current, byUri }: CallServicesDeps): 
   };
 
   return {
-    async createCallBackend(callId, options) {
+    available: () => port() !== undefined,
+    async session(callId, request) {
       const calls = requirePort();
-      const named = options?.datasetUri;
+      const named = request?.datasetUri;
       const dataset = named ? byUri(named) : current();
-      if (!dataset) {
+      if (!dataset)
         throw new Error(named ? `call: the call's space (${named}) is not joined` : 'call: no active dataset');
-      }
-      return calls.createSession(dataset, callId, {
-        ...(options?.iceServers ? { iceServers: options.iceServers } : {}),
-        ...(options?.topology ? { topology: options.topology } : {}),
-      });
+      // The backend's own session, which satisfies `CallSession` structurally — the one place the
+      // contract's `unknown` is read as the module's shape. See `@we/module-shared`'s `call.ts`.
+      return (await calls.createSession(dataset, callId, {
+        ...(request?.iceServers ? { iceServers: request.iceServers } : {}),
+        ...(request?.topology ? { topology: request.topology } : {}),
+      })) as CallSession;
     },
-    getCallConfig: async () => requirePort().config(requireCurrent()),
-    setCallConfig: async (config) => requirePort().setConfig(requireCurrent(), config),
-    callConfigSupported() {
+    config: async () => requirePort().config(requireCurrent()),
+    setConfig: async (config) => requirePort().setConfig(requireCurrent(), config),
+    configurable() {
       const dataset = current();
       return Boolean(dataset && port()?.configurable(dataset));
     },

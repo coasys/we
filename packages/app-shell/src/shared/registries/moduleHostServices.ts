@@ -34,6 +34,7 @@ import type {
 } from '@we/backend-shared';
 import type {
   AgentDataKernel,
+  CallKernel,
   CopiedIn,
   CreateEntityOptions,
   DatasetTarget,
@@ -87,30 +88,10 @@ export interface ModuleHostServices {
   view?: ViewKernel;
   transcription?: TranscriptionPort;
   /**
-   * Build the backend's session for one call, forwarded through `createModuleStoreDeps` as
-   * `createBackend`. Built over the backend's `CallPort` (see `shared/callServices.ts`): in the space
-   * `datasetUri` names, or the space on screen when it names none. Rejects where the backend has no
-   * call port, and where the named space is not joined.
+   * Calls run by the backend, built over its `CallPort` — see `shared/callKernel.ts`, which decides
+   * which space a call is in. Forwarded as the `call` kernel.
    */
-  createCallBackend?: (
-    callId: string,
-    options?: { iceServers?: RTCIceServer[]; topology?: 'mesh' | 'sfu'; datasetUri?: string },
-  ) => Promise<unknown>;
-  /**
-   * Read the space on screen's call policy — its creator's topology decisions. The call module
-   * parses it, and falls back to mesh when the read fails.
-   */
-  getCallConfig?: () => Promise<unknown>;
-  /**
-   * Write the space on screen's call policy. Every member reads the same policy, and the backend
-   * may refuse a write from anyone but the space's creator, which resolves false.
-   */
-  setCallConfig?: (config: unknown) => Promise<boolean>;
-  /**
-   * Synchronous probe: is there a call policy to configure here? False with no call port and in a
-   * personal space. The settings UI hides the Call section when it is false.
-   */
-  callConfigSupported?: () => boolean;
+  call?: CallKernel;
   interpretation?: InterpretationPort;
   languageModel?: LanguageModelPort;
   /** Where a module's `notify` lands — a toast, in this host. */
@@ -345,6 +326,7 @@ export const HOST_KERNELS: readonly KernelName[] = [
   'ephemeral',
   'media',
   'peerConnection',
+  'call',
   'transcription',
   'languageModel',
   'interpretation',
@@ -518,6 +500,28 @@ export function createModuleStoreDeps(framework: {
       },
     },
 
+    // Present whatever backend is connected, like transcription below: `available` is how the call
+    // module asks whether to use the backend's session or run its own mesh.
+    call: {
+      available: () => services.call?.available() ?? false,
+      session: (callId, request) => {
+        const call = services.call;
+        if (!call) return Promise.reject(new Error('call: this host cannot run a call'));
+        return call.session(callId, request);
+      },
+      config: () => {
+        const call = services.call;
+        if (!call) return Promise.reject(new Error('call: this host cannot read a call policy'));
+        return call.config();
+      },
+      setConfig: (config) => {
+        const call = services.call;
+        if (!call) return Promise.reject(new Error('call: this host cannot store a call policy'));
+        return call.setConfig(config);
+      },
+      configurable: () => services.call?.configurable() ?? false,
+    },
+
     // The wrapper is always present so late binding works; `available` is how a module asks whether
     // there is anything behind it.
     transcription: {
@@ -673,20 +677,6 @@ export function createModuleStoreDeps(framework: {
     },
 
     kernels,
-
-    // Late-bound call session factory, forwarded to the call module as `CallStoreDeps.createBackend`.
-    get createBackend() {
-      return services.createCallBackend;
-    },
-    get getCallConfig() {
-      return services.getCallConfig;
-    },
-    get setCallConfig() {
-      return services.setCallConfig;
-    },
-    get callConfigSupported() {
-      return services.callConfigSupported;
-    },
   };
 }
 
