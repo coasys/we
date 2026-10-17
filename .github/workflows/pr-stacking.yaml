@@ -1,0 +1,98 @@
+# Which PRs are stacked on another, and whether their descriptions say so.
+#
+# A PR based on another PR's branch rather than `dev` looks like any other in the PR list: GitHub
+# shows the base only on the PR's own page, as a branch name. So this keeps two things:
+#
+# - A `stacked` LABEL on every PR based on anything but `dev` or `main`, which the list shows beside
+#   the title. It follows the base alone, so it goes by itself when GitHub retargets the PR at `dev`
+#   after the PR below it merges.
+# - A CHECK that the description's `Stacked on: #N` block agrees with the base — present when the
+#   PR is stacked, naming the open PR whose branch the base is, and gone once it is not. The rules
+#   and the reasons are in scripts/pr-stacking.mjs.
+#
+# `edited` covers both a change to the description and a retarget, which GitHub reports as an edit
+# of the base. Drafts run too: a stack is usually opened as drafts, and the label is most useful
+# while it is being built.
+#
+# A PR from a fork gets the check and no label: its workflow token cannot write to this repository.
+name: PR stacking
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: pr-stacking-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  stacked:
+    name: Stacked on the PR it names
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/pr-stacking.mjs
+            scripts/pr-stacking.test.mjs
+            scripts/ad4m-pairing.mjs
+            docs/contributing/pull-requests.md
+            .github/pull_request_template.md
+          sparse-checkout-cone-mode: false
+      # The parser's own tests, here because the root has no test runner to put them in. They read
+      # the docs' and the template's copies of the block, which is why those are checked out.
+      - name: The parser still reads the block the docs show
+        run: node --test scripts/pr-stacking.test.mjs
+      - name: Check the description against the base
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          # The script reads the PR from the API as it is now, not from the event: a re-run replays
+          # its event, so the event's base and description can both be stale.
+          set +e
+          node scripts/pr-stacking.mjs > out.txt 2> why.txt
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+          set -e
+          cat out.txt >> "$GITHUB_OUTPUT"
+          cat why.txt
+      - name: Label it
+        if: ${{ steps.check.outputs.stacked != '' && github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          STACKED: ${{ steps.check.outputs.stacked }}
+        run: |
+          # Never fail the job over this: it reports the result, it is not one.
+          set +e
+          LABEL=stacked
+          if [ "$STACKED" = true ]; then
+            # The label is defined HERE, not in the repository's settings: `--force` updates it in
+            # place, so a colour changed by hand reverts on the next run. Change it in this line.
+            gh label create "$LABEL" -R "$REPO" --color 0969DA --force \
+              --description "Based on another PR's branch, not dev: merge that one first" >/dev/null
+            gh api -X POST "repos/$REPO/issues/$PR/labels" -f "labels[]=$LABEL" >/dev/null
+          else
+            gh api -X DELETE "repos/$REPO/issues/$PR/labels/$LABEL" >/dev/null 2>&1
+          fi
+          exit 0
+      - name: Fail when they disagree
+        if: ${{ steps.check.outputs.status != '0' }}
+        run: |
+          echo "::error title=The stacking block disagrees with the base::$(head -1 why.txt)"
+          {
+            echo '### The description does not match the branch this PR is based on'
+            echo
+            echo '```'
+            cat why.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
