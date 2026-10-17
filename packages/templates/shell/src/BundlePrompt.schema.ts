@@ -189,9 +189,12 @@ const newInVersion: SchemaNode = {
               props: { gap: '300' },
               children: [
                 {
-                  type: 'we-text',
-                  props: { fontWeight: 'semibold' },
-                  children: ['New in this version — the one you have was never agreed to these'],
+                  type: 'Column',
+                  props: { gap: '100' },
+                  children: [
+                    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['This version asks for more'] },
+                    { type: 'we-text', children: ['You haven’t agreed to these for the version you have.'] },
+                  ],
                 },
                 listSection('It will also be able to', `${pending}.newInVersion.capabilities`, 'plus', 'warning-text'),
                 listSection('It also uses', `${pending}.newInVersion.modules`, 'puzzle-piece', 'warning-text'),

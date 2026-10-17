@@ -12,7 +12,7 @@ export async function check({ count }) {
   if (!(await count('text=This version changes how the app looks and works'))) {
     problems.push('it does not say the update changes the app and asks for nothing new');
   }
-  if (await count('text=New in this version')) problems.push('it warns about something new when nothing is');
+  if (await count('text=This version asks for more')) problems.push('it warns about something new when nothing is');
   if (await count('text=Read and write the content of this space'))
     problems.push('what was agreed already is listed again, unfolded');
   if (!(await count('text=What you already agreed to'))) problems.push('what was agreed already cannot be opened');

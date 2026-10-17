@@ -14,7 +14,8 @@ export async function check({ count, click }) {
   };
 
   await says('Update Field Guide to 1.1.0?', 'that it is an update');
-  await says('New in this version', 'that some of it is new');
+  await says('This version asks for more', 'that it asks for more');
+  await says('You haven’t agreed to these for the version you have.', 'why it is asking');
   await says('It will also be able to', 'what more it will be able to do');
   await says('See who is in this space', 'the new capability');
   // "Uses", not "turns on": a module already on is new to the agreement and turns nothing on. Whether
