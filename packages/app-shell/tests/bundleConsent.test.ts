@@ -2,7 +2,7 @@
  * An update does not inherit consent it was never given: what a newer version asks for beyond what the
  * installed one was agreed to is worked out from both judgements, and said on its own.
  */
-import { asksForMore, grantOf, whatIsNew } from '@shared/bundles/consent';
+import { asksForMore, bundleDigest, grantOf, whatIsNew } from '@shared/bundles/consent';
 import { installedEntry, readInstalledBundles, withInstalled } from '@shared/bundles/installedBundles';
 import type { CapabilityGroup } from '@shared/registries/templateSurface';
 import { CAPABILITY_GROUPS } from '@shared/registries/templateSurface';
@@ -57,13 +57,28 @@ describe('the agreement on the install record', () => {
 
   it('is kept, and read back with the record', () => {
     const granted = grantOf(judged({ groups: [first, second] }));
-    const entry = installedEntry(pieces, { name: 'Field guide', icon: 'leaf', at: 'now', granted });
+    const entry = installedEntry(pieces, { name: 'Field guide', icon: 'leaf', at: 'now', granted, digest: 'abc' });
     const [read] = readInstalledBundles(JSON.stringify(withInstalled([], entry)));
     expect(read.granted).toEqual(granted);
+    expect(read.digest).toBe('abc');
     expect(whatIsNew(judged({ groups: [first, second] }), read.granted)).toEqual({
       capabilities: [],
       modules: [],
       recordTypes: [],
     });
+  });
+});
+
+describe('whether a file is the one installed', () => {
+  const bundle = { id: 'field-guide', version: '1.0.0', templates: [{ id: 'a', meta: { name: 'A', icon: 'x' } }] };
+
+  it('reads the same for the same content, whatever order its keys were written in', async () => {
+    const reordered = { templates: [{ meta: { icon: 'x', name: 'A' }, id: 'a' }], version: '1.0.0', id: 'field-guide' };
+    expect(await bundleDigest(reordered)).toBe(await bundleDigest(bundle));
+  });
+
+  it('differs for different content, even under the same version', async () => {
+    const edited = { ...bundle, templates: [{ id: 'a', meta: { name: 'B', icon: 'x' } }] };
+    expect(await bundleDigest(edited)).not.toBe(await bundleDigest(bundle));
   });
 });

@@ -56,10 +56,15 @@ editing one forks it, and it is removed with the app.
 not inherit consent it was never given, so the install record keeps what was agreed to — the
 capability groups, module ids and record type names the prompt showed (`granted`, see
 `shared/bundles/consent.ts`) — and the prompt for a newer version says what it asks for beyond them
-on its own, before the full list, or that it asks for nothing new. Both sides come from walking the
-templates, never from what a file says about itself, and groups are compared rather than their
-wording, so rewording one never makes it look new. An install recorded before grants were kept has
-nothing to compare against, and its update shows the full list as before.
+first, or says it changes the app and can do nothing more; what was agreed already is folded away
+under "What you already agreed to", so it never reads as something the update adds. Both sides come
+from walking the templates, never from what a file says about itself, and groups are compared rather
+than their wording, so rewording one never makes it look new. An install recorded before grants were
+kept has nothing to compare against, and its update shows the full list as before.
+
+**The same file again** changes nothing, so its prompt says the app is already installed and offers
+only Close. Decided by content, not version — the install record keeps a digest of the file
+(`bundleDigest`) — so a file whose author changed it without raising the version is still an update.
 
 ## Whose is what
 

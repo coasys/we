@@ -32,6 +32,8 @@ export interface InstalledBundle {
   display?: { spaces: 'ours' | 'theirs'; template?: string };
   /** What the person agreed to when installing it — what a later version is compared against. */
   granted?: BundleGrant;
+  /** The file it was installed from, as `bundleDigest` has it: the same file again changes nothing. */
+  digest?: string;
 }
 
 export function readInstalledBundles(raw: string | undefined | null): InstalledBundle[] {
@@ -58,7 +60,7 @@ export function withoutInstalled(list: readonly InstalledBundle[], id: string): 
 /** The entry an install of these pieces writes. */
 export function installedEntry(
   pieces: BundlePieces,
-  meta: { name: string; icon: string; at: string; granted?: BundleGrant },
+  meta: { name: string; icon: string; at: string; granted?: BundleGrant; digest?: string },
 ): InstalledBundle {
   return {
     id: pieces.bundleId,
@@ -74,6 +76,7 @@ export function installedEntry(
     recordTypes: pieces.recordTypes,
     ...(pieces.display ? { display: pieces.display } : {}),
     ...(meta.granted ? { granted: meta.granted } : {}),
+    ...(meta.digest ? { digest: meta.digest } : {}),
   };
 }
 

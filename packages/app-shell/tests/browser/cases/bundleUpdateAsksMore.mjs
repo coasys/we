@@ -1,12 +1,13 @@
 /**
  * A newer version of an installed app that asks for more than the installed one was agreed to says so
- * on its own, before the full list — where it would read as one more line of what was already agreed.
+ * on its own, and folds away what was agreed already — under its own name, so it never reads as
+ * something the update adds — where it can still be opened and checked.
  */
 export const name = 'an app update names what it asks for that was never agreed to';
 export const scenario = 'bundle:update-asks-more';
 export const widths = [420];
 
-export async function check({ count }) {
+export async function check({ count, click }) {
   const problems = [];
   const says = async (text, what) => {
     if (!(await count(`text=${text}`))) problems.push(`it does not say ${what}`);
@@ -20,7 +21,16 @@ export async function check({ count }) {
   await says('Calls', 'the new module');
   await says('It also brings kinds of record', 'which new record types it brings');
   await says('Survey', 'the new record type');
-  if (await count('text=asks for nothing the one you have'))
+  if (await count('text=can do nothing the one you have could not'))
     problems.push('it says nothing is new while listing what is');
+
+  if (await count('text=Read and write the content of this space'))
+    problems.push('what was agreed already is listed again, unfolded, beside what is new');
+  const fold = 'we-button:has-text("What you already agreed to")';
+  if (await count(fold)) {
+    await click(fold);
+    await says('Read and write the content of this space', 'what was agreed already, once opened');
+  } else problems.push('what was agreed already cannot be opened');
+  if (!(await count('we-button:has-text("Update")'))) problems.push('there is no Update button');
   return problems;
 }

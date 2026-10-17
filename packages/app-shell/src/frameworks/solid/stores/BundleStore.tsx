@@ -22,7 +22,7 @@
  */
 import { selectBootSnapshot, writeBootSnapshot } from '@shared/bundles/bootSnapshot';
 import { bundlePieces } from '@shared/bundles/bundlePieces';
-import { type BundleGrant, grantOf, whatIsNew } from '@shared/bundles/consent';
+import { bundleDigest, type BundleGrant, grantOf, whatIsNew } from '@shared/bundles/consent';
 import {
   installedEntry,
   readInstalledBundles,
@@ -66,6 +66,11 @@ export interface PendingBundleInstall {
   fileName: string;
   /** The version already installed, when this is an update; empty otherwise. */
   updates: string;
+  /**
+   * The file is the one the installed version came from, so installing it would change nothing: the
+   * prompt says so and offers nothing to press. Decided by content, not by version.
+   */
+  unchanged: boolean;
   /**
    * On an update, what this version asks for that the installed one was not agreed to — capabilities
    * in the words a person reads, modules by name, record types — each empty when nothing is new. Null
@@ -196,6 +201,8 @@ export function BundleStoreProvider(props: ParentProps) {
     view: PendingBundleInstall;
     /** What confirming agrees to, kept on the install record. */
     grant: BundleGrant;
+    /** The file's digest, kept on the install record. */
+    digest: string;
   } | null>(null);
   const [busy, setBusy] = createSignal(false);
 
@@ -368,9 +375,11 @@ export function BundleStoreProvider(props: ParentProps) {
     const recordTypes = judged.adds.recordTypes;
     const previous = installedList().find((entry) => entry.id === bundle.id);
     const news = previous ? whatIsNew(judged, previous.granted) : null;
+    const digest = await bundleDigest(bundle);
     setPending({
       bundle,
       grant: grantOf(judged),
+      digest,
       view: {
         name: bundle.name,
         icon: bundle.icon || 'app-window',
@@ -378,6 +387,7 @@ export function BundleStoreProvider(props: ParentProps) {
         author: bundle.author?.name ?? '',
         fileName: file.name,
         updates: previous?.version ?? '',
+        unchanged: !!previous?.digest && previous.digest === digest,
         newInVersion: news && {
           capabilities: news.capabilities,
           modules: news.modules.map((id) => moduleRegistry.get(id)?.definition.manifest.name ?? id),
@@ -399,7 +409,8 @@ export function BundleStoreProvider(props: ParentProps) {
 
   async function confirmInstall(): Promise<void> {
     const request = pending();
-    if (!request || busy()) return;
+    // A file the same as the one installed would rewrite everything to what it already is.
+    if (!request || busy() || request.view.unchanged) return;
     // Read at the press: the list is about the app the prompt is showing, and goes on changing as
     // the spaces it ticked are set up.
     const spaces = settingUp();
@@ -430,6 +441,7 @@ export function BundleStoreProvider(props: ParentProps) {
         icon: view.icon,
         at: new Date().toISOString(),
         granted: request.grant,
+        digest: request.digest,
       });
       await datasetStore.updateAgentSettings({
         installedBundles: JSON.stringify(

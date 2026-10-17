@@ -1371,11 +1371,16 @@ const bundleInstallPrompt = (): Scenario => ({
 });
 
 /**
- * The same prompt raised by a newer version of an app already installed, once asking for more than
- * the installed one was agreed to and once asking for nothing new.
+ * The same prompt raised by another file for an app already installed: a newer version asking for
+ * more than the installed one was agreed to, one asking for nothing new, and the very file the
+ * installed one came from.
  */
 const bundleUpdatePrompt =
-  (newInVersion: { capabilities: string[]; modules: string[]; recordTypes: string[] }) => (): Scenario => {
+  (
+    newInVersion: { capabilities: string[]; modules: string[]; recordTypes: string[] } | null,
+    more: Record<string, unknown> = {},
+  ) =>
+  (): Scenario => {
     const base = bundleInstallPrompt();
     const bundleStore = base.stores?.bundleStore as { pendingInstall: Record<string, unknown> };
     return {
@@ -1384,7 +1389,7 @@ const bundleUpdatePrompt =
         ...base.stores,
         bundleStore: {
           ...bundleStore,
-          pendingInstall: { ...bundleStore.pendingInstall, version: '1.1.0', updates: '1.0.0', newInVersion },
+          pendingInstall: { ...bundleStore.pendingInstall, version: '1.1.0', updates: '1.0.0', newInVersion, ...more },
         },
       },
     };
@@ -1419,6 +1424,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
     recordTypes: ['Survey'],
   }),
   'bundle:update-nothing-new': bundleUpdatePrompt({ capabilities: [], modules: [], recordTypes: [] }),
+  'bundle:already-installed': bundleUpdatePrompt(null, { version: '1.0.0', unchanged: true }),
   'ds:slider-marks': sliderMarks,
   'security:self-firing-events': selfFiringEvents,
   'security:code-in-template': codeInTemplate,

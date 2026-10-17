@@ -54,6 +54,30 @@ export function whatIsNew(
   };
 }
 
+/** A JSON value written with its keys in order, so the same content always reads the same. */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+/**
+ * A digest of what a bundle contains, kept on its install record: a file with the same digest would
+ * change nothing, whatever its version says, and one with a different digest changes something even
+ * when an author forgot to raise the version. Taken from the file rather than from the library, whose
+ * copies gain node ids as they are saved and so never equal the file again.
+ */
+export async function bundleDigest(bundle: unknown): Promise<string> {
+  const bytes = new TextEncoder().encode(canonical(bundle));
+  const hash = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 /** Whether a difference asks for anything at all. */
 export function asksForMore(news: WhatIsNew): boolean {
   return news.capabilities.length > 0 || news.modules.length > 0 || news.recordTypes.length > 0;
