@@ -20,8 +20,10 @@
 #
 # A cache is read only from the run's own branch and its base branch, so where it is saved decides
 # who can use it. One saved on a PR serves re-runs of that PR alone; one saved on `dev` serves every
-# PR. That is why this also runs on a push to `dev`: when a bump merges, `dev` builds the new
-# executor once, and every PR after it restores it.
+# PR. So the bump workflow builds a new version's executor on `dev` as soon as it sees the version
+# (`ad4m-executor.yaml`), before the bump PR's own run starts: that run, and every PR after it,
+# restores it. This also runs on a push to `dev`, which is then a restore — and the build for a
+# version that reached `dev` some other way.
 #
 # Ubuntu 24.04 because the executor needs glibc 2.38 or later, to link and to run: the prebuilt V8
 # calls `__isoc23_*` (coasys/ad4m#1305).

@@ -279,7 +279,20 @@ export type TemplateSchema = SchemaNode & {
   schemaVersion?: number;
   meta: TemplateMeta;
   _fromSpace?: boolean;
+  /**
+   * The bundle this template came from: its id, the version installed, and the piece's own id in
+   * it. Absent for a template somebody made here. Written by every install so a later version of
+   * the same bundle can be recognised as an update to these templates, not a second copy of them.
+   */
+  source?: TemplateSource;
 };
+
+/** Where a template came from, when it came in a bundle. See {@link TemplateSchema.source}. */
+export interface TemplateSource {
+  bundle: string;
+  version: string;
+  piece: string;
+}
 export type RouteSchema = SchemaNode & { path: string; redirect?: string; keepAlive?: boolean };
 
 /**

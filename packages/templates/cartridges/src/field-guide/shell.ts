@@ -20,8 +20,10 @@ export const fieldGuideShell: TemplateSchema & { id: string } = {
           props: {
             condition: { $: 'datasetStore.currentDataset' },
             then: {
+              // The height of the window, with the header fixed and the section scrolling below it:
+              // a section is then given a height, which a map has to have to fill the page.
               type: 'Column',
-              props: { width: '100%', minHeight: '100dvh' },
+              props: { width: '100%', height: '100dvh' },
               children: [
                 {
                   type: 'Row',
@@ -76,7 +78,11 @@ export const fieldGuideShell: TemplateSchema & { id: string } = {
                     },
                   ],
                 },
-                { type: 'Column', props: { flex: '1', width: '100%' }, children: [{ type: '$routes' }] },
+                {
+                  type: 'Column',
+                  props: { flex: '1', minHeight: '0', overflowY: 'auto', width: '100%' },
+                  children: [{ type: '$routes' }],
+                },
               ],
             },
           },

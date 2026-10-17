@@ -143,6 +143,20 @@ template queries through the neutral QueryIR before they reach the backend.
 Safe to flip in dev (the seed is a watched import); a production build bakes
 the seed in.
 
+### `bundles`
+
+Apps this deployment builds in, by id. Each names `bundles/<id>.bundle.json` at the repository root,
+and `pnpm --filter @we/app-shell generate-bundles` writes them into the build. A bundle's app,
+templates, sections and theme join the built-in ones: read-only, forkable, updated by every deploy.
+The first bundle bringing an app is the deployment's app unless `host.ui.app` names another. Its
+record types are not built in — they belong to spaces, and whoever runs a space sets it up for the app
+in Settings. The format and the rest are in `docs/architecture/apps-as-data.md`;
+`pnpm validate:seed` checks each id names a bundle file of this format.
+
+```json
+"bundles": ["field-guide"]
+```
+
 ### `spaceStarters`
 
 What a new space begins with, beyond the structure every space gets. It's a list: a new space gets

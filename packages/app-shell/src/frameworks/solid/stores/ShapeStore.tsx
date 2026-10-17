@@ -21,10 +21,11 @@
  *    customized/reset lifecycle that decides whether release improvements still flow.
  */
 import { hostSlot } from '@shared/hostSlot';
-import { type EntityManifest, extractableEntities, manifestEntries, validateManifest } from '@we/backend-shared';
+import { type EntityManifest, extractableEntities, manifestEntries, trace, validateManifest } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { asFileField, decodeFileAsJson, encodeJsonFileData, Shape } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
+import type { BundleRecordType } from '@we/schema-shared';
 import {
   Accessor,
   batch,
@@ -313,6 +314,13 @@ export interface ShapeStore {
   cancelDiscard: () => void;
   /** Validate, store and adopt the draft. Errors land in `draftErrors`; success closes the wizard. */
   saveShapeDraft: () => Promise<void>;
+  /**
+   * Write record types a bundle brings into a space — the one on screen, or the joined dataset
+   * `datasetId` names — and adopt them, skipping any the space already has from the same bundle.
+   * Resolves with why each could not be added (empty when all were). The caller decides who may: this
+   * is wiring, not template API.
+   */
+  addRecordTypes: (bundleId: string, types: readonly BundleRecordType[], datasetId?: string) => Promise<string[]>;
   /** Delete a shape record. Its SDNA and data remain in the space (uninstall semantics are deliberate). */
   deleteShape: (shapeRecordId: string) => Promise<void>;
 
@@ -531,12 +539,23 @@ export function ShapeStoreProvider(props: ParentProps) {
 
   // ── The adoption rail ─────────────────────────────────────────────────────────
 
-  async function adoptShape(view: { name: string; shapeId: string }, manifest: EntityManifest): Promise<void> {
+  async function adoptShape(
+    view: { name: string; shapeId: string },
+    manifest: EntityManifest,
+    dataset = handle(),
+  ): Promise<void> {
     const ports = schemas();
-    const dataset = handle();
     if (!ports || !dataset) return;
+    const started = performance.now();
     const classes = ports.declareInDataset(dataset, manifest, { moduleId: `shape/${view.shapeId}` });
+    const declared = performance.now();
     for (const cls of Object.values(classes)) await ports.ensure(dataset, cls);
+    trace('shapes', 'adopt', {
+      name: view.name,
+      classes: Object.keys(classes).length,
+      declareMs: Math.round(declared - started),
+      ensureMs: Math.round(performance.now() - declared),
+    });
   }
 
   async function loadShapes(): Promise<void> {
@@ -549,11 +568,21 @@ export function ShapeStoreProvider(props: ParentProps) {
       return;
     }
     setShapesLoaded(false);
+    const started = performance.now();
+    let step = started;
+    const lap = () => {
+      const now = performance.now();
+      const ms = Math.round(now - step);
+      step = now;
+      return ms;
+    };
     try {
       // Spaces created before the Shape entity existed never ran installSpace again — ensure is
       // the diff-first idempotent path, a read in the common case.
       await ports.ensure(dataset, Shape);
+      trace('shapes', 'catalogue', { space: uuid, ms: lap() });
       const records = await Shape.findAll(dataset);
+      trace('shapes', 'records', { space: uuid, count: records.length, ms: lap() });
       if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
 
       const views: SpaceShapeView[] = [];
@@ -598,6 +627,7 @@ export function ShapeStoreProvider(props: ParentProps) {
         views.push(view);
       }
 
+      trace('shapes', 'validated', { space: uuid, ms: lap() });
       for (const view of views) {
         if (!view.manifest || view.problems.length || adopted.has(view.name)) continue;
         adopted.add(view.name);
@@ -607,6 +637,13 @@ export function ShapeStoreProvider(props: ParentProps) {
           view.problems = [`adoption failed: ${err instanceof Error ? err.message : String(err)}`];
         }
       }
+      trace('shapes', 'ready', {
+        space: uuid,
+        models: adopted.size,
+        adoptMs: lap(),
+        totalMs: Math.round(performance.now() - started),
+        sincePageStartMs: Math.round(performance.now()),
+      });
       if (datasetStore.currentDataset()?.id === uuid) setSpaceShapes(views);
     } catch (err) {
       console.error('ShapeStore: loading space shapes failed', err);
@@ -1096,6 +1133,59 @@ export function ShapeStoreProvider(props: ParentProps) {
     }
   }
 
+  async function addRecordTypes(
+    bundleId: string,
+    types: readonly BundleRecordType[],
+    datasetId?: string,
+  ): Promise<string[]> {
+    const current = datasetStore.currentDataset();
+    const target = datasetId ? datasetStore.datasets().find((d) => d.id === datasetId) : current;
+    const ports = schemas();
+    if (!target || !ports) return ['There is no space open to add them to'];
+    const dataset = target.handle;
+    const onScreen = target.id === current?.id;
+    const problems: string[] = [];
+    // A space not on screen has no loaded list, so its own records say what it already has.
+    let present: Map<string, { shapeId?: string }>;
+    if (onScreen) {
+      present = new Map(spaceShapes().map((shape) => [shape.name, shape]));
+    } else {
+      await ports.ensure(dataset, Shape);
+      present = new Map((await Shape.findAll(dataset)).map((record) => [record.name, record]));
+    }
+    const names = types.map((type) => type.name);
+    for (const type of types) {
+      // Recognised by where it came from, so a second install or set-up adds nothing twice.
+      const shapeId = `we://shapes/bundle/${bundleId}/${type.name}`;
+      const already = present.get(type.name);
+      if (already) {
+        if (already.shapeId !== shapeId)
+          problems.push(`it already has a kind of record called "${type.name}" that this app did not bring`);
+        continue;
+      }
+      const known = onScreen ? knownEntityNames() : [...Object.keys(CORE_MANIFEST.entities), ...present.keys()];
+      const gate = validateManifest(type.manifest, {
+        externalEntities: [...known, ...names.filter((name) => name !== type.name)],
+      });
+      if (!gate.valid) {
+        problems.push(`"${type.name}" is not a valid definition — ${gate.errors[0]?.message}`);
+        continue;
+      }
+      await Shape.create(dataset, {
+        name: type.name,
+        description: type.description ?? '',
+        icon: type.icon ?? 'shapes',
+        shapeId,
+        version: 1,
+        definition: asFileField(encodeJsonFileData(gate.manifest, 'shape-definition.json')),
+      });
+      // The record's own shapeId, as `loadShapes` adopts it on every later visit.
+      await adoptShape({ name: type.name, shapeId }, gate.manifest, dataset);
+    }
+    if (onScreen) await loadShapes();
+    return problems;
+  }
+
   async function deleteShape(shapeRecordId: string): Promise<void> {
     const dataset = handle();
     if (!dataset) return;
@@ -1286,6 +1376,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     confirmDiscard,
     cancelDiscard,
     saveShapeDraft,
+    addRecordTypes,
     deleteShape,
     openHintEditor,
     closeHintEditor,

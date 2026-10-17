@@ -68,7 +68,19 @@ const STORAGE_KEY = 'we:trace';
  * under, which is exactly one line per read and worth nothing until somebody is staring at an empty
  * canvas.
  */
-export const TRACE_SCOPES = ['presence', 'ephemeral', 'dataset', 'space', 'graph'] as const;
+/*
+ * `shapes` times reading a space's own models on entry — the wait a query for one of them sits out
+ * after a reload. One line per step, so which step the time goes to is the reading: `catalogue`,
+ * `records`, then per model `adopt` split into `declare` (in memory) and `ensure` (round trips to
+ * the backend), and `ready` with the total and how long after the page started it was.
+ */
+/*
+ * `boot` times the way from page start to somebody's data: connecting to the backend, whether the
+ * agent is unlocked, then each read after unlock — the dataset list, the system datasets, the spaces,
+ * the published list — with `ready` when the app has it all. Each line says how long its step took
+ * and when it ended, since page start, so the step a slow boot waited on is the one with the gap.
+ */
+export const TRACE_SCOPES = ['presence', 'ephemeral', 'dataset', 'space', 'graph', 'shapes', 'boot'] as const;
 
 function enabledScopes(): Set<string> | null {
   if (typeof localStorage === 'undefined') return null;

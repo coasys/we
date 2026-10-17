@@ -71,3 +71,12 @@ describe('deleting a collection', () => {
     expect(ask().title).toBe('Delete this and everything in it?');
   });
 });
+
+describe('removing an app', () => {
+  it('says what goes and, as plainly, what stays', () => {
+    const { title, body } = describeDestructive('bundleStore.removeBundle', ['field-guide']);
+    expect(title).toBe('Remove this app?');
+    expect(body).toMatch(/go from your library/);
+    expect(body).toMatch(/kinds of record it added.*stay/);
+  });
+});

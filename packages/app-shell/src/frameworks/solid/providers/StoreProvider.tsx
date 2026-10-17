@@ -1,6 +1,7 @@
 import {
   AccountStoreProvider,
   AppStoreProvider,
+  BundleStoreProvider,
   ClockStoreProvider,
   DatasetStoreProvider,
   EditorStoreProvider,
@@ -71,7 +72,12 @@ export default function StoreProvider(props: ParentProps) {
                                       {/* Beneath the space store, whose task states, involvement kinds,
                                         archive list and administrator it reads. */}
                                       <FlowStoreProvider>
-                                        <EditorHostAdapter>{props.children}</EditorHostAdapter>
+                                        {/* Beneath every store an install writes through — templates,
+                                          themes, record types, modules, settings — none of which has
+                                          to know what a bundle is. */}
+                                        <BundleStoreProvider>
+                                          <EditorHostAdapter>{props.children}</EditorHostAdapter>
+                                        </BundleStoreProvider>
                                       </FlowStoreProvider>
                                     </InterpretationStoreProvider>
                                   </PresenceStoreProvider>

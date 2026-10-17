@@ -37,6 +37,7 @@
  * store member fails that test until it is classified, so this cannot quietly fall behind the code
  * it describes — the failure mode an allowlist beside the thing it allows usually has.
  */
+import { RENDERER_BINDING_NAMES } from '@we/backend-shared';
 import { memberAmbient, memberKind } from '@we/module-shared';
 import { claimGesture, isExpressionToken, markReactive, parseExpression, referencedPaths } from '@we/schema-shared';
 
@@ -764,6 +765,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     confirmReplaceFields: state('space-settings'),
     cancelReplaceFields: ambient('space-settings'),
     saveShapeDraft: action('space-settings'),
+    addRecordTypes: WIRING,
     // Destructive in the "expensive to reverse" sense: the record goes, and although data and SDNA
     // remain, re-creating the model needs its definition re-authored.
     deleteShape: destructive('space-settings'),
@@ -925,6 +927,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     saveEditingThemeAs: action('editor'),
     deleteTheme: destructive('library'),
     installFromMarketplace: action('library'),
+    writeLibraryTheme: WIRING,
     // Into the space rather than into your account, which is why it sits a tier below its neighbour.
     installToSpace: action('space-settings'),
     uninstallTheme: destructive('library'),
@@ -966,6 +969,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     switchTemplate: action('appearance'),
     removeTemplate: destructive('library'),
     deleteTemplate: destructive('library'),
+    writeLibraryTemplates: WIRING,
+    writeSpaceTemplates: WIRING,
     deleteRefusedTemplate: destructive('library'),
     installTemplate: action('library'),
     uninstallTemplate: action('library'),
@@ -1245,6 +1250,28 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     survives a refresh and none of it is queryable, so classifying it with the durable content a
     template reads would be claiming a permanence it does not have.
   */
+  /*
+    Apps installed as data. All `library`, so at the chrome tier only — the app a person is in, its
+    install prompt and its removal are theirs, never a space's. The prompt is host chrome for the
+    reason `templateStore.pendingInstall` is (a dialog vouching for an app must not be drawn by one), and
+    `confirmSetUp` writes only into spaces `spaceChoices` offered, which are the ones this agent runs.
+  */
+  bundleStore: {
+    pendingInstall: state('library'),
+    installed: state('library'),
+    busy: state('library'),
+    spaceChoices: state('library'),
+    setUpPicker: state('library'),
+    installFromFile: action('library'),
+    confirmInstall: action('library'),
+    cancelInstall: ambient('library'),
+    toggleSpace: ambient('library'),
+    openSetUp: ambient('library'),
+    closeSetUp: ambient('library'),
+    confirmSetUp: action('library'),
+    removeBundle: destructive('library'),
+  },
+
   interpretationStore: {
     // Not `presence` like the rest: this is a fact about the node, not about who is doing what on
     // it, and a template reads it for the same reason it reads any other "can this host do X" —
@@ -1429,8 +1456,15 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
   },
 };
 
-/** Members present in every bag: renderer bindings and template-facing vocabulary, not store state. */
-const ALWAYS_PRESENT = new Set([
+/**
+ * Members present in every bag: renderer bindings and template-facing vocabulary, not store state.
+ *
+ * The renderer's bindings come from its own contract rather than being listed again here — a list
+ * kept twice is a list that drifts, and this one drifted: `$modelsPending` was added to the
+ * contract and not here, so every template had it stripped and never waited for a space's models.
+ */
+const ALWAYS_PRESENT = new Set<string>([
+  ...RENDERER_BINDING_NAMES,
   'modules',
   'consoleStore',
   '$onError',

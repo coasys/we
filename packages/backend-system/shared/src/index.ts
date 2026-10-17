@@ -24,6 +24,7 @@ export type {
   RendererDataBindings,
   RendererStores,
 } from './dataSource';
+export { RENDERER_BINDING_NAMES } from './dataSource';
 
 export { createInMemoryEphemeralPort, InMemoryBus, inMemoryEphemeralCapabilities, planEphemeral } from './ephemeral';
 export type {

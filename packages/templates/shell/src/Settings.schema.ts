@@ -9,6 +9,7 @@ import { expr } from '@we/schema-shared';
 
 import { accountSettings } from './AccountSettings.schema.ts';
 import { aiSection } from './AiSettings.schema.ts';
+import { spaceChecklist } from './BundlePrompt.schema.ts';
 import { hostSection } from './HostSettings.schema.ts';
 import { languagesLocalState, languagesSection } from './LanguageSettings.schema.ts';
 import {
@@ -165,6 +166,178 @@ const appSection: SchemaNode = {
   ],
 };
 
+/**
+ * Apps — installed from a file, or built into this deployment — and setting a space up for one.
+ *
+ * Installing only reads the file and asks: the prompt is host chrome (`BundlePrompt.schema.ts`), and
+ * nothing is written until it is answered. An app's record types and sections belong to spaces, so
+ * "Set up a space…" lists the spaces this agent runs and sets up the ones ticked — the same list the
+ * prompt shows — and nobody is offered a space they do not run.
+ */
+/** Setting more spaces up for an app already installed — the prompt's checklist, on its own. */
+const setUpPicker: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'bundleStore.setUpPicker' },
+    then: {
+      type: 'we-modal',
+      props: { size: 'sm', close: { $action: 'bundleStore.closeSetUp' } },
+      children: [
+        {
+          type: 'we-text',
+          slot: 'header',
+          props: { variant: 'heading-sm', tag: 'h2' },
+          children: [{ $: '`Set up spaces for ${bundleStore.setUpPicker.name}`' }],
+        },
+        spaceChecklist([
+          'Each space you tick gets the kinds of record and the sections the app works with, for everyone in it.',
+        ]),
+        {
+          type: 'Row',
+          slot: 'footer',
+          props: { ax: 'end', gap: '200' },
+          children: [
+            {
+              type: 'we-button',
+              props: { variant: 'ghost', onClick: { $action: 'bundleStore.closeSetUp' } },
+              children: ['Cancel'],
+            },
+            {
+              type: 'we-button',
+              props: {
+                variant: 'primary',
+                disabled: { $: '!bundleStore.spaceChoices.exists(c, c.chosen)' },
+                loading: { $: 'bundleStore.busy' },
+                onClick: { $action: 'bundleStore.confirmSetUp' },
+              },
+              children: ['Set up'],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+const appsSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300' },
+  children: [
+    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Apps'] },
+    {
+      type: 'we-text',
+      props: { variant: 'body', color: 'text-muted' },
+      children: [
+        'An app is a whole interface as data — its chrome, templates, theme and the kinds of record it is about. It cannot bring code: it arranges what WE already has.',
+      ],
+    },
+    {
+      type: '$each',
+      props: { items: { $: 'bundleStore.installed' }, as: 'app' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '300', ay: 'center', p: '300', r: '200', wrap: true },
+          children: [
+            {
+              type: 'Row',
+              props: { gap: '300', ay: 'center', flex: '1', minWidth: '0' },
+              children: [
+                { type: 'we-icon', props: { name: { $: "app.icon ? app.icon : 'app-window'" }, size: '20px' } },
+                {
+                  type: 'Column',
+                  props: { minWidth: '0' },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: { variant: 'body', fontWeight: 'medium', truncate: true },
+                      children: [{ $: 'app.name' }],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'label', color: 'text-muted' },
+                      children: [
+                        {
+                          $: "app.from == 'deployment' ? `Version ${app.version}, built in` : `Version ${app.version}`",
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $: "app.setUp == 'available'" },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    variant: 'secondary',
+                    size: 'sm',
+                    disabled: { $: 'bundleStore.busy' },
+                    onClick: { $action: 'bundleStore.openSetUp', args: [{ $: 'app.id' }] },
+                  },
+                  children: ['Set up a space…'],
+                },
+              },
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $: "app.setUp == 'done'" },
+                then: { type: 'we-tag', props: { variant: 'success' }, children: ['Set up in your spaces'] },
+              },
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $: "app.from == 'file'" },
+                then: {
+                  type: 'we-tooltip',
+                  props: { content: 'Remove this app', placement: 'top' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'ghost',
+                        size: 'sm',
+                        label: 'Remove this app',
+                        disabled: { $: 'bundleStore.busy' },
+                        onClick: { $action: 'bundleStore.removeBundle', args: [{ $: 'app.id' }] },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'trash', size: '16px', color: 'danger-text' } }],
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: 'we-file-upload',
+      props: {
+        accept: '.json,application/json',
+        disabled: { $: 'bundleStore.busy' },
+        onChange: { $action: 'bundleStore.installFromFile', args: [{ $: 'event.detail' }] },
+      },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '300', ay: 'center', ax: 'center', p: '300' },
+          children: [
+            { type: 'we-icon', props: { name: 'package', color: 'text-muted' } },
+            { type: 'we-text', children: ['Install an app from a file'] },
+          ],
+        },
+      ],
+    },
+    setUpPicker,
+  ],
+};
+
 const templatesSection: SchemaNode = {
   type: 'Column',
   props: { gap: '300' },
@@ -292,11 +465,24 @@ const templatesSection: SchemaNode = {
                   },
                 },
 
-                // Delete button (custom templates only)
+                // Where it came from, when an installed app brought it — removed with that app.
                 {
                   type: '$if',
                   props: {
-                    condition: { $: '!template.isBuiltIn' },
+                    condition: { $: 'template.fromApp' },
+                    then: {
+                      type: 'we-tag',
+                      props: { variant: 'neutral' },
+                      children: [{ $: '`From ${template.fromApp}`' }],
+                    },
+                  },
+                },
+
+                // Delete button (custom templates only, and never one an installed app brought)
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: '!template.isBuiltIn && !template.fromApp' },
                     then: {
                       type: 'we-button',
                       props: {
@@ -1128,7 +1314,7 @@ export const settingsTemplate: TemplateSchema = {
   // render time, whatever the schema tree looks like, and state declared here would never reach it.
   routes: [
     { path: '/', ...page([accountSection]) },
-    { path: '/appearance', ...page([appSection, templatesSection, themeScopeSection, themesSection]) },
+    { path: '/appearance', ...page([appSection, appsSection, templatesSection, themeScopeSection, themesSection]) },
     {
       path: '/spaces',
       ...page([

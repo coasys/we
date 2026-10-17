@@ -3608,6 +3608,12 @@
           "required": false
         },
         {
+          "name": "installedBundles",
+          "type": "string",
+          "predicate": "we://installed_bundles",
+          "required": false
+        },
+        {
           "name": "currentThemeId",
           "type": "string",
           "predicate": "we://current_theme",
@@ -6057,6 +6063,38 @@
       "ambient": ["activateApp", "deactivateApp"]
     },
     {
+      "name": "bundleStore",
+      "state": {
+        "pendingInstall": {
+          "type": "object"
+        },
+        "installed": {
+          "type": "array"
+        },
+        "busy": {
+          "type": "boolean"
+        },
+        "spaceChoices": {
+          "type": "array"
+        },
+        "setUpPicker": {
+          "type": "object"
+        }
+      },
+      "actions": [
+        "installFromFile",
+        "confirmInstall",
+        "cancelInstall",
+        "toggleSpace",
+        "openSetUp",
+        "closeSetUp",
+        "confirmSetUp",
+        "removeBundle"
+      ],
+      "ambient": ["cancelInstall", "toggleSpace", "openSetUp", "closeSetUp"],
+      "destructive": ["removeBundle"]
+    },
+    {
       "name": "clockStore",
       "state": {
         "clocks": {
@@ -7488,7 +7526,7 @@
         },
         "templateManagementList": {
           "type": "array",
-          "properties": ["id", "name", "icon", "description", "isBuiltIn", "isInstalled", "isDefault"]
+          "properties": ["id", "name", "icon", "description", "isBuiltIn", "isInstalled", "isDefault", "fromApp"]
         },
         "refusedTemplates": {
           "type": "array",

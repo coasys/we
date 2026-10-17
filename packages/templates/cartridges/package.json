@@ -6,7 +6,8 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "fixture": "tsx scripts/fixture.ts"
+    "fixture": "tsx scripts/fixture.ts",
+    "bundle": "tsx scripts/bundle.ts"
   },
   "exports": {
     ".": {
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.4.0",
+    "prettier": "3.9.6",
     "vitest": "^5.0.2",
     "tsx": "^4.23.13"
   }

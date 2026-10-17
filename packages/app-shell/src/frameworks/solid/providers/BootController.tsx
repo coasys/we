@@ -9,6 +9,7 @@
  * Renders nothing.
  */
 import { consumeGuestBootTarget } from '@shared/guestLink';
+import { trace } from '@we/backend-shared';
 
 import { useDatasetStore } from '../stores/DatasetStore';
 import { useProfileStore } from '../stores/ProfileStore';
@@ -54,19 +55,33 @@ export function BootController() {
       missed. And the space the address names starts loading its templates and schema reads now,
       so the switch the route asks for once the list is published finds them done.
     */
-    const me = session.refreshMe();
-    const listed = await datasetStore.readDatasets();
+    /*
+      Each step of loading somebody's data after unlock, under the `boot` scope: how long it took and
+      when it ended, so a slow boot says which read it was waiting on. `timed` wraps a step without
+      changing what it answers.
+    */
+    const sincePageStartMs = () => Math.round(performance.now());
+    const timed = async <T,>(step: string, run: Promise<T>): Promise<T> => {
+      const began = performance.now();
+      const result = await run;
+      trace('boot', step, { ms: Math.round(performance.now() - began), sincePageStartMs: sincePageStartMs() });
+      return result;
+    };
+    trace('boot', 'unlocked', { sincePageStartMs: sincePageStartMs() });
+    const me = timed('me', session.refreshMe());
+    const listed = await timed('datasets:list', datasetStore.readDatasets());
     if (listed) spaceStore.prepareSpaceAt(guestBoot ? `/space/${guestBoot.spaceId}` : (pendingDeepLink ?? ''), listed);
     const [, known] = await Promise.all([
       me,
-      datasetStore.initSystemDatasets(listed),
-      listed ? spaceStore.loadSpaces(listed) : undefined,
+      timed('datasets:system', datasetStore.initSystemDatasets(listed)),
+      listed ? timed('spaces', spaceStore.loadSpaces(listed)) : undefined,
     ]);
-    await datasetStore.loadDatasets(known);
+    await timed('datasets:load', datasetStore.loadDatasets(known));
     // The list could not be read up front, so spaces wait for the one loadDatasets published.
-    if (!listed) await spaceStore.loadSpaces();
+    if (!listed) await timed('spaces', spaceStore.loadSpaces());
     datasetStore.subscribeToChanges();
     session.markReady();
+    trace('boot', 'ready', { sincePageStartMs: sincePageStartMs() });
 
     // Seed own profile into the cache from the public dataset
     const ownDid = session.me()?.did;

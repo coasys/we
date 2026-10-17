@@ -24,9 +24,13 @@
  */
 import { bundledViews } from './bundledViews.generated';
 import { withDerivedIdsAll } from './derivedIds';
+import { seedBundleSections } from './seedBundles';
 
-/** With the ids each view's nodes have in every build — see `derivedIds.ts`. */
-export const viewRegistry = withDerivedIdsAll(bundledViews);
+/**
+ * With the ids each view's nodes have in every build — see `derivedIds.ts`. And with the sections of
+ * every bundle the seed builds in, available to any space that turns them on.
+ */
+export const viewRegistry = withDerivedIdsAll({ ...bundledViews, ...seedBundleSections });
 
 export type ViewId = keyof typeof viewRegistry;
 
@@ -42,5 +46,10 @@ export function isValidViewId(key: unknown): key is ViewId {
  * mechanism to do it.
  */
 export function defaultViewOrder(): string[] {
-  return Object.keys(viewRegistry);
+  /*
+    The deployment's own sections only. A seed bundle's sections are available, not defaults: they are
+    about that app's record types, which a space has only once whoever runs it sets it up for the app,
+    and a space showing them before then would show sections about nothing.
+  */
+  return Object.keys(bundledViews);
 }

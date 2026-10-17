@@ -1325,6 +1325,7 @@ export const contextData: ContextData = {
           default: "'default'",
         },
         { name: 'appTemplateId', type: 'string', predicate: 'we://app_template', required: false },
+        { name: 'installedBundles', type: 'string', predicate: 'we://installed_bundles', required: false },
         {
           name: 'currentThemeId',
           type: 'string',
@@ -2245,6 +2246,28 @@ export const contextData: ContextData = {
       ambient: ['activateApp', 'deactivateApp'],
     },
     {
+      name: 'bundleStore',
+      state: {
+        pendingInstall: { type: 'object' },
+        installed: { type: 'array' },
+        busy: { type: 'boolean' },
+        spaceChoices: { type: 'array' },
+        setUpPicker: { type: 'object' },
+      },
+      actions: [
+        'installFromFile',
+        'confirmInstall',
+        'cancelInstall',
+        'toggleSpace',
+        'openSetUp',
+        'closeSetUp',
+        'confirmSetUp',
+        'removeBundle',
+      ],
+      ambient: ['cancelInstall', 'toggleSpace', 'openSetUp', 'closeSetUp'],
+      destructive: ['removeBundle'],
+    },
+    {
       name: 'clockStore',
       state: { clocks: { type: 'object' } },
       actions: ['play', 'pause', 'toggle', 'seek', 'seekProgress', 'setSpeed', 'setLoop', 'configure'],
@@ -3132,7 +3155,7 @@ export const contextData: ContextData = {
         allTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
         templateManagementList: {
           type: 'array',
-          properties: ['id', 'name', 'icon', 'description', 'isBuiltIn', 'isInstalled', 'isDefault'],
+          properties: ['id', 'name', 'icon', 'description', 'isBuiltIn', 'isInstalled', 'isDefault', 'fromApp'],
         },
         refusedTemplates: { type: 'array', properties: ['id', 'name', 'icon', 'reason'] },
         switcherGroups: { type: 'array', properties: ['label', 'items'] },

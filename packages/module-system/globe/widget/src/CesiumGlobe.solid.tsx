@@ -271,7 +271,24 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
     viewer = undefined;
   });
 
+  /*
+    Cesium sizes its viewer with CSS — `height: 100%` all the way down — so it fills a box only when
+    that box's height is fixed. A template that gives its section a minimum height and no height
+    (any page that grows with its content) left the box at its 200px minimum and the viewer at 0:
+    Cesium went on rendering every frame onto a canvas nobody could see. Pinned to the box instead,
+    the viewer is as tall as the box actually is, however the template sized it.
+  */
   return (
-    <div ref={containerRef} style={{ width: '100%', height: '100%', 'min-width': '200px', 'min-height': '200px' }} />
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        'min-width': '200px',
+        'min-height': '200px',
+      }}
+    >
+      <div ref={containerRef} style={{ position: 'absolute', inset: '0' }} />
+    </div>
   );
 }

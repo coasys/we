@@ -5,11 +5,14 @@
  * a borrow creates a loan linked to its item, and the desk moves loans between states.
  */
 import type { TemplateSchema } from '@we/schema-shared';
+import { emptyNote, emptyState, recordFormModal } from '@we/template-kit';
 
+import { addButton } from '../parts.ts';
 import { CATEGORIES, OPEN } from './model.ts';
 
 const page = { width: '100%', px: '600', py: '500', gap: '500' };
 const openLoans = { entity: 'Loan', where: { status: [...OPEN] }, include: { item: true }, limit: 500 };
+const filteredItems = "local.items.filter(i, local.category == '' || i.category == local.category)";
 
 /** A loan's card: the item, who has it, when it is due, and what can happen to it next. */
 const loanCard = (actions: TemplateSchema['children']) => ({
@@ -77,33 +80,53 @@ export const catalogueSection: TemplateSchema & { id: string } = {
       children: [
         {
           type: 'Row',
-          props: { gap: '200', wrap: true },
+          props: { gap: '300', ay: 'center', ax: 'between', wrap: true },
           children: [
             {
-              type: 'we-button',
-              props: {
-                size: 'sm',
-                variant: { $: "local.category == '' ? 'primary' : 'outline'" },
-                onClick: { $setLocal: 'category', value: '' },
-              },
-              children: ['Everything'],
-            },
-            {
-              type: '$each',
-              props: { items: [...CATEGORIES], as: 'c' },
+              type: 'Row',
+              props: { gap: '200', wrap: true, flex: '1', minWidth: '0' },
               children: [
                 {
                   type: 'we-button',
                   props: {
                     size: 'sm',
-                    variant: { $: "local.category == c ? 'primary' : 'outline'" },
-                    onClick: { $setLocal: 'category', value: { $: 'c' } },
+                    variant: { $: "local.category == '' ? 'primary' : 'outline'" },
+                    onClick: { $setLocal: 'category', value: '' },
                   },
-                  children: [{ type: 'we-text', props: { textTransform: 'capitalize' }, children: [{ $: 'c' }] }],
+                  children: ['Everything'],
+                },
+                {
+                  type: '$each',
+                  props: { items: [...CATEGORIES], as: 'c' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        size: 'sm',
+                        variant: { $: "local.category == c ? 'primary' : 'outline'" },
+                        onClick: { $setLocal: 'category', value: { $: 'c' } },
+                      },
+                      children: [{ type: 'we-text', props: { textTransform: 'capitalize' }, children: [{ $: 'c' }] }],
+                    },
+                  ],
                 },
               ],
             },
+            addButton('Add an item', 'Item', 'plus'),
           ],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: `local.itemsLoaded && !count(${filteredItems})` },
+            then: emptyState({
+              icon: 'wrench',
+              label: 'items',
+              message: {
+                $: "local.category ? `Nothing in ${local.category} yet — add the first one.` : 'Nothing to lend yet — add the first item.'",
+              },
+            }),
+          },
         },
         {
           type: 'Grid',
@@ -112,7 +135,7 @@ export const catalogueSection: TemplateSchema & { id: string } = {
             {
               type: '$each',
               props: {
-                items: { $: "local.items.filter(i, local.category == '' || i.category == local.category)" },
+                items: { $: filteredItems },
                 as: 'it',
               },
               children: [
@@ -204,6 +227,7 @@ export const catalogueSection: TemplateSchema & { id: string } = {
         },
       ],
     },
+    recordFormModal({ entityPicker: false }),
   ],
 };
 
@@ -257,6 +281,13 @@ export const deskSection: TemplateSchema & { id: string } = {
                       children: [{ $: 'count(local.loans.filter(l, l.status == col.key))' }],
                     },
                   ],
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: 'local.loansLoaded && !count(local.loans.filter(l, l.status == col.key))' },
+                    then: emptyNote('None'),
+                  },
                 },
                 {
                   type: '$each',

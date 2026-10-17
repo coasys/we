@@ -17,6 +17,7 @@ import {
   type DatasetLifecyclePort,
   type EphemeralPort,
   isSessionTimeout,
+  trace,
 } from '@we/backend-shared';
 import { devToolsEnabled, setDevToolsMuted } from '@we/module-shared';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
@@ -287,6 +288,7 @@ export function SessionStoreProvider(props: ParentProps) {
   }
 
   async function initialise(): Promise<void> {
+    const started = performance.now();
     try {
       // The connector owns the entire connection choreography (spawn/attach, auth, credential
       // acquisition, settling delays) — the shell receives a ready backend and runs the session
@@ -318,7 +320,12 @@ export function SessionStoreProvider(props: ParentProps) {
         setToken(connection.token);
       }
 
+      trace('boot', 'connected', {
+        ms: Math.round(performance.now() - started),
+        sincePageStartMs: Math.round(performance.now()),
+      });
       const status = await session.status();
+      trace('boot', 'status', { unlocked: status.unlocked, sincePageStartMs: Math.round(performance.now()) });
 
       // If no agent exists, go to create agent screen
       if (!status.hasAgent) {

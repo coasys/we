@@ -1,6 +1,10 @@
+import { readBootSnapshot } from '@shared/bundles/bootSnapshot';
+import { appSpaceTemplate, followedTemplateId } from '@shared/bundles/display';
+import { displaySourceOf, readInstalledBundles } from '@shared/bundles/installedBundles';
 import { appTemplateRegistry, DEFAULT_APP_ID, resolveAppTemplate } from '@shared/registries/appTemplates';
 import { withDerivedIds } from '@shared/registries/derivedIds';
 import { reservedTemplateIds } from '@shared/registries/reservedTemplateIds';
+import { seedBundleAppId, seedBundlePieces } from '@shared/registries/seedBundles';
 import { templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
 import { getSeed } from '@shared/seedRegistry';
@@ -8,7 +12,7 @@ import { reserveId } from '@shared/templateIdentity';
 import { withLibrary } from '@shared/templateLists';
 import { explain } from '@shared/userMessage';
 import { deepClone } from '@shared/utils';
-import type { NewRecord } from '@we/backend-shared';
+import { type NewRecord, trace } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/entities';
 import {
@@ -25,7 +29,17 @@ import {
 import type { RouteSchema, SchemaNode, StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { createStoredTemplate, ensureNodeIds, hasViewsMarker } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
-import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
+import {
+  Accessor,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  on,
+  ParentProps,
+  untrack,
+  useContext,
+} from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
 import { CHROME_TIER, SPACE_TIER } from '../../../shared/registries/templateSurface';
@@ -143,6 +157,18 @@ export interface TemplateStore {
   switchTemplate: (newTemplateId: string) => void;
   removeTemplate: () => Promise<void>;
   deleteTemplate: (templateId: string) => Promise<void>;
+  /**
+   * Write templates into the agent's library under the ids they carry, updating any already there,
+   * and mark them installed. How a bundle lands; throws if any write fails. Wiring, not template API.
+   */
+  writeLibraryTemplates: (templates: TemplateSchema[], origin: string) => Promise<void>;
+  /**
+   * Write templates into a space — the one on screen, or the joined dataset `datasetId` names — under
+   * the ids they carry, updating any already there, so every member has them, as a space's own
+   * templates are had. How an app's sections reach a space it is set up in. Throws if any write
+   * fails. Wiring, not template API.
+   */
+  writeSpaceTemplates: (templates: TemplateSchema[], origin: string, datasetId?: string) => Promise<void>;
   deleteRefusedTemplate: (recordId: string) => Promise<void>;
   installTemplate: (templateId: string) => Promise<void>;
   uninstallTemplate: (templateId: string) => Promise<void>;
@@ -336,6 +362,30 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   // State
   const [allTemplates, setAllTemplates] = createSignal<TemplateSchema[]>([...builtInTemplates]);
+
+  /*
+    What the last session on this device was drawn with, standing in for the library and the settings
+    until they answer — so a reload opens in the app somebody is in rather than in WE's for the
+    seconds the library takes. See `bundles/bootSnapshot.ts`. Each template in it is accepted exactly
+    as the library's are, and the whole of it is dropped the moment the library has loaded.
+  */
+  const [libraryLoaded, setLibraryLoaded] = createSignal(false);
+  const bootSnapshot = createMemo(() => (libraryLoaded() ? null : readBootSnapshot(session.me()?.did)));
+  createEffect(() => {
+    const snapshot = bootSnapshot();
+    if (!snapshot?.templates.length) return;
+    const accepted = snapshot.templates.flatMap((raw) => {
+      const result = acceptTemplate(raw, { origin: 'your library', grants: CHROME_TIER });
+      return result.schema ? [{ ...result.schema, id: raw.id }] : [];
+    });
+    const ids = new Set(accepted.map((t) => t.id));
+    setAllTemplates((prev) => withLibrary(prev, [...builtInTemplates.filter((t) => !ids.has(t.id)), ...accepted]));
+  });
+  /** A setting as the agent's settings have it, or as the snapshot remembers it until they arrive. */
+  const settingOrRemembered = (key: 'appTemplateId' | 'installedBundles') => {
+    const settings = datasetStore.agentSettings();
+    return settings ? settings[key] : bootSnapshot()?.[key];
+  };
   const [installedIds, setInstalledIds] = createSignal<Set<string>>(new Set());
   const [spaceTemplateIdSet, setSpaceTemplateIdSet] = createSignal<Set<string>>(new Set());
   const [loading, setLoading] = createSignal(true);
@@ -389,8 +439,8 @@ export function TemplateStoreProvider(props: ParentProps) {
   const appTemplate = createMemo<TemplateSchema>(() => {
     const found = resolveAppTemplate({
       safe: safe.on,
-      chosen: datasetStore.agentSettings()?.appTemplateId,
-      seed: getSeed().host?.ui?.app,
+      chosen: settingOrRemembered('appTemplateId'),
+      seed: getSeed().host?.ui?.app || seedBundleAppId,
       own: ownApps(),
     });
     return draftOf(found) ?? found;
@@ -404,9 +454,20 @@ export function TemplateStoreProvider(props: ParentProps) {
   });
   const appTemplateOptions = () => [
     ...Object.values(appTemplateRegistry).map((t) => appOption(t, false)),
-    ...ownApps().map((t) => appOption(t, true)),
+    // An app that came in a bundle is that bundle's — forked to change, and removed with it.
+    ...ownApps().map((t) => appOption(t, !t.source)),
   ];
   const appTemplateId = () => appTemplate().id ?? DEFAULT_APP_ID;
+  /**
+   * The space template the app the agent is in shows every space with, or undefined when spaces keep
+   * their own — the app's display policy, from the bundle it came in. See `bundles/display.ts`.
+   */
+  const appSpaceTemplateId = createMemo(() =>
+    appSpaceTemplate(appTemplateId(), [
+      ...seedBundlePieces,
+      ...readInstalledBundles(settingOrRemembered('installedBundles')).map(displaySourceOf),
+    ]),
+  );
   function setAppTemplate(id: string): Promise<boolean> {
     return datasetStore.updateAgentSettings({ appTemplateId: id === DEFAULT_APP_ID ? '' : id });
   }
@@ -418,7 +479,8 @@ export function TemplateStoreProvider(props: ParentProps) {
       icon: t.meta?.icon || '',
       // From the unprefixed id: the prefix distinguishes a space's copy from your own for keying
       // rows, and is not part of any identity the template registry knows about.
-      editable: !isBuiltInTemplateId(t.id || ''),
+      // Not one an installed app brought, which is that app's: editing it means forking it.
+      editable: !isBuiltInTemplateId(t.id || '') && !t.source,
     }));
 
   // Grouped template data for the template switcher UI — flat name/icon fields allow $filter in schemas
@@ -498,6 +560,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       const savedIds = new Set(savedTemplates.map((t) => t.id));
       const filteredCore = builtInTemplates.filter((t) => !savedIds.has(t.id));
       setAllTemplates((prev) => withLibrary(prev, [...filteredCore, ...savedTemplates]));
+      setLibraryLoaded(true);
 
       // Build installed ID set from AgentSettings HasMany relation
       // HasMany without .include() returns raw URI strings, not model instances.
@@ -548,7 +611,14 @@ export function TemplateStoreProvider(props: ParentProps) {
   async function loadSpaceTemplates(dataset: AppDataset): Promise<void> {
     clearSpaceTemplates();
     try {
+      const readStarted = performance.now();
       const spaceDbTemplates = await Template.findAll(dataset.handle);
+      // Each record's schema is a stored file the backend resolves as it reads, so the count is the cost.
+      trace('dataset', 'space:templates', {
+        dataset: dataset.id,
+        count: spaceDbTemplates.length,
+        ms: Math.round(performance.now() - readStarted),
+      });
       const schemas: TemplateSchema[] = [];
       const models = new Map<string, Template>();
 
@@ -681,19 +751,29 @@ export function TemplateStoreProvider(props: ParentProps) {
     if (spaceTemplateCache.has(perspective.id)) {
       // Templates were pre-loaded by navigateToSpace — apply synchronously
       const cachedSpace = resolveSpaceFromPerspective(perspective);
-      if (cachedSpace?.defaultTemplateId) {
+      const followed = followedTemplateId(cachedSpace?.defaultTemplateId, untrack(appSpaceTemplateId));
+      if (followed) {
         const template =
-          allTemplates().find((t) => t.id === cachedSpace.defaultTemplateId && t._fromSpace) ||
-          allTemplates().find((t) => t.id === cachedSpace.defaultTemplateId);
+          allTemplates().find((t) => t.id === followed && t._fromSpace) ||
+          allTemplates().find((t) => t.id === followed);
         if (template) replaceTemplate(template);
       }
       setTemplateResolvedFor(perspective.id);
     } else {
+      /*
+        The app's display policy decides this space's template whenever the agent follows the space,
+        which is nearly always — so it is shown now rather than after the space's templates and this
+        agent's override for it have been read, seconds later on a reload. The read below still has
+        the last word: an override for this space replaces it.
+      */
+      const policy = untrack(appSpaceTemplateId);
+      const early = policy ? untrack(allTemplates).find((t) => t.id === policy) : undefined;
+      if (early) replaceTemplate(early);
       // Deep link or first boot — async path. Settled on every way out, a failure included: the
       // template on screen is then the answer, and anything waiting on one should stop waiting. Only
       // while still in that space: a slow answer for one already left must not overwrite the
       // answer for the space now open, which would leave it pending for good.
-      void applySpaceTemplate(perspective).finally(() => {
+      void applySpaceTemplate(perspective, undefined, { shownEarly: !!early }).finally(() => {
         if (lastSpacePerspectiveUuid === perspective.id) setTemplateResolvedFor(perspective.id);
       });
     }
@@ -738,7 +818,11 @@ export function TemplateStoreProvider(props: ParentProps) {
     return templateId;
   }
 
-  async function applySpaceTemplate(perspective: AppDataset): Promise<void> {
+  async function applySpaceTemplate(
+    perspective: AppDataset,
+    fallback?: string,
+    options: { shownEarly?: boolean } = {},
+  ): Promise<void> {
     // preloadSpaceTemplates handles cache hit (sync restore) or miss (AD4M fetch)
     await preloadSpaceTemplates(perspective);
 
@@ -755,8 +839,16 @@ export function TemplateStoreProvider(props: ParentProps) {
     // The override names *which* template this agent wants here, so it answers on its own —
     // including when the space set no default at all, which the community-default path cannot act
     // on. `AGENT_DEFAULT` means "whatever my default is", so leave whatever is already applied.
-    if (templateOverride === AGENT_DEFAULT) return;
-    const spaceTemplateId = templateOverride === FOLLOW_SPACE ? cachedSpace?.defaultTemplateId : templateOverride;
+    if (templateOverride === AGENT_DEFAULT) {
+      // "Leave it" means the agent's default, not the app's template shown while this was read.
+      const own = options.shownEarly ? allTemplates().find((t) => t.id === defaultTemplateId()) : undefined;
+      if (own && datasetStore.currentDataset()?.id === perspective.id) replaceTemplate(own);
+      return;
+    }
+    const spaceTemplateId =
+      (templateOverride === FOLLOW_SPACE
+        ? followedTemplateId(cachedSpace?.defaultTemplateId, appSpaceTemplateId())
+        : templateOverride) ?? fallback;
     if (!spaceTemplateId) return;
 
     const spaceTemplate =
@@ -776,6 +868,23 @@ export function TemplateStoreProvider(props: ParentProps) {
       toastService.info(`Viewing with this space's template. Open its settings to use your own.`, 7000);
     }
   }
+
+  /*
+    Changing app changes how the space on screen is shown when the app has a display policy, so the
+    space's template is chosen again. Deferred: on first run the space effect above has just chosen it.
+  */
+  createEffect(
+    on(
+      appSpaceTemplateId,
+      () => {
+        const perspective = untrack(datasetStore.currentDataset);
+        // A space with no template of its own falls back to the agent's default, so leaving an app
+        // that showed it its own way does not leave that app's template on screen.
+        if (perspective) void applySpaceTemplate(perspective, untrack(defaultTemplateId));
+      },
+      { defer: true },
+    ),
+  );
 
   // Restore persisted template choice on boot (runs once, then stops)
   let initialRestoreDone = false;
@@ -1061,6 +1170,78 @@ export function TemplateStoreProvider(props: ParentProps) {
   }
 
   /** Write an already-inspected marketplace template into the agent's own library. */
+  async function writeLibraryTemplates(templates: TemplateSchema[], origin: string): Promise<void> {
+    const rootPerspective = datasetStore.rootDataset()?.handle;
+    if (!rootPerspective) throw new Error('Your library is not available yet');
+    const prefs = datasetStore.agentSettings();
+    for (const template of templates) {
+      const id = template.id;
+      if (!id) continue;
+      const schema = asFileField(encodeTemplateSchema(template));
+      const existing = savedTemplateMap.get(id);
+      if (existing) {
+        existing.schema = schema;
+        existing.name = template.meta.name;
+        existing.version = (existing.version || 1) + 1;
+        await existing.save();
+        continue;
+      }
+      const record = await Template.create(rootPerspective, {
+        name: template.meta.name,
+        description: template.meta.description,
+        icon: template.meta.icon,
+        origin,
+        slug: id,
+        version: 1,
+        schema,
+        role: roleOf(template),
+      });
+      savedTemplateMap.set(id, record);
+      if (prefs) await prefs.addInstalledTemplates(record);
+    }
+    setInstalledIds((prev) => new Set([...prev, ...templates.map((t) => t.id ?? '').filter(Boolean)]));
+    await loadSavedTemplates();
+  }
+
+  async function writeSpaceTemplates(templates: TemplateSchema[], origin: string, datasetId?: string): Promise<void> {
+    const current = datasetStore.currentDataset();
+    const dataset = datasetId ? datasetStore.datasets().find((d) => d.id === datasetId) : current;
+    if (!dataset) throw new Error(datasetId ? 'That space is not joined here' : 'There is no space open');
+    const onScreen = dataset.id === current?.id;
+    // A space not on screen has nothing in the map, so its own records are read to update in place.
+    const records = onScreen
+      ? spaceTemplateMap
+      : new Map((await Template.findAll(dataset.handle)).map((record) => [record.slug, record] as const));
+    for (const template of templates) {
+      const id = template.id;
+      if (!id) continue;
+      // The space's copy carries nothing of where it was read from but the bundle it came in.
+      const { _fromSpace: _ignored, ...clean } = template;
+      const schema = asFileField(encodeTemplateSchema(clean as TemplateSchema));
+      const existing = records.get(id);
+      if (existing) {
+        existing.schema = schema;
+        existing.name = template.meta.name;
+        existing.version = (existing.version || 1) + 1;
+        await existing.save();
+        continue;
+      }
+      await Template.create(dataset.handle, {
+        name: template.meta.name,
+        description: template.meta.description,
+        icon: template.meta.icon,
+        origin,
+        slug: id,
+        version: 1,
+        schema,
+        role: roleOf(template),
+      });
+    }
+    // The next visit to another space reads it afresh rather than from what was cached before.
+    spaceTemplateCache.delete(dataset.id);
+    if (onScreen) await loadSpaceTemplates(dataset);
+  }
+
   async function performPersonalInstall(request: PendingInstall): Promise<void> {
     const rootPerspective = datasetStore.rootDataset()?.handle;
     if (!rootPerspective) {
@@ -1809,8 +1990,21 @@ export function TemplateStoreProvider(props: ParentProps) {
         isBuiltIn: isBuiltInTemplateId(t.id || ''),
         isInstalled: isBuiltInTemplateId(t.id || '') || installed.has(t.id || ''),
         isDefault: (t.id || '') === defaultId,
+        // The app it came with, when it came with one: removed with that app, never on its own.
+        fromApp: t.source ? (appNames().get(t.source.bundle) ?? t.source.bundle) : '',
       }));
   };
+
+  /** Installed and built-in apps' names by bundle id, for saying where a template came from. */
+  const appNames = createMemo(
+    () =>
+      new Map<string, string>([
+        ...seedBundlePieces.map((pieces) => [pieces.bundleId, pieces.name] as [string, string]),
+        ...readInstalledBundles(datasetStore.agentSettings()?.installedBundles).map(
+          (entry) => [entry.id, entry.name] as [string, string],
+        ),
+      ]),
+  );
 
   const store: TemplateStore = {
     provideSpaceLookup,
@@ -1834,6 +2028,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     switchTemplate,
     removeTemplate,
     deleteTemplate,
+    writeLibraryTemplates,
+    writeSpaceTemplates,
     deleteRefusedTemplate,
     installTemplate,
     uninstallTemplate,

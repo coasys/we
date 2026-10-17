@@ -9,6 +9,7 @@ import { lineComposer, transcriptLines } from '@we/module-transcribe';
 import { cardShell, panelScroll, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 import { discussionSection, foldingSectionLabel, signalDisplay } from '@we/template-kit';
+import { bundlePrompt } from '@we/template-shell';
 import { CALL_CHROME_BAND, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
 
 export interface Scenario {
@@ -1328,7 +1329,49 @@ const foldingSection = (): Scenario => ({
   tables: {},
 });
 
+/**
+ * The host's prompt for an app installed from a file, with everything it can say in it: provenance,
+ * what it adds, what it will be able to do, modules turned on and missing, the spaces to set up,
+ * the display policy and inert references. What the buttons do is marked on the body.
+ */
+const bundleInstallPrompt = (): Scenario => ({
+  node: bundlePrompt,
+  tables: {},
+  stores: {
+    bundleStore: {
+      pendingInstall: {
+        name: 'Field Guide',
+        icon: 'binoculars',
+        version: '1.0.0',
+        author: 'Levels Naturalists',
+        fileName: 'field-guide.bundle.json',
+        updates: '',
+        adds: [
+          'Its own app, “Field Guide” — the chrome around every space',
+          '3 sections: “Species”, “Sightings”, “Map”',
+        ],
+        capabilities: ['Read and write the content of this space'],
+        blocked: ['runtimeStore.trustAgent'],
+        modulesToTurnOn: ['Polls'],
+        modulesNotInBuild: ['globe'],
+        recordTypes: ['Species', 'Sighting'],
+        needsSpace: true,
+        display: 'ours',
+      },
+      spaceChoices: [
+        { id: 'levels', name: 'Somerset Levels', avatar: '', chosen: true, done: false, here: true },
+        { id: 'garden', name: 'Garden Club', avatar: '', chosen: false, done: true, here: false },
+        { id: 'allotment', name: 'Allotment', avatar: '', chosen: false, done: false, here: false },
+      ],
+      toggleSpace: (id: string) => document.body.setAttribute('data-bundle-toggled', id),
+      confirmInstall: () => document.body.setAttribute('data-bundle-confirmed', ''),
+      cancelInstall: () => document.body.setAttribute('data-bundle-cancelled', ''),
+    },
+  },
+});
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
+  'bundle:prompt': bundleInstallPrompt,
   'ds:slider-marks': sliderMarks,
   'security:self-firing-events': selfFiringEvents,
   'security:code-in-template': codeInTemplate,

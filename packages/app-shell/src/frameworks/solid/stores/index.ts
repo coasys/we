@@ -22,3 +22,10 @@ export {
 export { type PresenceStore, type PresentAgent, usePresenceStore, PresenceStoreProvider } from './PresenceStore';
 export { type ShellStore, useShellStore, ShellStoreProvider } from './ShellStore';
 export { useShellRouteStore, ShellRouteStoreProvider, ShellRouterRoot } from './ShellRouteStore';
+export {
+  type BundleStore,
+  BundleStoreProvider,
+  type InstalledBundleView,
+  type PendingBundleInstall,
+  useBundleStore,
+} from './BundleStore';

@@ -9,10 +9,10 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { buildValidationContext, validateSemantic, withEntities } from '@we/schema-shared';
+import { buildValidationContext, readBundle, validateSemantic, withEntities } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
-import { type Cartridge, fieldGuide, toolLibrary } from './index.ts';
+import { bundleFileName, type Cartridge, cartridgeBundles, fieldGuide, toolLibrary } from './index.ts';
 
 const contextData = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../ai-context/context.json'), 'utf-8'));
 
@@ -65,5 +65,28 @@ describe('the lookup that read every tool as available', () => {
       e.message.includes('compares the included item'),
     );
     expect(warnings.length).toBeGreaterThan(0);
+  });
+});
+
+describe('the cartridges as bundles', () => {
+  const bundlesDir = resolve(import.meta.dirname, '../../../../bundles');
+
+  it.each(cartridgeBundles().map((bundle) => [bundle.id, bundle] as const))(
+    '%s is checked in as `pnpm --filter @we/template-cartridges bundle` writes it',
+    (id, bundle) => {
+      const onDisk = JSON.parse(readFileSync(resolve(bundlesDir, bundleFileName(id)), 'utf-8'));
+      expect(onDisk).toEqual(JSON.parse(JSON.stringify(bundle)));
+    },
+  );
+
+  it.each(cartridgeBundles().map((bundle) => [bundle.id, bundle] as const))('%s reads as a bundle', (_id, bundle) => {
+    expect(readBundle(JSON.parse(JSON.stringify(bundle))).problems).toEqual([]);
+  });
+
+  it('carries a cartridge’s modules where an install screen finds them, and no sample content', () => {
+    const fieldGuideBundle = cartridgeBundles().find((bundle) => bundle.id === 'field-guide')!;
+    const shell = fieldGuideBundle.templates!.find((template) => template.id === 'shell')!;
+    expect(shell.meta.requires?.modules).toContain('globe');
+    expect(JSON.stringify(fieldGuideBundle)).not.toContain('Levels Naturalists');
   });
 });

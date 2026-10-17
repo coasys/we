@@ -32,6 +32,8 @@ export const toolLibrary: Cartridge = {
   },
   shapes: [itemShape, loanShape],
   modules: [],
+  // Lent alongside whatever else a space is for: spaces keep their own template.
+  display: 'theirs',
   sample: {
     space: { name: 'Elm Road Tools', description: 'Borrow it, use it, bring it back' },
     agents,

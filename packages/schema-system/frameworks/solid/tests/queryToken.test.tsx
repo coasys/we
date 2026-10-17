@@ -111,6 +111,48 @@ function createMockBuilder(): MockBuilder {
 // ---------------------------------------------------------------------------
 
 describe('$query token', () => {
+  // ---- A model the host has not read yet ----
+
+  it('waits for a model that is still being read, then queries it, and reports one that never arrives', async () => {
+    const builder = createMockBuilder();
+    const MockEntity = { query: vi.fn(() => builder), findAll: vi.fn() };
+    const [pending, setPending] = createSignal(true);
+    const [known, setKnown] = createSignal(false);
+    const onError = vi.fn();
+    const stores = {
+      $currentDataset: () => ({ uuid: 'test-perspective' }),
+      $getEntity: (name: string) => {
+        if (name === 'Sighting' && known()) return MockEntity;
+        throw new Error(`no model ${name}`);
+      },
+      $modelsPending: () => pending(),
+      $onError: onError,
+    };
+    const node = (entity: string): SchemaNode => ({
+      type: 'DataDisplay',
+      props: { data: { $query: { entity, subscribe: true } } },
+    });
+
+    render(() => (
+      <>
+        <RenderSchema node={node('Sighting')} stores={asStores(stores)} registry={registry} />
+        <RenderSchema node={node('Typo')} stores={asStores(stores)} registry={registry} />
+      </>
+    ));
+    await tick();
+    // Nothing is said while the space's models are still being read.
+    expect(onError).not.toHaveBeenCalled();
+    expect(MockEntity.query).not.toHaveBeenCalled();
+
+    // They have been: the one that arrived is queried, the one that did not is reported.
+    setKnown(true);
+    setPending(false);
+    await tick();
+    expect(MockEntity.query).toHaveBeenCalledOnce();
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onError.mock.calls[0][0]).toContain('"Typo"');
+  });
+
   // ---- Basic subscription lifecycle ----
 
   it('subscribes and renders initial empty array', async () => {

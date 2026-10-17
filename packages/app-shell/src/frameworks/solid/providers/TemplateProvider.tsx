@@ -30,6 +30,7 @@ import { componentRegistry as registry } from '@solid/registries/componentRegist
 import {
   useAccountStore,
   useAppStore,
+  useBundleStore,
   useClockStore,
   useDatasetStore,
   useEditorStore,
@@ -100,6 +101,7 @@ export default function TemplateProvider() {
   const presenceStore = usePresenceStore();
   const interpretationStore = useInterpretationStore();
   const clockStore = useClockStore();
+  const bundleStore = useBundleStore();
   const flowStore = useFlowStore();
 
   // Set CSS custom properties on :root so position:fixed elements (e.g. CesiumGlobe canvas)
@@ -501,6 +503,7 @@ export default function TemplateProvider() {
     presenceStore,
     interpretationStore,
     clockStore,
+    bundleStore,
     flowStore,
     // Always present, even with no modules registered: a read of `modules.x` resolves through the
     // single-segment path, which indexes the store object without a guard and would throw on a
@@ -526,6 +529,10 @@ export default function TemplateProvider() {
     // Host wiring, not backend adaptation — any backend would wire these the same way, so they stay
     // here rather than pretending to be AD4M-specific.
     $onError: (msg: string) => toastService.error(msg),
+    // The space on screen has its own models, read from its Shape records after the first frame. A
+    // query for one waits until they have been, rather than reporting it missing.
+    $modelsPending: (dataset: unknown) =>
+      !!dataset && dataset === datasetStore.currentDataset()?.handle && !shapeStore.shapesLoaded(),
     // The router binding behind $localState's syncParam: view state a template
     // mirrors into the URL (?type=…&sort=…) so a shared link reproduces the view.
     $routeParams: {
