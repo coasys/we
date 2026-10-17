@@ -9,7 +9,7 @@
  * which spaces are wanted, what that means for the sources currently running, and how their
  * separate views of the world become one.
  */
-import type { Peer } from '@we/backend-shared';
+import type { Activity, Peer } from '@we/backend-shared';
 
 /**
  * A ceiling on how many spaces presence may beat into at once — a tripwire, not a limit.
@@ -79,17 +79,56 @@ export function reconcileLeases(running: readonly string[], wanted: readonly str
  * Every peer any source can see, as one list.
  *
  * Deduplicated by agent, because one person can be visible from two sources at once — they are in
- * the call you are in *and* in the space you have wandered into. Freshest beat wins: the two reports
- * are the same agent's state seen through different channels, so the later one is simply the more
- * current. Picking arbitrarily would make their liveness flicker as the maps iterate.
+ * the call you are in *and* in the space you have wandered into. Two reports of one agent are
+ * merged, not picked between, and the two halves of a report merge differently:
+ *
+ * - **Where they are and how live they are** — `focus`, `availability`, `liveness`, `updatedAt` —
+ *   come from the freshest beat. Those describe the whole agent, so the later report is simply the
+ *   more current one, and picking arbitrarily would flicker their liveness as the maps iterate.
+ * - **What they are taking part in** — `activities` — is the union of every report. An activity is
+ *   published into the space it happens in and no other: a call in space A rides only A's
+ *   heartbeat, while B's beat says nothing about it. Taking B's report whole, whenever it happened
+ *   to be fresher, made the call vanish and reappear with each beat — and the transcriber, which
+ *   finds its own call this way, switched recording off and on again with it. Where two reports
+ *   carry the same activity (by type and id), the fresher copy wins.
+ *
+ * A report that has gone `offline` contributes no activities, so an activity cannot outlive its own
+ * heartbeat by riding a fresher one from another space.
  */
 export function unionPeers(peersByUri: Readonly<Record<string, readonly Peer[]>>): Peer[] {
-  const byAgent = new Map<string, Peer>();
+  const byAgent = new Map<string, Peer[]>();
   for (const peers of Object.values(peersByUri)) {
     for (const peer of peers) {
       const seen = byAgent.get(peer.agentId);
-      if (!seen || peer.updatedAt > seen.updatedAt) byAgent.set(peer.agentId, peer);
+      if (seen) seen.push(peer);
+      else byAgent.set(peer.agentId, [peer]);
     }
   }
-  return [...byAgent.values()];
+  return [...byAgent.values()].map(mergeReports);
+}
+
+/** How the store keys an activity — by type and id. */
+const activityKey = (activity: Activity): string =>
+  `${activity.type}:${'id' in activity && typeof activity.id === 'string' ? activity.id : ''}`;
+
+/** One agent's reports from several sources, as one peer. See {@link unionPeers}. */
+function mergeReports(reports: Peer[]): Peer {
+  // One report is the ordinary case, and is handed through untouched.
+  if (reports.length === 1) return reports[0];
+
+  let freshest = reports[0];
+  for (const report of reports) if (report.updatedAt > freshest.updatedAt) freshest = report;
+
+  const activities = new Map<string, { activity: Activity; at: number }>();
+  for (const report of reports) {
+    if (report.liveness === 'offline') continue;
+    for (const activity of report.activities ?? []) {
+      const key = activityKey(activity);
+      const held = activities.get(key);
+      if (!held || report.updatedAt > held.at) activities.set(key, { activity, at: report.updatedAt });
+    }
+  }
+
+  if (!activities.size) return freshest;
+  return { ...freshest, activities: [...activities.values()].map(({ activity }) => activity) };
 }
