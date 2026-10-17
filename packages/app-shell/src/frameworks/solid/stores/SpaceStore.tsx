@@ -1,5 +1,6 @@
 import { boardOptimism } from '@shared/boardOptimism';
 import { createBoardActions, type CreateBoardOptions } from '@shared/boards';
+import { callParamToWrite } from '@shared/callOnScreen';
 import {
   collectionExtractionDefaults,
   LEGACY_EXTRACTION_TARGETS,
@@ -1527,6 +1528,18 @@ export function SpaceStoreProvider(props: ParentProps) {
         might act on.
       */
       callOnScreen: () => routeStore.params().call || null,
+      // The write half, for the moment this agent joins a call — see `callParamToWrite` for when it
+      // writes. Replaces rather than pushes: joining a call is not a page somebody navigated to.
+      showCallOnScreen: (recordId, datasetUri) => {
+        const value = callParamToWrite({
+          segments: routeStore.segments(),
+          current: routeStore.params().call || null,
+          recordId,
+          datasetUri,
+          spaceIdOf: sharedIdOf,
+        });
+        if (value) routeStore.setParam('call', value);
+      },
       datasets: {
         get: (uri: string) => {
           const id = sharedIdOf(uri);

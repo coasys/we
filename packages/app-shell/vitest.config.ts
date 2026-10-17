@@ -74,6 +74,8 @@ const SOLID_TESTS = [
   // one-shot effect, which cannot reproduce an effect that re-triggers itself — the bug that froze the
   // app before login.
   'tests/liveStoreReactive.test.tsx',
+  // Mounts the real router, because the failure was what it matches, not what the table holds.
+  'tests/spaceDeepLink.test.tsx',
 ];
 
 export default defineConfig({

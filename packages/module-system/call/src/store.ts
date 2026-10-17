@@ -295,6 +295,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     datasets,
     onDispose,
     callOnScreen,
+    showCallOnScreen,
     settings,
     state,
     action,
@@ -1596,6 +1597,18 @@ export function createCallStore(deps: ModuleStoreDeps) {
       the call it was made in.
     */
     setVisible(true);
+
+    /*
+      And the address names it — coasys/we#304.
+
+      Only picking a call from a list used to put it in the address. A call started from a button,
+      the rail or the bar was followed through `callRecordId` alone, so a link copied from the screen
+      named no call, and the page let go of the call the moment it ended. Asked here, where every
+      way into a call arrives, rather than at each of them. The host owns the address and decides
+      whether to write; this only says which record, and which space it is in.
+    */
+    const record = callRecord();
+    if (record) showCallOnScreen?.(record, anchor?.datasetUri ?? uri);
 
     controller = createMediaController({
       devices: mediaKernel
