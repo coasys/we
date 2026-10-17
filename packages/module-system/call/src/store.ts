@@ -2,10 +2,10 @@
  * The call store — what a template can read and drive.
  *
  * Written against `ModuleStoreDeps` alone: `signal` and `effect` for reactivity, `dataset`/`selfId`
- * for scope, and under `deps.kernels` exactly the five the manifest asks for — `ephemeral` for
+ * for scope, and under `deps.kernels` exactly the six the manifest asks for — `ephemeral` for
  * transport, `presence` for membership, `records` for the call's record, `media` for this agent's
- * devices, `peerConnection` for the mesh. It imports no framework and no backend, which is what lets
- * the whole module ship as schema fragments.
+ * devices, `peerConnection` for the mesh, `call` for a session the backend runs. It imports no
+ * framework and no backend, which is what lets the whole module ship as schema fragments.
  *
  * ## What a template may reach
  *
@@ -28,7 +28,16 @@
  * drives the mesh, and media drives what the mesh sends. Nothing flows back — the mesh never tells
  * presence who is in the call, because a connection failing is not the same as a peer leaving.
  */
-import type { DockAspect, MediaDevice, MediaSettings, PanelBid } from '@we/module-shared';
+import type {
+  CallDataMessage,
+  CallParticipant,
+  CallQuality,
+  CallSession,
+  DockAspect,
+  MediaDevice,
+  MediaSettings,
+  PanelBid,
+} from '@we/module-shared';
 import type { Focus, ModuleStoreDeps, Peer } from '@we/module-shared';
 import type { EphemeralScope } from '@we/module-shared';
 import { activitiesOfType } from '@we/module-shared';
@@ -44,56 +53,21 @@ import { solveStrip } from './strip';
 
 // ── Session backend ──────────────────────────────────────────────────
 //
-// Structural interface satisfied by `Session` from `@coasys/ad4m`.
-// The call module carries no import-time dependency on that package —
-// the host constructs a Session and passes it through `CallStoreDeps`.
+// The session a backend runs, under the names this module has always exported. The shapes are the
+// `call` kernel's (`@we/module-shared`), which a backend's session satisfies structurally — AD4M's
+// `Session` does — so this module carries no import-time dependency on any backend.
 
 /** Quality layer the backend can forward (SFU simulcast). */
-export type BackendQuality = 'high' | 'medium' | 'low';
+export type BackendQuality = CallQuality;
 
 /** A remote participant as reported by the backend. */
-export interface BackendParticipant {
-  agentDid: string;
-  stream: MediaStream;
-  hasAudio: boolean;
-  hasVideo: boolean;
-  isActiveSpeaker: boolean;
-}
+export type BackendParticipant = CallParticipant;
 
 /** A data channel message from another participant, relayed through the session. */
-export interface BackendDataMessage {
-  senderDid: string;
-  channelLabel: string;
-  data: string;
-  binary: boolean;
-}
+export type BackendDataMessage = CallDataMessage;
 
-/**
- * Structural interface for a WebRTC session backend — topology-agnostic.
- *
- * Satisfied by `Session` from `@coasys/ad4m/neighbourhood`. The host constructs the session (with
- * neighbourhood proxy, room id, topology, etc.) and passes it here. This module never touches
- * `NeighbourhoodProxy` or any AD4M type directly.
- */
-export interface CallBackend {
-  join(localStream: MediaStream): Promise<void>;
-  leave(): Promise<void>;
-  destroy(): Promise<void>;
-  replaceTrack(kind: 'audio' | 'video', track: MediaStreamTrack | null): Promise<void>;
-  setQualityPreference(pref: BackendQuality): Promise<void>;
-  readonly participants: ReadonlyArray<BackendParticipant>;
-  getState(): string;
-  on(event: string, cb: (...args: unknown[]) => void): void;
-  off(event: string, cb?: (...args: unknown[]) => void): void;
-  /** Send data to all other participants via the session's relay (SFU or mesh signalling). */
-  sendData(label: string, data: string, binary?: boolean): Promise<void>;
-  /** Subscribe to data channel messages. Returns an unsubscribe function. */
-  onData(cb: (message: BackendDataMessage) => void): () => void;
-  /** Rebuild one peer's connection, telling the peer to do the same. Mesh sessions only. */
-  reconnect?(peerId: string): void;
-  /** How a peer's media travels — `host`, `srflx` or `relay` — or `null`. Mesh sessions only. */
-  transportOf?(peerId: string): Promise<string | null>;
-}
+/** A WebRTC session run by the backend — topology-agnostic. */
+export type CallBackend = CallSession;
 
 /**
  * One participant, flattened for a template.
@@ -331,7 +305,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     than throw, so each is checked where it is reached. `media` is renamed on the way in because
     `media` below is the signal carrying this agent's mute/camera/share state, which a template reads.
   */
-  const { presence, ephemeral, records, media: mediaKernel, peerConnection } = deps.kernels;
+  const { presence, ephemeral, records, media: mediaKernel, peerConnection, call: calls } = deps.kernels;
 
   /**
    * The transport scope this call holds, so leaving can give it back.
@@ -413,7 +387,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
 
   // ── Call configuration (SFU topology defaults) ──────────────────────
   //
-  // Read from the neighbourhood's links via the host's `getCallConfig` port.  Loaded once
+  // Read through the `call` kernel's `config` — the space's own policy.  Loaded once
   // when the dataset changes, refreshed after writes.  The settings UI
   // binds to these signals; the adapter reads them at join time.
 
@@ -433,11 +407,11 @@ export function createCallStore(deps: ModuleStoreDeps) {
    * showing a value that was never saved.
    */
   async function writeCallConfig(raw: CallConfigState): Promise<void> {
-    if (!deps.setCallConfig) return;
+    if (!calls) return;
     const next = callPolicy(raw);
     setCallConfigSaving(true);
     try {
-      if (await deps.setCallConfig(next)) setCallConfig(next);
+      if (await calls.setConfig(next)) setCallConfig(next);
       else deps.notify?.('error', 'The call settings were not saved.');
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
@@ -1201,7 +1175,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
    * session that failed to join is destroyed rather than kept as a `backend` that sends nothing.
    */
   async function connectSession(id: string, media: MediaController, mode: CallTopology): Promise<boolean> {
-    const next = (await deps.createBackend!(id, sessionOptions(mode))) as CallBackend;
+    const next = await calls!.session(id, sessionOptions(mode));
     // Left, or switched again, while the session was being built.
     if (callId() !== id || controller !== media || backend) {
       next.destroy().catch((err) => console.error('call: backend destroy', err));
@@ -1254,7 +1228,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     const id = callId();
     const old = backend;
     const media = controller;
-    if (!id || !media || !deps.createBackend) return;
+    if (!id || !media || !calls?.available()) return;
     const previous = topology();
     setSwitchingTopology(true);
     detachSession();
@@ -1694,17 +1668,17 @@ export function createCallStore(deps: ModuleStoreDeps) {
 
     // ── Resolve backend ──────────────────────────────────────────────
     //
-    // A factory takes precedence over a static instance — it builds a Session scoped to this
-    // specific call room, which is how the AD4M host wires topology, signalling and SFU config.
-    // A static `backend` serves tests and hosts that already hold a Session.
-    if (deps.createBackend) {
+    // A session the backend runs, through the `call` kernel, wherever the backend can run one —
+    // scoped to this call room, with the topology, signalling and policy the backend owns. Without
+    // one, the call runs on this module's own mesh below.
+    if (calls?.available()) {
       // A call already running keeps its topology: a joiner adopts it rather than the space's
       // setting, which may have changed since, so the call cannot split.
       const adopted = newestCallTopology(id);
       setCallTopology(adopted);
       joiningSession = true;
       try {
-        const created = (await deps.createBackend(id, sessionOptions(adopted?.mode))) as CallBackend;
+        const created = await calls.session(id, sessionOptions(adopted?.mode));
         // Left while the session was being built: `teardown` has run and will not see this one.
         if (controller !== started) {
           created.destroy().catch((err) => console.error('call: backend destroy', err));
@@ -1713,13 +1687,11 @@ export function createCallStore(deps: ModuleStoreDeps) {
         backend = created;
       } catch (err) {
         joiningSession = false;
-        console.error('call: createBackend failed', err);
+        console.error('call: session failed', err);
         scope.dispose();
         setProblem('Could not connect to the call server.');
         return;
       }
-    } else if (deps.backend) {
-      backend = deps.backend as CallBackend;
     }
 
     if (backend) {
@@ -1899,7 +1871,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     const uri = datasetUri?.();
 
     // Probe synchronously — avoids a wasted async round trip on personal spaces.
-    const supported = !!ds && !!uri && !!deps.callConfigSupported?.();
+    const supported = !!ds && !!uri && !!calls?.configurable();
     setCallConfigSupported(supported);
 
     if (!supported) {
@@ -1910,8 +1882,8 @@ export function createCallStore(deps: ModuleStoreDeps) {
     // Fire-and-forget the async reads.  Signal writes happen on completion;
     // stale responses from a previous dataset are safe because the signals
     // are overwritten next time this effect fires.
-    void deps
-      .getCallConfig?.()
+    void calls
+      ?.config()
       .then((raw) => setCallConfig(callPolicy(raw)))
       .catch(() => setCallConfig(MESH_POLICY));
   });

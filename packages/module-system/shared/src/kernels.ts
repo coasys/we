@@ -33,6 +33,7 @@ import type { Activity, EphemeralPort, Peer, TranscriptionPort } from '@we/backe
 import type { Clock } from '@we/clock';
 import type { SchemaNode } from '@we/schema-shared';
 
+import type { CallKernel } from './call';
 import type { InterpretationKernel } from './interpretation';
 import type { CreateEntityOptions, DatasetTarget } from './module';
 
@@ -45,6 +46,7 @@ export interface ModuleKernels {
   ephemeral: EphemeralPort;
   media: MediaKernel;
   peerConnection: PeerConnectionKernel;
+  call: CallKernel;
   transcription: TranscriptionKernel;
   languageModel: LanguageModelKernel;
   interpretation: InterpretationKernel;
@@ -63,6 +65,7 @@ export const KERNEL_NAMES: readonly KernelName[] = [
   'ephemeral',
   'media',
   'peerConnection',
+  'call',
   'transcription',
   'languageModel',
   'interpretation',
