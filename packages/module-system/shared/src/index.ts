@@ -9,6 +9,14 @@
  * `store.ts` (how a store says what is public).
  */
 
+export type {
+  CallDataMessage,
+  CallKernel,
+  CallParticipant,
+  CallQuality,
+  CallSession,
+  CallSessionRequest,
+} from './call';
 export { DEV_TOOLS_KEY, devToolsEnabled, setDevToolsMuted } from './devTools';
 export type { InterpretationActivitySummary, InterpretationKernel } from './interpretation';
 export { KERNEL_NAMES } from './kernels';

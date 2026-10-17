@@ -241,6 +241,7 @@ export type {
   FlowView,
   FlowWaitingMove,
 } from './flows';
+export type { CallPort, CallSessionOptions } from './call';
 export type {
   TranscriptionModelOffer,
   TranscriptionRecord,

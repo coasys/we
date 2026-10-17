@@ -29,6 +29,7 @@ import {
 import { createAd4mDataBindings } from './ad4mAdapter';
 import { createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
 import { createFileExpression, getProfile, publishProfileToPublicPerspective } from './agentHelpers';
+import { createAd4mCallPort } from './callPort';
 import { installClearOnEmpty } from './clearOnEmpty';
 import { installContainmentPredicate } from './containment';
 import { Space } from './entities';
@@ -214,6 +215,8 @@ export function createAd4mBackendPorts(
     interpretation: createAd4mInterpretationPort(ctx.selfId),
     flows: createAd4mFlowPort(ctx.selfId),
     references: createAd4mReferencePort(),
+    // Per-dataset like interpretation: every operation names the space the call is in.
+    call: createAd4mCallPort(),
     ephemeral,
     dataBindings: (deps: DataBindingDeps) =>
       createAd4mDataBindings({

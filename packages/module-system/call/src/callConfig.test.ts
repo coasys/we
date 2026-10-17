@@ -2,19 +2,32 @@
  * Call configuration — store integration tests.
  *
  * Verifies that the call store correctly manages SFU topology configuration:
- * - Loads config from the host's `getCallConfig` port on dataset change
+ * - Loads config through the `call` kernel's `config` on dataset change
  * - Exposes config fields as reactive state
  * - Writes individual fields through `setCallConfigField`
  * - Writes full config through `saveCallConfig`
  * - Refreshes available SFU nodes on demand
  * - Falls back to mesh defaults when the backend lacks support
  */
-import { markAction, markState } from '@we/module-shared';
+import { type CallKernel, markAction, markState } from '@we/module-shared';
 import { describe, expect, it, vi } from 'vitest';
 
 import { type CallConfigState, createCallStore } from './store';
 
 const baseDeps = { state: markState, action: markAction, kernels: {} } as const;
+
+/** The `call` kernel with only the policy half wired — what these tests are about. */
+function withCall(policy: Partial<CallKernel>) {
+  const call: CallKernel = {
+    available: () => false,
+    session: () => Promise.reject(new Error('no session in these tests')),
+    config: () => Promise.reject(new Error('no policy')),
+    setConfig: async () => false,
+    configurable: () => false,
+    ...policy,
+  };
+  return { kernels: { call } };
+}
 
 /** Minimal reactive system — same shape the store.test.ts helpers use. */
 function signal<T>(initial: T): [() => T, (next: T) => void] {
@@ -75,9 +88,7 @@ describe('call config — store integration', () => {
       effect,
       dataset: () => ({ id: 'test' }) as never,
       datasetUri: () => 'neighbourhood://test',
-      getCallConfig: async () => READ_CONFIG,
-      setCallConfig,
-      callConfigSupported: () => true,
+      ...withCall({ config: async () => READ_CONFIG, setConfig: setCallConfig, configurable: () => true }),
     });
     flush();
     await vi.waitFor(() => expect(store.callConfig()).toEqual(SFU_CONFIG));
@@ -105,8 +116,7 @@ describe('call config — store integration', () => {
       effect,
       dataset: dataset as () => null,
       datasetUri,
-      getCallConfig,
-      callConfigSupported,
+      ...withCall({ config: getCallConfig, configurable: callConfigSupported }),
     });
 
     // Simulate a dataset becoming available
@@ -126,7 +136,7 @@ describe('call config — store integration', () => {
     expect(store.callConfigSupported()).toBe(true);
   });
 
-  it('falls back to mesh defaults when getCallConfig rejects', async () => {
+  it('falls back to mesh defaults when the policy read rejects', async () => {
     const { effect, flush } = createEffectRunner();
 
     const getCallConfig = vi.fn().mockRejectedValue(new Error('RPC failed'));
@@ -138,8 +148,7 @@ describe('call config — store integration', () => {
       effect,
       dataset: () => ({ id: 'test' }) as never,
       datasetUri: () => 'neighbourhood://test',
-      getCallConfig,
-      callConfigSupported,
+      ...withCall({ config: getCallConfig, configurable: callConfigSupported }),
     });
 
     flush();
@@ -157,7 +166,7 @@ describe('call config — store integration', () => {
       effect,
       dataset: () => ({ id: 'test' }) as never,
       datasetUri: () => 'neighbourhood://test',
-      callConfigSupported: () => false,
+      ...withCall({ configurable: () => false }),
     });
 
     flush();
@@ -172,9 +181,7 @@ describe('call config — store integration', () => {
     const store = createCallStore({
       ...baseDeps,
       signal,
-      getCallConfig: async () => SFU_CONFIG,
-      setCallConfig,
-      callConfigSupported: () => true,
+      ...withCall({ config: async () => SFU_CONFIG, setConfig: setCallConfig, configurable: () => true }),
     });
 
     // Pre-populate the config signal by calling saveCallConfig
@@ -193,7 +200,7 @@ describe('call config — store integration', () => {
     const store = createCallStore({
       ...baseDeps,
       signal,
-      setCallConfig,
+      ...withCall({ setConfig: setCallConfig }),
     });
 
     const newConfig: CallConfigState = {
@@ -207,10 +214,10 @@ describe('call config — store integration', () => {
     expect(store.callConfig()).toEqual(newConfig);
   });
 
-  it('does not update the signal when setCallConfig returns false', async () => {
+  it('does not update the signal when the policy write returns false', async () => {
     const setCallConfig = vi.fn().mockResolvedValue(true);
 
-    const store = createCallStore({ ...baseDeps, signal, setCallConfig });
+    const store = createCallStore({ ...baseDeps, signal, ...withCall({ setConfig: setCallConfig }) });
 
     // Pre-populate — this write succeeds
     await store.saveCallConfig(SFU_CONFIG);
@@ -230,7 +237,7 @@ describe('call config — store integration', () => {
       .fn()
       .mockRejectedValue(new Error('Only the neighbourhood’s owner can change its rooms or call config'));
     const notify = vi.fn();
-    const store = createCallStore({ ...baseDeps, signal, setCallConfig, notify });
+    const store = createCallStore({ ...baseDeps, signal, notify, ...withCall({ setConfig: setCallConfig }) });
 
     await store.setCallConfigField('maxMeshParticipants', 8);
 
@@ -246,7 +253,7 @@ describe('call config — store integration', () => {
     let resolveWrite: (v: boolean) => void;
     const setCallConfig = vi.fn().mockImplementation(() => new Promise<boolean>((r) => (resolveWrite = r)));
 
-    const store = createCallStore({ ...baseDeps, signal, setCallConfig });
+    const store = createCallStore({ ...baseDeps, signal, ...withCall({ setConfig: setCallConfig }) });
 
     expect(store.callConfigSaving()).toBe(false);
 

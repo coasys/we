@@ -222,7 +222,7 @@ export const fakeCursorControls: SchemaNode = {
     {
       type: 'we-tooltip',
       props: { content: 'Synthetic cursors — development only', placement: 'bottom' },
-      children: [{ type: 'we-icon', props: { name: 'cursor-click', size: 'sm', color: 'text-faint' } }],
+      children: [{ type: 'we-icon', props: { name: 'cursor-click', size: 'sm', color: 'text-muted' } }],
     },
     {
       type: 'we-tooltip',
