@@ -6,9 +6,12 @@
  * line that merely mentioned the binary.
  */
 import { spawn } from 'child_process';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 
-import { executorPidsFor, stopProcess } from './executorProcess.js';
+import { executorPidsFor, stopExecutorsFor, stopProcess } from './executorProcess.js';
 
 const ps = (...lines) => lines.join('\n');
 const exe = '/Applications/WE.app/Contents/Resources/ad4m-executor';
@@ -87,5 +90,39 @@ describe.skipIf(process.platform === 'win32')('stopProcess', () => {
     proc.kill('SIGKILL');
     await new Promise((r) => proc.once('exit', r));
     expect(await stopProcess(proc.pid, { timeoutMs: 300 })).toBe('gone');
+  });
+
+  // Signalling pid 1 as root would send init a SIGTERM, so only run this where it is refused.
+  it.skipIf(process.getuid?.() === 0)('rejects for a running process it may not signal', async () => {
+    await expect(stopProcess(1, { timeoutMs: 300 })).rejects.toMatchObject({ code: 'EPERM' });
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('stopExecutorsFor', () => {
+  // `COLUMNS` makes `ps` cut each line to that width. The executor's data path comes after the
+  // binary path and the admin credential, so a cut line no longer names it and the match misses.
+  it('finds an executor whose data path is past the terminal width', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'we-executor-'));
+    const exePath = join(dir, 'ad4m-executor');
+    writeFileSync(exePath, "#!/bin/sh\ntrap 'exit 0' TERM\nwhile :; do sleep 0.1; done\n");
+    chmodSync(exePath, 0o755);
+    const dataPath = join(dir, 'data');
+    const proc = spawn(exePath, ['run', '--admin-credential', 'x'.repeat(80), '--app-data-path', dataPath], {
+      stdio: 'ignore',
+    });
+    const exited = new Promise((r) => proc.once('exit', r));
+    const columns = process.env.COLUMNS;
+    process.env.COLUMNS = '80';
+    try {
+      const lines = [];
+      await stopExecutorsFor(dataPath, (line) => lines.push(line));
+      expect(lines).toContain(`[main] Stopping the executor already running on ${dataPath} (pid ${proc.pid})`);
+      await exited;
+    } finally {
+      if (columns === undefined) delete process.env.COLUMNS;
+      else process.env.COLUMNS = columns;
+      proc.kill('SIGKILL');
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
