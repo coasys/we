@@ -1004,7 +1004,7 @@ const devPeerControls: SchemaNode = {
     {
       type: 'we-tooltip',
       props: { content: 'Fake participants — development only', placement: 'bottom' },
-      children: [{ type: 'we-icon', props: { name: 'users', size: 'sm', color: 'text-faint' } }],
+      children: [{ type: 'we-icon', props: { name: 'users', size: 'sm', color: 'text-muted' } }],
     },
     {
       type: 'we-tooltip',
@@ -1372,9 +1372,14 @@ const moreMenu: SchemaNode = {
 /**
  * Which topology this call runs on — peer-to-peer mesh or SFU relay.
  *
- * A non-interactive indicator between the divider and the participant count: one icon, coloured by
- * the variant, with a tooltip that names the mode. Mesh calls show a network glyph; SFU calls show
- * a broadcast glyph. Hidden when no backend manages the call (mesh-only without a Session).
+ * A non-interactive indicator between the divider and the participant count: one icon, with a
+ * tooltip that names the mode. Mesh calls show a network glyph; SFU calls show a broadcast glyph.
+ * Hidden when no backend manages the call (mesh-only without a Session).
+ *
+ * `text-muted` in both modes. It is a readout, so a step below the buttons beside it, which draw in
+ * `text` — and one role for both, because the glyph already says which mode this is. Mesh was
+ * `text-faint`, the role for disabled and placeholder, which made a working mesh call look switched
+ * off.
  *
  * Placed on the "call" side of the divider — it describes the call rather than the user's device —
  * and before the participant count, which it explains (a count of six on a mesh means six direct
@@ -1404,7 +1409,7 @@ const topologyIndicator: SchemaNode = {
           children: [
             {
               type: 'we-icon',
-              props: { name: 'graph', size: 'sm', color: 'text-faint' },
+              props: { name: 'graph', size: 'sm', color: 'text-muted' },
             },
           ],
         },
@@ -1625,7 +1630,7 @@ const callSettingsPopover: SchemaNode = {
                             },
                             else: {
                               type: 'we-icon',
-                              props: { name: 'graph', size: 'sm', color: 'text-faint' },
+                              props: { name: 'graph', size: 'sm', color: 'text-muted' },
                             },
                           },
                         },
