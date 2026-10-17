@@ -630,9 +630,15 @@ export function createCallStore(deps: ModuleStoreDeps) {
 
   let mesh: CallMesh | null = null;
   let backend: CallBackend | null = null;
-  /** The backend has joined. Before that its tracks come from the stream `join` is given, and a
-   *  track change has no session to replace into. */
-  let backendJoined = false;
+  /**
+   * The backend has joined. Before that its tracks come from the stream `join` is given, and a
+   * track change has no session to replace into.
+   *
+   * A signal, where `backend` is a plain variable, because an effect has to be able to wait for it:
+   * following another participant's topology switch is only possible once there is a joined session
+   * to replace, and an effect that read a plain variable and returned early was never run again.
+   */
+  const [backendJoined, setBackendJoined] = signal(false);
   let controller: MediaController | null = null;
   let remoteStreams = new Map<string, MediaStream>();
   let peerStates = new Map<string, RTCPeerConnectionState>();
@@ -731,6 +737,79 @@ export function createCallStore(deps: ModuleStoreDeps) {
     return tile;
   }
 
+  /**
+   * Every remote stream the tiles hold, watched for the changes no transport announces.
+   *
+   * `hasPicture` is read off the tracks at rebuild time, so it is only as fresh as the last rebuild.
+   * A remote track's `muted` flips on its own — set when RTP stops, cleared when it resumes — and
+   * the browser tells nobody but the track. The SDK's SFU path keeps one `MediaStream` per
+   * participant for the whole call and `addTrack`s a fresh track onto it after a reconnect, which
+   * fires no `addtrack`, and emits `stream-added` while that track is still muted: so the tile
+   * rebuilt then said "no picture", and nothing asked again until an unrelated click rebuilt the
+   * tiles. The video sat blank for as long as nobody touched anything.
+   *
+   * So each stream's tracks are listened to directly — `mute`, `unmute`, `ended` — along with the
+   * stream's own `addtrack`/`removetrack`, and any of them rebuilds. Reconciled on every rebuild
+   * (which every transport event already causes), so a track the SDK added by hand is picked up the
+   * moment it says so, and a stream no tile holds any longer is let go. The tile objects are still
+   * `stabilise`d: the stream is the same object, so a rebuild here changes `tileStates` and never
+   * remounts a `<video>`.
+   */
+  const watchedStreams = new Map<MediaStream, { sync: () => void; stop: () => void }>();
+
+  function watchStream(stream: MediaStream) {
+    const tracks = new Map<MediaStreamTrack, () => void>();
+    const changed = () => rebuildTiles();
+    const watchTrack = (track: MediaStreamTrack) => {
+      if (tracks.has(track) || typeof track.addEventListener !== 'function') return;
+      for (const event of ['mute', 'unmute', 'ended']) track.addEventListener(event, changed);
+      tracks.set(track, () => {
+        for (const event of ['mute', 'unmute', 'ended']) track.removeEventListener(event, changed);
+      });
+    };
+    const sync = () => {
+      const present = new Set(stream.getTracks());
+      for (const [track, stop] of tracks) {
+        if (present.has(track)) continue;
+        stop();
+        tracks.delete(track);
+      }
+      for (const track of present) watchTrack(track);
+    };
+    // The track list changed; `sync` runs inside the rebuild that follows.
+    const listener = typeof stream.addEventListener === 'function';
+    if (listener) {
+      stream.addEventListener('addtrack', changed);
+      stream.addEventListener('removetrack', changed);
+    }
+    sync();
+    return {
+      sync,
+      stop: () => {
+        for (const stop of tracks.values()) stop();
+        tracks.clear();
+        if (listener) {
+          stream.removeEventListener('addtrack', changed);
+          stream.removeEventListener('removetrack', changed);
+        }
+      },
+    };
+  }
+
+  function watchRemoteStreams() {
+    const held = new Set([...remoteStreams.values()].filter(Boolean));
+    for (const [stream, watcher] of watchedStreams) {
+      if (held.has(stream)) continue;
+      watcher.stop();
+      watchedStreams.delete(stream);
+    }
+    for (const stream of held) {
+      const watcher = watchedStreams.get(stream);
+      if (watcher) watcher.sync();
+      else watchedStreams.set(stream, watchStream(stream));
+    }
+  }
+
   /*
     How many synthetic participants the call bar's dev controls have asked for — see `devPeers`.
 
@@ -749,6 +828,8 @@ export function createCallStore(deps: ModuleStoreDeps) {
     const id = callId();
     const me = selfId?.() ?? null;
     if (!id) {
+      for (const watcher of watchedStreams.values()) watcher.stop();
+      watchedStreams.clear();
       tileCache.clear();
       setTiles([]);
       setTileStates([]);
@@ -756,6 +837,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
       return;
     }
 
+    watchRemoteStreams();
     const next: CallTile[] = [];
     const states: Omit<CallTileState, 'focused'>[] = [];
 
@@ -1024,6 +1106,9 @@ export function createCallStore(deps: ModuleStoreDeps) {
       });
 
     const syncStreams = () => {
+      // Called directly after a join as well as from events, and joining can hand the call straight
+      // to a switch — whose new session's streams these would overwrite.
+      if (backend !== session) return;
       remoteStreams = new Map(session.participants.map((p) => [p.agentDid, p.stream]));
       rebuildTiles();
     };
@@ -1083,19 +1168,65 @@ export function createCallStore(deps: ModuleStoreDeps) {
   }
 
   /**
-   * Leave the call's session and join a new one on `mode`, on the same devices and in the same call.
+   * What a session for this call is built with: the ICE servers the mesh would use, the topology
+   * when one is decided, and the space the call is in.
    *
-   * Every participant's media stops until the new session connects: this runs only when somebody
-   * switched the call by hand, here or on another participant's screen.
+   * The space travels because the host's factory otherwise reads whichever space is on screen. That
+   * is the call's own at the moment of joining, but a switch is followed wherever the agent is —
+   * and somebody who had moved to another space reconnected into a session in that one, a call with
+   * nobody in it.
    */
-  async function reconnectSession(mode: CallTopology) {
-    const id = callId();
-    const old = backend;
-    const media = controller;
-    if (!id || !old || !media || !deps.createBackend) return;
-    setSwitchingTopology(true);
+  function sessionOptions(mode?: CallTopology) {
+    const uri = anchor?.datasetUri;
+    return { iceServers: iceServers(), ...(mode ? { topology: mode } : {}), ...(uri ? { datasetUri: uri } : {}) };
+  }
+
+  /** The words for a topology in a sentence about reconnecting: "…the call as a mesh". */
+  const topologyWords = (mode: CallTopology) => (mode === 'sfu' ? 'through the SFU' : 'as a mesh');
+
+  /** The message the last failed switch put up, so the switch that works can take it down again. */
+  let switchProblem: string | null = null;
+
+  /**
+   * The first session of a call is being built or joined. A switch waits for it rather than racing
+   * it: until it has joined, the devices may not be open yet, and a session built beside it would be
+   * joined with an empty stream.
+   */
+  let joiningSession = false;
+
+  /**
+   * Build a session on `mode` for call `id` and join it with `media`'s devices. Resolves `true` once
+   * it is the call's joined session, `false` when the call moved on meanwhile (and the session has
+   * been let go). Rejects when it could not be built or joined — with nothing left behind: a
+   * session that failed to join is destroyed rather than kept as a `backend` that sends nothing.
+   */
+  async function connectSession(id: string, media: MediaController, mode: CallTopology): Promise<boolean> {
+    const next = (await deps.createBackend!(id, sessionOptions(mode))) as CallBackend;
+    // Left, or switched again, while the session was being built.
+    if (callId() !== id || controller !== media || backend) {
+      next.destroy().catch((err) => console.error('call: backend destroy', err));
+      return false;
+    }
+    backend = next;
+    const syncStreams = attachSession(next);
+    try {
+      await next.join(media.displayStream() ?? media.localStream() ?? new MediaStream());
+    } catch (err) {
+      if (backend === next) detachSession();
+      next.destroy().catch((e) => console.error('call: backend destroy', e));
+      throw err;
+    }
+    if (backend !== next) return false;
+    setBackendJoined(true);
+    if (qualityIsManual) await next.setQualityPreference(qualityPreference());
+    syncStreams();
+    return true;
+  }
+
+  /** Forget the current session and everything read off it, leaving the call itself running. */
+  function detachSession() {
     backend = null;
-    backendJoined = false;
+    setBackendJoined(false);
     dataUnsubscribe?.();
     dataUnsubscribe = null;
     remoteStreams = new Map();
@@ -1103,45 +1234,96 @@ export function createCallStore(deps: ModuleStoreDeps) {
     recovering.clear();
     transports.clear();
     rebuildTiles();
-    await old.destroy().catch((err) => console.error('call: backend destroy', err));
+  }
+
+  /**
+   * Leave the call's session and join a new one on `mode`, on the same devices and in the same call.
+   *
+   * Every participant's media stops until the new session connects: this runs only when somebody
+   * switched the call by hand, here or on another participant's screen.
+   *
+   * ## When the new session cannot be had
+   *
+   * It goes back to the topology it was on, and says so. It used to stop at the message: the old
+   * session was gone and no new one existed, so the person sat in a call with no media and no way
+   * out of it short of leaving — `switchTopology` refused without a session, and refused the way
+   * back because `topology` still named it. The call's published topology is left as the switch
+   * made it, since that is what everyone else is on; asking again is how this agent joins them.
+   */
+  async function reconnectSession(mode: CallTopology) {
+    const id = callId();
+    const old = backend;
+    const media = controller;
+    if (!id || !media || !deps.createBackend) return;
+    const previous = topology();
+    setSwitchingTopology(true);
+    detachSession();
+    if (old) await old.destroy().catch((err) => console.error('call: backend destroy', err));
     try {
-      const next = (await deps.createBackend(id, { iceServers: iceServers(), topology: mode })) as CallBackend;
-      // Left, or switched again, while the session was being built.
-      if (callId() !== id || controller !== media || backend) {
-        next.destroy().catch((err) => console.error('call: backend destroy', err));
-        return;
+      if (await connectSession(id, media, mode)) {
+        if (switchProblem && problem() === switchProblem) setProblem(null);
+        switchProblem = null;
       }
-      backend = next;
-      const syncStreams = attachSession(next);
-      await next.join(media.displayStream() ?? media.localStream() ?? new MediaStream());
-      if (backend !== next) return;
-      backendJoined = true;
-      if (qualityIsManual) await next.setQualityPreference(qualityPreference());
-      syncStreams();
     } catch (err) {
       console.error('call: switching topology failed', err);
-      setProblem(`Could not reconnect the call ${mode === 'sfu' ? 'through the SFU' : 'as a mesh'}.`);
+      if (callId() !== id || controller !== media) return;
+      let message = `Could not reconnect the call ${topologyWords(mode)}. Try switching again, or leave and rejoin.`;
+      if (previous !== mode) {
+        try {
+          if (await connectSession(id, media, previous)) {
+            message = `Could not reconnect the call ${topologyWords(mode)}, so you are still connected ${topologyWords(previous)}. Try switching again.`;
+          }
+        } catch (fallbackErr) {
+          console.error('call: going back to the previous topology failed', fallbackErr);
+          message = `Could not reconnect the call ${topologyWords(mode)}, or go back ${topologyWords(previous)}. Try switching again, or leave and rejoin.`;
+        }
+      }
+      switchProblem = message;
+      setProblem(message);
     } finally {
       if (callId() === id) setSwitchingTopology(false);
     }
   }
 
-  /** Switch this call to `mode` for everyone in it. Each of them reconnects at once. */
+  /**
+   * Switch this call to `mode` for everyone in it. Each of them reconnects at once.
+   *
+   * Refused while the first session is still joining, and while a switch is under way. Allowed with
+   * no session at all — a switch that failed both ways leaves none — so the person can try again.
+   */
   async function switchTopology(mode: CallTopology) {
-    if (!callId() || !backend || switchingTopology() || mode === topology()) return;
+    if (!callId() || !hasSessionBackend() || joiningSession || switchingTopology()) return;
     if (mode !== 'mesh' && mode !== 'sfu') return;
+    if (backendJoined() && mode === topology()) return;
     setCallTopology({ mode, at: Date.now(), by: selfId?.() ?? 'unknown' });
     publishActivity();
     await reconnectSession(mode);
   }
 
-  // Follow a switch somebody else made in this call: adopt it, republish it, reconnect.
+  /*
+    Follow a switch somebody else made in this call: adopt it, republish it, reconnect.
+
+    Every read comes before any return. An effect is subscribed to what it read on its last run, so
+    a read an early return skipped is a change it never hears about — and this one used to return on
+    `!backend`, a plain variable, before it had read presence. It ran first as the call began, when
+    the session was still being built, and was subscribed to `callId` alone from then on: a switch
+    somebody published afterwards never reached it. Whoever pressed "Switch to mesh" reconnected
+    alone, and switching back worked because nobody else had left. It now waits on `backendJoined`,
+    a signal, so a switch published while this agent's session is being built or joined is followed
+    the moment it has joined.
+
+    `mine` blocks only a switch it has already seen. A topology nobody switched to — the one the
+    first participant stamped when its session came up — says nothing about switches: it is stamped
+    when the session joins, which can be after a switch somebody published while it was joining, and
+    comparing against it dropped that switch.
+  */
   effect?.(() => {
     const id = callId();
-    if (!id || !backend || switchingTopology()) return;
-    const next = newestCallTopology(id, true);
+    const joined = backendJoined();
+    const switching = switchingTopology();
+    const next = id ? newestCallTopology(id, true) : null;
     const mine = callTopology();
-    if (!next || (mine && next.at <= mine.at)) return;
+    if (!id || !joined || switching || !next || (mine?.by && next.at <= mine.at)) return;
     setCallTopology(next);
     publishActivity();
     if (next.mode !== topology()) void reconnectSession(next.mode);
@@ -1157,7 +1339,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     if (backend) {
       backend.destroy().catch((err) => console.error('call: backend destroy', err));
       backend = null;
-      backendJoined = false;
+      setBackendJoined(false);
     }
     mesh?.close();
     mesh = null;
@@ -1175,6 +1357,8 @@ export function createCallStore(deps: ModuleStoreDeps) {
     setTopology('mesh');
     setCallTopology(null);
     setSwitchingTopology(false);
+    joiningSession = false;
+    switchProblem = null;
     setHasSessionBackend(false);
     qualityIsManual = false;
     anchor = undefined;
@@ -1448,7 +1632,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
         : undefined,
       onTrackChanged: (kind, track) => {
         if (backend) {
-          if (backendJoined) void backend.replaceTrack(kind, track);
+          if (backendJoined()) void backend.replaceTrack(kind, track);
         } else void mesh?.setOutboundTrack(kind, track);
       },
       onStateChanged: (state) => {
@@ -1518,12 +1702,9 @@ export function createCallStore(deps: ModuleStoreDeps) {
       // setting, which may have changed since, so the call cannot split.
       const adopted = newestCallTopology(id);
       setCallTopology(adopted);
+      joiningSession = true;
       try {
-        // The same ICE servers the mesh path would use.
-        const created = (await deps.createBackend(id, {
-          iceServers: iceServers(),
-          ...(adopted ? { topology: adopted.mode } : {}),
-        })) as CallBackend;
+        const created = (await deps.createBackend(id, sessionOptions(adopted?.mode))) as CallBackend;
         // Left while the session was being built: `teardown` has run and will not see this one.
         if (controller !== started) {
           created.destroy().catch((err) => console.error('call: backend destroy', err));
@@ -1531,6 +1712,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
         }
         backend = created;
       } catch (err) {
+        joiningSession = false;
         console.error('call: createBackend failed', err);
         scope.dispose();
         setProblem('Could not connect to the call server.');
@@ -1554,13 +1736,19 @@ export function createCallStore(deps: ModuleStoreDeps) {
       rebuildTiles();
 
       // Acquire media, then join the backend with the local stream.
-      await acquire();
-      if (controller !== started) return;
-      const localStream = started.displayStream() ?? started.localStream() ?? new MediaStream();
-      await session.join(localStream);
+      joiningSession = true;
+      try {
+        await acquire();
+        if (controller !== started) return;
+        const localStream = started.displayStream() ?? started.localStream() ?? new MediaStream();
+        await session.join(localStream);
+      } finally {
+        if (controller === started) joiningSession = false;
+      }
       // Left while joining: `teardown` has destroyed the session and nulled `backend`.
       if (backend !== session) return;
-      backendJoined = true;
+      // Joined last, so the effect following a switch — which waits on this — sees a whole session.
+      setBackendJoined(true);
 
       // Seed remote streams from anyone already in the room.
       syncStreams();

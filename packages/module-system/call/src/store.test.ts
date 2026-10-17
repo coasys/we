@@ -34,6 +34,72 @@ function makeStore() {
 }
 
 /**
+ * Signals and effects with dependency tracking — the part of Solid's `createSignal`/`createEffect`
+ * a store's correctness depends on, and nothing more.
+ *
+ * An effect subscribes to exactly the signals it read on its last run, so a read skipped by an early
+ * return is not a dependency; a write re-runs only the effects that read the signal, and only when
+ * the value changed (`===`, Solid's default). Writes made while effects are running are queued and
+ * flushed after them, as Solid batches.
+ */
+function trackingReactivity() {
+  type Runner = { run: () => void; deps: Set<Set<Runner>> };
+  let running: Runner | null = null;
+  const queue = new Set<Runner>();
+  let flushing = false;
+  const flush = () => {
+    if (flushing) return;
+    flushing = true;
+    try {
+      while (queue.size) {
+        const [next] = queue;
+        queue.delete(next!);
+        next!.run();
+      }
+    } finally {
+      flushing = false;
+    }
+  };
+  const signal = <T>(initial: T): [() => T, (next: T) => void] => {
+    let value = initial;
+    const subscribers = new Set<Runner>();
+    return [
+      () => {
+        if (running) {
+          subscribers.add(running);
+          running.deps.add(subscribers);
+        }
+        return value;
+      },
+      (next: T) => {
+        if (next === value) return;
+        value = next;
+        for (const runner of subscribers) queue.add(runner);
+        flush();
+      },
+    ];
+  };
+  const effect = (fn: () => void) => {
+    const runner: Runner = {
+      deps: new Set(),
+      run: () => {
+        for (const subscribers of runner.deps) subscribers.delete(runner);
+        runner.deps.clear();
+        const outer = running;
+        running = runner;
+        try {
+          fn();
+        } finally {
+          running = outer;
+        }
+      },
+    };
+    runner.run();
+  };
+  return { signal, effect };
+}
+
+/**
  * A `MediaStream` a media controller can drive, for a harness whose `media` kernel answers.
  *
  * The test-setup stub covers what the *mesh* constructs; the controller also reads tracks by kind,
@@ -279,12 +345,23 @@ describe('transport and device lifetime', () => {
       devices?: { deviceId: string; kind: 'audioinput' | 'videoinput'; label: string; groupId: string }[];
       /** Makes the session the host hands over for each call, as the AD4M host does; its arguments land in `backendArgs`. */
       backend?: () => unknown;
+      /**
+       * Signals and effects that track what they read, as the host's Solid ones do, with presence a
+       * signal too — instead of effects re-run by hand on every roster change. For a test about which
+       * effect re-runs *when*: re-running everything by hand cannot tell an effect that subscribed to
+       * presence from one that did not.
+       */
+      reactive?: boolean;
     } = {},
   ) {
-    const signal = <T>(initial: T): [() => T, (next: T) => void] => {
-      let value = initial;
-      return [() => value, (next: T) => (value = next)];
-    };
+    const tracked = options.reactive ? trackingReactivity() : null;
+    const signal =
+      tracked?.signal ??
+      (<T>(initial: T): [() => T, (next: T) => void] => {
+        let value = initial;
+        return [() => value, (next: T) => (value = next)];
+      });
+    const [rosterVersion, setRosterVersion] = tracked ? tracked.signal(0) : [() => 0, () => {}];
 
     let disposed = 0;
     /** Everything the store put on the signalling channel, so the warm-up send can be asserted on. */
@@ -337,6 +414,11 @@ describe('transport and device lifetime', () => {
       decided it was time to look again.
     */
     const effects: Array<() => void> = [];
+    /** Presence changed: re-run every effect by hand, or, when tracked, tell whoever subscribed. */
+    const refresh = () => {
+      if (tracked) setRosterVersion(rosterVersion() + 1);
+      else for (const run of effects) run();
+    };
     let me: string | null = 'did:test:me';
     /*
       What the store told the `media` kernel it is capturing, in order. The microphone the controller
@@ -360,6 +442,7 @@ describe('transport and device lifetime', () => {
           }
         : {}),
       effect: (fn: () => void) => {
+        if (tracked) return tracked.effect(fn);
         effects.push(fn);
         fn();
       },
@@ -382,7 +465,7 @@ describe('transport and device lifetime', () => {
       kernels: {
         ephemeral: () => (options.personal ? null : scope),
         presence: {
-          peers: () => roster,
+          peers: () => (rosterVersion(), roster),
           setActivity: (activity: Record<string, unknown>) => void activities.push(activity),
           clearActivity: () => {},
         },
@@ -453,7 +536,7 @@ describe('transport and device lifetime', () => {
       /** Somebody else joins the call this store is in, and the roster catches up. */
       joinedBy: (agentId: string) => {
         roster = [...roster, { agentId, activities: [{ type: 'call', id: store.callId() ?? '' }] }];
-        for (const run of effects) run();
+        refresh();
       },
       /** Somebody publishes a call activity for `callId` carrying `fields`, replacing their last one. */
       publishesCall: (agentId: string, callId: string, fields: Record<string, unknown> = {}) => {
@@ -461,7 +544,7 @@ describe('transport and device lifetime', () => {
           ...roster.filter((peer) => peer.agentId !== agentId),
           { agentId, activities: [{ type: 'call', id: callId, ...fields }] },
         ];
-        for (const run of effects) run();
+        refresh();
       },
       /**
        * Somebody stops heartbeating, without ever saying they left.
@@ -473,7 +556,7 @@ describe('transport and device lifetime', () => {
        */
       fadedTo: (agentId: string, liveness: string) => {
         roster = roster.map((peer) => (peer.agentId === agentId ? { ...peer, liveness } : peer));
-        for (const run of effects) run();
+        refresh();
       },
       /** The pair that was built last reaches a connection state, as the browser would report it. */
       connectionBecomes: (state: RTCPeerConnectionState) => {
@@ -961,6 +1044,7 @@ describe('transport and device lifetime', () => {
 
       expect(backendArgs[0]?.[1]).toEqual({
         iceServers: [{ urls: 'turn:relay.example.org:3478', username: 'alice', credential: 's3cret' }],
+        datasetUri: 'inmemory://ds',
       });
     });
 
@@ -999,6 +1083,135 @@ describe('transport and device lifetime', () => {
       fire('participant-updated', { did: 'did:someone', stream: rebuilt });
 
       expect(streamOf()).toBe(rebuilt);
+    });
+
+    /*
+      A remote track and the stream holding it, as a browser hands them over: both are event targets,
+      and a track's `muted` flips on its own as RTP stops and starts — with nothing told about it but
+      the track's own listeners.
+
+      What the SDK's SFU path does on a reconnect is exactly this: the participant keeps the one
+      `MediaStream` it has had all call, a fresh track is `addTrack`ed onto it (which fires no
+      `addtrack` — only the engine's own additions do), `stream-added` is emitted while that track is
+      still muted, and the track unmutes a moment later when packets arrive, emitting nothing.
+    */
+    function remoteTrack(kind: 'audio' | 'video', muted = false) {
+      const track = new EventTarget() as EventTarget & { kind: string; readyState: string; muted: boolean };
+      Object.assign(track, { kind, readyState: 'live', muted });
+      return {
+        track,
+        mute: () => {
+          track.muted = true;
+          track.dispatchEvent(new Event('mute'));
+        },
+        unmute: () => {
+          track.muted = false;
+          track.dispatchEvent(new Event('unmute'));
+        },
+        end: () => {
+          track.readyState = 'ended';
+          track.dispatchEvent(new Event('ended'));
+        },
+      };
+    }
+    function remoteStream(...tracks: object[]) {
+      const held = [...tracks];
+      const stream = new EventTarget() as EventTarget & Record<string, unknown>;
+      Object.assign(stream, {
+        getTracks: () => [...held],
+        getVideoTracks: () => held.filter((t) => (t as { kind: string }).kind === 'video'),
+        getAudioTracks: () => held.filter((t) => (t as { kind: string }).kind === 'audio'),
+        addTrack: (t: object) => void (held.includes(t) || held.push(t)),
+        removeTrack: (t: object) => void held.splice(held.indexOf(t), held.includes(t) ? 1 : 0),
+      });
+      return stream as unknown as MediaStream;
+    }
+
+    describe('a picture that stops and starts without the session saying so', () => {
+      async function withStream(stream: MediaStream) {
+        const harness = await inCallWith('did:someone');
+        harness.publishesCall('did:someone', harness.store.callId() as string, {
+          media: { audioEnabled: true, videoEnabled: true, screenShareEnabled: false },
+        });
+        harness.session.participants = [{ agentDid: 'did:someone', stream }];
+        harness.fire('stream-added', stream);
+        const tile = () => harness.store.tiles().find((t: { id: string }) => t.id === 'did:someone');
+        const picture = () =>
+          (harness.store.tileStates().find((t: { id: string }) => t.id === 'did:someone') as { hasPicture: boolean })
+            .hasPicture;
+        return { ...harness, tile, picture };
+      }
+
+      it('shows the picture again when a muted track unmutes', async () => {
+        const video = remoteTrack('video');
+        const { picture, tile } = await withStream(remoteStream(video.track));
+        const before = tile();
+        expect(picture()).toBe(true);
+
+        video.mute();
+        expect(picture(), 'no packets: no picture').toBe(false);
+        video.unmute();
+        expect(picture(), 'packets again, with nobody having clicked anything').toBe(true);
+        expect(tile(), 'the same stream, so the same tile — the video is not remounted').toBe(before);
+      });
+
+      it('follows a track added to a stream the tile already holds, through the SFU’s reconnect', async () => {
+        const stale = remoteTrack('video');
+        const stream = remoteStream(stale.track);
+        const { session, fire, picture, tile } = await withStream(stream);
+        const before = tile();
+
+        // The SFU dropped the peer: the old track stops arriving and is replaced.
+        stale.mute();
+        stale.end();
+        stream.removeTrack(stale.track as unknown as MediaStreamTrack);
+        const fresh = remoteTrack('video', true);
+        stream.addTrack(fresh.track as unknown as MediaStreamTrack);
+        session.participants = [{ agentDid: 'did:someone', stream }];
+        fire('stream-added', stream, fresh.track);
+        expect(picture(), 'the fresh track has not received anything yet').toBe(false);
+
+        fresh.unmute();
+        expect(picture()).toBe(true);
+        expect(tile()).toBe(before);
+      });
+
+      it('follows a track the browser adds to the stream itself', async () => {
+        const stream = remoteStream();
+        const { picture } = await withStream(stream);
+        expect(picture()).toBe(false);
+
+        const video = remoteTrack('video');
+        stream.addTrack(video.track as unknown as MediaStreamTrack);
+        stream.dispatchEvent(Object.assign(new Event('addtrack'), { track: video.track }));
+        expect(picture()).toBe(true);
+      });
+
+      it('redraws on the session’s own event when the stream object is the same', async () => {
+        const stream = remoteStream();
+        const { session, fire, picture, tile } = await withStream(stream);
+        const before = tile();
+
+        stream.addTrack(remoteTrack('video').track as unknown as MediaStreamTrack);
+        session.participants = [{ agentDid: 'did:someone', stream }];
+        fire('participant-updated', { did: 'did:someone', stream });
+
+        expect(picture()).toBe(true);
+        expect(tile()).toBe(before);
+      });
+
+      it('stops listening to a stream once its participant has left', async () => {
+        const video = remoteTrack('video');
+        const stream = remoteStream(video.track);
+        const { store, session, fire } = await withStream(stream);
+        session.participants = [];
+        fire('participant-left', { did: 'did:someone' });
+
+        // Every rebuild publishes a fresh list, so a listener left behind shows as a new one.
+        const seen = store.tileStates();
+        video.mute();
+        expect(store.tileStates(), 'nothing rebuilt for a stream nobody holds').toBe(seen);
+      });
     });
 
     it('ignores a session still emitting after the call is left', async () => {
@@ -1072,9 +1285,11 @@ describe('transport and device lifetime', () => {
         fire('topology-changed', 'mesh');
         const id = store.callId() as string;
 
-        publishesCall('did:someone', id, { topology: { mode: 'sfu', at: Date.now() + 1000, by: 'did:someone' } });
+        // The same switch, republished: it keeps the time it was made.
+        const switched = { mode: 'sfu', at: Date.now() + 1000, by: 'did:someone' };
+        publishesCall('did:someone', id, { topology: switched });
         await settle();
-        publishesCall('did:someone', id, { topology: { mode: 'sfu', at: Date.now() + 1000, by: 'did:someone' } });
+        publishesCall('did:someone', id, { topology: switched });
         await settle();
 
         expect(backendArgs.map((args) => (args[1] as { topology?: string }).topology)).toEqual([undefined, 'sfu']);
@@ -1098,6 +1313,151 @@ describe('transport and device lifetime', () => {
         await store.switchTopology('sfu');
 
         expect(backendArgs).toHaveLength(1);
+      });
+
+      /*
+        Everyone else in the call, under the host's real reactivity.
+
+        The tests above re-run every effect by hand whenever presence changes, which is exactly what
+        hid the failure these are about: the effect that follows somebody else's switch returned
+        early on a plain variable before it had read presence, so in Solid it was subscribed to
+        `callId` and nothing else — and a switch published afterwards never reached it. Whoever
+        pressed "Switch to mesh" reconnected alone, and switching back worked because the others had
+        never left.
+
+        So these run on tracked signals, with sessions that behave as the SDK's do: each joins on the
+        topology it was asked for (the space's, the SFU, when none) and says so once it has.
+      */
+      describe('as everyone else in the call sees a switch', () => {
+        const deferred = () => {
+          let release!: () => void;
+          const promise = new Promise<void>((resolve) => (release = resolve));
+          return { promise, release };
+        };
+        const topologies = (args: unknown[][]) => args.map((a) => (a[1] as { topology?: string }).topology);
+        const switchTo = (mode: string, at = Date.now() + 1000) => ({ topology: { mode, at, by: 'did:someone' } });
+
+        function switchableCall(
+          behaviour: { build?: (n: number) => Promise<void> | void; join?: (n: number) => Promise<void> | void } = {},
+        ) {
+          const sessions: ReturnType<typeof fakeSession>[] = [];
+          let built = 0;
+          const harness = callable({
+            reactive: true,
+            backend: async () => {
+              const n = built++;
+              const asked = (harness.backendArgs[n]?.[1] as { topology?: string } | undefined)?.topology ?? 'sfu';
+              await behaviour.build?.(n);
+              const fake = fakeSession();
+              const join = fake.session.join;
+              fake.session.join = async (stream: MediaStream) => {
+                await behaviour.join?.(n);
+                await join(stream);
+                fake.fire('topology-changed', asked);
+              };
+              sessions[n] = fake;
+              return fake.session;
+            },
+          });
+          return { ...harness, sessions };
+        }
+
+        it('follows a switch published after it joined', async () => {
+          const { store, backendArgs, publishesCall } = switchableCall();
+          await store.startCall();
+          await settle();
+
+          publishesCall('did:someone', store.callId() as string, switchTo('mesh'));
+          await settle();
+
+          expect(topologies(backendArgs)).toEqual([undefined, 'mesh']);
+          expect(store.topology()).toBe('mesh');
+        });
+
+        it('follows a switch published while its own session was still being built', async () => {
+          const gate = deferred();
+          const { store, backendArgs, publishesCall } = switchableCall({
+            build: (n) => (n === 0 ? gate.promise : undefined),
+          });
+          const joining = store.startCall();
+          await settle();
+
+          // Stamped as it would be: before this agent's session exists, so before anything it stamps.
+          publishesCall('did:someone', store.callId() as string, switchTo('mesh', Date.now() - 1));
+          await settle();
+          gate.release();
+          await joining;
+          await settle();
+
+          expect(topologies(backendArgs)).toEqual([undefined, 'mesh']);
+          expect(store.topology()).toBe('mesh');
+          expect(store.switchingTopology()).toBe(false);
+        });
+
+        it('follows a switch published while its session was joining', async () => {
+          const gate = deferred();
+          const { store, backendArgs, sessions, publishesCall } = switchableCall({
+            join: (n) => (n === 0 ? gate.promise : undefined),
+          });
+          const joining = store.startCall();
+          await settle();
+
+          publishesCall('did:someone', store.callId() as string, switchTo('mesh', Date.now() - 1));
+          await settle();
+          gate.release();
+          await joining;
+          await settle();
+
+          expect(topologies(backendArgs)).toEqual([undefined, 'mesh']);
+          expect(sessions[0]!.session.destroyed).toBe(true);
+          expect(sessions[1]!.session.joinedWith, 'joined with the devices, not an empty stream').toBe(
+            sessions[0]!.session.joinedWith,
+          );
+          expect(store.topology()).toBe('mesh');
+        });
+
+        it('builds every session in the call’s own space, wherever the agent is looking', async () => {
+          const { store, backendArgs, publishesCall } = switchableCall();
+          await store.startCall();
+          await settle();
+          publishesCall('did:someone', store.callId() as string, switchTo('mesh'));
+          await settle();
+
+          // The host's factory otherwise reads whatever space is on screen, which after a move is
+          // somebody else's neighbourhood: a follower would reconnect into a call nobody is in.
+          expect(backendArgs.map((a) => (a[1] as { datasetUri?: string }).datasetUri)).toEqual([
+            'inmemory://ds',
+            'inmemory://ds',
+          ]);
+        });
+
+        for (const failing of ['build', 'join'] as const) {
+          it(`is left on a working session, saying why, when the new one cannot ${failing}`, async () => {
+            const fail = (n: number) => {
+              if (n === 1) throw new Error(`no ${failing}`);
+            };
+            const { store, backendArgs, sessions } = switchableCall({ [failing]: fail });
+            await store.startCall();
+            await settle();
+            const devices = sessions[0]!.session.joinedWith;
+
+            await store.switchTopology('mesh');
+            await settle();
+
+            expect(store.problem(), 'the person is told').toMatch(/mesh/);
+            expect(store.switchingTopology()).toBe(false);
+            expect(topologies(backendArgs), 'back on the topology that worked').toEqual([undefined, 'mesh', 'sfu']);
+            expect(sessions[2]!.session.joinedWith).toBe(devices);
+            expect(store.topology()).toBe('sfu');
+
+            // And it can be asked again, which clears the message once it works.
+            await store.switchTopology('mesh');
+            await settle();
+            expect(topologies(backendArgs)).toEqual([undefined, 'mesh', 'sfu', 'mesh']);
+            expect(store.topology()).toBe('mesh');
+            expect(store.problem()).toBeNull();
+          });
+        }
       });
     });
   });

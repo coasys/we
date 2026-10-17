@@ -30,10 +30,17 @@ function toIceServer(server: RTCIceServer): IceServer {
   };
 }
 
-/** What the call module asks of a session: its ICE servers, and the topology a running call is on. */
+/** What the call module asks of a session: its ICE servers, the topology a running call is on, and the space it is in. */
 export interface CallSessionOptions {
   iceServers?: RTCIceServer[];
   topology?: 'mesh' | 'sfu';
+  /**
+   * The shared uri of the space the call is in. Without it the session is built in whichever space
+   * is on screen — the call's own when somebody joins, but not when a participant who has moved to
+   * another space follows a topology switch: that reconnected them into a call in the wrong
+   * neighbourhood, where nobody else was.
+   */
+  datasetUri?: string;
 }
 
 /**
@@ -56,15 +63,27 @@ export interface CallSessionOptions {
  * @param _getBackendClient  Reactive accessor for the `Ad4mClient` — reserved for future use.
  * @param getCurrentDataset  Reactive accessor for the current dataset (perspective).
  * @param _getSelfId  Reactive accessor for the current agent DID — reserved for future use.
+ * @param getDataset  The joined dataset with a shared uri, for a session asked for in a named space
+ *   (`options.datasetUri`). Absent, every session is built in the current dataset.
  */
 export function createCallSessionFactory(
   _getBackendClient: () => unknown,
   getCurrentDataset: () => DatasetHandle | null,
   _getSelfId: () => string | null,
+  getDataset?: (sharedUri: string) => DatasetHandle | null,
 ): (callId: string, options?: CallSessionOptions) => Promise<Session> {
   return async (callId: string, options?: CallSessionOptions) => {
-    const dataset = getCurrentDataset();
-    if (!dataset) throw new Error('Cannot create call session — no active dataset');
+    const named = options?.datasetUri && getDataset ? options.datasetUri : null;
+    // A call in a named space is built there or not at all: falling back to the space on screen is
+    // the very mistake the name exists to prevent.
+    const dataset = named ? getDataset!(named) : getCurrentDataset();
+    if (!dataset) {
+      throw new Error(
+        named
+          ? `Cannot create call session — the call's space (${named}) is not joined`
+          : 'Cannot create call session — no active dataset',
+      );
+    }
 
     const proxy = dataset as PerspectiveProxy;
     const neighbourhoodUrl = proxy.sharedUrl ?? '';
