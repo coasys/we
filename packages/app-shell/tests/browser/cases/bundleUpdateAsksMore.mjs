@@ -17,7 +17,10 @@ export async function check({ count, click }) {
   await says('New in this version', 'that some of it is new');
   await says('It will also be able to', 'what more it will be able to do');
   await says('See who is in this space', 'the new capability');
-  await says('It also turns on', 'which more modules it turns on');
+  // "Uses", not "turns on": a module already on is new to the agreement and turns nothing on. Whether
+  // one is off is said by the install's own "It turns on" list.
+  await says('It also uses', 'which more modules it uses');
+  if (await count('text=It also turns on')) problems.push('it says it turns on a module that may already be on');
   await says('Calls', 'the new module');
   await says('It also brings kinds of record', 'which new record types it brings');
   await says('Survey', 'the new record type');

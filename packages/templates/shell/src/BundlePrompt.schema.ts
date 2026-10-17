@@ -194,7 +194,7 @@ const newInVersion: SchemaNode = {
                   children: ['New in this version — the one you have was never agreed to these'],
                 },
                 listSection('It will also be able to', `${pending}.newInVersion.capabilities`, 'plus', 'warning-text'),
-                listSection('It also turns on', `${pending}.newInVersion.modules`, 'toggle-right', 'warning-text'),
+                listSection('It also uses', `${pending}.newInVersion.modules`, 'puzzle-piece', 'warning-text'),
                 listSection(
                   'It also brings kinds of record',
                   `${pending}.newInVersion.recordTypes`,
