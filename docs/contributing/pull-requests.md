@@ -105,9 +105,30 @@ See [ad4m and deploys](./ad4m-and-deploys.md).
 
 ## Stacked PRs
 
-When a PR builds on another that has not merged, base it on that branch and say so at the top: "Stacked
-on #224. Review only the last commit." Merge the stack from the bottom, retargeting each PR at `dev`
-as the one below it merges.
+When a PR builds on another that has not merged, base it on that branch and start the description with
+this block, naming the PR whose branch it is:
+
+```markdown
+> [!IMPORTANT]
+>
+> ### Stacked on: #<N>
+>
+> Review only the last commit.
+```
+
+The line under the heading is yours: say what a reviewer of this PR should and should not read, or
+where it merges if that is not `dev`. A PR paired with ad4m puts the pairing block first and this one
+straight after it, with a blank line between. The PR template carries the block, commented out.
+
+GitHub shows a PR's base branch on its own page, as a branch name, and nowhere in the list. So the
+`PR stacking` workflow labels every PR based on anything but `dev` or `main` as `stacked`, which the
+list shows beside the title, and checks the block against the base. **`PR stacking / Stacked on the PR
+it names`** fails when a stacked PR has no block, when the block names a PR whose branch is not the
+base, when that PR has merged or closed, and when a PR that now targets `dev` still has one. It says
+which and gives the block to paste. Editing the description, or retargeting the PR, re-runs it.
+
+Merge the stack from the bottom. When the PR below merges and its branch is deleted, GitHub retargets
+the next one at `dev`; remove its block then. The label goes by itself.
 
 ## Merging
 

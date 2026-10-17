@@ -13,6 +13,18 @@ See docs/contributing/ad4m-and-deploys.md.
 > ### Paired with: coasys/ad4m#1187
 -->
 
+<!--
+Based on another PR's branch rather than dev? Uncomment the block below and set that PR's number.
+It goes first, or straight after the pairing block above. A check fails while it disagrees with
+the base branch. See docs/contributing/pull-requests.md.
+-->
+<!--
+> [!IMPORTANT]
+> ### Stacked on: #312
+>
+> Review only the last commit.
+-->
+
 ## What
 
 <!-- What merging this changes, in a few bullets. -->

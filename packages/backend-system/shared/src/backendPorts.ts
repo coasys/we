@@ -8,6 +8,7 @@
  * named, a complete backend is exactly: these ports plus the query adapter — and the boot suite
  * doubles as the conformance test.
  */
+import type { CallPort } from './call';
 import type { DatasetHandle, RendererDataBindings } from './dataSource';
 import type { EphemeralPort } from './ephemeral';
 import type { FlowPort } from './flows';
@@ -242,6 +243,11 @@ export interface BackendPorts {
    * backend that cannot answer omits it, and a surface asking falls back to what it can read.
    */
   references?: ReferencePort;
+  /**
+   * Audio and video calls run by the backend. Optional: a backend without one omits it, and the call
+   * module cannot build a session there.
+   */
+  call?: CallPort;
 }
 
 /**
