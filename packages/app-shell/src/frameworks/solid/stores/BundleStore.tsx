@@ -22,6 +22,7 @@
  */
 import { selectBootSnapshot, writeBootSnapshot } from '@shared/bundles/bootSnapshot';
 import { bundlePieces } from '@shared/bundles/bundlePieces';
+import { type BundleGrant, grantOf, whatIsNew } from '@shared/bundles/consent';
 import {
   installedEntry,
   readInstalledBundles,
@@ -65,6 +66,13 @@ export interface PendingBundleInstall {
   fileName: string;
   /** The version already installed, when this is an update; empty otherwise. */
   updates: string;
+  /**
+   * On an update, what this version asks for that the installed one was not agreed to — capabilities
+   * in the words a person reads, modules by name, record types — each empty when nothing is new. Null
+   * on a first install, and on an update of something installed before agreements were recorded,
+   * where the whole list is shown as it always was.
+   */
+  newInVersion: { capabilities: string[]; modules: string[]; recordTypes: string[] } | null;
   /** What it adds, a sentence each. */
   adds: string[];
   capabilities: string[];
@@ -183,7 +191,12 @@ export function BundleStoreProvider(props: ParentProps) {
     if (json) writeBootSnapshot(session.me()?.did, JSON.parse(json));
   });
 
-  const [pending, setPending] = createSignal<{ bundle: Bundle; view: PendingBundleInstall } | null>(null);
+  const [pending, setPending] = createSignal<{
+    bundle: Bundle;
+    view: PendingBundleInstall;
+    /** What confirming agrees to, kept on the install record. */
+    grant: BundleGrant;
+  } | null>(null);
   const [busy, setBusy] = createSignal(false);
 
   const installedList = () => readInstalledBundles(datasetStore.agentSettings()?.installedBundles);
@@ -354,8 +367,10 @@ export function BundleStoreProvider(props: ParentProps) {
 
     const recordTypes = judged.adds.recordTypes;
     const previous = installedList().find((entry) => entry.id === bundle.id);
+    const news = previous ? whatIsNew(judged, previous.granted) : null;
     setPending({
       bundle,
+      grant: grantOf(judged),
       view: {
         name: bundle.name,
         icon: bundle.icon || 'app-window',
@@ -363,6 +378,11 @@ export function BundleStoreProvider(props: ParentProps) {
         author: bundle.author?.name ?? '',
         fileName: file.name,
         updates: previous?.version ?? '',
+        newInVersion: news && {
+          capabilities: news.capabilities,
+          modules: news.modules.map((id) => moduleRegistry.get(id)?.definition.manifest.name ?? id),
+          recordTypes: news.recordTypes,
+        },
         adds,
         capabilities: judged.capabilities,
         blocked: judged.blocked,
@@ -405,7 +425,12 @@ export function BundleStoreProvider(props: ParentProps) {
 
       for (const id of judgeModulesToTurnOn(bundle)) await spaceStore.setModuleInstalled(id, true);
 
-      const entry = installedEntry(pieces, { name: bundle.name, icon: view.icon, at: new Date().toISOString() });
+      const entry = installedEntry(pieces, {
+        name: bundle.name,
+        icon: view.icon,
+        at: new Date().toISOString(),
+        granted: request.grant,
+      });
       await datasetStore.updateAgentSettings({
         installedBundles: JSON.stringify(
           withInstalled(installedList(), { ...entry, ...(themeId ? { theme: themeId } : {}) }),

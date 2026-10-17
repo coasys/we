@@ -10,6 +10,7 @@
 import type { BundleRecordType } from '@we/schema-shared';
 
 import type { BundlePieces } from './bundlePieces';
+import type { BundleGrant } from './consent';
 
 export interface InstalledBundle {
   id: string;
@@ -29,6 +30,8 @@ export interface InstalledBundle {
   /** Kept whole: a space set up later needs the definitions, and the file is gone by then. */
   recordTypes: BundleRecordType[];
   display?: { spaces: 'ours' | 'theirs'; template?: string };
+  /** What the person agreed to when installing it — what a later version is compared against. */
+  granted?: BundleGrant;
 }
 
 export function readInstalledBundles(raw: string | undefined | null): InstalledBundle[] {
@@ -55,7 +58,7 @@ export function withoutInstalled(list: readonly InstalledBundle[], id: string): 
 /** The entry an install of these pieces writes. */
 export function installedEntry(
   pieces: BundlePieces,
-  meta: { name: string; icon: string; at: string },
+  meta: { name: string; icon: string; at: string; granted?: BundleGrant },
 ): InstalledBundle {
   return {
     id: pieces.bundleId,
@@ -70,6 +73,7 @@ export function installedEntry(
     sections: pieces.sections.map((section) => section.id),
     recordTypes: pieces.recordTypes,
     ...(pieces.display ? { display: pieces.display } : {}),
+    ...(meta.granted ? { granted: meta.granted } : {}),
   };
 }
 

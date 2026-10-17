@@ -1,4 +1,4 @@
-import { readBootSnapshot } from '@shared/bundles/bootSnapshot';
+import { forgetBootSnapshot, readBootSnapshot } from '@shared/bundles/bootSnapshot';
 import { appSpaceTemplate, followedTemplateId } from '@shared/bundles/display';
 import { displaySourceOf, readInstalledBundles } from '@shared/bundles/installedBundles';
 import { appTemplateRegistry, DEFAULT_APP_ID, resolveAppTemplate } from '@shared/registries/appTemplates';
@@ -247,6 +247,11 @@ export interface TemplateStore {
   safeMode: Accessor<SafeModeState>;
   /** Leave safe mode, reloading with the templates and themes that were chosen. */
   leaveSafeMode: () => void;
+  /**
+   * Leave safe mode into another app — WE's own, or another of the agent's. The way out of an app
+   * that hides every way out of it, which leaving into it again would only reopen.
+   */
+  leaveSafeModeInto: (appId: string) => Promise<void>;
 
   // Loading state
   operationLoading: Accessor<string | null>;
@@ -470,6 +475,17 @@ export function TemplateStoreProvider(props: ParentProps) {
   );
   function setAppTemplate(id: string): Promise<boolean> {
     return datasetStore.updateAgentSettings({ appTemplateId: id === DEFAULT_APP_ID ? '' : id });
+  }
+  async function leaveSafeModeInto(appId: string): Promise<void> {
+    if (typeof appId !== 'string' || !appTemplateOptions().some((option) => option.value === appId)) return;
+    if (!(await setAppTemplate(appId))) {
+      toastService.error('Could not change the app, so safe mode stays on');
+      return;
+    }
+    // The device remembers the app it last drew, for the next reload's first frame. Forgotten, so
+    // that frame cannot be the app just left — the one most likely to be why safe mode is on.
+    forgetBootSnapshot(session.me()?.did);
+    leaveSafeMode();
   }
 
   const toSwitcherItems = (templates: TemplateSchema[], prefix = ''): TemplateSwitcherItem[] =>
@@ -2062,6 +2078,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     spaceTemplatePending,
     safeMode: () => safe,
     leaveSafeMode,
+    leaveSafeModeInto,
 
     // Loading state
     operationLoading,

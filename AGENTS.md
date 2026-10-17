@@ -2898,7 +2898,7 @@ AppStore:
 
 BundleStore:
 - State:
-  - pendingInstall: { name, icon, version, author, fileName, updates, adds, capabilities, blocked, modulesToTurnOn, modulesNotInBuild, recordTypes, needsSpace, display } | null — the app an install prompt is asking about, everything already in the words a person reads. `author` is what the file claims and nothing attests to it; `updates` is the version already installed, empty for a first install; `needsSpace` says it brings record types or sections, so the prompt lists spaceChoices; `display` is `ours` (every space opens in the app’s template while it is in use) or `theirs`. Host chrome only: an app must never draw the prompt vouching for it
+  - pendingInstall: { name, icon, version, author, fileName, updates, newInVersion, adds, capabilities, blocked, modulesToTurnOn, modulesNotInBuild, recordTypes, needsSpace, display } | null — the app an install prompt is asking about, everything already in the words a person reads. `author` is what the file claims and nothing attests to it; `updates` is the version already installed, empty for a first install; `newInVersion` ({ capabilities, modules, recordTypes }) is, on an update, what this version asks for that the installed one was never agreed to — each empty when nothing is, and null on a first install or where no agreement was recorded; `needsSpace` says it brings record types or sections, so the prompt lists spaceChoices; `display` is `ours` (every space opens in the app’s template while it is in use) or `theirs`. Host chrome only: an app must never draw the prompt vouching for it
   - installed: { id, name, icon, version, from, setUp }[] — the apps this agent has installed (`from: file`) and those built into the deployment (`from: deployment`, which cannot be removed). `setUp` says whether the spaces this agent runs have the record types and sections the app needs: `done` (all of them), `available` (offer openSetUp) or `none` (it needs nothing, or this agent runs no space)
   - busy: boolean — an install, a set-up or a removal is in flight
   - spaceChoices: { id, name, avatar, chosen, done, here }[] — the spaces this agent runs, for the app the install prompt or the set-up picker is about; empty with neither open. A checklist: `chosen` is ticked (toggleSpace), `done` is already set up and has nothing to tick, `here` is the space on screen — ticked to start with, since that is where somebody asked from
@@ -3578,6 +3578,7 @@ TemplateStore:
   - publishToMarketplace(options: { name, description, icon?, themeId?, slug?, screenshots: File[] }): publishes the current template to the marketplace under those details. Resolves true on success
   - refreshSpaceTemplates(): re-reads the current space's templates. The list follows the space on its own; call this after a publish the subscription might have missed
   - leaveSafeMode(): leaves safe mode and reloads with the templates and themes that were chosen
+  - leaveSafeModeInto(appId: string): leaves safe mode into another app — a value from appTemplateOptions — chosen first, everywhere, as setAppTemplate does. The way out of an app that hides every way out of it. Does nothing for an id that is not one of the options
 
 ThemeStore:
 - State:

@@ -52,6 +52,15 @@ agent's library, turns its modules on, records what it wrote in `AgentSettings.i
 makes its app the one in use. What an app brought is that app's: its templates are read-only, so
 editing one forks it, and it is removed with the app.
 
+**Installing a newer version** updates in place, and asks first like any install. An update must
+not inherit consent it was never given, so the install record keeps what was agreed to — the
+capability groups, module ids and record type names the prompt showed (`granted`, see
+`shared/bundles/consent.ts`) — and the prompt for a newer version says what it asks for beyond them
+on its own, before the full list, or that it asks for nothing new. Both sides come from walking the
+templates, never from what a file says about itself, and groups are compared rather than their
+wording, so rewording one never makes it look new. An install recorded before grants were kept has
+nothing to compare against, and its update shows the full list as before.
+
 ## Whose is what
 
 | Piece                       | Belongs to | So                                                                        |
@@ -97,7 +106,7 @@ space's own templates and the agent's override for it still has the last word.
 
 ## Not yet
 
-Bundles from the marketplace, with an author behind them. Upgrades and re-consent (an install of a
-newer version is an update in place today, and says so). Subscribed versus forked. Grants narrower than
+Bundles from the marketplace, with an author behind them, and updates that reach a subscriber
+without a file being installed again. Subscribed versus forked. Grants narrower than
 a tier. Bundles at the space-template and section layer — the format leaves room, since an app is
 optional.

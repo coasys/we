@@ -1076,6 +1076,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
       },
       actions: {
         leaveSafeMode: '(): leaves safe mode and reloads with the templates and themes that were chosen',
+        leaveSafeModeInto:
+          '(appId: string): leaves safe mode into another app — a value from appTemplateOptions — chosen first, everywhere, as setAppTemplate does. The way out of an app that hides every way out of it. Does nothing for an id that is not one of the options',
         deleteTemplate: '(templateId: string): permanently deletes a custom template from the library',
         deleteRefusedTemplate:
           '(id: string): permanently deletes a library template that could not be loaded, by its refusedTemplates id',
@@ -1911,7 +1913,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
     bundleStore: {
       state: {
         pendingInstall:
-          '{ name, icon, version, author, fileName, updates, adds, capabilities, blocked, modulesToTurnOn, modulesNotInBuild, recordTypes, needsSpace, display } | null — the app an install prompt is asking about, everything already in the words a person reads. `author` is what the file claims and nothing attests to it; `updates` is the version already installed, empty for a first install; `needsSpace` says it brings record types or sections, so the prompt lists spaceChoices; `display` is `ours` (every space opens in the app’s template while it is in use) or `theirs`. Host chrome only: an app must never draw the prompt vouching for it',
+          '{ name, icon, version, author, fileName, updates, newInVersion, adds, capabilities, blocked, modulesToTurnOn, modulesNotInBuild, recordTypes, needsSpace, display } | null — the app an install prompt is asking about, everything already in the words a person reads. `author` is what the file claims and nothing attests to it; `updates` is the version already installed, empty for a first install; `newInVersion` ({ capabilities, modules, recordTypes }) is, on an update, what this version asks for that the installed one was never agreed to — each empty when nothing is, and null on a first install or where no agreement was recorded; `needsSpace` says it brings record types or sections, so the prompt lists spaceChoices; `display` is `ours` (every space opens in the app’s template while it is in use) or `theirs`. Host chrome only: an app must never draw the prompt vouching for it',
         installed:
           '{ id, name, icon, version, from, setUp }[] — the apps this agent has installed (`from: file`) and those built into the deployment (`from: deployment`, which cannot be removed). `setUp` says whether the spaces this agent runs have the record types and sections the app needs: `done` (all of them), `available` (offer openSetUp) or `none` (it needs nothing, or this agent runs no space)',
         busy: 'boolean — an install, a set-up or a removal is in flight',

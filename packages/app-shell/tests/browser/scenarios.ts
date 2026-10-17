@@ -9,7 +9,7 @@ import { lineComposer, transcriptLines } from '@we/module-transcribe';
 import { cardShell, panelScroll, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 import { discussionSection, foldingSectionLabel, signalDisplay } from '@we/template-kit';
-import { bundlePrompt } from '@we/template-shell';
+import { bundlePrompt, safeModeBanner } from '@we/template-shell';
 import { CALL_CHROME_BAND, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
 
 export interface Scenario {
@@ -1370,8 +1370,55 @@ const bundleInstallPrompt = (): Scenario => ({
   },
 });
 
+/**
+ * The same prompt raised by a newer version of an app already installed, once asking for more than
+ * the installed one was agreed to and once asking for nothing new.
+ */
+const bundleUpdatePrompt =
+  (newInVersion: { capabilities: string[]; modules: string[]; recordTypes: string[] }) => (): Scenario => {
+    const base = bundleInstallPrompt();
+    const bundleStore = base.stores?.bundleStore as { pendingInstall: Record<string, unknown> };
+    return {
+      ...base,
+      stores: {
+        ...base.stores,
+        bundleStore: {
+          ...bundleStore,
+          pendingInstall: { ...bundleStore.pendingInstall, version: '1.1.0', updates: '1.0.0', newInVersion },
+        },
+      },
+    };
+  };
+
+/**
+ * The safe-mode banner after an app did not finish loading, with another app to leave into. Which way
+ * out was taken is marked on the body.
+ */
+const safeModeLeaving = (): Scenario => ({
+  node: safeModeBanner,
+  tables: {},
+  stores: {
+    templateStore: {
+      safeMode: { on: true, reason: 'unfinished-render', template: 'Field Guide' },
+      appTemplateOptions: [
+        { label: 'Workbench', value: 'workbench', icon: 'house', editable: false },
+        { label: 'Field Guide', value: 'field-guide', icon: 'binoculars', editable: false },
+      ],
+      leaveSafeMode: () => document.body.setAttribute('data-left', ''),
+      leaveSafeModeInto: (id: string) => document.body.setAttribute('data-left-into', id),
+    },
+  },
+});
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'bundle:prompt': bundleInstallPrompt,
+  'safe-mode:leaving': safeModeLeaving,
+  'bundle:update-asks-more': bundleUpdatePrompt({
+    capabilities: ['See who is in this space'],
+    modules: ['Calls'],
+    recordTypes: ['Survey'],
+  }),
+  'bundle:update-nothing-new': bundleUpdatePrompt({ capabilities: [], modules: [], recordTypes: [] }),
   'ds:slider-marks': sliderMarks,
   'security:self-firing-events': selfFiringEvents,
   'security:code-in-template': codeInTemplate,

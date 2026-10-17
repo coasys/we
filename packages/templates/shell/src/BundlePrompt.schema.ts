@@ -12,7 +12,8 @@ import type { SchemaNode } from '@we/schema-shared';
  * The four things a person is agreeing to, each in its own words, because each has its own
  * consequence: what the app will be able to do; which modules it turns on, as against which this
  * deployment does not have and nothing here can fix; the spaces it sets up — the kinds of record it
- * adds to each, which outlast the app — ticked one by one; and how it shows spaces.
+ * adds to each, which outlast the app — ticked one by one; and how it shows spaces. On an update, what
+ * it asks for that the version installed was never agreed to comes before all of them.
  */
 const pending = 'bundleStore.pendingInstall';
 
@@ -158,6 +159,58 @@ const spaces: SchemaNode = {
   },
 };
 
+/**
+ * On an update, what this version asks for that the installed one was never agreed to — first, and on
+ * its own, because a new power listed among everything already agreed reads as one more line of the
+ * same. Or, when it asks for nothing new, that sentence, so an update that only changes how the app
+ * looks says so plainly. Absent on a first install, and on an update of something installed before
+ * agreements were kept, where the full list below is all there is to go on.
+ */
+const newInVersion: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: `${pending}.newInVersion` },
+    then: {
+      type: '$if',
+      props: {
+        condition: {
+          $: `count(${pending}.newInVersion.capabilities) || count(${pending}.newInVersion.modules) || count(${pending}.newInVersion.recordTypes)`,
+        },
+        then: {
+          type: 'we-alert',
+          props: { variant: 'warning' },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '300' },
+              children: [
+                {
+                  type: 'we-text',
+                  props: { fontWeight: 'semibold' },
+                  children: ['New in this version — the one you have was never agreed to these'],
+                },
+                listSection('It will also be able to', `${pending}.newInVersion.capabilities`, 'plus', 'warning-text'),
+                listSection('It also turns on', `${pending}.newInVersion.modules`, 'toggle-right', 'warning-text'),
+                listSection(
+                  'It also brings kinds of record',
+                  `${pending}.newInVersion.recordTypes`,
+                  'shapes',
+                  'warning-text',
+                ),
+              ],
+            },
+          ],
+        },
+        else: {
+          type: 'we-text',
+          props: { color: 'text-muted' },
+          children: ['This version asks for nothing the one you have could not already do.'],
+        },
+      },
+    },
+  },
+};
+
 /** Modules this deployment does not have: a part of the app that will be empty, which nothing here fixes. */
 const missingModules: SchemaNode = {
   type: '$if',
@@ -241,6 +294,7 @@ export const bundlePrompt: SchemaNode = {
                 },
               ],
             },
+            newInVersion,
             listSection('It adds', `${pending}.adds`, 'plus', 'text-muted'),
             capabilities,
             listSection('It turns on', `${pending}.modulesToTurnOn`, 'toggle-right', 'text-muted'),

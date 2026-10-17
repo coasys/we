@@ -96,6 +96,17 @@ export function readBootSnapshot(did: string | undefined): BootSnapshot | null {
   }
 }
 
+/** Drop this agent's snapshot, so the next reload draws nothing early. */
+export function forgetBootSnapshot(did: string | undefined): void {
+  const store = storage();
+  if (!did || !store) return;
+  try {
+    store.removeItem(KEY_PREFIX + did);
+  } catch {
+    // Refused: the snapshot is read back through the same acceptance as the library either way.
+  }
+}
+
 /** Keep the snapshot for next time, or drop it when there is nothing in it worth drawing early. */
 export function writeBootSnapshot(did: string | undefined, snapshot: BootSnapshot): void {
   const store = storage();

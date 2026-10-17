@@ -7586,7 +7586,8 @@
         "deleteMarketplaceTemplate",
         "publishToMarketplace",
         "refreshSpaceTemplates",
-        "leaveSafeMode"
+        "leaveSafeMode",
+        "leaveSafeModeInto"
       ],
       "ambient": ["cancelInstall", "refreshSpaceTemplates"],
       "destructive": ["removeTemplate", "deleteTemplate", "deleteRefusedTemplate", "deleteMarketplaceTemplate"]

@@ -3190,6 +3190,7 @@ export const contextData: ContextData = {
         'publishToMarketplace',
         'refreshSpaceTemplates',
         'leaveSafeMode',
+        'leaveSafeModeInto',
       ],
       ambient: ['cancelInstall', 'refreshSpaceTemplates'],
       destructive: ['removeTemplate', 'deleteTemplate', 'deleteRefusedTemplate', 'deleteMarketplaceTemplate'],
