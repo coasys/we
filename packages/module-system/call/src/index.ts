@@ -1561,7 +1561,7 @@ const callSettingsPopover: SchemaNode = {
                 variant: 'ghost',
                 onClick: { $setLocal: 'open', value: { $: '!local.open' } },
               },
-              children: [{ type: 'we-icon', props: { name: 'settings' } }],
+              children: [{ type: 'we-icon', props: { name: 'gear' } }],
             },
           ],
         },
