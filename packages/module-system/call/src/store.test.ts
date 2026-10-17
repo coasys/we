@@ -433,14 +433,6 @@ describe('transport and device lifetime', () => {
       state: markState,
       action: markAction,
       settings: () => options.settings ?? {},
-      ...(options.backend
-        ? {
-            createBackend: async (...args: unknown[]) => {
-              backendArgs.push(args);
-              return options.backend!();
-            },
-          }
-        : {}),
       effect: (fn: () => void) => {
         if (tracked) return tracked.effect(fn);
         effects.push(fn);
@@ -516,6 +508,19 @@ describe('transport and device lifetime', () => {
           // kernel promises to answer rather than fail for. Tests that care supply their own.
           enumerateDevices: async () => options.devices ?? [],
           onDevicesChanged: () => () => {},
+        },
+        // Always present, as the host's is: it says whether the backend can run a session, and a test
+        // that supplies none gets a backend that cannot — so the call runs on the module's own mesh.
+        call: {
+          available: () => Boolean(options.backend),
+          session: async (...args: unknown[]) => {
+            if (!options.backend) throw new Error('this backend cannot run a call');
+            backendArgs.push(args);
+            return options.backend() as never;
+          },
+          config: async () => ({}),
+          setConfig: async () => true,
+          configurable: () => false,
         },
       },
     } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
@@ -1474,11 +1479,18 @@ describe('a space’s default for new calls', () => {
       state: markState,
       action: markAction,
       settings: () => ({}),
-      setCallConfig: async (config: unknown) => {
-        written.push(config);
-        return true;
+      kernels: {
+        call: {
+          available: () => false,
+          session: () => Promise.reject(new Error('no session here')),
+          config: async () => ({}),
+          setConfig: async (config: unknown) => {
+            written.push(config);
+            return true;
+          },
+          configurable: () => false,
+        },
       },
-      kernels: {},
     } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
 
     expect(store.newCallsUseSfu()).toBe(false);

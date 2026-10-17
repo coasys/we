@@ -456,7 +456,7 @@ describe('the declaration', () => {
   it('asks for exactly the kernels the store reaches', () => {
     // A kernel not named here is absent from `deps.kernels`, so this list is the store's reach.
     expect([...(callModule.manifest.requires?.kernels ?? [])].sort()).toEqual(
-      ['ephemeral', 'media', 'peerConnection', 'presence', 'records'].sort(),
+      ['call', 'ephemeral', 'media', 'peerConnection', 'presence', 'records'].sort(),
     );
   });
 

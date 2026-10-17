@@ -3655,7 +3655,7 @@ depends on a module that may not be installed.
 
 ### Calls (`call`)
 Audio, video and screen share with the people in a space.
-Needs: kernels records, presence, ephemeral, media, peerConnection; permissions microphone, camera, screen-share.
+Needs: kernels records, presence, ephemeral, media, peerConnection, call; permissions microphone, camera, screen-share.
 - State (read in an expression as `modules.call.<name>`):
   - active — Whether this agent is in a call right now.
   - arrangement — The { columns, rows } the stage is currently laid out in.
