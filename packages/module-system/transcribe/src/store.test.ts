@@ -859,6 +859,23 @@ describe('leaving a call', () => {
     expect(h.store.status()).toBe('idle');
   });
 
+  it('withdraws its announcement even when it never said anything', async () => {
+    /*
+      Seen on two machines: an agent who pressed record and left before anybody spoke went on
+      publishing `transcribe` for the rest of the session, so the call's peers were told they were
+      still being transcribed by somebody who had gone. Recording announces at once; the record is
+      only adopted on the first flush, and the clear used to wait for that.
+    */
+    const h = harness(inThatCall);
+    h.store.toggle();
+    expect(h.published.some((activity) => activity.type === TRANSCRIBE_ACTIVITY)).toBe(true);
+
+    h.setPeers([]);
+    await Promise.resolve();
+
+    expect(h.cleared).toContain(TRANSCRIBE_ACTIVITY);
+  });
+
   it('leaves a call still running alone', async () => {
     // The reset is about *this* transition, not about every re-run of the effect that carries it.
     const h = harness(inThatCall);

@@ -555,6 +555,13 @@ describe('transport and device lifetime', () => {
         ];
         refresh();
       },
+      /** Somebody presses leave: their call activity is cleared, and they go on heartbeating. */
+      leaves: (agentId: string) => {
+        roster = roster.map((peer) =>
+          peer.agentId === agentId ? { ...peer, activities: peer.activities.filter((a) => a.type !== 'call') } : peer,
+        );
+        refresh();
+      },
       /**
        * Somebody stops heartbeating, without ever saying they left.
        *
@@ -1104,6 +1111,23 @@ describe('transport and device lifetime', () => {
 
       expect(reconnected).toEqual(['did:someone']);
       expect(stateOf()?.retrying).toBe(true);
+    });
+
+    it('drops the tile of a peer who left as soon as presence says so, with no session event', async () => {
+      /*
+        Seen on two machines on AD4M: the peer who pressed leave stayed on "Connecting…" for about
+        30 s. Presence carried the leave in a third of a second, but the tiles were only rebuilt on
+        the session's own events, and its "participant-left" came when it noticed by itself.
+      */
+      const { store, fire, leaves } = await inCallWith('did:someone');
+      const tileIds = () => store.tiles().map((tile: { id: string }) => tile.id);
+      expect(tileIds()).toContain('did:someone');
+
+      // The pair drops first, as it does when the other side closes its connection.
+      fire('peer-state', 'did:someone', 'disconnected');
+      leaves('did:someone');
+
+      expect(tileIds()).not.toContain('did:someone');
     });
 
     it('follows a participant whose stream the session replaced', async () => {

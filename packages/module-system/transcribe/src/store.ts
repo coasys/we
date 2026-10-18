@@ -2502,8 +2502,16 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     const me = selfId?.() ?? null;
     const othersRemain = agentsInCall(left.id).some((agent) => agent !== me);
 
+    /*
+      Whatever this agent announced about the call goes with it, adopted record or not. Pressing
+      record announces before anybody speaks, and a record is only adopted on the first flush, so
+      this used to be cleared only for an agent who had spoken: one who recorded and left in silence
+      went on telling the call's peers they were transcribing it for the rest of the session, and
+      kept the call space's presence open to say so.
+    */
+    presence?.clearActivity(TRANSCRIBE_ACTIVITY, left.id);
+
     if (collectionCallId === left.id) {
-      presence?.clearActivity(TRANSCRIBE_ACTIVITY);
       useCollection(null, { keepWatch: othersRemain });
       collectionCallId = null;
       return;
