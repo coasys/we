@@ -34,7 +34,7 @@ export const callControl: SchemaNode = {
   props: {
     // The bar is only drawn during a call, so this needs no call condition of its own — but it does
     // need the audio one: mid-call, before devices are acquired, there is briefly nothing to record.
-    condition: { $: 'modules.transcribe.available' },
+    condition: { $: 'modules.transcribe.recordingCall.available' },
     then: {
       /*
         A `we-tooltip`, not the `title` attribute this used to carry.
@@ -47,7 +47,7 @@ export const callControl: SchemaNode = {
       */
       type: 'we-tooltip',
       props: {
-        content: { $: "modules.transcribe.enabled ? 'Stop transcribing' : 'Transcribe this call'" },
+        content: { $: "modules.transcribe.recordingCall.enabled ? 'Stop transcribing' : 'Transcribe this call'" },
         placement: 'bottom',
       },
       children: [
@@ -76,7 +76,7 @@ export const callControl: SchemaNode = {
               switched on. Red is the same colour the icon inside it already used for this.
             */
             variant: {
-              $: "modules.transcribe.listening ? 'danger' : modules.transcribe.enabled ? 'secondary' : 'ghost'",
+              $: "modules.transcribe.recordingCall.listening ? 'danger' : modules.transcribe.recordingCall.enabled ? 'secondary' : 'ghost'",
             },
             onClick: { $action: 'modules.transcribe.toggle' },
           },
