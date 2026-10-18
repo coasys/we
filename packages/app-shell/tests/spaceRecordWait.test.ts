@@ -20,7 +20,7 @@ function harness() {
   const choose = vi.fn(async () => {});
   const settle = vi.fn();
   let dispose = () => {};
-  const wait = createRoot((d) => {
+  const { wait, waiting } = createRoot((d) => {
     dispose = d;
     return createSpaceRecordWait({
       currentId,
@@ -29,9 +29,9 @@ function harness() {
       choose,
       settle,
       patienceMs: 1_000,
-    }).wait;
+    });
   });
-  return { wait, setCurrentId, setSpace, setTemplates, choose, settle, dispose: () => dispose() };
+  return { wait, waiting, setCurrentId, setSpace, setTemplates, choose, settle, dispose: () => dispose() };
 }
 
 const flush = () => new Promise<void>((resolve) => queueMicrotask(resolve));
@@ -92,6 +92,20 @@ describe('waiting for a space’s own record', () => {
     h.setSpace({});
     await flush();
     expect(h.choose).toHaveBeenCalledOnce();
+    h.dispose();
+  });
+
+  it('says which space it is waiting for, so the host can show it loading', async () => {
+    // What "Loading space data…" is drawn from.
+    const h = harness();
+    expect(h.waiting()).toBeNull();
+
+    h.wait('ds-1');
+    expect(h.waiting()).toBe('ds-1');
+
+    h.setSpace({});
+    await flush();
+    expect(h.waiting()).toBeNull();
     h.dispose();
   });
 

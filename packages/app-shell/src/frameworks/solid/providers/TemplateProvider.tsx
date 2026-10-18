@@ -1151,6 +1151,72 @@ export default function TemplateProvider() {
   };
 
   /**
+   * What an address deeper in a space draws when it names nothing the space has — a page of another
+   * template, or a mistyped one. It used to be the host's not-found, and before that a redirect to
+   * the first section, which threw away a link into the space's own template while that template
+   * was still arriving. It says what happened and offers the way in, rather than deciding for them.
+   */
+  const notHereNode = {
+    type: '$if',
+    props: {
+      condition: { $: 'count(spaceStore.viewNav)' },
+      then: {
+        type: 'Column',
+        props: { flex: '1', height: '100%', ax: 'center', ay: 'center', gap: '400', p: '600', bg: 'page' },
+        children: [
+          { type: 'we-icon', props: { name: 'signpost', size: 'xl', color: 'text-faint' } },
+          {
+            type: 'we-text',
+            props: { variant: 'heading-md', color: 'text', textAlign: 'center' },
+            children: ["This page isn't part of this space"],
+          },
+          {
+            type: 'we-text',
+            props: { variant: 'body', color: 'text-muted', textAlign: 'center', maxWidth: 'var(--we-layout-xs)' },
+            children: ['The link may be to a page another template has, or one that has moved.'],
+          },
+          {
+            type: 'we-button',
+            props: {
+              variant: 'primary',
+              onClick: { $action: 'routeStore.navigate', args: [{ $: 'first(spaceStore.viewNav).path' }] },
+            },
+            children: [{ $: '`Go to ${first(spaceStore.viewNav).label}`' }],
+          },
+        ],
+      },
+      else: noSectionsNode,
+    },
+  };
+
+  /**
+   * What the space's content area shows while its own data is still arriving — a space joined a
+   * moment ago, whose record names the template it shows. Drawing the agent's default instead, then
+   * swapping, put a template on screen the space does not use, and a link into the space's own
+   * template had nowhere to land. See `spaceRecordWait.ts`.
+   */
+  const loadingSpaceDataNode = {
+    type: 'Column',
+    props: { flex: '1', height: '100%', ax: 'center', ay: 'center', gap: '300', p: '600', bg: 'page' },
+    children: [
+      { type: 'we-spinner', props: { size: 'lg' } },
+      { type: 'we-text', props: { variant: 'body', color: 'text' }, children: ['Loading space data…'] },
+      {
+        type: 'we-text',
+        props: { variant: 'footnote', color: 'text-muted', textAlign: 'center', maxWidth: 'var(--we-layout-xs)' },
+        children: ['Just after joining, a space can take a few seconds to arrive from its members.'],
+      },
+    ],
+  };
+
+  /** The space on screen is waiting for its own record. */
+  const loadingSpaceData = () => {
+    const id = datasetStore.currentDataset()?.id;
+    return !!id && templateStore.awaitingSpaceRecord() === id;
+  };
+  const LOADING_SPACE_DATA = 'loading-space-data';
+
+  /**
    * Routes the host puts beside a space's sections, wherever the shell mounts them.
    *
    * One list, because two things read it: `expandViewRoutes` injects it at the `$views` marker, and
@@ -1207,6 +1273,7 @@ export default function TemplateProvider() {
         expandViewRoutes(routes, spaceStore.routableViews(), {
           activeIds: 'spaceStore.enabledViewIds',
           notInSpace: noSectionsNode,
+          notHere: notHereNode,
           extraRoutes: extras,
         }),
       );
@@ -1240,6 +1307,9 @@ export default function TemplateProvider() {
    * Sorted, because the table is a set of paths and the router matches rather than scans.
    */
   const routeKey = createMemo(() => {
+    // Its own key, so the router remounts against the real routes once the data is here — reading
+    // the address as it stands, which is the link that brought somebody in.
+    if (loadingSpaceData()) return LOADING_SPACE_DATA;
     const id = templateSchema.id || 'empty';
     if (!hasViewsMarker(templateSchema.routes ?? [])) return id;
     const table = spaceStore
@@ -1341,6 +1411,14 @@ export default function TemplateProvider() {
 
     const current = segments[2];
     if (current && HOST_ROUTE_SEGMENTS.has(current)) return;
+    /*
+      Only a section is corrected. An address naming no section at all — a page of another template,
+      or a mistyped one — is left as it is, and the space's catch-all says it is not part of this
+      space (`notHereNode`). Rewriting it threw away a link into the space's own template whenever
+      that template was a moment behind: the Workshop's `/canvas?call=…` became `/about`, with the
+      call gone, and arriving afterwards changed nothing.
+    */
+    if (current && !viewIdForSegment(current)) return;
     if (current && spaceStore.enabledViewIds().some((id) => id === viewIdForSegment(current))) return;
     routeStore.navigate(`/space/${segments[1]}/${nav[0].segment}`, { replace: true });
   });
@@ -1551,17 +1629,26 @@ export default function TemplateProvider() {
            content, which is the same trade template switching already makes: both are rare,
            deliberate acts, and a router whose route table changed underneath it is worse. */}
             <Show when={routeKey()} keyed>
-              {(_key) => (
+              {(key) => (
                 <Router root={Layout}>
-                  {buildRoutes(templateBag, routesWithViews())}
-                  <Route
-                    path="*"
-                    component={() =>
-                      routesWithViews().length
-                        ? RenderSchema({ node: notFoundNode, stores: templateBag, registry })
-                        : null
-                    }
-                  />
+                  {key === LOADING_SPACE_DATA ? (
+                    <Route
+                      path="*"
+                      component={() => RenderSchema({ node: loadingSpaceDataNode, stores: templateBag, registry })}
+                    />
+                  ) : (
+                    [
+                      buildRoutes(templateBag, routesWithViews()),
+                      <Route
+                        path="*"
+                        component={() =>
+                          routesWithViews().length
+                            ? RenderSchema({ node: notFoundNode, stores: templateBag, registry })
+                            : null
+                        }
+                      />,
+                    ]
+                  )}
                 </Router>
               )}
             </Show>

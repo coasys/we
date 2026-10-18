@@ -240,6 +240,12 @@ export interface TemplateStore {
    * decided a Workshop URL was a section the space did not have, and rewrote the address.
    */
   spaceTemplatePending: Accessor<boolean>;
+  /**
+   * The dataset whose own record the template store is waiting for — a space joined a moment ago —
+   * or null. While it names the space on screen, the host shows that it is loading the space's data
+   * rather than a template the space may not use. See `spaceRecordWait.ts`.
+   */
+  awaitingSpaceRecord: Accessor<string | null>;
 
   /**
    * Whether this tab is in safe mode — WE's own templates and themes in place of what was chosen —
@@ -774,7 +780,14 @@ export function TemplateStoreProvider(props: ParentProps) {
           allTemplates().find((t) => t.id === followed);
         if (template) replaceTemplate(template);
       }
-      setTemplateResolvedFor(perspective.id);
+      /*
+        Settled only once the space's own record is here. The cache says the templates were read,
+        not that the record naming one of them has arrived: a join warms the cache before switching
+        to the space, often before its record has synced, and settling then let the section guard
+        rewrite a link into the space's own template before that template was known.
+      */
+      if (cachedSpace) setTemplateResolvedFor(perspective.id);
+      else spaceRecord.wait(perspective.id);
     } else {
       /*
         The app's display policy decides this space's template whenever the agent follows the space,
@@ -797,6 +810,32 @@ export function TemplateStoreProvider(props: ParentProps) {
         else setTemplateResolvedFor(perspective.id);
       });
     }
+  });
+
+  /*
+    The space's default template, followed after the space has settled.
+
+    The choice above is made on arriving in a space. A record can arrive in pieces — the `Space`
+    first and its `defaultTemplateId` a moment later — and a space need not name a default at all,
+    so "none yet" and "none" read alike when it is made. And another member can change the default
+    while this agent is in the space. Either way the record changes under a space that has already
+    settled, and nothing asked again. Keyed on the template it names *and* whether that template is
+    loaded, because a space's own template syncs in like its record.
+
+    Only within one space: arriving in another is the effect above's to answer, and a space still
+    pending is the wait's.
+  */
+  let followedDefault: { dataset: string; template: string } | null = null;
+  createEffect(() => {
+    const perspective = datasetStore.currentDataset();
+    const named = perspective ? (resolveSpaceFromPerspective(perspective)?.defaultTemplateId ?? '') : '';
+    const present = !named || allTemplates().some((t) => t.id === named);
+    const key = perspective ? { dataset: perspective.id, template: present ? named : '' } : null;
+    const previous = followedDefault;
+    followedDefault = key;
+    if (!perspective || !key || previous?.dataset !== key.dataset || previous.template === key.template) return;
+    if (templateResolvedFor() !== perspective.id) return;
+    void untrack(() => chooseSpaceTemplate(perspective));
   });
 
   /**
@@ -2092,6 +2131,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     loadSpaceTemplates,
     clearSpaceTemplates,
     spaceTemplatePending,
+    awaitingSpaceRecord: spaceRecord.waiting,
     safeMode: () => safe,
     leaveSafeMode,
 

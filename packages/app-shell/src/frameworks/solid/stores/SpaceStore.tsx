@@ -5376,6 +5376,29 @@ export function SpaceStoreProvider(props: ParentProps) {
     onCleanup(() => builder.dispose());
   });
 
+  /*
+    The space list follows the subscription above, for the space on screen.
+
+    `mySpaces` was filled by single reads — when a space is joined and when it is switched to — and a
+    space joined a moment ago often had no record yet, or one whose fields had not all synced. So it
+    stayed missing, or stale, until a reload: the sidebar without its name, and the template store,
+    which reads its default template from here, deciding without it. The subscription is live, so
+    the record it delivers is the one to hold.
+  */
+  createEffect(() => {
+    const space = currentSpace();
+    const ds = untrack(datasetStore.currentDataset);
+    if (!space || !ds || !isSpaceSelf(space, ds)) return;
+    setMySpaces((prev) => {
+      const at = prev.findIndex((s) => isSpaceSelf(s, ds));
+      if (at === -1) return [...prev, space];
+      if (prev[at] === space) return prev;
+      const next = prev.slice();
+      next[at] = space;
+      return next;
+    });
+  });
+
   const [memberDids, setMemberDids] = createSignal<string[]>([]);
   const [spaceDefaultTemplateId, setSpaceDefaultTemplateId] = createSignal<string>('');
   const [spaceDefaultThemeId, setSpaceDefaultThemeId] = createSignal<string>('');

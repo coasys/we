@@ -182,6 +182,11 @@ export type ViewGate = {
   /** Rendered in place of a section the space does not offer. */
   notInSpace: SchemaNode;
   /**
+   * Rendered at a deeper address naming nothing this space has — a page of another template, or a
+   * mistyped one. Absent, that address draws `notInSpace`.
+   */
+  notHere?: SchemaNode;
+  /**
    * Routes the host wants beside the sections — a record's own page, and anything like it.
    *
    * Placed at the marker rather than appended to the tree, because that is the one position that is
@@ -269,16 +274,17 @@ function indexRoute(gate?: ViewGate): RouteSchema {
  * and the only way in was to edit `/canvas` off the address by hand. That is the address somebody
  * copies from a call.
  *
- * It draws what the index route draws. For a visitor that is the join prompt, around it, with the
- * address left as it was, so once the space and its template arrive the page the link named is the
- * page they see. For a member it is the frame or two before the host's section guard moves an
- * address naming a section this space does not have onto the first one, which used to be the
- * host's not-found instead.
+ * For a visitor it is the join prompt, around it, with the address left as it was, so once the space
+ * and its template arrive the page the link named is the page they see. For a member it is the
+ * gate's `notHere` — "this page isn't part of this space" — where it used to be the host's
+ * not-found. An address naming a *section* the space has switched off never reaches it: the
+ * section's own route matches, and its gate draws `notInSpace`.
  *
  * Added only where the shell declared no catch-all of its own at that level: a shell's says what it
  * means by a page that is not here, and two would be a duplicate path.
  */
 function deepRoute(gate?: ViewGate): RouteSchema {
+  if (gate?.notHere) return { ...(gate.notHere as Record<string, unknown>), path: '/*' } as RouteSchema;
   return { ...indexRoute(gate), path: '/*' } as RouteSchema;
 }
 

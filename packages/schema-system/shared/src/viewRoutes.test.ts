@@ -337,6 +337,15 @@ describe('expandViewRoutes — a deeper address in the space', () => {
     expect(paths.indexOf('/*')).toBeGreaterThan(paths.indexOf('/about'));
   });
 
+  it('draws the gate’s notHere when it has one', () => {
+    const notHere = { type: 'we-text', children: ['not part of this space'] };
+    const deep = expandViewRoutes([marker], [view('about', 'about')], { ...gate, notHere }).find(
+      (r) => r.path === '/*',
+    );
+
+    expect(deep?.children).toEqual(notHere.children);
+  });
+
   it("leaves a shell's own catch-all alone rather than adding a second", () => {
     // The shell's says what it means by a page that is not here, and two at one level would be a
     // duplicate path.

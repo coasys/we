@@ -34,23 +34,27 @@ const about: ResolvedView = {
 const gate: ViewGate = { activeIds: 'spaceStore.enabledViewIds', notInSpace: { type: 'span', children: [] } };
 
 /** The default template's shape: a space layout holding the join prompt, over the space's sections. */
-function table(): RouteSchema[] {
+function table(withGate: ViewGate = gate): RouteSchema[] {
   return [
     {
       path: '/space/:spaceId',
       type: 'Column',
-      children: [{ type: 'span', props: { 'data-testid': 'join-prompt' }, children: ['Join this space'] }],
-      routes: expandViewRoutes([{ path: VIEWS_MARKER } as RouteSchema], [about], gate),
+      // The prompt stands in for the gate; the outlet is where a matched section or page draws.
+      children: [
+        { type: 'span', props: { 'data-testid': 'join-prompt' }, children: ['Join this space'] },
+        { type: '$routes' },
+      ],
+      routes: expandViewRoutes([{ path: VIEWS_MARKER } as RouteSchema], [about], withGate),
     } as RouteSchema,
     // The host's own not-found, at the top level, as the template provider adds it.
     { path: '*', type: 'span', props: { 'data-testid': 'not-found' }, children: ['Page not found'] } as RouteSchema,
   ];
 }
 
-function at(path: string) {
+function at(path: string, withGate: ViewGate = gate) {
   const history = createMemoryHistory();
   history.set({ value: path });
-  return render(() => <MemoryRouter history={history}>{buildRoutes({} as never, table())}</MemoryRouter>);
+  return render(() => <MemoryRouter history={history}>{buildRoutes({} as never, table(withGate))}</MemoryRouter>);
 }
 
 describe('a link into a space', () => {
@@ -72,6 +76,15 @@ describe('a link into a space', () => {
     const { findByTestId } = at('/space/abc');
 
     await waitFor(async () => expect(await findByTestId('join-prompt')).toBeTruthy());
+  });
+
+  it('says a page is not part of the space, rather than the host’s not-found, where the host says so', async () => {
+    // A member at a page of another template — or a mistyped one — inside the space.
+    const notHere = { type: 'span', props: { 'data-testid': 'not-here' }, children: ['Not part of this space'] };
+    const { findByTestId, queryByTestId } = at('/space/abc/nowhere', { ...gate, notHere });
+
+    await waitFor(async () => expect(await findByTestId('not-here')).toBeTruthy());
+    expect(queryByTestId('not-found')).toBeNull();
   });
 
   it('still leaves an address outside any space to the host’s not-found', async () => {

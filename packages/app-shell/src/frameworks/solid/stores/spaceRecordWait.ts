@@ -34,8 +34,14 @@ export interface SpaceRecordWaitDeps {
   patienceMs?: number;
 }
 
-/** Start waiting with `wait(datasetId)`. Must be called inside a reactive owner. */
-export function createSpaceRecordWait(deps: SpaceRecordWaitDeps): { wait: (datasetId: string) => void } {
+/**
+ * Start waiting with `wait(datasetId)`; `waiting()` is the dataset waited on, or null. Must be called
+ * inside a reactive owner.
+ */
+export function createSpaceRecordWait(deps: SpaceRecordWaitDeps): {
+  wait: (datasetId: string) => void;
+  waiting: () => string | null;
+} {
   const [waiting, setWaiting] = createSignal<string | null>(null);
   let timer: ReturnType<typeof setTimeout> | undefined;
   onCleanup(() => timer && clearTimeout(timer));
@@ -59,6 +65,7 @@ export function createSpaceRecordWait(deps: SpaceRecordWaitDeps): { wait: (datas
   });
 
   return {
+    waiting,
     wait(datasetId) {
       setWaiting(datasetId);
       if (timer) clearTimeout(timer);
