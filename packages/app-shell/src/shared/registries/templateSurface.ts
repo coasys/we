@@ -1025,10 +1025,13 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     clearSpaceTemplates: WIRING,
     // The host's own sequencing — whether a route guard may act yet — not something a template reads.
     spaceTemplatePending: WIRING,
+    awaitingSpaceRecord: WIRING,
     // Safe mode — readable by chrome to say so, and left only by a person from host chrome. A space
     // template has no use for either and, in safe mode, is not what is rendering anyway.
     safeMode: state('session'),
     leaveSafeMode: action('session'),
+    // Library rather than session: it chooses the app the agent is in, as setAppTemplate does.
+    leaveSafeModeInto: action('library'),
     getTemplateRecord: WIRING,
   },
 

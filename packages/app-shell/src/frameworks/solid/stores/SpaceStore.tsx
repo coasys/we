@@ -1,5 +1,6 @@
 import { boardOptimism } from '@shared/boardOptimism';
 import { createBoardActions, type CreateBoardOptions } from '@shared/boards';
+import { callParamToWrite } from '@shared/callOnScreen';
 import {
   collectionExtractionDefaults,
   LEGACY_EXTRACTION_TARGETS,
@@ -1527,6 +1528,18 @@ export function SpaceStoreProvider(props: ParentProps) {
         might act on.
       */
       callOnScreen: () => routeStore.params().call || null,
+      // The write half, for the moment this agent joins a call — see `callParamToWrite` for when it
+      // writes. Replaces rather than pushes: joining a call is not a page somebody navigated to.
+      showCallOnScreen: (recordId, datasetUri) => {
+        const value = callParamToWrite({
+          segments: routeStore.segments(),
+          current: routeStore.params().call || null,
+          recordId,
+          datasetUri,
+          spaceIdOf: sharedIdOf,
+        });
+        if (value) routeStore.setParam('call', value);
+      },
       datasets: {
         get: (uri: string) => {
           const id = sharedIdOf(uri);
@@ -5361,6 +5374,29 @@ export function SpaceStoreProvider(props: ParentProps) {
       .then(handleResult)
       .catch(() => setCurrentSpace(null));
     onCleanup(() => builder.dispose());
+  });
+
+  /*
+    The space list follows the subscription above, for the space on screen.
+
+    `mySpaces` was filled by single reads — when a space is joined and when it is switched to — and a
+    space joined a moment ago often had no record yet, or one whose fields had not all synced. So it
+    stayed missing, or stale, until a reload: the sidebar without its name, and the template store,
+    which reads its default template from here, deciding without it. The subscription is live, so
+    the record it delivers is the one to hold.
+  */
+  createEffect(() => {
+    const space = currentSpace();
+    const ds = untrack(datasetStore.currentDataset);
+    if (!space || !ds || !isSpaceSelf(space, ds)) return;
+    setMySpaces((prev) => {
+      const at = prev.findIndex((s) => isSpaceSelf(s, ds));
+      if (at === -1) return [...prev, space];
+      if (prev[at] === space) return prev;
+      const next = prev.slice();
+      next[at] = space;
+      return next;
+    });
   });
 
   const [memberDids, setMemberDids] = createSignal<string[]>([]);

@@ -71,6 +71,11 @@ export interface ModuleHostServices {
    * the address is what survives a reload. So the one thing that reads routes publishes it, once.
    */
   callOnScreen?: () => string | null;
+  /**
+   * Name a call record in the address — the write half of `callOnScreen`, bound by the same store.
+   * Forwarded to a module as `showCallOnScreen`; see there for when it writes.
+   */
+  showCallOnScreen?: (recordId: string, datasetUri: string | null) => void;
   selfId?: () => string | null;
   ephemeral?: EphemeralPort;
   presence?: {
@@ -662,6 +667,7 @@ export function createModuleStoreDeps(framework: {
     dataset: tracked(() => services.dataset?.() ?? null),
     datasetUri: tracked(() => services.datasetUri?.() ?? null),
     callOnScreen: tracked(() => services.callOnScreen?.() ?? null),
+    showCallOnScreen: (recordId, datasetUri) => services.showCallOnScreen?.(recordId, datasetUri),
     datasetRefKey: tracked(() => services.datasetRefKey?.() ?? ''),
     selfId: tracked(() => services.selfId?.() ?? null),
     notify: (tone, message) => services.notify?.(tone, message),
