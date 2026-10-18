@@ -3,10 +3,13 @@
  *
  * Seen on two machines: a peer followed `/space/<id>/canvas?call=…`, joined, and was shown the
  * default template at `/about`. The space's `Space` record — which names the Workshop — had not
- * synced yet, the template question was marked answered without it, and nothing asked again.
+ * synced yet, the template question was marked answered without it, and nothing asked again. Then,
+ * with that fixed, the default template still flashed up for a second before the Workshop: the wait
+ * let go before the choice was applied, and a record arriving without its `defaultTemplateId` read
+ * as one naming none.
  *
- * Driven through real signals and effects, because the bug was an effect that ran once and never
- * heard what arrived after it.
+ * Driven through real signals and effects, because every one of these was an effect hearing too
+ * little or too early.
  */
 import { createRoot, createSignal } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,8 +19,9 @@ import { createSpaceRecordWait } from '../src/frameworks/solid/stores/spaceRecor
 function harness() {
   const [currentId, setCurrentId] = createSignal<string | null>('ds-1');
   const [space, setSpace] = createSignal<{ defaultTemplateId?: string } | undefined>(undefined);
-  const [templates, setTemplates] = createSignal<string[]>(['default']);
-  const choose = vi.fn(async () => {});
+  const [templates, setTemplates] = createSignal<string[]>(['default', 'workshop']);
+  let applied: () => void = () => {};
+  const choose = vi.fn(() => new Promise<void>((resolve) => (applied = resolve)));
   const settle = vi.fn();
   let dispose = () => {};
   const { wait, waiting } = createRoot((d) => {
@@ -29,9 +33,24 @@ function harness() {
       choose,
       settle,
       patienceMs: 1_000,
+      noDefaultGraceMs: 300,
     });
   });
-  return { wait, waiting, setCurrentId, setSpace, setTemplates, choose, settle, dispose: () => dispose() };
+  return {
+    wait,
+    waiting,
+    setCurrentId,
+    setSpace,
+    setTemplates,
+    choose,
+    settle,
+    /** The template store finishing its choice. */
+    apply: async () => {
+      applied();
+      await flush();
+    },
+    dispose: () => dispose(),
+  };
 }
 
 const flush = () => new Promise<void>((resolve) => queueMicrotask(resolve));
@@ -47,19 +66,24 @@ describe('waiting for a space’s own record', () => {
 
     expect(h.choose).not.toHaveBeenCalled();
     expect(h.settle).not.toHaveBeenCalled();
+    expect(h.waiting()).toBe('ds-1');
     h.dispose();
   });
 
-  it('chooses the template, then settles, once the record arrives', async () => {
+  it('chooses the template once the record arrives, and only then stops loading and settles', async () => {
+    // Letting go before the choice was applied remounted the router with the agent's default for
+    // the moment the choice took — the default flashed up before the space's own.
     const h = harness();
-    h.setTemplates(['default', 'workshop']);
     h.wait('ds-1');
 
     h.setSpace({ defaultTemplateId: 'workshop' });
     await flush();
-    await flush();
-
     expect(h.choose).toHaveBeenCalledOnce();
+    expect(h.waiting()).toBe('ds-1');
+    expect(h.settle).not.toHaveBeenCalled();
+
+    await h.apply();
+    expect(h.waiting()).toBeNull();
     expect(h.settle).toHaveBeenCalledWith('ds-1');
     h.dispose();
   });
@@ -74,38 +98,54 @@ describe('waiting for a space’s own record', () => {
 
     h.setTemplates(['default', 'their-own']);
     await flush();
+
+    expect(h.choose).toHaveBeenCalledOnce();
+    h.dispose();
+  });
+
+  it('gives a record naming no default a moment for one to arrive', async () => {
+    // A record arrives in pieces: the Space first, its defaultTemplateId after.
+    const h = harness();
+    h.wait('ds-1');
+    h.setSpace({});
+    await flush();
+    expect(h.choose).not.toHaveBeenCalled();
+
+    h.setSpace({ defaultTemplateId: 'workshop' });
     await flush();
 
     expect(h.choose).toHaveBeenCalledOnce();
+    h.dispose();
+  });
+
+  it('chooses without a default once the grace is over, for a space that names none', async () => {
+    const h = harness();
+    h.wait('ds-1');
+    h.setSpace({});
+    await flush();
+
+    vi.advanceTimersByTime(300);
+    await flush();
+
+    expect(h.choose).toHaveBeenCalledOnce();
+    await h.apply();
     expect(h.settle).toHaveBeenCalledWith('ds-1');
     h.dispose();
   });
 
-  it('settles at the limit for a dataset that never gets a record, and still applies a late one', async () => {
+  it('settles and stops loading at the limit, for a dataset that never gets a record', async () => {
+    // The loading screen must not outlive the limit; a record that turns up later is the template
+    // store's to follow, as any change to a settled space's default is.
     const h = harness();
     h.wait('ds-1');
 
     vi.advanceTimersByTime(1_000);
+
     expect(h.settle).toHaveBeenCalledWith('ds-1');
+    expect(h.waiting()).toBeNull();
+    h.setSpace({ defaultTemplateId: 'workshop' });
+    await flush();
     expect(h.choose).not.toHaveBeenCalled();
-
-    h.setSpace({});
-    await flush();
-    expect(h.choose).toHaveBeenCalledOnce();
-    h.dispose();
-  });
-
-  it('says which space it is waiting for, so the host can show it loading', async () => {
-    // What "Loading space data…" is drawn from.
-    const h = harness();
-    expect(h.waiting()).toBeNull();
-
-    h.wait('ds-1');
-    expect(h.waiting()).toBe('ds-1');
-
-    h.setSpace({});
-    await flush();
-    expect(h.waiting()).toBeNull();
     h.dispose();
   });
 
@@ -119,6 +159,7 @@ describe('waiting for a space’s own record', () => {
     await flush();
     vi.advanceTimersByTime(1_000);
 
+    expect(h.waiting()).toBeNull();
     expect(h.choose).not.toHaveBeenCalled();
     expect(h.settle).not.toHaveBeenCalled();
     h.dispose();
