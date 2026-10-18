@@ -62,6 +62,8 @@ interface HarnessDeps {
   onDispose?: (fn: () => void) => void;
   /** Which call the address names — what the transcript's window is scoped to. */
   callOnScreen?: () => string | null;
+  /** The space on screen, by its shared address — what decides whether the call is elsewhere. */
+  datasetUri?: () => string | null;
 }
 
 function harness(peers: Peer[] = [], extraDeps: HarnessDeps = {}) {
@@ -685,6 +687,87 @@ describe('coverage', () => {
 
     expect(h.store.callAgents()).toEqual([]);
     expect(h.store.partialCoverage()).toBe(false);
+  });
+});
+
+describe('a call in another space', () => {
+  /*
+    Seen on two machines: in a call in one space, the agent walked to another, and the transcript
+    panel there lit its record button and moved its meter, which read as a call in that space too.
+    The recording carries on, since the call does; what the published members describe is the space
+    on screen, and only the call bar's own reading follows the call.
+  */
+  const CALL_SPACE = 'neighbourhood://call-space';
+  const OTHER_SPACE = 'neighbourhood://elsewhere';
+  const anchored = { type: 'call', id: CALL, record: RECORD, anchor: { datasetUri: CALL_SPACE } };
+  const CAN_TRANSCRIBE = {
+    available: () => true,
+    models: async () => [{ id: 'whisper', name: 'Whisper', ready: true, isDefault: true }],
+    open: async () => ({ close: async () => {} }),
+  };
+
+  function inCallAt(screen: { uri: string | null }) {
+    return harness(
+      [peer(ME, anchored), peer(THEM, anchored, { type: TRANSCRIBE_ACTIVITY, id: CALL, recording: true })],
+      { dataset: () => ({}), transcription: CAN_TRANSCRIBE, datasetUri: () => screen.uri },
+    );
+  }
+
+  it('describes the call in the call’s own space', () => {
+    const h = inCallAt({ uri: CALL_SPACE });
+
+    expect(h.store.enabled()).toBe(true);
+    expect(h.store.inCall()).toBe(true);
+    expect(h.store.callId()).toBe(RECORD);
+    expect(h.store.callAgents()).toHaveLength(2);
+  });
+
+  it('answers as though there were no call in any other space', () => {
+    const screen = { uri: CALL_SPACE as string | null };
+    const h = inCallAt(screen);
+    screen.uri = OTHER_SPACE;
+
+    expect(h.store.enabled()).toBe(false);
+    expect(h.store.listening()).toBe(false);
+    expect(h.store.available()).toBe(false);
+    expect(h.store.levelPercent()).toBe('0%');
+    expect(h.store.inCall()).toBe(false);
+    expect(h.store.callId()).toBe('');
+    expect(h.store.collectionId()).toBeNull();
+    expect(h.store.liveCollectionId()).toBe('');
+    expect(h.store.callAgents()).toEqual([]);
+    expect(h.store.transcribers()).toEqual([]);
+    expect(h.store.partialCoverage()).toBe(false);
+  });
+
+  it('answers the same in a personal space, which has no shared address', () => {
+    const h = inCallAt({ uri: null });
+
+    expect(h.store.enabled()).toBe(false);
+    expect(h.store.inCall()).toBe(false);
+  });
+
+  it('keeps recording, and tells the call bar so', async () => {
+    const screen = { uri: CALL_SPACE as string | null };
+    const h = inCallAt(screen);
+    screen.uri = OTHER_SPACE;
+
+    expect(h.store.recordingCall()).toMatchObject({ enabled: true, available: true });
+    await h.say('still here');
+    const line = h.created.find((c) => c.entity === 'TextBlock');
+    expect(line?.fields.text).toBe('still here');
+    expect(line?.options?.parent).toEqual({ id: RECORD, relation: 'children', entity: 'CollectionBlock' });
+  });
+
+  it('describes the call again on coming back to its space', () => {
+    const screen = { uri: CALL_SPACE as string | null };
+    const h = inCallAt(screen);
+    screen.uri = OTHER_SPACE;
+    expect(h.store.inCall()).toBe(false);
+
+    screen.uri = CALL_SPACE;
+    expect(h.store.inCall()).toBe(true);
+    expect(h.store.enabled()).toBe(true);
   });
 });
 

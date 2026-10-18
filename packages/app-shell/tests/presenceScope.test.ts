@@ -108,4 +108,72 @@ describe('unionPeers', () => {
   it('is empty when no source is running', () => {
     expect(unionPeers({})).toEqual([]);
   });
+
+  /*
+    The case that was seen: this agent in a call in one space, reading another. The call's space
+    carries the call; the space on screen carries nothing. Taking whichever beat was fresher made
+    the call appear and disappear with every heartbeat, and the transcriber, which finds its own call
+    this way, turned recording off and on again with it.
+  */
+  it('keeps an activity one source carries when another source’s report is fresher', () => {
+    const call = { type: 'call', id: 'call-1', anchor: { datasetUri: CALL } };
+    const inCall = { ...peer('me', 10), activities: [call] };
+    const reading = { ...peer('me', 20), focus: { datasetUri: OTHER } };
+
+    for (const order of [
+      { [CALL]: [inCall], [OTHER]: [reading] },
+      { [OTHER]: [reading], [CALL]: [inCall] },
+    ]) {
+      const [me] = unionPeers(order);
+      expect(me.activities).toEqual([call]);
+      // Where they are still comes from the fresher report.
+      expect(me.focus).toEqual({ datasetUri: OTHER });
+      expect(me.updatedAt).toBe(20);
+    }
+  });
+
+  it('takes the fresher copy of an activity both sources carry', () => {
+    const muted = {
+      type: 'call',
+      id: 'call-1',
+      media: { audioEnabled: false, videoEnabled: true, screenShareEnabled: false },
+    };
+    const unmuted = { ...muted, media: { ...muted.media, audioEnabled: true } };
+
+    const [a] = unionPeers({
+      [HOME]: [{ ...peer('a', 30), activities: [unmuted] }],
+      [CALL]: [{ ...peer('a', 10), activities: [muted] }],
+    });
+
+    expect(a.activities).toEqual([unmuted]);
+  });
+
+  it('keeps activities of different kinds from different sources', () => {
+    const call = { type: 'call', id: 'call-1' };
+    const editing = { type: 'edit', nodeId: 'post-1' };
+
+    const [a] = unionPeers({
+      [CALL]: [{ ...peer('a', 10), activities: [call] }],
+      [HOME]: [{ ...peer('a', 20), activities: [editing] }],
+    });
+
+    expect(a.activities).toEqual(expect.arrayContaining([call, editing]));
+    expect(a.activities).toHaveLength(2);
+  });
+
+  it('drops the activities of a report that has gone offline', () => {
+    // Otherwise a call whose own heartbeat had stopped would live on inside a fresher beat from
+    // another space, for as long as that one kept arriving.
+    const call = { type: 'call', id: 'call-1' };
+    const gone = { ...peer('a', 10), liveness: 'offline' as const, activities: [call] };
+
+    const [a] = unionPeers({ [CALL]: [gone], [HOME]: [peer('a', 20)] });
+
+    expect(a.activities).toBeUndefined();
+  });
+
+  it('hands a person seen by one source through untouched', () => {
+    const only = { ...peer('a', 10), activities: [{ type: 'call', id: 'call-1' }] };
+    expect(unionPeers({ [CALL]: [only] })[0]).toBe(only);
+  });
 });

@@ -3929,6 +3929,11 @@ export const contextData: ContextData = {
           doc: 'The link to the speech model dropped and is being re-established; what is said meanwhile is held.',
         },
         {
+          name: 'recordingCall',
+          kind: 'state',
+          doc: 'This agent’s recording of the call it is in, wherever the call is — { enabled, listening, available }. For the call bar; the other members answer for the space on screen.',
+        },
+        {
           name: 'refreshProposals',
           kind: 'action',
           doc: 'Re-reads what is staged on a call, or on the live one.',

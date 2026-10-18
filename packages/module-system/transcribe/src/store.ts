@@ -784,6 +784,29 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   }
 
   /**
+   * The call this agent is in belongs to a space other than the one on screen.
+   *
+   * A call survives navigation, and so does this agent's recording of it: walking to another space
+   * leaves the microphone feeding the call's transcript. But a panel in that other space, or a
+   * template's transcript there, is about the space it is drawn in. Read through the published
+   * members, it lit the record button, moved the meter and showed the call's transcript in a space
+   * that has no call, which reads as being in a call there. So those members answer as though there
+   * were no call while this is true; the call bar, which is about the call wherever it is, reads
+   * `recordingCall` instead.
+   *
+   * A host that does not say which space is on screen is never elsewhere.
+   */
+  function callElsewhere(): boolean {
+    const uri = myCall()?.datasetUri;
+    return !!uri && !!deps.datasetUri && uri !== deps.datasetUri();
+  }
+
+  /** A published reading of the call, answered with `none` while the call is in another space. */
+  function onScreen<T>(read: () => T, none: T): () => T {
+    return () => (callElsewhere() ? none : read());
+  }
+
+  /**
    * Everyone *else* recording this call right now, sorted.
    *
    * Split out from `recordersOf` because most of the questions asked here are about the others: who
@@ -2762,10 +2785,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     ...feed,
     // ── State ────────────────────────────────────────────────────────────────
     status: state(
-      status,
+      onScreen(status, 'idle'),
       'What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error.',
     ),
-    error: state(error, 'Why the session stopped, when status is error; empty otherwise.'),
+    error: state(onScreen(error, ''), 'Why the session stopped, when status is error; empty otherwise.'),
     /**
      * The stream dropped and is being put back, with the microphone still open.
      *
@@ -2774,7 +2797,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * said is held rather than lost. What a reader needs to know is that the words are waiting.
      */
     reconnecting: state(
-      reconnecting,
+      onScreen(reconnecting, false),
       'The link to the speech model dropped and is being re-established; what is said meanwhile is held.',
     ),
     /**
@@ -2788,7 +2811,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * somebody carries on talking through a write, which is the case the join exists for.
      */
     pending: state(
-      () => [settling(), pending()].filter(Boolean).join(' '),
+      onScreen(() => [settling(), pending()].filter(Boolean).join(' '), ''),
       'Words heard that are not yet a row in the transcript — buffered or being written, newest last.',
     ),
     /**
@@ -2797,17 +2820,30 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * The gap between somebody stopping and their words appearing — a second or several on a CPU —
      * during which, without this, a panel looks exactly like one that did not hear them.
      */
-    transcribing: state(() => inFlight() > 0, 'Speech has gone to the model and its text has not come back yet.'),
+    transcribing: state(
+      onScreen(() => inFlight() > 0, false),
+      'Speech has gone to the model and its text has not come back yet.',
+    ),
     /**
      * Something has been said that the record does not hold yet: words buffered or being written,
      * or speech still with the model. What decides whether the unsaved box shows, and whether the
      * empty feed may still claim nothing has been said.
      */
     heard: state(
-      () => Boolean(settling() || pending() || inFlight() > 0),
+      onScreen(() => Boolean(settling() || pending() || inFlight() > 0), false),
       'Something has been said that the record does not hold yet — buffered, being written or still with the model.',
     ),
-    enabled: state(enabled, 'Whether this agent is recording their own microphone into the call.'),
+    enabled: state(onScreen(enabled, false), 'Whether this agent is recording their own microphone into the call.'),
+    /**
+     * This agent's recording of the call it is in, wherever that call is: what the call bar's
+     * record button reads. The members above answer for the space on screen (see `callElsewhere`),
+     * but the bar is about the call, and while it is up in another space its button is the one
+     * thing on screen saying the microphone still feeds the transcript, and the way to stop it.
+     */
+    recordingCall: state(
+      () => ({ enabled: enabled(), listening: status() === 'listening', available: (audioInput?.() ?? null) !== null }),
+      'This agent’s recording of the call it is in, wherever the call is — { enabled, listening, available }. For the call bar; the other members answer for the space on screen.',
+    ),
     /**
      * No transcription model is installed, as last read. True outside a recording too — see
      * {@link ModelState} for why that matters.
@@ -2873,7 +2909,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * as though nothing had ever happened.
      */
     collectionId: state(
-      collectionId,
+      onScreen(collectionId, null),
       'The record this call’s transcript lives in, or null until something has been said.',
     ),
 
@@ -2939,8 +2975,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     extractionOpen: state(extractionOpen, 'Whether the extraction panel is open.'),
     openExtractionPanel: action(() => setExtractionOpen(true), 'Opens the extraction panel.', { ambient: true }),
     closeExtractionPanel: action(() => setExtractionOpen(false), 'Closes the extraction panel.', { ambient: true }),
-    level: state(level, 'Microphone loudness as the voice detector measures it, 0–1.'),
-    speaking: state(speaking, 'Whether the microphone level currently counts as speech.'),
+    level: state(onScreen(level, 0), 'Microphone loudness as the voice detector measures it, 0–1.'),
+    speaking: state(onScreen(speaking, false), 'Whether the microphone level currently counts as speech.'),
     /**
      * The level and the onset threshold as CSS widths, ready to bind.
      *
@@ -2952,14 +2988,17 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * meter exists: a marker at a number that had drifted from the one the VAD compares against would
      * be confidently wrong about exactly the thing someone consults it to understand.
      */
-    levelPercent: state(() => asPercent(level()), 'The microphone level as a CSS width for a meter.'),
+    levelPercent: state(
+      onScreen(() => asPercent(level()), '0%'),
+      'The microphone level as a CSS width for a meter.',
+    ),
     thresholdPercent: state(
       () => asPercent(VAD.speechOnsetThreshold),
       'The speech-onset threshold as a CSS width, to mark on the same meter.',
     ),
     /** True only while actually producing — what the call bar's record button highlights on. */
     listening: state(
-      () => status() === 'listening',
+      onScreen(() => status() === 'listening', false),
       'True only while actually transcribing — what a record button highlights on.',
     ),
 
@@ -2968,7 +3007,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * effect. What the call bar reads to announce it, since being switched on by somebody else is
      * not something an agent should have to notice for themselves.
      */
-    autoJoined: state(autoJoined, 'Recording was started by the call rather than by this agent pressing record.'),
+    autoJoined: state(
+      onScreen(autoJoined, false),
+      'Recording was started by the call rather than by this agent pressing record.',
+    ),
     /**
      * Whether somebody else in this call is recording and this agent is not — the offer's condition.
      *
@@ -2980,11 +3022,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * False once this agent has opted out, and false while already recording — there is nothing to
      * offer someone who is already in.
      */
-    invited: state(() => {
-      const call = myCall();
-      if (!call || enabled() || optedOut()) return false;
-      return peerRecordersOf(call.id).length > 0;
-    }, 'Somebody else in this call is recording and this agent is not, having not opted out.'),
+    invited: state(
+      onScreen(() => {
+        const call = myCall();
+        if (!call || enabled() || optedOut()) return false;
+        return peerRecordersOf(call.id).length > 0;
+      }, false),
+      'Somebody else in this call is recording and this agent is not, having not opted out.',
+    ),
     /**
      * The first peer recording this call, for a surface that names who started it.
      *
@@ -2995,11 +3040,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * Empty once no peer is recording any more: this agent may still be recording after the peer who
      * started it stopped, so test it before drawing a name.
      */
-    invitedBy: state(() => {
-      const call = myCall();
-      if (!call) return '';
-      return peerRecordersOf(call.id)[0] ?? '';
-    }, 'The agent id of the first peer recording this call, or empty when none is.'),
+    invitedBy: state(
+      onScreen(() => {
+        const call = myCall();
+        if (!call) return '';
+        return peerRecordersOf(call.id)[0] ?? '';
+      }, ''),
+      'The agent id of the first peer recording this call, or empty when none is.',
+    ),
     /**
      * Everyone recording this call, this agent included — the numerator of coverage.
      *
@@ -3008,17 +3056,26 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * reads exactly like a transcript of the call. Published so the panel can say which it is, while
      * the meeting is still happening and somebody can still do something about it.
      */
-    transcribers: state(() => {
-      const call = myCall();
-      return call ? recordersOf(call.id) : [];
-    }, 'Everyone recording this call, this agent included — the numerator of coverage.'),
+    transcribers: state(
+      onScreen(() => {
+        const call = myCall();
+        return call ? recordersOf(call.id) : [];
+      }, []),
+      'Everyone recording this call, this agent included — the numerator of coverage.',
+    ),
     /** Everyone in this call — the denominator. Empty outside a call, which is what hides coverage. */
-    callAgents: state(() => {
-      const call = myCall();
-      return call ? agentsInCall(call.id) : [];
-    }, 'Everyone in this call, recording or not — the denominator of coverage; empty outside a call.'),
+    callAgents: state(
+      onScreen(() => {
+        const call = myCall();
+        return call ? agentsInCall(call.id) : [];
+      }, []),
+      'Everyone in this call, recording or not — the denominator of coverage; empty outside a call.',
+    ),
     /** Whether this agent is in a call at all — what decides between "join" and "continue" wording. */
-    inCall: state(() => myCall() !== null, 'Whether this agent is in a call right now.'),
+    inCall: state(
+      onScreen(() => myCall() !== null, false),
+      'Whether this agent is in a call right now.',
+    ),
     /**
      * Whether somebody is in the call the address names, read off presence rather than off the call
      * module's roster. The panel used to read `modules.call.liveCalls` for this, which was the one
@@ -3032,15 +3089,18 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       );
     }, 'Somebody is in the call the address names right now.'),
     /** Someone in this call is not being transcribed. The gap coverage exists to report. */
-    partialCoverage: state(() => {
-      const call = myCall();
-      if (!call) return false;
-      const present = agentsInCall(call.id).length;
-      return present > 0 && recordersOf(call.id).length < present;
-    }, 'Someone in this call is not being transcribed.'),
+    partialCoverage: state(
+      onScreen(() => {
+        const call = myCall();
+        if (!call) return false;
+        const present = agentsInCall(call.id).length;
+        return present > 0 && recordersOf(call.id).length < present;
+      }, false),
+      'Someone in this call is not being transcribed.',
+    ),
     /** There is audio to listen to. Without it, offering to record is offering nothing. */
     available: state(
-      () => (audioInput?.() ?? null) !== null,
+      onScreen(() => (audioInput?.() ?? null) !== null, false),
       'There is audio to listen to — a microphone the host is capturing.',
     ),
 
@@ -3060,7 +3120,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * surface names, and the one a `subject` expression falls back to.
      */
     callId: state(
-      () => targetCollection(),
+      onScreen(() => targetCollection(), ''),
       'The record extraction decisions for this call are written against — the call’s own record from its first second.',
     ),
 
@@ -3173,7 +3233,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * happen here" when there is no conversation to be about.
      */
     autoExtract: state(
-      () => autoEnabled(collectionId() ?? myCall()?.recordId ?? undefined),
+      () => autoEnabled(callElsewhere() ? undefined : (collectionId() ?? myCall()?.recordId ?? undefined)),
       'Whether the call this agent is in is extracted as it happens — its own answer.',
     ),
     /**
@@ -3239,7 +3299,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * missing field are the same falsy value and would make an unrelated absent id look live.
      */
     liveCollectionId: state(
-      () => collectionId() ?? '',
+      onScreen(() => collectionId() ?? '', ''),
       'The record the call this agent is in is writing into, or empty when there is none.',
     ),
     /**

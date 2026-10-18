@@ -3779,6 +3779,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - proposals — Suggestions staged on the live call — prefer proposalsFor with the call named.
   - proposalsFor — Suggestions staged on one conversation, by record id — read as proposalsFor[id].
   - reconnecting — The link to the speech model dropped and is being re-established; what is said meanwhile is held.
+  - recordingCall — This agent’s recording of the call it is in, wherever the call is — { enabled, listening, available }. For the call bar; the other members answer for the space on screen.
   - replyingTo — The line a reply is being written to — { id, text, author, surface } — or null. `surface` is 'transcript' or 'feed': the list it was started from, whose composer sends it.
   - speaking — Whether the microphone level currently counts as speech.
   - status — What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error.
