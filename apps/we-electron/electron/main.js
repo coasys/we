@@ -1,4 +1,4 @@
-import { execSync, spawn, spawnSync } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, shell } from 'electron';
 import contextMenu from 'electron-context-menu';
 import express from 'express';
@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { createAccountRegistry, expandHome } from './accounts.js';
 import { openExecutorLog } from './executorLog.js';
+import { stopExecutorsFor, stopProcess } from './executorProcess.js';
 import {
   allowMediaPermission,
   isExternallyOpenable,
@@ -263,18 +264,13 @@ async function startExecutor() {
     const log = executorLog;
     if (log) console.log('[main] Executor log:', log.path);
 
-    // Kill any surviving ad4m-executor from a previous detached run (survives Ctrl+C).
-    // Must happen BEFORE the lair socket / LOCK cleanups so the old process releases
-    // its file handles before we delete them — otherwise it just re-acquires them.
-    if (process.platform !== 'win32') {
-      try {
-        execSync('pkill -SIGKILL -f ad4m-executor', { stdio: 'ignore' });
-        // Give the OS a moment to release RocksDB / lair file handles
-        await new Promise((r) => setTimeout(r, 800));
-      } catch {
-        // pkill exits with code 1 when no matching process is found — not an error
-      }
-    }
+    // Stop an executor still running on this data path (one a previous run left behind, e.g. after
+    // Ctrl+C or a crash) and wait for it to exit. Only that one: other executors on the machine are
+    // not ours. It must be gone before the lair socket / LOCK cleanups below, or it re-acquires them.
+    await stopExecutorsFor(ad4mDataPath, (line) => {
+      console.log(line);
+      log?.write(`${line}\n`);
+    });
 
     // Clean up stale lair-keystore socket file — if a previous run crashed without
     // killing child processes, this socket stays on disk and causes lair-keystore
@@ -825,7 +821,7 @@ ipcMain.handle('executor-choose-file', async (_event, { save, defaultName } = {}
 async function restartExecutorAndReload() {
   switchingAccount = true;
   try {
-    killExecutor();
+    await stopExecutor();
     // startExecutor picks up the new path, waits for GraphQL, and refreshes port/token — which the
     // reloaded renderer asks for again over IPC, so it never sees the old credentials.
     await startExecutor();
@@ -1005,30 +1001,37 @@ function installApplicationMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-// Kill the executor AND its entire process group (holochain, lair-keystore, etc.)
-function killExecutor() {
-  if (!executorProcess) return;
-  try {
-    if (process.platform !== 'win32') {
-      // Negative PID kills the entire process group spawned with detached: true
-      process.kill(-executorProcess.pid, 'SIGKILL');
-    } else {
-      executorProcess.kill();
-    }
-  } catch (err) {
-    // Process may already be dead
-    console.warn('killExecutor: could not kill process group:', err.message);
-  }
+// Stop the executor and wait for it to exit: SIGTERM lets it shut the Holochain conductor down
+// cleanly; SIGKILL to its process group (spawned detached) only if it does not exit in time.
+// A second call while a stop is in progress waits for that same stop.
+let executorStopping = Promise.resolve();
+function stopExecutor() {
+  const proc = executorProcess;
   executorProcess = null;
+  if (!proc || proc.exitCode !== null || proc.signalCode !== null) return executorStopping;
+  executorStopping = (async () => {
+    if (process.platform === 'win32') {
+      proc.kill();
+      return;
+    }
+    const how = await stopProcess(proc.pid);
+    console.log(`[main] Executor stopped (${how})`);
+  })();
+  return executorStopping;
 }
 
-// Kill before Electron quits (covers Cmd+Q, app.quit(), etc.)
-app.on('before-quit', () => {
-  if (!process.env.WE_EXTERNAL_AD4M_PORT) killExecutor();
+// Stop the executor before Electron quits (covers Cmd+Q, app.quit(), etc.). Quitting waits for it:
+// the first before-quit is held, the executor stopped, then the quit resumes.
+let executorStoppedForQuit = false;
+app.on('before-quit', (event) => {
+  if (process.env.WE_EXTERNAL_AD4M_PORT || executorStoppedForQuit) return;
+  event.preventDefault();
+  executorStoppedForQuit = true;
+  stopExecutor().finally(() => app.quit());
 });
 
 app.on('window-all-closed', () => {
-  if (!process.env.WE_EXTERNAL_AD4M_PORT) killExecutor();
+  if (!process.env.WE_EXTERNAL_AD4M_PORT) void stopExecutor();
 
   if (process.platform !== 'darwin') {
     app.quit();
