@@ -76,6 +76,8 @@ const SOLID_TESTS = [
   'tests/liveStoreReactive.test.tsx',
   // Mounts the real router, because the failure was what it matches, not what the table holds.
   'tests/spaceDeepLink.test.tsx',
+  // Real signals and effects: the failure was an effect that never heard what arrived after it.
+  'tests/spaceRecordWait.test.ts',
 ];
 
 export default defineConfig({

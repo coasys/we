@@ -53,6 +53,7 @@ import {
 import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
+import { createSpaceRecordWait } from './spaceRecordWait';
 import { createTemplateDrafts } from './templateDrafts';
 
 const emptyMeta: TemplateMeta = { name: '', description: '', icon: '' };
@@ -734,6 +735,21 @@ export function TemplateStoreProvider(props: ParentProps) {
     return !!dataset && templateResolvedFor() !== dataset.id;
   };
 
+  // A space joined a moment ago may not have its own record yet — see `spaceRecordWait.ts`.
+  const spaceRecord = createSpaceRecordWait({
+    currentId: () => datasetStore.currentDataset()?.id ?? null,
+    spaceOf: () => {
+      const perspective = datasetStore.currentDataset();
+      return perspective ? resolveSpaceFromPerspective(perspective) : undefined;
+    },
+    hasTemplate: (id) => allTemplates().some((t) => t.id === id),
+    choose: async () => {
+      const perspective = datasetStore.currentDataset();
+      if (perspective) await chooseSpaceTemplate(perspective);
+    },
+    settle: setTemplateResolvedFor,
+  });
+
   // On space switch: apply default template.
   // When navigateToSpace pre-loads templates, the cache is already populated and the
   // template switches synchronously here. For deep links / page refresh, takes the async path.
@@ -774,7 +790,11 @@ export function TemplateStoreProvider(props: ParentProps) {
       // while still in that space: a slow answer for one already left must not overwrite the
       // answer for the space now open, which would leave it pending for good.
       void applySpaceTemplate(perspective, undefined, { shownEarly: !!early }).finally(() => {
-        if (lastSpacePerspectiveUuid === perspective.id) setTemplateResolvedFor(perspective.id);
+        if (lastSpacePerspectiveUuid !== perspective.id) return;
+        // A space joined a moment ago may not have its own record yet, so nothing above could say
+        // which template it shows. Not settled: see `spaceRecordWait.ts`.
+        if (!resolveSpaceFromPerspective(perspective)) spaceRecord.wait(perspective.id);
+        else setTemplateResolvedFor(perspective.id);
       });
     }
   });
@@ -825,7 +845,19 @@ export function TemplateStoreProvider(props: ParentProps) {
   ): Promise<void> {
     // preloadSpaceTemplates handles cache hit (sync restore) or miss (AD4M fetch)
     await preloadSpaceTemplates(perspective);
+    await chooseSpaceTemplate(perspective, fallback, options);
+  }
 
+  /**
+   * Which template this space shows, from what has already been read — its record, this agent's
+   * override, the templates loaded. The half of `applySpaceTemplate` after the preload, so the
+   * late path below can run it without restoring the cached template list over newer arrivals.
+   */
+  async function chooseSpaceTemplate(
+    perspective: AppDataset,
+    fallback?: string,
+    options: { shownEarly?: boolean } = {},
+  ): Promise<void> {
     // Use mySpaces cache for defaultTemplateId — avoids a redundant Space.findOne round-trip
     const cachedSpace = resolveSpaceFromPerspective(perspective);
 
