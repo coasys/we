@@ -2,6 +2,7 @@
  * What an install screen says about a bundle is worked out from its templates, never read from it.
  */
 import { judgeBundle, modulesNamedBy } from '@shared/bundles/judgeBundle';
+import { describeCapabilities } from '@shared/templateAcceptance';
 import type { Bundle } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
@@ -98,6 +99,13 @@ describe('judging a bundle', () => {
   it('splits modules into those to turn on and those this build does not have', () => {
     expect(judged.modulesToTurnOn).toEqual([{ id: 'polls', name: 'Polls' }]);
     expect(judged.modulesNotInBuild).toEqual(['globe']);
+  });
+
+  it('keeps what it found as groups and module ids, for a later version to be compared against', () => {
+    expect(describeCapabilities(judged.groups)).toEqual(judged.capabilities);
+    // Every module it needs — calls, already on, as well as the two above — since one turned off later
+    // must still count as agreed to rather than new.
+    expect([...judged.modules].sort()).toEqual(['call', 'globe', 'polls']);
   });
 
   it('refuses a record type named like one that already exists, or one that does not validate', () => {
