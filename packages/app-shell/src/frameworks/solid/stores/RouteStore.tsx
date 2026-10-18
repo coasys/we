@@ -188,7 +188,12 @@ export function RouteStoreProvider(props: ParentProps) {
     const search = new URLSearchParams(untrack(params));
     if (value === null || value === undefined || value === '') search.delete(name);
     else search.set(name, value);
-    const query = search.toString();
+    /*
+      `:` and `/` left as they are. Both are legal in a query, and a record id is a URI, so encoding
+      them turned `?call=ad4m://obj/x` into `?call=ad4m%3A%2F%2Fobj%2Fx` — the same call written two
+      ways, depending on whether a link or this wrote it. Every reader decodes either form alike.
+    */
+    const query = search.toString().replace(/%3A/gi, ':').replace(/%2F/gi, '/');
     const url = `${untrack(currentPath) || window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
     // Written through history directly rather than the router: the path is
     // unchanged, so the route tree must not re-resolve — only the params signal
