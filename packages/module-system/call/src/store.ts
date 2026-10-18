@@ -1822,12 +1822,19 @@ export function createCallStore(deps: ModuleStoreDeps) {
     if (!started.localStream()) setProblem(MEDIA_BLOCKED);
   }
 
-  // Reconcile the mesh against the roster. This is the whole membership mechanism — see mesh.ts.
-  // When a Session backend handles the call, it manages roster polling internally — skip this.
+  /*
+    Reconcile the call against the roster. This is the whole membership mechanism — see mesh.ts.
+
+    A Session backend manages its own connections, so only this module's mesh is told who to
+    connect to. The tiles follow the roster either way. They used to be rebuilt only on the
+    session's own events, and on AD4M every call is a session, so a peer who pressed leave stayed on
+    "Connecting…" until the session noticed by itself, about 30 s later, though presence had said
+    they were gone within a second.
+  */
   effect?.(() => {
     const peers = roster();
-    if (backend || !mesh) return;
-    mesh.setRoster(peers.map((peer) => peer.agentId));
+    if (!callId()) return;
+    if (!backend && mesh) mesh.setRoster(peers.map((peer) => peer.agentId));
     rebuildTiles();
   });
 
