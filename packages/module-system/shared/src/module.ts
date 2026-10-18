@@ -639,6 +639,16 @@ export interface ModuleStoreDeps {
   /** The call record the address names, when the interface on screen is about one. `null` otherwise. */
   callOnScreen?: () => string | null;
   /**
+   * Make the address name this call record — the write half of `callOnScreen`. For the moment this
+   * agent joins a call, so a link copied from the screen, a reload, or the end of the call all still
+   * land on the call it is in.
+   *
+   * A record and the space it is in, never an address: the host owns the address and decides. It
+   * writes only while the space on screen is the call's, and only where the address names some other
+   * call or none.
+   */
+  showCallOnScreen?: (recordId: string, datasetUri: string | null) => void;
+  /**
    * This module's own settings, resolved for where the agent is right now and defaulted where nobody
    * spoke. Reactive. Secret-typed settings are absent here — read them through the `secrets` kernel.
    */

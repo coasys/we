@@ -383,7 +383,7 @@ describe('picking a call back up', () => {
 
       Disabled with a reason rather than absent. The gate used to include `!active`, which made this
       the only thing on the pill that came and went — and it went at the moment the pill had most to
-      say, since a live call is usually shown with no `?call=` at all.
+      say, since a live call can be shown with no `?call=` at all.
     */
     expect(json()).toContain('"disabled":{"$":"modules.call.active && !(');
     expect(json()).toContain("'Leave your current call to pick this one up'");

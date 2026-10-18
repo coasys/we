@@ -31,7 +31,7 @@ describe('expandViewRoutes', () => {
     const out = expandViewRoutes([marker], [view('about', 'about'), view('cards', 'cards')]);
 
     // Plus the space's own address, which is not a section — see the index-route tests below.
-    expect(out.map((r) => r.path)).toEqual(['/about', '/cards', '/']);
+    expect(out.map((r) => r.path)).toEqual(['/about', '/cards', '/', '/*']);
   });
 
   it('emits no index redirect, because that would have to be rebuilt to change', () => {
@@ -59,7 +59,7 @@ describe('expandViewRoutes', () => {
       extraRoutes: [extra],
     });
 
-    expect(out.map((r) => r.path)).toEqual(['/about', '/record/:entity', '/']);
+    expect(out.map((r) => r.path)).toEqual(['/about', '/record/:entity', '/', '/*']);
   });
 
   it('uses the resolved segment, not the one the template suggested', () => {
@@ -67,7 +67,7 @@ describe('expandViewRoutes', () => {
     const feed = view('feed', 'cards', { segment: 'feed' });
     const out = expandViewRoutes([marker], [feed]);
 
-    expect(out.map((r) => r.path)).toEqual(['/cards', '/']);
+    expect(out.map((r) => r.path)).toEqual(['/cards', '/', '/*']);
   });
 
   it('carries the view body through and drops the template-only keys', () => {
@@ -146,7 +146,7 @@ describe('expandViewRoutes', () => {
 
     const out = expandViewRoutes(routes, [view('about', 'about')]);
 
-    expect(out[1].routes?.map((r) => r.path)).toEqual(['/about', '/']);
+    expect(out[1].routes?.map((r) => r.path)).toEqual(['/about', '/', '/*']);
   });
 
   it('leaves routes the shell declared alongside the marker in place, in order', () => {
@@ -167,7 +167,7 @@ describe('expandViewRoutes', () => {
     // than a section, and with no gate to draw it carries no text either.
     const out = expandViewRoutes([marker], []);
 
-    expect(out.map((r) => r.path)).toEqual(['/']);
+    expect(out.map((r) => r.path)).toEqual(['/', '/*']);
     expect(out[0].children).toBeUndefined();
   });
 
@@ -275,7 +275,7 @@ describe("expandViewRoutes — the space's own address", () => {
   it('is there even for a space with no sections, which is when it is the only thing to match', () => {
     const out = expandViewRoutes([marker], [], gate);
 
-    expect(out.map((r) => r.path)).toEqual(['/']);
+    expect(out.map((r) => r.path)).toEqual(['/', '/*']);
   });
 
   it("draws the host's own node for a section that is not here, rather than text of its own", () => {
@@ -299,6 +299,62 @@ describe("expandViewRoutes — the space's own address", () => {
 
     const out = expandViewRoutes(routes, [view('about', 'about')], gate);
 
-    expect(out[0].routes?.map((r) => r.path)).toEqual(['/about', '/']);
+    expect(out[0].routes?.map((r) => r.path)).toEqual(['/about', '/', '/*']);
+  });
+});
+
+describe('expandViewRoutes — a deeper address in the space', () => {
+  const gate: ViewGate = {
+    activeIds: 'spaceStore.enabledViewIds',
+    notInSpace: { type: 'we-text', children: ['nothing here'] },
+  };
+
+  /*
+    A visitor who has not joined is drawn the host's template, whose routes are sections — and a link
+    into a page of the space's own template, the Workshop's `/canvas`, matched none of them. The
+    layout holding the join prompt never rendered and the host's not-found took the page. The address
+    is what somebody copies from a call, so the link that should have let a peer in was the one that
+    shut them out.
+  */
+  it('matches any deeper address, so the layout around it — and its join prompt — renders', () => {
+    const out = expandViewRoutes([marker], [view('about', 'about')], gate);
+
+    expect(out.map((r) => r.path)).toContain('/*');
+  });
+
+  it("draws what the space's own address draws", () => {
+    const out = expandViewRoutes([marker], [view('about', 'about')], gate);
+    const deep = out.find((r) => r.path === '/*');
+    const index = out.find((r) => r.path === '/');
+
+    expect(deep?.type).toBe(index?.type);
+    expect(deep?.children).toEqual(index?.children);
+  });
+
+  it('comes after the sections, which still match their own addresses', () => {
+    const paths = expandViewRoutes([marker], [view('about', 'about')], gate).map((r) => r.path);
+
+    expect(paths.indexOf('/*')).toBeGreaterThan(paths.indexOf('/about'));
+  });
+
+  it('draws the gate’s notHere when it has one', () => {
+    const notHere = { type: 'we-text', children: ['not part of this space'] };
+    const deep = expandViewRoutes([marker], [view('about', 'about')], { ...gate, notHere }).find(
+      (r) => r.path === '/*',
+    );
+
+    expect(deep?.children).toEqual(notHere.children);
+  });
+
+  it("leaves a shell's own catch-all alone rather than adding a second", () => {
+    // The shell's says what it means by a page that is not here, and two at one level would be a
+    // duplicate path.
+    for (const path of ['/*', '*']) {
+      const routes: RouteSchema[] = [marker, { path, type: 'Column' } as RouteSchema];
+
+      const out = expandViewRoutes(routes, [view('about', 'about')], gate);
+
+      expect(out.filter((r) => r.path === '/*' || r.path === '*')).toEqual([routes[1]]);
+    }
   });
 });

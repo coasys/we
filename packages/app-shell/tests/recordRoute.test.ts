@@ -26,16 +26,17 @@ describe('the record route the host injects', () => {
     });
 
     /*
-      Plus the space's own address, which is not a section and not this route: a bare `/space/<id>`
-      has to match something or the shell around the sections never renders at all — see
-      `indexRoute` in `viewRoutes.ts`. It arrived after this test was written and in another package,
-      so this was the one assertion the sweep missed.
+      Plus the space's own address and the catch-all below it, neither a section nor this route: a
+      bare `/space/<id>`, and any deeper address nothing else matches, have to match something or the
+      shell around the sections — and the join prompt in it — never renders at all. See `indexRoute`
+      and `deepRoute` in `viewRoutes.ts`. Both arrived after this test was written and in another
+      package, which is how this assertion got missed the first time.
 
       Asserted as the whole list rather than as `toContain`, because what this test is for is the
       *position*: a host that appended its routes at the root would put the record page outside the
       space it belongs to, and a list that only had to contain the path would not notice.
     */
-    expect(out.map((route) => route.path)).toEqual([RECORD_ROUTE_PATH, '/']);
+    expect(out.map((route) => route.path)).toEqual([RECORD_ROUTE_PATH, '/', '/*']);
   });
 
   it('takes exactly one path segment for the entity and none for the id', () => {

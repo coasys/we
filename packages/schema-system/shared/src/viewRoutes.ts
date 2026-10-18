@@ -182,6 +182,11 @@ export type ViewGate = {
   /** Rendered in place of a section the space does not offer. */
   notInSpace: SchemaNode;
   /**
+   * Rendered at a deeper address naming nothing this space has — a page of another template, or a
+   * mistyped one. Absent, that address draws `notInSpace`.
+   */
+  notHere?: SchemaNode;
+  /**
    * Routes the host wants beside the sections — a record's own page, and anything like it.
    *
    * Placed at the marker rather than appended to the tree, because that is the one position that is
@@ -260,6 +265,32 @@ function indexRoute(gate?: ViewGate): RouteSchema {
 }
 
 /**
+ * Any deeper address in the space — `/space/<id>/canvas?call=…` — that nothing else here matches.
+ *
+ * The index route's case one level down, and the same failure. A visitor who has not joined yet is
+ * drawn the host's template, so the routes are its sections, and a link into a page of the space's
+ * *own* template — the Workshop's `/canvas`, which arrives only once the space is joined — matched
+ * nothing. The layout holding the join prompt never rendered, the host's not-found took the page,
+ * and the only way in was to edit `/canvas` off the address by hand. That is the address somebody
+ * copies from a call.
+ *
+ * For a visitor it is the join prompt, around it, with the address left as it was, so once the space
+ * and its template arrive the page the link named is the page they see. For a member it is the
+ * gate's `notHere` — "this page isn't part of this space" — where it used to be the host's
+ * not-found. An address naming a *section* the space has switched off never reaches it: the
+ * section's own route matches, and its gate draws `notInSpace`.
+ *
+ * Added only where the shell declared no catch-all of its own at that level: a shell's says what it
+ * means by a page that is not here, and two would be a duplicate path.
+ */
+function deepRoute(gate?: ViewGate): RouteSchema {
+  if (gate?.notHere) return { ...(gate.notHere as Record<string, unknown>), path: '/*' } as RouteSchema;
+  return { ...indexRoute(gate), path: '/*' } as RouteSchema;
+}
+
+const isCatchAll = (route: RouteSchema): boolean => route.path === '/*' || route.path === '*';
+
+/**
  * Replace every `$views` marker in a route tree with the resolved section list.
  *
  * Recurses into nested `routes`, because a shell may put its sections below a layout route — which
@@ -281,6 +312,7 @@ export function expandViewRoutes(routes: RouteSchema[], views: ResolvedView[], g
       // Last, and position is not what makes it work: the router matches on the path, and no section
       // can hold this one. See `indexRoute`.
       out.push(indexRoute(gate));
+      if (!routes.some(isCatchAll)) out.push(deepRoute(gate));
       continue;
     }
 

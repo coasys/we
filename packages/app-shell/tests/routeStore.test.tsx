@@ -40,6 +40,26 @@ describe('routeStore params', () => {
     expect(store.params()).toEqual({});
   });
 
+  it('writes a URI value readably, and reads it back the same', () => {
+    // A record id is a URI. Encoded, the address said `ad4m%3A%2F%2Fobj%2Fx` where a link to the
+    // same call says `ad4m://obj/x`.
+    const store = mountStore();
+
+    store.setParam('call', 'ad4m://obj/x');
+
+    expect(window.location.search).toBe('?call=ad4m://obj/x');
+    expect(store.params()).toEqual({ call: 'ad4m://obj/x' });
+  });
+
+  it('still encodes what a query cannot hold', () => {
+    const store = mountStore();
+
+    store.setParam('q', 'a&b=c #d');
+
+    expect(store.params()).toEqual({ q: 'a&b=c #d' });
+    expect(window.location.search).not.toContain('&b=');
+  });
+
   it('replace by default, push on request', () => {
     const store = mountStore();
     const pushSpy = vi.spyOn(window.history, 'pushState');
