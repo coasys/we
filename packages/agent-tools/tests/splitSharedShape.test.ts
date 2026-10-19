@@ -11,7 +11,6 @@
  * can then be edited **without touching anybody else**, and the copy records where it came from,
  * so "put these back the way they were" is still answerable afterwards.
  */
-import { applySchemaPatches } from '@shared/ai/schemaPatches';
 import type { SchemaNode } from '@we/schema-shared';
 import {
   compactDefinitions,
@@ -22,6 +21,8 @@ import {
   outlineOf,
 } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
+
+import { applySchemaPatches } from '../src/templates/schemaPatches';
 
 const card = (): SchemaNode => ({
   type: 'Column',

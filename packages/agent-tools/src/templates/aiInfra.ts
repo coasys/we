@@ -7,11 +7,13 @@
  * calling one provider from the browser. What stays here is the part that is WE's to decide
  * whichever model answers. Keep it free of Solid and store imports so that boundary stays real.
  */
-import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
-import type { ConversationTool, EntityManifestEntry } from '@we/backend-shared';
+import type { ConversationTool, ConversationToolCall, EntityManifestEntry } from '@we/backend-shared';
 import type { SchemaNode } from '@we/schema-shared';
 
+import { chatSystemPreamble } from './chatSystemPrompt';
 import { type ContextStrategyId, prepareContext, type PreparedContext } from './contextStrategies';
+import { type ModelTree, prepareForModel } from './nodeAliases';
+import { type BoundedTemplate, boundTemplate } from './templateContext';
 
 /**
  * How the editor tells a model about WE.
@@ -55,8 +57,65 @@ function reference(): Promise<string> {
  * Per request rather than cached, because `lookup` reads the request and the template to decide
  * what to put in the prompt — which is the whole point of it.
  */
-export async function chatContext(subject: { request: string; schema: SchemaNode }): Promise<PreparedContext> {
-  return prepareContext(STRATEGY, chatSystemPreamble, await reference(), subject);
+export async function chatContext(
+  subject: { request: string; schema: SchemaNode },
+  strategy: ContextStrategyId = STRATEGY,
+): Promise<PreparedContext> {
+  return prepareContext(strategy, chatSystemPreamble, await reference(), subject);
+}
+
+export interface TemplateRequest {
+  /** The one tree the request is about: what the model is shown, and what its ids resolve against. */
+  tree: ModelTree;
+  system: string;
+  /** Every tool the model is offered, `update_schema` first. */
+  tools: ConversationTool[];
+  /** The answer to a lookup tool, or undefined for a name no tool here claims. */
+  resolveTool: (call: ConversationToolCall) => string | undefined;
+  /** What the user turn carries as the template — the tree itself, or an outline when it is over budget. */
+  sent: unknown;
+  /** How the template was bounded, for diagnostics. */
+  bounded: BoundedTemplate['stats'] & { whole: boolean };
+}
+
+/**
+ * Everything one request needs before the model is asked: the template prepared once, the
+ * reference chosen for the request, and the template bounded to its budget.
+ *
+ * ONE tree, numbered once, for everything this request: what the model is shown, what its ids are
+ * resolved against, and what the context strategy preselects from. Compacting in one place and
+ * patching the uncompacted template in another gave two independent numberings that drift apart at
+ * the first hoisted shape — and the failure was quiet: a patch the model wrote against a shared
+ * definition resolved, on this side, to one inline copy of it. It validated, it saved, it changed
+ * something plausible, and the model's explanation of what it had done was confidently wrong. So
+ * every host builds a request here rather than assembling the parts itself.
+ */
+export async function prepareTemplateRequest(options: {
+  /** The template as stored: expanded, with permanent ids. */
+  template: SchemaNode;
+  request: string;
+  /** How much of the reference goes in the prompt. The editor's choice when absent. */
+  strategy?: ContextStrategyId;
+  /** The template's share of the budget, in characters. See `boundTemplate`. */
+  budget?: number;
+}): Promise<TemplateRequest> {
+  const tree = prepareForModel(options.template);
+  const context = await chatContext({ request: options.request, schema: tree.schema }, options.strategy);
+  /*
+    How much of the TEMPLATE goes with it. `chatContext` bounds the reference; this bounds the
+    other half, which on a real template is the larger one. A template inside the budget is sent
+    whole — kanban is, workshop is not.
+  */
+  const bounded = boundTemplate(tree.schema, options.request, options.budget);
+  return {
+    tree,
+    system: context.system,
+    tools: [updateSchemaTool, ...context.tools, ...bounded.tools],
+    // Whichever tool owns the name answers; a tool nobody claims is reported by the caller.
+    resolveTool: (call) => context.resolveTool?.(call) ?? bounded.resolveTool?.(call),
+    sent: bounded.sent,
+    bounded: { ...bounded.stats, whole: bounded.whole },
+  };
 }
 
 /**
@@ -190,4 +249,25 @@ export function formatExternalManifestForPrompt(manifest: EntityManifestEntry[])
     lines.push('');
   }
   return lines.join('\n');
+}
+
+/**
+ * What the user turn says about the dataset's own models, beside the template.
+ *
+ * WE's models are named only — their structure is already in the reference. Anything else (a
+ * model another app synced in, one a community defined) is described in full, since the model has
+ * no other way to know its fields. `known` is the set of names the reference already covers —
+ * `ValidationContext.entityNames` before the dataset's are added.
+ */
+export function datasetModelExtras(
+  manifest: EntityManifestEntry[],
+  known: ReadonlySet<string>,
+): Record<string, unknown> {
+  const extras: Record<string, unknown> = {};
+  if (manifest.length === 0) return extras;
+  const ours = manifest.filter((m) => known.has(m.name)).map((m) => m.name);
+  const theirs = manifest.filter((m) => !known.has(m.name));
+  if (ours.length > 0) extras.availableWeEntities = ours;
+  if (theirs.length > 0) extras.externalEntities = formatExternalManifestForPrompt(theirs);
+  return extras;
 }

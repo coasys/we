@@ -180,6 +180,17 @@ jobs:
       - name: Browser tests
         run: pnpm --filter @we/primitives test:browser
 
+      # The agent tools' single-file bundle, run where a host runs it: Deno, with no DOM, no Node and
+      # read access to nothing but the bundle and two templates. Everything above runs in Node, which
+      # quietly allows what a host would refuse — an env read, a filesystem call — so only this
+      # notices the bundle has stopped being loadable on its own.
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Agent tools under Deno
+        run: pnpm --filter @we/agent-tools test:deno
+
       # Coverage has been configured for as long as the tests have and has never run anywhere,
       # which is the same shape as the stylelint gap above it: a number nobody produces is a number
       # nobody can act on. Reported rather than gated — there is no threshold yet, deliberately (see
