@@ -68,11 +68,13 @@ jobs:
   unpaired:
     name: Not waiting on ad4m
     runs-on: ubuntu-latest
-    # To put the `waiting on ad4m` label on the PR while it pins an ad4m change not on ad4m `dev`.
-    # A fork's token cannot write it; the gate then warns, and the bump workflow's hourly job sets it.
+    # To put the `waiting on ad4m` label on the PR while it pins an ad4m change not on ad4m `dev`:
+    # `issues` to define the label, `pull-requests` to add it to a PR, which `issues` alone is refused.
+    # A fork's token cannot write either; the gate then warns, and the bump workflow's hourly job
+    # sets it.
     permissions:
       contents: read
-      pull-requests: read
+      pull-requests: write
       issues: write
     steps:
       - uses: actions/checkout@v4
