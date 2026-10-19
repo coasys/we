@@ -249,6 +249,18 @@ if (compare && compare.ahead_by === 0 && compare.behind_by > 0 && !allowOlder) {
   );
 }
 
+// Off a snapshot onto a version — the step before a release — the version has to contain the
+// snapshot's commit. Otherwise the release ships an older ad4m than `dev` was tested against, and
+// WE code written for what that snapshot added meets an SDK and executor without it. ad4m publishes
+// from `staging` after merging `dev` into it, so the version that qualifies is the next one.
+if (next.kind === 'version' && before?.kind === 'snapshot' && compare && compare.behind_by > 0 && !allowOlder) {
+  notYet(
+    `${version} does not contain the pinned ad4m commit ${before.commit.slice(0, 9)}: it is missing ${compare.behind_by} ` +
+      `of its commits.\n  A release would ship an older ad4m than \`dev\` was tested against. Wait for a version ` +
+      `published after ad4m merges \`dev\` into \`staging\`, or pass --allow-older.`,
+  );
+}
+
 // The commit check above misses a version from another branch: one carrying a handful of commits of
 // its own — a version bump, a merge — counts as adding them, however far behind it otherwise is.
 // ad4m's `staging` sat in March for months while the pin moved on through test builds, and its

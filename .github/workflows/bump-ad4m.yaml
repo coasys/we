@@ -21,7 +21,8 @@ name: Bump ad4m
 # requests" (Settings → Actions → General).
 #
 # Every hour, the `ready` job tells a PR pinning an ad4m pull request's snapshot when that pull
-# request has merged: nothing in this repository runs when it does, so asking is how it finds out.
+# request has merged, or when it has commits the PR does not pin yet: nothing in this repository
+# runs when either happens, so asking is how it finds out.
 on:
   schedule:
     - cron: '47 5 * * *' # the bump
@@ -151,8 +152,9 @@ jobs:
           gh workflow run ad4m-live.yaml --ref "$BRANCH"
           gh workflow run pr-tasks.yaml --ref "$BRANCH"
 
-  # A PR pinning an ad4m pull request's snapshot hears when that pull request merges: its gate is
-  # re-run when it now passes, and it gets a comment naming the command when the pin needs moving.
+  # A PR pinning an ad4m pull request's snapshot hears when that pull request merges — its gate is
+  # re-run when it now passes, and it gets a comment naming the command when the pin needs moving —
+  # and, while it is open, when it has moved past the pinned commit.
   # Independent of the bump above. scripts/ad4m-repin.mjs has the rules.
   ready:
     name: Tell PRs their ad4m change has merged

@@ -57,7 +57,10 @@ Merging `dev` into `main` is a release. There is no separate staging step.
 1. On `dev`, pin a published ad4m version: `pnpm bump:ad4m staging` (the newest published from ad4m's
    `staging` branch) or `pnpm bump:ad4m <version>`. A PR into `main` that pins a snapshot cannot
    merge, and a tag that does fails to package: a snapshot expires, and a release must rebuild from
-   its tag for as long as anyone needs it.
+   its tag for as long as anyone needs it. The version must contain the ad4m commit `dev` was
+   pinned to, or the release would ship an older ad4m than `dev` was tested against: both the bump
+   and the merge gate refuse one that does not. ad4m publishes from `staging` after merging `dev`
+   into it, so when no version qualifies yet, wait for the next one.
 2. On `dev`, set `version` in the root `package.json` and in each `apps/*/package.json` (while WE is
    pre-1.0: `0.1.0-alpha.1`, `0.1.0-alpha.2`, …).
 3. Open a PR from `dev` to `main` titled `Release v<version>`, and merge it with a merge commit.
@@ -81,7 +84,8 @@ pnpm bump:ad4m '#<N>'          # or the ad4m PR's URL
 
 That PR's head is then what the preview, CI and the live tests all run against — the ordinary path,
 with nothing paired, nothing built from source, and nothing to write in the description. Pushing to
-the ad4m PR does not move the pin: run the command again to pick up its new head.
+the ad4m PR does not move the pin: run the command again to pick up its new head. Within the hour,
+a comment on the WE PR says when its ad4m PR has commits it does not pin yet (below).
 
 | Step | What you do                                    | What happens                                                            |
 | ---- | ---------------------------------------------- | ----------------------------------------------------------------------- |
@@ -104,9 +108,15 @@ ad4m merges PRs with merge commits, so once the ad4m PR merges its head is on `d
 with no change in WE. Nothing here runs when that happens, so the bump workflow's hourly `ready` job
 asks (`scripts/ad4m-repin.mjs`): it re-runs the gate on a PR it now admits, and comments on one it
 still refuses whose ad4m PR has merged — squash-merged, or behind `dev`'s pin — naming the command to
-run. It does not push to anyone's branch. A version pin passes, as does a snapshot when the base pins
-a version (versions come from ad4m's `staging` branch, which no `dev` commit descends from). Into
-`main`, only a version passes.
+run. While the ad4m PR is still open, it also keeps one comment on a WE PR that pins an older commit
+of it, saying how many commits behind its head it is and the command that catches up, and deletes
+it once the pin catches up. That never blocks: pinning an older head can be deliberate. The gate's
+summary says the same on each push. Nothing pushes to anyone's branch.
+
+A version pin passes when it contains the base's snapshot, if the base pins one (above, under
+Releasing), and otherwise always. A snapshot passes rule 2 by default when the base pins a version
+(versions come from ad4m's `staging` branch, which no `dev` commit descends from). Into `main`, only
+a version passes.
 
 **Import the new SDK API directly.** The PR installs the ad4m change it needs, so there is no reason
 to declare its types again in WE or check at runtime whether a method exists: the checks run against
@@ -169,6 +179,8 @@ It refuses:
 - a target older than the current pin, unless given `--allow-older`: one whose commit adds nothing to
   the pin's, or a version published before the pinned one. The second catches a version from another
   branch, which carries a few commits of its own and so looks newer by commit however old it is.
+- a version replacing a snapshot that it does not contain, unless given `--allow-older`: a release
+  would ship an older ad4m than `dev` was tested against.
 
 **Which version is newest is decided by branch, not by npm tag.** ad4m tags a prerelease `next` and a
 release `latest`, and either tag can also hold a build somebody published by hand from a feature

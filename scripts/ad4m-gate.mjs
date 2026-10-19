@@ -9,7 +9,9 @@
  *
  * - **Into `main`**, the pin is an npm version. A release must rebuild from its tag for as long as
  *   anyone needs it, and a snapshot expires.
- * - **A version pin** anywhere else: nothing to wait for.
+ * - **A version pin** anywhere else, as long as it contains the base's snapshot when the base pins
+ *   one: replacing a snapshot with a version is the step before a release, and a version missing
+ *   the snapshot's commits would release an older ad4m than the base was tested against.
  * - **A snapshot pin** is (a) on ad4m `dev` — a pull request needing an ad4m change pins that ad4m
  *   pull request's head, and cannot merge until the change is in `dev` — and (b) the base branch's
  *   pin, or a descendant of it, so a pull request started on an older ad4m cannot move WE's pin back.
@@ -56,8 +58,27 @@ export async function ad4mPullFor(commit) {
 }
 
 /**
- * The verdict on a pin: `{ ok: true, reason }`, or `{ ok: false, reason, fix?, ad4mPr? }` where
- * `fix` is the command that would make it pass.
+ * How far an open ad4m pull request has moved past the commit a WE pull request pins:
+ * `{ pr, ahead }`, or undefined when it has not (or is not open, or GitHub cannot say).
+ */
+export async function movedOn(commit, pr) {
+  if (!pr || pr.state !== 'open' || !pr.head?.sha || pr.head.sha === commit) return undefined;
+  const comparison = await github(`repos/${AD4M_REPO}/compare/${commit}...${pr.head.sha}?per_page=1`);
+  return comparison?.ahead_by > 0 ? { pr, ahead: comparison.ahead_by } : undefined;
+}
+
+/** The sentence saying so, with the command that catches up. */
+export function movedOnNote({ pr, ahead }) {
+  return (
+    `${AD4M_REPO}#${pr.number} has ${ahead} commit${ahead === 1 ? '' : 's'} this PR does not pin yet. ` +
+    `To test against its head, run \`pnpm bump:ad4m '#${pr.number}'\` and push.`
+  );
+}
+
+/**
+ * The verdict on a pin: `{ ok: true, reason }`, or `{ ok: false, reason, fix?, ad4mPr?, pinned? }`
+ * where `fix` is the command that would make it pass, and `ad4mPr` the ad4m pull request a pin
+ * not yet on ad4m `dev` comes from.
  */
 export async function judge({ pin, basePin, base }) {
   if (base === 'main') {
@@ -69,7 +90,26 @@ export async function judge({ pin, basePin, base }) {
           fix: 'pnpm bump:ad4m <version>',
         };
   }
-  if (pin.kind === 'version') return { ok: true, reason: `Pins ${pin.version}, a published version.` };
+  if (pin.kind === 'version') {
+    // Replacing a snapshot with a version is the step before a release. The version has to contain
+    // the snapshot's commit, or the release ships an older ad4m than the base was tested against.
+    if (basePin?.kind !== 'snapshot') return { ok: true, reason: `Pins ${pin.version}, a published version.` };
+    const commit = await pinCommit(pin);
+    const status = await compare(basePin.commit, commit);
+    if (status === 'ahead' || status === 'identical') {
+      return {
+        ok: true,
+        reason: `Pins ${pin.version}, which contains \`${base}\`'s ad4m pin (${basePin.commit.slice(0, 9)}).`,
+      };
+    }
+    return {
+      ok: false,
+      reason:
+        `Would move \`${base}\` from the ad4m snapshot of ${basePin.commit.slice(0, 9)} to ${pin.version}, which does ` +
+        `not contain it, so a release would ship an older ad4m than \`${base}\` was tested against.`,
+      fix: 'pnpm bump:ad4m staging',
+    };
+  }
   if (basePin.kind === 'snapshot' && basePin.commit === pin.commit) {
     return { ok: true, reason: `Pins the same ad4m commit as \`${base}\` (${pin.commit.slice(0, 9)}).` };
   }
@@ -89,6 +129,7 @@ export async function judge({ pin, basePin, base }) {
           : `Pins an ad4m commit that is not on ad4m \`dev\` yet: ${short} (${which}).`,
       fix: pr?.merged_at ? 'pnpm bump:ad4m dev' : undefined,
       ad4mPr: pr,
+      pinned: pin.commit,
     };
   }
 
@@ -154,13 +195,20 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     verdict = { ok: false, reason: error.message };
   }
 
+  // Not a failure: pinning an older head can be deliberate, and once the ad4m PR merges the rules
+  // above decide. Said here so whoever pushed sees it, and hourly on the PR (scripts/ad4m-repin.mjs)
+  // because pushing to the ad4m PR starts nothing in this repository.
+  const behind = verdict.ad4mPr ? await movedOn(verdict.pinned, verdict.ad4mPr).catch(() => undefined) : undefined;
+
   console.log(`${verdict.ok ? '✓' : '✗'} ${verdict.reason}`);
   if (verdict.fix) console.log(`  To fix it: \`${verdict.fix}\`, then push.`);
+  if (behind) console.log(`  Note: ${movedOnNote(behind)}`);
   summary([
     verdict.ok ? '### The ad4m pin can merge' : '### Not ready to merge: the ad4m pin',
     '',
     verdict.reason,
     ...(verdict.fix ? ['', `To fix it, run \`${verdict.fix}\` on this branch and push.`] : []),
+    ...(behind ? ['', `> [!NOTE]`, `> ${movedOnNote(behind)}`] : []),
   ]);
   if (!verdict.ok) {
     console.log(`::error title=ad4m pin::${verdict.reason.replace(/\n/g, ' ')}`);

@@ -8,12 +8,17 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
-import { judge } from './ad4m-gate.mjs';
+import { judge, movedOn } from './ad4m-gate.mjs';
 
 const BASE = 'a'.repeat(40);
 const ON_DEV = 'b'.repeat(40);
 const UNMERGED = 'c'.repeat(40);
 const OLD = 'd'.repeat(40);
+/** Commits two npm versions were published from: one after `dev` reached BASE, one before. */
+const RELEASED = 'e'.repeat(40);
+const STALE = 'f'.repeat(40);
+const HEAD = '1'.repeat(40);
+const VERSIONS = { '0.14.0': RELEASED, '0.13.9': STALE };
 const snapshot = (commit) => ({ kind: 'snapshot', commit });
 
 /** How ad4m's history compares, as GitHub's compare API would say it: `${base}...${head}` → status. */
@@ -24,16 +29,23 @@ const COMPARE = {
   [`dev...${UNMERGED}`]: 'diverged',
   [`${BASE}...${ON_DEV}`]: 'ahead',
   [`${BASE}...${OLD}`]: 'behind',
+  [`${BASE}...${RELEASED}`]: 'ahead',
+  [`${BASE}...${STALE}`]: 'diverged',
 };
+/** `${base}...${head}` → commits ahead, for `movedOn`. */
+const AHEAD = { [`${UNMERGED}...${HEAD}`]: 3 };
 const PULLS = { [UNMERGED]: [{ number: 1500, state: 'open', merged_at: null }] };
 
 let realFetch;
 beforeEach(() => {
   realFetch = globalThis.fetch;
   globalThis.fetch = async (url) => {
+    const npm = String(url).match(/^https:\/\/registry\.npmjs\.org\/@coasys%2fad4m\/(.+)$/);
+    if (npm) return VERSIONS[npm[1]] ? Response.json({ gitHead: VERSIONS[npm[1]] }) : new Response('', { status: 404 });
     const path = String(url).replace('https://api.github.com/repos/coasys/ad4m/', '').replace(/\?.*$/, '');
     const compare = path.match(/^compare\/(.+)$/);
     if (compare) {
+      if (AHEAD[compare[1]] !== undefined) return Response.json({ ahead_by: AHEAD[compare[1]] });
       const status = COMPARE[compare[1]];
       return status ? Response.json({ status }) : new Response('', { status: 404 });
     }
@@ -89,12 +101,44 @@ describe('into dev', () => {
     assert.equal(verdict.ok, false);
   });
 
-  it('passes a version pin', async () => {
+  it('passes a version that contains the snapshot it replaces', async () => {
+    const verdict = await judge({ pin: { kind: 'version', version: '0.14.0' }, basePin: snapshot(BASE), base: 'dev' });
+    assert.equal(verdict.ok, true);
+  });
+
+  it('refuses a version missing the snapshot it replaces, which would release an older ad4m', async () => {
+    const verdict = await judge({ pin: { kind: 'version', version: '0.13.9' }, basePin: snapshot(BASE), base: 'dev' });
+    assert.equal(verdict.ok, false);
+    assert.match(verdict.reason, /does not contain it/);
+    assert.equal(verdict.fix, 'pnpm bump:ad4m staging');
+  });
+
+  it('passes a version replacing a version without asking anything', async () => {
     globalThis.fetch = () => assert.fail('asked GitHub');
-    assert.equal(
-      (await judge({ pin: { kind: 'version', version: '0.14.0' }, basePin: snapshot(BASE), base: 'dev' })).ok,
-      true,
-    );
+    const verdict = await judge({
+      pin: { kind: 'version', version: '0.14.0' },
+      basePin: { kind: 'version', version: '0.13.0' },
+      base: 'dev',
+    });
+    assert.equal(verdict.ok, true);
+  });
+});
+
+describe('an ad4m PR that has moved past the pin', () => {
+  const open = { number: 1500, state: 'open', head: { sha: HEAD } };
+
+  it('says how many commits the pin is behind its head', async () => {
+    assert.deepEqual(await movedOn(UNMERGED, open), { pr: open, ahead: 3 });
+  });
+
+  it('says nothing when the pin is its head', async () => {
+    globalThis.fetch = () => assert.fail('asked GitHub');
+    assert.equal(await movedOn(HEAD, open), undefined);
+  });
+
+  it('says nothing about a merged PR, which the merge rules handle', async () => {
+    globalThis.fetch = () => assert.fail('asked GitHub');
+    assert.equal(await movedOn(UNMERGED, { ...open, state: 'closed' }), undefined);
   });
 });
 

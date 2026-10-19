@@ -15,18 +15,26 @@
 // - **The gate refuses it, and the ad4m pull request has merged** (squash-merged, or `dev`'s pin has
 //   moved past the branch it was built on): one comment, naming the command that repins it. The
 //   bot does not push to people's branches.
-// - **Otherwise**, the ad4m change is still open: nothing, and any earlier comment goes.
+// - **The ad4m pull request is still open and has moved past the pinned commit**: one comment
+//   saying by how much, and the command that catches up, edited in place as the count changes and
+//   deleted once the PR catches up. Pushing to the ad4m pull request starts nothing here, so this is
+//   the only place it can be noticed.
+// - **Otherwise**, nothing, and any earlier comment goes.
+//
+// The two comments carry different markers, so the merged one arrives as a new comment, which
+// notifies, rather than as an edit of the other, which does not.
 //
 // --dry-run prints what it would write. GITHUB_TOKEN authenticates; GITHUB_REPOSITORY names the
 // repository (coasys/we by default).
 // ---------------------------------------------------------------------------
 
-import { ad4mPullFor, github, judge } from './ad4m-gate.mjs';
+import { ad4mPullFor, github, judge, movedOn, movedOnNote } from './ad4m-gate.mjs';
 import { AD4M_REPO, PinError, readPin } from './ad4m-pin.mjs';
 
 const REPO = process.env.GITHUB_REPOSITORY || 'coasys/we';
 const CHECK = 'Not waiting on ad4m';
-const MARKER = '<!-- ad4m-repin -->';
+const MERGED = '<!-- ad4m-repin -->';
+const MOVED = '<!-- ad4m-moved-on -->';
 const dryRun = process.argv.includes('--dry-run');
 
 /** A write, or a line saying what it would have been. */
@@ -52,9 +60,9 @@ async function pinAt(ref) {
 
 const samePin = (a, b) => a && b && a.kind === b.kind && (a.commit ?? a.version) === (b.commit ?? b.version);
 
-function comment(ad4mPr, verdict) {
+function mergedComment(ad4mPr, verdict) {
   return [
-    MARKER,
+    MERGED,
     `### :package: ${AD4M_REPO}#${ad4mPr.number} has merged — repin to finish`,
     '',
     verdict.reason,
@@ -66,16 +74,29 @@ function comment(ad4mPr, verdict) {
   ].join('\n');
 }
 
-async function ourComment(number) {
-  const comments = (await github(`repos/${REPO}/issues/${number}/comments?per_page=100`)) ?? [];
-  return comments.find((c) => c.user?.login === 'github-actions[bot]' && c.body?.startsWith(MARKER));
+function movedComment(moved) {
+  return [
+    MOVED,
+    `### :package: ${AD4M_REPO}#${moved.pr.number} has moved on`,
+    '',
+    movedOnNote(moved),
+    '',
+    'Nothing blocks on this: pinning an older head is fine when it is deliberate. This comment goes away once the pin catches up.',
+    '',
+  ].join('\n');
 }
 
-async function setComment(pr, body) {
-  const existing = await ourComment(pr.number);
+async function ourComment(number, marker) {
+  const comments = (await github(`repos/${REPO}/issues/${number}/comments?per_page=100`)) ?? [];
+  return comments.find((c) => c.user?.login === 'github-actions[bot]' && c.body?.startsWith(marker));
+}
+
+/** One comment per marker: written, updated in place, or deleted when `body` is null. */
+async function setComment(pr, marker, body) {
+  const existing = await ourComment(pr.number, marker);
   if (!body) {
     if (existing) {
-      await write(`delete the repin comment on #${pr.number}`, `repos/${REPO}/issues/comments/${existing.id}`, {
+      await write(`delete the comment on #${pr.number}`, `repos/${REPO}/issues/comments/${existing.id}`, {
         method: 'DELETE',
       });
     }
@@ -83,7 +104,7 @@ async function setComment(pr, body) {
   }
   if (existing?.body === body) return; // Every hour otherwise: an edit that changes nothing.
   if (existing) {
-    await write(`update the repin comment on #${pr.number}`, `repos/${REPO}/issues/comments/${existing.id}`, {
+    await write(`update the comment on #${pr.number}`, `repos/${REPO}/issues/comments/${existing.id}`, {
       method: 'PATCH',
       body: { body },
     });
@@ -125,16 +146,21 @@ for (const pr of prs) {
 
   if (verdict.ok) {
     console.log(`#${pr.number}: the gate admits ${pin.commit.slice(0, 9)}`);
-    await setComment(pr, null);
+    await setComment(pr, MERGED, null);
+    await setComment(pr, MOVED, null);
     await rerunGate(pr);
     continue;
   }
   const ad4mPr = verdict.ad4mPr ?? (await ad4mPullFor(pin.commit).catch(() => undefined));
   if (ad4mPr?.merged_at) {
     console.log(`#${pr.number}: ${AD4M_REPO}#${ad4mPr.number} has merged, and the pin needs moving`);
-    await setComment(pr, comment(ad4mPr, verdict));
-  } else {
-    console.log(`#${pr.number}: waiting — ${verdict.reason}`);
-    await setComment(pr, null);
+    await setComment(pr, MOVED, null);
+    await setComment(pr, MERGED, mergedComment(ad4mPr, verdict));
+    continue;
   }
+  await setComment(pr, MERGED, null);
+  // Only for a pin that is an open ad4m PR's commit, not yet on ad4m `dev`: the gate found that PR.
+  const moved = verdict.ad4mPr ? await movedOn(pin.commit, verdict.ad4mPr).catch(() => undefined) : undefined;
+  console.log(`#${pr.number}: waiting — ${verdict.reason}${moved ? ` (${moved.ahead} behind its head)` : ''}`);
+  await setComment(pr, MOVED, moved ? movedComment(moved) : null);
 }
