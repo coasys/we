@@ -11,6 +11,8 @@ const alias = { '@shared': r('./src/shared'), '@solid': r('./src/frameworks/soli
 // Tests that mount real Solid components/providers — they need jsdom, browser resolve
 // conditions, and the solid transform. Everything else stays in the plain node project.
 const SOLID_TESTS = [
+  // Renders the template root through the real part expansion and edits it live.
+  'tests/liveSchema.test.tsx',
   'tests/executorFreeBoot.test.tsx',
   'tests/runtimeStore.test.tsx',
   'tests/accountStore.test.tsx',
