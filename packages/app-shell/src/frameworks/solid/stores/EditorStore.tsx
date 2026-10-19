@@ -21,14 +21,11 @@ import {
   useThemeStore,
 } from '@solid/stores';
 import {
-  boundTemplate,
-  chatContext,
   countedPatches,
-  formatExternalManifestForPrompt,
-  prepareForModel,
+  datasetModelExtras,
+  prepareTemplateRequest,
   requestMessage,
   runEditSession,
-  updateSchemaTool,
 } from '@we/agent-tools';
 import type { ConversationTurn, LanguageModelStatus, NewRecord } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
@@ -1060,40 +1057,26 @@ export function EditorStoreProvider(props: ParentProps) {
     const streamMsg = createMessage('assistant', '', 'streaming');
     setMessages((prev) => [...prev, streamMsg]);
 
-    // What the model is told about WE, chosen for this request: a core plus the components and
-    // stores it implicates, with the rest behind a tool. See `chatContext`.
     /*
-      ONE tree, numbered once, for everything this turn: what the model is shown, what its ids
-      are resolved against, and what the context strategy preselects from.
-
-      Built here rather than inside `buildTurns` because the ids only mean anything if the SAME
-      tree is on both sides. Compacting in one place and patching the uncompacted template in
-      another gave two independent numberings that drift apart at the first hoisted shape — and
-      the failure was quiet: a patch the model wrote against a shared definition resolved, on this
-      side, to one inline copy of it. It validated, it saved, it changed something plausible, and
-      the model's explanation of what it had done was confidently wrong.
+      The template prepared once for this request — the tree the model is shown and its ids are
+      resolved against, the reference chosen for it, and the template bounded to its budget. See
+      `prepareTemplateRequest`. Buffered changes if there are any, so a conversation resumed against
+      a read-only template continues from them rather than reverting them.
     */
-    const modelTree = prepareForModel(deepClone(pendingTemplate() ?? edit.template()) as SchemaNode);
-    const schemaForRequest = modelTree.schema;
-    const prepared = await chatContext({ request: text, schema: schemaForRequest });
-    /*
-      How much of the TEMPLATE goes with it. `chatContext` bounds the reference; this bounds the
-      other half, which on a real template is the larger one. A template inside the budget is
-      sent exactly as before — kanban is, workshop is not.
-    */
-    const bounded = boundTemplate(schemaForRequest, text);
-    devLog('[editSession] template', bounded.whole ? 'whole' : 'bounded', bounded.stats);
+    const prepared = await prepareTemplateRequest({
+      template: deepClone(pendingTemplate() ?? edit.template()) as SchemaNode,
+      request: text,
+    });
+    const modelTree = prepared.tree;
+    devLog('[editSession] template', prepared.bounded.whole ? 'whole' : 'bounded', prepared.bounded);
 
     const result = await runEditSession({
       converse,
       system: prepared.system,
-      turns: buildTurns(text, bounded.sent),
-      tools: [updateSchemaTool, ...prepared.tools, ...bounded.tools],
-      // Whichever tool owns the name answers; a tool nobody claims is reported by the session.
-      resolveTool: (call) => prepared.resolveTool?.(call) ?? bounded.resolveTool?.(call),
-      // Buffered changes if there are any, so a conversation resumed against a read-only template
-      // continues from them rather than reverting them.
-      schema: schemaForRequest,
+      turns: buildTurns(text, prepared.sent),
+      tools: prepared.tools,
+      resolveTool: prepared.resolveTool,
+      schema: modelTree.schema,
       mint: modelTree.mint,
       uses: modelTree.uses,
       validationContext: getValidationCtx(),
@@ -1196,18 +1179,7 @@ export function EditorStoreProvider(props: ParentProps) {
       definition changes every use of that shape, a patch on a `$ref` changes that one use, and
       the tool result says which happened.
     */
-    const manifest = datasetStore.currentDatasetEntities();
-    const extras: Record<string, unknown> = {};
-    if (manifest.length > 0) {
-      const weEntityNames = new Set(baseValidationCtx.entityNames);
-      const weInPerspective = manifest.filter((m) => weEntityNames.has(m.name)).map((m) => m.name);
-      const externalInPerspective = manifest.filter((m) => !weEntityNames.has(m.name));
-      // WE models: send only names — AI already has their full structure in schemaContext
-      if (weInPerspective.length > 0) extras.availableWeEntities = weInPerspective;
-      // External models: send full property descriptions — AI has no other knowledge of them
-      if (externalInPerspective.length > 0)
-        extras.externalEntities = formatExternalManifestForPrompt(externalInPerspective);
-    }
+    const extras = datasetModelExtras(datasetStore.currentDatasetEntities(), baseValidationCtx.entityNames);
     history.push({
       role: 'user',
       text: requestMessage(latestText, template, extras),

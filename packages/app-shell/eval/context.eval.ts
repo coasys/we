@@ -12,19 +12,14 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
-  boundTemplate,
-  chatSystemPreamble,
   CONTEXT_STRATEGIES,
   type ContextStrategyId,
   DEFAULT_TEMPLATE_BUDGET,
   type EditSessionResult,
-  prepareContext,
-  prepareForModel,
+  prepareTemplateRequest,
   requestMessage,
   runEditSession,
-  updateSchemaTool,
 } from '@we/agent-tools';
-import { schemaContext } from '@we/ai-context';
 import { createAd4mLanguageModelPort } from '@we/backend-ad4m';
 import { buildValidationContext, contextData } from '@we/schema-shared';
 import { afterAll, beforeAll, describe, it } from 'vitest';
@@ -192,19 +187,17 @@ for (const model of models) {
               order and compaction changes the order, so a second derivation drifts and the ids
               the model is given stop meaning what the patcher resolves them to.
             */
-            const modelTree = prepareForModel(start);
-            const sent = modelTree.schema;
-            const prepared = prepareContext(strategy, chatSystemPreamble, schemaContext, {
+            const prepared = await prepareTemplateRequest({
+              template: start,
               request: evalCase.request,
-              schema: sent,
+              strategy,
+              /*
+                The template half of the budget. Its default sends every template in the suite
+                whole, so an unqualified run is unchanged and stays comparable with BASELINE.md;
+                `WE_EVAL_TEMPLATE_BUDGET=4000` is how a run measures what bounding does.
+              */
+              budget: templateBudget,
             });
-            /*
-              The template half of the budget, on the same tree. Its default budget sends every
-              template in the suite whole, so an unqualified run is unchanged and stays
-              comparable with BASELINE.md; `WE_EVAL_TEMPLATE_BUDGET=4000` is how a run measures
-              what bounding does.
-            */
-            const bounded = boundTemplate(sent, evalCase.request, templateBudget);
             const began = Date.now();
             const record: EvalRecord = {
               model,
@@ -231,12 +224,12 @@ for (const model of models) {
               const result = await runEditSession({
                 converse: port.converse!,
                 system: prepared.system,
-                turns: [{ role: 'user', text: requestMessage(evalCase.request, bounded.sent) }],
-                tools: [updateSchemaTool, ...prepared.tools, ...bounded.tools],
-                resolveTool: (call) => prepared.resolveTool?.(call) ?? bounded.resolveTool?.(call),
-                schema: sent,
-                mint: modelTree.mint,
-                uses: modelTree.uses,
+                turns: [{ role: 'user', text: requestMessage(evalCase.request, prepared.sent) }],
+                tools: prepared.tools,
+                resolveTool: prepared.resolveTool,
+                schema: prepared.tree.schema,
+                mint: prepared.tree.mint,
+                uses: prepared.tree.uses,
                 validationContext,
                 model: model === 'default' ? undefined : model,
                 accept: () => 'Template updated successfully.',
