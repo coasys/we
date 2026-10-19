@@ -24,16 +24,16 @@
     "@we/clock": "workspace:*",
     "@we/globe-core": "workspace:*",
     "@we/globe-protocol": "workspace:*",
-    "maplibre-gl": "^6.12.0"
+    "maplibre-gl": "^6.14.0"
   },
   "peerDependencies": {
-    "cesium": "^1.144.0",
-    "solid-js": "^1.9.15"
+    "cesium": "^1.146.0",
+    "solid-js": "^1.9.17"
   },
   "devDependencies": {
-    "@types/node": "^26.4.0",
-    "cesium": "^1.144.0",
-    "solid-js": "^1.9.15",
-    "vite": "^8.2.2"
+    "@types/node": "^26.6.5",
+    "cesium": "^1.146.0",
+    "solid-js": "^1.9.17",
+    "vite": "^8.3.4"
   }
 }

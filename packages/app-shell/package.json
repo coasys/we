@@ -85,29 +85,29 @@
     "@we/themes": "workspace:*",
     "@we/tokens": "workspace:*",
     "@we/widgets": "workspace:*",
-    "lib0": "^0.2.117",
-    "solid-js": "^1.9.15",
-    "three": "^0.185.1",
+    "lib0": "^0.2.119",
+    "solid-js": "^1.9.17",
+    "three": "^0.186.1",
     "y-protocols": "^1.0.7",
-    "yjs": "^13.6.32"
+    "yjs": "^13.6.33"
   },
   "devDependencies": {
     "@solidjs/testing-library": "^0.8.10",
-    "@types/node": "^26.4.0",
+    "@types/node": "^26.6.5",
     "@types/three": "^0.185.4",
-    "@vitest/coverage-v8": "^5.0.2",
+    "@vitest/coverage-v8": "^5.0.5",
     "@we/backend-inmemory": "workspace:*",
     "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
     "@we/csp": "workspace:*",
     "esbuild": "^0.28.2",
     "esbuild-plugin-solid": "^0.6.0",
-    "jsdom": "^30.0.1",
-    "playwright-core": "^1.56.0",
-    "sass": "^1.103.1",
+    "jsdom": "^30.1.3",
+    "playwright-core": "^1.64.1",
+    "sass": "^1.105.2",
     "tsup": "^8.5.1",
-    "vite": "^8.2.2",
+    "vite": "^8.3.4",
     "vite-plugin-solid": "^2.11.14",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.5"
   }
 }

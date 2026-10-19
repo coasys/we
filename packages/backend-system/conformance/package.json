@@ -20,13 +20,13 @@
     "@we/entities": "workspace:*"
   },
   "peerDependencies": {
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.5"
   },
   "devDependencies": {
-    "@types/node": "^26.4.0",
+    "@types/node": "^26.6.5",
     "@we/cli": "workspace:*",
     "tsup": "^8.5.1",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.5"
   },
   "sideEffects": false
 }

@@ -22,7 +22,7 @@
     "src"
   ],
   "peerDependencies": {
-    "vite": "^8.2.2"
+    "vite": "^8.3.4"
   },
   "peerDependenciesMeta": {
     "vite": {
@@ -30,8 +30,8 @@
     }
   },
   "devDependencies": {
-    "vitest": "^5.0.2",
-    "vite": "^8.2.2"
+    "vitest": "^5.0.5",
+    "vite": "^8.3.4"
   },
   "sideEffects": false
 }
