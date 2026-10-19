@@ -104,25 +104,17 @@ log, with these sections:
   wrong is one everybody learns to ignore. \`scripts/pr-tasks.mjs\` fails CI on an unticked box.
 
 The description is the body and nothing else — no title heading above the sections, since it is
-passed as \`gh pr create --body-file\` and anything above a pairing block (below) breaks it. Give
+passed as \`gh pr create --body-file\` and anything above a stacking block breaks it. Give
 the **title** alongside it, for \`--title\`, in Conventional Commits form: \`type(scope):
 description\`, the type lowercase (\`feat\`, \`fix\`, \`refactor\`, \`perf\`, \`docs\`, \`test\`,
 \`ci\`, \`chore\`), the scope optional, and the description short — under 60 characters, naming the
-change rather than explaining it: \`ci: pair PRs with an ad4m alert block\`.
+change rather than explaining it: \`ci: pin ad4m by commit\`.
 
-**If the branch needs an ad4m change that has not been published yet**, the description must START with
-this block, exactly — the preview builds against it and a check tests the PR there, and
-anything close (no colon, another heading or alert, lower down) fails rather than pairing:
-
-\`\`\`markdown
-> [!IMPORTANT]
-> ### Paired with: coasys/ad4m#<N>
-\`\`\`
-
-\`coasys/ad4m@<branch>\` names an ad4m branch instead — only for a change with no ad4m PR, since a
-branch pairing gets no link, no "ready to bump" label, and breaks once the branch is deleted. While
-paired, import the new SDK API directly; never redeclare its types or feature-check a method to
-compile against the pin. The PR cannot merge until the block is removed. The rules are in
+**If the branch needs an ad4m change that has not merged yet**, pin that ad4m PR's snapshot on the
+branch — \`pnpm bump:ad4m '#<N>'\` — and write nothing about it in the description. The preview, CI
+and the live tests then run against that change, and the required check \`PR tasks / Not waiting on
+ad4m\` holds the PR until the change is on ad4m \`dev\`. Import the new SDK API directly; never
+redeclare its types or feature-check a method to compile against an older pin. The rules are in
 \`docs/contributing/ad4m-and-deploys.md\`.
 
 **Never commit a draft written for GitHub.** A PR description, an issue body or a review reply is
@@ -161,28 +153,25 @@ strings target/release/ad4m-executor | grep "your log string"
 
 **After modifying \`@coasys/ad4m\` TypeScript (e.g. \`core/src/model/Ad4mModel.ts\`):**
 
-The root \`package.json\`'s pnpm \`overrides\` pin \`@coasys/ad4m\` and \`@coasys/ad4m-connect\` to a
-**published version**, not a local \`file:\` link, and every WE build uses that pin except a deploy
-preview whose PR description pairs it with an ad4m change. The pairing is this exact block, first in
-the description — anything close (no colon, another heading or alert, lower down, the old
-\`ad4m: coasys/ad4m#<N>\` line) is an error, not a pairing:
+The root \`package.json\`'s pnpm \`overrides\` pin \`@coasys/ad4m\` and \`@coasys/ad4m-connect\` to one
+**ad4m commit** — on \`dev\` and feature branches its pkg.pr.new snapshot
+(\`https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@<full sha>\`), on \`main\` a published npm version — and
+every WE build installs exactly that. Workspace packages declare \`"*"\`; never write a version into
+one. \`scripts/ad4m-pin.mjs\` is the one reader of the pin (\`--commit\` prints the ad4m commit), and
+\`pnpm bump:ad4m\` the one writer: \`dev\`, a sha, \`'#<N>'\` for an ad4m PR's head, or a version. It also
+writes each snapshot's integrity into the lockfile, which pnpm does not do for a URL, so move the pin
+with it rather than by hand.
 
-\`\`\`markdown
-> [!IMPORTANT]
-> ### Paired with: coasys/ad4m#<N>
-\`\`\`
-
-So a local
-\`cd ad4m/core && pnpm run build\` does NOT get picked up by WE — changes to \`@coasys/ad4m\` reach WE
-once a version is published from the ad4m repo and the pin moves. A bot keeps one PR open that moves
-it to the newest ad4m \`dev\` version (\`.github/workflows/bump-ad4m.yaml\`); a feature that needs a
-new ad4m moves it in its own PR with \`pnpm bump:ad4m\`. Run \`pnpm verify:ad4m\` before merging either. The whole policy is in
-\`docs/contributing/ad4m-and-deploys.md\`.
+So a local \`cd ad4m/core && pnpm run build\` does NOT get picked up by WE — changes to \`@coasys/ad4m\`
+reach WE once they are pushed to an ad4m PR or \`dev\` and the pin moves to that commit. A bot keeps
+one PR open that moves it to ad4m \`dev\`'s head once a day (\`.github/workflows/bump-ad4m.yaml\`); a
+feature that needs a new ad4m pins it in its own PR. Run \`pnpm verify:ad4m\` before merging either.
+The whole policy is in \`docs/contributing/ad4m-and-deploys.md\`.
 
 For active local iteration you can temporarily switch the override to
 \`"@coasys/ad4m": "file:../ad4m/core"\` (then \`pnpm install\`) so \`pnpm run build\` in
-\`ad4m/core\` is picked up directly — just remember to switch it back to the pinned npm tag
-before committing \`package.json\`.
+\`ad4m/core\` is picked up directly — just remember to switch it back to the pin before committing
+\`package.json\`.
 
 Type-only changes (e.g. widening a TS type) don't need any of this — WE's schema types
 (\`packages/schema-system/shared/src/types.ts\`) type dynamic query fields (\`where\`,

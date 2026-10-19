@@ -16,7 +16,7 @@ description: The ad4m executor binary for one ad4m commit — restored from the 
 
 inputs:
   ref:
-    description: ad4m branch, tag, ref or commit. Empty means the commit the pinned @coasys/ad4m was published from.
+    description: ad4m branch, tag, ref or commit. Empty means the commit the ad4m pin stands for (scripts/ad4m-pin.mjs).
     default: ''
   mode:
     description: >-
@@ -42,9 +42,10 @@ runs:
   using: composite
   steps:
     # The executor has to match the SDK the app was tested against, which is the pinned
-    # @coasys/ad4m. npm records the commit each version was published from as `gitHead`, so that
-    # commit is what gets built — not ad4m `dev`, which moves without WE changing. A branch or tag is
-    # resolved to its commit here, without a checkout, so the cache key is always a commit.
+    # @coasys/ad4m, so the commit the pin stands for is what gets built — not ad4m `dev`, which moves
+    # without WE changing. `scripts/ad4m-pin.mjs` says which commit that is: a snapshot names it in
+    # its URL, and a version by the `gitHead` npm recorded. A branch or tag is resolved to its commit
+    # here, without a checkout, so the cache key is always a commit.
     - name: Resolve the ad4m commit
       id: where
       shell: bash
@@ -52,14 +53,8 @@ runs:
         REF: ${{ inputs.ref }}
       run: |
         if [ -z "$REF" ]; then
-          PIN="$(node -p "require('./package.json').pnpm.overrides['@coasys/ad4m']")"
-          # Outside the repo, so npm does not read the workspace's pnpm-only config.
-          SHA="$(cd "$RUNNER_TEMP" && npm view "@coasys/ad4m@$PIN" gitHead)"
-          if [ -z "$SHA" ]; then
-            echo "::error::@coasys/ad4m@$PIN on npm records no gitHead, so the commit to build the executor from is unknown. Name an ad4m ref instead."
-            exit 1
-          fi
-          echo "Pinned @coasys/ad4m $PIN was published from $SHA"
+          SHA="$(node scripts/ad4m-pin.mjs --commit)"
+          echo "The ad4m pin stands for $SHA"
         elif [[ "$REF" =~ ^[0-9a-f]{40}$ ]]; then
           SHA="$REF"
         else

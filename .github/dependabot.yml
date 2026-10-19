@@ -27,10 +27,9 @@ updates:
         patterns: ['*']
         update-types: ['major']
     ignore:
-      # The AD4M SDK version is a deliberate pin, currently to a test tag
-      # (`0.13.0-test-interpretation-2`) carrying APIs that have not landed on AD4M `dev`.
-      # Moving it is a cross-repo decision, made against what `ad4m-compat.yaml` reports —
-      # not a routine bump, and a Dependabot PR proposing one would be wrong every time.
+      # The AD4M pin is an ad4m commit's snapshot, moved by `pnpm bump:ad4m` and its own bot
+      # (`bump-ad4m.yaml`) — not a registry version, and a Dependabot PR proposing one would be
+      # wrong every time.
       - dependency-name: '@coasys/*'
 
       # Lexical is pinned by `lexical-solid`, not by us. Its newest published release (0.21.0,

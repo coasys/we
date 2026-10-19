@@ -24,15 +24,15 @@ breakage points at one cause.
   under 60. The why belongs in the description, not the title.
 
 `fix(backend-ad4m): drop the removed subscribe argument` · `feat(board): agree on moves with flows`
-· `ci: pair PRs with an ad4m alert block`. A release is `Release v<version>`.
+· `ci: pin ad4m by commit`. A release is `Release v<version>`.
 
 ## Description
 
 Four parts, in this order, and the first thing in the body is **What** — no heading above it.
 GitHub prints the title immediately over the description, so a title repeated as an `# H1` is the
-same sentence twice in the two places a reader looks. It also breaks pairing: the alert block
-below has to be the first thing in the body, and a heading above it means the PR reads as
-unpaired. `.github/pull_request_template.md` is the shape, and a description drafted elsewhere —
+same sentence twice in the two places a reader looks. It also breaks stacking: the alert block
+below has to be the first thing in the body, and a heading above it fails the check.
+`.github/pull_request_template.md` is the shape, and a description drafted elsewhere —
 in a file passed to `gh pr create --body-file`, say — matches it.
 
 **What.** What the PR changes, in a few bullets. Someone who reads only this should know what merging
@@ -73,35 +73,18 @@ a task, so it does not get boxes that nobody will ever tick.
 Write for the reviewer who has not followed the work. Plain sentences, no shorthand from the
 conversation the PR came out of.
 
-## Pairing with an ad4m change
+## A WE change that needs an ad4m change
 
-When a WE change needs an ad4m change that has not been published yet, start the description with
-exactly this block, naming an ad4m pull request:
+Pin the ad4m pull request's snapshot on the WE branch, and push:
 
-```markdown
-> [!IMPORTANT]
->
-> ### Paired with: coasys/ad4m#1187
+```sh
+pnpm bump:ad4m '#1187'
 ```
 
-or `coasys/ad4m@dev` for an ad4m branch, tag or commit. The PR template carries it, commented out.
-
-The preview then builds both `@coasys/ad4m` and `@coasys/ad4m-connect` from that change instead of
-installing the pin. Both live in the `coasys/ad4m` repository, so one pairing covers both. The
-required checks still build against the pin, so they stay red until it moves; the
-`AD4M compatibility / Against the paired ad4m` check builds the same commit against the pairing and
-says whether that red is only the pin. It keeps a comment and a `paired with ad4m` label on the PR
-saying so, so a reviewer does not have to open the checks to find out. Once the ad4m PR has merged
-and a version containing it is published, a second label, `ready to bump ad4m`, and a comment naming
-that version say it is time to run `pnpm bump:ad4m` and remove the block.
-
-One exact form, so every paired PR looks the same. Anything close — no colon, another heading level
-or alert, the old `ad4m: coasys/ad4m#N` line, the block lower down — fails the preview and the
-paired check rather than being ignored, and the PR gets a comment with the corrected block to paste.
-A mention of an ad4m PR elsewhere in the description is not a pairing.
-
-Remove the block before merging, once the pin has been bumped to a version that contains the change.
-See [ad4m and deploys](./ad4m-and-deploys.md).
+Nothing goes in the description. The preview, CI and the live tests then all run against that ad4m
+change, and the required check **`PR tasks / Not waiting on ad4m`** holds the PR until the change is
+on ad4m `dev`, labelled `waiting on ad4m` in the meantime. When the ad4m PR merges, the check re-runs by itself within the hour, or a comment
+says what to run. See [ad4m and deploys](./ad4m-and-deploys.md).
 
 ## Stacked PRs
 
@@ -117,8 +100,7 @@ this block, naming the PR whose branch it is:
 ```
 
 The line under the heading is yours: say what a reviewer of this PR should and should not read, or
-where it merges if that is not `dev`. A PR paired with ad4m puts the pairing block first and this one
-straight after it, with a blank line between. The PR template carries the block, commented out.
+where it merges if that is not `dev`. The PR template carries the block, commented out.
 
 GitHub shows a PR's base branch on its own page, as a branch name, and nowhere in the list. So the
 `PR stacking` workflow labels every PR based on anything but `dev` or `main` as `stacked`, which the
@@ -145,7 +127,7 @@ into its individual commits.
 A draft of a PR description — or of an issue, or a review reply — is not part of the repo. Keep it
 outside the repo, wherever you keep notes, and pass it to `gh pr create --body-file`; never commit it.
 Nothing in `.gitignore` catches one, whatever it is called. Keep the title out of the draft and give it
-to `--title`: a heading above the sections would sit above a pairing block, which has to come first.
+to `--title`: a heading above the sections would sit above a stacking block, which has to come first.
 
 ## Decisions
 
