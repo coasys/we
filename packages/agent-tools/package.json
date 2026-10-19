@@ -8,6 +8,7 @@
     "build:steps": "tsup",
     "build": "we-build",
     "test": "vitest run",
+    "test:deno": "tsx scripts/deno-smoke.ts",
     "typecheck": "tsc --noEmit"
   },
   "main": "./dist/index.js",
@@ -17,6 +18,9 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./bundle": {
+      "import": "./dist/agent-tools.bundle.js"
     }
   },
   "files": [

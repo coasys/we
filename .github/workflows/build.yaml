@@ -193,6 +193,17 @@ jobs:
       - name: Browser tests
         run: pnpm --filter @we/primitives test:browser
 
+      # The agent tools' single-file bundle, run where a host runs it: Deno, with no DOM, no Node and
+      # read access to nothing but the bundle and two templates. Everything above runs in Node, which
+      # quietly allows what a host would refuse — an env read, a filesystem call — so only this
+      # notices the bundle has stopped being loadable on its own.
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Agent tools under Deno
+        run: pnpm --filter @we/agent-tools test:deno
+
       # A test that exercises the new ad4m API fails against the pin as surely as a type does. Not
       # the browser tests: they drive the primitives, which never reach ad4m, so pairing cannot
       # explain a failure there.
