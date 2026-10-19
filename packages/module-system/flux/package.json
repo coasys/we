@@ -28,7 +28,7 @@
     "@we/module-shared": "workspace:*"
   },
   "devDependencies": {
-    "@coasys/ad4m": "0.13.1-staging.2",
+    "@coasys/ad4m": "*",
     "@we/cli": "workspace:*",
     "@we/module-shared": "workspace:*",
     "@we/module-testing": "workspace:*",
