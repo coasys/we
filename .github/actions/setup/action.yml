@@ -5,11 +5,9 @@ description: Node, pnpm, a warm pnpm store and a frozen install — the four ste
 # environment. Inlined five times, a version bump is four edits and a silent drift the
 # fifth time somebody forgets one.
 
-# Used only by `build.yaml`, whose jobs all check out the commit under test — which is the
-# same commit this file came from, so it is guaranteed to be present. `ad4m-compat.yaml`
-# deliberately checks out an *older* commit and so cannot use this: a local action is
-# resolved from the checked-out working tree, and a commit from before this file existed
-# does not contain it. That job inlines the same steps instead.
+# Used by jobs that check out the commit under test — which is the same commit this file came
+# from, so it is guaranteed to be present. A local action is resolved from the checked-out working
+# tree, so a job that checks out an older commit cannot use it.
 
 runs:
   using: composite
@@ -17,10 +15,6 @@ runs:
     # Read the version from .nvmrc rather than restating it. The two used to be written
     # out separately — the workflow said `24`, .nvmrc said `v24.14.0` — which agrees
     # until the day somebody bumps one of them.
-    # Majors kept in step with `ad4m-compat.yaml`, which inlines these same steps because it
-    # checks out an older commit and cannot resolve a local action from it. The two drifted —
-    # `@v4` here against `@v7` there — which is exactly the "silent drift" this file was extracted
-    # to prevent, arrived at from the one direction extraction cannot cover.
     - uses: actions/setup-node@v7
       with:
         node-version-file: .nvmrc
@@ -55,8 +49,8 @@ runs:
     # anyone actually runs or would ship; and the failure surfaced as a TypeScript error
     # inside WE's own source, naming nothing that would lead a reader to the real cause.
     #
-    # Testing WE against unreleased AD4M is still worth doing; it just cannot be the gate
-    # that decides whether a WE change may merge. It lives in `ad4m-compat.yaml`.
+    # Testing WE against unmerged AD4M is still worth doing, and now goes the same way: a PR
+    # pins the ad4m change's snapshot, which is one commit and installs like any other pin.
     - name: Install dependencies
       shell: bash
       run: pnpm install --frozen-lockfile

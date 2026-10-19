@@ -1,0 +1,140 @@
+#!/usr/bin/env node
+// ---------------------------------------------------------------------------
+// Tells a pull request when the ad4m change it pins has landed.
+//
+//   node scripts/ad4m-repin.mjs [--dry-run]
+//
+// A WE pull request that needs an unmerged ad4m change pins that ad4m pull request's head
+// snapshot, and the merge gate (`PR tasks / Not waiting on ad4m`, scripts/ad4m-gate.mjs) holds it
+// until the change is on ad4m `dev`. Nothing in this repository runs when an ad4m pull request
+// merges, so the hourly bump workflow (.github/workflows/bump-ad4m.yaml) runs this to ask. For each
+// open pull request that moves the pin to a snapshot:
+//
+// - **The gate admits it now** (ad4m merged with a merge commit, so the pinned head is on `dev`):
+//   the gate's failed check is re-run, which turns it green. Nothing to do on the branch.
+// - **The gate refuses it, and the ad4m pull request has merged** (squash-merged, or `dev`'s pin has
+//   moved past the branch it was built on): one comment, naming the command that repins it. The
+//   bot does not push to people's branches.
+// - **Otherwise**, the ad4m change is still open: nothing, and any earlier comment goes.
+//
+// --dry-run prints what it would write. GITHUB_TOKEN authenticates; GITHUB_REPOSITORY names the
+// repository (coasys/we by default).
+// ---------------------------------------------------------------------------
+
+import { ad4mPullFor, github, judge } from './ad4m-gate.mjs';
+import { AD4M_REPO, PinError, readPin } from './ad4m-pin.mjs';
+
+const REPO = process.env.GITHUB_REPOSITORY || 'coasys/we';
+const CHECK = 'Not waiting on ad4m';
+const MARKER = '<!-- ad4m-repin -->';
+const dryRun = process.argv.includes('--dry-run');
+
+/** A write, or a line saying what it would have been. */
+async function write(what, path, options) {
+  if (dryRun) {
+    console.log(`  would ${what}`);
+    return null;
+  }
+  return github(path, options);
+}
+
+/** The pin in package.json at a ref, or null when it cannot be read. */
+async function pinAt(ref) {
+  const file = await github(`repos/${REPO}/contents/package.json?ref=${ref}`);
+  if (!file) return null;
+  try {
+    return readPin(Buffer.from(file.content, 'base64').toString('utf8'));
+  } catch (error) {
+    if (error instanceof PinError) return null;
+    throw error;
+  }
+}
+
+const samePin = (a, b) => a && b && a.kind === b.kind && (a.commit ?? a.version) === (b.commit ?? b.version);
+
+function comment(ad4mPr, verdict) {
+  return [
+    MARKER,
+    `### :package: ${AD4M_REPO}#${ad4mPr.number} has merged — repin to finish`,
+    '',
+    verdict.reason,
+    '',
+    // No PR reference inside a list item: GitHub expands one there into the ad4m PR's whole title.
+    `1. Run \`${verdict.fix ?? 'pnpm bump:ad4m dev'}\` on this branch.`,
+    '2. Push. **Not waiting on ad4m** should go green, and this comment goes away.',
+    '',
+  ].join('\n');
+}
+
+async function ourComment(number) {
+  const comments = (await github(`repos/${REPO}/issues/${number}/comments?per_page=100`)) ?? [];
+  return comments.find((c) => c.user?.login === 'github-actions[bot]' && c.body?.startsWith(MARKER));
+}
+
+async function setComment(pr, body) {
+  const existing = await ourComment(pr.number);
+  if (!body) {
+    if (existing) {
+      await write(`delete the repin comment on #${pr.number}`, `repos/${REPO}/issues/comments/${existing.id}`, {
+        method: 'DELETE',
+      });
+    }
+    return;
+  }
+  if (existing?.body === body) return; // Every hour otherwise: an edit that changes nothing.
+  if (existing) {
+    await write(`update the repin comment on #${pr.number}`, `repos/${REPO}/issues/comments/${existing.id}`, {
+      method: 'PATCH',
+      body: { body },
+    });
+  } else {
+    await write(`comment on #${pr.number}`, `repos/${REPO}/issues/${pr.number}/comments`, {
+      method: 'POST',
+      body: { body },
+    });
+  }
+}
+
+/** Re-runs the gate on a PR whose last gate run failed, so the check says what is true now. */
+async function rerunGate(pr) {
+  const runs =
+    (await github(`repos/${REPO}/commits/${pr.head.sha}/check-runs?check_name=${encodeURIComponent(CHECK)}`))
+      ?.check_runs ?? [];
+  const latest = runs.sort((a, b) => (b.started_at ?? '').localeCompare(a.started_at ?? ''))[0];
+  if (!latest || latest.status !== 'completed' || latest.conclusion !== 'failure') return;
+  const job = latest.details_url?.match(/\/job\/(\d+)/)?.[1];
+  if (!job) return;
+  await write(`re-run "${CHECK}" on #${pr.number}`, `repos/${REPO}/actions/jobs/${job}/rerun`, { method: 'POST' });
+}
+
+const prs = (await github(`repos/${REPO}/pulls?state=open&per_page=100`)) ?? [];
+console.log(`${prs.length} open pull request${prs.length === 1 ? '' : 's'}`);
+
+for (const pr of prs) {
+  const pin = await pinAt(pr.head.sha);
+  if (pin?.kind !== 'snapshot') continue;
+  // Only a PR that moves the pin itself: one that does not merges with its base's pin, whatever
+  // its branch was cut from.
+  const comparison = await github(`repos/${REPO}/compare/${pr.base.sha}...${pr.head.sha}?per_page=1`);
+  const forkPoint = comparison?.merge_base_commit?.sha;
+  if (forkPoint && samePin(pin, await pinAt(forkPoint))) continue;
+
+  const basePin = pr.base.ref === 'main' ? null : await pinAt(pr.base.ref);
+  if (pr.base.ref !== 'main' && !basePin) continue;
+  const verdict = await judge({ pin, basePin, base: pr.base.ref });
+
+  if (verdict.ok) {
+    console.log(`#${pr.number}: the gate admits ${pin.commit.slice(0, 9)}`);
+    await setComment(pr, null);
+    await rerunGate(pr);
+    continue;
+  }
+  const ad4mPr = verdict.ad4mPr ?? (await ad4mPullFor(pin.commit).catch(() => undefined));
+  if (ad4mPr?.merged_at) {
+    console.log(`#${pr.number}: ${AD4M_REPO}#${ad4mPr.number} has merged, and the pin needs moving`);
+    await setComment(pr, comment(ad4mPr, verdict));
+  } else {
+    console.log(`#${pr.number}: waiting — ${verdict.reason}`);
+    await setComment(pr, null);
+  }
+}

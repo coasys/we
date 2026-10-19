@@ -1,22 +1,14 @@
 <!-- How to fill this in: docs/contributing/pull-requests.md -->
 
 <!--
-Needs an unpublished ad4m change? Delete the two lines that comment out the block below, and set
-the ad4m PR's number — or, only for a change with no PR, write coasys/ad4m@<branch> for a branch, tag
-or commit. The preview then builds against it, and a check typechecks and tests this PR there.
-Anything but this exact block, first in the description, is an error. The PR cannot merge while the
-block is there: remove it once the pin is bumped.
+Needs an unmerged ad4m change? Pin its snapshot with `pnpm bump:ad4m '#<ad4m PR>'` — nothing goes
+in this description. The PR cannot merge until that change is on ad4m dev.
 See docs/contributing/ad4m-and-deploys.md.
--->
-<!--
-> [!IMPORTANT]
-> ### Paired with: coasys/ad4m#1187
 -->
 
 <!--
 Based on another PR's branch rather than dev? Uncomment the block below and set that PR's number.
-It goes first, or straight after the pairing block above. A check fails while it disagrees with
-the base branch. See docs/contributing/pull-requests.md.
+It goes first. A check fails while it disagrees with the base branch. See docs/contributing/pull-requests.md.
 -->
 <!--
 > [!IMPORTANT]

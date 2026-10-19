@@ -6,14 +6,13 @@
 //   > [!IMPORTANT]
 //   > ### Stacked on: #312
 //
-// first in the description, or straight after an ad4m pairing block (scripts/ad4m-pairing.mjs),
-// which has to be first. Anything else the reader needs — "review only the last commit", "merge
-// it into #312's branch" — goes in the same alert, under the heading.
+// first in the description. Anything else the reader needs — "review only the last commit",
+// "merge it into #312's branch" — goes in the same alert, under the heading.
 //
 // Why the block, when GitHub already shows the base branch. It shows it on the pull request's
 // own page as a branch name, and nowhere in the list. A reviewer has to open the pull request,
 // notice the base is not `dev`, and work out which pull request that branch belongs to. The
-// block names it, linked, where the pairing block already taught people to look.
+// block names it, linked, at the top where it cannot be missed.
 //
 // Why a check. A stacked description goes stale in two directions: the stack is rebuilt and
 // the block still names the old parent, or the parent merges, the pull request is retargeted at
@@ -23,9 +22,9 @@
 //   - based on `dev` or `main`: no block (a leftover one is an error);
 //   - based on anything else: a block, naming an open pull request whose branch is that base.
 //
-// Strict and broad in the same way as the pairing parser: a line that starts "Stacked on", in
-// any case, heading level or quote, is an attempt, and an attempt not in the exact form is an
-// error with the block to paste. A mention in a sentence is not one.
+// Strict and broad: a line that starts "Stacked on", in any case, heading level or quote, is an
+// attempt, and an attempt not in the exact form is an error with the block to paste. A mention
+// in a sentence is not one.
 //
 // Usage: `REPO=owner/name PR_NUMBER=N node scripts/pr-stacking.mjs`. Reads the pull request
 // from the API as it is now — a re-run replays its event, so the event's copy of the base and
@@ -45,8 +44,7 @@ const TRUNKS = new Set(['dev', 'main']);
 const ALERT = '> [!IMPORTANT]';
 const HEADING = /^> ### Stacked on: #(\S+)$/;
 
-// Anchored at the start of a line, after any quote markers, heading hashes, list markers or
-// bold, as in scripts/ad4m-pairing.mjs.
+// Anchored at the start of a line, after any quote markers, heading hashes, list markers or bold.
 const LEAD = String.raw`^(?:>\s*)*(?:#{1,6}\s*|[-*+]\s+|\d+[.)]\s+)?(?:\*\*|__)?`;
 const ATTEMPT = new RegExp(`${LEAD}stacked on\\b`, 'i');
 
@@ -93,17 +91,9 @@ export function parseStacking(body) {
   let alert = at - 1;
   while (alert >= 0 && /^>\s*$/.test(lines[alert])) alert--;
   if (lines[alert] !== ALERT) return invalid('The stacking line is not inside a `> [!IMPORTANT]` alert.');
-  // Only a pairing block may come before it. Its own parser checks that block; here it is
-  // enough that everything above is a quote, ended by a blank line — without one the two
-  // alerts are one quote, and the second renders as text.
-  const above = lines.slice(0, alert);
-  if (above.some((l) => l.trim() && !l.startsWith('>'))) {
-    return invalid(
-      'The stacking block is not at the top of the description: only an ad4m pairing block may come before it.',
-    );
-  }
-  if (alert > 0 && lines[alert - 1] !== '') {
-    return invalid('The stacking block runs on from the block above it: leave a blank line between them.');
+  // Nothing may come before it, so it is the first thing a reviewer reads.
+  if (lines.slice(0, alert).some((l) => l.trim())) {
+    return invalid('The stacking block is not at the top of the description: nothing may come before it.');
   }
 
   return /^[0-9]+$/.test(m[1]) ? { kind: 'pr', number: m[1] } : invalid(`\`${m[1]}\` is not a pull request number.`);
@@ -201,7 +191,7 @@ async function main() {
 
   console.error(error.problem);
   if (stacked) {
-    console.error('\nThe top of the description (after an ad4m pairing block, if it has one) should be:\n');
+    console.error('\nThe top of the description should be:\n');
     console.error(block(error.number).replace(/^/gm, '  '));
   }
   console.error('\nEditing the description re-runs this check. See docs/contributing/pull-requests.md.');

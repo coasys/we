@@ -40,7 +40,6 @@ jobs:
           sparse-checkout: |
             scripts/pr-stacking.mjs
             scripts/pr-stacking.test.mjs
-            scripts/ad4m-pairing.mjs
             docs/contributing/pull-requests.md
             .github/pull_request_template.md
           sparse-checkout-cone-mode: false

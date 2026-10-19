@@ -1,8 +1,8 @@
 /**
  * What counts as saying a pull request is stacked, and when that disagrees with its base.
  *
- * Two contracts. The parser's is the pairing parser's: one exact form, and a near miss is an
- * error rather than "not stacked". The check's is that the description and the base branch
+ * Two contracts. The parser's: one exact form, and a near miss is an error rather than "not
+ * stacked". The check's is that the description and the base branch
  * agree in both directions — a stale block after a retarget is as wrong as a missing one.
  *
  * `node:test` rather than vitest: this is root tooling, the root has no test runner, and the
@@ -13,12 +13,11 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { parsePairing } from './ad4m-pairing.mjs';
 import { checkStacking, parseStacking } from './pr-stacking.mjs';
 
 const ALERT = '> [!IMPORTANT]';
 const stacked = (n) => `${ALERT}\n> ### Stacked on: #${n}\n\n## What\n\nA change.`;
-const paired = `${ALERT}\n> ### Paired with: coasys/ad4m#1193`;
+const other = `${ALERT}\n> ### Something else first`;
 
 describe('a stacking block in the exact form', () => {
   it('reads the pull request number', () => {
@@ -32,12 +31,6 @@ describe('a stacking block in the exact form', () => {
   it('allows more said under the heading, inside the alert', () => {
     const body = `${ALERT}\n> ### Stacked on: #312\n>\n> Review only the last commit.\n\n## What`;
     assert.deepEqual(parseStacking(body), { kind: 'pr', number: '312' });
-  });
-
-  it('comes after a pairing block, which both parsers still read', () => {
-    const body = `${paired}\n\n${stacked(312)}`;
-    assert.deepEqual(parseStacking(body), { kind: 'pr', number: '312' });
-    assert.deepEqual(parsePairing(body), { kind: 'pr', number: '1193' });
   });
 
   it('is still first when a comment and blank lines come before it', () => {
@@ -87,7 +80,7 @@ describe('a near miss is refused, not ignored', () => {
     ['no alert at all', '### Stacked on: #312'],
     ['a bold line', '**Stacked on:** #312'],
     ['not at the top', `## What\n\nA change.\n\n${ALERT}\n> ### Stacked on: #312`],
-    ['run on from the pairing block', `${paired}\n${ALERT}\n> ### Stacked on: #312`],
+    ['after another block', `${other}\n\n${stacked(312)}`],
     ['a number that is not one', `${ALERT}\n> ### Stacked on: #three-twelve`],
     ['a branch instead of a pull request', `${ALERT}\n> ### Stacked on: fix/electron-stop-own-executor`],
   ]) {
