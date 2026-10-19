@@ -17,7 +17,7 @@ New to WE? Start here.
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — The four contributor tracks, the workflow, working with an agent
 - [Pull Requests](contributing/pull-requests.md) — How a PR is described, reviewed and merged
 - [ad4m and Deploys](contributing/ad4m-and-deploys.md) — Which ad4m each build uses, where it deploys,
-  pairing a WE PR with an ad4m change, bumping the pin, and making a release
+  pinning an ad4m change a WE PR needs, bumping the pin, and making a release
 
 ## Architecture
 

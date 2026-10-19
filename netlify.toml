@@ -24,13 +24,13 @@
   publish = "apps/we-web/dist"
 
 # Every context runs the same script, so every deploy writes /build-info.json saying which ad4m it
-# was built against. The script builds against the version `pnpm.overrides` pins, with one
-# exception: a deploy preview whose pull request pairs itself with an ad4m change in its
-# description. See its header, and docs/contributing/ad4m-and-deploys.md.
+# was built against: always the pin in `pnpm.overrides`. A pull request that needs an unmerged ad4m
+# change pins that change's snapshot, so its preview installs it like any pin. See the script's
+# header, and docs/contributing/ad4m-and-deploys.md.
 #
-#   production     `main`, at coasys-we.netlify.app. Always the pin.
-#   branch-deploy  `dev`, at dev--coasys-we.netlify.app. Always the pin.
-#   deploy-preview a pull request. The pin, or the ad4m change it pairs with.
+#   production     `main`, at coasys-we.netlify.app. A published version.
+#   branch-deploy  `dev`, at dev--coasys-we.netlify.app. A snapshot of ad4m `dev`.
+#   deploy-preview a pull request. Whatever it pins.
 [context.production]
   command = "bash scripts/netlify-build.sh"
 

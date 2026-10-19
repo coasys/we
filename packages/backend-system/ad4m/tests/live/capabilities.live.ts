@@ -17,9 +17,9 @@
  * Only the second fails a test. The third is reported, not failed: claiming more is a decision for
  * a PR of its own, never a reason to hold a bump. The table prints after the last case.
  *
- * Run with `pnpm verify:ad4m`, against an executor built from the commit the pinned `@coasys/ad4m`
- * was published from (`npm view @coasys/ad4m@<pin> gitHead`). Live queries are not checked here;
- * `conformance.live.ts` covers those.
+ * Run with `pnpm verify:ad4m`, against an executor built from the ad4m commit the pin stands for
+ * (`node scripts/ad4m-pin.mjs --commit`). Live queries are not checked here; `conformance.live.ts`
+ * covers those.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -381,9 +381,15 @@ describe('ad4mCapabilities against the executor', () => {
       ?.overrides as Record<string, string> | undefined;
     const info = (await client?.runtime.info().catch(() => null)) as { ad4mExecutorVersion?: string } | null;
     const width = Math.max(...results.map((r) => r.name.length));
+    // Every snapshot reports the release's version, so a snapshot pin is named by its commit.
+    const pinned = (name: string) =>
+      pins?.[name]?.replace(
+        /^https:\/\/pkg\.pr\.new\/coasys\/ad4m\/.*@([0-9a-f]{9})[0-9a-f]*$/,
+        'the snapshot of coasys/ad4m@$1',
+      );
     const lines = [
-      `Pinned: @coasys/ad4m ${pins?.['@coasys/ad4m']}, @coasys/ad4m-connect ${pins?.['@coasys/ad4m-connect']}`,
-      `Executor: ${info?.ad4mExecutorVersion ?? 'unknown version'}`,
+      `Pinned: @coasys/ad4m ${pinned('@coasys/ad4m')}, @coasys/ad4m-connect ${pinned('@coasys/ad4m-connect')}`,
+      `Executor: ${info?.ad4mExecutorVersion ?? 'unknown version'}${process.env.AD4M_COMMIT ? `, built from coasys/ad4m@${process.env.AD4M_COMMIT.slice(0, 9)}` : ''}`,
       '',
       ...results.map((r) => `${MARK[r.outcome]} ${r.name.padEnd(width)}  ${r.outcome}`),
     ];
