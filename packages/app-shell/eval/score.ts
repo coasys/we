@@ -2,10 +2,10 @@
  * Scoring one eval run: did the request get done, and is what it left behind a template that
  * validates.
  */
+import type { EditSessionResult } from '@we/agent-tools';
 import type { SchemaNode, TemplateSchema, ValidationContext } from '@we/schema-shared';
 import { expandDefinitions, stripNodeIds, validateSemantic, validateStructure } from '@we/schema-shared';
 
-import type { EditSessionResult } from '../src/shared/ai/editSession';
 import type { EvalCase } from './cases';
 
 export interface CaseScore {

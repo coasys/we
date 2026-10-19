@@ -76,7 +76,7 @@ the evidence out with the archaeology.
   then regenerate here.
 - Schema semantics, rules, patterns → the matching fragment, then regenerate.
 
-The runtime side: `@we/app-shell` dynamically imports this package for the
-in-app AI editor's context (`src/shared/ai/aiInfra.ts`), and the validator
+The runtime side: `@we/agent-tools` dynamically imports this package for the
+AI editor's context (`src/templates/aiInfra.ts`), and the validator
 consumes `contextData.ts` — so this package is a runtime dependency, not just
 tooling.
