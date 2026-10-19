@@ -256,7 +256,10 @@ How the bundled executor is set up:
 
 Neighbourhood URLs for the deployment's global discovery space and module
 marketplace. When set, a fresh install is prompted to join the global space,
-and a marketplace icon appears in the sidebar.
+and a marketplace icon appears in the sidebar. Both are optional: leave one out
+and everything that reaches it goes with it — the discovery entry in the spaces
+list, the "listed" switch when creating a space, the marketplace icon and the
+"Browse the marketplace" buttons in space settings.
 
 ### `electron`
 
