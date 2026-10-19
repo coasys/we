@@ -173,12 +173,22 @@ const rail: SchemaNode = railShell({
       active: { $: "shellStore.activeShellView == 'settings'" },
       onClick: [{ $action: 'appStore.deactivateApp' }, { $action: 'shellStore.openShellView', args: ['settings'] }],
     }),
-    railItem({
-      icon: 'storefront',
-      label: 'Marketplace',
-      active: { $: "shellStore.activeShellView == 'marketplace'" },
-      onClick: [{ $action: 'appStore.deactivateApp' }, { $action: 'shellStore.openShellView', args: ['marketplace'] }],
-    }),
+    // Only where the seed names a marketplace: without one the overlay is a dead end saying so.
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'datasetStore.marketplaceConfigured' },
+        then: railItem({
+          icon: 'storefront',
+          label: 'Marketplace',
+          active: { $: "shellStore.activeShellView == 'marketplace'" },
+          onClick: [
+            { $action: 'appStore.deactivateApp' },
+            { $action: 'shellStore.openShellView', args: ['marketplace'] },
+          ],
+        }),
+      },
+    },
 
     railGroup({
       id: 'spaces',
