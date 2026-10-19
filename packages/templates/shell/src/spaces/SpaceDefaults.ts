@@ -119,11 +119,14 @@ const group = (label: string, items: SchemaProp, as: string, row: SchemaNode): S
   children: [sectionLabel({ label }), { type: '$each', props: { items, as }, children: [row] }],
 });
 
-/** Browse-and-install, shown only to whoever may change what everyone sees. */
+/**
+ * Browse-and-install, shown only to whoever may change what everyone sees, and only where the seed
+ * names a marketplace — without one the browser queries a dataset that does not exist.
+ */
 const browseToggle = (localFlag: string, browser: SchemaNode): SchemaNode => ({
   type: '$if',
   props: {
-    condition: { $: 'space.canAdminister' },
+    condition: { $: 'space.canAdminister && datasetStore.marketplaceConfigured' },
     then: {
       type: 'Column',
       props: { gap: '200' },

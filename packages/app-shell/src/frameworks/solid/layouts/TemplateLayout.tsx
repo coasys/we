@@ -51,6 +51,7 @@ import type { ParentProps } from 'solid-js';
 import { createEffect, createMemo, onCleanup, Show } from 'solid-js';
 
 import { buildRoutes, RouteSurface } from '../utils/buildRoutes';
+import { createLiveSchema } from '../utils/liveSchema';
 import { resolveShellView, type ShellViewEntry } from './shellViews';
 
 // Width of the collapsed shell sidebar — also set as --we-sidebar-width on :root.
@@ -282,14 +283,14 @@ export function TemplateLayout(
    * in a bar that stands over every page writes it here, and until now the marker reached the
    * renderer intact and mounted nothing.
    *
-   * A memo, so the walk happens per template rather than per render. `resolveParts` returns the
-   * node by identity when there is nothing to expand, which is every interface that places no
-   * parts — so this costs one comparison for all of them and changes nothing downstream.
+   * Rendered through `createLiveSchema` (below, per template), never handed to the renderer
+   * directly. `resolveParts` copies the path to every part, and the renderer reads its node once:
+   * handed the copy, the chrome around a part stopped following edits.
    */
-  const templateWithParts = createMemo(() => {
+  const templateWithParts = (): SchemaNode => {
     const expanded = resolveParts(stores.templateStore.currentTemplate);
-    return (Array.isArray(expanded) ? expanded[0] : expanded) ?? stores.templateStore.currentTemplate;
-  });
+    return ((Array.isArray(expanded) ? expanded[0] : expanded) ?? stores.templateStore.currentTemplate) as SchemaNode;
+  };
 
   // Taken back on unmount. A template switch unmounts this layout, and without the cleanup the
   // store kept navigating through the dead router — a link that silently did nothing.
@@ -508,17 +509,20 @@ export function TemplateLayout(
             }
           >
             <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
-              {/*
-                The template's routes are rendered into `props.children` below, each through a pass of
-                its own that inherits none of this context — so the surface goes to them as a Solid
-                context as well. Without it `surface.tier` was undefined in every route.
-              */}
-              <RouteSurface.Provider value={templateSurface.surface}>
-                <RenderSchema
-                  node={templateWithParts()}
-                  stores={templateStores}
-                  registry={registry}
-                  /*
+              {(_template) => (
+                /*
+                  The template's routes are rendered into `props.children` below, each through a pass
+                  of its own that inherits none of this context — so the surface goes to them as a
+                  Solid context as well. Without it `surface.tier` was undefined in every route.
+
+                  One live copy per template, so a switch starts afresh and only edits are diffed.
+                */
+                <RouteSurface.Provider value={templateSurface.surface}>
+                  <RenderSchema
+                    node={createLiveSchema(templateWithParts)}
+                    stores={templateStores}
+                    registry={registry}
+                    /*
                   `$nav` so a template's own chrome can navigate relatively.
 
                   Chrome lives in the template's root node, which is rendered here rather than by
@@ -531,10 +535,11 @@ export function TemplateLayout(
                   every template at. Harmless for the marker kind, whose chrome uses absolute paths
                   because its links cross spaces.
                 */
-                  context={{ surface: templateSurface.surface, $nav: { baseDepth: SPACE_ROUTE_DEPTH } }}
-                  children={props.children}
-                />
-              </RouteSurface.Provider>
+                    context={{ surface: templateSurface.surface, $nav: { baseDepth: SPACE_ROUTE_DEPTH } }}
+                    children={props.children}
+                  />
+                </RouteSurface.Provider>
+              )}
             </Show>
           </TemplateBoundary>
         </Column>

@@ -108,3 +108,79 @@ describe('mutations.findMutations (combined)', () => {
     expect(deepChildMuts).toHaveLength(0);
   });
 });
+
+/*
+  A renderer sets a node's scope up once, when it mounts, so the diff decides which component draws
+  which node. These pin that a different node is never written into the component of another, and
+  that a node which only moved keeps its own. The rendered consequences are in schema-solid's
+  liveUpdate tests.
+*/
+describe('mutations.findMutations — which component draws which node', () => {
+  const node = (id: string, extra: Record<string, unknown> = {}) => ({ type: 'Box', id, ...extra });
+
+  it('matches a list of nodes by id, keeping the objects of the ones that moved', () => {
+    const a = { children: [node('b'), node('c')] };
+    const b = { children: [node('a'), node('b'), node('c')] };
+    const muts = findMutations(a, b);
+
+    expect(muts).toHaveLength(1);
+    expect(muts[0].path).toEqual(['children']);
+    const list = muts[0].value as unknown[];
+    expect(list[0]).toEqual(node('a'));
+    expect(list[1]).toBe(a.children[0]);
+    expect(list[2]).toBe(a.children[1]);
+  });
+
+  it('diffs a node that moved against its new version, at its new position', () => {
+    const a = { children: [node('b', { props: { gap: '100' } })] };
+    const b = { children: [node('a'), node('b', { props: { gap: '300' } })] };
+    const muts = findMutations(a, b);
+
+    expect(muts.slice(1)).toEqual([{ path: ['children', 1, 'props', 'gap'], value: '300' }]);
+  });
+
+  it('keeps diffing by index when the ids are in the same order', () => {
+    const a = { children: [node('a', { props: { gap: '100' } }), node('b')] };
+    const b = { children: [node('a', { props: { gap: '300' } }), node('b')] };
+
+    expect(findMutations(a, b)).toEqual([{ path: ['children', 0, 'props', 'gap'], value: '300' }]);
+  });
+
+  it('replaces, rather than rewrites, a different node at the same position', () => {
+    const a = { props: { then: node('old', { props: { gap: '100' } }) } };
+    const b = { props: { then: node('new', { props: { gap: '100' } }) } };
+
+    expect(findMutations(a, b)).toEqual([{ path: ['props', 'then'], value: b.props.then }]);
+  });
+
+  it.each([
+    [
+      '$localState',
+      { $localState: { open: { type: 'boolean', initial: false } } },
+      { $localState: { open: { type: 'boolean', initial: true } } },
+    ],
+    [
+      '$queries',
+      { $queries: { rows: { entity: 'Post', limit: 10 } } },
+      { $queries: { rows: { entity: 'Post', limit: 20 } } },
+    ],
+  ])('replaces a node whose %s changed, since it is set up at mount', (_, before, after) => {
+    const a = { children: [node('a', before)] };
+    const b = { children: [node('a', after)] };
+
+    expect(findMutations(a, b)).toEqual([{ path: ['children', 0], value: b.children[0] }]);
+  });
+
+  it('replaces an $each whose query changed, and diffs one whose items are an expression', () => {
+    const each = (items: unknown) => ({ type: '$each', id: 'e', props: { items, as: 'row' } });
+
+    const queried = findMutations(
+      { x: each({ $query: { entity: 'Post' } }) },
+      { x: each({ $query: { entity: 'Task' } }) },
+    );
+    expect(queried).toEqual([{ path: ['x'], value: each({ $query: { entity: 'Task' } }) }]);
+
+    const expressed = findMutations({ x: each({ $: 'local.a' }) }, { x: each({ $: 'local.b' }) });
+    expect(expressed).toEqual([{ path: ['x', 'props', 'items', '$'], value: 'local.b' }]);
+  });
+});
