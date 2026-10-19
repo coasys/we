@@ -77,31 +77,14 @@ const regularSpaceJoinPrompt: SchemaNode = gatePrompt({
   children: joinControls('Join Space'),
 });
 
-/*
-  A dead end rather than an invitation, and it says so before it is read: a flat warning icon
-  instead of the gradient the join prompts carry. Nothing the reader does here changes it — the
-  seed file is not theirs to edit from inside the app.
-*/
-const notConfiguredPrompt: SchemaNode = gatePrompt({
-  icon: 'warning',
-  title: 'Global space not configured',
-  body: 'No global space URL has been set in we-seed.json. Add a globalSpaceUrl to enable joining.',
-});
-
-// Shown when the user has not yet joined the space.
-// Renders a join prompt, or a config warning if no global space URL is set.
+// Shown when the user has not yet joined the space. A seed without a global space only changes
+// which prompt the global one would get: `globalSpaceId` is null then, so no route matches it and
+// every unjoined space is offered the ordinary join.
 export const spaceGate: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: 'datasetStore.globalSpaceConfigured' },
-    then: {
-      type: '$if',
-      props: {
-        condition: isGlobalSpace,
-        then: globalSpaceJoinPrompt,
-        else: regularSpaceJoinPrompt,
-      },
-    },
-    else: notConfiguredPrompt,
+    condition: isGlobalSpace,
+    then: globalSpaceJoinPrompt,
+    else: regularSpaceJoinPrompt,
   },
 };
