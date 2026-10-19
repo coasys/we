@@ -11,12 +11,19 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { requestMessage, updateSchemaTool } from '@shared/ai/aiInfra';
-import { CONTEXT_STRATEGIES, type ContextStrategyId, prepareContext } from '@shared/ai/contextStrategies';
-import { type EditSessionResult, runEditSession } from '@shared/ai/editSession';
-import { prepareForModel } from '@shared/ai/nodeAliases';
-import { boundTemplate, DEFAULT_TEMPLATE_BUDGET } from '@shared/ai/templateContext';
-import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
+import {
+  boundTemplate,
+  chatSystemPreamble,
+  CONTEXT_STRATEGIES,
+  type ContextStrategyId,
+  DEFAULT_TEMPLATE_BUDGET,
+  type EditSessionResult,
+  prepareContext,
+  prepareForModel,
+  requestMessage,
+  runEditSession,
+  updateSchemaTool,
+} from '@we/agent-tools';
 import { schemaContext } from '@we/ai-context';
 import { createAd4mLanguageModelPort } from '@we/backend-ad4m';
 import { buildValidationContext, contextData } from '@we/schema-shared';

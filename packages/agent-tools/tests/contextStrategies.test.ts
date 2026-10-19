@@ -6,12 +6,12 @@
  * that simply knows less. The other guard is drift — the strategies name the reference's headings,
  * so a renamed heading has to fail here rather than quietly drop a section.
  */
-import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
 import { schemaContext } from '@we/ai-context';
 import type { SchemaNode } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
-import { fullContext, lookupContext, sectionsContext, splitReference } from '../src/shared/ai/contextStrategies';
+import { chatSystemPreamble } from '../src/templates/chatSystemPrompt';
+import { fullContext, lookupContext, sectionsContext, splitReference } from '../src/templates/contextStrategies';
 
 const call = (name: string, args: Record<string, unknown> = {}) => ({ id: 'c', name, arguments: args });
 

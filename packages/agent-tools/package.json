@@ -1,0 +1,40 @@
+{
+  "name": "@we/agent-tools",
+  "version": "0.1.0",
+  "description": "What a language model can do with WE — tools, their handlers and the edit loop — framework-free, for the editor and for any host that runs an agent",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@we/ai-context": "workspace:*",
+    "@we/backend-shared": "workspace:*",
+    "@we/schema-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "@we/cli": "workspace:*",
+    "@we/template-showcase": "workspace:*",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.13",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.2"
+  },
+  "sideEffects": false
+}

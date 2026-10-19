@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ESNext",
+    "outDir": "./dist",
+    "noEmit": true,
+    // The tests read real templates from `@we/template-showcase`, which ships TypeScript source.
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*", "tests/**/*", "scripts/**/*", "*.config.ts"]
+}

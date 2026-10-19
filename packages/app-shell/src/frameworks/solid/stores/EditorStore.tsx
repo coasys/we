@@ -4,14 +4,10 @@
  * (buffered) changes for read-only templates, and the fork/fresh picker.
  *
  * The AI half of a session is deliberately elsewhere: the model runs on the node, reached through
- * `LanguageModelPort.converse`; prompt assembly and the tool definition live in `shared/ai/aiInfra`,
- * and patch application in `shared/ai/schemaPatches` — this store orchestrates them against its own
+ * `LanguageModelPort.converse`; prompt assembly, the tool definitions, patch application and the
+ * request loop live in `@we/agent-tools` — this store orchestrates them against its own
  * signals, and never learns which model or provider answered.
  */
-import { chatContext, formatExternalManifestForPrompt, requestMessage, updateSchemaTool } from '@shared/ai/aiInfra';
-import { countedPatches, runEditSession } from '@shared/ai/editSession';
-import { prepareForModel } from '@shared/ai/nodeAliases';
-import { boundTemplate } from '@shared/ai/templateContext';
 import { isEditorChord } from '@shared/editorChord';
 import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
@@ -24,6 +20,16 @@ import {
   useTemplateStore,
   useThemeStore,
 } from '@solid/stores';
+import {
+  boundTemplate,
+  chatContext,
+  countedPatches,
+  formatExternalManifestForPrompt,
+  prepareForModel,
+  requestMessage,
+  runEditSession,
+  updateSchemaTool,
+} from '@we/agent-tools';
 import type { ConversationTurn, LanguageModelStatus, NewRecord } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { ChatMessage as ChatMessageRecord, ChatSession as ChatSessionRecord } from '@we/entities';

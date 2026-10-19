@@ -18,9 +18,9 @@ import {
 } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
-import { updateSchemaTool } from '../src/shared/ai/aiInfra';
-import { runEditSession } from '../src/shared/ai/editSession';
-import { prepareForModel } from '../src/shared/ai/nodeAliases';
+import { updateSchemaTool } from '../src/templates/aiInfra';
+import { runEditSession } from '../src/templates/editSession';
+import { prepareForModel } from '../src/templates/nodeAliases';
 
 const validationContext = buildValidationContext(contextData);
 

@@ -7,10 +7,10 @@
  * calling one provider from the browser. What stays here is the part that is WE's to decide
  * whichever model answers. Keep it free of Solid and store imports so that boundary stays real.
  */
-import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
 import type { ConversationTool, EntityManifestEntry } from '@we/backend-shared';
 import type { SchemaNode } from '@we/schema-shared';
 
+import { chatSystemPreamble } from './chatSystemPrompt';
 import { type ContextStrategyId, prepareContext, type PreparedContext } from './contextStrategies';
 
 /**

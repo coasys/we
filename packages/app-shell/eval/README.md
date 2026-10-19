@@ -5,7 +5,7 @@ reference. The question it exists to answer is whether splitting the ~87K-token 
 might for small local models) or hurts (it might for large cached ones). Answer that from a run
 rather than from reasoning about it.
 
-It runs the editor's own request loop (`src/shared/ai/editSession.ts`) against a live node, so a
+It runs the editor's own request loop (`runEditSession` from `@we/agent-tools`) against a live node, so a
 result describes what the editor actually does. That means the payload too: the template is
 compacted and numbered once before it is sent, exactly as `EditorStore.sendMessage` does, and
 scored expanded, as `accept` stores it. A harness measuring the authored form would be describing
@@ -19,7 +19,7 @@ a product that has not shipped since #248.
 | `sections` | A core (~9K): structure, rules, routing, models, tokens                                                                                        | One tool per section, loaded whole (Josh's split from #196)             |
 | `lookup`   | A larger core (~30K), adding the expression grammar and design-system props, plus the components and stores the template and request implicate | One `we_reference` tool fetching components, stores or sections by name |
 
-See `src/shared/ai/contextStrategies.ts`.
+See `packages/agent-tools/src/templates/contextStrategies.ts`.
 
 ## Cases
 
