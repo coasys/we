@@ -25,7 +25,7 @@ on:
   workflow_dispatch:
     inputs:
       ad4m_ref:
-        description: AD4M branch, tag or commit to build the executor from. Empty means the commit the pinned @coasys/ad4m was published from.
+        description: AD4M branch, tag or commit to build the executor from. Empty means the commit the ad4m pin stands for.
         default: ''
       mac:
         description: Also package for macOS
@@ -67,13 +67,24 @@ jobs:
             exit 1
           fi
 
+      # A release is rebuilt from its tag for as long as anyone needs it, and an ad4m snapshot
+      # expires. The merge gate refuses a snapshot pin on a PR into `main`; this catches a tag pushed
+      # some other way.
+      - name: Check a release pins an npm version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          if [ "$(node scripts/ad4m-pin.mjs | sed -n 's/^kind=//p')" != version ]; then
+            echo "::error::$GITHUB_REF_NAME pins an ad4m snapshot. A release pins a published version: run pnpm bump:ad4m <version> on dev, merge dev into main, and tag again."
+            exit 1
+          fi
+
       # ── WE toolchain (Node + pnpm) ────────────────────────────────────
 
       - uses: ./.github/actions/setup
 
       # ── AD4M executor ──────────────────────────────────────────────────
       #
-      # From the commit the pinned @coasys/ad4m was published from, or the ref a manual run names:
+      # From the commit the ad4m pin stands for, or the ref a manual run names:
       # restored when cached, built and cached when not. The same action, key and path as the live
       # tests (`ad4m-live.yaml`), so the app ships the binary those tests ran against and either
       # workflow's build serves the other. It lands at `../ad4m/target/release/ad4m-executor`, where
@@ -148,8 +159,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          PIN="$(node -p "require('./package.json').pnpm.overrides['@coasys/ad4m']")"
-          AD4M_SHA="$(cd "$RUNNER_TEMP" && npm view "@coasys/ad4m@$PIN" gitHead)"
+          PIN="$(node scripts/ad4m-pin.mjs | sed -n 's/^version=//p')"
+          AD4M_SHA="$(node scripts/ad4m-pin.mjs --commit)"
 
           cp .github/release-notes.md notes.md
           printf '\n### Built with\n\n@coasys/ad4m `%s`, and the ad4m executor from [`%s`](https://github.com/coasys/ad4m/commit/%s).\n' \

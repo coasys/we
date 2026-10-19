@@ -2,13 +2,13 @@
 #
 # A cache is read only from the run's own branch and its base branch, so an executor built on a PR
 # serves that PR alone, and the push to `dev` after it merges builds the same commit again — most
-# of an hour each time. The bump workflow dispatches this on `dev` as soon as it sees a new ad4m
-# version, before any PR asks for it: the copy lands where every PR can read it, and the bump PR, a
-# paired PR moving to the same version, and the push to `dev` after either merges all restore it.
+# of an hour each time. The bump workflow dispatches this on `dev` as soon as it moves to a new ad4m
+# commit, before any PR asks for it: the copy lands where every PR can read it, and the bump PR, any
+# PR moving to the same commit, and the push to `dev` after either merges all restore it.
 #
 # Run it on `dev`. On any other ref it caches where only that ref and the branches based on it can
-# read. By hand, "Run workflow" from the Actions tab takes the commit too — the one a version was
-# published from is `npm view @coasys/ad4m@<version> gitHead`.
+# read. By hand, "Run workflow" from the Actions tab takes the commit too — the one a branch pins is
+# `node scripts/ad4m-pin.mjs --commit`.
 name: AD4M executor
 
 on:

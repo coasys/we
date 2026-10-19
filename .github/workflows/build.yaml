@@ -1,8 +1,6 @@
 # Named "CI" rather than "Build" because the PR check list renders each entry as
 # "<workflow> / <job>", and one of the jobs is itself called Build — which read as
-# "Build / Build". The file keeps its name: `ad4m-compat.yaml` looks this workflow up by
-# filename to find the last commit that passed, and renaming it would also detach the run
-# history.
+# "Build / Build". The file keeps its name, since renaming it would detach the run history.
 name: CI
 
 on:
@@ -87,13 +85,6 @@ jobs:
         id: build
         run: NODE_OPTIONS='--max-old-space-size=8192' pnpm build
 
-      # A pull request paired with an unpublished ad4m change fails here until the pin moves, on
-      # purpose — or because it is broken, which looks the same. Name the check that tells the two
-      # apart; see the action for why. Only after this step failed, never after the drift check.
-      - name: Point at the paired check
-        if: failure() && steps.build.outcome == 'failure' && github.event_name == 'pull_request'
-        uses: ./.github/actions/explain-pairing
-
       # `pnpm build` regenerates the AI-context outputs (CLAUDE.md et al.) and the core
       # manifest. If a PR changed their inputs without committing the regenerated files,
       # fail here rather than drifting silently.
@@ -167,10 +158,6 @@ jobs:
         id: typecheck
         run: pnpm typecheck
 
-      - name: Point at the paired check
-        if: failure() && steps.typecheck.outcome == 'failure' && github.event_name == 'pull_request'
-        uses: ./.github/actions/explain-pairing
-
   test:
     name: Test
     needs: build
@@ -203,13 +190,6 @@ jobs:
 
       - name: Agent tools under Deno
         run: pnpm --filter @we/agent-tools test:deno
-
-      # A test that exercises the new ad4m API fails against the pin as surely as a type does. Not
-      # the browser tests: they drive the primitives, which never reach ad4m, so pairing cannot
-      # explain a failure there.
-      - name: Point at the paired check
-        if: failure() && steps.test.outcome == 'failure' && github.event_name == 'pull_request'
-        uses: ./.github/actions/explain-pairing
 
       # Coverage has been configured for as long as the tests have and has never run anywhere,
       # which is the same shape as the stylelint gap above it: a number nobody produces is a number
