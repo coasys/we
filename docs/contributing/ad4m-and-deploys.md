@@ -118,6 +118,11 @@ Releasing), and otherwise always. A snapshot passes rule 2 by default when the b
 (versions come from ad4m's `staging` branch, which no `dev` commit descends from). Into `main`, only
 a version passes.
 
+**The PR list shows which PRs are waiting.** A PR whose pin is an ad4m commit not on ad4m `dev` yet
+carries the **`waiting on ad4m`** label. Nobody sets it by hand: the gate puts it on or takes it off
+on each push, and the hourly job takes it off when the ad4m PR merges (and sets it on PRs from forks,
+whose own runs cannot write labels).
+
 **Import the new SDK API directly.** The PR installs the ad4m change it needs, so there is no reason
 to declare its types again in WE or check at runtime whether a method exists: the checks run against
 the real thing.

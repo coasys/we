@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
-import { judge, movedOn } from './ad4m-gate.mjs';
+import { judge, movedOn, setWaitingLabel, WAITING_LABEL } from './ad4m-gate.mjs';
 
 const BASE = 'a'.repeat(40);
 const ON_DEV = 'b'.repeat(40);
@@ -74,11 +74,13 @@ describe('into dev', () => {
     assert.equal(verdict.ok, false);
     assert.match(verdict.reason, /not on ad4m `dev` yet: c{9} \(coasys\/ad4m#1500\)/);
     assert.equal(verdict.fix, undefined);
+    assert.equal(verdict.waiting, true);
   });
 
   it('refuses a pin behind the base pin, and says how to catch up', async () => {
     const verdict = await judge({ pin: snapshot(OLD), basePin: snapshot(BASE), base: 'dev' });
     assert.equal(verdict.ok, false);
+    assert.equal(verdict.waiting, undefined, 'behind is not waiting on an ad4m change');
     assert.match(verdict.reason, /from a{9} to d{9}, which is older/);
     assert.equal(verdict.fix, 'pnpm bump:ad4m dev');
   });
@@ -160,5 +162,42 @@ describe('into main', () => {
       base: 'main',
     });
     assert.equal(verdict.ok, true);
+  });
+});
+
+describe('the waiting-on-ad4m label', () => {
+  /** The requests a call makes, as `METHOD path`, answering a PATCH with `patchAnswer`. */
+  async function writes(labels, waiting, patchAnswer = {}) {
+    const made = [];
+    await setWaitingLabel('coasys/we', 7, labels, waiting, async (_, path, options = {}) => {
+      made.push(`${options.method ?? 'GET'} ${path}`);
+      return options.method === 'PATCH' ? patchAnswer : {};
+    });
+    return made;
+  }
+  const name = encodeURIComponent(WAITING_LABEL.name);
+
+  it('writes nothing when the PR already says the right thing', async () => {
+    assert.deepEqual(await writes([WAITING_LABEL.name], true), []);
+    assert.deepEqual(await writes(['stacked'], false), []);
+  });
+
+  it('adds it to a waiting PR, defining the label first', async () => {
+    assert.deepEqual(await writes([], true), [
+      `PATCH repos/coasys/we/labels/${name}`,
+      'POST repos/coasys/we/issues/7/labels',
+    ]);
+  });
+
+  it('creates the label the first time, when there is nothing to update', async () => {
+    assert.deepEqual(await writes([], true, null), [
+      `PATCH repos/coasys/we/labels/${name}`,
+      'POST repos/coasys/we/labels',
+      'POST repos/coasys/we/issues/7/labels',
+    ]);
+  });
+
+  it('takes it off a PR that is no longer waiting', async () => {
+    assert.deepEqual(await writes([WAITING_LABEL.name], false), [`DELETE repos/coasys/we/issues/7/labels/${name}`]);
   });
 });

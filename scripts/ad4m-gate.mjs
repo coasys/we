@@ -24,6 +24,10 @@
  * claiming the pull request needed an unpublished ad4m change; now the pull request installs the
  * change it needs, so what it is waiting for can be asked of GitHub rather than of the author.
  *
+ * With --pr, also puts the `waiting on ad4m` label on the PR while its pin is an ad4m commit not on
+ * ad4m `dev`, and takes it off otherwise. A label it cannot write (a fork's read-only token) is a
+ * warning, never a failure: the hourly job sets it from outside.
+ *
  * Writes the verdict to the step summary when there is one. GITHUB_TOKEN authenticates and
  * GITHUB_REPOSITORY names the repository.
  */
@@ -55,6 +59,59 @@ async function compare(base, head) {
 export async function ad4mPullFor(commit) {
   const pulls = (await github(`repos/${AD4M_REPO}/commits/${commit}/pulls`)) ?? [];
   return pulls.find((p) => p.state === 'open') ?? pulls[0];
+}
+
+/**
+ * The label the pull request list shows beside a PR waiting on an ad4m change: one pinning an ad4m
+ * commit that is not on ad4m `dev` yet. Worked out from the pin, never set by hand — defined here so
+ * a colour changed in the UI reverts on the next run.
+ */
+export const WAITING_LABEL = {
+  name: 'waiting on ad4m',
+  color: '8250DF',
+  description: 'Pins an ad4m change that is not on ad4m dev yet; it cannot merge until it is',
+};
+
+/**
+ * Puts the label on a PR, or takes it off. `labels` is the names the PR carries now, so nothing is
+ * written when it is already right. `write(what, path, options)` makes the request — the hourly
+ * job passes one that only prints on a dry run.
+ */
+export async function setWaitingLabel(
+  repo,
+  number,
+  labels,
+  waiting,
+  write = (_, path, options) => github(path, options),
+) {
+  const has = labels.includes(WAITING_LABEL.name);
+  if (waiting === has) return;
+  if (!waiting) {
+    await write(
+      `remove "${WAITING_LABEL.name}" from #${number}`,
+      `repos/${repo}/issues/${number}/labels/${encodeURIComponent(WAITING_LABEL.name)}`,
+      { method: 'DELETE' },
+    );
+    return;
+  }
+  // Update the label in place, or create it the first time.
+  const patched = await write(
+    `define label "${WAITING_LABEL.name}"`,
+    `repos/${repo}/labels/${encodeURIComponent(WAITING_LABEL.name)}`,
+    { method: 'PATCH', body: { color: WAITING_LABEL.color, description: WAITING_LABEL.description } },
+  );
+  if (patched === null) {
+    await write(`create label "${WAITING_LABEL.name}"`, `repos/${repo}/labels`, {
+      method: 'POST',
+      body: WAITING_LABEL,
+    }).catch(
+      () => undefined, // Created by a run alongside this one.
+    );
+  }
+  await write(`add "${WAITING_LABEL.name}" to #${number}`, `repos/${repo}/issues/${number}/labels`, {
+    method: 'POST',
+    body: { labels: [WAITING_LABEL.name] },
+  });
 }
 
 /**
@@ -130,6 +187,7 @@ export async function judge({ pin, basePin, base }) {
       fix: pr?.merged_at ? 'pnpm bump:ad4m dev' : undefined,
       ad4mPr: pr,
       pinned: pin.commit,
+      waiting: true,
     };
   }
 
@@ -167,6 +225,7 @@ async function basePackageJson(repo, base) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
   const base = args[args.indexOf('--base') + 1];
+  const prNumber = args.includes('--pr') ? args[args.indexOf('--pr') + 1] : undefined;
   const repo = process.env.GITHUB_REPOSITORY || 'coasys/we';
   const summary = (lines) => {
     if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
@@ -198,6 +257,21 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   // Not a failure: pinning an older head can be deliberate, and once the ad4m PR merges the rules
   // above decide. Said here so whoever pushed sees it, and hourly on the PR (scripts/ad4m-repin.mjs)
   // because pushing to the ad4m PR starts nothing in this repository.
+  if (prNumber) {
+    try {
+      const pr = await github(`repos/${repo}/issues/${prNumber}`);
+      if (pr)
+        await setWaitingLabel(
+          repo,
+          prNumber,
+          (pr.labels ?? []).map((l) => l.name),
+          Boolean(verdict.waiting),
+        );
+    } catch (error) {
+      console.log(`::warning::Could not set the "${WAITING_LABEL.name}" label: ${error.message}`);
+    }
+  }
+
   const behind = verdict.ad4mPr ? await movedOn(verdict.pinned, verdict.ad4mPr).catch(() => undefined) : undefined;
 
   console.log(`${verdict.ok ? '✓' : '✗'} ${verdict.reason}`);

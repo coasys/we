@@ -83,7 +83,7 @@ pnpm bump:ad4m '#1187'
 
 Nothing goes in the description. The preview, CI and the live tests then all run against that ad4m
 change, and the required check **`PR tasks / Not waiting on ad4m`** holds the PR until the change is
-on ad4m `dev`. When the ad4m PR merges, the check re-runs by itself within the hour, or a comment
+on ad4m `dev`, labelled `waiting on ad4m` in the meantime. When the ad4m PR merges, the check re-runs by itself within the hour, or a comment
 says what to run. See [ad4m and deploys](./ad4m-and-deploys.md).
 
 ## Stacked PRs
