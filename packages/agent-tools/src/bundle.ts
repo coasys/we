@@ -7,6 +7,16 @@
  * Only what a host calls is exported. The catalogue it validates against is the one this build was
  * made with, so the file is a statement about one WE build.
  */
-export type { AgentTool, Toolset } from './core/toolset';
+export type {
+  AgentTool,
+  RecordEdit,
+  RecordInput,
+  RecordToolsetEntry,
+  RecordToolsetInput,
+  Toolset,
+} from './core/toolset';
 export type { TemplateEdit, TemplateToolsetOptions } from './templates/templateToolset';
+/** What a host uses: open a toolset on a record, run the conversation, write back what it returns. */
+export { toolsets } from './toolsets';
+/** The same edit over a schema rather than a record, for a host that stores templates its own way. */
 export { createTemplateToolset } from './templates/templateToolset';

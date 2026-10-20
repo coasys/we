@@ -7,4 +7,6 @@ export * from './templates/nodeAliases';
 export * from './templates/schemaPatches';
 export * from './templates/templateContext';
 export * from './templates/templateSession';
+export * from './templates/templateRecordToolset';
 export * from './templates/templateToolset';
+export * from './toolsets';
