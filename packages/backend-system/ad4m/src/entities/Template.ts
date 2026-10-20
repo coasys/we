@@ -33,6 +33,7 @@ export class Template extends WeNode {
   @Property({ through: 'we://slug' })
   slug: string = '';
 
+  /** The template itself, as a file. Read and write it with `decodeTemplateFile` / `encodeTemplateFile`. */
   @Property({ through: 'we://template_schema', resolveLanguage: FILE_STORAGE_LANGUAGE })
   schema: string | null = null;
 
