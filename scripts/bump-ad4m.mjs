@@ -30,8 +30,14 @@
  * --pr-body writes that description to a file. Run `pnpm verify:ad4m` before merging a bump
  * (docs/contributing/ad4m-and-deploys.md).
  *
+ * A snapshot whose executor ad4m's CI is still building is not moved to yet, with --if-newer: WE
+ * downloads the executor ad4m publishes for a commit, and a commit pinned before marvin's build
+ * finishes gets compiled instead, for most of an hour. By hand it is a warning, since somebody
+ * asking for a commit by name may want it now.
+ *
  * --if-newer is for the scheduled workflow (.github/workflows/bump-ad4m.yaml): a target that cannot
- * be moved to yet (not published, or not newer) ends the run quietly rather than failing it.
+ * be moved to yet (not published, its executor still building, or not newer) ends the run quietly
+ * rather than failing it.
  * --lockfile-only updates pnpm-lock.yaml without installing anything.
  */
 import { createHash } from 'node:crypto';
@@ -51,6 +57,7 @@ import {
   snapshotUrl,
   withIntegrity,
 } from './ad4m-pin.mjs';
+import { executorState, NotPublished } from './ad4m-executor-download.mjs';
 
 const REGISTRY = 'https://registry.npmjs.org';
 
@@ -202,9 +209,33 @@ async function versionTarget(version) {
   return sdk.gitHead;
 }
 
+/**
+ * Waits, with --if-newer, while ad4m's CI is still building a commit's executor. A commit whose
+ * build has finished goes ahead whether or not it published one: one built before ad4m published
+ * executors never will, and WE builds those as it always has. A lookup that fails (a rate limit, an
+ * outage) never stops a bump: the cost of going ahead is a build, and of stopping, no bump at all.
+ */
+async function checkExecutor(commit) {
+  let verdict;
+  try {
+    verdict = await executorState(commit);
+  } catch (error) {
+    if (!(error instanceof NotPublished)) throw error;
+    console.warn(`Could not tell whether ad4m has published this commit's executor (${error.message}); going ahead.`);
+    return;
+  }
+  console.log(verdict.reason);
+  if (verdict.state !== 'pending') return;
+  const why =
+    'WE downloads the executor ad4m publishes for a commit, and pinning one before its build finishes means compiling it instead.';
+  if (ifNewer) notYet(`${verdict.reason} ${why} A later run moves to it.`);
+  console.warn(`Note: ${why} Wait for its build, or expect the first CI run to compile it.`);
+}
+
 // ── What to move to, and from ──────────────────────────────────────────────
 
 const commit = await snapshotCommit(wanted);
+if (commit) await checkExecutor(commit);
 const version = commit ? undefined : await resolveVersion(wanted);
 const next = commit ? { kind: 'snapshot', commit } : { kind: 'version', version };
 const tarballs = commit ? await snapshotTarballs(commit) : {};

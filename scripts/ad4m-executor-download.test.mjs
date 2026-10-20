@@ -12,6 +12,7 @@ import { gzipSync, zstdCompressSync } from 'node:zlib';
 
 import {
   buildStatus,
+  executorState,
   checkManifest,
   fetchExecutor,
   Mismatch,
@@ -150,5 +151,41 @@ describe('a file that is not what its manifest says is never handed on', () => {
         ),
       NotPublished,
     );
+  });
+});
+
+describe('whether ad4m has finished with a commit', () => {
+  const build = (state) => ({
+    context: 'ci/circleci: build',
+    state,
+    target_url: `https://app.circleci.com/workflow/${WORKFLOW}/job/x`,
+  });
+  const stateOf = async (world) => {
+    stub(world);
+    return (await executorState(COMMIT)).state;
+  };
+
+  it('pending before CircleCI has reported anything', async () => {
+    assert.equal(await stateOf({ statuses: [{ context: 'ci/circleci: fmt', state: 'success' }] }), 'pending');
+  });
+
+  it('pending while the build runs', async () => {
+    assert.equal(await stateOf({ statuses: [build('pending')] }), 'pending');
+  });
+
+  it('pending while a re-run is in progress, whatever an earlier run did', async () => {
+    assert.equal(await stateOf({ statuses: [build('pending'), build('success')] }), 'pending');
+  });
+
+  it('published when the build put an executor up', async () => {
+    assert.equal(await stateOf({ statuses: [build('success')] }), 'published');
+  });
+
+  it('unpublished when the build finished and put none up, so waiting would never end', async () => {
+    assert.equal(await stateOf({ statuses: [build('success')], artifacts: [] }), 'unpublished');
+  });
+
+  it('failed when the build failed', async () => {
+    assert.equal(await stateOf({ statuses: [build('failure')] }), 'failed');
   });
 });
