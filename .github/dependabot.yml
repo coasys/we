@@ -32,6 +32,13 @@ updates:
       # wrong every time.
       - dependency-name: '@coasys/*'
 
+      # jsdom 30.1 hides an element carrying `popover` until it is shown, but has no `showPopover()`
+      # to show it — so every overlay primitive (modal, drawer, popover) stays hidden in tests and
+      # nothing inside one can take focus, failing `overlay-focus.test.ts`. 30.0 has neither half.
+      # Lift this once a jsdom release implements `showPopover()`.
+      - dependency-name: 'jsdom'
+        versions: ['>=30.1.0']
+
       # Lexical is pinned by `lexical-solid`, not by us. Its newest published release (0.21.0,
       # which is what we are on) declares all nineteen lexical packages as `~0.30.0`, so any bump
       # of our own lexical deps installs a SECOND copy: @we/block-solid resolves 0.49.0 while

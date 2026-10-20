@@ -20,15 +20,15 @@
     "@we/schema-shared": "workspace:*",
     "@we/schema-solid": "workspace:*",
     "@we/tokens": "workspace:*",
-    "solid-js": "^1.9.15"
+    "solid-js": "^1.9.17"
   },
   "devDependencies": {
     "@solidjs/testing-library": "^0.8.10",
     "@we/cli": "workspace:*",
     "happy-dom": "^21.0.3",
     "typescript": "^6.0.3",
-    "vite": "^8.2.2",
+    "vite": "^8.3.4",
     "vite-plugin-solid": "^2.11.14",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.5"
   }
 }

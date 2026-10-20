@@ -29,15 +29,15 @@
   "peerDependencies": {
     "@we/components": "workspace:*",
     "@we/schema-solid": "workspace:*",
-    "solid-js": "^1.9.15",
+    "solid-js": "^1.9.17",
     "@we/primitives": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.4.0",
+    "@types/node": "^26.6.5",
     "@we/components": "workspace:*",
     "@we/schema-solid": "workspace:*",
-    "solid-js": "^1.9.15",
+    "solid-js": "^1.9.17",
     "@we/primitives": "workspace:*",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.5"
   }
 }

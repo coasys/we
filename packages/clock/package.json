@@ -23,11 +23,11 @@
     "dist"
   ],
   "devDependencies": {
-    "@types/node": "^26.4.0",
+    "@types/node": "^26.6.5",
     "@we/cli": "workspace:*",
     "tsup": "^9.0.0",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.5"
   },
   "sideEffects": false
 }

@@ -31,11 +31,11 @@
   },
   "peerDependencies": {},
   "devDependencies": {
-    "@types/node": "^26.4.0",
+    "@types/node": "^26.6.5",
     "@we/cli": "workspace:*",
     "tsup": "^9.0.0",
-    "vitest": "^5.0.2",
-    "tsx": "^4.23.13"
+    "vitest": "^5.0.5",
+    "tsx": "^4.23.15"
   },
   "publishConfig": {
     "access": "public"

@@ -23,17 +23,17 @@
     "@we/schema-shared": "workspace:*",
     "@we/schema-solid": "workspace:*",
     "@we/template-fixtures": "workspace:*",
-    "solid-js": "^1.9.15"
+    "solid-js": "^1.9.17"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
     "@we/csp": "workspace:*",
     "@we/globe-layers": "workspace:*",
     "@we/globe-widget": "workspace:*",
-    "playwright-core": "^1.62.1",
+    "playwright-core": "^1.64.1",
     "typescript": "^6.0.3",
-    "vite": "^8.2.2",
+    "vite": "^8.3.4",
     "vite-plugin-solid": "^2.11.14",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.5"
   }
 }
