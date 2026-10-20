@@ -35,6 +35,7 @@ export interface AgentSettingsRecord extends RecordInstance {
   globalSpaceUrl: string;
   useSpaceTemplate: boolean;
   useTemplateTheme: boolean;
+  followTemplateUpdates: boolean;
   themeScope: string;
   installedModules: string;
   moduleSettings: string;
