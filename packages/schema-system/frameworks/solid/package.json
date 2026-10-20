@@ -23,17 +23,17 @@
     "@we/backend-shared": "workspace:*"
   },
   "peerDependencies": {
-    "solid-js": "^1.9.15"
+    "solid-js": "^1.9.17"
   },
   "devDependencies": {
     "@solidjs/testing-library": "^0.8.10",
     "@we/cli": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",
     "happy-dom": "^20.12.0",
-    "solid-js": "^1.9.15",
+    "solid-js": "^1.9.17",
     "tsup": "^8.5.1",
     "vite-plugin-solid": "^2.11.14",
-    "vitest": "^5.0.2",
+    "vitest": "^5.0.5",
     "@we/backend-inmemory": "workspace:*"
   },
   "sideEffects": false

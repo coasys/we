@@ -21,9 +21,9 @@
     "@we/template-kit": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.4.0",
-    "prettier": "3.9.6",
-    "vitest": "^5.0.2",
-    "tsx": "^4.23.13"
+    "@types/node": "^26.6.5",
+    "prettier": "3.9.10",
+    "vitest": "^5.0.5",
+    "tsx": "^4.23.15"
   }
 }

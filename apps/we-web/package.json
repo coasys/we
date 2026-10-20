@@ -16,7 +16,7 @@
     "@we/app-shell": "workspace:*",
     "@coasys/ad4m": "*",
     "@coasys/ad4m-connect": "*",
-    "solid-js": "^1.9.15",
+    "solid-js": "^1.9.17",
     "@we/backend-ad4m": "workspace:*"
   },
   "devDependencies": {
@@ -26,8 +26,8 @@
     "@we/globe-layers": "workspace:*",
     "@we/globe-widget": "workspace:*",
     "typescript": "^6.0.3",
-    "vite": "^8.2.2",
+    "vite": "^8.3.4",
     "vite-plugin-solid": "^2.11.14",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.5"
   }
 }

@@ -31,16 +31,16 @@
     "@we/design-utils": "workspace:*",
     "@we/themes": "workspace:*",
     "@we/tokens": "workspace:*",
-    "zod": "^4.5.4"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/node": "^26.4.0",
-    "@vitest/coverage-v8": "^5.0.2",
+    "@types/node": "^26.6.5",
+    "@vitest/coverage-v8": "^5.0.5",
     "@we/cli": "workspace:*",
-    "jsdom": "^30.0.1",
+    "jsdom": "~30.0.1",
     "tsup": "^8.5.1",
-    "tsx": "^4.23.13",
-    "vitest": "^5.0.2"
+    "tsx": "^4.23.15",
+    "vitest": "^5.0.5"
   },
   "sideEffects": false
 }

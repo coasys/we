@@ -36,7 +36,7 @@
     "@we/design-utils": "workspace:*",
     "@we/graph-protocol": "workspace:*",
     "@we/primitives": "workspace:*",
-    "solid-js": "^1.9.15"
+    "solid-js": "^1.9.17"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
@@ -46,13 +46,13 @@
     "@we/primitives": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",
     "happy-dom": "^20.12.0",
-    "sass": "^1.103.1",
-    "solid-js": "^1.9.15",
+    "sass": "^1.105.2",
+    "solid-js": "^1.9.17",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "vite": "^8.2.2",
+    "vite": "^8.3.4",
     "vite-plugin-solid": "^2.11.14",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.5"
   },
   "context": {
     "type": "widgets",
