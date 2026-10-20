@@ -30,7 +30,7 @@
     "@types/node": "^26.6.5",
     "@we/backend-conformance": "workspace:*",
     "@we/cli": "workspace:*",
-    "tsup": "^8.5.1",
+    "tsup": "^9.0.0",
     "vitest": "^5.0.5",
     "tsx": "^4.23.15"
   },

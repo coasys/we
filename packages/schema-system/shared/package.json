@@ -38,7 +38,7 @@
     "@vitest/coverage-v8": "^5.0.5",
     "@we/cli": "workspace:*",
     "jsdom": "~30.0.1",
-    "tsup": "^8.5.1",
+    "tsup": "^9.0.0",
     "tsx": "^4.23.15",
     "vitest": "^5.0.5"
   },
