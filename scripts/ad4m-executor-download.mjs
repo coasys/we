@@ -87,32 +87,66 @@ export function unpack(file, compressed, manifest) {
   return binary;
 }
 
-/** The executor for a commit, as `{ binary, manifest, job }`. Throws NotPublished when there is none. */
-export async function fetchExecutor(commit) {
+/** Every status GitHub holds for an ad4m commit, newest first. */
+async function statusesOf(commit) {
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new NotPublished(`'${commit}' is not a full commit sha.`);
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   const gh = { Accept: 'application/vnd.github+json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  return (await json(`https://api.github.com/repos/${AD4M_REPO}/commits/${commit}/statuses?per_page=100`, gh)) ?? [];
+}
 
-  const statuses = await json(`https://api.github.com/repos/${AD4M_REPO}/commits/${commit}/statuses?per_page=100`, gh);
-  const status = buildStatus(statuses);
-  if (!status) throw new NotPublished(`${AD4M_REPO}@${commit.slice(0, 9)} has no successful "${STATUS_CONTEXT}".`);
+/** The artifacts of the CircleCI build job a successful build status links: `{ job, url(path) }`. */
+async function artifactsOf(status) {
   const workflow = workflowOf(status.target_url);
   if (!workflow) throw new NotPublished(`Its build status links no CircleCI workflow (${status.target_url}).`);
-
   const jobs = await json(`${CIRCLECI}/workflow/${workflow}/job`);
   const job = jobs?.items?.find((j) => j.name === 'build' && j.status === 'success');
   if (!job) throw new NotPublished(`CircleCI workflow ${workflow} has no successful build job.`);
-
   const artifacts = (await json(`${CIRCLECI}/project/${job.project_slug}/${job.job_number}/artifacts`))?.items ?? [];
-  const url = (path) => artifacts.find((a) => a.path === `executor/${path}`)?.url;
+  return { job: job.job_number, url: (path) => artifacts.find((a) => a.path === `executor/${path}`)?.url };
+}
+
+/**
+ * Whether ad4m's CI has finished with a commit's executor, as `{ state, reason }`:
+ *
+ * - `pending`: its build has not started or is still running, so an executor may yet be published.
+ * - `published`: there is one to download.
+ * - `unpublished`: the build finished and published none — built before ad4m published executors,
+ *   or its artifacts have expired. Nothing will appear by waiting.
+ * - `failed`: the build failed, so nothing will appear either.
+ *
+ * Read from the commit's newest build status, so a re-run in progress counts as pending.
+ */
+export async function executorState(commit) {
+  const status = (await statusesOf(commit)).find((s) => s.context === STATUS_CONTEXT);
+  const short = `${AD4M_REPO}@${commit.slice(0, 9)}`;
+  if (!status) return { state: 'pending', reason: `${short} has no "${STATUS_CONTEXT}" yet.` };
+  if (status.state === 'pending') return { state: 'pending', reason: `${short} is still being built.` };
+  if (status.state !== 'success') return { state: 'failed', reason: `${short}'s build ended in ${status.state}.` };
+  try {
+    const { job, url } = await artifactsOf(status);
+    return url('manifest.json')
+      ? { state: 'published', reason: `${short}'s executor is published (CircleCI job ${job}).` }
+      : { state: 'unpublished', reason: `${short} was built (CircleCI job ${job}) and published no executor.` };
+  } catch (error) {
+    if (!(error instanceof NotPublished)) throw error;
+    return { state: 'unpublished', reason: error.message };
+  }
+}
+
+/** The executor for a commit, as `{ binary, manifest, job }`. Throws NotPublished when there is none. */
+export async function fetchExecutor(commit) {
+  const status = buildStatus(await statusesOf(commit));
+  if (!status) throw new NotPublished(`${AD4M_REPO}@${commit.slice(0, 9)} has no successful "${STATUS_CONTEXT}".`);
+  const { job, url } = await artifactsOf(status);
   if (!url('manifest.json')) {
-    throw new NotPublished(`Build job ${job.job_number} published no executor (built before ad4m did, or expired).`);
+    throw new NotPublished(`Build job ${job} published no executor (built before ad4m did, or expired).`);
   }
 
   const manifest = JSON.parse((await bytes(url('manifest.json'))).toString('utf8'));
   const file = checkManifest(manifest, commit);
-  if (!url(file)) throw new NotPublished(`Build job ${job.job_number} has no ${file}.`);
-  return { binary: unpack(file, await bytes(url(file)), manifest), manifest, job: job.job_number };
+  if (!url(file)) throw new NotPublished(`Build job ${job} has no ${file}.`);
+  return { binary: unpack(file, await bytes(url(file)), manifest), manifest, job };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

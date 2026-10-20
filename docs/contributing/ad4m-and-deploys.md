@@ -186,6 +186,11 @@ It refuses:
 - a version replacing a snapshot that it does not contain, unless given `--allow-older`: a release
   would ship an older ad4m than `dev` was tested against.
 
+And with `--if-newer`, as the bot runs it, it waits for a commit whose executor ad4m's CI is still
+building: WE downloads the executor ad4m publishes, so pinning a commit before its build finishes
+would mean compiling it instead. A commit whose build has finished goes ahead whether or not it
+published one. By hand the same case is a warning, and the bump goes ahead.
+
 **Which version is newest is decided by branch, not by npm tag.** ad4m tags a prerelease `next` and a
 release `latest`, and either tag can also hold a build somebody published by hand from a feature
 branch. So `pnpm bump:ad4m staging` takes the newest version, by publish time, whose recorded commit
