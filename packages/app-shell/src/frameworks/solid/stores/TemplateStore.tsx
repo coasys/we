@@ -22,6 +22,7 @@ import {
   decodeFileAsJson,
   FOLLOW_SPACE,
   ImageBlock,
+  runEntityTransaction,
   SpacePreference,
   SpaceTemplatePreference,
   Template,
@@ -36,6 +37,7 @@ import {
   createMemo,
   createSignal,
   on,
+  onCleanup,
   ParentProps,
   untrack,
   useContext,
@@ -50,6 +52,7 @@ import {
   describeCapabilities,
   describeRefusal,
 } from '../../../shared/templateAcceptance';
+import { remoteUpdateFor, TEMPLATE_WATCH_FIELDS, templateChanges } from '../../../shared/templateSync';
 import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
@@ -216,6 +219,21 @@ export interface TemplateStore {
   /** Save a template's working copy to its own record, whichever template it is — see the definition. */
   persistTemplate: (template: TemplateSchema) => Promise<void>;
   /**
+   * Whether somebody else's change to the template on screen is applied as it arrives, or offered
+   * with an "Update now" notice. Off by default. This agent's own changes, and any change to a
+   * template being edited here, always apply. See "Live template sync" in the definition.
+   */
+  followTemplateUpdates: Accessor<boolean>;
+  setFollowTemplateUpdates: (on: boolean) => Promise<void>;
+  /**
+   * How the editor tells this store whether a template is being edited here, and hears that a
+   * change saved elsewhere has just been put into one. Injected: the editor is built on this store.
+   */
+  provideEditingProbe: (probe: {
+    isEditing(template: TemplateSchema): boolean;
+    replaced(template: TemplateSchema): void;
+  }) => void;
+  /**
    * A working copy of a template edited where another draws it — a section inside its shell — as a
    * store, so what draws it updates finely. Opening one twice answers with the same copy.
    */
@@ -312,6 +330,12 @@ export function TemplateStoreProvider(props: ParentProps) {
   const refusedRecords = new Map<string, NewRecord<Template>>();
   const [refusedTemplates, setRefusedTemplates] = createSignal<RefusedTemplate[]>([]);
   const spaceTemplateMap = new Map<string, NewRecord<Template>>();
+  /**
+   * The version this agent last saved, by record id — how the watch below tells its own saves
+   * coming back from somebody else's. An entry is consumed when its echo arrives. See
+   * `templateChanges`.
+   */
+  const ownSaves = new Map<string, string>();
 
   // Per-session cache of space templates keyed by perspective UUID.
   // Populated on first visit; subsequent visits restore synchronously without an AD4M fetch.
@@ -630,62 +654,88 @@ export function TemplateStoreProvider(props: ParentProps) {
     });
   }
 
+  /**
+   * Read a space's templates — decoded, through the trust gate, keyed by the id each is known by —
+   * without touching what is on screen. `loadSpaceTemplates` puts what this reads in place on entering
+   * a space; `refreshSpaceTemplatesInPlace` does when one changes while it is open.
+   */
+  async function readSpaceTemplates(dataset: AppDataset): Promise<SpaceTemplateCacheEntry> {
+    const readStarted = performance.now();
+    const spaceDbTemplates = await Template.findAll(dataset.handle);
+    // Each record's schema is a stored file the backend resolves as it reads, so the count is the cost.
+    trace('dataset', 'space:templates', {
+      dataset: dataset.id,
+      count: spaceDbTemplates.length,
+      ms: Math.round(performance.now() - readStarted),
+    });
+    const schemas: TemplateSchema[] = [];
+    const models = new Map<string, Template>();
+
+    for (const template of spaceDbTemplates) {
+      const decoded = decodeFileAsJson(template.schema);
+      if (!decoded || typeof decoded !== 'object') continue;
+      const stored = decoded as unknown as StoredTemplate;
+      const raw = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
+
+      // The untrusted route, and the one nobody opted into: a shared space's templates arrive
+      // with the space, so merely visiting is enough to render one. Space tier, and a refusal
+      // skips the template rather than the space.
+      const origin = `space "${dataset.name ?? dataset.id}"`;
+      const accepted = acceptTemplate(raw, { origin, grants: SPACE_TIER });
+      if (!accepted.schema) {
+        console.warn(describeAcceptance(accepted, origin).join('\n'));
+        continue;
+      }
+      if (accepted.blocked.length || accepted.refusedElements.length)
+        console.warn(describeAcceptance(accepted, origin).join('\n'));
+      const schema = accepted.schema;
+      const templateId = schema.id || template.name?.toLowerCase().replace(/\s+/g, '-') || template.id;
+
+      schemas.push({ ...schema, id: templateId, _fromSpace: true });
+      models.set(templateId, template);
+    }
+
+    return { schemas, models, ids: new Set(schemas.map((t) => t.id || '').filter(Boolean)) };
+  }
+
+  /** Put a space's templates in the lists and the cache — the second half of a load. */
+  function placeSpaceTemplates(dataset: AppDataset, read: SpaceTemplateCacheEntry): void {
+    spaceTemplateMap.clear();
+    for (const [id, model] of read.models) spaceTemplateMap.set(id, model);
+    // Always cache the result (including empty) so subsequent visits skip the fetch
+    spaceTemplateCache.set(dataset.id, read);
+    // One write, so nothing watching the list sees the space's templates gone for a moment.
+    setAllTemplates((prev) => [...prev.filter((t) => !t._fromSpace), ...read.schemas]);
+    setInstalledIds((prev) => {
+      const next = new Set(prev);
+      read.schemas.forEach((t) => t.id && next.add(t.id));
+      return next;
+    });
+    setSpaceTemplateIdSet(read.ids);
+  }
+
   /** Load templates from a space perspective, merge into allTemplates, and populate the cache */
   async function loadSpaceTemplates(dataset: AppDataset): Promise<void> {
     clearSpaceTemplates();
     try {
-      const readStarted = performance.now();
-      const spaceDbTemplates = await Template.findAll(dataset.handle);
-      // Each record's schema is a stored file the backend resolves as it reads, so the count is the cost.
-      trace('dataset', 'space:templates', {
-        dataset: dataset.id,
-        count: spaceDbTemplates.length,
-        ms: Math.round(performance.now() - readStarted),
-      });
-      const schemas: TemplateSchema[] = [];
-      const models = new Map<string, Template>();
-
-      for (const template of spaceDbTemplates) {
-        const decoded = decodeFileAsJson(template.schema);
-        if (!decoded || typeof decoded !== 'object') continue;
-        const stored = decoded as unknown as StoredTemplate;
-        const raw = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
-
-        // The untrusted route, and the one nobody opted into: a shared space's templates arrive
-        // with the space, so merely visiting is enough to render one. Space tier, and a refusal
-        // skips the template rather than the space.
-        const origin = `space "${dataset.name ?? dataset.id}"`;
-        const accepted = acceptTemplate(raw, { origin, grants: SPACE_TIER });
-        if (!accepted.schema) {
-          console.warn(describeAcceptance(accepted, origin).join('\n'));
-          continue;
-        }
-        if (accepted.blocked.length || accepted.refusedElements.length)
-          console.warn(describeAcceptance(accepted, origin).join('\n'));
-        const schema = accepted.schema;
-        const templateId = schema.id || template.name?.toLowerCase().replace(/\s+/g, '-') || template.id;
-
-        schemas.push({ ...schema, id: templateId, _fromSpace: true });
-        models.set(templateId, template);
-        spaceTemplateMap.set(templateId, template);
-      }
-
-      const ids = new Set(schemas.map((t) => t.id || '').filter(Boolean));
-
-      // Always cache the result (including empty) so subsequent visits skip the fetch
-      spaceTemplateCache.set(dataset.id, { schemas, models, ids });
-
-      if (schemas.length === 0) return;
-
-      setAllTemplates((prev) => [...prev.filter((t) => !t._fromSpace), ...schemas]);
-      setInstalledIds((prev) => {
-        const next = new Set(prev);
-        schemas.forEach((t) => t.id && next.add(t.id));
-        return next;
-      });
-      setSpaceTemplateIdSet(ids);
+      placeSpaceTemplates(dataset, await readSpaceTemplates(dataset));
     } catch (error) {
       console.error('TemplateStore: loadSpaceTemplates error', error);
+    }
+  }
+
+  /**
+   * Read the open space's templates again and swap them in at once — what a change to one of them,
+   * saved elsewhere, needs. Unlike `loadSpaceTemplates` it never clears first: an effect following
+   * the space's default template would read "not loaded" in between and choose again.
+   */
+  async function refreshSpaceTemplatesInPlace(dataset: AppDataset): Promise<void> {
+    try {
+      const read = await readSpaceTemplates(dataset);
+      if (datasetStore.currentDataset()?.id !== dataset.id) return;
+      placeSpaceTemplates(dataset, read);
+    } catch (error) {
+      console.error('TemplateStore: refreshing space templates failed', error);
     }
   }
 
@@ -1392,6 +1442,172 @@ export function TemplateStoreProvider(props: ParentProps) {
     }
   }
 
+  // ────────────────────────────────────────────────────────────────
+  // Live template sync
+  // ────────────────────────────────────────────────────────────────
+
+  /*
+    A template saved elsewhere reaches this agent as it is saved.
+
+    Before this, a space's templates were read once, when the space opened, so an edit made by
+    another member, on another of this agent's devices, or by an agent asked to edit it, reached
+    nobody until they reloaded. Two watches now follow the templates: the open space's and this
+    agent's own library (which also holds its app). Each reads only the cheap fields; a change is
+    re-read through the same loaders a visit uses, so the trust gate and the id a template is known
+    by are decided in one place.
+
+    What a change to the template ON SCREEN does is decided by `remoteUpdateFor`: this agent's own
+    change from elsewhere applies, a change to a template being edited here applies and says so, and
+    somebody else's is offered rather than imposed — unless this agent follows others' changes.
+  */
+  const followTemplateUpdates = createMemo(() => datasetStore.agentSettings()?.followTemplateUpdates === true);
+
+  async function setFollowTemplateUpdates(on: boolean) {
+    await datasetStore.updateAgentSettings({ followTemplateUpdates: on });
+  }
+
+  /**
+   * What the editor tells this store, injected the way `provideSpaceLookup` is, since the editor is
+   * built on this store and not the other way round: whether a template is being edited here, and
+   * what to do once a change saved elsewhere has been put into it.
+   */
+  let editing: { isEditing(template: TemplateSchema): boolean; replaced(template: TemplateSchema): void } = {
+    isEditing: () => false,
+    replaced: () => {},
+  };
+  function provideEditingProbe(probe: typeof editing): void {
+    editing = probe;
+  }
+
+  /** Watch one dataset's templates, calling `onChange` with the records added, changed or removed. */
+  function watchTemplates(handle: unknown, onChange: (records: string[]) => void): () => void {
+    let stamps: Map<string, string> | undefined;
+    let stopped = false;
+    const take = (rows: { id: string; version?: unknown; updatedAt?: unknown }[]) => {
+      if (stopped) return;
+      const { next, changed, removed } = templateChanges(stamps, rows, ownSaves);
+      stamps = next;
+      if (changed.length || removed.length) onChange([...changed, ...removed]);
+    };
+    const watch = Template.query(handle, { properties: [...TEMPLATE_WATCH_FIELDS] });
+    // A backend may or may not hand the first result to the callback as well; taking it twice is
+    // harmless, since an unchanged push reports nothing.
+    void watch
+      .subscribe(take)
+      .then(take)
+      .catch((error: unknown) => console.warn('[TemplateStore] watching templates failed', error));
+    return () => {
+      stopped = true;
+      watch.dispose();
+    };
+  }
+
+  /**
+   * One refresh at a time per scope, given every record that changed since the last one began. A
+   * change arriving during a refresh is caught by the next, not dropped.
+   */
+  function serialised(run: (records: Set<string>) => Promise<void>): (records: string[]) => void {
+    let running = false;
+    let waiting = new Set<string>();
+    const go = (records: string[]): void => {
+      records.forEach((id) => waiting.add(id));
+      if (running) return;
+      running = true;
+      const batch = waiting;
+      waiting = new Set();
+      void run(batch).finally(() => {
+        running = false;
+        if (waiting.size) go([]);
+      });
+    };
+    return go;
+  }
+
+  const sameContent = (a: TemplateSchema, b: TemplateSchema) => {
+    const bare = (t: TemplateSchema) => {
+      const {
+        templateVersion: _v,
+        author: _a,
+        _fromSpace: _s,
+        ...rest
+      } = deepClone(t) as TemplateSchema & {
+        author?: string;
+      };
+      return JSON.stringify(rest);
+    };
+    return bare(a) === bare(b);
+  };
+
+  /** The notice offering a change somebody else made, while it is up. One at a time. */
+  let offered: string | null = null;
+
+  /** After a scope was read again: decide what a change to the template on screen does. */
+  function followChange(fromSpace: boolean, records: Set<string>): void {
+    if (safe.on) return; // safe mode draws WE's own templates, whatever the chosen ones say
+    const current = currentTemplate;
+    if (!!current._fromSpace !== fromSpace) return;
+    /*
+      Only when its own record is among those that changed. Comparing content alone is not enough:
+      a template stored before node ids were permanent is given them as it goes on screen and not in
+      storage, so it never compares equal — and a change to another template would offer this one.
+    */
+    const record = current.id ? (fromSpace ? spaceTemplateMap : savedTemplateMap).get(current.id) : undefined;
+    if (!record || !records.has(record.id)) return;
+    const fresh = allTemplates().find((t) => t.id === current.id && !!t._fromSpace === fromSpace);
+    if (!fresh || sameContent(fresh, current)) return;
+
+    const decision = remoteUpdateFor({
+      author: (fresh as { author?: string }).author,
+      me: session.me()?.did,
+      editing: editing.isEditing(current),
+      followOthers: followTemplateUpdates(),
+    });
+    if (offered) toastService.remove(offered);
+    offered = null;
+
+    if (decision === 'offer') {
+      offered = toastService.info('This template was updated by someone in this space.', 0, {
+        label: 'Update now',
+        run: () => {
+          offered = null;
+          const latest = allTemplates().find((t) => t.id === current.id && !!t._fromSpace === fromSpace);
+          if (latest && currentTemplate.id === latest.id) updateTemplate(latest);
+        },
+      });
+      return;
+    }
+    // Diffed in, not replaced: what did not change keeps its components and everything they hold.
+    updateTemplate(fresh);
+    if (decision === 'apply-editing') {
+      editing.replaced(fresh);
+      toastService.info(
+        'This template was changed elsewhere while you were editing it. Undo starts again from here.',
+        8000,
+      );
+    }
+  }
+
+  const syncLibrary = serialised(async (records) => {
+    await loadSavedTemplates();
+    followChange(false, records);
+  });
+
+  createEffect(() => {
+    const root = datasetStore.rootDataset();
+    if (!root) return;
+    onCleanup(watchTemplates(root.handle, syncLibrary));
+  });
+
+  createEffect(() => {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset) return;
+    const syncSpace = serialised(async (records) => {
+      await refreshSpaceTemplatesInPlace(dataset);
+      if (datasetStore.currentDataset()?.id === dataset.id) followChange(true, records);
+    });
+    onCleanup(watchTemplates(dataset.handle, syncSpace));
+  });
+
   /** Re-fetch space templates for the current perspective — call after any mutation (delete, install) */
   async function refreshSpaceTemplates(): Promise<void> {
     const perspective = datasetStore.currentDataset();
@@ -1801,7 +2017,14 @@ export function TemplateStoreProvider(props: ParentProps) {
       if (!existing) return;
       existing.schema = asFileField(schemaBlob);
       existing.version = (existing.version || 1) + 1;
-      await existing.save();
+      /*
+        Noted before the write, so the watch can tell this agent's own save coming back from somebody
+        else's. And one transaction: the version and the content land together, so nobody watching
+        sees the new version arrive with the old template behind it.
+      */
+      ownSaves.set(existing.id, String(existing.version));
+      const dataset = (fromSpace ? datasetStore.currentDataset() : datasetStore.rootDataset())?.handle ?? perspective;
+      await runEntityTransaction(dataset, (tx) => existing.save(tx.batchId));
     } catch (error) {
       // Content-addressed store returns "Key already exists" when the blob
       // is already stored — this is expected and the data is persisted.
@@ -1826,6 +2049,10 @@ export function TemplateStoreProvider(props: ParentProps) {
         return { ...schemaToSave, ...(fromSpace ? { _fromSpace: true } : {}), templateVersion: tv };
       }),
     );
+    // And the space's cached copy, or coming back to the space later restores what this replaced.
+    const openSpace = fromSpace ? datasetStore.currentDataset() : null;
+    const cached = openSpace && spaceTemplateCache.get(openSpace.id);
+    if (cached) cached.schemas = allTemplates().filter((t) => t._fromSpace);
   }
 
   /** Copy the current template into a specific space perspective */
@@ -2135,6 +2362,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     publishToMarketplace,
     persistCurrentTemplate,
     persistTemplate,
+    followTemplateUpdates,
+    setFollowTemplateUpdates,
+    provideEditingProbe,
     appTemplate,
     appTemplateId,
     appTemplateOptions,

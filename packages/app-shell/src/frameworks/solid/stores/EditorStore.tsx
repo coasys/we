@@ -1312,6 +1312,25 @@ export function EditorStoreProvider(props: ParentProps) {
     });
   });
 
+  /*
+    The template being edited can change under the session: somebody saved it elsewhere, and the
+    template store put their version on screen (see "Live template sync" there). Every template
+    snapshot in the history predates that, so an undo would quietly put back what was there before
+    them — and autosave it over their work. The template history starts again from the version that
+    arrived; theme entries are about something else and stay.
+  */
+  templateStore.provideEditingProbe({
+    isEditing: (template) =>
+      isEditingTemplate() &&
+      edit.target().kind === 'screen' &&
+      edit.template().id === template.id &&
+      !!edit.template()._fromSpace === !!template._fromSpace,
+    replaced: () => {
+      setUndoStack((prev) => prev.filter((entry) => entry.type !== 'template'));
+      setRedoStack((prev) => prev.filter((entry) => entry.type !== 'template'));
+    },
+  });
+
   // ----------------------------------------------------------------
   // Store object
   // ----------------------------------------------------------------

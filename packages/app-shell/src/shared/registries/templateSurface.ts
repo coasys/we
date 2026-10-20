@@ -1019,6 +1019,14 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // the two actions it delegates to — marking it wiring left that switch inert.
     toggleInstalled: action('library'),
     provideSpaceLookup: WIRING,
+    provideEditingProbe: WIRING,
+    /*
+      Whether somebody else's change to the template on screen applies as it arrives — this agent's
+      own preference, at the agent tier like `useTemplateTheme`, for the same reason: a template a
+      community wrote must not be able to decide how this agent's screen behaves when others edit.
+    */
+    followTemplateUpdates: state('view-state'),
+    setFollowTemplateUpdates: action('agent'),
     preloadSpaceTemplates: WIRING,
     loadSpaceTemplates: WIRING,
     refreshSpaceTemplates: ambient('appearance'),
