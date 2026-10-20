@@ -14,6 +14,7 @@
  * error, fixes its call and tries again, which is how an edit converges; a throw would end the
  * conversation instead. A throw from `call` means the host did something wrong, not the model.
  */
+import type { EntityManifestEntry } from '@we/backend-shared';
 
 export interface AgentTool {
   name: string;
@@ -41,6 +42,55 @@ export interface Toolset<Result> {
   call(name: string, args: unknown): Promise<string>;
   /** What the conversation produced so far. Safe to read at any point, and as often as wanted. */
   result(): Result;
+}
+
+/**
+ * A stored record, as a host hands it to a toolset: the properties it read, with any file a
+ * property holds already resolved (a `data:` URI, or the JSON itself).
+ */
+export interface RecordInput {
+  id: string;
+  /** The entity the record is, as the model manifest names it — `Template`. */
+  className: string;
+  properties: Record<string, unknown>;
+}
+
+export interface RecordToolsetInput {
+  record: RecordInput;
+  /** What the person asked for, in their words. */
+  request: string;
+  /** The dataset's own models, which the record may name. See `TemplateToolsetOptions.models`. */
+  models?: EntityManifestEntry[];
+  /**
+   * Who the write will go out as — the agent's DID. Recorded in what is written, which is how the
+   * app tells this agent's own change (applied on every device) from somebody else's (offered).
+   * Absent, the change reads as somebody else's.
+   */
+  author?: string;
+}
+
+/** What a conversation about one record produced: the properties to write back, if any. */
+export interface RecordEdit {
+  /** Whether anything was kept. Write nothing when false. */
+  changed: boolean;
+  /**
+   * The properties to write, encoded as the app writes them — a file property as the FileData it
+   * is stored from. Every one of them in one write, since the app reads them as one change.
+   */
+  properties: Record<string, unknown>;
+}
+
+/**
+ * Toolsets by what they edit — the one surface a host needs. The host finds the toolset whose
+ * `appliesTo` names the record's entity, opens it on the record, runs the conversation, and writes
+ * `result().properties` back. Decoding the record and encoding what changed stay in WE, so a host
+ * never learns how a template is stored.
+ */
+export interface RecordToolsetEntry {
+  /** The entities this toolset edits. */
+  appliesTo: string[];
+  /** Rejects when the record is not one this toolset can read — that is the host's mistake, not the model's. */
+  open(input: RecordToolsetInput): Promise<Toolset<RecordEdit>>;
 }
 
 /** Arguments as an object, whether they arrived parsed or as the JSON a provider sent. */

@@ -472,6 +472,9 @@ importers:
       '@we/backend-shared':
         specifier: workspace:*
         version: link:../backend-system/shared
+      '@we/entities':
+        specifier: workspace:*
+        version: link:../entities
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../schema-system/shared

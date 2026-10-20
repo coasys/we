@@ -120,6 +120,7 @@ export type { FileData } from './utils/imageHelpers';
 export { normalizeSignal, denormalizeSignal } from './utils/signalNormalize';
 export { aggregateSignals } from './utils/signalAggregate';
 export { decodeFileAsString, decodeFileAsJson, encodeJsonFileData } from './utils/fileTransforms';
+export { decodeTemplateFile, encodeTemplateFile, type StoredSchema, TEMPLATE_FILE_NAME } from './utils/templateFile';
 
 /**
  * The dataset handle model statics accept — opaque on purpose. Which kind of handle "a dataset"

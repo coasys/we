@@ -29,6 +29,7 @@
   "dependencies": {
     "@we/ai-context": "workspace:*",
     "@we/backend-shared": "workspace:*",
+    "@we/entities": "workspace:*",
     "@we/schema-shared": "workspace:*"
   },
   "devDependencies": {

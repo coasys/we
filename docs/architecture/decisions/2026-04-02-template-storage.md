@@ -2,8 +2,11 @@
 
 ## Status
 
-**Accepted** — implemented: templates are stored whole, with a section index computed alongside
-(`computeSectionIndex` in `packages/schema-system/shared/src/indexer.ts`).
+**Superseded by [A template is stored whole, and addressed by node id](2026-10-20-templates-stored-without-a-section-index.md)
+— 2026-10-20.** The single-blob storage chosen here stands; the stored section index does not.
+Permanent node ids gave the stable addresses the index was for, and the section API it served was
+never used. The index is no longer written, and `computeSectionIndex` and the path utilities are
+gone.
 
 ## Context
 

@@ -14,13 +14,13 @@ import { explain } from '@shared/userMessage';
 import { deepClone } from '@shared/utils';
 import { type NewRecord, trace } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
-import type { FileData } from '@we/entities';
 import {
   AGENT_DEFAULT,
   AgentSettings,
   asFileField,
   compressImageToFileData,
-  decodeFileAsJson,
+  decodeTemplateFile,
+  encodeTemplateFile,
   FOLLOW_SPACE,
   ImageBlock,
   runEntityTransaction,
@@ -28,8 +28,8 @@ import {
   SpaceTemplatePreference,
   Template,
 } from '@we/entities';
-import type { RouteSchema, SchemaNode, StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
-import { createStoredTemplate, ensureNodeIds, hasViewsMarker } from '@we/schema-shared';
+import type { RouteSchema, SchemaNode, TemplateMeta, TemplateSchema } from '@we/schema-shared';
+import { ensureNodeIds, hasViewsMarker } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
 import {
   Accessor,
@@ -296,18 +296,6 @@ export interface TemplateStore {
  * `not: 'view'` and get both.
  */
 const roleOf = (schema: { meta?: { role?: string } }): string => (schema.meta?.role === 'view' ? 'view' : '');
-
-/** A schema as the blob a `Template` record's `schema` field holds. */
-const encodeTemplateSchema = (schema: TemplateSchema): FileData => {
-  const jsonBytes = new TextEncoder().encode(JSON.stringify(createStoredTemplate(schema)));
-  let binary = '';
-  for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
-  return {
-    data_base64: btoa(binary),
-    name: 'template-schema.json',
-    file_type: 'application/json',
-  } as FileData;
-};
 
 const TemplateContext = createContext<TemplateStore>();
 
@@ -591,12 +579,8 @@ export function TemplateStoreProvider(props: ParentProps) {
       const refused: RefusedTemplate[] = [];
 
       for (const template of allDbTemplates) {
-        const decoded = decodeFileAsJson(template.schema);
-        if (!decoded || typeof decoded !== 'object') continue;
-
-        // The schema field stores a StoredTemplate { schema, sections }
-        const stored = decoded as unknown as StoredTemplate;
-        const raw = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
+        const raw = decodeTemplateFile<TemplateSchema>(template.schema);
+        if (!raw) continue;
 
         // Your own installed templates, at the chrome tier — this is the agent's own library, and
         // one of these may legitimately be a chrome template. Checked all the same: a template
@@ -698,10 +682,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     const models = new Map<string, Template>();
 
     for (const template of spaceDbTemplates) {
-      const decoded = decodeFileAsJson(template.schema);
-      if (!decoded || typeof decoded !== 'object') continue;
-      const stored = decoded as unknown as StoredTemplate;
-      const raw = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
+      const raw = decodeTemplateFile<TemplateSchema>(template.schema);
+      if (!raw) continue;
 
       // The untrusted route, and the one nobody opted into: a shared space's templates arrive
       // with the space, so merely visiting is enough to render one. Space tier, and a refusal
@@ -1339,7 +1321,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     for (const template of templates) {
       const id = template.id;
       if (!id) continue;
-      const schema = asFileField(encodeTemplateSchema(template));
+      const schema = asFileField(encodeTemplateFile(template));
       const existing = savedTemplateMap.get(id);
       if (existing) {
         existing.schema = schema;
@@ -1379,7 +1361,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       if (!id) continue;
       // The space's copy carries nothing of where it was read from but the bundle it came in.
       const { _fromSpace: _ignored, ...clean } = template;
-      const schema = asFileField(encodeTemplateSchema(clean as TemplateSchema));
+      const schema = asFileField(encodeTemplateFile(clean as TemplateSchema));
       const existing = records.get(id);
       if (existing) {
         existing.schema = schema;
@@ -1424,14 +1406,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       const newVersion = request.version;
       const schemaToInstall: TemplateSchema = { ...deepClone(schema), id: templateId, templateVersion: newVersion };
 
-      const schemaBlob = (() => {
-        const storedTemplate = createStoredTemplate(schemaToInstall);
-        const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
-        let binary = '';
-        for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
-        const base64 = btoa(binary);
-        return { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' };
-      })();
+      const schemaBlob = encodeTemplateFile(schemaToInstall);
 
       const existingLocal = savedTemplateMap.get(templateId);
       if (existingLocal) {
@@ -1664,14 +1639,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       );
       const schemaToInstall: TemplateSchema = { ...deepClone(schema), id: templateId };
 
-      const schemaBlob = (() => {
-        const storedTemplate = createStoredTemplate(schemaToInstall);
-        const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
-        let binary = '';
-        for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
-        const base64 = btoa(binary);
-        return { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' };
-      })();
+      const schemaBlob = encodeTemplateFile(schemaToInstall);
 
       noteOwnWrite(
         await Template.create(spacePerspective, {
@@ -1734,14 +1702,11 @@ export function TemplateStoreProvider(props: ParentProps) {
         return;
       }
 
-      const decoded = decodeFileAsJson(marketplaceTemplate.schema);
-      if (!decoded || typeof decoded !== 'object') {
+      const raw = decodeTemplateFile<TemplateSchema>(marketplaceTemplate.schema);
+      if (!raw) {
         toastService.error('Could not read template data');
         return;
       }
-
-      const stored = decoded as unknown as StoredTemplate;
-      const raw = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
 
       // A deliberate install, so a refusal is worth a toast rather than a console line — the user
       // pressed a button and is owed an answer. Space tier: a marketplace template is a stranger's,
@@ -1827,17 +1792,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       meta: { ...currentTemplate.meta, name },
     };
 
-    // Wrap in StoredTemplate with computed sections
-    const storedTemplate = createStoredTemplate(schemaToSave);
-    const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
-    let binary = '';
-    for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
-    const base64 = btoa(binary);
-    const schemaBlob = {
-      data_base64: base64,
-      name: 'template-schema.json',
-      file_type: 'application/json',
-    } as FileData;
+    const schemaBlob = encodeTemplateFile(schemaToSave);
 
     try {
       const existingTemplate = savedTemplateMap.get(templateId);
@@ -1918,16 +1873,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       meta: { ...schema.meta, name },
     };
 
-    const storedTemplate = createStoredTemplate(schemaToSave);
-    const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
-    let binary = '';
-    for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
-    const base64 = btoa(binary);
-    const schemaBlob = {
-      data_base64: base64,
-      name: 'template-schema.json',
-      file_type: 'application/json',
-    } as FileData;
+    const schemaBlob = encodeTemplateFile(schemaToSave);
 
     try {
       const targetMap = isSpace ? spaceTemplateMap : savedTemplateMap;
@@ -2033,20 +1979,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     const cloned = deepClone(template);
     delete cloned._fromSpace;
     const schemaToSave: TemplateSchema = { ...cloned, author: session.me()?.did };
-    const storedTemplate = createStoredTemplate(schemaToSave);
-    // Include a timestamp so the content hash is unique per save — avoids
-    // "Key already exists" rejections from the content-addressed store when
-    // re-persisting a previously-saved schema (e.g. after undo/redo).
-    const envelope = { ...storedTemplate, savedAt: Date.now() };
-    const jsonBytes = new TextEncoder().encode(JSON.stringify(envelope));
-    let binary = '';
-    for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
-    const base64 = btoa(binary);
-    const schemaBlob = {
-      data_base64: base64,
-      name: 'template-schema.json',
-      file_type: 'application/json',
-    } as FileData;
+    // Timestamped, so re-persisting a schema already saved (after an undo, say) is a new file
+    // rather than one the content-addressed store refuses as a duplicate.
+    const schemaBlob = encodeTemplateFile(schemaToSave, { savedAt: Date.now() });
 
     try {
       const existing = recordOf(templateId);
@@ -2111,12 +2046,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     setOperationLoading('publish-space');
 
-    const storedTemplate = createStoredTemplate({ ...deepClone(schema), id: templateId });
-    const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
-    let binary = '';
-    for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
-    const base64 = btoa(binary);
-    const schemaBlob = { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' } as FileData;
+    const schemaBlob = encodeTemplateFile({ ...deepClone(schema), id: templateId });
 
     try {
       await Template.create(perspective, {
@@ -2187,12 +2117,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     setOperationLoading('publish-marketplace');
 
-    const storedTemplate = createStoredTemplate({ ...deepClone(schema), id: localId, author: session.me()?.did });
-    const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
-    let binary = '';
-    for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
-    const base64 = btoa(binary);
-    const schemaBlob = { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' } as FileData;
+    const schemaBlob = encodeTemplateFile({ ...deepClone(schema), id: localId, author: session.me()?.did });
 
     const templateIcon = options.icon ?? schema.meta?.icon ?? '';
 
@@ -2298,7 +2223,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     try {
       record.slug = reserved;
       record.name = name;
-      record.schema = asFileField(encodeTemplateSchema(schema));
+      record.schema = asFileField(encodeTemplateFile(schema));
       await record.save();
     } catch (error) {
       console.error('TemplateStore: could not re-id a template saved over a built-in', requested, error);
