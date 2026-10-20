@@ -1,8 +1,9 @@
-# Builds the ad4m executor for one ad4m commit and caches it, without testing anything.
+# Fetches the ad4m executor for one ad4m commit and caches it, without testing anything: downloaded
+# from ad4m's CI where it published one, otherwise built (`.github/actions/ad4m-executor`).
 #
 # A cache is read only from the run's own branch and its base branch, so an executor built on a PR
-# serves that PR alone, and the push to `dev` after it merges builds the same commit again — most
-# of an hour each time. The bump workflow dispatches this on `dev` as soon as it moves to a new ad4m
+# serves that PR alone, and the push to `dev` after it merges fetches the same commit again: a
+# download in seconds, or, for a commit ad4m published nothing for, a build of most of an hour. The bump workflow dispatches this on `dev` as soon as it moves to a new ad4m
 # commit, before any PR asks for it: the copy lands where every PR can read it, and the bump PR, any
 # PR moving to the same commit, and the push to `dev` after either merges all restore it.
 #
@@ -46,7 +47,11 @@ jobs:
           fi
       - uses: actions/checkout@v7
         with:
-          sparse-checkout: .github/actions/ad4m-executor
+          # The action, and the script it downloads ad4m's own build with.
+          sparse-checkout: |
+            .github/actions/ad4m-executor
+            scripts/ad4m-executor-download.mjs
+          sparse-checkout-cone-mode: false
       - uses: ./.github/actions/ad4m-executor
         with:
           ref: ${{ inputs.commit }}

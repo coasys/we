@@ -89,11 +89,13 @@ jobs:
             echo "stale=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # Before anything starts CI on the branch: the build takes the commit's concurrency group first,
+      # Before anything starts CI on the branch: the fetch takes the commit's concurrency group first,
       # so the bump PR's own run waits for it and restores rather than building a copy only that PR
       # can read — and the push to `dev` after the bump merges finds it already cached. See
       # `ad4m-executor.yaml`.
-      - name: Build the new executor on dev
+      # Usually a download of the executor ad4m's CI built, in seconds; a build only where it
+      # published none.
+      - name: Fetch the new executor on dev
         if: steps.current.outputs.stale == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
