@@ -1,5 +1,5 @@
 name: AD4M executor
-description: The ad4m executor binary for one ad4m commit — restored from the cache, or built and cached.
+description: The ad4m executor binary for one ad4m commit — restored from the cache, or downloaded from ad4m's CI, or built — and cached.
 
 # One recipe, one cache key and one path for every workflow that needs an executor. They were two:
 # `electron-package.yaml` built one to package and `ad4m-live.yaml` built another to test, under
@@ -20,7 +20,8 @@ inputs:
     default: ''
   mode:
     description: >-
-      `build` restores, or builds and caches on a miss. `restore` restores and fails on a miss.
+      `build` restores, or on a miss downloads the executor ad4m's CI published for the commit, or
+      builds it, and caches it. `restore` restores and fails on a miss.
       `lookup` only says whether it is cached, downloading nothing.
     default: build
   v8-from-source:
@@ -92,12 +93,37 @@ runs:
         key: ${{ steps.where.outputs.key }}
         fail-on-cache-miss: ${{ inputs.mode == 'restore' }}
 
-    # Everything below runs only to build: on a hit, none of it is needed — not even the source.
+    # On a miss, the executor ad4m's own CI built for this commit, downloaded rather than compiled:
+    # ad4m publishes one for every pushed commit (CircleCI's `build` job), and a download takes
+    # seconds where a build takes most of an hour. scripts/ad4m-executor-download.mjs finds it from
+    # the commit alone, with no credentials, and writes it only once its sha256 matches the manifest.
+    # Anything that leaves nothing to download — a commit built before ad4m published executors, or
+    # whose artifacts have expired — falls through to the build below, as before. Linux x64 only,
+    # the one platform ad4m publishes; macOS still builds. Saved to the cache like a built one, so
+    # every run after the first restores it and nothing depends on ad4m's artifacts lasting.
+    - name: Node for the download
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true' && runner.os == 'Linux' && runner.arch == 'X64'
+      uses: actions/setup-node@v7
+      with:
+        # zstd in node:zlib, which is what ad4m compresses with.
+        node-version: 24
+    - name: Download the executor ad4m built
+      id: download
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true' && runner.os == 'Linux' && runner.arch == 'X64'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        SHA: ${{ steps.where.outputs.sha }}
+        DEST: ${{ steps.where.outputs.path }}
+      run: node scripts/ad4m-executor-download.mjs "$SHA" "$DEST" >> "$GITHUB_OUTPUT"
+
+    # Everything below runs only to build: on a hit or a download, none of it is needed — not even
+    # the source.
 
     # A manual fetch rather than `actions/checkout`, which documents `path` as under the workspace.
     # GitHub serves any commit by hash, so the fetch is shallow whatever the ref was.
     - name: Check out ad4m
-      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true'
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true' && steps.download.outputs.downloaded != 'true' && steps.download.outputs.downloaded != 'true'
       shell: bash
       env:
         DIR: ${{ steps.where.outputs.dir }}
@@ -109,17 +135,17 @@ runs:
 
     # ALSA headers for `alsa-sys`; ninja and Python for the V8 source build on macOS.
     - name: Build dependencies (Linux)
-      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true' && runner.os == 'Linux'
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true' && steps.download.outputs.downloaded != 'true' && runner.os == 'Linux'
       shell: bash
       run: |
         sudo apt-get update
         sudo apt-get install -y cmake protobuf-compiler libasound2-dev
     - name: Build dependencies (macOS)
-      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true' && runner.os == 'macOS'
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true' && steps.download.outputs.downloaded != 'true' && runner.os == 'macOS'
       shell: bash
       run: brew install cmake protobuf ninja
     - name: Python (macOS)
-      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true' && runner.os == 'macOS'
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true' && steps.download.outputs.downloaded != 'true' && runner.os == 'macOS'
       uses: actions/setup-python@v7
       with:
         python-version: '3.11'
@@ -128,7 +154,7 @@ runs:
     # pinned here anyway — so it follows ad4m instead of going stale. rustup is preinstalled on both
     # runner images.
     - name: Rust toolchain
-      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true'
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true' && steps.download.outputs.downloaded != 'true' && steps.download.outputs.downloaded != 'true'
       shell: bash
       working-directory: ${{ steps.where.outputs.dir }}
       run: rustup toolchain install
@@ -138,7 +164,7 @@ runs:
     # the whole cargo build being retried — which, on a genuine compile error, only fails the same way
     # again. Cargo's own fetches retry through CARGO_NET_RETRY.
     - name: Retry transient downloads
-      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true'
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true' && steps.download.outputs.downloaded != 'true' && steps.download.outputs.downloaded != 'true'
       shell: bash
       run: printf 'retry = 5\nretry-connrefused\nretry-delay = 10\n' >> ~/.curlrc
 
@@ -147,7 +173,7 @@ runs:
     # workspace. WE starts the executor with `--run-dapp-server false`, so the binary only needs the
     # directory to exist, and a placeholder satisfies the macro.
     - name: dapp placeholder
-      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true'
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true' && steps.download.outputs.downloaded != 'true' && steps.download.outputs.downloaded != 'true'
       shell: bash
       env:
         DIR: ${{ steps.where.outputs.dir }}
@@ -163,7 +189,7 @@ runs:
     # Linux needs glibc 2.38 or later to link: the prebuilt V8 calls `__isoc23_*`. The hosted
     # Ubuntu 24.04 image has 2.39; ad4m's own 22.04 CI image does not (coasys/ad4m#1305).
     - name: Generate the Deno snapshot
-      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true'
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true' && steps.download.outputs.downloaded != 'true' && steps.download.outputs.downloaded != 'true'
       shell: bash
       working-directory: ${{ steps.where.outputs.dir }}/rust-executor
       env:
@@ -172,7 +198,7 @@ runs:
       run: cargo run --release --features generate_snapshot --bin generate_snapshot
 
     - name: Build the executor
-      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true'
+      if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true' && steps.download.outputs.downloaded != 'true' && steps.download.outputs.downloaded != 'true'
       shell: bash
       working-directory: ${{ steps.where.outputs.dir }}
       env:

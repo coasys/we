@@ -14,9 +14,11 @@
 #
 # `.github/actions/ad4m-executor` provides it — the same action, cache key and path the desktop
 # package uses, so the tests run the binary the app ships and either workflow's build serves the
-# other. It is cached by AD4M commit: building it is most of an hour, every later run on that commit
-# is a restore. Only the binary is cached; the Rust target directory is far past what a
-# repository's Actions cache holds. A build that fails caches nothing.
+# other. It is cached by AD4M commit, and on a miss it is first downloaded: ad4m's own CI publishes
+# the executor it builds for every pushed commit, and fetching it takes seconds. Only a commit with
+# nothing to download — built before ad4m published executors, or whose artifacts have expired — is
+# built here, which takes most of an hour. Only the binary is cached; the Rust target directory is
+# far past what a repository's Actions cache holds. A build that fails caches nothing.
 #
 # A cache is read only from the run's own branch and its base branch, so where it is saved decides
 # who can use it. One saved on a PR serves re-runs of that PR alone; one saved on `dev` serves every
@@ -40,6 +42,7 @@ on:
       - 'package.json'
       - '.github/workflows/ad4m-live.yaml'
       - '.github/actions/ad4m-executor/**'
+      - 'scripts/ad4m-executor-download*'
   # The same paths on `dev`, so a merged bump caches its executor where every PR can read it.
   push:
     branches: [dev]
@@ -49,6 +52,7 @@ on:
       - 'package.json'
       - '.github/workflows/ad4m-live.yaml'
       - '.github/actions/ad4m-executor/**'
+      - 'scripts/ad4m-executor-download*'
   # The ad4m bump workflow starts this on its branch, as it does CI — a PR it opens with
   # GITHUB_TOKEN starts nothing. And by hand, from the Actions tab.
   workflow_dispatch:
@@ -73,8 +77,20 @@ jobs:
           sparse-checkout: |
             package.json
             scripts/ad4m-pin.mjs
+            scripts/ad4m-executor-download.mjs
+            scripts/ad4m-executor-download.test.mjs
             .github/actions/ad4m-executor
           sparse-checkout-cone-mode: false
+
+      # The download script's own tests, here because the root has no test runner, and because this
+      # is the job that decides whether to fetch: a script that stopped refusing a bad checksum
+      # would hand the live tests whatever it downloaded.
+      - uses: actions/setup-node@v7
+        with:
+          # zstd in node:zlib, which the tests compress with.
+          node-version: 24
+      - name: The executor download still checks what it fetches
+        run: node --test scripts/ad4m-executor-download.test.mjs
 
       - name: Is the pinned executor cached
         id: executor
@@ -86,7 +102,7 @@ jobs:
         env:
           SHA: ${{ steps.executor.outputs.sha }}
           HIT: ${{ steps.executor.outputs.cache-hit }}
-        run: echo "### coasys/ad4m@${SHA:0:9} — $([ "$HIT" = true ] && echo 'cached' || echo 'not cached yet, building')" >> "$GITHUB_STEP_SUMMARY"
+        run: echo "### coasys/ad4m@${SHA:0:9} — $([ "$HIT" = true ] && echo 'cached' || echo 'not cached yet, downloading or building')" >> "$GITHUB_STEP_SUMMARY"
 
   build:
     name: Build the executor
@@ -102,7 +118,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          sparse-checkout: .github/actions/ad4m-executor
+          # The action, and the script it downloads ad4m's own build with.
+          sparse-checkout: |
+            .github/actions/ad4m-executor
+            scripts/ad4m-executor-download.mjs
+          sparse-checkout-cone-mode: false
       - uses: ./.github/actions/ad4m-executor
         with:
           ref: ${{ needs.resolve.outputs.commit }}
