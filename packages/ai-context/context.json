@@ -3679,6 +3679,13 @@
           "default": "true"
         },
         {
+          "name": "followTemplateUpdates",
+          "type": "boolean",
+          "predicate": "we://follow_template_updates",
+          "required": false,
+          "default": "false"
+        },
+        {
           "name": "themeScope",
           "type": "string",
           "predicate": "we://theme_scope",
@@ -7558,6 +7565,9 @@
         "appTemplateOptions": {
           "type": "array"
         },
+        "followTemplateUpdates": {
+          "type": "boolean"
+        },
         "safeMode": {
           "type": "object",
           "properties": ["on", "reason", "template"]
@@ -7585,6 +7595,7 @@
         "publishToSpace",
         "deleteMarketplaceTemplate",
         "publishToMarketplace",
+        "setFollowTemplateUpdates",
         "refreshSpaceTemplates",
         "leaveSafeMode",
         "leaveSafeModeInto"

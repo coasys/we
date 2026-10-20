@@ -128,6 +128,12 @@ export interface DatasetStore {
   globalDataset: Accessor<AppDataset | null>;
   marketplaceDataset: Accessor<AppDataset | null>;
   agentSettings: Accessor<AgentSettings | null>;
+  /**
+   * Read this agent's settings again. They are read once, at boot, and another of this agent's
+   * devices can change them meanwhile — installing a template, say, which is what decides whether it
+   * shows in the pickers here.
+   */
+  refreshAgentSettings: () => Promise<void>;
   globalSpaceConfigured: Accessor<boolean>;
   globalSpaceId: () => string | null;
   marketplaceConfigured: Accessor<boolean>;
@@ -1013,6 +1019,17 @@ export function DatasetStoreProvider(props: ParentProps) {
    * (The revert restores only what this call touched. Two updates racing each other would otherwise
    * have the loser's revert undo the winner's write.)
    */
+  async function refreshAgentSettings(): Promise<void> {
+    const root = rootDataset();
+    if (!root) return;
+    try {
+      const settings = await AgentSettings.findOne(root.handle);
+      if (settings) setAgentSettings(settings);
+    } catch (error) {
+      console.warn('DatasetStore: re-reading agent settings failed', error);
+    }
+  }
+
   async function updateAgentSettings(updates: Partial<AgentSettings>): Promise<boolean> {
     const settings = agentSettings();
     if (!settings) return false;
@@ -1243,6 +1260,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     globalDataset,
     marketplaceDataset,
     agentSettings,
+    refreshAgentSettings,
     globalSpaceConfigured,
     globalSpaceId,
     marketplaceConfigured,

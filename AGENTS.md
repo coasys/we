@@ -2445,6 +2445,7 @@ AgentSettings extends Ad4mModel:
   - globalSpaceUrl: string [we://global_space_url]
   - useSpaceTemplate: boolean = true [we://use_space_template]
   - useTemplateTheme: boolean = true [we://use_template_theme]
+  - followTemplateUpdates: boolean = false [we://follow_template_updates]
   - themeScope: string [we://theme_scope]
   - installedModules: string [we://installed_modules]
   - moduleSettings: string [we://module_settings]
@@ -3556,6 +3557,7 @@ TemplateStore:
   - pendingInstall: the template an install dialog is showing ({ marketplaceId, destination, name, icon, version, capabilities, blocked }), or null when none is open. `capabilities` is already in the words a person reads. Host chrome renders it: a dialog vouching for a template must not be drawn by a template
   - appTemplateId: string — id of the app this agent is in: the template WE's own chrome is drawn from (the sidebar, the module rail, and whatever an app of their own arranges around every space). Not a space's template, and chosen by the agent alone
   - appTemplateOptions: { label, value, icon, editable }[] — the apps this agent can be in, ready for a we-select: WE’s own, then their own copies. `editable` is false for one that ships with WE, which is forked rather than edited — editorStore.editApp and forkApp take the value
+  - followTemplateUpdates: boolean — whether somebody else's change to the template on screen is put on screen as they save it. Off by default: it is offered instead, with a notice and an Update now button, so the page does not change under somebody mid-task. This agent's own changes (another device, an agent it asked) and changes to a template being edited here always apply
   - safeMode: { on, reason, template } — whether this tab is in safe mode, where WE's own templates and themes are drawn in place of the chosen ones. reason is 'asked' (the ?safe address, the key or the menu) or 'unfinished-render' (a template did not finish loading last time — template is its id). Decided before anything rendered; fixed for the page
   - operationLoading: string | null — the id of the template operation in flight, namespaced by kind ('marketplace-install:<id>', 'space-install:<id>'), or null. A key rather than a boolean so one row's spinner does not appear on every row
 - Actions:
@@ -3577,6 +3579,7 @@ TemplateStore:
   - publishToSpace(perspectiveUuid: string, spaceName: string): copies the current template into that space, so its members get it. Resolves true on success
   - deleteMarketplaceTemplate(templateId: string): removes a template this agent published from the marketplace. Only its author may
   - publishToMarketplace(options: { name, description, icon?, themeId?, slug?, screenshots: File[] }): publishes the current template to the marketplace under those details. Resolves true on success
+  - setFollowTemplateUpdates(on: boolean): sets followTemplateUpdates, for this agent everywhere. Boolean, so a we-switch can pass `event.detail` bare
   - refreshSpaceTemplates(): re-reads the current space's templates. The list follows the space on its own; call this after a publish the subscription might have missed
   - leaveSafeMode(): leaves safe mode and reloads with the templates and themes that were chosen
   - leaveSafeModeInto(appId: string): leaves safe mode into another app — a value from appTemplateOptions — chosen first, everywhere, as setAppTemplate does. The way out of an app that hides every way out of it. Does nothing for an id that is not one of the options

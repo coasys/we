@@ -1,6 +1,6 @@
 import { CodeEditor, type CodeEditorLanguage, Column, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
-import { createSignal, Show } from 'solid-js';
+import { createMemo, createSignal, Show } from 'solid-js';
 
 import { readJson } from '../jsonText';
 
@@ -37,11 +37,20 @@ export function CodeViewer(props: CodeViewerProps) {
   const [editing, setEditing] = createSignal(false);
   const [editValue, setEditValue] = createSignal('');
   const [error, setError] = createSignal('');
+  /*
+    What was shown when editing began. The text being edited is a copy, so if what it was copied
+    from changes meanwhile — somebody saved the template elsewhere, or an AI edit landed — saving the
+    copy would put the old version back over the new one without a word. So the panel says so, and
+    offers to start again from what is there now.
+  */
+  const [editBase, setEditBase] = createSignal('');
+  const sourceMoved = createMemo(() => editing() && props.json !== editBase());
 
   const language = () => props.language ?? 'json';
 
   function startEdit() {
     setEditValue(props.json);
+    setEditBase(props.json);
     setError('');
     setEditing(true);
   }
@@ -126,6 +135,30 @@ export function CodeViewer(props: CodeViewerProps) {
           </we-text>
         </Show>
       </Row>
+
+      {/*
+        Its own strip under the toolbar, not in it: a sentence in a row of buttons is the one thing
+        there that can shrink, so it did — to a single character wide, down the whole panel.
+      */}
+      <Show when={sourceMoved()}>
+        <Row
+          ay="center"
+          ax="between"
+          gap="300"
+          px="400"
+          py="200"
+          bg="warning-surface"
+          borderBottom={`1px solid ${tokenVar('color', 'border')}`}
+          flexShrink="0"
+        >
+          <we-text fontSize="200" color="warning-text" flex="1" minWidth="0">
+            This changed while you were editing it. Saving replaces that change.
+          </we-text>
+          <we-button size="sm" variant="ghost" onClick={startEdit}>
+            Load latest
+          </we-button>
+        </Row>
+      </Show>
 
       {/* Editor */}
       <CodeEditor

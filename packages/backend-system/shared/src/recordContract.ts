@@ -16,6 +16,8 @@
  * differ.
  */
 
+import type { QuerySubscription } from './dataSource';
+
 // ── Instance base ──────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -358,6 +360,20 @@ export interface EntityStatic<T extends RecordInstance> {
   update(dataset: unknown, id: string, properties: WriteProperties<T>): Promise<T | null>;
   delete(dataset: unknown, id: string): Promise<unknown>;
   count(dataset: unknown, query?: TypedEntityQuery<T>): Promise<number>;
+
+  /**
+   * A live read: resolves with the result now, and calls `onChange` with the whole result again
+   * whenever it may have changed. `dispose` ends it.
+   *
+   * Treat a push as "here is the result now", never as "something changed": backends differ on
+   * exactly that. The in-memory one re-runs on any write to the dataset and also calls `onChange`
+   * with the first result; AD4M calls it only for later results that differ from the last one.
+   * A caller that needs to know what changed compares rows itself.
+   */
+  query<Q extends TypedEntityQuery<T>>(
+    dataset: unknown,
+    query?: Q,
+  ): QuerySubscription<T & IncludeExtras<T, IncludeOf<Q>>>;
 
   /**
    * Replace a relation's whole membership, in the order given.

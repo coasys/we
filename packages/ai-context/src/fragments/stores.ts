@@ -295,8 +295,10 @@ export const storeEntries: StoreEntry[] = [
       refusedTemplates: { type: 'array', properties: ['id', 'name', 'icon', 'reason'] },
       switcherGroups: { type: 'array', properties: ['label', 'items'] },
       safeMode: { type: 'object', properties: ['on', 'reason', 'template'] },
+      followTemplateUpdates: { type: 'boolean' },
     },
     actions: [
+      'setFollowTemplateUpdates',
       'switchTemplate',
       'removeTemplate',
       'saveTemplate',
@@ -1073,8 +1075,12 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "{ on, reason, template } — whether this tab is in safe mode, where WE's own templates and themes are drawn in place of the chosen ones. reason is 'asked' (the ?safe address, the key or the menu) or 'unfinished-render' (a template did not finish loading last time — template is its id). Decided before anything rendered; fixed for the page",
         operationLoading:
           "string | null — the id of the template operation in flight, namespaced by kind ('marketplace-install:<id>', 'space-install:<id>'), or null. A key rather than a boolean so one row's spinner does not appear on every row",
+        followTemplateUpdates:
+          "boolean — whether somebody else's change to the template on screen is put on screen as they save it. Off by default: it is offered instead, with a notice and an Update now button, so the page does not change under somebody mid-task. This agent's own changes (another device, an agent it asked) and changes to a template being edited here always apply",
       },
       actions: {
+        setFollowTemplateUpdates:
+          '(on: boolean): sets followTemplateUpdates, for this agent everywhere. Boolean, so a we-switch can pass `event.detail` bare',
         leaveSafeMode: '(): leaves safe mode and reloads with the templates and themes that were chosen',
         leaveSafeModeInto:
           '(appId: string): leaves safe mode into another app — a value from appTemplateOptions — chosen first, everywhere, as setAppTemplate does. The way out of an app that hides every way out of it. Does nothing for an id that is not one of the options',
