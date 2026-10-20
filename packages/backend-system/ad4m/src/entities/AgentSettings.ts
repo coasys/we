@@ -100,6 +100,18 @@ export class AgentSettings extends Ad4mModel {
   useTemplateTheme: boolean = true;
 
   /**
+   * Whether a template somebody else changes is updated on screen as they save it, or waits for
+   * this agent to say so.
+   *
+   * Defaults off: the page changing under somebody mid-task is the surprise worth sparing them,
+   * and a notice with "Update now" costs one press. This agent's own changes, made on another
+   * device or asked of an agent, always apply, and so does anything they are editing — a stale
+   * copy there is one save away from overwriting the newer one.
+   */
+  @Property({ through: 'we://follow_template_updates' })
+  followTemplateUpdates: boolean = false;
+
+  /**
    * Whether a space's theme covers the whole window, or only the space's own content.
    *
    * `'global'` themes everything including the shell — the sidebar, settings, your profile.

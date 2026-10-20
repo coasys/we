@@ -19,6 +19,7 @@ import type {
   IncludeExtras,
   IncludeOf,
   ParentRef,
+  QuerySubscription,
   RecordInstance,
   TypedEntityQuery,
 } from '@we/backend-shared';
@@ -143,10 +144,10 @@ export interface EntityClassLike {
   ): Promise<void>;
   addRelation(dataset: unknown, id: string, relation: string, targetId: string, batch?: string): Promise<void>;
   removeRelation(dataset: unknown, id: string, relation: string, targetId: string, batch?: string): Promise<void>;
-  query(
+  query<Q extends TypedEntityQuery<RecordInstance>>(
     dataset: unknown,
-    q?: Record<string, unknown>,
-  ): { subscribe(cb: (rows: unknown[]) => void): Promise<unknown[]>; dispose(): void };
+    query?: Q | AnyQuery,
+  ): QuerySubscription<InMemoryInstance & IncludeExtras<RecordInstance, IncludeOf<Q>>>;
 }
 
 /**

@@ -592,6 +592,47 @@ function refusedTemplatesGroup(): SchemaNode {
  * The theme editor's toolbar can flip this for the length of an editing session without writing it
  * here — it is a preview there, and says so.
  */
+/*
+  What happens when somebody else saves the template on screen. Off, a notice offers the update and
+  the page stays as it is until somebody presses it; on, it changes as they save. Your own changes,
+  and any template you are editing, always follow.
+*/
+const templateUpdatesSection: SchemaNode = {
+  type: 'Row',
+  props: {
+    ay: 'center',
+    ax: 'between',
+    gap: '300',
+    p: '300',
+    bg: 'surface',
+    r: '300',
+    border: '1px solid border',
+  },
+  children: [
+    {
+      type: 'Column',
+      props: { gap: '100', flex: '1' },
+      children: [
+        { type: 'we-text', props: { variant: 'label' }, children: ["Show others' template changes as they happen"] },
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-faint' },
+          children: [
+            'Off, when someone else changes the template you are looking at, you are told and choose when to update. On, it changes as they save it. Your own changes from another device, and any template you are editing, always update.',
+          ],
+        },
+      ],
+    },
+    {
+      type: 'we-switch',
+      props: {
+        checked: { $: 'templateStore.followTemplateUpdates' },
+        onChange: { $action: 'templateStore.setFollowTemplateUpdates', args: [{ $: 'event.detail' }] },
+      },
+    },
+  ],
+};
+
 const themeScopeSection: SchemaNode = {
   type: 'Column',
   props: { gap: '300' },
@@ -1314,7 +1355,10 @@ export const settingsTemplate: TemplateSchema = {
   // render time, whatever the schema tree looks like, and state declared here would never reach it.
   routes: [
     { path: '/', ...page([accountSection]) },
-    { path: '/appearance', ...page([appSection, appsSection, templatesSection, themeScopeSection, themesSection]) },
+    {
+      path: '/appearance',
+      ...page([appSection, appsSection, templatesSection, templateUpdatesSection, themeScopeSection, themesSection]),
+    },
     {
       path: '/spaces',
       ...page([
