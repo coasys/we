@@ -381,6 +381,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       accessor rather than the whole record.
     */
     agentSettings: WIRING,
+    refreshAgentSettings: WIRING,
     /*
       The agent's own root dataset. Chrome tier, because settings genuinely needs it — the datasets
       list marks which row is your root by comparing ids — and a space's template has no reason to

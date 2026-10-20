@@ -17,6 +17,7 @@ import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/entities';
 import {
   AGENT_DEFAULT,
+  AgentSettings,
   asFileField,
   compressImageToFileData,
   decodeFileAsJson,
@@ -336,6 +337,31 @@ export function TemplateStoreProvider(props: ParentProps) {
    * `templateChanges`.
    */
   const ownSaves = new Map<string, string>();
+  /** Note a write this agent made to a template record, so its echo is not taken for news. */
+  function noteOwnWrite(record: { id: string; version?: unknown }): void {
+    ownSaves.set(record.id, String(record.version ?? ''));
+  }
+
+  /**
+   * Make a template in this agent's library and mark it installed, as one write.
+   *
+   * Two writes before: the record, then the link that puts it in the pickers. Another of this
+   * agent's devices, watching the library, could read the first without the second, and the new
+   * template stayed out of its lists until a reload.
+   */
+  async function createLibraryTemplate(
+    handle: unknown,
+    data: Parameters<typeof Template.create>[1],
+  ): Promise<NewRecord<Template>> {
+    const prefs = datasetStore.agentSettings();
+    const record = await runEntityTransaction(handle, async (tx) => {
+      const created = await Template.create(handle, data, { batchId: tx.batchId });
+      if (prefs) await AgentSettings.addRelation(handle, prefs.id, 'installedTemplates', created.id, tx.batchId);
+      return created;
+    });
+    noteOwnWrite(record);
+    return record;
+  }
 
   // Per-session cache of space templates keyed by perspective UUID.
   // Populated on first visit; subsequent visits restore synchronously without an AD4M fetch.
@@ -1310,7 +1336,6 @@ export function TemplateStoreProvider(props: ParentProps) {
   async function writeLibraryTemplates(templates: TemplateSchema[], origin: string): Promise<void> {
     const rootPerspective = datasetStore.rootDataset()?.handle;
     if (!rootPerspective) throw new Error('Your library is not available yet');
-    const prefs = datasetStore.agentSettings();
     for (const template of templates) {
       const id = template.id;
       if (!id) continue;
@@ -1320,10 +1345,11 @@ export function TemplateStoreProvider(props: ParentProps) {
         existing.schema = schema;
         existing.name = template.meta.name;
         existing.version = (existing.version || 1) + 1;
+        noteOwnWrite(existing);
         await existing.save();
         continue;
       }
-      const record = await Template.create(rootPerspective, {
+      const record = await createLibraryTemplate(rootPerspective, {
         name: template.meta.name,
         description: template.meta.description,
         icon: template.meta.icon,
@@ -1334,7 +1360,6 @@ export function TemplateStoreProvider(props: ParentProps) {
         role: roleOf(template),
       });
       savedTemplateMap.set(id, record);
-      if (prefs) await prefs.addInstalledTemplates(record);
     }
     setInstalledIds((prev) => new Set([...prev, ...templates.map((t) => t.id ?? '').filter(Boolean)]));
     await loadSavedTemplates();
@@ -1360,19 +1385,22 @@ export function TemplateStoreProvider(props: ParentProps) {
         existing.schema = schema;
         existing.name = template.meta.name;
         existing.version = (existing.version || 1) + 1;
+        noteOwnWrite(existing);
         await existing.save();
         continue;
       }
-      await Template.create(dataset.handle, {
-        name: template.meta.name,
-        description: template.meta.description,
-        icon: template.meta.icon,
-        origin,
-        slug: id,
-        version: 1,
-        schema,
-        role: roleOf(template),
-      });
+      noteOwnWrite(
+        await Template.create(dataset.handle, {
+          name: template.meta.name,
+          description: template.meta.description,
+          icon: template.meta.icon,
+          origin,
+          slug: id,
+          version: 1,
+          schema,
+          role: roleOf(template),
+        }),
+      );
     }
     // The next visit to another space reads it afresh rather than from what was cached before.
     spaceTemplateCache.delete(dataset.id);
@@ -1410,10 +1438,11 @@ export function TemplateStoreProvider(props: ParentProps) {
         // Already installed — update schema and version in place
         existingLocal.schema = asFileField(schemaBlob);
         existingLocal.version = newVersion;
+        noteOwnWrite(existingLocal);
         await existingLocal.save();
         toastService.success(`"${schemaToInstall.meta.name}" updated to v${newVersion}`);
       } else {
-        const newTemplate = await Template.create(rootPerspective, {
+        const newTemplate = await createLibraryTemplate(rootPerspective, {
           name: schemaToInstall.meta.name,
           origin: 'marketplace',
           slug: templateId,
@@ -1422,9 +1451,6 @@ export function TemplateStoreProvider(props: ParentProps) {
           role: roleOf(schemaToInstall),
         });
         savedTemplateMap.set(templateId, newTemplate);
-
-        const prefs = datasetStore.agentSettings();
-        if (prefs) await prefs.addInstalledTemplates(newTemplate);
 
         setInstalledIds((prev) => {
           const next = new Set(prev);
@@ -1580,14 +1606,19 @@ export function TemplateStoreProvider(props: ParentProps) {
     updateTemplate(fresh);
     if (decision === 'apply-editing') {
       editing.replaced(fresh);
+      const mine = (fresh as { author?: string }).author === session.me()?.did;
       toastService.info(
-        'This template was changed elsewhere while you were editing it. Undo starts again from here.',
+        mine
+          ? 'You changed this template on another device, and that change is now here too. Undo starts again from this point.'
+          : 'Someone else changed this template while you were editing it, and their change is now here too. Undo starts again from this point.',
         8000,
       );
     }
   }
 
   const syncLibrary = serialised(async (records) => {
+    // Which library templates are installed lives in the agent's settings, read once at boot.
+    await datasetStore.refreshAgentSettings();
     await loadSavedTemplates();
     followChange(false, records);
   });
@@ -1642,14 +1673,16 @@ export function TemplateStoreProvider(props: ParentProps) {
         return { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' };
       })();
 
-      await Template.create(spacePerspective, {
-        name: schemaToInstall.meta.name,
-        origin: 'marketplace',
-        slug: templateId,
-        version: request.version,
-        schema: asFileField(schemaBlob),
-        role: roleOf(schemaToInstall),
-      });
+      noteOwnWrite(
+        await Template.create(spacePerspective, {
+          name: schemaToInstall.meta.name,
+          origin: 'marketplace',
+          slug: templateId,
+          version: request.version,
+          schema: asFileField(schemaBlob),
+          role: roleOf(schemaToInstall),
+        }),
+      );
 
       await loadSpaceTemplates(spaceDs!);
       toastService.success(`"${schemaToInstall.meta.name}" installed to space`);
@@ -1812,9 +1845,10 @@ export function TemplateStoreProvider(props: ParentProps) {
         existingTemplate.schema = asFileField(schemaBlob);
         existingTemplate.name = name;
         existingTemplate.version = (existingTemplate.version || 1) + 1;
+        noteOwnWrite(existingTemplate);
         await existingTemplate.save();
       } else {
-        const newTemplate = await Template.create(perspective, {
+        const newTemplate = await createLibraryTemplate(perspective, {
           name,
           origin: 'custom',
           slug: templateId,
@@ -1823,10 +1857,6 @@ export function TemplateStoreProvider(props: ParentProps) {
           role: roleOf(schemaToSave),
         });
         savedTemplateMap.set(templateId, newTemplate);
-
-        // Link to AgentSettings via @HasMany relation
-        const prefs = datasetStore.agentSettings();
-        if (prefs) await prefs.addInstalledTemplates(newTemplate);
 
         // Immediately mark as installed so it shows in sidebar
         setInstalledIds((prev) => {
@@ -1875,8 +1905,14 @@ export function TemplateStoreProvider(props: ParentProps) {
     const name =
       templateId === requestedId || options.rename === false ? schema.meta.name : `${schema.meta.name} (yours)`;
     setOperationLoading('save');
+    /*
+      With node ids, as everything committed has them: a template arriving here without them (a
+      fresh start is hand-written) would otherwise be given them on screen and not in storage, and
+      the two would never compare equal again — so the next change anybody made anywhere read as a
+      change to this one.
+    */
     const schemaToSave: TemplateSchema = {
-      ...deepClone(schema),
+      ...(ensureNodeIds(deepClone(schema) as SchemaNode) as TemplateSchema),
       id: templateId,
       author: session.me()?.did,
       meta: { ...schema.meta, name },
@@ -1900,23 +1936,23 @@ export function TemplateStoreProvider(props: ParentProps) {
         existingTemplate.schema = asFileField(schemaBlob);
         existingTemplate.name = schemaToSave.meta.name;
         existingTemplate.version = (existingTemplate.version || 1) + 1;
+        noteOwnWrite(existingTemplate);
         await existingTemplate.save();
       } else {
-        const newTemplate = await Template.create(perspective, {
+        const data = {
           name: schemaToSave.meta.name,
           origin: isSpace ? 'shared' : 'custom',
           slug: templateId,
           version: 1,
           schema: asFileField(schemaBlob),
           role: roleOf(schemaToSave),
-        });
+        };
+        // In the library, made and marked installed as one write, so it appears in the pickers.
+        const newTemplate = isSpace
+          ? await Template.create(perspective, data)
+          : await createLibraryTemplate(perspective, data);
+        if (isSpace) noteOwnWrite(newTemplate);
         targetMap.set(templateId, newTemplate);
-
-        if (!isSpace) {
-          // Link to AgentSettings so it appears in the sidebar
-          const prefs = datasetStore.agentSettings();
-          if (prefs) await prefs.addInstalledTemplates(newTemplate);
-        }
 
         setInstalledIds((prev) => {
           const next = new Set(prev);
