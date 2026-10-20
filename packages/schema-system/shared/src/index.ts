@@ -131,11 +131,6 @@ export {
 export { validateField } from './validation';
 export { type FreeNames, freeNames } from './freeNames';
 export {
-  computeSectionIndex,
-  extractByPath,
-  patchByPath,
-  validatePatches,
-  ensureSections,
   collectComponentTypes,
   copyWithNewIds,
   forEachNode,
@@ -146,7 +141,7 @@ export {
   insertChild,
   removeChild,
 } from './indexer';
-export type { SectionEntry, StoredTemplate, FindNodeResult, PatchError } from './indexer';
+export type { FindNodeResult, PatchError } from './indexer';
 export { deriveNodeIds, derivedNodeId, isNodeId, newNodeId, NODE_ID_LENGTH } from './nodeIdentity';
 export { type PartFork, partForkChanged, partForkPrint } from './forkPrint';
 export { HOST_PART_IDS, type HostPartId, isHostPartId } from './hostPartIds';
@@ -161,8 +156,6 @@ export {
   type BundleTheme,
   readBundle,
 } from './bundle';
-export { createStoredTemplate, listSections, getSection, updateSection } from './sections';
-export { decodeTemplateFile, encodeTemplateFile, TEMPLATE_FILE_NAME, type TemplateFileData } from './templateFile';
 export {
   expandViewRoutes,
   hasViewsMarker,

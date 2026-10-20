@@ -8,7 +8,8 @@
  * save writes, which is what lets an open screen pick the change up as it would a save from another
  * device.
  */
-import { decodeTemplateFile, encodeTemplateFile, type TemplateSchema } from '@we/schema-shared';
+import { decodeTemplateFile, encodeTemplateFile } from '@we/entities';
+import type { TemplateSchema } from '@we/schema-shared';
 
 import type { RecordEdit, RecordToolsetEntry, Toolset } from '../core/toolset';
 import { createTemplateToolset } from './templateToolset';
@@ -19,7 +20,7 @@ export const templateRecordToolset: RecordToolsetEntry = {
   async open({ record, request, models, author }): Promise<Toolset<RecordEdit>> {
     if (!templateRecordToolset.appliesTo.includes(record.className))
       throw new Error(`The template toolset edits Template records, not ${record.className}.`);
-    const stored = decodeTemplateFile(record.properties.schema);
+    const stored = decodeTemplateFile<TemplateSchema>(record.properties.schema);
     if (!stored) throw new Error(`Template ${record.id} holds no schema this build can read.`);
 
     // Who saved it last is the app's bookkeeping, not part of the design: the model is not shown it,

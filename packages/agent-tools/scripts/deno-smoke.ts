@@ -18,7 +18,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { encodeTemplateFile, type SchemaNode, type TemplateSchema } from '@we/schema-shared';
+import { encodeTemplateFile } from '@we/entities';
+import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { kanbanTemplate, workshopTemplate } from '@we/template-showcase';
 
 import { createTemplateToolset } from '../src/templates/templateToolset';

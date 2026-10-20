@@ -19,6 +19,8 @@ import {
   AgentSettings,
   asFileField,
   compressImageToFileData,
+  decodeTemplateFile,
+  encodeTemplateFile,
   FOLLOW_SPACE,
   ImageBlock,
   runEntityTransaction,
@@ -27,7 +29,7 @@ import {
   Template,
 } from '@we/entities';
 import type { RouteSchema, SchemaNode, TemplateMeta, TemplateSchema } from '@we/schema-shared';
-import { decodeTemplateFile, encodeTemplateFile, ensureNodeIds, hasViewsMarker } from '@we/schema-shared';
+import { ensureNodeIds, hasViewsMarker } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
 import {
   Accessor,
@@ -577,7 +579,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       const refused: RefusedTemplate[] = [];
 
       for (const template of allDbTemplates) {
-        const raw = decodeTemplateFile(template.schema);
+        const raw = decodeTemplateFile<TemplateSchema>(template.schema);
         if (!raw) continue;
 
         // Your own installed templates, at the chrome tier — this is the agent's own library, and
@@ -680,7 +682,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     const models = new Map<string, Template>();
 
     for (const template of spaceDbTemplates) {
-      const raw = decodeTemplateFile(template.schema);
+      const raw = decodeTemplateFile<TemplateSchema>(template.schema);
       if (!raw) continue;
 
       // The untrusted route, and the one nobody opted into: a shared space's templates arrive
@@ -1700,7 +1702,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         return;
       }
 
-      const raw = decodeTemplateFile(marketplaceTemplate.schema);
+      const raw = decodeTemplateFile<TemplateSchema>(marketplaceTemplate.schema);
       if (!raw) {
         toastService.error('Could not read template data');
         return;

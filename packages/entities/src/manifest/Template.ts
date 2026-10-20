@@ -12,6 +12,7 @@ export const Template: CoreEntityDef = {
       origin: { type: 'string', predicate: 'we://origin', default: '' },
       version: { type: 'number', predicate: 'we://version', default: 1 },
       slug: { type: 'string', predicate: 'we://slug', default: '' },
+      /** The template itself, as a file. Read and write it with `decodeTemplateFile` / `encodeTemplateFile`. */
       schema: { type: 'string', predicate: 'we://template_schema', format: 'file', default: null },
       themeId: { type: 'string', predicate: 'we://theme_id', default: '' },
       /**

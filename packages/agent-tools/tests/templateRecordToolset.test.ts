@@ -3,7 +3,8 @@
  * a schema. What is pinned here is that what comes out is what the app's own save writes, since
  * that is what the app is able to open and what an open screen hears about.
  */
-import { decodeTemplateFile, encodeTemplateFile, ensureNodeIds, type TemplateSchema } from '@we/schema-shared';
+import { decodeTemplateFile, encodeTemplateFile } from '@we/entities';
+import { ensureNodeIds, type TemplateSchema } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 import { toolsets } from '../src/toolsets';
