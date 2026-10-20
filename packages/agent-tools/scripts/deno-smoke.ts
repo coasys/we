@@ -6,6 +6,9 @@
  * or `node:fs` passes every unit test and breaks the first host that loads the file. This is the
  * check that would notice.
  *
+ * Deno offers more than a host should — fetch, timers, `Deno` itself — so the Deno half removes
+ * every global the README's "What a host provides" does not list before it loads the bundle.
+ *
  * Node writes the templates out as records (they are TypeScript source, which Deno cannot resolve
  * from the workspace) and Deno runs `deno-smoke.deno.js` with permission to read only those and
  * the bundle.
