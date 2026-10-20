@@ -42,7 +42,7 @@
     "@we/cli": "workspace:*",
     "@we/schema-shared": "workspace:*",
     "@we/widgets": "workspace:*",
-    "tsup": "^8.5.1",
+    "tsup": "^9.0.0",
     "typescript": "^6.0.3",
     "@we/module-shared": "workspace:*"
   },
