@@ -105,14 +105,6 @@ export function CodeViewer(props: CodeViewerProps) {
               {error()}
             </we-text>
           </Show>
-          <Show when={sourceMoved() && !error()}>
-            <we-text fontSize="200" color="warning-text">
-              This changed while you were editing it. Saving replaces that change.
-            </we-text>
-            <we-button size="sm" variant="ghost" onClick={startEdit}>
-              Load latest
-            </we-button>
-          </Show>
           <we-button size="sm" variant="ghost" onClick={cancelEdit}>
             Cancel
           </we-button>
@@ -143,6 +135,30 @@ export function CodeViewer(props: CodeViewerProps) {
           </we-text>
         </Show>
       </Row>
+
+      {/*
+        Its own strip under the toolbar, not in it: a sentence in a row of buttons is the one thing
+        there that can shrink, so it did — to a single character wide, down the whole panel.
+      */}
+      <Show when={sourceMoved()}>
+        <Row
+          ay="center"
+          ax="between"
+          gap="300"
+          px="400"
+          py="200"
+          bg="warning-surface"
+          borderBottom={`1px solid ${tokenVar('color', 'border')}`}
+          flexShrink="0"
+        >
+          <we-text fontSize="200" color="warning-text" flex="1" minWidth="0">
+            This changed while you were editing it. Saving replaces that change.
+          </we-text>
+          <we-button size="sm" variant="ghost" onClick={startEdit}>
+            Load latest
+          </we-button>
+        </Row>
+      </Show>
 
       {/* Editor */}
       <CodeEditor
