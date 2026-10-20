@@ -162,6 +162,7 @@ export {
   readBundle,
 } from './bundle';
 export { createStoredTemplate, listSections, getSection, updateSection } from './sections';
+export { decodeTemplateFile, encodeTemplateFile, TEMPLATE_FILE_NAME, type TemplateFileData } from './templateFile';
 export {
   expandViewRoutes,
   hasViewsMarker,
