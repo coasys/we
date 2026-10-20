@@ -42,5 +42,19 @@ a single file rather than installing packages. It needs no DOM, no Node and no n
 `pnpm --filter @we/agent-tools test:deno` runs it under Deno against real templates, and CI does
 too.
 
+### What a host provides
+
+The language's own globals (ECMAScript and `Intl`), and on `globalThis` only:
+
+- `structuredClone`
+- `TextEncoder`, `TextDecoder`, `atob`, `btoa`: reading and writing the template file
+- `crypto.getRandomValues`: ids for new nodes. No other part of `crypto`
+- `console`, if the host wants the bundle's warnings
+
+No timers, `fetch`, `URL`, `performance` or anything else. The smoke test removes every other
+global before it loads the bundle, so a change that starts relying on one fails CI there rather
+than in a host. The list is `HOST_GLOBALS` in `scripts/deno-smoke.deno.js`; widen it only together
+with the hosts that run the bundle.
+
 The catalogue inside is the one the bundle was built with, so the file describes one WE build. A
 space's own models are passed in as `models`.
