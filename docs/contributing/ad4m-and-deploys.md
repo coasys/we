@@ -146,8 +146,7 @@ at most one bump PR open, and it always names the newest commit: a later run upd
 opening another. Merging it ends it. To run it now, use "Run workflow" on the workflow's page in the
 Actions tab.
 
-Daily rather than on every ad4m push, because each new commit costs an executor build (until ad4m
-publishes the binaries it already builds), and each bump is a lockfile change that conflicts with
+Daily rather than on every ad4m push, because each bump is a lockfile change that conflicts with
 every open PR that also moves the pin. `pnpm-lock.yaml` has no merge driver: resolve such a conflict
 by taking either side and running `pnpm bump:ad4m <the commit you want>`.
 
@@ -225,19 +224,26 @@ Build that executor from the commit the pin stands for (`node scripts/ad4m-pin.m
 
 It also runs in CI, as the `AD4M live` workflow (`.github/workflows/ad4m-live.yaml`): on a PR that
 touches the backend packages, the entities or the pin, on `dev` after such a merge, and on the bump
-bot's branch. The executor takes the better part of an hour to compile, so it is built once per
-pinned commit and cached, by the `.github/actions/ad4m-executor` action the desktop package uses too
-— so the tests run the binary the app ships. A cache saved on `dev` serves every PR, and one saved on
-a PR serves only that PR. So when the bump bot moves to a new commit, it first starts that commit's
-executor building on `dev` (the `AD4M executor` workflow, `.github/workflows/ad4m-executor.yaml`),
-and only then starts CI on its branch. Runs on the same commit wait for one another rather than
-build twice, so the bump PR's run, any PR moving to the same commit, and the push to `dev` after
-either merges all restore that one build, and take minutes. A push never cancels a build in
-progress, only the tests. To prebuild by hand, run the `AD4M executor` workflow on `dev` with the
-commit `node scripts/ad4m-pin.mjs --commit` prints.
+bot's branch. The executor comes from the `.github/actions/ad4m-executor` action the desktop package
+uses too, so the tests run the binary the app ships. It is cached by commit, and on a miss it is
+**downloaded**: ad4m's own CI (CircleCI's `build` job) publishes the executor it builds for every
+pushed commit, and `scripts/ad4m-executor-download.mjs` finds it from the commit alone, with no
+credentials, and checks it against the sha256 its manifest records. That takes seconds. Only a
+commit with nothing to download is compiled, which takes the better part of an hour: one built
+before ad4m published executors, one whose artifacts have expired, or a macOS build, which ad4m
+does not publish.
 
-A PR pinning an ad4m PR's head builds that commit's executor for itself, once, and the live tests
-then run against the ad4m change the PR needs. It is not a required check: read it before merging a
+A cache saved on `dev` serves every PR, and one saved on a PR serves only that PR. So when the bump
+bot moves to a new commit, it first fetches that commit's executor into `dev`'s cache (the `AD4M
+executor` workflow, `.github/workflows/ad4m-executor.yaml`), and only then starts CI on its branch.
+Runs on the same commit wait for one another rather than fetch twice, so the bump PR's run, any PR
+moving to the same commit, and the push to `dev` after either merges all restore that one copy. A
+push never cancels a fetch in progress, only the tests. To fetch by hand, run the `AD4M executor`
+workflow on `dev` with the commit `node scripts/ad4m-pin.mjs --commit` prints.
+
+Once cached, nothing depends on ad4m's artifacts lasting: it fetches each commit once, within
+minutes of pinning it. A PR pinning an ad4m PR's head fetches that commit's executor for itself on
+its first run, and the live tests then run against the ad4m change the PR needs. It is not a required check: read it before merging a
 bump, or a PR pinning an ad4m change, the way you would the run here.
 
 ## Why this shape
@@ -259,6 +265,6 @@ bump, or a PR pinning an ad4m change, the way you would the run here.
 
 | What                                                                                                                                           | Who              |
 | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| Publish the executor binary for every commit ad4m CI builds, so WE downloads it rather than spending most of an hour building it               | ad4m maintainers |
+| Keep CircleCI's artifact retention at a few days or more (7 recommended), long enough for WE's first fetch of each commit's executor           | ad4m maintainers |
 | Point npm's `latest` tag at a real release. It points at `0.13.0-test-interpretation-2` today, so `npm install @coasys/ad4m` gets a test build | ad4m maintainers |
 | Make the executor build on macOS again: `ort-sys` downloads an ONNX Runtime that is no longer published for macOS                              | ad4m maintainers |
