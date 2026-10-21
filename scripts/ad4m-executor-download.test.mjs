@@ -1,7 +1,7 @@
 /**
- * Finding and checking ad4m's published executor, against a stubbed GitHub and CircleCI. The two
- * contracts worth pinning: every way of not finding one is a reason to compile it rather than a
- * failure, and a file that does not match its manifest is never handed on.
+ * Finding and checking ad4m's published executor, against a stubbed GitHub and executor.ad4m.dev.
+ * The two contracts worth pinning: every way of not finding one is a reason to compile it rather
+ * than a failure, and a file that does not match its manifest is never handed on.
  *
  * `node:test` rather than vitest: root tooling, and the workflows that use the script run these.
  */
@@ -18,11 +18,10 @@ import {
   Mismatch,
   NotPublished,
   unpack,
-  workflowOf,
 } from './ad4m-executor-download.mjs';
 
 const COMMIT = 'a'.repeat(40);
-const WORKFLOW = '9786d95b-65d3-4523-8b96-291a5fc89f38';
+const ORIGIN = 'https://executor.ad4m.dev';
 const BINARY = Buffer.from('#!/bin/sh\necho ad4m\n'.repeat(50));
 const sha256 = (b) => createHash('sha256').update(b).digest('hex');
 const manifestFor = (file, compressed, extra = {}) => ({
@@ -35,31 +34,33 @@ const manifestFor = (file, compressed, extra = {}) => ({
   ...extra,
 });
 
-/** A GitHub and CircleCI that answer for one published commit; `world` overrides any part. */
+/** A GitHub and executor.ad4m.dev that answer for one published commit; `world` overrides any part. */
 function stub(world = {}) {
   const compressed = world.compressed ?? zstdCompressSync(BINARY);
   const file = world.file ?? 'ad4m-executor.zst';
   const manifest = world.manifest ?? manifestFor(file, compressed);
   const statuses = world.statuses ?? [
-    {
-      context: 'ci/circleci: build',
-      state: 'success',
-      target_url: `https://app.circleci.com/workflow/${WORKFLOW}/job/x`,
-    },
+    { context: 'ci/circleci: build', state: 'success', target_url: 'https://app.circleci.com/pipelines/x' },
   ];
-  const jobs = world.jobs ?? [{ name: 'build', status: 'success', job_number: 47956, project_slug: 'circleci/o/p' }];
-  const artifacts = world.artifacts ?? [
-    { path: 'executor/manifest.json', url: 'https://files/manifest.json' },
-    { path: `executor/${file}`, url: `https://files/${file}` },
-  ];
-  globalThis.fetch = async (url) => {
+  const missing = new Set(world.missing ?? []);
+  // What fetch throws when the host cannot be reached at all.
+  const unreachable = () => new TypeError('fetch failed', { cause: { code: 'ENOTFOUND' } });
+  globalThis.fetch = async (url, init) => {
     url = String(url);
+    assert.ok(init?.signal, `${url} is fetched without a timeout`);
     const ok = (body) => (Buffer.isBuffer(body) ? new Response(body) : Response.json(body));
-    if (url.includes(`/commits/${COMMIT}/statuses`)) return ok(statuses);
-    if (url.endsWith(`/workflow/${WORKFLOW}/job`)) return ok({ items: jobs });
-    if (url.endsWith('/47956/artifacts')) return ok({ items: artifacts });
-    if (url === 'https://files/manifest.json') return ok(Buffer.from(JSON.stringify(manifest)));
-    if (url === `https://files/${file}`) return ok(compressed);
+    if (url.includes(`/commits/${COMMIT}/statuses`)) {
+      if (world.githubDown) throw unreachable();
+      return ok(statuses);
+    }
+    if (url.startsWith(`${ORIGIN}/`)) {
+      assert.equal(init?.redirect, 'manual');
+      if (world.hostDown) throw unreachable();
+      if (world.redirect) return new Response('', { status: 302, headers: { Location: 'https://evil.example/x' } });
+      if (missing.has(url)) return new Response('', { status: 404 });
+      if (url === `${ORIGIN}/${COMMIT}/manifest.json`) return ok(Buffer.from(JSON.stringify(manifest)));
+      if (url === `${ORIGIN}/${COMMIT}/${file}`) return ok(compressed);
+    }
     return new Response('', { status: 404 });
   };
 }
@@ -75,9 +76,8 @@ afterEach(() => {
 describe('finding a published executor', () => {
   it('downloads, checks and unpacks a zstd one', async () => {
     stub();
-    const { binary, job } = await fetchExecutor(COMMIT);
+    const { binary } = await fetchExecutor(COMMIT);
     assert.deepEqual(binary, BINARY);
-    assert.equal(job, 47956);
   });
 
   it('unpacks a gzip one, which a runner without zstd publishes', async () => {
@@ -85,17 +85,21 @@ describe('finding a published executor', () => {
     assert.deepEqual((await fetchExecutor(COMMIT)).binary, BINARY);
   });
 
-  it('takes the workflow from the newest successful build status', () => {
-    const statuses = [
-      { context: 'ci/circleci: build', state: 'failure', target_url: 'x' },
-      { context: 'ci/circleci: fmt', state: 'success', target_url: 'y' },
-      {
-        context: 'ci/circleci: build',
-        state: 'success',
-        target_url: `https://app.circleci.com/workflow/${WORKFLOW}/job/z`,
-      },
-    ];
-    assert.equal(workflowOf(buildStatus(statuses).target_url), WORKFLOW);
+  it('still downloads when a later build failed and an earlier one succeeded', async () => {
+    stub({
+      statuses: [
+        { context: 'ci/circleci: build', state: 'failure', target_url: 'x' },
+        { context: 'ci/circleci: build', state: 'success', target_url: 'y' },
+      ],
+    });
+    assert.deepEqual((await fetchExecutor(COMMIT)).binary, BINARY);
+    assert.equal(
+      buildStatus([
+        { context: 'ci/circleci: build', state: 'failure' },
+        { context: 'ci/circleci: build', state: 'success' },
+      ]).state,
+      'success',
+    );
   });
 });
 
@@ -115,8 +119,11 @@ describe('not finding one is a reason to compile it, not a failure', () => {
       { statuses: [{ context: 'ci/circleci: build', state: 'failure', target_url: 'x' }] },
       /no successful/,
     ));
-  it('a build from before ad4m published executors, or whose artifacts expired', () =>
-    notPublished({ artifacts: [] }, /published no executor/));
+  it('a build from before ad4m published executors, or whose file was removed', () =>
+    notPublished({ missing: [`${ORIGIN}/${COMMIT}/manifest.json`] }, /published no executor/));
+  it('a redirect, which is not the file', () => notPublished({ redirect: true }, /redirected/));
+  it('executor.ad4m.dev unreachable', () => notPublished({ hostDown: true }, /could not be fetched \(ENOTFOUND\)/));
+  it('GitHub unreachable', () => notPublished({ githubDown: true }, /could not be fetched/));
   it('a manifest for another commit', () =>
     notPublished(
       { manifest: manifestFor('ad4m-executor.zst', zstdCompressSync(BINARY), { commit: 'b'.repeat(40) }) },
@@ -158,14 +165,14 @@ describe('whether ad4m has finished with a commit', () => {
   const build = (state) => ({
     context: 'ci/circleci: build',
     state,
-    target_url: `https://app.circleci.com/workflow/${WORKFLOW}/job/x`,
+    target_url: 'https://app.circleci.com/pipelines/x',
   });
   const stateOf = async (world) => {
     stub(world);
     return (await executorState(COMMIT)).state;
   };
 
-  it('pending before CircleCI has reported anything', async () => {
+  it('pending before the build has reported anything', async () => {
     assert.equal(await stateOf({ statuses: [{ context: 'ci/circleci: fmt', state: 'success' }] }), 'pending');
   });
 
@@ -182,7 +189,19 @@ describe('whether ad4m has finished with a commit', () => {
   });
 
   it('unpublished when the build finished and put none up, so waiting would never end', async () => {
-    assert.equal(await stateOf({ statuses: [build('success')], artifacts: [] }), 'unpublished');
+    assert.equal(
+      await stateOf({ statuses: [build('success')], missing: [`${ORIGIN}/${COMMIT}/manifest.json`] }),
+      'unpublished',
+    );
+  });
+
+  it('unpublished when executor.ad4m.dev cannot be reached, so the bump goes ahead', async () => {
+    assert.equal(await stateOf({ statuses: [build('success')], hostDown: true }), 'unpublished');
+  });
+
+  it('a lookup GitHub cannot answer, which the bump reads as going ahead', async () => {
+    stub({ githubDown: true });
+    await assert.rejects(() => executorState(COMMIT), NotPublished);
   });
 
   it('failed when the build failed', async () => {

@@ -1,18 +1,22 @@
 /**
- * toolset — the shape every set of WE tools takes, for a host that runs an agent.
+ * toolset — the shape every set of WE tools takes, for a host that runs agents.
  *
- * A host is anything that holds the conversation with a model and lets it call tools: the AD4M
- * executor's harness, an MCP server, a test. It needs three things from WE, and a toolset is
- * exactly those: what to tell the model (`system`, `prompt`), what the model may call (`tools`),
- * and the answer to a call (`call`). When the conversation ends, `result` says what came of it.
+ * A host is anything that holds a conversation with a model and lets it call tools: the AD4M
+ * executor's tool list, an MCP server, a test. It offers a toolset's tools to whichever agent it
+ * is running, beside its own, and answers each call by passing it here with the record it names.
  *
- * The rules stay in WE and the loop stays with the host. A toolset never stores anything: an edit
- * changes the toolset's own working copy, and the host decides what to do with the result — save
- * it, propose it for approval, or throw it away.
+ * **A toolset holds nothing between calls.** Every call is given the record as it is stored now and
+ * answers from that alone, so a host needs no session, two agents can use the same tools at once,
+ * and a call can come from anywhere a host's tools reach. What a call should change comes back as
+ * properties, and the host writes them: the rules stay in WE, and storage stays with the host.
  *
- * A failed call answers with a string starting `Error: `, never a throw. The model reads the
- * error, fixes its call and tries again, which is how an edit converges; a throw would end the
- * conversation instead. A throw from `call` means the host did something wrong, not the model.
+ * **Nothing here prompts a model.** What an agent needs to know beyond the tool descriptions is
+ * documentation, which the host serves beside its own and the agent reads when it decides to.
+ *
+ * A failed call answers with text starting `Error: `, never a throw. The model reads the error,
+ * fixes its call and tries again, which is how an edit converges; a throw would end the
+ * conversation instead. A throw from `call` means the host did something wrong, not the model —
+ * a record of the wrong entity, or one with nothing readable in it.
  */
 import type { EntityManifestEntry } from '@we/backend-shared';
 
@@ -20,28 +24,16 @@ export interface AgentTool {
   name: string;
   /** What the model is told the tool is for. */
   description: string;
-  /** The arguments, as JSON Schema. */
+  /**
+   * The tool's own arguments, as JSON Schema. The record a call is about is not among them: the
+   * host adds its own way of naming one, and passes the record it names to `call`.
+   */
   parameters: Record<string, unknown>;
   /**
-   * `lookup` only reads; `edit` changes the toolset's working copy. Neither touches storage —
-   * see `Toolset.result`.
+   * Whether a call can come back with properties to write. A host that lets an agent write only
+   * through tools it allowed checks this rather than knowing the tool.
    */
-  kind: 'lookup' | 'edit';
-}
-
-export interface Toolset<Result> {
-  /** The system prompt. */
-  system: string;
-  /** The first user turn: the request, and whatever the model needs to see beside it. */
-  prompt: string;
-  tools: AgentTool[];
-  /**
-   * Answer one call. `args` may be the parsed object or the JSON string a provider sent. A tool
-   * this toolset does not have answers with an error, like any other refused call.
-   */
-  call(name: string, args: unknown): Promise<string>;
-  /** What the conversation produced so far. Safe to read at any point, and as often as wanted. */
-  result(): Result;
+  writes: boolean;
 }
 
 /**
@@ -55,42 +47,58 @@ export interface RecordInput {
   properties: Record<string, unknown>;
 }
 
-export interface RecordToolsetInput {
+export interface ToolCall {
+  /** The record the call names, as it is stored now. */
   record: RecordInput;
-  /** What the person asked for, in their words. */
-  request: string;
+  /** The tool's arguments, as the parsed object or the JSON string a provider sent. */
+  args: unknown;
   /** The dataset's own models, which the record may name. See `TemplateToolsetOptions.models`. */
   models?: EntityManifestEntry[];
   /**
-   * Who the write will go out as — the agent's DID. Recorded in what is written, which is how the
+   * Who a write will go out as — the agent's DID. Recorded in what is written, which is how the
    * app tells this agent's own change (applied on every device) from somebody else's (offered).
    * Absent, the change reads as somebody else's.
    */
   author?: string;
 }
 
-/** What a conversation about one record produced: the properties to write back, if any. */
-export interface RecordEdit {
-  /** Whether anything was kept. Write nothing when false. */
-  changed: boolean;
+export interface ToolAnswer {
+  /** What the model is told. Starts `Error: ` when the call was refused. */
+  text: string;
   /**
-   * The properties to write, encoded as the app writes them — a file property as the FileData it
-   * is stored from. Every one of them in one write, since the app reads them as one change.
+   * The properties to write, when the call changed the record — encoded as the app writes them, a
+   * file property as the FileData it is stored from. Every one of them in ONE write, since the app
+   * reads them as one change. Absent when there is nothing to write.
    */
-  properties: Record<string, unknown>;
+  properties?: Record<string, unknown>;
+}
+
+/** A documentation topic, listed without its text. */
+export interface DocEntry {
+  /** What a host asks for it by — `template`, `template/components/we-button`. */
+  path: string;
+  title: string;
+  /** One line, for a list of topics. */
+  summary: string;
 }
 
 /**
- * Toolsets by what they edit — the one surface a host needs. The host finds the toolset whose
- * `appliesTo` names the record's entity, opens it on the record, runs the conversation, and writes
- * `result().properties` back. Decoding the record and encoding what changed stay in WE, so a host
- * never learns how a template is stored.
+ * Tools for one kind of record, and the documentation that explains them — the whole surface a
+ * host needs. Decoding a record and encoding what changed stay in WE, so a host never learns how a
+ * template is stored.
  */
-export interface RecordToolsetEntry {
-  /** The entities this toolset edits. */
+export interface RecordToolset {
+  /** The entities these tools work on. */
   appliesTo: string[];
-  /** Rejects when the record is not one this toolset can read — that is the host's mistake, not the model's. */
-  open(input: RecordToolsetInput): Promise<Toolset<RecordEdit>>;
+  tools: AgentTool[];
+  /** Answer one call. A tool this toolset does not have answers with an error, like any refused call. */
+  call(name: string, input: ToolCall): Promise<ToolAnswer>;
+  docs: {
+    /** Every topic, the one to start from first. */
+    list(): Promise<DocEntry[]>;
+    /** One topic's text, or undefined for a path that is not one. */
+    read(path: string): Promise<string | undefined>;
+  };
 }
 
 /** Arguments as an object, whether they arrived parsed or as the JSON a provider sent. */

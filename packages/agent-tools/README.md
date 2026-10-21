@@ -9,25 +9,36 @@ Framework-free, so the editor's AI panel and any host that runs an agent use the
 
 ## Two ways in
 
-**The host holds the conversation** (an agent harness, an MCP server): `toolsets`. A host holds
-records, so a toolset takes one and gives back the properties to write. How a template is stored
-stays here: what comes back is exactly what the app's own save writes, so an open screen picks it
-up like a save from another device.
+**A host runs the agent** (the AD4M executor, an MCP server): `toolsets`. A host offers a
+toolset's tools to whichever agent it runs, beside its own, and serves its documentation beside
+its own docs. Nothing here prompts a model or holds a session: every call is given the record as it
+is stored now, and answers from that alone.
 
 ```ts
-const entry = Object.values(toolsets).find((t) => t.appliesTo.includes(record.className));
-const toolset = await entry.open({ record, request, models, author: agentDid });
-// toolset.system, toolset.prompt → the model; toolset.tools → what it may call
-const answer = await toolset.call(name, args); // a string; failures start with "Error: "
-const { changed, properties } = toolset.result(); // nothing is stored: the host decides
+const toolset = toolsets.template; // appliesTo: ['Template']
+toolset.tools; // template_read (writes: false), template_update (writes: true)
+const { text, properties } = await toolset.call(name, { record, args, models, author: agentDid });
+// text → the model; failures start with "Error: ". properties → write them, all in one transaction
+const topics = await toolset.docs.list(); // `template` first, then template/core/*, components, stores…
+const start = await toolset.docs.read('template');
 ```
 
 `record` is `{ id, className, properties }`, with file properties already resolved (a `data:` URI,
-the form the app reads them in). `author` is the DID the write goes out as; the app applies its own
-agent's changes on every device and offers anybody else's. `createTemplateToolset` is the same edit
-over a bare schema, for a host that stores templates its own way.
+the form the app reads them in). The host adds its own way of naming the record to each tool's
+parameters, and passes the record it names. `author` is the DID the write goes out as; the app
+applies its own agent's changes on every device and offers anybody else's. What `properties` holds
+is exactly what the app's own save writes (`schema` and `version`), so an open screen picks it up
+like a save from another device.
 
-**WE holds the conversation** (the editor, the context eval): `prepareTemplateRequest` and
+Two rules an agent is told and a host should know:
+
+- **An edit is one `template_update` call.** Each call is saved, so its patches go together.
+- **A save renumbers the node ids.** Ids are aliases numbered by walking the tree — the same on
+  every read of the same stored template, which is what lets a read and the update after it agree,
+  and different once anything changes it. So `template_update` takes the `version` the read gave
+  and refuses a template that has moved on, whoever moved it.
+
+**WE runs the agent** (the editor, the context eval): `prepareTemplateRequest` and
 `runEditSession`.
 
 Both run on `createTemplateSession`, which is the only place that decides what an edit may do:
