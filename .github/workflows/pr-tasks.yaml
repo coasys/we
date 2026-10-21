@@ -32,9 +32,12 @@ permissions:
   contents: read
   pull-requests: read
 
-concurrency:
-  group: pr-tasks-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+# No concurrency group, on purpose. A group cancels runs: with cancel-in-progress the one in
+# progress, and without it any waiting run a newer one replaces. A push and a description edit
+# seconds apart start two runs, the group does not always order them as they were created, and the
+# run GitHub took as a required check's result was the cancelled one — which blocks the merge with a
+# passing run beside it on the same commit. The jobs take seconds, so cancelling saves nothing, and
+# each reads the PR as it is when it runs rather than as its event saw it, so runs in parallel agree.
 
 jobs:
   unticked:
@@ -52,10 +55,15 @@ jobs:
       # parser that silently stopped recognising a box would pass every PR.
       - name: The parser still recognises what GitHub recognises
         run: node --test scripts/pr-tasks.test.mjs
+      # The description as it is now, not as the event carried it: runs are not cancelled, so the
+      # run for an earlier event can finish after a later edit, and would grade the old boxes.
       - name: Check the description's tasks
         env:
-          EVENT_BODY: ${{ github.event.pull_request.body }}
-        run: node scripts/pr-tasks.mjs
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq '.body // ""' > "$RUNNER_TEMP/body.md"
+          node scripts/pr-tasks.mjs "$RUNNER_TEMP/body.md"
 
   # The merge gate for the ad4m pin, read from the pin and nothing else. A PR that needs an ad4m
   # change pins that ad4m PR's head snapshot, so its preview, CI and live tests all run against the
