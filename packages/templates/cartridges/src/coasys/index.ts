@@ -13,7 +13,7 @@ import { coasysApp } from './app.ts';
 import { coasysBootScreen } from './boot.ts';
 import { coasysBrand } from './brand.ts';
 import { coasysSpace } from './space/shell.ts';
-import { coasysTheme } from './themes.ts';
+import { coasysTheme, glowTheme } from './themes.ts';
 
 export const coasys: Cartridge = {
   id: 'coasys',
@@ -23,6 +23,8 @@ export const coasys: Cartridge = {
   shell: coasysSpace,
   sections: [],
   theme: coasysTheme,
+  // Nico's look, to switch to in Appearance.
+  themes: [glowTheme],
   brand: coasysBrand,
   bootScreen: coasysBootScreen,
   shapes: [],

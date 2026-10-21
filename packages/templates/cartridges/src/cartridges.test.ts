@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { buildValidationContext, readBundle, validateSemantic, withEntities } from '@we/schema-shared';
+import { buildValidationContext, bundleThemes, readBundle, validateSemantic, withEntities } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 import { bundleFileName, type Cartridge, cartridgeBundles, coasys, fieldGuide, toolLibrary } from './index.ts';
@@ -63,8 +63,19 @@ describe('the Coasys cartridge', () => {
     expect(bundle.brand?.name).toBe('Coasys');
     expect(bundle.brand?.mark).toMatch(/^<svg/);
     expect(JSON.stringify(bundle.bootScreen)).toContain('CredentialField');
-    expect(bundle.app?.meta.themeId).toBe(bundle.theme?.id);
-    expect(Object.keys(bundle.theme?.overrides ?? {})).toEqual(expect.arrayContaining(['light', 'dark']));
+    const [coasysTheme] = bundleThemes(bundle);
+    expect(bundle.app?.meta.themeId).toBe(coasysTheme.id);
+    expect(Object.keys(coasysTheme.overrides)).toEqual(expect.arrayContaining(['light', 'dark']));
+  });
+
+  it('offers Glow beside its own theme, carrying its font rather than fetching it', () => {
+    const bundle = cartridgeBundles().find((b) => b.id === 'coasys')!;
+    const themes = bundleThemes(bundle);
+    expect(themes.map((t) => t.name)).toEqual(['Coasys', 'Coasys Glow']);
+    expect(bundle.app?.meta.themeIds).toEqual(themes.map((t) => t.id));
+    const glow = themes[1];
+    expect(glow.css).toContain("url('data:font/woff2;base64,");
+    expect(glow.css).not.toMatch(/url\((?!'data:)/);
   });
 });
 
