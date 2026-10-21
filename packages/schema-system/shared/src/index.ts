@@ -127,6 +127,9 @@ export {
   surfacesForPolarity,
   THEME_SCHEMA_VERSION,
   themeParametersToStyle,
+  type ThemeSideName,
+  themeSides,
+  withThemeSide,
 } from './themeStyles';
 export { validateField } from './validation';
 export { type FreeNames, freeNames } from './freeNames';

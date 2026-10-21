@@ -262,6 +262,9 @@ export const storeEntries: StoreEntry[] = [
       themeScopePreference: { type: 'string' },
       themeScopeGlobal: { type: 'boolean' },
       themeScopePreviewing: { type: 'boolean' },
+      themeMode: { type: 'string' },
+      themeSide: { type: 'string' },
+      currentThemeSides: { type: 'array' },
       themeManagementList: {
         type: 'array',
         properties: ['id', 'name', 'icon', 'isBuiltIn', 'isInstalled', 'isDefault'],
@@ -270,6 +273,7 @@ export const storeEntries: StoreEntry[] = [
     actions: [
       'setCurrentTheme',
       'setDefaultTheme',
+      'setThemeMode',
       'setThemeScopeGlobal',
       'previewThemeScope',
       'setThemeInstalled',
@@ -990,6 +994,11 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "{ light, dark, resolved } — which two themes 'Follow system' chooses between. light/dark are the ids as chosen, empty for a side left at the built-in; resolved is 'light' | 'dark', whichever the OS is asking for now",
         systemThemeOptions:
           '{ label, value }[] — options for either side of the Follow-system pair, with a "Built-in" entry a schema could not prepend itself',
+        themeMode:
+          "'light' | 'dark' | 'system' — which side of a two-sided theme the agent wears. A theme can carry a light and a dark side of one look (its overrides' `light`/`dark`), so an app ships one theme rather than a pair; this picks between them for every such theme, and a theme with one look ignores it",
+        themeSide: "'light' | 'dark' — the side worn right now: themeMode, with 'system' answered by the machine",
+        currentThemeSides:
+          "('light' | 'dark')[] — the sides the theme on screen carries. Offer a Light / Dark / System choice only when it is not empty",
         templateThemePending:
           "boolean — the template's suggested theme cannot be resolved yet and might still arrive. Hold what is on screen rather than painting a fallback while it is true",
         useTemplateTheme:
@@ -1003,6 +1012,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(role: string): asks the theme editor to reveal a role, kebab-case as a schema spells it. Pair with editorStore.openThemePanel so there is a panel to scroll',
         setSystemTheme:
           "(polarity: 'light' | 'dark', themeId: string): sets one side of the Follow-system pair. An empty id returns that side to the built-in",
+        setThemeMode:
+          "(mode: 'light' | 'dark' | 'system'): chooses which side of a two-sided theme to wear, for this agent everywhere. A we-select or a segmented control can pass its value bare",
         setUseTemplateTheme:
           '(enabled: boolean): persists whether templates may bring their own theme. Boolean, so a switch can pass `event.detail` bare',
         startEditing:

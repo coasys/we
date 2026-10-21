@@ -243,4 +243,17 @@ export type ThemeOverrides = {
 
   // Motion
   animationSpeed?: 'none' | 'fast' | 'normal' | 'slow'; // maps to --we-theme-animation-speed-preset
+
+  /**
+   * The light and dark sides of one look, so an app ships one theme rather than a pair.
+   *
+   * Each holds only what differs from the base — usually `polarity`, the lightness range and the role
+   * pins that only hold on one side. Which side is worn is the agent's light/dark/system setting; a
+   * side the theme does not have leaves the base as it is. Read with `withThemeSide` (`sides.ts`).
+   */
+  light?: ThemeSide;
+  dark?: ThemeSide;
 };
+
+/** One side of a two-sided theme: any parameter of the base, except the sides and the bookkeeping. */
+export type ThemeSide = Omit<ThemeOverrides, 'light' | 'dark' | 'schemaVersion' | 'themeName'>;

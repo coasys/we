@@ -722,11 +722,55 @@ const themeScopeSection: SchemaNode = {
   ],
 };
 
+/**
+ * Light, dark or the machine's choice — offered only while the theme on screen has both sides
+ * (`themeStore.currentThemeSides`). A theme with one look has nothing to choose between, and a control
+ * that changes nothing is worse than none.
+ */
+const themeModeRow: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'count(themeStore.currentThemeSides)' },
+    then: {
+      type: 'Row',
+      props: { gap: '300', ay: 'center', ax: 'between', wrap: true },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '100' },
+          children: [
+            { type: 'we-text', props: { fontWeight: 'medium' }, children: ['Light or dark'] },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-muted' },
+              children: ['This theme has a light and a dark side.'],
+            },
+          ],
+        },
+        {
+          type: 'we-select',
+          props: {
+            fit: true,
+            value: { $: 'themeStore.themeMode' },
+            options: [
+              { label: 'Follow system', value: 'system' },
+              { label: 'Light', value: 'light' },
+              { label: 'Dark', value: 'dark' },
+            ],
+            onChange: { $action: 'themeStore.setThemeMode', args: [{ $: 'event.detail' }] },
+          },
+        },
+      ],
+    },
+  },
+};
+
 const themesSection: SchemaNode = {
   type: 'Column',
   props: { gap: '300' },
   children: [
     { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Themes'] },
+    themeModeRow,
     {
       type: 'Column',
       props: { gap: '100' },

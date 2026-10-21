@@ -26,6 +26,9 @@ import {
   templateThemeId as themeOfTemplate,
   THEME_SCHEMA_VERSION,
   themeParametersToStyle,
+  type ThemeSideName,
+  themeSides,
+  withThemeSide,
 } from '@we/schema-shared';
 import type { SanitiseCssOptions } from '@we/themes/sanitiseCss';
 import { sanitiseCss } from '@we/themes/sanitiseCss';
@@ -57,6 +60,15 @@ const THEME_KEY = 'we.theme';
 const SYSTEM_LIGHT_KEY = 'we.system-light';
 const SYSTEM_DARK_KEY = 'we.system-dark';
 const EDITING_THEME_KEY = 'we.editing-theme';
+/** Which side of a two-sided theme to wear, cached for the first paint like the theme itself. */
+const THEME_MODE_KEY = 'we.theme-mode';
+
+/** `light`, `dark`, or `system` to follow the machine. See `AgentSettings.themeMode`. */
+export type ThemeMode = 'light' | 'dark' | 'system';
+
+function asThemeMode(value: string | null | undefined): ThemeMode {
+  return value === 'light' || value === 'dark' ? value : 'system';
+}
 
 export type ThemeManagementItem = {
   id: string;
@@ -122,6 +134,17 @@ export interface ThemeStore {
   systemThemes: Accessor<{ light: string; dark: string; resolved: 'light' | 'dark' }>;
   /** Set one side of the pair. An empty id returns that side to the built-in. */
   setSystemTheme: (polarity: 'light' | 'dark', themeId: string) => Promise<boolean>;
+  /**
+   * Which side of a two-sided theme the agent wears: `light`, `dark` or `system`. Applies to every
+   * theme that has both sides (`ThemeOverrides.light`/`dark`); a theme with one look ignores it.
+   */
+  themeMode: Accessor<ThemeMode>;
+  /** The side worn right now — `themeMode`, with `system` answered by the machine. */
+  themeSide: Accessor<'light' | 'dark'>;
+  /** The sides the theme on screen carries — what decides whether a Light / Dark / System choice is offered. */
+  currentThemeSides: Accessor<('light' | 'dark')[]>;
+  /** Choose the side, for this agent everywhere. */
+  setThemeMode: (mode: ThemeMode) => Promise<boolean>;
   /** Options for either side, with a "Built-in" entry a schema could not prepend itself. */
   systemThemeOptions: Accessor<{ label: string; value: string }[]>;
   /**
@@ -395,8 +418,8 @@ function injectCssString(id: string, css: string, options: SanitiseCssOptions = 
  */
 let lastAppliedThemeId: string | null = null;
 
-function applyThemeToDOM(theme: ThemeData) {
-  const overrides: ThemeOverrides = parseOverrides(theme.overrides);
+function applyThemeToDOM(theme: ThemeData, side?: ThemeSideName) {
+  const overrides: ThemeOverrides = withThemeSide(parseOverrides(theme.overrides), side);
   // Normalize legacy fontFamily: 'base' sentinel saved before the font-family fix
   if (overrides.fontFamily === 'base') delete overrides.fontFamily;
 
@@ -590,6 +613,25 @@ export function ThemeStoreProvider(props: ParentProps) {
   });
   const [spaceThemes, setSpaceThemes] = createSignal<ThemeData[]>([]);
   const systemScheme = createSystemScheme();
+
+  /*
+    The side a two-sided theme is worn on. The agent's own setting once it has loaded; before that,
+    what this device last wore, so the first paint does not flip sides when the settings land.
+  */
+  const themeMode = createMemo<ThemeMode>(() => {
+    const own = datasetStore.agentSettings()?.themeMode;
+    if (own !== undefined) return asThemeMode(own);
+    return asThemeMode(typeof window !== 'undefined' ? localStorage.getItem(THEME_MODE_KEY) : null);
+  });
+  const themeSide = createMemo<'light' | 'dark'>(() => {
+    const mode = themeMode();
+    return mode === 'system' ? systemScheme() : mode;
+  });
+  function setThemeMode(mode: ThemeMode): Promise<boolean> {
+    const next = asThemeMode(mode);
+    localStorage.setItem(THEME_MODE_KEY, next);
+    return datasetStore.updateAgentSettings({ themeMode: next === 'system' ? '' : next });
+  }
 
   /*
     These three sit *after* `systemScheme` deliberately.
@@ -873,6 +915,15 @@ export function ThemeStoreProvider(props: ParentProps) {
     themeScope() === 'scoped' ? personalTheme() : (editingTheme() ?? currentTheme()),
   );
 
+  /** The sides the theme on screen carries. See `ThemeStore.currentThemeSides`. */
+  const currentThemeSides = createMemo(() => themeSides(parseOverrides((editingTheme() ?? currentTheme()).overrides)));
+
+  // The side, cached for the next first paint.
+  createEffect(() => {
+    if (!datasetStore.agentSettings()) return;
+    localStorage.setItem(THEME_MODE_KEY, themeMode());
+  });
+
   /** What the scoped wrapper renders. Null in global mode — the template inherits documentElement. */
   const activeTemplateTheme = createMemo<ThemeData | null>(() =>
     themeScope() === 'scoped' ? (editingTheme() ?? currentTheme()) : null,
@@ -911,7 +962,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   createEffect(() => {
     const theme = documentTheme();
     if (!themesLoaded() && !canResolveTheme(documentThemeId())) return;
-    applyThemeToDOM(theme);
+    applyThemeToDOM(theme, themeSide());
   });
 
   /*
@@ -986,6 +1037,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     isValidThemeKey(initialId)
       ? registryToThemeData(initialId)
       : (rememberedThemes.find((t) => t.id === initialId) ?? registryToThemeData('light')),
+    untrack(themeSide),
   );
 
   function resolveThemeData(themeId: string): ThemeData {
@@ -1248,7 +1300,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     const newCss = presetEntry ? (presetEntry.css ?? '') : (current.css ?? '');
 
     // Apply to DOM so getComputedStyle reflects the new preset for remaining vars.
-    applyThemeToDOM({ ...current, css: newCss, overrides: JSON.stringify(updated) });
+    applyThemeToDOM({ ...current, css: newCss, overrides: JSON.stringify(updated) }, untrack(themeSide));
 
     // Repopulate any still-missing vars (radius, spacing, etc.) from computed style.
     const repopulated = populateMissingOverrides(updated);
@@ -1870,6 +1922,10 @@ export function ThemeStoreProvider(props: ParentProps) {
     focusedRole,
     focusRole,
     setSystemTheme,
+    themeMode,
+    themeSide,
+    currentThemeSides,
+    setThemeMode,
     systemThemes,
     systemThemeOptions,
     setThemeInstalled,

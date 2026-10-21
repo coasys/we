@@ -27,7 +27,8 @@ type LegacyThemeKey = 'multiplier' | 'subtractor';
 // Role names come from the token table the runtime resolves them against, not from a restated list.
 const zThemeRole = z.enum(Object.keys(role) as [keyof typeof role, ...(keyof typeof role)[]]);
 
-const themeOverridesShape = {
+/** Every parameter a theme has, without its sides — what a side may hold, and the base of the whole. */
+const themeParameterShape = {
   schemaVersion: z.number().int().positive().optional(),
   themeName: z.string().optional(),
   primaryHue: z.number().optional(),
@@ -73,6 +74,18 @@ const themeOverridesShape = {
   animationSpeed: z.enum(['none', 'fast', 'normal', 'slow']).optional(),
   multiplier: z.number().optional(),
   subtractor: z.string().optional(),
+};
+
+const zThemeSide = z
+  .object((({ schemaVersion: _version, themeName: _name, ...side }) => side)(themeParameterShape))
+  .strict()
+  .optional();
+
+const themeOverridesShape = {
+  ...themeParameterShape,
+  /** A theme's light and dark sides — see `ThemeOverrides.light`. */
+  light: zThemeSide,
+  dark: zThemeSide,
 } satisfies {
   [K in keyof ThemeOverrides | LegacyThemeKey]-?: z.ZodType<(ThemeOverrides & Record<LegacyThemeKey, unknown>)[K]>;
 };
