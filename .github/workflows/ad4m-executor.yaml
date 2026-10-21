@@ -1,5 +1,6 @@
 # Fetches the ad4m executor for one ad4m commit and caches it, without testing anything: downloaded
-# from ad4m's CI where it published one, otherwise built (`.github/actions/ad4m-executor`).
+# from https://executor.ad4m.dev/<commit>/ where ad4m published one, otherwise built
+# (`.github/actions/ad4m-executor`).
 #
 # A cache is read only from the run's own branch and its base branch, so an executor built on a PR
 # serves that PR alone, and the push to `dev` after it merges fetches the same commit again: a
