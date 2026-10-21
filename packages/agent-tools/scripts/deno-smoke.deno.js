@@ -1,8 +1,8 @@
 /* global Deno, performance, atob, TextDecoder, crypto */
-// The Deno half of `deno-smoke.ts`: load the bundle, edit two real Template records through
-// `toolsets.template`, and exit non-zero if anything a host relies on did not happen. Plain JS,
-// because this file runs in Deno and is checked by running it, not by the package's TypeScript
-// build.
+// The Deno half of `deno-smoke.ts`: load the bundle, read and edit two real Template records
+// through `toolsets.template` the way a host calls it, and exit non-zero if anything a host relies
+// on did not happen. Plain JS, because this file runs in Deno and is checked by running it, not by
+// the package's TypeScript build.
 //
 // Usage: deno run --allow-read=<dir>,<bundle> deno-smoke.deno.js <bundle> <dir>
 
@@ -134,42 +134,65 @@ const badge = { targetId: '', insert: { children: { node: { type: 'we-badge', ch
 
 try {
   const { toolsets } = await import(`file://${bundlePath}`);
-  check(toolsets.template?.appliesTo.includes('Template'), 'offers a toolset for Template records');
+  const toolset = toolsets.template;
+  check(toolset?.appliesTo.includes('Template'), 'offers tools for Template records');
+  check(
+    toolset.tools.map((tool) => `${tool.name}:${tool.writes}`).join(' ') === 'template_read:false template_update:true',
+    'offers template_read, which writes nothing, and template_update, which writes',
+  );
+
+  const topics = await toolset.docs.list();
+  const start = await toolset.docs.read('template');
+  check(
+    topics[0]?.path === 'template' && start.includes('template_update'),
+    'documents the tools, starting from `template`',
+  );
+  check((await toolset.docs.read('template/components/we-badge'))?.includes('we-badge'), 'answers a component topic');
 
   for (const name of names) {
     console.log(name);
     const started = now();
     const record = records[name];
-    const request = 'Add a badge saying Smoke to the top of the page';
-    const toolset = await toolsets.template.open({ record, request, author: 'did:smoke' });
-    const tools = toolset.tools.map((tool) => tool.name);
+    const call = (tool, args) => toolset.call(tool, { record, args, author: 'did:smoke' });
 
-    check(tools[0] === 'update_schema' && toolset.tools[0].kind === 'edit', 'offers update_schema first, as an edit');
-    check(tools.includes('we_reference'), 'offers the reference lookup');
-    check(toolset.system.length > 0 && toolset.prompt.includes('Smoke'), 'says what was asked');
+    const first = (await call('template_read', {})).text;
+    const read = JSON.parse(first);
+    check(read.version === 1 && read.currentSchema, 'reads the template with its version');
+    check(first === (await call('template_read', {})).text, 'reads the same ids twice');
     if (name === 'workshop')
-      check(tools.includes('we_template'), 'sends a large template as an outline, with a lookup');
+      check(typeof read.currentSchema.outline === 'string', 'sends a large template as an outline');
 
-    const reference = await toolset.call('we_reference', { components: ['we-badge'] });
-    check(reference.includes('we-badge'), 'answers a reference lookup');
+    const found = (await call('template_read', { find: 'we-' })).text;
+    check(found.startsWith('Template version 1.') && /n\d+ we-/.test(found), 'finds nodes by what they are');
 
-    const refused = await toolset.call('update_schema', {
+    const refused = await call('template_update', {
+      version: 1,
       patches: [{ targetId: '', insert: { children: { node: { type: 'we-nonexistent' } } } }],
     });
-    check(refused.startsWith('Error: Semantic validation failed'), 'refuses a component that does not exist');
-    check(!toolset.result().changed, 'keeps nothing from a refused edit');
+    check(
+      refused.text.startsWith('Error: Semantic validation failed') && !refused.properties,
+      'refuses a component that does not exist, and writes nothing',
+    );
+
+    const stale = await call('template_update', { version: 0, patches: [badge] });
+    check(
+      stale.text.startsWith('Error: The template has changed') && !stale.properties,
+      'refuses patches written against another version',
+    );
+
+    const dry = await call('template_update', { version: 1, patches: [badge], dry_run: true });
+    check(dry.text.startsWith('Valid') && !dry.properties, 'checks a dry run and writes nothing');
 
     // As a JSON string, the way some providers deliver arguments.
-    const kept = await toolset.call('update_schema', JSON.stringify({ patches: [badge] }));
-    check(!kept.startsWith('Error'), 'keeps a valid edit');
+    const kept = await call('template_update', JSON.stringify({ version: 1, patches: [badge] }));
+    check(kept.text.startsWith('Saved as version 2.'), 'saves a valid edit');
 
-    const unknown = await toolset.call('no_such_tool', {});
-    check(unknown.startsWith('Error: Unknown tool'), 'refuses a tool it does not have');
+    const unknown = await call('no_such_tool', {});
+    check(unknown.text.startsWith('Error: Unknown tool'), 'refuses a tool it does not have');
 
-    const { changed, properties } = toolset.result();
-    check(changed, 'reports the edit as a change');
-    check(properties.version === 2, 'moves the version on, as a save does');
-    check(properties.schema?.name === 'template-schema.json', 'writes the schema as the file the app stores');
+    const { properties } = kept;
+    check(properties?.version === 2, 'moves the version on, as a save does');
+    check(properties?.schema?.name === 'template-schema.json', 'writes the schema as the file the app stores');
 
     const before = readFile(record.properties.schema).schema;
     const after = readFile(properties.schema).schema;

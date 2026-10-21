@@ -48,7 +48,16 @@ export interface ModelTree {
  */
 export function prepareForModel(template: SchemaNode): ModelTree {
   const whole = ensureNodeIds(JSON.parse(JSON.stringify(template)) as SchemaNode);
-  const { schema, uses: realUses } = compactDefinitions(whole);
+  /*
+    A shared shape's own ids are numbered rather than random, so the same template prepares to the
+    same tree every time. The template tools depend on it: a read and the update written from it are
+    two calls, and agree on what an id means only because both prepare the stored template alike.
+    Aliasing hides these ids on nodes, but compaction also stamps them on objects inside a shape
+    that are not nodes (a menu item, a style), which nothing renames — random, those made two reads
+    of one template differ. `~` is outside a permanent id's alphabet, so none can collide with one.
+  */
+  let local = 0;
+  const { schema, uses: realUses } = compactDefinitions(whole, { mint: () => `~${++local}` });
 
   let next = 0;
   const mint = () => `n${++next}`;
@@ -78,7 +87,9 @@ export function prepareForModel(template: SchemaNode): ModelTree {
     const expanded = expandDefinitions(structuredClone(accepted), { uses });
     forEachNode(expanded, (node) => {
       const real = node.id ? toReal.get(node.id) : undefined;
-      if (real) node.id = real;
+      // A shared shape's own id is local to this preparation, never a node's: one that expansion did
+      // not replace is a node with no id yet, and gets a permanent one below.
+      if (real && !real.startsWith('~')) node.id = real;
       else delete node.id;
     });
     // Against the template as it came in, so a node the model wrote with an existing node's alias
