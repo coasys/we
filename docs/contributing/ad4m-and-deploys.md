@@ -270,6 +270,6 @@ bump, or a PR pinning an ad4m change, the way you would the run here.
 
 | What                                                                                                                                           | Who              |
 | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| Keep `https://executor.ad4m.dev/<commit>/` for at least a few days after the commit (the host keeps 35), long enough for WE's first fetch | ad4m maintainers |
+| Keep `https://executor.ad4m.dev/<commit>/` for at least a few days after the commit (the host keeps 35), long enough for WE's first fetch      | ad4m maintainers |
 | Point npm's `latest` tag at a real release. It points at `0.13.0-test-interpretation-2` today, so `npm install @coasys/ad4m` gets a test build | ad4m maintainers |
 | Make the executor build on macOS again: `ort-sys` downloads an ONNX Runtime that is no longer published for macOS                              | ad4m maintainers |

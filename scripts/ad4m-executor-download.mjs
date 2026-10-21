@@ -50,7 +50,8 @@ async function published(commit, name) {
   // A redirect is not the file. Following one would take bytes from a host this URL does not name.
   const res = await fetch(url, { redirect: 'manual' });
   if (res.status === 404) return null;
-  if (res.status >= 300 && res.status < 400) throw new NotPublished(`${url} redirected, and a redirect is not the file.`);
+  if (res.status >= 300 && res.status < 400)
+    throw new NotPublished(`${url} redirected, and a redirect is not the file.`);
   if (!res.ok) throw new NotPublished(`${url} answered ${res.status}.`);
   return Buffer.from(await res.arrayBuffer());
 }
@@ -130,7 +131,9 @@ export async function fetchExecutor(commit) {
   if (!status) throw new NotPublished(`${AD4M_REPO}@${commit.slice(0, 9)} has no successful "${STATUS_CONTEXT}".`);
   const raw = await published(commit, 'manifest.json');
   if (!raw) {
-    throw new NotPublished(`${AD4M_REPO}@${commit.slice(0, 9)} published no executor (built before ad4m did, or the file was removed).`);
+    throw new NotPublished(
+      `${AD4M_REPO}@${commit.slice(0, 9)} published no executor (built before ad4m did, or the file was removed).`,
+    );
   }
 
   const manifest = JSON.parse(raw.toString('utf8'));

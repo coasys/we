@@ -86,7 +86,13 @@ describe('finding a published executor', () => {
       ],
     });
     assert.deepEqual((await fetchExecutor(COMMIT)).binary, BINARY);
-    assert.equal(buildStatus([{ context: 'ci/circleci: build', state: 'failure' }, { context: 'ci/circleci: build', state: 'success' }]).state, 'success');
+    assert.equal(
+      buildStatus([
+        { context: 'ci/circleci: build', state: 'failure' },
+        { context: 'ci/circleci: build', state: 'success' },
+      ]).state,
+      'success',
+    );
   });
 });
 
@@ -174,7 +180,10 @@ describe('whether ad4m has finished with a commit', () => {
   });
 
   it('unpublished when the build finished and put none up, so waiting would never end', async () => {
-    assert.equal(await stateOf({ statuses: [build('success')], missing: [`${ORIGIN}/${COMMIT}/manifest.json`] }), 'unpublished');
+    assert.equal(
+      await stateOf({ statuses: [build('success')], missing: [`${ORIGIN}/${COMMIT}/manifest.json`] }),
+      'unpublished',
+    );
   });
 
   it('failed when the build failed', async () => {
