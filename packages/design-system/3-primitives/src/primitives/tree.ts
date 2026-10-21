@@ -5,6 +5,72 @@ import { ifDefined } from 'lit/directives/if-defined.js';
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 
+const TREE_STYLES = css`
+  :host {
+    display: block;
+  }
+`;
+
+/*
+  A row's corners read its own override slot (--we-theme-tree-radius), so a theme can round rows
+  without rounding every control.
+*/
+const ITEM_STYLES = css`
+  :host {
+    display: block;
+  }
+  [part='row'] {
+    display: flex;
+    align-items: center;
+    gap: var(--we-space-200);
+    padding: var(--we-tree-row-padding, var(--we-space-100) var(--we-space-200));
+    padding-inline-start: calc(
+      var(--we-tree-indent, var(--we-space-400)) * var(--we-tree-level, 0) + var(--we-space-200)
+    );
+    border-radius: var(--we-theme-tree-radius, var(--we-radius-300));
+    color: var(--we-role-text-muted);
+    cursor: pointer;
+    outline: none;
+    min-height: var(--we-tree-row-height, 32px);
+    box-sizing: border-box;
+  }
+  [part='row']:hover {
+    background: var(--we-role-surface-hover);
+    color: var(--we-role-text);
+  }
+  :host([selected]) [part='row'] {
+    background: var(--we-role-accent-muted);
+    color: var(--we-role-text);
+  }
+  [part='row']:focus-visible {
+    box-shadow: 0 0 0 var(--we-theme-focus-ring-width, 2px) var(--we-ring-color);
+  }
+  [part='caret'] {
+    all: unset;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+    color: var(--we-role-text-faint);
+    transition: transform var(--we-transition-200, 150ms) ease;
+  }
+  :host([open]) [part='caret'] {
+    transform: rotate(90deg);
+  }
+  [part='caret'][hidden] {
+    visibility: hidden;
+  }
+  [part='content'] {
+    display: flex;
+    align-items: center;
+    gap: var(--we-space-200);
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+`;
+
 /**
  * A tree — the space as a file browser, a folder list, an outline. The root of one, holding its items.
  *
@@ -33,14 +99,7 @@ import sharedStyles from '../shared/styles';
  */
 @customElement('we-tree')
 export class Tree extends DesignSystemElement {
-  static styles = [
-    sharedStyles,
-    css`
-      :host {
-        display: block;
-      }
-    `,
-  ];
+  static styles = [sharedStyles, TREE_STYLES];
 
   /** The value of the selected row, if any — matched against each item's `value`. */
   @property({ type: String }) selected = '';
@@ -186,64 +245,7 @@ export class Tree extends DesignSystemElement {
  */
 @customElement('we-tree-item')
 export class TreeItem extends DesignSystemElement {
-  static styles = [
-    sharedStyles,
-    css`
-      :host {
-        display: block;
-      }
-      [part='row'] {
-        display: flex;
-        align-items: center;
-        gap: var(--we-space-200);
-        padding: var(--we-tree-row-padding, var(--we-space-100) var(--we-space-200));
-        padding-inline-start: calc(
-          var(--we-tree-indent, var(--we-space-400)) * var(--we-tree-level, 0) + var(--we-space-200)
-        );
-        border-radius: var(--we-theme-control-radius, var(--we-radius-300));
-        color: var(--we-role-text-muted);
-        cursor: pointer;
-        outline: none;
-        min-height: var(--we-tree-row-height, 32px);
-        box-sizing: border-box;
-      }
-      [part='row']:hover {
-        background: var(--we-role-surface-hover);
-        color: var(--we-role-text);
-      }
-      :host([selected]) [part='row'] {
-        background: var(--we-role-accent-muted);
-        color: var(--we-role-text);
-      }
-      [part='row']:focus-visible {
-        box-shadow: 0 0 0 var(--we-theme-focus-ring-width, 2px) var(--we-ring-color);
-      }
-      [part='caret'] {
-        all: unset;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 16px;
-        height: 16px;
-        flex: 0 0 auto;
-        color: var(--we-role-text-faint);
-        transition: transform var(--we-transition-200, 150ms) ease;
-      }
-      :host([open]) [part='caret'] {
-        transform: rotate(90deg);
-      }
-      [part='caret'][hidden] {
-        visibility: hidden;
-      }
-      [part='content'] {
-        display: flex;
-        align-items: center;
-        gap: var(--we-space-200);
-        flex: 1 1 auto;
-        min-width: 0;
-      }
-    `,
-  ];
+  static styles = [sharedStyles, ITEM_STYLES];
 
   /** What `select` reports, and what the tree's `selected` is matched against. Unique within a tree. */
   @property({ type: String, reflect: true }) value = '';
