@@ -5,8 +5,8 @@
  * than restated — plus the rows a seeded backend should answer with. Nothing here describes layout;
  * the assertions live beside the cases, so one scenario can be measured several ways.
  */
-import { lineComposer, transcriptLines } from '@we/module-transcribe';
-import { cardShell, panelScroll, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
+import { transcriptLines } from '@we/module-transcribe';
+import { cardShell, lineComposer, panelScroll, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 import { discussionSection, foldingSectionLabel, signalDisplay } from '@we/template-kit';
 import { bundlePrompt, safeModeBanner } from '@we/template-shell';

@@ -20,6 +20,7 @@ import {
   emptyState,
   foldingBody,
   foldingSectionLabel,
+  lineComposer,
   panelScroll,
   panelShell,
   timeline,
@@ -30,7 +31,6 @@ import { type SchemaNode, type SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
 import { CARET_SIZE, codePane, extractionActivity } from './ExtractionStatus.schema';
-import { lineComposer } from './lineComposer';
 import { messageLine } from './messageLine';
 import { SUBJECT_EXPR as SHARED_SUBJECT_EXPR, VIEWING_LIVE_EXPR } from './subject';
 import { repliesInclude } from './thread';
