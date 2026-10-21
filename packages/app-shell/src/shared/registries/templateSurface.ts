@@ -1236,6 +1236,15 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // Read by a module's own dock frame, to know whether the interface is supplying its contents.
     panelSupplied: state('host-layout'),
     resetTemplateLayout: action('host-layout'),
+    // A space template folding its own sidebar away is its own view, so the space tier has it; the
+    // width is written by the lane's own handle, never by a template.
+    collapsedLanes: state('view-state'),
+    toggleLane: ambient('view-state'),
+    setLaneCollapsed: ambient('view-state'),
+    laneWidth: WIRING,
+    setLaneWidth: WIRING,
+    customisingLayout: state('host-layout'),
+    toggleCustomiseLayout: ambient('host-layout'),
     layoutNames: state('host-layout'),
     activeLayout: state('host-layout'),
     saveLayout: action('host-layout'),

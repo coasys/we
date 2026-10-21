@@ -226,6 +226,19 @@ else. A section is rendered by the outlet when home and by the dock layer when n
 points, one remount at the gesture, never on a move. The grip is the host's, on a wrapper that
 outlives the section and becomes its placeholder.
 
+**A lane can be a sidebar.** `resize: 'end'` (or `'start'`) on the outlet puts a drag handle on that
+edge alone; the width somebody leaves it at is kept per agent and per template
+(`shellStore.laneWidth`), clamped to the outlet's `minWidth` and `maxWidth`, and its `width` is where
+it starts. `shellStore.toggleLane(name)` folds a lane away and back — its sections stay mounted and
+hidden — and a space template may call it, since folding its own sidebar is its own view state. Both
+are part of a saved layout and undone by "Reset layout". Below `NARROW_VIEWPORT_PX` a kept width
+means nothing, so the lane takes its parent's width and the handle goes; how the page stacks there is
+the template's own layout.
+
+**Grips are quiet.** A section's grip shows where the pointer or the keyboard is, so a page made of
+sections reads as a page; `shellStore.toggleCustomiseLayout` shows every grip at once, for a reader
+asking what can be moved.
+
 The one rule that keeps all of this a model: **a lane holds sections; a section does not hold a
 lane.** The validator refuses a `$panels` inside a panel's node. Fixed depth is what keeps a
 position a few integers, which is what keeps two arrangements mergeable per panel, which is what

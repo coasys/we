@@ -634,6 +634,14 @@ function walkNode(
         severity: 'error',
       });
     }
+    const resize = (n.props as { resize?: unknown } | undefined)?.resize;
+    if (resize !== undefined && resize !== 'start' && resize !== 'end') {
+      errors.push({
+        path: `${path}.props.resize`,
+        message: `"resize" names the edge a reader drags: "end" for a column on the left, "start" for one on the right — got ${JSON.stringify(resize)}`,
+        severity: 'error',
+      });
+    }
     return;
   }
 

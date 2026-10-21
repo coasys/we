@@ -28,12 +28,28 @@
  * section: when the section remounts into the dock layer mid-gesture, the grip — and the pointer
  * capture it holds — are still here, so press-and-drag survives the swap. The wrapper then becomes
  * the placeholder.
+ *
+ * ## A lane as a sidebar
+ *
+ * A lane can be the left column of a page — a space's tree beside its view — and a sidebar wants two
+ * things a plain lane did not have. `resize: 'end'` (or `'start'`) puts a handle on that edge alone,
+ * and the width somebody drags it to is kept per agent and per template (`shellStore.laneWidth`),
+ * between the template's `minWidth` and `maxWidth`. And a lane can be folded away
+ * (`shellStore.toggleLane`): its sections stay mounted and hidden, so a feed keeps its place.
+ *
+ * Below `NARROW_VIEWPORT_PX` a kept width means nothing — a phone has no room for a 280px column
+ * beside anything — so the lane takes the width its parent gives it and the handle goes. How the page
+ * stacks there is the template's, through its own layout (`mdUpProps`).
+ *
+ * The grips are quiet by default, so a page made of sections reads as a page. Hovering or focusing a
+ * section shows its own; `shellStore.customisingLayout` shows them all.
  */
+import { NARROW_VIEWPORT_PX } from '@shared/dockGeometry';
 import { HOME_SECTION_ATTR, registerHomeLane } from '@shared/registries/homeLanes';
 import { onTemplatePanelsChanged, templatePanelDockId, templatePanels } from '@shared/registries/templatePanels';
 import { Row } from '@we/components/solid';
 import type { TemplatePanel } from '@we/schema-shared';
-import { createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import { type Accessor, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 
 import { useShellStore } from '../stores/ShellStore';
 import TemplatePanelBody from './TemplatePanelBody';
@@ -41,10 +57,58 @@ import TemplatePanelBody from './TemplatePanelBody';
 /** How far the pointer must travel before a press on the grip is a drag rather than a click. */
 const BREAK_OUT_DRAG_PX = 4;
 
-export function PanelLane(props: { lane?: string; direction?: 'column' | 'row'; accepts?: string }) {
+/** A CSS length the lane can do arithmetic on: a number of pixels, or `'240px'`. Anything else is not a bound. */
+function pixels(value: string | number | undefined): number | undefined {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  const match = /^\s*(\d+(?:\.\d+)?)px\s*$/.exec(value ?? '');
+  return match ? Number(match[1]) : undefined;
+}
+
+/** Whether the window is narrower than a lane can keep a column's width in. */
+function createNarrow(): Accessor<boolean> {
+  if (typeof window === 'undefined' || !window.matchMedia) return () => false;
+  const query = window.matchMedia(`(max-width: ${NARROW_VIEWPORT_PX - 0.02}px)`);
+  const [narrow, setNarrow] = createSignal(query.matches);
+  const onChange = (event: MediaQueryListEvent) => setNarrow(event.matches);
+  query.addEventListener('change', onChange);
+  onCleanup(() => query.removeEventListener('change', onChange));
+  return narrow;
+}
+
+export function PanelLane(props: {
+  lane?: string;
+  direction?: 'column' | 'row';
+  accepts?: string;
+  /** The lane's width before anybody resizes it — a CSS length. Absent, it takes its parent's. */
+  width?: string;
+  minWidth?: string;
+  maxWidth?: string;
+  /** The flex shorthand for the lane as an item of its parent row. */
+  flex?: string;
+  /** Which edge the reader can drag to resize it: `end` for a column on the left, `start` for one on the right. */
+  resize?: 'start' | 'end';
+}) {
   const shellStore = useShellStore();
   const lane = () => props.lane ?? '';
   const direction = () => props.direction ?? 'column';
+  const narrow = createNarrow();
+  const collapsed = () => shellStore.collapsedLanes().includes(lane());
+
+  /*
+    The width while a drag is under way, held here and written once at the end: a write per pointer
+    move would serialise the whole lane map to storage at the frame rate.
+  */
+  const [dragWidth, setDragWidth] = createSignal<number | undefined>(undefined);
+  const clamp = (width: number) => {
+    const min = pixels(props.minWidth) ?? 120;
+    const max = pixels(props.maxWidth) ?? Number.POSITIVE_INFINITY;
+    return Math.min(Math.max(width, min), max);
+  };
+  const width = () => {
+    if (narrow()) return '100%';
+    const held = dragWidth() ?? shellStore.laneWidth(lane());
+    return held !== undefined ? `${clamp(held)}px` : (props.width ?? '100%');
+  };
 
   const [version, setVersion] = createSignal(0);
   onCleanup(onTemplatePanelsChanged(() => setVersion((v) => v + 1)));
@@ -92,6 +156,25 @@ export function PanelLane(props: { lane?: string; direction?: 'column' | 'row'; 
     onCleanup(registerHomeLane({ lane: lane(), el, direction: direction(), accepts }));
   };
 
+  let handle: HTMLElement | undefined;
+  let startWidth = 0;
+  onMount(() => {
+    if (!handle) return;
+    // Direct listeners: the handle's gesture events are its own — see the section grip below.
+    handle.addEventListener('resizestart', () => {
+      startWidth = el?.getBoundingClientRect().width ?? 0;
+    });
+    handle.addEventListener('resize', (event) => {
+      const { delta } = (event as unknown as CustomEvent<{ delta: number }>).detail;
+      setDragWidth(clamp(startWidth + (props.resize === 'start' ? -delta : delta)));
+    });
+    handle.addEventListener('resizeend', () => {
+      const width = dragWidth();
+      if (width !== undefined) shellStore.setLaneWidth(lane(), width);
+      setDragWidth(undefined);
+    });
+  });
+
   return (
     <div
       ref={(node: HTMLDivElement) => {
@@ -99,15 +182,34 @@ export function PanelLane(props: { lane?: string; direction?: 'column' | 'row'; 
         register();
       }}
       style={{
-        display: 'flex',
+        // Folded away rather than unmounted: its sections keep their state.
+        display: collapsed() ? 'none' : 'flex',
         'flex-direction': direction(),
         gap: 'var(--we-space-400)',
-        width: '100%',
-        'min-width': '0',
+        position: 'relative',
+        width: width(),
+        'min-width': narrow() ? '0' : (props.minWidth ?? '0'),
+        'max-width': narrow() ? 'none' : (props.maxWidth ?? 'none'),
+        flex: narrow() ? undefined : (props.flex ?? (props.width || props.resize ? '0 0 auto' : undefined)),
+        'box-sizing': 'border-box',
       }}
     >
       <For each={here()}>{(panel) => <Section panel={panel} />}</For>
       <For each={away()}>{(panel) => <Placeholder panel={panel} />}</For>
+      <Show when={props.resize && !narrow()}>
+        <we-resize-handle
+          ref={handle}
+          orientation="vertical"
+          style={{
+            position: 'absolute',
+            top: '0',
+            bottom: '0',
+            [props.resize === 'start' ? 'left' : 'right']: '-4px',
+            width: '8px',
+            'z-index': '1',
+          }}
+        />
+      </Show>
     </div>
   );
 }
@@ -175,7 +277,7 @@ function Section(props: { panel: TemplatePanel }) {
               right: '4px',
               width: '24px',
               height: '24px',
-              opacity: hover() || focus() ? 1 : 0,
+              opacity: hover() || focus() || shellStore.customisingLayout() ? 1 : 0,
               transition: 'opacity 120ms ease',
               'border-radius': 'var(--we-radius-300)',
               background: 'var(--we-role-surface-raised)',

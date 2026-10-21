@@ -7219,6 +7219,12 @@
         "panelSupplied": {
           "type": "object"
         },
+        "collapsedLanes": {
+          "type": "array"
+        },
+        "customisingLayout": {
+          "type": "boolean"
+        },
         "layoutNames": {
           "type": "array"
         },
@@ -7260,6 +7266,9 @@
         "closeTemplatePanel",
         "openTemplatePanel",
         "resetTemplateLayout",
+        "toggleLane",
+        "setLaneCollapsed",
+        "toggleCustomiseLayout",
         "saveLayout",
         "applyLayout",
         "deleteLayout",
@@ -7290,6 +7299,9 @@
         "closeSpaceSettings",
         "scrollToId",
         "raiseDock",
+        "toggleLane",
+        "setLaneCollapsed",
+        "toggleCustomiseLayout",
         "revealDock",
         "openModulePanel",
         "closeModulePanel",
