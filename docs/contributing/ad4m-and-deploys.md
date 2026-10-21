@@ -231,12 +231,12 @@ It also runs in CI, as the `AD4M live` workflow (`.github/workflows/ad4m-live.ya
 touches the backend packages, the entities or the pin, on `dev` after such a merge, and on the bump
 bot's branch. The executor comes from the `.github/actions/ad4m-executor` action the desktop package
 uses too, so the tests run the binary the app ships. It is cached by commit, and on a miss it is
-**downloaded**: ad4m's own CI (CircleCI's `build` job) publishes the executor it builds for every
-pushed commit, and `scripts/ad4m-executor-download.mjs` finds it from the commit alone, with no
-credentials, and checks it against the sha256 its manifest records. That takes seconds. Only a
-commit with nothing to download is compiled, which takes the better part of an hour: one built
-before ad4m published executors, one whose artifacts have expired, or a macOS build, which ad4m
-does not publish.
+**downloaded**: ad4m's own CI compiles the executor for every pushed commit and serves it at
+`https://executor.ad4m.dev/<commit>/manifest.json`. `scripts/ad4m-executor-download.mjs` fetches
+that from the commit alone, with no credentials, and checks it against the sha256 its manifest
+records. That takes seconds. Only a commit with nothing to download is compiled, which takes the
+better part of an hour: one built before ad4m published executors, one whose file has been removed
+(kept 35 days), or a macOS build, which ad4m does not publish.
 
 A cache saved on `dev` serves every PR, and one saved on a PR serves only that PR. So when the bump
 bot moves to a new commit, it first fetches that commit's executor into `dev`'s cache (the `AD4M
@@ -270,6 +270,6 @@ bump, or a PR pinning an ad4m change, the way you would the run here.
 
 | What                                                                                                                                           | Who              |
 | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| Keep CircleCI's artifact retention at a few days or more (7 recommended), long enough for WE's first fetch of each commit's executor           | ad4m maintainers |
+| Keep `https://executor.ad4m.dev/<commit>/` for at least a few days after the commit (the host keeps 35), long enough for WE's first fetch | ad4m maintainers |
 | Point npm's `latest` tag at a real release. It points at `0.13.0-test-interpretation-2` today, so `npm install @coasys/ad4m` gets a test build | ad4m maintainers |
 | Make the executor build on macOS again: `ort-sys` downloads an ONNX Runtime that is no longer published for macOS                              | ad4m maintainers |
