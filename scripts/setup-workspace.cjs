@@ -15,7 +15,8 @@ const fs = require('fs');
 const path = require('path');
 
 const WORKSPACE_ROOT = path.resolve(__dirname, '..');
-const SEED_FILE = path.join(WORKSPACE_ROOT, 'we-seed.json');
+// The seed this run is for: `WE_SEED`, or WE's own `we-seed.json`. See `scripts/seed.cjs`.
+const SEED_FILE = require('./seed.cjs').seedPath();
 
 // ANSI colors for pretty output
 const colors = {

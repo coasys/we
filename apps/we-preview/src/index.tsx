@@ -18,10 +18,10 @@ import {
   type ValidationError,
 } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
+import rootSeed from '@we/seed-file';
 import { datasetIdFor, type Fixture } from '@we/template-fixtures';
 import { render } from 'solid-js/web';
 
-import rootSeed from '../../../we-seed.json';
 import { bareNode, type ExternalTemplate } from './bare';
 import { inMemoryConnector, requestedFixture, startRoute, useExternalFixture } from './platform/inMemoryConnector';
 import { previewPlatform } from './platform/previewPlatform';

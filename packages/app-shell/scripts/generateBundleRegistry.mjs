@@ -14,15 +14,21 @@
  */
 import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 import { format, resolveConfig } from 'prettier';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
-const outPath = resolve(here, '../src/shared/registries/seedBundles.generated.ts');
+// Which seed this build is for — `WE_SEED`, or WE's own. See `scripts/seed.cjs`.
+const seedFile = createRequire(import.meta.url)('../../../scripts/seed.cjs');
+const outPath = seedFile.generatedPath(
+  resolve(here, '../src/shared/registries/seedBundles.generated.ts'),
+  resolve(here, '..'),
+);
 
-const seed = JSON.parse(await readFile(resolve(repoRoot, 'we-seed.json'), 'utf8'));
+const seed = seedFile.readSeed();
 const ids = seed.bundles ?? [];
 
 const bundles = [];
@@ -32,7 +38,7 @@ for (const id of ids) {
   try {
     bundle = JSON.parse(await readFile(file, 'utf8'));
   } catch (error) {
-    console.error(`we-seed.json names the bundle "${id}", and ${file} could not be read: ${error.message}`);
+    console.error(`${seedFile.seedLabel()} names the bundle "${id}", and ${file} could not be read: ${error.message}`);
     process.exit(1);
   }
   if (bundle.format !== 'we-bundle' || bundle.formatVersion !== 1) {

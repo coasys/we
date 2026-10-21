@@ -8,9 +8,9 @@ import '@we/app-shell/shared/index.scss';
 
 import { writeGuestBootTarget } from '@we/app-shell/shared';
 import { App, PlatformProvider, type WeSeedFile } from '@we/app-shell/solid';
+import weSeed from '@we/seed-file';
 import { render } from 'solid-js/web';
 
-import weSeed from '../../../we-seed.json';
 import { ad4mConnector } from './platform/ad4mConnector';
 import { createGuestConnector, hasStoredSession, parseGuestParams } from './platform/guestConnector';
 import { webPlatform } from './platform/webPlatform';

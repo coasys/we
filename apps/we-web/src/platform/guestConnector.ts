@@ -16,8 +16,7 @@ import Ad4mConnect from '@coasys/ad4m-connect/core';
 import type { BackendConnector, BackendInitResult, GuestJoinTarget } from '@we/app-shell/shared';
 import { parseGuestLink } from '@we/app-shell/shared';
 import { capabilitiesFromToken, createAd4mBackendPorts } from '@we/backend-ad4m';
-
-import weSeed from '../../../../we-seed.json';
+import weSeed from '@we/seed-file';
 
 export type { GuestJoinTarget };
 export { hasStoredSession } from './storedSession';

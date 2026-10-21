@@ -22,6 +22,8 @@
     // them every import inside the shell's source failed to resolve, and the unresolved types then
     // cascaded into a hundred implicit-any errors none of which were in this app's code.
     "paths": {
+      // The seed this build is for: `scripts/seed-vite.mjs` resolves it, `WE_SEED` choosing. Typed as WE's own.
+      "@we/seed-file": ["../../we-seed.json"],
       "@/*": ["./src/*"],
       "@shared/*": ["../../packages/app-shell/src/shared/*"],
       "@solid/*": ["../../packages/app-shell/src/frameworks/solid/*"]

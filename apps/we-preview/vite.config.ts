@@ -5,12 +5,15 @@ import path from 'path';
 import { defineConfig } from 'vite';
 import solidPlugin from 'vite-plugin-solid';
 
+import { seedPath, weSeed } from '../../scripts/seed-vite.mjs';
+
 export default defineConfig({
   assetsInclude: ['**/*.glb'],
   // The web app's policy, so a template that the preview draws and the app refuses cannot pass here.
   plugins: [
+    weSeed(),
     solidPlugin(),
-    contentSecurityPolicy({ host: 'web', seedFile: path.resolve(import.meta.dirname, '../../we-seed.json') }),
+    contentSecurityPolicy({ host: 'web', seedFile: seedPath() }),
     rewriteKnockoutGlobalEval(),
     cesiumAssets(),
     globeLayerAssets(),

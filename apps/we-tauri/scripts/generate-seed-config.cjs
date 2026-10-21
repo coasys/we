@@ -17,10 +17,12 @@ const { execSync } = require('child_process');
 
 // Paths
 const WORKSPACE_ROOT = path.resolve(__dirname, '../../..');
-const SEED_FILE = path.join(WORKSPACE_ROOT, 'we-seed.json');
+// The seed this build is for: `WE_SEED`, or WE's own `we-seed.json`. See `scripts/seed.cjs`.
+const SEED_FILE = require('../../../scripts/seed.cjs').seedPath();
 const OUTPUT_DIR = path.join(__dirname, '../src-tauri/src/generated');
 const SRC_GENERATED_DIR = path.join(__dirname, '../src/generated');
 const TAURI_CONF_FILE = path.join(__dirname, '../src-tauri/tauri.conf.json');
+const SEED_TAURI_CONF_FILE = path.join(__dirname, '../src-tauri/tauri.seed.conf.json');
 const CARGO_TOML_TEMPLATE = path.join(__dirname, '../src-tauri/Cargo.toml.template');
 const CARGO_TOML_OUTPUT = path.join(__dirname, '../src-tauri/Cargo.toml');
 const PORT_MAP_FILE = path.join(OUTPUT_DIR, 'seed-port-map.json');
@@ -101,6 +103,9 @@ function main() {
   }
 
   const seed = JSON.parse(fs.readFileSync(SEED_FILE, 'utf8'));
+
+  // The product's name, identifier and icon, whichever path below runs.
+  writeSeedTauriConfig(seed);
 
   if (!seed.apps || seed.apps.length === 0) {
     console.log('ℹ️  No apps defined - native WE app mode (no embedded apps)');
@@ -345,6 +350,40 @@ pub fn setup_seed_servers(resource_path: PathBuf) {
 ${serverSetup}
 }
 `;
+}
+
+/**
+ * What this build is called and installed as, from the seed's `desktop` — as a Tauri merge config
+ * (`src-tauri/tauri.seed.conf.json`, not checked in), which `tauri dev`/`tauri build` take with
+ * `--config`. A merge rather than an edit of `tauri.conf.json`, so building another deployment
+ * never leaves WE's checked-in config changed. Written for WE's own seed too, with WE's values, so
+ * the scripts can always pass it.
+ *
+ * A merge patch replaces arrays whole, so the window list is copied from `tauri.conf.json` with only
+ * its titles changed.
+ */
+function writeSeedTauriConfig(seed) {
+  const seedFile = require('../../../scripts/seed.cjs');
+  const desktop = seedFile.desktopOf(seed);
+  const base = JSON.parse(fs.readFileSync(TAURI_CONF_FILE, 'utf8'));
+  const machineName = desktop.productName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  const patch = {
+    productName: desktop.productName,
+    mainBinaryName: machineName,
+    identifier: `${desktop.appId}.tauri`,
+    app: { windows: (base.app?.windows ?? []).map((w) => ({ ...w, title: desktop.productName })) },
+  };
+  // Another seed's icon set is generated beside this app by `@we/brand`, never over WE's.
+  const iconDir = seedFile.generatedDir(path.join(__dirname, '..', 'src-tauri'));
+  if (iconDir && fs.existsSync(path.join(iconDir, 'icons'))) {
+    const rel = (f) => path.relative(path.join(__dirname, '..', 'src-tauri'), path.join(iconDir, 'icons', f));
+    patch.bundle = { icon: (base.bundle?.icon ?? []).map((f) => rel(path.basename(f))) };
+  }
+  fs.writeFileSync(SEED_TAURI_CONF_FILE, JSON.stringify(patch, null, 2) + '\n', 'utf8');
+  console.log(`✅ ${path.relative(process.cwd(), SEED_TAURI_CONF_FILE)}: ${desktop.productName} (${patch.identifier})`);
 }
 
 function updateTauriConfig(bundleResources) {
