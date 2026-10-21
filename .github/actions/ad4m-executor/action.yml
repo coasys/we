@@ -94,13 +94,13 @@ runs:
         fail-on-cache-miss: ${{ inputs.mode == 'restore' }}
 
     # On a miss, the executor ad4m's own CI built for this commit, downloaded rather than compiled:
-    # ad4m publishes one for every pushed commit (CircleCI's `build` job), and a download takes
-    # seconds where a build takes most of an hour. scripts/ad4m-executor-download.mjs finds it from
-    # the commit alone, with no credentials, and writes it only once its sha256 matches the manifest.
-    # Anything that leaves nothing to download — a commit built before ad4m published executors, or
-    # whose artifacts have expired — falls through to the build below, as before. Linux x64 only,
-    # the one platform ad4m publishes; macOS still builds. Saved to the cache like a built one, so
-    # every run after the first restores it and nothing depends on ad4m's artifacts lasting.
+    # the build job writes one for every pushed commit to https://executor.ad4m.dev/<commit>/, and a
+    # download takes seconds where a build takes most of an hour. scripts/ad4m-executor-download.mjs
+    # finds it from the commit alone, with no credentials, and writes it only once its sha256 matches
+    # the manifest. Anything that leaves nothing to download — a commit built before ad4m published
+    # executors, or whose file has been removed — falls through to the build below, as before. Linux
+    # x64 only, the one platform ad4m publishes; macOS still builds. Saved to the cache like a built
+    # one, so every run after the first restores it and nothing depends on the published file lasting.
     - name: Node for the download
       if: inputs.mode == 'build' && steps.restore.outputs.cache-hit != 'true' && runner.os == 'Linux' && runner.arch == 'X64'
       uses: actions/setup-node@v7
