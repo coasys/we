@@ -221,6 +221,8 @@ export function boundTemplate(
   schema: SchemaNode,
   request: string,
   budget: number = DEFAULT_TEMPLATE_BUDGET,
+  /** What the tool that fetches the rest is called — the editor's, unless a host names its own. */
+  readTool = 'we_template',
 ): BoundedTemplate {
   const templateChars = JSON.stringify(schema).length;
 
@@ -278,7 +280,7 @@ export function boundTemplate(
     note:
       'This template is too large to send whole. `outline` is EVERY node — its id, its type and a ' +
       'clue about what it says — and `shown` is the full JSON of the few the request seemed to be ' +
-      'about. Call `we_template` for any other node before editing it; patch by id as usual. ' +
+      `about. Call \`${readTool}\` for any other node before editing it; patch by id as usual. ` +
       "IMPORTANT: to change a node's children, use the patch `insert` and `remove` operations. " +
       'Sending `node: { children: [...] }` REPLACES the whole array, which deletes the children ' +
       'you were not shown.',
@@ -310,7 +312,7 @@ export function boundTemplate(
     },
     tools: [
       {
-        name: 'we_template',
+        name: readTool,
         description:
           'Read parts of the template being edited. `ids` returns those nodes in full, with their ' +
           'props and children; `find` lists the nodes whose type or text matches. Fetch a node ' +
@@ -325,7 +327,7 @@ export function boundTemplate(
       },
     ],
     resolveTool: (call) => {
-      if (call.name !== 'we_template') return undefined;
+      if (call.name !== readTool) return undefined;
       const args = call.arguments as { ids?: unknown; find?: unknown };
       const parts = [
         ...(Array.isArray(args.ids) ? args.ids : []).map(String).map(detail),

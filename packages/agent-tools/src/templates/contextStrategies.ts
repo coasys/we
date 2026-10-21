@@ -399,6 +399,130 @@ export function lookupContext(
   };
 }
 
+/** What each lookup section is for, in the words a list of topics shows. */
+const LOOKUP_SUMMARIES: Record<keyof typeof LOOKUP_SECTIONS, string> = {
+  patterns: 'Ready-made shapes to copy: empty states, modals, forms, bylines, page shells',
+  plugins: 'The named plugins GraphView and the globe accept: seeds, expanders, layouts, layers',
+  panels: 'Panels a template declares in meta.panels, and where they sit',
+  storePatterns: 'Reading stores, calling actions, and querying and listing records',
+  modules: 'The feature modules this build ships: their stores, parts, panels and functions',
+};
+
+/**
+ * The core `lookup` puts in the prompt, split in two for documentation topics. What stays in the
+ * topic an agent starts from is what every edit needs to read a template at all — its structure,
+ * the rules, routing — and is about a quarter of the size. The rest, which most edits need and some
+ * do not, is four topics the start names, so a small model's window is not spent before it has
+ * read the template. The editor's eval measured `lookup` with all of it in the prompt; this split
+ * has not been measured.
+ */
+const START_TITLES = CORE_TITLES.filter((title) => title !== 'Block & Entity Models');
+
+const CORE_TOPICS: Record<string, { title: string; summary: string }> = {
+  expressions: {
+    title: 'Prop-level Dynamic Logic & Expressions',
+    summary: 'Expressions, handlers, queries and local state — read before computing a value or handling an event',
+  },
+  'design-props': {
+    title: 'Design System Props',
+    summary: 'Layout, colour roles, spacing and typography props — read before styling anything',
+  },
+  structures: {
+    title: 'Block-level Dynamic Structures',
+    summary: '$each, $if, $animate, $single and $routes — read before adding a list or a condition',
+  },
+  models: {
+    title: 'Block & Entity Models',
+    summary: "WE's own record types and their fields — read before querying records",
+  },
+};
+
+/** One documentation topic, by path. */
+export interface ReferenceDoc {
+  /** `template`, `template/components/we-button`… — what a host asks for it by. */
+  path: string;
+  title: string;
+  /** One line, for a list of topics. */
+  summary: string;
+  text: string;
+}
+
+/**
+ * The reference as documentation topics, for an agent that reads it through a host's documentation
+ * tool rather than being handed a prompt — `lookup` delivered on the agent's terms.
+ *
+ * The root topic is `start` followed by the structural core (see `START_TITLES`), and ends with an
+ * index of every other topic: the rest of the core, then one per component, store and section,
+ * which is the part `lookup`'s tool answered. What `lookup` also did, and topics cannot, is
+ * preselect entries from the request: an agent here has to ask.
+ */
+export function referenceDocs(start: string, reference: string, root = 'template'): ReferenceDoc[] {
+  const section = sectionsByTitle(reference);
+  const components = parseEntries(section('Component Registry'), COMPONENT_ENTRY, (m) => m[1]);
+  const stores = parseEntries(section('Stores'), STORE_ENTRY, (m) => m[1][0].toLowerCase() + m[1].slice(1));
+
+  /** `- we-draggable (LayoutElement) — Makes whatever…` → `Makes whatever…`, or the kind when there is no description. */
+  const describe = (name: string, entry: string): string => {
+    const head = entry.split('\n')[0].replace(/^- /, '').slice(name.length).trim();
+    const said = head.split(' — ')[1]?.trim();
+    return said || (head ? `${name} ${head}` : name);
+  };
+
+  const topics: ReferenceDoc[] = [
+    ...Object.entries(CORE_TOPICS).map(([key, { title, summary }]) => ({
+      path: `${root}/core/${key}`,
+      title,
+      summary,
+      text: section(title),
+    })),
+    ...[...components.entries].map(([name, entry]) => ({
+      path: `${root}/components/${name}`,
+      title: name,
+      summary: describe(name, entry),
+      text: [components.intro, entry].join('\n\n'),
+    })),
+    ...[...stores.entries].map(([name, entry]) => ({
+      path: `${root}/stores/${name}`,
+      title: name,
+      summary: `The state and actions of ${name}`,
+      text: [stores.intro, entry].join('\n\n'),
+    })),
+    ...Object.entries(LOOKUP_SECTIONS).map(([key, title]) => ({
+      path: `${root}/sections/${key}`,
+      title,
+      summary: LOOKUP_SUMMARIES[key as keyof typeof LOOKUP_SECTIONS],
+      text: section(title),
+    })),
+  ];
+
+  const index = [
+    '## Everything else, by documentation topic',
+    '',
+    'Each of these is a documentation topic of its own. Read the ones a change needs before writing',
+    'patches — guessing a component, prop or store is the most common reason a patch is refused.',
+    '',
+    `The rest of the core, as \`${root}/core/<name>\` — most edits need the first two:`,
+    ...Object.entries(CORE_TOPICS).map(([key, { summary }]) => `- ${key} — ${summary}`),
+    '',
+    `Components, as \`${root}/components/<name>\`: ${[...components.entries.keys()].join(', ')}`,
+    '',
+    `Stores, as \`${root}/stores/<name>\`: ${[...stores.entries.keys()].join(', ')}`,
+    '',
+    `Sections, as \`${root}/sections/<name>\`:`,
+    ...Object.keys(LOOKUP_SECTIONS).map((key) => `- ${key} — ${LOOKUP_SUMMARIES[key as keyof typeof LOOKUP_SECTIONS]}`),
+  ].join('\n');
+
+  return [
+    {
+      path: root,
+      title: 'Editing a WE template',
+      summary: 'Start here: the template tools, how a patch is written, and how a template is built',
+      text: start + [...START_TITLES.map(section), index].join('\n\n'),
+    },
+    ...topics,
+  ];
+}
+
 export function prepareContext(
   strategy: ContextStrategyId,
   preamble: string,

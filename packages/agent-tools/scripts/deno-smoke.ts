@@ -25,7 +25,7 @@ import { encodeTemplateFile } from '@we/entities';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { kanbanTemplate, workshopTemplate } from '@we/template-showcase';
 
-import { createTemplateToolset } from '../src/templates/templateToolset';
+import { prepareForModel } from '../src/templates/nodeAliases';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const bundle = join(here, '../dist/agent-tools.bundle.js');
@@ -40,10 +40,10 @@ try {
   // Each template as the Template record a host reads: stored with permanent ids, its file
   // resolved to the data URI the app reads it as. Kanban fits the template budget and is sent
   // whole; workshop does not, and goes as an outline.
-  const record = async (name: string, template: unknown) => {
-    // An untouched toolset's result is the template with the permanent ids a stored one carries.
-    const untouched = await createTemplateToolset({ template: template as SchemaNode, request: '' });
-    const stored = untouched.result().template as TemplateSchema;
+  const record = (name: string, template: unknown) => {
+    // Prepared and restored untouched, a template carries the permanent ids a stored one does.
+    const tree = prepareForModel(template as SchemaNode);
+    const stored = tree.restore(tree.schema) as TemplateSchema;
     const file = encodeTemplateFile(stored);
     const properties = { name, version: 1, schema: `data:${file.file_type};base64,${file.data_base64}` };
     writeFileSync(
@@ -51,8 +51,8 @@ try {
       JSON.stringify({ id: `${name}-record`, className: 'Template', properties }),
     );
   };
-  await record('kanban', kanbanTemplate);
-  await record('workshop', workshopTemplate);
+  record('kanban', kanbanTemplate);
+  record('workshop', workshopTemplate);
 
   const run = spawnSync(
     'deno',
