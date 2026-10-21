@@ -1588,6 +1588,42 @@ when `relative` is enabled.
   Props: value: string = '', relative: boolean = false, relativeStyle: 'long' | 'short' | 'narrow' = 'long', locale: string = 'en', dateStyle: 'full' | 'long' | 'medium' | 'short' | null = null, timeStyle: 'full' | 'long' | 'medium' | 'short' | null = null, weekday: 'long' | 'short' | 'narrow' | null = null, year: 'numeric' | '2-digit' | null = null, month: 'numeric' | '2-digit' | 'long' | 'short' | 'narrow' | null = null, day: 'numeric' | '2-digit' | null = null, hour: 'numeric' | '2-digit' | null = null, minute: 'numeric' | '2-digit' | null = null, second: 'numeric' | '2-digit' | null = null, timeZone: string | null = null, hourCycle: 'h11' | 'h12' | 'h23' | 'h24' | null = null, formattedTime: string
 - we-tooltip (LayoutElement)
   Props: open: boolean = false, content: string = '', placement: 'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end' = 'top', tooltipEl: HTMLElement, arrowEl: HTMLElement
+- we-tree (DesignSystemElement) — A tree — the space as a file browser, a folder list, an outline. The root of one, holding its items.
+
+#### One root, items to any depth
+
+The data a tree shows is usually fractal (a channel holds channels), and so is `we-tree-item`: an
+item's children are more items, nested inside it. The widget is not: there is exactly one
+`we-tree`, because ARIA allows one `tree` per widget and the keyboard treats every visible row as a
+single list. Arrow-down from the last row of a sub-channel lands on its parent's next sibling, and
+Tab enters and leaves the tree once. A `we-tree` per level would make every subtree its own tab stop
+and its own island of focus, and a screen reader would announce a dozen trees.
+
+#### The keyboard
+
+Roving focus: one row is the tab stop, the arrows move it. Down and Up walk the visible rows in
+order; Right opens a closed row, or steps into an open one; Left closes an open row, or steps out to
+its parent; Home and End go to the ends; Enter and Space select. Typing a letter moves to the next
+row whose label starts with it. This is the WAI-ARIA tree pattern, and it lives here, once, so no
+template has to write it.
+
+#### What it emits, and what it does not decide
+
+`select` — `{ value }` — when a row is chosen, by click or key. What choosing means (navigating,
+filtering) is the template's business. Which row is selected is the template's too: pass
+`selected` and the matching item marks itself, so a selection driven by the address stays in step.
+  Props: selected: string = '', label: string = ''
+- we-tree-item (DesignSystemElement) — One row of a `we-tree`, and the rows under it.
+
+The row's own content goes in the default slot — an icon, a label, a badge, a count, whatever the
+template arranges (the kit's `treeRow` fragment is the usual one). Rows under it go in the
+`children` slot, rendered only while it is open: a template that loads them lazily puts its query
+inside an `$if` on the same open state, so nothing is read for a row nobody has opened.
+
+`open` is the template's to hold, as `selected` is the tree's: the row asks (`openchange`, `{ open }`,
+bound as `onOpenChange`) and the template answers by setting it, so a row's open state can live in the address, in local
+state or anywhere else.
+  Props: value: string = '', open: boolean = false, expandable: boolean = false, selected: boolean = false, tabStop: boolean = false, level: number = 0
 - we-video (LayoutVisualElement)
   Props: src: string = '', poster?: string | undefined, controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, playsinline: boolean = false, stream?: MediaStream | null | undefined
 
