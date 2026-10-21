@@ -30,6 +30,10 @@ WE_SEED=seeds/coasys.seed.json pnpm validate:seed
 WE_SEED=seeds/coasys.seed.json pnpm build
 ```
 
+`seeds/coasys.seed.json` is the worked example: it builds in the Coasys cartridge
+(`bundles: ["coasys"]`), so the app opens as Coasys, with its own product name, app
+id and icon (`desktop`) and its own data folder (`ad4m.dataPath`).
+
 Paths inside any seed (`ad4m.executorPath`, `desktop.icon`, …) are relative to
 the repository root, wherever the seed file sits.
 
@@ -173,6 +177,9 @@ The first bundle bringing an app is the deployment's app unless `host.ui.app` na
 record types are not built in — they belong to spaces, and whoever runs a space sets it up for the app
 in Settings. The format and the rest are in `docs/architecture/apps-as-data.md`;
 `pnpm validate:seed` checks each id names a bundle file of this format.
+
+A space starter may name a bundle's space template as its `defaultTemplateId`, by the id an install
+gives it: `<bundle>--<template>`, so `coasys--space` for the Coasys bundle's.
 
 ```json
 "bundles": ["field-guide"]

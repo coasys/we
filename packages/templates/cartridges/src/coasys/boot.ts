@@ -1,0 +1,209 @@
+import type { SchemaNode } from '@we/schema-shared';
+import { field } from '@we/template-kit';
+
+/**
+ * The Coasys sign-in screen, as Josh's identity ceremonies lay it out: the mark and the name in a bar
+ * along the top, and one narrow column under it holding a heading, a sentence and the one thing to do.
+ *
+ * The password is typed into the host's `CredentialField` and nowhere else — what is typed there never
+ * becomes template state, so this screen cannot keep or forward it. Everything around it is the app's.
+ *
+ * WE's own screen also lists the other accounts on a desktop build; that is left to WE's. The Coasys
+ * way in — passkeys, a master key, linking a device — waits for the identity backend, and arrives here
+ * as more states of the same column.
+ */
+
+const brandBar: SchemaNode = {
+  type: 'Row',
+  props: { px: '800', py: '600', gap: '200', ay: 'center', width: '100%' },
+  children: [
+    {
+      type: 'we-image',
+      props: { src: { $: 'templateStore.brand.mark' }, alt: '', width: '22px', height: '22px' },
+    },
+    {
+      type: 'we-text',
+      props: { variant: 'body', fontWeight: 'semibold', letterSpacing: 'tight' },
+      children: [{ $: 'templateStore.brand.name' }],
+    },
+  ],
+};
+
+/** A heading and the sentence under it, as every step of the ceremony opens. */
+const head = (heading: SchemaNode['children'], intro: string): SchemaNode => ({
+  type: 'Column',
+  props: { gap: '300' },
+  children: [
+    { type: 'we-text', props: { variant: 'heading-xl', tag: 'h1', letterSpacing: 'tight' }, children: heading },
+    { type: 'we-text', props: { variant: 'ingress', color: 'text-muted' }, children: [intro] },
+  ],
+});
+
+/** A wait with nothing to do but read why. */
+const waiting = (words: string): SchemaNode => ({
+  type: 'Row',
+  props: { gap: '300', ay: 'center' },
+  children: [
+    { type: 'we-spinner', props: { size: 'sm' } },
+    { type: 'we-text', props: { color: 'text-muted' }, children: [words] },
+  ],
+});
+
+const signIn: SchemaNode = {
+  type: 'Column',
+  props: { gap: '600' },
+  children: [
+    head(['Welcome back'], 'Unlock your account on this device.'),
+    {
+      type: 'we-form-field',
+      props: {
+        label: 'Password',
+        error: { $: "sessionStore.passwordError ? 'That password did not unlock it' : sessionStore.loginError" },
+      },
+      children: [
+        {
+          type: 'CredentialField',
+          props: {
+            purpose: 'unlock',
+            width: '100%',
+            placeholder: 'Your password',
+            onEdit: { $action: 'sessionStore.clearPasswordError' },
+            onSubmit: { $action: 'sessionStore.unlock' },
+          },
+        },
+      ],
+    },
+    {
+      type: 'Row',
+      props: { gap: '300', pt: '200', ay: 'center' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'primary',
+            disabled: { $: '!sessionStore.credentialEntered' },
+            loading: { $: 'sessionStore.loginLoading' },
+            onClick: { $action: 'sessionStore.unlock' },
+          },
+          children: ['Unlock'],
+        },
+      ],
+    },
+  ],
+};
+
+const createAccount: SchemaNode = {
+  type: 'Column',
+  props: { gap: '600' },
+  $localState: {
+    name: { type: 'string', initial: '', validate: [{ rule: 'required', message: 'A name is required' }] },
+  },
+  children: [
+    head(['Make your account'], 'A name people will know you by, and a password that unlocks you on this device.'),
+    {
+      type: 'Column',
+      props: { gap: '400' },
+      children: [
+        field({ name: 'name', label: 'Name', placeholder: 'What people call you', validated: true }),
+        { type: 'CredentialField', props: { purpose: 'new' } },
+      ],
+    },
+    {
+      type: 'Row',
+      props: { gap: '300', pt: '200', ay: 'center' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'primary',
+            loading: { $: 'sessionStore.createAgentLoading' },
+            onClick: [
+              { $touch: '$all' },
+              { $action: 'sessionStore.touchCredential' },
+              {
+                $if: {
+                  condition: { $: 'formValid() && sessionStore.credentialConfirmed' },
+                  then: { $action: 'profileStore.completeAccountSetup', args: [{ $: 'local.name' }] },
+                },
+              },
+            ],
+          },
+          children: ['Create account'],
+        },
+      ],
+    },
+  ],
+};
+
+const failed: SchemaNode = {
+  type: 'Column',
+  props: { gap: '600' },
+  children: [
+    head(['Could not reach your data'], 'Coasys could not connect to the device that holds your account.'),
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'sessionStore.bootError' },
+        then: { type: 'we-code', props: { block: true }, children: [{ $: 'sessionStore.bootError' }] },
+      },
+    },
+    {
+      type: 'Row',
+      children: [
+        {
+          type: 'we-button',
+          props: { variant: 'primary', onClick: { $action: 'sessionStore.retryBoot' } },
+          children: ['Try again'],
+        },
+      ],
+    },
+  ],
+};
+
+/** One state of the column at a time, chosen by where boot has got to. */
+const step = (condition: string, then: SchemaNode): SchemaNode => ({
+  type: '$if',
+  props: { condition: { $: condition }, enterTransition: { type: 'fade', duration: 200 }, then },
+});
+
+export const coasysBootScreen: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: "sessionStore.bootState != 'ready'" },
+    exitTransition: { type: 'fade', duration: 400, easing: 'ease-out' },
+    then: {
+      type: 'Column',
+      props: {
+        width: '100%',
+        height: '100%',
+        bg: 'page',
+        position: 'absolute',
+        zIndex: 9999,
+        overflowY: 'auto',
+      },
+      children: [
+        brandBar,
+        {
+          type: 'Column',
+          props: { flex: '1 1 auto', ax: 'center', px: '500', pt: '800', pb: '1000', mdUpProps: { px: '800' } },
+          children: [
+            {
+              type: 'Column',
+              props: { width: '100%', maxWidth: '440px', gap: '600' },
+              children: [
+                step("sessionStore.bootState == 'initialising'", waiting('Starting up…')),
+                step(
+                  "sessionStore.createAgentLoading || sessionStore.bootState == 'finishing'",
+                  waiting('Setting up your account…'),
+                ),
+                step("sessionStore.bootState == 'login'", signIn),
+                step("sessionStore.bootState == 'createAgent' && !sessionStore.createAgentLoading", createAccount),
+                step("sessionStore.bootState == 'error'", failed),
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};

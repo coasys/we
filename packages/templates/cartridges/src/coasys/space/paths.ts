@@ -1,0 +1,37 @@
+/**
+ * Where a Coasys space's things live, named once.
+ *
+ * A space is one tree and one view: the tree says what is selected, the view draws it. Both read the
+ * same few expressions, so they are written here rather than twice.
+ */
+
+/** The channel on screen: the one the address names, or the space's own collection, its root channel. */
+export const CHANNEL_EXPR = 'routeStore.params.channel ? routeStore.params.channel : spaceStore.root';
+export const CHANNEL = { $: CHANNEL_EXPR };
+
+/** Whether the channel on screen is the space's root — "General", which every space has. */
+export const IN_ROOT_EXPR = `(${CHANNEL_EXPR}) == spaceStore.root`;
+
+/** A channel's address — the root channel's is the space's own. */
+export const channelPath = (idExpr: string): string =>
+  `(${idExpr}) == spaceStore.root ? spaceStore.spacePath : spaceStore.spacePath + '?channel=' + (${idExpr})`;
+
+/** A call's address: its record's own page, drawn by the call view. */
+export const callPath = (idExpr: string): string =>
+  `spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (${idExpr})`;
+
+/** Which part of the page the address is on — '' for a channel's chat. */
+export const PAGE_EXPR = "routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''";
+
+/**
+ * The tree row that matches the address, as `we-tree`'s `selected` takes it: `<kind>|<id>`. Each row
+ * reports its value in the same form, so choosing one and arriving at it by link light the same row.
+ */
+export const SELECTED_EXPR = [
+  `(${PAGE_EXPR}) == 'record' ? 'call|' + routeStore.params.id`,
+  `: (${PAGE_EXPR}) == 'flows' ? 'flow|' + (flowStore.open ? flowStore.open.name : '')`,
+  `: 'channel|' + (${CHANNEL_EXPR})`,
+].join(' ');
+
+/** The id part of a tree row's value. */
+export const ROW_ID = "split(event.detail.value, '|')[1]";

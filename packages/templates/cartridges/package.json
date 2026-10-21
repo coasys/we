@@ -1,7 +1,7 @@
 {
   "name": "@we/template-cartridges",
   "version": "0.1.0",
-  "description": "Cartridges: whole apps as data — shell, sections, theme, data model and chrome — built by hand to find where data runs out",
+  "description": "Cartridges: whole apps as data — chrome, space templates, sections, theme, brand and data model — built into a deployment by its seed or installed from a file",
   "type": "module",
   "scripts": {
     "test": "vitest run",

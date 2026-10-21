@@ -15,7 +15,8 @@
       "description": "Your spaces on the left, and nothing on the right: a notebook, not a workspace.",
       "icon": "binoculars",
       "role": "app",
-      "frame": { "left": 80 }
+      "frame": { "left": 80 },
+      "themeId": "moss"
     },
     "props": { "styles": { "display": "contents" } },
     "children": [{ "type": "$part", "props": { "id": "host.sidebar" } }]
