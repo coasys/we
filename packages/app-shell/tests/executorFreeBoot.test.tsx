@@ -745,7 +745,7 @@ describe('what the stores actually wrote', () => {
       const [space] = await Space.findAll(ref.handle as never, { include: { root: true } });
       expect(space.defaultTemplateId).toBe('workshop');
       const root = (space as unknown as { root?: { id: string; kind: string } }).root;
-      expect(root?.kind).toBe('space');
+      expect(root?.kind).toBe('channel');
       // The starter's `input` lands on the space collection itself, where the messages typed outside
       // calls are decided — not on the space, which holds only what new collections start with.
       const rootRecord = await CollectionBlock.findOne(ref.handle as never, { where: { id: root!.id } } as never);
