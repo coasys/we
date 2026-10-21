@@ -32,14 +32,12 @@ permissions:
   contents: read
   pull-requests: read
 
-# One run per PR at a time, and none cancelled. A push and a description edit seconds apart start
-# two runs, and the group does not always order them as they were created: with cancel-in-progress
-# the one GitHub then took as the check's result was the cancelled one, and a cancelled required
-# check blocks the merge with a passing run beside it on the same commit. The jobs take seconds, so
-# waiting costs nothing, and each reads the PR as it is when it runs rather than as its event saw it.
-concurrency:
-  group: pr-tasks-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
+# No concurrency group, on purpose. A group cancels runs: with cancel-in-progress the one in
+# progress, and without it any waiting run a newer one replaces. A push and a description edit
+# seconds apart start two runs, the group does not always order them as they were created, and the
+# run GitHub took as a required check's result was the cancelled one — which blocks the merge with a
+# passing run beside it on the same commit. The jobs take seconds, so cancelling saves nothing, and
+# each reads the PR as it is when it runs rather than as its event saw it, so runs in parallel agree.
 
 jobs:
   unticked:
