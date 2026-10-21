@@ -43,12 +43,19 @@ function stub(world = {}) {
     { context: 'ci/circleci: build', state: 'success', target_url: 'https://app.circleci.com/pipelines/x' },
   ];
   const missing = new Set(world.missing ?? []);
+  // What fetch throws when the host cannot be reached at all.
+  const unreachable = () => new TypeError('fetch failed', { cause: { code: 'ENOTFOUND' } });
   globalThis.fetch = async (url, init) => {
     url = String(url);
+    assert.ok(init?.signal, `${url} is fetched without a timeout`);
     const ok = (body) => (Buffer.isBuffer(body) ? new Response(body) : Response.json(body));
-    if (url.includes(`/commits/${COMMIT}/statuses`)) return ok(statuses);
+    if (url.includes(`/commits/${COMMIT}/statuses`)) {
+      if (world.githubDown) throw unreachable();
+      return ok(statuses);
+    }
     if (url.startsWith(`${ORIGIN}/`)) {
       assert.equal(init?.redirect, 'manual');
+      if (world.hostDown) throw unreachable();
       if (world.redirect) return new Response('', { status: 302, headers: { Location: 'https://evil.example/x' } });
       if (missing.has(url)) return new Response('', { status: 404 });
       if (url === `${ORIGIN}/${COMMIT}/manifest.json`) return ok(Buffer.from(JSON.stringify(manifest)));
@@ -115,6 +122,8 @@ describe('not finding one is a reason to compile it, not a failure', () => {
   it('a build from before ad4m published executors, or whose file was removed', () =>
     notPublished({ missing: [`${ORIGIN}/${COMMIT}/manifest.json`] }, /published no executor/));
   it('a redirect, which is not the file', () => notPublished({ redirect: true }, /redirected/));
+  it('executor.ad4m.dev unreachable', () => notPublished({ hostDown: true }, /could not be fetched \(ENOTFOUND\)/));
+  it('GitHub unreachable', () => notPublished({ githubDown: true }, /could not be fetched/));
   it('a manifest for another commit', () =>
     notPublished(
       { manifest: manifestFor('ad4m-executor.zst', zstdCompressSync(BINARY), { commit: 'b'.repeat(40) }) },
@@ -184,6 +193,15 @@ describe('whether ad4m has finished with a commit', () => {
       await stateOf({ statuses: [build('success')], missing: [`${ORIGIN}/${COMMIT}/manifest.json`] }),
       'unpublished',
     );
+  });
+
+  it('unpublished when executor.ad4m.dev cannot be reached, so the bump goes ahead', async () => {
+    assert.equal(await stateOf({ statuses: [build('success')], hostDown: true }), 'unpublished');
+  });
+
+  it('a lookup GitHub cannot answer, which the bump reads as going ahead', async () => {
+    stub({ githubDown: true });
+    await assert.rejects(() => executorState(COMMIT), NotPublished);
   });
 
   it('failed when the build failed', async () => {

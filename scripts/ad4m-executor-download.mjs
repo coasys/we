@@ -37,23 +37,42 @@ export class NotPublished extends Error {}
 /** A download that is not the file its manifest describes. */
 export class Mismatch extends Error {}
 
-async function json(url, headers = {}) {
-  const res = await fetch(url, { headers });
-  if (res.status === 404) return null;
-  if (!res.ok) throw new NotPublished(`${url} answered ${res.status}.`);
-  return res.json();
+/** Seconds a lookup may take, and a download of the binary (about 90 MB). */
+const LOOKUP_TIMEOUT = 30;
+const DOWNLOAD_TIMEOUT = 300;
+
+/**
+ * GETs a URL and reads its body with `read`, or returns null for a 404. A request that cannot be
+ * made or takes too long — DNS, a refused connection, the host down — is NotPublished like any other
+ * miss: executor.ad4m.dev is one self-hosted machine, and its being offline is a reason to compile,
+ * not to fail the run.
+ */
+async function get(url, init, seconds, read) {
+  try {
+    const res = await fetch(url, { ...init, signal: AbortSignal.timeout(seconds * 1000) });
+    if (res.status === 404) return null;
+    // A redirect is not the file. Following one would take bytes from a host this URL does not name.
+    if (res.status >= 300 && res.status < 400) {
+      throw new NotPublished(`${url} redirected, and a redirect is not the file.`);
+    }
+    if (!res.ok) throw new NotPublished(`${url} answered ${res.status}.`);
+    return await read(res);
+  } catch (error) {
+    if (error instanceof NotPublished) throw error;
+    throw new NotPublished(`${url} could not be fetched (${error.cause?.code ?? error.name}).`);
+  }
+}
+
+function json(url, headers = {}) {
+  return get(url, { headers }, LOOKUP_TIMEOUT, (res) => res.json());
 }
 
 /** The file ad4m published for a commit, or null when that path is not there. */
-async function published(commit, name) {
-  const url = `${EXECUTOR_ORIGIN}/${commit}/${name}`;
-  // A redirect is not the file. Following one would take bytes from a host this URL does not name.
-  const res = await fetch(url, { redirect: 'manual' });
-  if (res.status === 404) return null;
-  if (res.status >= 300 && res.status < 400)
-    throw new NotPublished(`${url} redirected, and a redirect is not the file.`);
-  if (!res.ok) throw new NotPublished(`${url} answered ${res.status}.`);
-  return Buffer.from(await res.arrayBuffer());
+function published(commit, name) {
+  const seconds = name === 'manifest.json' ? LOOKUP_TIMEOUT : DOWNLOAD_TIMEOUT;
+  return get(`${EXECUTOR_ORIGIN}/${commit}/${name}`, { redirect: 'manual' }, seconds, async (res) =>
+    Buffer.from(await res.arrayBuffer()),
+  );
 }
 
 /** The successful `ci/circleci: build` status of a commit, newest first, or undefined. */
