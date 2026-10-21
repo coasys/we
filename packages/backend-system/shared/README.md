@@ -15,6 +15,8 @@ transport or a model is reached through. The reasons the layer exists are in the
 - `EphemeralPort` — peer-to-peer transport for coordination that isn't stored
 - presence — roster, liveness, activities
 - `EntityManifest` — the neutral description of an entity's shape
+- `IdentityPort` — what a backend can do with a person's identity beyond the session (keys, devices,
+  bots, plan); optional, and capabilities only until a backend answers the calls behind them
 
 ## What doesn't
 
