@@ -900,6 +900,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     activeTemplateTheme: state('view-state'),
     setCurrentTheme: action('appearance'),
     setDefaultTheme: action('library'),
+    provideAppTheme: WIRING,
     setSystemTheme: action('agent'),
     setThemeInstalled: action('library'),
     previewThemeScope: ambient('editor'),
@@ -965,6 +966,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     defaultTemplateId: state('library'),
     appTemplateId: state('library'),
     appTemplateOptions: state('library'),
+    // Appearance, so every template can name the app it is in — WE's own, or a bundle's brand.
+    brand: state('appearance'),
     appTemplate: WIRING,
     operationLoading: state('appearance'),
     switchTemplate: action('appearance'),

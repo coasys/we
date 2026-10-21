@@ -145,8 +145,10 @@ export type { FindNodeResult, PatchError } from './indexer';
 export { deriveNodeIds, derivedNodeId, isNodeId, newNodeId, NODE_ID_LENGTH } from './nodeIdentity';
 export { type PartFork, partForkChanged, partForkPrint } from './forkPrint';
 export { HOST_PART_IDS, type HostPartId, isHostPartId } from './hostPartIds';
+export { templateThemeId, templateThemeIds } from './templateTheme';
 export {
   type Bundle,
+  type BundleBrand,
   BUNDLE_FORMAT,
   BUNDLE_FORMAT_VERSION,
   type BundleDisplay,
@@ -154,7 +156,9 @@ export {
   type BundleProblem,
   type BundleRecordType,
   type BundleTheme,
+  bundleThemes,
   readBundle,
+  svgProblem,
 } from './bundle';
 export {
   expandViewRoutes,

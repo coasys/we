@@ -1,6 +1,10 @@
 import { readBootSnapshot } from '@shared/bundles/bootSnapshot';
+import { readDeviceApp } from '@shared/bundles/deviceApp';
+import { appTemplateRegistry } from '@shared/registries/appTemplates';
+import { seedBundleAppId, seedBundleApps } from '@shared/registries/seedBundles';
 import type { ThemeKey } from '@shared/registries/themeRegistry';
 import { isValidThemeKey, themeRegistry } from '@shared/registries/themeRegistry';
+import { getSeed } from '@shared/seedRegistry';
 import { explain } from '@shared/userMessage';
 import type { NewRecord } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
@@ -18,6 +22,8 @@ import {
   applyThemeVars,
   parseOverrides,
   reconcileSurfaces,
+  // Aliased: the store has a `templateThemeId` of its own, the id the template surface is asking for.
+  templateThemeId as themeOfTemplate,
   THEME_SCHEMA_VERSION,
   themeParametersToStyle,
 } from '@we/schema-shared';
@@ -85,6 +91,12 @@ export interface ThemeStore {
   // Actions
   setCurrentTheme: (themeId: string) => void;
   setDefaultTheme: (themeId: string) => Promise<boolean>;
+  /**
+   * Lend this store the theme the app in use offers first, which stands in for the agent's default
+   * until they choose one. `TemplateStore` knows the app and mounts below this store, so it hands
+   * the accessor down — the same arrangement as `appStore.provideInstalledModules`.
+   */
+  provideAppTheme: (lookup: () => string | undefined) => void;
   /**
    * The role the theme editor should jump to, kebab-case, or empty.
    *
@@ -279,7 +291,29 @@ const SAFE_THEME_ID = /^[A-Za-z0-9_-]+$/;
 
 function getInitialThemeId(): string {
   const saved = typeof window !== 'undefined' ? localStorage.getItem(THEME_KEY) : null;
-  return saved ?? 'dark';
+  if (saved && !UNCHOSEN_THEME_IDS.has(saved)) return saved;
+  // Nobody has chosen on this device: the app it last ran, else the app the deployment opens in.
+  return readDeviceApp()?.themes?.[0]?.id ?? seedAppThemeId() ?? 'dark';
+}
+
+/**
+ * What `AgentSettings.defaultThemeId` holds for an agent who has never chosen: the model's default
+ * (`'default'`, which names no theme) or nothing. Read as "no choice", so the app's own theme can
+ * stand in for it.
+ */
+const UNCHOSEN_THEME_IDS = new Set(['', 'default']);
+
+/** The first theme the deployment's own app names (the seed's `host.ui.app`, or its first bundle's app). */
+function seedAppThemeId(): string | undefined {
+  let appId: string | undefined;
+  try {
+    appId = getSeed().host?.ui?.app || seedBundleAppId;
+  } catch {
+    appId = seedBundleAppId;
+  }
+  if (!appId) return undefined;
+  const app = seedBundleApps[appId] ?? appTemplateRegistry[appId];
+  return themeOfTemplate(app?.meta);
 }
 
 /**
@@ -475,6 +509,20 @@ function populateMissingOverrides(
 export function ThemeStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const datasetStore = useDatasetStore();
+
+  /*
+    The theme an agent who has not chosen one wears: the one the app in use offers first, else what
+    this device last wore. Their own choice, once made, always wins — see \`UNCHOSEN_THEME_IDS\`.
+  */
+  const [appThemeLookup, setAppThemeLookup] = createSignal<() => string | undefined>(() => undefined);
+  const provideAppTheme = (lookup: () => string | undefined) => setAppThemeLookup(() => lookup);
+  const chosenDefaultThemeId = (): string | undefined => {
+    const own = datasetStore.agentSettings()?.defaultThemeId;
+    return own && !UNCHOSEN_THEME_IDS.has(own) ? own : undefined;
+  };
+  const agentDefaultThemeId = (): string => chosenDefaultThemeId() ?? appThemeLookup()() ?? getInitialThemeId();
+  /** The themes the device remembers from the app it last ran, for the moments before they load. */
+  const rememberedThemes = readDeviceApp()?.themes ?? [];
 
   /*
     "Follow system" is offered as a theme because that is how somebody thinks of it — one more row
@@ -768,22 +816,22 @@ export function ThemeStoreProvider(props: ParentProps) {
   let lastAppliedDefaultThemeId: string | undefined;
   createEffect(() => {
     const prefs = datasetStore.agentSettings();
-    if (!prefs?.defaultThemeId) return;
+    if (!prefs) return;
+    const defaultId = agentDefaultThemeId();
     // Don't override currentThemeId while the user is actively editing a theme —
     // agentSettings can update (e.g. when a theme save triggers AD4M subscriptions)
     // and blindly resetting currentThemeId to defaultThemeId would exit editing mode.
     if (untrack(() => editingTheme())) return;
-    if (prefs.defaultThemeId === lastAppliedDefaultThemeId) return;
-    lastAppliedDefaultThemeId = prefs.defaultThemeId;
-    setCurrentThemeId(prefs.defaultThemeId);
+    if (defaultId === lastAppliedDefaultThemeId) return;
+    lastAppliedDefaultThemeId = defaultId;
+    setCurrentThemeId(defaultId);
   });
 
   // Keep localStorage in sync with the agent's default theme so the bootscreen
   // can apply it immediately on next launch without waiting for AD4M to load.
   createEffect(() => {
-    const prefs = datasetStore.agentSettings();
-    if (!prefs?.defaultThemeId) return;
-    localStorage.setItem(THEME_KEY, prefs.defaultThemeId);
+    if (!datasetStore.agentSettings()) return;
+    localStorage.setItem(THEME_KEY, agentDefaultThemeId());
   });
 
   // The same, for the two halves of "Follow system" — the boot screen has to resolve `system`
@@ -806,9 +854,7 @@ export function ThemeStoreProvider(props: ParentProps) {
    * Prefers `AgentSettings` over `localStorage` so it is reactive; localStorage is the boot answer,
    * before AD4M has loaded, and an effect above keeps the two in step.
    */
-  const personalTheme = createMemo<ThemeData>(() =>
-    resolveThemeData(datasetStore.agentSettings()?.defaultThemeId || getInitialThemeId()),
-  );
+  const personalTheme = createMemo<ThemeData>(() => resolveThemeData(agentDefaultThemeId()));
 
   /**
    * Where the theme actually gets applied — two derived answers and one effect each, replacing
@@ -846,9 +892,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     `activeTemplateTheme` — if either of those changes, these have to follow.
   */
   const documentThemeId = createMemo(() =>
-    themeScope() === 'scoped'
-      ? datasetStore.agentSettings()?.defaultThemeId || getInitialThemeId()
-      : (editingTheme()?.id ?? currentThemeId()),
+    themeScope() === 'scoped' ? agentDefaultThemeId() : (editingTheme()?.id ?? currentThemeId()),
   );
   const templateThemeId = createMemo(() => editingTheme()?.id ?? currentThemeId());
 
@@ -938,7 +982,11 @@ export function ThemeStoreProvider(props: ParentProps) {
   // Apply initial theme immediately from localStorage — inject CSS string synchronously
   // so the correct theme renders before AD4M loads, without relying on a stylesheet.
   const initialId = getInitialThemeId();
-  applyThemeToDOM(registryToThemeData(isValidThemeKey(initialId) ? initialId : 'light'));
+  applyThemeToDOM(
+    isValidThemeKey(initialId)
+      ? registryToThemeData(initialId)
+      : (rememberedThemes.find((t) => t.id === initialId) ?? registryToThemeData('light')),
+  );
 
   function resolveThemeData(themeId: string): ThemeData {
     // `system` is not a theme, it is a question — asked here rather than remembered, so the answer
@@ -947,6 +995,9 @@ export function ThemeStoreProvider(props: ParentProps) {
     const found = allThemes().find((t) => t.id === id);
     if (found) return found;
     if (isValidThemeKey(id)) return registryToThemeData(id);
+    // An app's theme the library has not loaded yet, worn as the device remembers it.
+    const remembered = rememberedThemes.find((t) => t.id === id);
+    if (remembered) return remembered;
 
     /*
       An id nothing answers to — which, for the first second of every load, is any custom theme.
@@ -962,7 +1013,9 @@ export function ThemeStoreProvider(props: ParentProps) {
       for an agent who has no default either — there has to be *some* answer, and a wrong one that
       matches what is already on screen beats a wrong one that does not.
     */
-    const preferred = datasetStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
+    const preferred = agentDefaultThemeId();
+    const rememberedPreferred = rememberedThemes.find((t) => t.id === preferred);
+    if (rememberedPreferred) return rememberedPreferred;
     return registryToThemeData(isValidThemeKey(preferred) ? preferred : 'light');
   }
 
@@ -976,7 +1029,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     so toggling the theme scope switch re-ran the whole resolution and overwrote the theme the agent
     had just picked. Memoising collapses "settings changed" back to "*this* value changed".
   */
-  const defaultThemeId: Accessor<string> = createMemo(() => datasetStore.agentSettings()?.defaultThemeId || 'light');
+  const defaultThemeId: Accessor<string> = createMemo(() => chosenDefaultThemeId() ?? appThemeLookup()() ?? 'light');
 
   const themeManagementList: Accessor<ThemeManagementItem[]> = () => {
     const defaultId = defaultThemeId();
@@ -1120,7 +1173,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   function restorePersonalTheme() {
-    setCurrentThemeId(datasetStore.agentSettings()?.defaultThemeId || getInitialThemeId());
+    setCurrentThemeId(agentDefaultThemeId());
   }
 
   function clearSpaceTheme() {
@@ -1813,6 +1866,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     applySnapshot,
     setCurrentTheme,
     setDefaultTheme,
+    provideAppTheme,
     focusedRole,
     focusRole,
     setSystemTheme,

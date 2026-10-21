@@ -21,6 +21,9 @@ data the host already understands.
 | `app`                                   | A template with `meta.role: 'app'`: the chrome around every space (see `chrome-and-panels.md`). |
 | `templates`                             | Space templates (no role) and sections (`meta.role: 'view'`).                                   |
 | `theme`                                 | `{ id, name, icon?, overrides, css? }`, the parameter object a theme is.                        |
+| `themes`                                | The same, for an app offering several looks, its default first. A bundle uses one or the other. |
+| `brand`                                 | `{ name, mark?, wordmark?, about? }`: what the app calls itself. See "Whitelabelling".          |
+| `bootScreen`                            | A node: the app's own sign-in screen, placing the host's `CredentialField`. See below.          |
 | `recordTypes`                           | `{ name, icon?, description?, manifest }`, one entity each, as the model wizard writes it.      |
 | `display`                               | `{ spaces: 'ours' \| 'theirs', template? }` — see "How an app shows spaces".                    |
 
@@ -108,6 +111,32 @@ of exactly those pieces is kept on the device per agent (`shared/bundles/bootSna
 answer. Each template in it goes through the same acceptance as the library's, and safe mode ignores
 it. When the display policy decides a space's template, that template is shown at once; reading the
 space's own templates and the agent's override for it still has the last word.
+
+## Whitelabelling
+
+An app can stand in for WE wherever WE names itself. While the app in use came in a bundle with a
+`brand`, `templateStore.brand` is that brand: the sidebar's mark, the sign-in screen, the window's
+title and favicon, the About page, and every sentence in the shell that names the product read it.
+WE's own code is untouched — without a brand, everything says WE as before. Code that is not a
+template (a toast, the failure screen) reads `currentProductName()` from `shared/bundles/brand.ts`.
+
+- **Marks are SVG source, drawn as images.** Nothing in an image can run or load, and `readBundle`
+  still refuses an SVG with script, event handlers, foreign HTML or a reference outside itself.
+- **A sign-in screen of the app's own** (`bootScreen`) replaces `core:bootScreen`, in any layout,
+  provided it places the host's `CredentialField` — the one piece the app does not own (see
+  `protected-pieces.md`). `judgeBundle` judges it at the chrome tier, as the app is, and refuses one
+  without the field.
+- **Before anybody has signed in**, the library is out of reach, so the device keeps the brand, the
+  sign-in screen and the themes of the app it last ran (`shared/bundles/deviceApp.ts`), the way it
+  keeps the default theme. A fresh install has nothing kept and uses the deployment's own app (the
+  seed's). Safe mode ignores both and draws WE's.
+- **Its themes.** A template names the themes it is designed for in `meta.themeIds`, its default
+  first. Choosing the app makes its first theme the agent's default at that moment; the app's first
+  theme also stands in for an agent who has never chosen one. A choice made afterwards wins.
+
+A deployment that builds a bundle in (`seed.bundles`) is whitelabelled by it from the first frame;
+what its desktop builds are called and installed as is the seed's `desktop` block, not the bundle's
+(see `docs/getting-started/seed-system.md`).
 
 ## Not yet
 

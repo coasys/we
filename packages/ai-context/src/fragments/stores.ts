@@ -296,6 +296,7 @@ export const storeEntries: StoreEntry[] = [
       switcherGroups: { type: 'array', properties: ['label', 'items'] },
       safeMode: { type: 'object', properties: ['on', 'reason', 'template'] },
       followTemplateUpdates: { type: 'boolean' },
+      brand: { type: 'object', properties: ['active', 'bundleId', 'name', 'mark', 'wordmark', 'about'] },
     },
     actions: [
       'setFollowTemplateUpdates',
@@ -1071,6 +1072,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "string — id of the app this agent is in: the template WE's own chrome is drawn from (the sidebar, the module rail, and whatever an app of their own arranges around every space). Not a space's template, and chosen by the agent alone",
         appTemplateOptions:
           '{ label, value, icon, editable }[] — the apps this agent can be in, ready for a we-select: WE’s own, then their own copies. `editable` is false for one that ships with WE, which is forked rather than edited — editorStore.editApp and forkApp take the value',
+        brand:
+          "{ active, bundleId, name, mark, wordmark, about } — what the app calls itself. `name` is always set: WE's own, or the name of the bundle whose app is in use when it brings a brand (and, before anybody has signed in, of the app this device last ran). Read it wherever a template names the app — a header, a sign-in screen, a sentence — rather than writing \"WE\". `mark` and `wordmark` are image URLs for a we-image, empty while WE's own are showing (draw WE's mark then); `about` is the app's About page as Markdown, empty for WE's. `active` says a bundle's brand is showing",
         safeMode:
           "{ on, reason, template } — whether this tab is in safe mode, where WE's own templates and themes are drawn in place of the chosen ones. reason is 'asked' (the ?safe address, the key or the menu) or 'unfinished-render' (a template did not finish loading last time — template is its id). Decided before anything rendered; fixed for the page",
         operationLoading:

@@ -3173,6 +3173,7 @@ export const contextData: ContextData = {
         pendingInstall: { type: 'object' },
         appTemplateId: { type: 'string' },
         appTemplateOptions: { type: 'array' },
+        brand: { type: 'object', properties: ['active', 'bundleId', 'name', 'mark', 'wordmark', 'about'] },
         followTemplateUpdates: { type: 'boolean' },
         safeMode: { type: 'object', properties: ['on', 'reason', 'template'] },
         operationLoading: { type: 'string' },

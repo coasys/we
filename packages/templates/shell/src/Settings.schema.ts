@@ -228,7 +228,7 @@ const appsSection: SchemaNode = {
       type: 'we-text',
       props: { variant: 'body', color: 'text-muted' },
       children: [
-        'An app is a whole interface as data — its chrome, templates, theme and the kinds of record it is about. It cannot bring code: it arranges what WE already has.',
+        'An app is a whole interface as data — its chrome, templates, theme and the kinds of record it is about. It cannot bring code: it arranges what the app already has.',
       ],
     },
     {

@@ -21,7 +21,7 @@
  * and IndexedDB both. It is a cache: losing it costs one reload with the old flash, nothing more.
  */
 import type { ThemeData } from '@we/entities';
-import type { TemplateSchema } from '@we/schema-shared';
+import { type TemplateSchema, templateThemeIds } from '@we/schema-shared';
 
 const KEY_PREFIX = 'we:boot-snapshot:';
 const VERSION = 1;
@@ -57,7 +57,7 @@ export function selectBootSnapshot(source: BootSnapshotSource): BootSnapshot {
   const templates = source.library.filter(
     (t) => !t._fromSpace && (t === app || (bundle !== undefined && t.source?.bundle === bundle)),
   );
-  const named = new Set(templates.map((t) => t.meta?.themeId).filter((id): id is string => !!id));
+  const named = new Set(templates.flatMap((t) => templateThemeIds(t.meta)));
   return {
     v: VERSION,
     appTemplateId: source.appTemplateId,

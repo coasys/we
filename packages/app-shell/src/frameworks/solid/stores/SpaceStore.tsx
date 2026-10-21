@@ -140,7 +140,7 @@ import {
   TaskState,
 } from '@we/entities';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
-import { hasViewsMarker } from '@we/schema-shared';
+import { hasViewsMarker, templateThemeId } from '@we/schema-shared';
 import {
   Accessor,
   createContext,
@@ -4821,7 +4821,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   const templateThemeFor = (uuid: string): string => {
     if (!themeStore.useTemplateTheme()) return '';
     if (datasetStore.currentDataset()?.id !== uuid) return '';
-    const suggested = templateStore.currentTemplate?.meta?.themeId;
+    const suggested = templateThemeId(templateStore.currentTemplate?.meta);
     if (!suggested) return '';
     return themeStore.allThemes().some((t) => t.id === suggested) ? suggested : '';
   };
@@ -5475,7 +5475,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const themes = themeStore.allThemes();
     if (!themes.length) return;
 
-    const suggested = templateStore.currentTemplate?.meta?.themeId;
+    const suggested = templateThemeId(templateStore.currentTemplate?.meta);
     if (!suggested || themes.some((t) => t.id === suggested)) return;
     if (reportedMissingThemes.has(suggested)) return;
 

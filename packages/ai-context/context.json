@@ -7565,6 +7565,10 @@
         "appTemplateOptions": {
           "type": "array"
         },
+        "brand": {
+          "type": "object",
+          "properties": ["active", "bundleId", "name", "mark", "wordmark", "about"]
+        },
         "followTemplateUpdates": {
           "type": "boolean"
         },

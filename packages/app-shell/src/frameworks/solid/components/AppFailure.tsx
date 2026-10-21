@@ -1,3 +1,5 @@
+import { currentProductName } from '@shared/bundles/brand';
+
 /**
  * The screen when there is no app left.
  *
@@ -42,7 +44,7 @@ export function AppFailure(props: { error: unknown }) {
         color: '#eee',
       }}
     >
-      <h1 style={{ 'font-size': '20px', margin: 0 }}>WE could not start</h1>
+      <h1 style={{ 'font-size': '20px', margin: 0 }}>{currentProductName()} could not start</h1>
       <p style={{ margin: 0, 'max-width': '48ch', 'line-height': 1.5, opacity: 0.8 }}>{message}</p>
       <button
         type="button"
