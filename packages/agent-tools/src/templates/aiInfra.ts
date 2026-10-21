@@ -46,7 +46,7 @@ const STRATEGY: ContextStrategyId = 'lookup';
  */
 let referenceLoad: Promise<string> | undefined;
 
-function reference(): Promise<string> {
+export function loadReference(): Promise<string> {
   referenceLoad ??= import('@we/ai-context').then(({ schemaContext }) => schemaContext);
   return referenceLoad;
 }
@@ -61,7 +61,7 @@ export async function chatContext(
   subject: { request: string; schema: SchemaNode },
   strategy: ContextStrategyId = STRATEGY,
 ): Promise<PreparedContext> {
-  return prepareContext(strategy, chatSystemPreamble, await reference(), subject);
+  return prepareContext(strategy, chatSystemPreamble, await loadReference(), subject);
 }
 
 export interface TemplateRequest {
@@ -125,7 +125,7 @@ export async function prepareTemplateRequest(options: {
  * editor goes through `chatContext`.
  */
 export function chatSystemPrompt(): Promise<string> {
-  return reference().then((text) => chatSystemPreamble + text);
+  return loadReference().then((text) => chatSystemPreamble + text);
 }
 
 /** Tool definition for schema mutations (ID-based patching). */
