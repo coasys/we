@@ -16,7 +16,9 @@ import {
   type BackendPorts,
   type DatasetLifecyclePort,
   type EphemeralPort,
+  type IdentityCapabilities,
   isSessionTimeout,
+  NO_IDENTITY_CAPABILITIES,
   trace,
 } from '@we/backend-shared';
 import { devToolsEnabled, setDevToolsMuted } from '@we/module-shared';
@@ -93,6 +95,12 @@ export interface SessionStore {
    * name, since the usual explanation ("your account was set up outside WE") is untrue here.
    */
   isGuest: Accessor<boolean>;
+  /**
+   * What the backend can do with this person's identity beyond the session — change a password, list
+   * devices, run bots. Every flag off until the backend answers, and for good on a backend with no
+   * identity port, so Settings draws those sections as "coming soon" rather than hiding them.
+   */
+  identityCapabilities: Accessor<IdentityCapabilities>;
   /** Whether this is a development build. A fact about the build, and only that. */
   isDevelopment: Accessor<boolean>;
   /**
@@ -210,6 +218,7 @@ export function SessionStoreProvider(props: ParentProps) {
   const [token, setToken] = createSignal<string | undefined>(undefined);
   const [serverUrl, setServerUrl] = createSignal<string | undefined>(undefined);
   const [isGuest, setIsGuest] = createSignal(false);
+  const [identityCapabilities, setIdentityCapabilities] = createSignal(NO_IDENTITY_CAPABILITIES);
   const [host, setHost] = createSignal<BackendHostInfo | undefined>(undefined);
   const [hostAccount, setHostAccount] = createSignal<BackendAccountInfo | undefined>(undefined);
 
@@ -275,6 +284,21 @@ export function SessionStoreProvider(props: ParentProps) {
       return;
     }
     await loadUserData();
+  }
+
+  /**
+   * Asked once the session is usable — what a backend can do for an account may depend on whose it
+   * is. A backend that cannot answer leaves every flag off, which Settings already draws as "coming
+   * soon"; nothing about the session depends on it.
+   */
+  async function loadIdentityCapabilities(): Promise<void> {
+    const identity = backendPorts()?.identity;
+    if (!identity) return;
+    try {
+      setIdentityCapabilities({ ...NO_IDENTITY_CAPABILITIES, ...(await identity.capabilities()) });
+    } catch (error) {
+      console.error('SessionStore: could not read identity capabilities', error);
+    }
   }
 
   async function refreshMe(): Promise<void> {
@@ -500,6 +524,7 @@ export function SessionStoreProvider(props: ParentProps) {
       console.error('SessionStore: could not end the session cleanly', err);
     } finally {
       setMe(undefined);
+      setIdentityCapabilities(NO_IDENTITY_CAPABILITIES);
       settingUp = false;
       setBootState('login');
     }
@@ -526,6 +551,7 @@ export function SessionStoreProvider(props: ParentProps) {
     host,
     hostAccount,
     isGuest,
+    identityCapabilities,
     isDevelopment: () => platform.isDevelopment,
     devTools,
     setDevTools,
@@ -544,7 +570,10 @@ export function SessionStoreProvider(props: ParentProps) {
     logout,
 
     refreshMe,
-    markReady: () => setBootState(settingUp ? 'finishing' : 'ready'),
+    markReady: () => {
+      setBootState(settingUp ? 'finishing' : 'ready');
+      void loadIdentityCapabilities();
+    },
     onSessionUnlocked,
   };
 

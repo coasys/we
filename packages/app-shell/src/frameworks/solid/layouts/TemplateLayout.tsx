@@ -501,10 +501,7 @@ export function TemplateLayout(
           <TemplateBoundary
             what="this space's template"
             action={
-              <we-button
-                variant="ghost"
-                onClick={() => props.hostStores.shellStore.openShellView('settings', '/appearance')}
-              >
+              <we-button variant="ghost" onClick={() => props.hostStores.shellStore.openShellView('settings', '/apps')}>
                 Choose another template
               </we-button>
             }

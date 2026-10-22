@@ -545,6 +545,35 @@ describe('first run', () => {
   }, 10000);
 });
 
+describe('what the backend can do with an identity', () => {
+  it('is nothing on a backend with no identity port, so Settings says "coming soon"', async () => {
+    const stores = mountShell();
+    await ready(stores);
+
+    expect(Object.values(stores.session.identityCapabilities()).every((on) => on === false)).toBe(true);
+  });
+
+  it('is what the backend answers once the session is usable, and nothing again after logging out', async () => {
+    agentOptions = { unlocked: false, password: 'secret' };
+    onPorts = (ports) => {
+      // A partial answer: whatever a backend leaves out stays off rather than reading as undefined.
+      ports.identity = { capabilities: async () => ({ devices: true, linkDevice: true }) as never };
+    };
+    const stores = mountShell();
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('login'));
+    await stores.session.login('secret');
+    await ready(stores);
+
+    await vi.waitFor(() => expect(stores.session.identityCapabilities().devices).toBe(true));
+    expect(stores.session.identityCapabilities().linkDevice).toBe(true);
+    expect(stores.session.identityCapabilities().password).toBe(false);
+
+    await stores.session.logout();
+    // The next person to sign in on this screen is not owed the last one's answer.
+    expect(stores.session.identityCapabilities().devices).toBe(false);
+  }, 10000);
+});
+
 describe('a boot that cannot reach the backend', () => {
   it('keeps why it failed, so the screen has something to say', async () => {
     // 'error' is the one boot state with no form and no spinner behind it. Without the message the

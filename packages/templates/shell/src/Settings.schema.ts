@@ -1,16 +1,25 @@
 /**
  * Settings — Shell template for account settings
  *
- * Provides: template switching, theme switching, agent info, logout.
+ * Grouped as a person thinks about it: their account (profile, security, plan, logging out), the
+ * devices and apps that act as them, and this app — how it looks and what it does. The account and
+ * device pages live in `AccountSettingsPages.ts`.
  */
 
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
-import { accountSettings } from './AccountSettings.schema.ts';
+import {
+  botsPage,
+  devicesPage,
+  logOutAction,
+  planPage,
+  profilePage,
+  securityPage,
+  thisDevicePage,
+} from './AccountSettingsPages.ts';
 import { aiSection } from './AiSettings.schema.ts';
 import { spaceChecklist } from './BundlePrompt.schema.ts';
-import { hostSection } from './HostSettings.schema.ts';
 import { languagesLocalState, languagesSection } from './LanguageSettings.schema.ts';
 import {
   backup,
@@ -18,7 +27,6 @@ import {
   executorSupport,
   logging,
   loggingLocalState,
-  mcpServer,
   networkLocalState,
   peerNetwork,
   runtimeError,
@@ -34,38 +42,6 @@ const pageHeader: SchemaNode = {
   children: [
     { type: 'we-icon', props: { name: 'gear', size: 'md' } },
     { type: 'we-text', props: { variant: 'heading-md' }, children: ['Settings'] },
-  ],
-};
-
-const accountSection: SchemaNode = {
-  type: 'Column',
-  props: { gap: '300' },
-  children: [
-    // "Account" to match the sign-in screen; the DID row below carries the protocol term.
-    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Account'] },
-    {
-      type: 'Card',
-      props: { bg: 'surface' },
-      children: [
-        {
-          type: 'Row',
-          props: { gap: '200' },
-          children: [
-            {
-              type: 'we-text',
-              props: { variant: 'body', fontWeight: 'medium' },
-              children: ['DID'],
-            },
-            {
-              type: 'we-text',
-              props: { variant: 'body' },
-              children: [{ $: 'me.did' }],
-            },
-          ],
-        },
-      ],
-    },
-    accountSettings,
   ],
 };
 
@@ -1310,6 +1286,22 @@ function navItem(label: string, icon: string, path: string): SchemaNode {
   };
 }
 
+/** A heading over a run of nav entries. */
+function navGroup(label: string, items: SchemaNode[]): SchemaNode {
+  return {
+    type: 'Column',
+    props: { gap: '100' },
+    children: [
+      {
+        type: 'we-text',
+        props: { variant: 'footnote', color: 'text-muted', px: '300', pt: '300' },
+        children: [label],
+      },
+      ...items,
+    ],
+  };
+}
+
 /**
  * The one switch every developer affordance is gated on.
  *
@@ -1398,11 +1390,27 @@ export const settingsTemplate: TemplateSchema = {
   // as its own `RenderSchema` call with a fresh context — so it is not a descendant of this node at
   // render time, whatever the schema tree looks like, and state declared here would never reach it.
   routes: [
-    { path: '/', ...page([accountSection]) },
+    // Account — who you are and how you get in.
+    { path: '/', ...page([profilePage]) },
+    { path: '/security', ...page([securityPage]) },
+    { path: '/plan', ...page([planPage]) },
+    // Devices and access — what acts as you.
+    { path: '/devices', ...page([devicesPage]) },
     {
-      path: '/appearance',
-      ...page([appSection, appsSection, templatesSection, templateUpdatesSection, themeScopeSection, themesSection]),
+      path: '/devices/this',
+      // What runs underneath sits behind This device's Advanced switch: network, languages and logs
+      // are what someone opens when the data layer misbehaves, and noise the rest of the time.
+      $localState: { ...networkLocalState, ...loggingLocalState, ...languagesLocalState },
+      ...page([thisDevicePage([runtimeError, executorSupport, trustedAgents, peerNetwork, logging, languagesSection])]),
     },
+    { path: '/bots', ...page([botsPage]) },
+    { path: '/connections', ...page([runtimeError, connectedApps]) },
+    // This app — how it looks and what it does here.
+    // How things look — and only that. What you run is its own page, below.
+    { path: '/appearance', ...page([themeScopeSection, themesSection]) },
+    // What you run: the app around every space, the apps you installed, and the templates spaces
+    // are drawn with. A question apart from how they look, and from the spaces themselves.
+    { path: '/apps', ...page([appSection, appsSection, templatesSection, templateUpdatesSection]) },
     {
       path: '/spaces',
       ...page([
@@ -1418,8 +1426,10 @@ export const settingsTemplate: TemplateSchema = {
     // standing — see `spaceSettingsPage`.
     { path: '/spaces/:uuid', ...page([spaceSettingsPage]) },
     { path: '/modules', ...page([modulesSection]) },
-    { path: '/devices', ...page([deviceSection]) },
+    { path: '/camera', ...page([deviceSection]) },
     { path: '/ai', ...page([runtimeError, aiSection]) },
+    // The pages these used to have, kept so a link into them still lands somewhere: their sections
+    // now sit behind This device's Advanced switch.
     {
       path: '/languages',
       $localState: languagesLocalState,
@@ -1427,18 +1437,15 @@ export const settingsTemplate: TemplateSchema = {
     },
     {
       path: '/network',
-      // Logging sits here rather than on a page of its own: this is where someone goes when the
-      // data layer is misbehaving, which is the same moment they want more of it in the log.
       $localState: { ...networkLocalState, ...loggingLocalState },
       ...page([runtimeError, executorSupport, trustedAgents, peerNetwork, logging]),
     },
-    { path: '/connections', ...page([runtimeError, hostSection, connectedApps, mcpServer]) },
     // No `$if` on the route itself: its nav entry is already gated, and a production build resolves
     // the switch to false whatever it is set to, so the page is inert rather than dangerous if
     // somebody navigates to it directly.
     { path: '/developer', ...page([developerSection]) },
-    // Anything else lands on Account rather than an empty frame.
-    { path: '*', ...page([accountSection]) },
+    // Anything else lands on Profile rather than an empty frame.
+    { path: '*', ...page([profilePage]) },
   ],
   children: [
     {
@@ -1452,70 +1459,68 @@ export const settingsTemplate: TemplateSchema = {
           children: [
             {
               type: 'Column',
-              props: { gap: '100', width: '200px', minWidth: '200px' },
+              props: { gap: '300', width: '200px', minWidth: '200px' },
               children: [
-                navItem('Account', 'user', '/'),
-                navItem('Appearance', 'palette', '/appearance'),
-                navItem('Spaces & data', 'stack', '/spaces'),
-                navItem('Modules', 'squares-four', '/modules'),
-                /*
-                  Only where calls are installed, which is what makes a top-level entry honest:
-                  microphones and cameras are for calling with, and a deployment without the module
-                  would be offering a screen about hardware it never touches. `modules.call`
-                  resolves to nothing where it is absent, so the entry simply is not there.
-                */
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: 'modules.call' },
-                    then: navItem('Camera & microphone', 'video-camera', '/devices'),
-                  },
-                },
-                // The rest are feature-detected: a backend that administers nothing has nothing to
-                // show, so the entry goes rather than leading to an empty page.
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: 'runtimeStore.canManageAi' },
-                    then: navItem('AI', 'sparkle', '/ai'),
-                  },
-                },
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: 'runtimeStore.canManageLanguages' },
-                    then: navItem('Languages', 'code', '/languages'),
-                  },
-                },
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: 'runtimeStore.canManageNetwork || runtimeStore.canConfigureExecutor' },
-                    then: navItem('Network', 'globe', '/network'),
-                  },
-                },
-                {
-                  type: '$if',
-                  props: {
-                    // `sessionStore.host` carries this page on web: authorized apps are node-scoped
-                    // and the executor is not ours to configure there, so without it the one place
-                    // that says which node holds your data would be unreachable on exactly the
-                    // hosts where that question matters.
-                    condition: {
-                      $: 'sessionStore.host || runtimeStore.canManageApps || runtimeStore.canConfigureExecutor',
+                navGroup('Account', [
+                  navItem('Profile', 'user', '/'),
+                  navItem('Security', 'shield-check', '/security'),
+                  navItem('Plan & usage', 'credit-card', '/plan'),
+                ]),
+                navGroup('Devices and access', [
+                  navItem('Devices', 'devices', '/devices'),
+                  /*
+                    The models the backend on this device runs — language and transcription — which
+                    every app connected to it uses, and bots run on; so beside them, not under This
+                    app. Feature-detected, as before.
+                  */
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $: 'runtimeStore.canManageAi' },
+                      then: navItem('AI models', 'sparkle', '/ai'),
                     },
-                    then: navItem('Connections', 'plugs', '/connections'),
                   },
-                },
-                {
-                  type: '$if',
-                  props: {
-                    // `isDevelopment`, NOT `devTools` — see `developerSection`. Gating the way to
-                    // the switch on the switch would make turning it off a one-way door.
-                    condition: { $: 'sessionStore.isDevelopment' },
-                    then: navItem('Developer', 'flask', '/developer'),
+                  navItem('Bots', 'robot', '/bots'),
+                  // Feature-detected: a backend that administers no apps has nothing to show here.
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $: 'runtimeStore.canManageApps' },
+                      then: navItem('Connections', 'plugs-connected', '/connections'),
+                    },
                   },
-                },
+                ]),
+                navGroup('This app', [
+                  // How it looks, what it is drawn with, what it can do — then what you keep.
+                  navItem('Appearance', 'palette', '/appearance'),
+                  navItem('Apps & templates', 'app-window', '/apps'),
+                  navItem('Modules', 'squares-four', '/modules'),
+                  navItem('Spaces & data', 'stack', '/spaces'),
+                  /*
+                    Only where calls are installed, which is what makes the entry honest: microphones
+                    and cameras are for calling with, and a deployment without the module would be
+                    offering a screen about hardware it never touches. `modules.call` resolves to
+                    nothing where it is absent, so the entry simply is not there.
+                  */
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $: 'modules.call' },
+                      then: navItem('Camera & microphone', 'video-camera', '/camera'),
+                    },
+                  },
+                  {
+                    type: '$if',
+                    props: {
+                      // `isDevelopment`, NOT `devTools` — see `developerSection`. Gating the way to
+                      // the switch on the switch would make turning it off a one-way door.
+                      condition: { $: 'sessionStore.isDevelopment' },
+                      then: navItem('Developer', 'flask', '/developer'),
+                    },
+                  },
+                ]),
+                // An action rather than a page, set apart at the foot of the nav — see `logOutAction`.
+                { type: 'Column', props: { pt: '300', borderTop: '1px solid border' }, children: [logOutAction] },
               ],
             },
             { type: 'Column', props: { flex: '1', gap: '600' }, children: [{ type: '$routes' }] },

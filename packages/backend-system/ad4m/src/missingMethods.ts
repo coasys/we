@@ -127,7 +127,7 @@ export function recordMissingMethod(error: unknown): boolean {
     */
     console.warn(
       `[backend-ad4m] this executor does not support "${method}" — the feature that needs it is ` +
-        `running degraded. See Settings → Network → Executor support.`,
+        `running degraded. See Settings → Devices → This device → Advanced.`,
     );
     /*
       Each listener in its own try. One that throws is a bug in that listener, and letting it out
