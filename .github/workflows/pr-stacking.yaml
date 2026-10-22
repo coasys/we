@@ -53,6 +53,10 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          # A block naming a parent that has merged is taken off the description rather than
+          # failed: it is the ordinary end of a stack. Done here, in the same run, because an
+          # edit made with this token starts no new run. See scripts/pr-stacking.mjs.
+          CLEAR_MERGED_BLOCK: '1'
         run: |
           # The script reads the PR from the API as it is now, not from the event: a re-run replays
           # its event, so the event's base and description can both be stale.
