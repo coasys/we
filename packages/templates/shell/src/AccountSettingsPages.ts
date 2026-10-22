@@ -12,6 +12,7 @@ import { comingSoon, confirmModal } from '@we/template-kit';
 import { accountSettings } from './AccountSettings.schema.ts';
 import { hostSection } from './HostSettings.schema.ts';
 import { profileEditor } from './Profile.schema.ts';
+import { mcpServer } from './RuntimeSettings.schema.ts';
 
 /** A capability of the identity backend, as `comingSoon` reads it. */
 const can = (name: string) => ({ $: `sessionStore.identityCapabilities.${name}` });
@@ -339,6 +340,12 @@ export function thisDevicePage(advanced: SchemaNode[]): SchemaNode {
       heading('This device', 'The computer or host serving this session, and what runs on it.'),
       hostSection,
       accountSettings,
+      /*
+        In view rather than under Advanced: the executor on this device runs it, and connecting an
+        agent to it is something a person sets out to do. Absent where the app does not start its
+        own executor — there is no server here to configure.
+      */
+      mcpServer,
       {
         type: 'Row',
         props: { gap: '300', ay: 'center', ax: 'between' },

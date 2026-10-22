@@ -27,7 +27,6 @@ import {
   executorSupport,
   logging,
   loggingLocalState,
-  mcpServer,
   networkLocalState,
   peerNetwork,
   runtimeError,
@@ -1406,12 +1405,13 @@ export const settingsTemplate: TemplateSchema = {
       ...page([thisDevicePage([runtimeError, executorSupport, trustedAgents, peerNetwork, logging, languagesSection])]),
     },
     { path: '/bots', ...page([botsPage]) },
-    { path: '/connections', ...page([runtimeError, connectedApps, mcpServer]) },
+    { path: '/connections', ...page([runtimeError, connectedApps]) },
     // This app — how it looks and what it does here.
-    {
-      path: '/appearance',
-      ...page([appSection, appsSection, templatesSection, templateUpdatesSection, themeScopeSection, themesSection]),
-    },
+    // How things look — and only that. What you run is its own page, below.
+    { path: '/appearance', ...page([themeScopeSection, themesSection]) },
+    // What you run: the app around every space, the apps you installed, and the templates spaces
+    // are drawn with. A question apart from how they look, and from the spaces themselves.
+    { path: '/apps', ...page([appSection, appsSection, templatesSection, templateUpdatesSection]) },
     {
       path: '/spaces',
       ...page([
@@ -1465,7 +1465,7 @@ export const settingsTemplate: TemplateSchema = {
                 navGroup('Account', [
                   navItem('Profile', 'user', '/'),
                   navItem('Security', 'shield-check', '/security'),
-                  navItem('Plan & usage', 'chart-bar', '/plan'),
+                  navItem('Plan & usage', 'credit-card', '/plan'),
                   navItem('Log out', 'sign-out', '/logout'),
                 ]),
                 navGroup('Devices and access', [
@@ -1475,8 +1475,8 @@ export const settingsTemplate: TemplateSchema = {
                   {
                     type: '$if',
                     props: {
-                      condition: { $: 'runtimeStore.canManageApps || runtimeStore.canConfigureExecutor' },
-                      then: navItem('Connected apps', 'plugs', '/connections'),
+                      condition: { $: 'runtimeStore.canManageApps' },
+                      then: navItem('Connected apps', 'plugs-connected', '/connections'),
                     },
                   },
                 ]),
@@ -1490,6 +1490,7 @@ export const settingsTemplate: TemplateSchema = {
                   },
                   navItem('Appearance', 'palette', '/appearance'),
                   navItem('Spaces & data', 'stack', '/spaces'),
+                  navItem('Apps & templates', 'app-window', '/apps'),
                   navItem('Modules', 'squares-four', '/modules'),
                   /*
                     Only where calls are installed, which is what makes the entry honest: microphones

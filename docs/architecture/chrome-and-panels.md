@@ -27,11 +27,11 @@ Reserve **rail** for the right-hand one and **sidebar** for the left, as the cod
 The sidebar and the rail are not drawn by the shell directly: they are **host parts** an **app
 template** places (`meta.role: 'app'`, `host.sidebar`, `host.rail`). WE's own app
 (`templates/shell/src/WeApp.schema.ts`) is today's arrangement written as data. An agent may choose
-an app of their own — in Settings → Appearance, or in the template picker's App section, which sits
+an app of their own — in Settings → Apps & templates, or in the template picker's App section, which sits
 above the templates and offers to edit or fork each — and edit it where it is drawn: the editor bar's
 **Page | App** switch says which of the two the session edits, one at a time, and WE's app — built
 in — is forked from the bar the inspector shows while it is the target. An app of your own is
-deleted in Settings → Appearance, which puts you back in WE's if it was the one you were in. An app
+deleted in Settings → Apps & templates, which puts you back in WE's if it was the one you were in. An app
 can also arrive in a bundle — built in by the seed, or installed from a file — with templates, a
 theme and record types of its own; see `apps-as-data.md`. Safe
 mode always draws WE's. Everything else here — the editor's panels and bar, the boot screen and its
