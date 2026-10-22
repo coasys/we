@@ -1488,10 +1488,11 @@ export const settingsTemplate: TemplateSchema = {
                       then: navItem('AI', 'sparkle', '/ai'),
                     },
                   },
+                  // How it looks, what it is drawn with, what it can do — then what you keep.
                   navItem('Appearance', 'palette', '/appearance'),
-                  navItem('Spaces & data', 'stack', '/spaces'),
                   navItem('Apps & templates', 'app-window', '/apps'),
                   navItem('Modules', 'squares-four', '/modules'),
+                  navItem('Spaces & data', 'stack', '/spaces'),
                   /*
                     Only where calls are installed, which is what makes the entry honest: microphones
                     and cameras are for calling with, and a deployment without the module would be
