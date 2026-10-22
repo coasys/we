@@ -3863,7 +3863,47 @@
                   {
                     "type": "$if",
                     "props": {
-                      "condition": { "$": "sessionStore.bootState == 'initialising'" },
+                      "condition": { "$": "accountStore.switchingTo" },
+                      "enterTransition": { "type": "fade", "duration": 200 },
+                      "then": {
+                        "type": "Row",
+                        "props": { "gap": "300", "ay": "center" },
+                        "children": [
+                          { "type": "we-spinner", "props": { "size": "sm" } },
+                          {
+                            "type": "we-text",
+                            "props": { "color": "text-muted" },
+                            "children": [{ "$": "`Switching to ${accountStore.switchingTo.name}…`" }]
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": { "$": "accountStore.creating && !accountStore.switchingTo" },
+                      "enterTransition": { "type": "fade", "duration": 200 },
+                      "then": {
+                        "type": "Row",
+                        "props": { "gap": "300", "ay": "center" },
+                        "children": [
+                          { "type": "we-spinner", "props": { "size": "sm" } },
+                          {
+                            "type": "we-text",
+                            "props": { "color": "text-muted" },
+                            "children": ["Preparing a new account…"]
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": {
+                        "$": "sessionStore.bootState == 'initialising' && !accountStore.switchingTo && !accountStore.creating"
+                      },
                       "enterTransition": { "type": "fade", "duration": 200 },
                       "then": {
                         "type": "Row",
@@ -3897,7 +3937,9 @@
                   {
                     "type": "$if",
                     "props": {
-                      "condition": { "$": "sessionStore.bootState == 'login'" },
+                      "condition": {
+                        "$": "sessionStore.bootState == 'login' && !accountStore.switchingTo && !accountStore.creating"
+                      },
                       "enterTransition": { "type": "fade", "duration": 200 },
                       "then": {
                         "type": "Column",
@@ -3915,7 +3957,11 @@
                               {
                                 "type": "we-text",
                                 "props": { "variant": "ingress", "color": "text-muted" },
-                                "children": ["Unlock your account on this device."]
+                                "children": [
+                                  {
+                                    "$": "accountStore.hasOtherAccounts && accountStore.activeAccount ? `Unlock ${accountStore.activeAccount.name} on this device.` : 'Unlock your account on this device.'"
+                                  }
+                                ]
                               }
                             ]
                           },
@@ -3964,7 +4010,7 @@
                     "type": "$if",
                     "props": {
                       "condition": {
-                        "$": "sessionStore.bootState == 'createAgent' && !sessionStore.createAgentLoading"
+                        "$": "sessionStore.bootState == 'createAgent' && !sessionStore.createAgentLoading && !accountStore.switchingTo"
                       },
                       "enterTransition": { "type": "fade", "duration": 200 },
                       "then": {
@@ -3985,7 +4031,9 @@
                               {
                                 "type": "we-text",
                                 "props": { "variant": "heading-xl", "tag": "h1", "letterSpacing": "tight" },
-                                "children": ["Make your account"]
+                                "children": [
+                                  { "$": "accountStore.isFirstRun ? 'Make your account' : 'Add an account'" }
+                                ]
                               },
                               {
                                 "type": "we-text",
@@ -4094,6 +4142,105 @@
                                 "children": ["Try again"]
                               }
                             ]
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": {
+                        "$": "sessionStore.bootState in ['login', 'createAgent', 'error'] && !sessionStore.createAgentLoading && !accountStore.switchingTo && !accountStore.creating && accountStore.canManageAccounts && accountStore.activeAccount && !accountStore.isFirstRun"
+                      },
+                      "then": {
+                        "type": "Column",
+                        "props": { "gap": "300", "pt": "400", "borderTop": "1px solid border" },
+                        "children": [
+                          {
+                            "type": "$if",
+                            "props": {
+                              "condition": { "$": "accountStore.error" },
+                              "then": {
+                                "type": "we-alert",
+                                "props": { "variant": "danger" },
+                                "children": [{ "$": "accountStore.error" }]
+                              }
+                            }
+                          },
+                          {
+                            "type": "$if",
+                            "props": {
+                              "condition": {
+                                "$": "count(filter(accountStore.accounts, { active: false, hasAgent: true }))"
+                              },
+                              "then": {
+                                "type": "we-text",
+                                "props": { "variant": "label", "color": "text-muted" },
+                                "children": ["Other accounts on this device"]
+                              }
+                            }
+                          },
+                          {
+                            "type": "$each",
+                            "props": {
+                              "items": { "$": "filter(accountStore.accounts, { active: false, hasAgent: true })" },
+                              "as": "account"
+                            },
+                            "children": [
+                              {
+                                "type": "we-button",
+                                "props": {
+                                  "variant": "ghost",
+                                  "ax": "start",
+                                  "onClick": {
+                                    "$action": "accountStore.switchAccount",
+                                    "args": [{ "$": "account.id" }]
+                                  }
+                                },
+                                "children": [
+                                  {
+                                    "type": "Row",
+                                    "props": { "gap": "300", "ay": "center" },
+                                    "children": [
+                                      {
+                                        "type": "we-avatar",
+                                        "props": {
+                                          "image": { "$": "account.avatar" },
+                                          "initials": { "$": "account.name" },
+                                          "hash": { "$": "account.id" },
+                                          "size": "sm"
+                                        }
+                                      },
+                                      {
+                                        "type": "we-text",
+                                        "props": { "truncate": true },
+                                        "children": [{ "$": "account.name" }]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "type": "$if",
+                            "props": {
+                              "condition": { "$": "accountStore.activeAccount.hasAgent" },
+                              "then": {
+                                "type": "Row",
+                                "children": [
+                                  {
+                                    "type": "we-button",
+                                    "props": {
+                                      "variant": "ghost",
+                                      "onClick": { "$action": "accountStore.createAccount" }
+                                    },
+                                    "children": [{ "type": "we-icon", "props": { "name": "user-plus" } }, "New account"]
+                                  }
+                                ]
+                              }
+                            }
                           }
                         ]
                       }
