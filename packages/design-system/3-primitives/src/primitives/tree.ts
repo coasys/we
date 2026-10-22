@@ -1,9 +1,18 @@
+import type { DesignSystemProps } from '@we/design-types';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
+
+/*
+  Rows stack. A DesignSystemElement host is a flex container around its `base` part, which is laid
+  out as a row unless the element says otherwise: a tree left at the default drew its groups side by
+  side on one line, and an open row's children beside it rather than under it. `we-menu` declares
+  the same for the same reason.
+*/
+const STACKED: Partial<DesignSystemProps> = { direction: 'column' };
 
 const TREE_STYLES = css`
   :host {
@@ -59,8 +68,14 @@ const ITEM_STYLES = css`
   :host([open]) [part='caret'] {
     transform: rotate(90deg);
   }
-  [part='caret'][hidden] {
+  /*
+    A leaf keeps the caret's space with nothing in it, so its label lines up under its parent's
+    label rather than under its parent's caret. Not the hidden attribute: the shared sheet makes that
+    display: none !important, which takes the space away and pulls every leaf back by one indent.
+  */
+  [part='caret'][data-leaf] {
     visibility: hidden;
+    pointer-events: none;
   }
   [part='content'] {
     display: flex;
@@ -100,6 +115,10 @@ const ITEM_STYLES = css`
 @customElement('we-tree')
 export class Tree extends DesignSystemElement {
   static styles = [sharedStyles, TREE_STYLES];
+
+  static getDefaultProps() {
+    return STACKED;
+  }
 
   /** The value of the selected row, if any — matched against each item's `value`. */
   @property({ type: String }) selected = '';
@@ -247,6 +266,10 @@ export class Tree extends DesignSystemElement {
 export class TreeItem extends DesignSystemElement {
   static styles = [sharedStyles, ITEM_STYLES];
 
+  static getDefaultProps() {
+    return STACKED;
+  }
+
   /** What `select` reports, and what the tree's `selected` is matched against. Unique within a tree. */
   @property({ type: String, reflect: true }) value = '';
   /** Whether the rows under it are shown. Set by the template, asked for with `openchange`. */
@@ -338,33 +361,38 @@ export class TreeItem extends DesignSystemElement {
 
   render() {
     const expandable = this.hasChildren();
+    // One `base` part around the row and its children, as every primitive draws: it is the box the
+    // design system lays out (the host is a flex row around it), so the default `direction` lands
+    // here and the children stack under the row rather than beside it.
     return html`
-      <div
-        part="row"
-        role="treeitem"
-        tabindex=${this.tabStop ? '0' : '-1'}
-        aria-level=${this.level + 1}
-        aria-selected=${this.selected ? 'true' : 'false'}
-        aria-expanded=${ifDefined(expandable ? (this.open ? 'true' : 'false') : undefined)}
-        style=${`--we-tree-level: ${this.level}`}
-        @click=${this.onRowClick}
-        @focus=${this.onRowFocus}
-      >
-        <button part="caret" tabindex="-1" aria-hidden="true" ?hidden=${!expandable} @click=${this.onCaretClick}>
-          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-            <path
-              d="M3 1.5 L7 5 L3 8.5"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </button>
-        <span part="content"><slot></slot></span>
+      <div part="base">
+        <div
+          part="row"
+          role="treeitem"
+          tabindex=${this.tabStop ? '0' : '-1'}
+          aria-level=${this.level + 1}
+          aria-selected=${this.selected ? 'true' : 'false'}
+          aria-expanded=${ifDefined(expandable ? (this.open ? 'true' : 'false') : undefined)}
+          style=${`--we-tree-level: ${this.level}`}
+          @click=${this.onRowClick}
+          @focus=${this.onRowFocus}
+        >
+          <button part="caret" tabindex="-1" aria-hidden="true" ?data-leaf=${!expandable} @click=${this.onCaretClick}>
+            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+              <path
+                d="M3 1.5 L7 5 L3 8.5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+          <span part="content"><slot></slot></span>
+        </div>
+        ${this.open ? html`<div role="group" part="children"><slot name="children"></slot></div>` : ''}
       </div>
-      ${this.open ? html`<div role="group" part="children"><slot name="children"></slot></div>` : ''}
     `;
   }
 }
