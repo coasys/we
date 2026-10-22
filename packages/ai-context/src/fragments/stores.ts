@@ -582,6 +582,8 @@ export const storeEntries: StoreEntry[] = [
       createSpaceOpen: { type: 'boolean' },
       joinSpaceOpen: { type: 'boolean' },
       pendingScreenSources: { type: 'array' },
+      collapsedLanes: { type: 'array' },
+      customisingLayout: { type: 'boolean' },
     },
     actions: [
       'openShellView',
@@ -590,6 +592,9 @@ export const storeEntries: StoreEntry[] = [
       'setJoinSpaceOpen',
       'chooseScreenSource',
       'scrollToId',
+      'toggleLane',
+      'setLaneCollapsed',
+      'toggleCustomiseLayout',
     ],
   },
   {
@@ -1712,6 +1717,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
         panelsHidden:
           'boolean — somebody has put every panel away at once, from the rail or with Cmd/Ctrl+\\. The panels are also away while a shell overlay (settings, profile, about) is open, which is not this and does not set it. Either way they are hidden, never unmounted, and the content gets the room they took',
         hasPanels: 'boolean — some panel is open on screen to put away. What the hide-all toggle is gated on',
+        collapsedLanes:
+          'string[] — the home lanes the reader has folded away on the interface on screen, by name. Read it to draw a collapse button in the right state: { $: "\'tree\' in shellStore.collapsedLanes" }',
+        customisingLayout:
+          "boolean — every section's grip is showing, so the reader can see what can be moved. Off, a grip shows only on hover or focus",
         layoutDirty:
           'boolean — the interface on screen has been rearranged: one of its panels moved, resized or closed. What a whole-arrangement "reset layout" control is gated on, and not the same question as any layoutPinned entry — a closed panel has no placement, and a panel declared for another route is not among the docks at all. False for an interface declaring no panels',
       },
@@ -1790,6 +1799,12 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "(panelId: string): dismisses a panel the interface declared in meta.panels, by that panel's id. What its titlebar's close button calls",
         openTemplatePanel:
           '(panelId: string): puts a closed one back. The only way back to a panel that has been closed — it has no titlebar left to ask from — so a template offering a close should offer this too',
+        toggleLane:
+          "(lane: string): folds a home lane (a `$panels` outlet) away, or brings it back — what a sidebar's collapse button calls. Its sections stay mounted and hidden, so a feed keeps its place. Kept per agent and per template, and undone by resetTemplateLayout",
+        setLaneCollapsed:
+          '(lane: string, collapsed: boolean): folds a lane away or brings it back, as said rather than flipped',
+        toggleCustomiseLayout:
+          "(): shows every section's grip at once, or goes back to showing a grip only where the pointer or the keyboard is — the way to see what on a page can be moved",
         resetTemplateLayout:
           '(): puts every panel of the interface on screen back the way meta.panels declared them, and reopens the ones that were closed. The whole-arrangement counterpart of resetDockToLayout, and the only way back for a closed panel, which has no titlebar to reset itself from. Scoped to the template rather than the route, so a declaration that varies by route is reset once. Pair with layoutDirty',
         saveLayout:

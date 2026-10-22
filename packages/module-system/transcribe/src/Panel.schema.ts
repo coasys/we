@@ -2311,7 +2311,7 @@ const recognisedCard: SchemaNode = {
       props: { variant: 'footnote', color: 'text-muted' },
       children: [
         {
-          $: `count(local.madeIn) ? (first(local.madeIn).kind == 'space' ? 'First found in messages outside calls' : 'First found in ' + (first(local.madeIn).title ? first(local.madeIn).title : 'another call')) : 'Already in the space'`,
+          $: `count(local.madeIn) ? (first(local.madeIn).id == spaceStore.root ? 'First found in messages outside calls' : 'First found in ' + (first(local.madeIn).title ? first(local.madeIn).title : 'another call')) : 'Already in the space'`,
         },
       ],
     },

@@ -1588,6 +1588,42 @@ when `relative` is enabled.
   Props: value: string = '', relative: boolean = false, relativeStyle: 'long' | 'short' | 'narrow' = 'long', locale: string = 'en', dateStyle: 'full' | 'long' | 'medium' | 'short' | null = null, timeStyle: 'full' | 'long' | 'medium' | 'short' | null = null, weekday: 'long' | 'short' | 'narrow' | null = null, year: 'numeric' | '2-digit' | null = null, month: 'numeric' | '2-digit' | 'long' | 'short' | 'narrow' | null = null, day: 'numeric' | '2-digit' | null = null, hour: 'numeric' | '2-digit' | null = null, minute: 'numeric' | '2-digit' | null = null, second: 'numeric' | '2-digit' | null = null, timeZone: string | null = null, hourCycle: 'h11' | 'h12' | 'h23' | 'h24' | null = null, formattedTime: string
 - we-tooltip (LayoutElement)
   Props: open: boolean = false, content: string = '', placement: 'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end' = 'top', tooltipEl: HTMLElement, arrowEl: HTMLElement
+- we-tree (DesignSystemElement) — A tree — the space as a file browser, a folder list, an outline. The root of one, holding its items.
+
+#### One root, items to any depth
+
+The data a tree shows is usually fractal (a channel holds channels), and so is `we-tree-item`: an
+item's children are more items, nested inside it. The widget is not: there is exactly one
+`we-tree`, because ARIA allows one `tree` per widget and the keyboard treats every visible row as a
+single list. Arrow-down from the last row of a sub-channel lands on its parent's next sibling, and
+Tab enters and leaves the tree once. A `we-tree` per level would make every subtree its own tab stop
+and its own island of focus, and a screen reader would announce a dozen trees.
+
+#### The keyboard
+
+Roving focus: one row is the tab stop, the arrows move it. Down and Up walk the visible rows in
+order; Right opens a closed row, or steps into an open one; Left closes an open row, or steps out to
+its parent; Home and End go to the ends; Enter and Space select. Typing a letter moves to the next
+row whose label starts with it. This is the WAI-ARIA tree pattern, and it lives here, once, so no
+template has to write it.
+
+#### What it emits, and what it does not decide
+
+`select` — `{ value }` — when a row is chosen, by click or key. What choosing means (navigating,
+filtering) is the template's business. Which row is selected is the template's too: pass
+`selected` and the matching item marks itself, so a selection driven by the address stays in step.
+  Props: selected: string = '', label: string = ''
+- we-tree-item (DesignSystemElement) — One row of a `we-tree`, and the rows under it.
+
+The row's own content goes in the default slot — an icon, a label, a badge, a count, whatever the
+template arranges (the kit's `treeRow` fragment is the usual one). Rows under it go in the
+`children` slot, rendered only while it is open: a template that loads them lazily puts its query
+inside an `$if` on the same open state, so nothing is read for a row nobody has opened.
+
+`open` is the template's to hold, as `selected` is the tree's: the row asks (`openchange`, `{ open }`,
+bound as `onOpenChange`) and the template answers by setting it, so a row's open state can live in the address, in local
+state or anywhere else.
+  Props: value: string = '', open: boolean = false, expandable: boolean = false, selected: boolean = false, tabStop: boolean = false, level: number = 0
 - we-video (LayoutVisualElement)
   Props: src: string = '', poster?: string | undefined, controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, playsinline: boolean = false, stream?: MediaStream | null | undefined
 
@@ -3357,6 +3393,8 @@ ShellStore:
   - layoutPinned: Record<string, boolean> keyed by panel id — whether that panel has been dragged away from where meta.panels declared it. False for a panel no layout mentions, since there is nothing to go back to. Gate a "reset to layout" affordance on it rather than on a placement merely existing
   - layoutDirty: boolean — the interface on screen has been rearranged: one of its panels moved, resized or closed. What a whole-arrangement "reset layout" control is gated on, and not the same question as any layoutPinned entry — a closed panel has no placement, and a panel declared for another route is not among the docks at all. False for an interface declaring no panels
   - panelSupplied: Record<moduleId, boolean> — modules whose panel this interface supplies itself, by declaring a `meta.panels` entry that names the module and carries a `node`. What a module's dock frame asks before drawing its own contents; the module still owns whether the panel is open and how big it is
+  - collapsedLanes: string[] — the home lanes the reader has folded away on the interface on screen, by name. Read it to draw a collapse button in the right state: { $: "'tree' in shellStore.collapsedLanes" }
+  - customisingLayout: boolean — every section's grip is showing, so the reader can see what can be moved. Off, a grip shows only on hover or focus
   - layoutNames: string[] — the arrangements saved for the interface on screen, by name, sorted. The three-rung chain has one user slot; these are how to keep more than one — a “recording” and a “reviewing” for the same template. Empty for an interface with none
   - activeLayout: string — the saved layout the arrangement on screen is, or '' once anything has been moved since. Mark the matching row as selected
   - panelsHidden: boolean — somebody has put every panel away at once, from the rail or with Cmd/Ctrl+\. The panels are also away while a shell overlay (settings, profile, about) is open, which is not this and does not set it. Either way they are hidden, never unmounted, and the content gets the room they took
@@ -3389,6 +3427,9 @@ ShellStore:
   - closeTemplatePanel(panelId: string): dismisses a panel the interface declared in meta.panels, by that panel's id. What its titlebar's close button calls
   - openTemplatePanel(panelId: string): puts a closed one back. The only way back to a panel that has been closed — it has no titlebar left to ask from — so a template offering a close should offer this too
   - resetTemplateLayout(): puts every panel of the interface on screen back the way meta.panels declared them, and reopens the ones that were closed. The whole-arrangement counterpart of resetDockToLayout, and the only way back for a closed panel, which has no titlebar to reset itself from. Scoped to the template rather than the route, so a declaration that varies by route is reset once. Pair with layoutDirty
+  - toggleLane(lane: string): folds a home lane (a `$panels` outlet) away, or brings it back — what a sidebar's collapse button calls. Its sections stay mounted and hidden, so a feed keeps its place. Kept per agent and per template, and undone by resetTemplateLayout
+  - setLaneCollapsed(lane: string, collapsed: boolean): folds a lane away or brings it back, as said rather than flipped
+  - toggleCustomiseLayout(): shows every section's grip at once, or goes back to showing a grip only where the pointer or the keyboard is — the way to see what on a page can be moved
   - saveLayout(name: string): saves the arrangement on screen under a name — its panels’ placements, which tab of each seat is showing, and which panels are closed. Scoped to the template, as placements are. Replaces a layout of that name
   - applyLayout(name: string): puts the arrangement back to a saved layout. What the layout does not mention returns to what meta.panels declared, exactly as a reset would leave it
   - deleteLayout(name: string): forgets a saved layout

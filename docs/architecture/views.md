@@ -123,6 +123,29 @@ Escape at its top and Done come back out too. A built-in section is copied first
 copy"), and copying goes straight into editing the copy where it is drawn, as forking a template
 opens the fork.
 
+## A record's own page
+
+The host mounts a page for one record beside a shell's sections, at `/record/:entity?id=…`. It used
+to be the generic `RecordPage` for everything, drawn from the model's declaration. Which view draws a
+record is now decided in rungs, most specific first (`schema-system/shared/src/recordViews.ts`):
+
+1. **The template's own map**, `meta.recordViews`: `'Entity'` or `'Entity:kind'` to a view node of
+   the template's, or to the id of a view available here. These nodes are the template's, judged and
+   drawn with it, and never sections a space switches on.
+2. **Any view available here that says what it draws**, `meta.draws: { entity, kind? }` — one a
+   module, a bundle or the space brings.
+3. **The generic page.**
+
+A view for a kind wins over one for the whole entity. The kind is a field of the record, which a
+route cannot read before it has loaded the record, so a link to a kinded record carries it in the
+address: `?id=…&kind=call`.
+
+**The view says what it draws, never the model.** A model is data every reader of the space carries —
+bots, other apps — and a view named from it would only work for views the host already has. The
+direction is the polls module's (its card draws `Poll`; `Poll` names nothing), and a type nothing
+claims falls back to the generic page. A community choosing a view per type would be a rung between
+the first two; not yet.
+
 ## Where to look
 
 | What                            | Where                                                      |

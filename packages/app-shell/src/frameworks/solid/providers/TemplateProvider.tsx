@@ -65,6 +65,8 @@ import {
   expandViewRoutes,
   hasViewsMarker,
   installGestureTracking,
+  recordRouteBody,
+  recordViewCandidates,
   SPACE_ROUTE_PATH,
 } from '@we/schema-shared';
 import type { OwnerRef, VisualEditorContextValue } from '@we/schema-solid';
@@ -1226,10 +1228,20 @@ export default function TemplateProvider() {
    * A page for one record is the only member so far, and it is here rather than in each template
    * because every space wants it and no template should have to remember to include it.
    */
-  const HOST_ROUTES = [{ ...recordPage, path: RECORD_ROUTE_PATH }];
+  /*
+    The record page chooses its view by what the record is: the template's own map, then any view
+    here that says it draws the type, then the generic page — see `recordViews.ts` in the schema
+    system. A memo, because both the template and the views available can change.
+  */
+  const hostRoutes = createMemo(() => [
+    {
+      ...recordRouteBody(recordPage, recordViewCandidates(templateSchema, spaceStore.routableViews())),
+      path: RECORD_ROUTE_PATH,
+    },
+  ]);
 
   /** Their first path segment — what the redirect compares a URL against. */
-  const HOST_ROUTE_SEGMENTS = new Set(HOST_ROUTES.map((route) => route.path.split('/')[1]));
+  const HOST_ROUTE_SEGMENTS = new Set([RECORD_ROUTE_PATH.split('/')[1]]);
 
   /*
     Every space template lives under `/space/:spaceId`, and the host is what puts it there.
@@ -1253,7 +1265,7 @@ export default function TemplateProvider() {
   */
   const routesWithViews = createMemo(() => {
     const routes = templateSchema.routes ?? [];
-    const extras = HOST_ROUTES as unknown as (typeof routes)[number][];
+    const extras = hostRoutes() as unknown as (typeof routes)[number][];
     /*
       `$part` expanded over the whole route table, before the router sees it.
 

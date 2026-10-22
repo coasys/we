@@ -359,6 +359,13 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
     themeId: z.string().optional(),
     /** The themes this template is designed for, its default first. See `TemplateMeta.themeIds`. */
     themeIds: z.array(z.string()).optional(),
+    /** What a record view draws. See `TemplateMeta.draws`. */
+    draws: z
+      .object({ entity: z.string().regex(/^[A-Z][A-Za-z0-9]*$/), kind: z.string().optional() })
+      .strict()
+      .optional(),
+    /** How this template draws one record, by type. See `TemplateMeta.recordViews`. */
+    recordViews: z.record(z.string(), z.union([z.string(), lazySchemaNode])).optional(),
     /** Whole interface, a section inside one, or the app around them. See `TemplateMeta.role`. Absent means shell. */
     role: z.enum(['shell', 'view', 'app']).optional(),
     /** A view's default URL segment. See `TemplateMeta.segment`. */

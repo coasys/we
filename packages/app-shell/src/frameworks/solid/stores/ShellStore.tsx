@@ -525,6 +525,29 @@ export interface ShellStore {
    */
   resetTemplateLayout: () => void;
   /**
+   * The width a reader has dragged a home lane to, by lane name, for the template on screen — or
+   * nothing, so the lane keeps the width its template gave it. See `PanelLane` (`resize`).
+   */
+  laneWidth: (lane: string) => number | undefined;
+  /** Keep a lane's width — what dragging its edge writes. Per agent, per template, on this device. */
+  setLaneWidth: (lane: string, width: number) => void;
+  /**
+   * The home lanes the reader has folded away, by name, for the template on screen. A lane folded
+   * away keeps its sections mounted and hidden, so a feed keeps its place and a call keeps its streams.
+   */
+  collapsedLanes: Accessor<string[]>;
+  /** Fold a lane away or bring it back — what a sidebar's collapse button calls. */
+  toggleLane: (lane: string) => void;
+  /** Fold a lane away, or bring it back, as said rather than flipped. */
+  setLaneCollapsed: (lane: string, collapsed: boolean) => void;
+  /**
+   * Whether every section's grip is showing, so the reader can see what can be moved. Off, a grip
+   * shows only where the pointer or the keyboard is, and a page made of sections reads as a page.
+   */
+  customisingLayout: Accessor<boolean>;
+  /** Show every section's grip, or go back to showing them only on hover. */
+  toggleCustomiseLayout: () => void;
+  /**
    * The arrangements saved for the interface on screen, by name.
    *
    * The three-rung chain has one user slot; this is the way to keep more than one. A layout is a
@@ -897,6 +920,38 @@ interface SavedLayout {
   placements: Record<string, FloatPlacement>;
   activation: Record<string, number>;
   closed: Record<string, boolean>;
+  /** Home lanes' widths and folds. Absent in a layout saved before lanes could be resized. */
+  lanes?: Record<string, LaneState>;
+}
+
+/**
+ * A home lane as the reader has left it: dragged to a width, or folded away. Keyed like placements,
+ * `<template scope>::<lane>`, so one template's sidebar width is not another's.
+ */
+interface LaneState {
+  width?: number;
+  collapsed?: boolean;
+}
+
+const LANES_KEY = 'we-local:shell.lanes';
+
+function loadLanes(): Record<string, LaneState> {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LANES_KEY) ?? '{}') as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, LaneState>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLanes(lanes: Record<string, LaneState>): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(LANES_KEY, JSON.stringify(lanes));
+  } catch {
+    // A lane back at its template's width on next boot, and nothing else.
+  }
 }
 
 type SavedLayouts = Record<string, Record<string, SavedLayout>>;
@@ -1593,6 +1648,24 @@ export function ShellStoreProvider(props: ParentProps) {
    * arrangement in front of you, and the arrangement has been replaced.
    */
   const [closedPanels, setClosedPanels] = createSignal<Record<string, boolean>>({});
+
+  /** Home lanes' widths and folds, for every template — see `LaneState`. */
+  const [lanes, setLanes] = createSignal<Record<string, LaneState>>(loadLanes());
+  const laneKey = (lane: string) => `${templatePanelScope()}::${lane}`;
+  const writeLane = (lane: string, change: Partial<LaneState>) =>
+    setLanes((prev) => {
+      const key = laneKey(lane);
+      const merged: LaneState = { ...prev[key], ...change };
+      const cleaned = Object.fromEntries(
+        Object.entries(merged).filter(([, value]) => value !== undefined && value !== false),
+      );
+      const next = { ...prev };
+      if (Object.keys(cleaned).length) next[key] = cleaned as LaneState;
+      else delete next[key];
+      saveLanes(next);
+      return next;
+    });
+  const [customisingLayout, setCustomisingLayout] = createSignal(false);
 
   /*
     Switching template forgets what was closed.
@@ -4051,7 +4124,8 @@ export function ShellStoreProvider(props: ParentProps) {
       const prefix = `${scope}::`;
       return (
         Object.keys(placements()).some((key) => key.startsWith(prefix)) ||
-        Object.entries(closedPanels()).some(([key, closed]) => closed && key.startsWith(prefix))
+        Object.entries(closedPanels()).some(([key, closed]) => closed && key.startsWith(prefix)) ||
+        Object.keys(lanes()).some((key) => key.startsWith(prefix))
       );
     },
 
@@ -4074,6 +4148,7 @@ export function ShellStoreProvider(props: ParentProps) {
         placements: under(placements()),
         activation: under(activation()),
         closed: under(closedPanels()),
+        lanes: under(lanes()),
       };
       setLayouts((prev) => {
         const next = { ...prev, [scope]: { ...(prev[scope] ?? {}), [label]: snapshot } };
@@ -4105,6 +4180,11 @@ export function ShellStoreProvider(props: ParentProps) {
         return next;
       });
       setClosedPanels((prev) => ({ ...without(prev), ...saved.closed }));
+      setLanes((prev) => {
+        const next = { ...without(prev), ...(saved.lanes ?? {}) };
+        saveLanes(next);
+        return next;
+      });
       setActiveLayout(name);
     },
 
@@ -4145,7 +4225,30 @@ export function ShellStoreProvider(props: ParentProps) {
       // And the panels closed under it, which is the half `resetDockToLayout` cannot reach — a closed
       // panel has no titlebar, so its own menu is not on screen to be opened.
       setClosedPanels((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => !key.startsWith(prefix))));
+      // And the home lanes: back to the widths the template gave them, none of them folded.
+      setLanes((prev) => {
+        const next = Object.fromEntries(Object.entries(prev).filter(([key]) => !key.startsWith(prefix)));
+        if (Object.keys(next).length === Object.keys(prev).length) return prev;
+        saveLanes(next);
+        return next;
+      });
     },
+
+    laneWidth: (lane) => lanes()[laneKey(lane)]?.width,
+    setLaneWidth: (lane, width) => {
+      if (!Number.isFinite(width) || width <= 0) return;
+      writeLane(lane, { width: Math.round(width) });
+    },
+    collapsedLanes: () => {
+      const prefix = `${templatePanelScope()}::`;
+      return Object.entries(lanes())
+        .filter(([key, state]) => key.startsWith(prefix) && state.collapsed)
+        .map(([key]) => key.slice(prefix.length));
+    },
+    toggleLane: (lane) => writeLane(lane, { collapsed: !lanes()[laneKey(lane)]?.collapsed }),
+    setLaneCollapsed: (lane, collapsed) => writeLane(lane, { collapsed: !!collapsed }),
+    customisingLayout,
+    toggleCustomiseLayout: () => setCustomisingLayout((on) => !on),
 
     snapDock: (id, snap) => {
       const request = dockRequests().find((entry) => entry.id === id);
