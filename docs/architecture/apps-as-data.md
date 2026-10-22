@@ -47,7 +47,7 @@ writes them into the build. Their app, templates, sections and theme join the bu
 read-only, forkable, updated by every deploy, nobody asked. The first one bringing an app is the
 deployment's app unless `host.ui.app` names another. Its sections are available but not defaults.
 
-**Installed, from a file.** Settings → Appearance → Apps. `bundleStore.installFromFile` reads and
+**Installed, from a file.** Settings → Apps & templates. `bundleStore.installFromFile` reads and
 judges the file and raises the host's prompt (`core:bundlePrompt`, a protected slot): provenance,
 what it adds, what it can do, modules it turns on and modules this deployment lacks, its record types
 for this space, and how it shows spaces. Confirming writes the app, templates and theme into the

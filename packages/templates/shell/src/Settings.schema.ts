@@ -12,7 +12,7 @@ import { expr } from '@we/schema-shared';
 import {
   botsPage,
   devicesPage,
-  logOutPage,
+  logOutAction,
   planPage,
   profilePage,
   securityPage,
@@ -27,7 +27,6 @@ import {
   executorSupport,
   logging,
   loggingLocalState,
-  mcpServer,
   networkLocalState,
   peerNetwork,
   runtimeError,
@@ -1395,7 +1394,6 @@ export const settingsTemplate: TemplateSchema = {
     { path: '/', ...page([profilePage]) },
     { path: '/security', ...page([securityPage]) },
     { path: '/plan', ...page([planPage]) },
-    { path: '/logout', ...page([logOutPage]) },
     // Devices and access — what acts as you.
     { path: '/devices', ...page([devicesPage]) },
     {
@@ -1406,12 +1404,13 @@ export const settingsTemplate: TemplateSchema = {
       ...page([thisDevicePage([runtimeError, executorSupport, trustedAgents, peerNetwork, logging, languagesSection])]),
     },
     { path: '/bots', ...page([botsPage]) },
-    { path: '/connections', ...page([runtimeError, connectedApps, mcpServer]) },
+    { path: '/connections', ...page([runtimeError, connectedApps]) },
     // This app — how it looks and what it does here.
-    {
-      path: '/appearance',
-      ...page([appSection, appsSection, templatesSection, templateUpdatesSection, themeScopeSection, themesSection]),
-    },
+    // How things look — and only that. What you run is its own page, below.
+    { path: '/appearance', ...page([themeScopeSection, themesSection]) },
+    // What you run: the app around every space, the apps you installed, and the templates spaces
+    // are drawn with. A question apart from how they look, and from the spaces themselves.
+    { path: '/apps', ...page([appSection, appsSection, templatesSection, templateUpdatesSection]) },
     {
       path: '/spaces',
       ...page([
@@ -1465,32 +1464,38 @@ export const settingsTemplate: TemplateSchema = {
                 navGroup('Account', [
                   navItem('Profile', 'user', '/'),
                   navItem('Security', 'shield-check', '/security'),
-                  navItem('Plan & usage', 'chart-bar', '/plan'),
-                  navItem('Log out', 'sign-out', '/logout'),
+                  navItem('Plan & usage', 'credit-card', '/plan'),
                 ]),
                 navGroup('Devices and access', [
                   navItem('Devices', 'devices', '/devices'),
+                  /*
+                    The models the backend on this device runs — language and transcription — which
+                    every app connected to it uses, and bots run on; so beside them, not under This
+                    app. Feature-detected, as before.
+                  */
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $: 'runtimeStore.canManageAi' },
+                      then: navItem('AI models', 'sparkle', '/ai'),
+                    },
+                  },
                   navItem('Bots', 'robot', '/bots'),
                   // Feature-detected: a backend that administers no apps has nothing to show here.
                   {
                     type: '$if',
                     props: {
-                      condition: { $: 'runtimeStore.canManageApps || runtimeStore.canConfigureExecutor' },
-                      then: navItem('Connected apps', 'plugs', '/connections'),
+                      condition: { $: 'runtimeStore.canManageApps' },
+                      then: navItem('Connections', 'plugs-connected', '/connections'),
                     },
                   },
                 ]),
                 navGroup('This app', [
-                  {
-                    type: '$if',
-                    props: {
-                      condition: { $: 'runtimeStore.canManageAi' },
-                      then: navItem('AI', 'sparkle', '/ai'),
-                    },
-                  },
+                  // How it looks, what it is drawn with, what it can do — then what you keep.
                   navItem('Appearance', 'palette', '/appearance'),
-                  navItem('Spaces & data', 'stack', '/spaces'),
+                  navItem('Apps & templates', 'app-window', '/apps'),
                   navItem('Modules', 'squares-four', '/modules'),
+                  navItem('Spaces & data', 'stack', '/spaces'),
                   /*
                     Only where calls are installed, which is what makes the entry honest: microphones
                     and cameras are for calling with, and a deployment without the module would be
@@ -1504,16 +1509,18 @@ export const settingsTemplate: TemplateSchema = {
                       then: navItem('Camera & microphone', 'video-camera', '/camera'),
                     },
                   },
-                ]),
-                {
-                  type: '$if',
-                  props: {
-                    // `isDevelopment`, NOT `devTools` — see `developerSection`. Gating the way to
-                    // the switch on the switch would make turning it off a one-way door.
-                    condition: { $: 'sessionStore.isDevelopment' },
-                    then: navGroup('Developer', [navItem('Developer', 'flask', '/developer')]),
+                  {
+                    type: '$if',
+                    props: {
+                      // `isDevelopment`, NOT `devTools` — see `developerSection`. Gating the way to
+                      // the switch on the switch would make turning it off a one-way door.
+                      condition: { $: 'sessionStore.isDevelopment' },
+                      then: navItem('Developer', 'flask', '/developer'),
+                    },
                   },
-                },
+                ]),
+                // An action rather than a page, set apart at the foot of the nav — see `logOutAction`.
+                { type: 'Column', props: { pt: '300', borderTop: '1px solid border' }, children: [logOutAction] },
               ],
             },
             { type: 'Column', props: { flex: '1', gap: '600' }, children: [{ type: '$routes' }] },
