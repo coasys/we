@@ -563,6 +563,47 @@ const shareSection: SchemaNode = {
         },
       ],
     },
+    // Not shared yet: a new shared space is usable before its share finishes, and may fail to share.
+    else: {
+      type: '$if',
+      props: {
+        condition: { $: 'space.sharing' },
+        then: {
+          type: 'Column',
+          props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
+          children: [
+            { type: 'we-text', props: { variant: 'label' }, children: ['Invite'] },
+            {
+              type: 'we-text',
+              props: {
+                variant: 'footnote',
+                color: { $: "space.sharing == 'failed' ? 'danger-text' : 'text-faint'" },
+              },
+              children: [
+                {
+                  $: "space.sharing == 'failed' ? `Could not share this space: ${space.shareError}` : 'Sharing this space. Its link appears here when it is ready.'",
+                },
+              ],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $: "space.sharing == 'failed'" },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    variant: 'secondary',
+                    size: 'sm',
+                    onClick: { $action: 'spaceStore.shareSpace', args: [{ $: 'space.uuid' }] },
+                  },
+                  children: ['Try again'],
+                },
+              },
+            },
+          ],
+        },
+      },
+    },
   },
 };
 

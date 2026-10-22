@@ -333,6 +333,8 @@ export const storeEntries: StoreEntry[] = [
           'modules',
           'shareLink',
           'guestLink',
+          'sharing',
+          'shareError',
           'defaultTemplateId',
           'defaultThemeId',
           'templateOverride',
@@ -401,6 +403,7 @@ export const storeEntries: StoreEntry[] = [
     },
     actions: [
       'createSpace',
+      'shareSpace',
       'uploadFile',
       'joinSpace',
       'initializeAsWeSpace',
@@ -1160,7 +1163,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         routeSpaceUnjoined:
           'boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown',
         spaceList:
-          "{ uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists",
+          "{ uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists. `sharing` is 'sharing' while a new shared space is still being shared (it is usable meanwhile), 'failed' when that did not work — `shareError` says why, and shareSpace tries again — and '' otherwise; a shared space has a `shareLink`",
         creatingSpace: 'boolean (true while a new space is being created)',
         joiningSpace:
           "string — the shared id of the space a join is running for, '' when none is. The id rather than a flag so a list can spin only the row being joined; a gate compares it against its own route segment. Stays set for the whole join, which outlives the network call that starts it",
@@ -1261,7 +1264,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
         removeSpaceFromGlobal:
           "(spaceUuid: string): withdraws a space's listing from the global discovery space, leaving the space itself alone. Only its author may; removeSpace does this for you",
         createSpace:
-          "(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, sharing?): creates a new space with full setup. sharing is a value from sharingOptions and only matters for a shared space; empty uses the backend's default",
+          "(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?, sharing?): creates a new space with full setup. sharing is a value from sharingOptions and only matters for a shared space; empty uses the backend's default. Resolves once the local space exists; sharing a shared one follows in the background, reported on `spaceList[].sharing`, and the space stays local if it fails",
+        shareSpace:
+          '(uuid: string): shares a space that is still local — what retries a share that failed, with the sharing option and listing it was asked for. Watch `spaceList[].sharing`',
         joinSpace:
           '(id: string, focus = true): joins a shared space by share link, neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in. Rejects when the join could not be completed, so onSuccess means what it says; watch joiningSpace/joinSlow/joinError for what to show while it runs. A join whose network call times out keeps going: the backend usually finishes anyway, and this waits for that before believing the failure',
         initializeAsWeSpace:

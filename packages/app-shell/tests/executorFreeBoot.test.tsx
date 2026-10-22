@@ -579,18 +579,6 @@ describe('dataset lifecycle through the real stores', () => {
     expect(stores.datasets.getDatasetOrder()).toContain(created.id);
   }, 10000);
 
-  it('creates a shared space through publish', async () => {
-    const stores = mountShell();
-    await ready(stores);
-
-    await stores.spaces.createSpace('Shared Space', 'shared', 'shared', 'hidden');
-
-    const created = (await lifecycle.list()).find((d) => d.name === 'Shared Space')!;
-    expect(created.sharedUri).toMatch(/^inmemory:\/\//);
-    // The Space model stores the adapter-minted scheme-less shared id.
-    expect(stores.spaces.mySpaces()[0].url).toBe(created.sharedId);
-  }, 10000);
-
   it("joins a peer's published dataset and switches to it", async () => {
     const stores = mountShell();
     await ready(stores);
@@ -897,6 +885,8 @@ describe('what the stores actually wrote', () => {
 
     await stores.spaces.createSpace('Public', 'x', 'shared', 'listed');
     await stores.spaces.createSpace('Private', 'x', 'personal', 'hidden');
+    // Sharing follows the create; see 'creating a shared space in stages'.
+    await vi.waitFor(() => expect(stores.spaces.spaceList().find((s) => s.name === 'Public')?.kind).toBe('shared'));
 
     const shared = (await lifecycle.list()).find((d) => d.name === 'Public')!;
     const personal = (await lifecycle.list()).find((d) => d.name === 'Private')!;
@@ -908,6 +898,138 @@ describe('what the stores actually wrote', () => {
     expect(publicSpace.url).toBe(shared.sharedId);
     expect(privateSpace.url).toBeFalsy();
     expect(publicSpace.discovery).toBe('listed');
+  }, 10000);
+});
+
+/**
+ * Creating a shared space is two stages: the local space, which is what the person waits for, and
+ * sharing it, which talks to the network and runs after. Each test holds `publish` open to look at
+ * the space between the two.
+ */
+describe('creating a shared space in stages', () => {
+  /** Replaces the backend's publish with one each call of which the test settles by hand. */
+  function holdPublish() {
+    const calls: { resolve: () => void; reject: (err: Error) => void }[] = [];
+    onPorts = (ports) => {
+      const publish = ports.lifecycle.publish.bind(ports.lifecycle);
+      ports.lifecycle.publish = (id: string, options?: { sharing?: string }) =>
+        new Promise<{ uri: string; sharedId: string }>((resolve, reject) => {
+          calls.push({ resolve: () => void publish(id, options).then(resolve, reject), reject });
+        });
+    };
+    return calls;
+  }
+  const row = (stores: Stores, name: string) => stores.spaces.spaceList().find((s) => s.name === name)!;
+
+  it('is ready before it is shared, and shares in the background', async () => {
+    const publish = holdPublish();
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.spaces.createSpace('Garden', 'x', 'shared', 'hidden');
+
+    // Resolved with publish still open: the space is here, local, and says it is being shared.
+    expect(publish).toHaveLength(1);
+    expect(row(stores, 'Garden')).toMatchObject({ sharing: 'sharing', shareLink: '', kind: 'personal' });
+    const created = (await lifecycle.list()).find((d) => d.name === 'Garden')!;
+    const [before] = await Space.findAll(created.handle as never);
+    expect(before.url).toBeFalsy();
+
+    publish[0].resolve();
+
+    await vi.waitFor(() => expect(row(stores, 'Garden')).toMatchObject({ sharing: '', kind: 'shared' }));
+    const shared = (await lifecycle.list()).find((d) => d.name === 'Garden')!;
+    expect(shared.sharedUri).toMatch(/^inmemory:\/\//);
+    expect(row(stores, 'Garden').shareLink).toContain(shared.sharedId);
+    const [after] = await Space.findAll(shared.handle as never);
+    expect(after.url).toBe(shared.sharedId);
+  }, 10000);
+
+  it('keeps the space when sharing fails, and shares it on a retry', async () => {
+    const publish = holdPublish();
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.spaces.createSpace('Workbench', 'x', 'shared', 'hidden');
+    publish[0].reject(new Error('the network said no'));
+
+    await vi.waitFor(() =>
+      expect(row(stores, 'Workbench')).toMatchObject({ sharing: 'failed', shareError: 'the network said no' }),
+    );
+    // Still a space: listed, in mySpaces, and local.
+    expect(stores.spaces.mySpaces().map((s) => s.name)).toContain('Workbench');
+    expect(row(stores, 'Workbench')).toMatchObject({ kind: 'personal', shareLink: '' });
+
+    const retry = stores.spaces.shareSpace(row(stores, 'Workbench').uuid);
+    await vi.waitFor(() => expect(row(stores, 'Workbench').sharing).toBe('sharing'));
+    publish[1].resolve();
+    await retry;
+
+    expect(row(stores, 'Workbench')).toMatchObject({ sharing: '', shareError: '', kind: 'shared' });
+    expect(row(stores, 'Workbench').shareLink).not.toBe('');
+  }, 10000);
+
+  it('a retry after a step that follows the publish does not publish again', async () => {
+    let publishes = 0;
+    let failGetOnce = false;
+    onPorts = (ports) => {
+      const publish = ports.lifecycle.publish.bind(ports.lifecycle);
+      const get = ports.lifecycle.get.bind(ports.lifecycle);
+      ports.lifecycle.publish = async (id: string, options?: { sharing?: string }) => {
+        publishes += 1;
+        const result = await publish(id, options);
+        failGetOnce = true;
+        return result;
+      };
+      ports.lifecycle.get = async (id: string) => {
+        if (failGetOnce) {
+          failGetOnce = false;
+          throw new Error('lost the executor after publishing');
+        }
+        return get(id);
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.spaces.createSpace('Kiln', 'x', 'shared', 'hidden');
+    await vi.waitFor(() => expect(row(stores, 'Kiln').sharing).toBe('failed'));
+
+    await stores.spaces.shareSpace(row(stores, 'Kiln').uuid);
+
+    expect(publishes).toBe(1);
+    expect(row(stores, 'Kiln')).toMatchObject({ sharing: '', kind: 'shared' });
+  }, 10000);
+
+  it('lists a space in global discovery only once it has the address it is listed under', async () => {
+    provideSeed({ name: 'test', modules: [], globalSpaceUrl: 'inmemory://global' } as never);
+    try {
+      const publish = holdPublish();
+      const seedGlobal = onPorts!;
+      onPorts = (ports) => {
+        seedGlobal(ports);
+        ports.lifecycle.seedShared({ id: 'global', name: 'Global', sharedUri: 'inmemory://global' });
+      };
+      const stores = mountShell();
+      await ready(stores);
+      await stores.spaces.joinSpace('inmemory://global', false);
+      const global = stores.datasets.globalDataset()!;
+      expect(global).not.toBeNull();
+
+      await stores.spaces.createSpace('Listed', 'x', 'shared', 'listed');
+      expect(await Space.findAll(global.handle as never, { where: { name: 'Listed' } })).toEqual([]);
+
+      publish[0].resolve();
+
+      await vi.waitFor(() => expect(row(stores, 'Listed').kind).toBe('shared'));
+      const shared = (await lifecycle.list()).find((d) => d.name === 'Listed')!;
+      await vi.waitFor(async () => {
+        const [listing] = await Space.findAll(global.handle as never, { where: { name: 'Listed' } });
+        expect(listing?.url).toBe(shared.sharedId);
+      });
+    } finally {
+      provideSeed({ name: 'test', modules: [] } as never);
+    }
   }, 10000);
 });
 
