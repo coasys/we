@@ -4,7 +4,7 @@
  * `client.neighbourhood.*`, and `client.agent.*` calls the app shell's stores previously made
  * directly. Datasets are perspectives; shared datasets are neighbourhoods.
  */
-import { Ad4mClient, Perspective, PerspectiveHandle, type PerspectiveProxy } from '@coasys/ad4m';
+import { Ad4mClient, Perspective, PerspectiveHandle, type PerspectiveProxy, PerspectiveState } from '@coasys/ad4m';
 import {
   type AgentIdentity,
   type AgentSessionPort,
@@ -404,6 +404,30 @@ export function createAd4mDatasetLifecycle(
       const joined = held ?? (await proxyFor(handle.uuid));
       if (!joined) throw new Error(`join: no dataset handle after joining ${uri}`);
       return toRef(joined);
+    },
+
+    /**
+     * Follows the perspective's sync state. Listens before reading the current state — the SDK
+     * sends the new watch ahead of the read — so a change landing during the read is not lost.
+     */
+    whenSynced(id) {
+      return new Promise<void>((resolve, reject) => {
+        const finish = (error?: unknown) => {
+          release();
+          if (error) reject(error);
+          else resolve();
+        };
+        const settle = (state: string | null | undefined) => {
+          if (state === PerspectiveState.Synced || state === PerspectiveState.Private) finish();
+          else if (state === PerspectiveState.LinkLanguageFailedToInstall) {
+            finish(new Error('The space’s sync language could not be installed, so it cannot sync.'));
+          }
+        };
+        const release = client.on('sync-state-change', ({ state }) => settle(state), { perspective: id });
+        client.perspective
+          .byUUID(id)
+          .then((p) => (p ? settle(p.state) : finish(new Error(`whenSynced: no dataset with id ${id}`))), finish);
+      });
     },
 
     async members(id) {

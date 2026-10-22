@@ -632,6 +632,91 @@ describe('dataset lifecycle through the real stores', () => {
     expect(stores.spaces.joinError()).toBeNull();
   }, 20000);
 
+  /*
+    A join returns before the neighbourhood has synced (coasys/ad4m#1466). Installing the schema
+    then read an empty dataset, found none of the creator's shapes and wrote a second copy of every
+    one; it must wait for the backend to say the dataset has synced.
+  */
+  function holdSync(id: string) {
+    const installed: string[] = [];
+    let release!: () => void;
+    let fail!: (error: Error) => void;
+    const held = new Promise<void>((resolve, reject) => {
+      release = resolve;
+      fail = reject;
+    });
+    onPorts = (ports) => {
+      const { installSpace, hasCoreSchema, hasAnySchema } = ports.schemas;
+      const idOf = (dataset: unknown) => (dataset as { id: string }).id;
+      ports.schemas.installSpace = async (dataset, modules) => {
+        installed.push(idOf(dataset));
+        return installSpace(dataset, modules);
+      };
+      // The held dataset holds a schema only once one is installed into it — none arrives by sync
+      // here — where the in-memory backend otherwise answers that every dataset has one.
+      ports.schemas.hasCoreSchema = async (dataset) =>
+        idOf(dataset) === id ? installed.includes(id) : hasCoreSchema(dataset);
+      ports.schemas.hasAnySchema = async (dataset) =>
+        idOf(dataset) === id ? installed.includes(id) : hasAnySchema(dataset);
+      ports.lifecycle.whenSynced = (datasetId) => (datasetId === id ? held : Promise.resolve());
+    };
+    return { installed, release: () => release(), fail: (error: Error) => fail(error) };
+  }
+
+  it('installs the schema into a joined space only once it has synced', async () => {
+    const sync = holdSync('sync-ds');
+    const stores = mountShell();
+    await ready(stores);
+    lifecycle.seedShared({ id: 'sync-ds', name: 'Syncing Space', sharedUri: 'inmemory://sync-ds' });
+
+    const joined = stores.spaces.joinSpace('inmemory://sync-ds');
+    await vi.waitFor(() => expect(stores.spaces.joiningSpace()).toBe('sync-ds'));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(sync.installed, 'installed before the dataset synced').not.toContain('sync-ds');
+    expect(stores.spaces.joiningSpace(), 'the join is still in progress while it syncs').toBe('sync-ds');
+
+    sync.release();
+    await joined;
+
+    expect(sync.installed).toContain('sync-ds');
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.name).toBe('Syncing Space'));
+    expect(stores.spaces.joiningSpace()).toBe('');
+  }, 10000);
+
+  it('fails a join whose space cannot sync, and installs nothing into it', async () => {
+    const sync = holdSync('broken-ds');
+    const stores = mountShell();
+    await ready(stores);
+    lifecycle.seedShared({ id: 'broken-ds', name: 'Broken Space', sharedUri: 'inmemory://broken-ds' });
+
+    const joined = stores.spaces.joinSpace('inmemory://broken-ds');
+    sync.fail(new Error('The space’s sync language could not be installed.'));
+
+    await expect(joined).rejects.toThrow(/sync language/);
+    expect(sync.installed).not.toContain('broken-ds');
+    expect(stores.spaces.joinError()).toEqual(expect.objectContaining({ spaceId: 'broken-ds' }));
+    expect(stores.spaces.joiningSpace()).toBe('');
+  }, 10000);
+
+  it('does not judge a dataset empty, and make it a WE space, before it has synced', async () => {
+    // The dataset-added event can switch to a just-joined dataset before the join has finished.
+    // Holding no schema then says nothing about what it is: a Flux community looks the same.
+    seededDatasets = [{ id: 'unsynced-ds', name: 'Unsynced' }];
+    const sync = holdSync('unsynced-ds');
+    const stores = mountShell();
+    await ready(stores);
+
+    const switched = stores.datasets.switchDataset('unsynced-ds');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(sync.installed).not.toContain('unsynced-ds');
+
+    sync.release();
+    await switched;
+
+    expect(sync.installed).toContain('unsynced-ds');
+    expect(stores.datasets.isWeSpace()).toBe(true);
+  }, 10000);
+
   it('reports a backend that answered, rather than waiting out the recovery window', async () => {
     const stores = mountShell();
     await ready(stores);

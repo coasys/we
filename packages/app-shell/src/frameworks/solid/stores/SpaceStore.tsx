@@ -1987,10 +1987,14 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function finishJoin(joinedRef: DatasetRef, focus: boolean): Promise<void> {
     const joinedHandle = joinedRef.handle as DatasetProxy;
 
+    // A join returns before the dataset has synced, and until it has it holds none of the
+    // space's data — the creator's schema included. Everything below reads it, so wait.
+    await session.lifecycle()?.whenSynced?.(joinedRef.id);
+
     // Install WE SDNA so Space, SignalType, CollectionBlock etc. are queryable
     // immediately. installSpace diffs against the dataset's actual state before writing,
-    // so this is safe to call unconditionally even when the space's creator or an earlier
-    // joiner already installed it — it won't write a duplicate copy.
+    // so once the dataset has synced this writes only what the creator and earlier joiners
+    // have not — never a duplicate copy.
     const joinSchemas = session.backendPorts()!.schemas;
     await joinSchemas.installSpace(joinedHandle, moduleRegistry.moduleSchemas(joinSchemas));
 

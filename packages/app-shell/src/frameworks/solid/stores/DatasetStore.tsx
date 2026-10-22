@@ -1133,13 +1133,19 @@ export function DatasetStoreProvider(props: ParentProps) {
       // foreignSpacePrefill in SpaceStore) exists to ask the user about explicitly.
       // Only a dataset with no SDNA of any kind — the genuine first-time join
       // race (the dataset-added listener fires before joinSpace reaches the schema install)
-      // — should hit the install path here.
+      // — should hit the install path here. And only once it has synced: before that a
+      // just-joined dataset holds no SDNA whatever app made it, so a Flux community would
+      // look empty too.
       const schemas = session.backendPorts()!.schemas;
       let weSpace = await schemas.hasCoreSchema(handle);
       trace('dataset', 'switch:core', { dataset: uuid, weSpace, ms: lap() });
       if (!weSpace) {
         if (!(await schemas.hasAnySchema(handle))) {
-          await schemas.installSpace(handle, moduleRegistry.moduleSchemas(schemas));
+          await lifecycle.whenSynced?.(uuid);
+          if (requestedDataset !== uuid) return;
+          if (!(await schemas.hasAnySchema(handle))) {
+            await schemas.installSpace(handle, moduleRegistry.moduleSchemas(schemas));
+          }
           weSpace = await schemas.hasCoreSchema(handle);
         }
       } else {
