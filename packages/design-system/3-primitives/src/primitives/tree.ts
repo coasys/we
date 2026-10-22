@@ -34,7 +34,7 @@ const ITEM_STYLES = css`
     gap: var(--we-space-200);
     padding: var(--we-tree-row-padding, var(--we-space-100) var(--we-space-200));
     padding-inline-start: calc(
-      var(--we-tree-indent, var(--we-space-400)) * var(--we-tree-level, 0) + var(--we-space-200)
+      var(--we-tree-indent, var(--we-space-300)) * var(--we-tree-level, 0) + var(--we-space-200)
     );
     border-radius: var(--we-theme-tree-radius, var(--we-radius-300));
     color: var(--we-role-text-muted);

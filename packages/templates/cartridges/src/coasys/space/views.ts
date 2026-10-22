@@ -145,7 +145,7 @@ const firstSteps: SchemaNode = {
               'Start a call',
               'Everyone here can join. What is said is written down, and what is decided becomes work you can see.',
             ),
-            hint('hash', 'Make a channel', 'A place for one subject, from the menu beside the space’s name.'),
+            hint('hash', 'Make a channel', 'A place for one subject, from the + beside Channels.'),
             hint('chat-circle', 'Say hello', 'Write below. Everyone in the space reads General.'),
           ],
         },

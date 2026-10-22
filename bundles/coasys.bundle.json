@@ -651,33 +651,21 @@
                       "children": [{ "$": "spaceStore.currentSpace.name" }]
                     },
                     {
-                      "type": "DropdownMenu",
-                      "props": {
-                        "triggerIcon": "dots-three",
-                        "triggerVariant": "ghost",
-                        "triggerTitle": "This space",
-                        "size": "sm",
-                        "itemSize": "sm",
-                        "placement": "bottom-end",
-                        "items": [
-                          { "id": "channel", "label": "New channel", "icon": "hash" },
-                          { "id": "settings", "label": "Space settings", "icon": "gear-six" }
-                        ],
-                        "onSelect": [
-                          {
-                            "$if": {
-                              "condition": { "$": "arg.id == 'channel'" },
-                              "then": { "$setLocal": "newChannelOpen", "value": true }
-                            }
+                      "type": "we-tooltip",
+                      "props": { "content": "Space settings", "placement": "bottom" },
+                      "children": [
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "variant": "ghost",
+                            "size": "sm",
+                            "square": true,
+                            "label": "Space settings",
+                            "onClick": { "$action": "shellStore.toggleSpaceSettings" }
                           },
-                          {
-                            "$if": {
-                              "condition": { "$": "arg.id == 'settings'" },
-                              "then": { "$action": "shellStore.openSpaceSettings" }
-                            }
-                          }
-                        ]
-                      }
+                          "children": [{ "type": "we-icon", "props": { "name": "gear-six" } }]
+                        }
+                      ]
                     },
                     {
                       "type": "we-tooltip",
@@ -750,6 +738,12 @@
                         "onSelect": [
                           {
                             "$if": {
+                              "condition": { "$": "startsWith(event.detail.value, 'group|')" },
+                              "then": { "$toggleLocalIn": "openRows", "value": { "$": "event.detail.value" } }
+                            }
+                          },
+                          {
+                            "$if": {
                               "condition": { "$": "startsWith(event.detail.value, 'channel|')" },
                               "then": {
                                 "$action": "routeStore.navigate",
@@ -813,16 +807,30 @@
                               "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
                               "children": [
                                 {
+                                  "type": "we-icon",
+                                  "props": { "name": "chats-circle", "size": "sm", "color": "text-muted" }
+                                },
+                                {
                                   "type": "we-text",
-                                  "props": {
-                                    "truncate": true,
-                                    "flex": "1",
-                                    "minWidth": "0",
-                                    "variant": "footnote",
-                                    "color": "text-muted",
-                                    "fontWeight": "medium"
-                                  },
+                                  "props": { "truncate": true, "flex": "1", "minWidth": "0" },
                                   "children": ["Channels"]
+                                },
+                                {
+                                  "type": "we-tooltip",
+                                  "props": { "content": "New channel", "placement": "right" },
+                                  "children": [
+                                    {
+                                      "type": "we-button",
+                                      "props": {
+                                        "variant": "ghost",
+                                        "size": "xs",
+                                        "square": true,
+                                        "label": "New channel",
+                                        "onClick": { "$setLocal": "newChannelOpen", "value": true }
+                                      },
+                                      "children": [{ "type": "we-icon", "props": { "name": "plus" } }]
+                                    }
+                                  ]
                                 }
                               ]
                             },
@@ -892,15 +900,12 @@
                               "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
                               "children": [
                                 {
+                                  "type": "we-icon",
+                                  "props": { "name": "phone", "size": "sm", "color": "text-muted" }
+                                },
+                                {
                                   "type": "we-text",
-                                  "props": {
-                                    "truncate": true,
-                                    "flex": "1",
-                                    "minWidth": "0",
-                                    "variant": "footnote",
-                                    "color": "text-muted",
-                                    "fontWeight": "medium"
-                                  },
+                                  "props": { "truncate": true, "flex": "1", "minWidth": "0" },
                                   "children": ["Calls"]
                                 },
                                 {
@@ -987,15 +992,12 @@
                               "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
                               "children": [
                                 {
+                                  "type": "we-icon",
+                                  "props": { "name": "flow-arrow", "size": "sm", "color": "text-muted" }
+                                },
+                                {
                                   "type": "we-text",
-                                  "props": {
-                                    "truncate": true,
-                                    "flex": "1",
-                                    "minWidth": "0",
-                                    "variant": "footnote",
-                                    "color": "text-muted",
-                                    "fontWeight": "medium"
-                                  },
+                                  "props": { "truncate": true, "flex": "1", "minWidth": "0" },
                                   "children": ["Flows"]
                                 }
                               ]
@@ -1055,15 +1057,12 @@
                               "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
                               "children": [
                                 {
+                                  "type": "we-icon",
+                                  "props": { "name": "users", "size": "sm", "color": "text-muted" }
+                                },
+                                {
                                   "type": "we-text",
-                                  "props": {
-                                    "truncate": true,
-                                    "flex": "1",
-                                    "minWidth": "0",
-                                    "variant": "footnote",
-                                    "color": "text-muted",
-                                    "fontWeight": "medium"
-                                  },
+                                  "props": { "truncate": true, "flex": "1", "minWidth": "0" },
                                   "children": ["People"]
                                 },
                                 {
@@ -1127,16 +1126,10 @@
                               "type": "Row",
                               "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
                               "children": [
+                                { "type": "we-icon", "props": { "name": "dna", "size": "sm", "color": "text-muted" } },
                                 {
                                   "type": "we-text",
-                                  "props": {
-                                    "truncate": true,
-                                    "flex": "1",
-                                    "minWidth": "0",
-                                    "variant": "footnote",
-                                    "color": "text-muted",
-                                    "fontWeight": "medium"
-                                  },
+                                  "props": { "truncate": true, "flex": "1", "minWidth": "0" },
                                   "children": ["Social DNA"]
                                 }
                               ]
@@ -1185,13 +1178,12 @@
                     "condition": { "$": "modules.call.canCall" },
                     "then": {
                       "type": "Column",
-                      "props": { "p": "300" },
+                      "props": { "p": "300", "ax": "start" },
                       "children": [
                         {
                           "type": "we-button",
                           "props": {
                             "variant": { "$": "count(modules.call.liveCalls) ? 'primary' : 'secondary'" },
-                            "width": "100%",
                             "onClick": { "$action": "modules.call.goToCall" }
                           },
                           "children": [
@@ -1721,7 +1713,7 @@
                             {
                               "type": "we-text",
                               "props": { "variant": "footnote", "color": "text-muted" },
-                              "children": ["A place for one subject, from the menu beside the space’s name."]
+                              "children": ["A place for one subject, from the + beside Channels."]
                             }
                           ]
                         },
