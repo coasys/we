@@ -5,6 +5,7 @@
  * which are on here, what a part is called and what it needs are this host's to say. Built from the
  * module registry and the stores, and nothing else — so the editor can stay ignorant of both.
  */
+import { currentProductName } from '@shared/bundles/brand';
 import type { OwnedPart, OwnersPort } from '@we/editor/runtime';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { createSignal } from 'solid-js';
@@ -63,7 +64,7 @@ export function createOwnersPort(deps: {
         label: host.label,
         description: host.description,
         moduleId: 'host',
-        moduleName: 'WE',
+        moduleName: currentProductName(),
         inputs: [],
         missing: '',
       };
@@ -145,7 +146,7 @@ export function createOwnersPort(deps: {
       const owner = moduleRegistry.viewOwners()[id];
       const source =
         id in viewRegistry
-          ? 'built into WE'
+          ? `built into ${currentProductName()}`
           : owner
             ? `from ${moduleRegistry.get(owner)?.definition.manifest.name ?? humanise(owner)}`
             : template.spaceTemplates().some((t) => t.id === id)

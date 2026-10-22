@@ -6,12 +6,21 @@
  * generated from we-seed.json by the prebuild script.
  */
 
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
+import { createRequire } from 'module';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// What this build is called and installed as comes from the seed (`desktop`), WE's own by default.
+// See `scripts/seed.cjs`.
+const seedFile = createRequire(import.meta.url)('../../scripts/seed.cjs');
+const desktop = seedFile.desktopOf(seedFile.readSeed());
+// Another seed's icon is generated beside this app, not over WE's checked-in one (`@we/brand`).
+const seedIconDir = seedFile.generatedDir(__dirname);
+const seedIcon = seedIconDir && join(seedIconDir, 'icon.png');
 
 // Load the generated extraResources configuration
 const extraResourcesPath = join(__dirname, 'electron', 'seed-extra-resources.json');
@@ -26,14 +35,14 @@ export default {
     the qualifier rather than the product because the product is the same product either way — the
     old `io.weco.electron` named only the runtime, and left no room to say which app it was.
   */
-  appId: 'io.weco.we.electron',
+  appId: `${desktop.appId}.electron`,
   // Capitalised, because this is the name a person reads — the window title, the .desktop `Name=`,
   // the macOS bundle. The lowercase spelling is for what a machine reads: `executableName` below,
   // the Rust crate, the `@we/*` scope. Nothing should carry both spellings for the same job.
-  productName: 'WE',
+  productName: desktop.productName,
   // The same 512x512 mark the Tauri build ships, so the two desktop apps are not
   // two different icons. electron-builder derives every other size from it.
-  icon: 'build/icon.png',
+  icon: seedIcon && existsSync(seedIcon) ? seedIcon : 'build/icon.png',
   directories: {
     output: 'dist-electron',
   },
@@ -79,10 +88,18 @@ export default {
     // electron-builder 26 defaults the Linux binary name to the sanitized package
     // name rather than productName, which for a scoped name (@we/app-electron)
     // becomes "@weapp-electron" and is rejected as an unsafe file path.
-    executableName: 'we',
+    executableName: machineName(desktop.productName),
     // Name the .desktop entry (and its StartupWMClass) after package.json's
     // desktopName, which is also what Electron reports as its own app_id/WM_CLASS —
     // otherwise a desktop environment cannot link the running window to the launcher.
     syncDesktopName: true,
   },
 };
+
+/** The spelling a machine reads — `WE` → `we`, `Coasys` → `coasys`. */
+function machineName(productName) {
+  return productName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}

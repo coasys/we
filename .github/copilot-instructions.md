@@ -2439,6 +2439,7 @@ AgentSettings extends Ad4mModel:
   - defaultThemeId: string = 'default' [we://default_theme]
   - systemLightThemeId: string [we://system_light_theme]
   - systemDarkThemeId: string [we://system_dark_theme]
+  - themeMode: string [we://theme_mode]
   - claudeApiKey: string [we://claude_api_key]
   - datasetOrder: string [we://dataset_order]
   - globalSpaceJoined: boolean = false [we://global_space_joined]
@@ -3557,6 +3558,7 @@ TemplateStore:
   - pendingInstall: the template an install dialog is showing ({ marketplaceId, destination, name, icon, version, capabilities, blocked }), or null when none is open. `capabilities` is already in the words a person reads. Host chrome renders it: a dialog vouching for a template must not be drawn by a template
   - appTemplateId: string — id of the app this agent is in: the template WE's own chrome is drawn from (the sidebar, the module rail, and whatever an app of their own arranges around every space). Not a space's template, and chosen by the agent alone
   - appTemplateOptions: { label, value, icon, editable }[] — the apps this agent can be in, ready for a we-select: WE’s own, then their own copies. `editable` is false for one that ships with WE, which is forked rather than edited — editorStore.editApp and forkApp take the value
+  - brand: { active, bundleId, name, mark, wordmark, about } — what the app calls itself. `name` is always set: WE's own, or the name of the bundle whose app is in use when it brings a brand (and, before anybody has signed in, of the app this device last ran). Read it wherever a template names the app — a header, a sign-in screen, a sentence — rather than writing "WE". `mark` and `wordmark` are image URLs for a we-image, empty while WE's own are showing (draw WE's mark then); `about` is the app's About page as Markdown, empty for WE's. `active` says a bundle's brand is showing
   - followTemplateUpdates: boolean — whether somebody else's change to the template on screen is put on screen as they save it. Off by default: it is offered instead, with a notice and an Update now button, so the page does not change under somebody mid-task. This agent's own changes (another device, an agent it asked) and changes to a template being edited here always apply
   - safeMode: { on, reason, template } — whether this tab is in safe mode, where WE's own templates and themes are drawn in place of the chosen ones. reason is 'asked' (the ?safe address, the key or the menu) or 'unfinished-render' (a template did not finish loading last time — template is its id). Decided before anything rendered; fixed for the page
   - operationLoading: string | null — the id of the template operation in flight, namespaced by kind ('marketplace-install:<id>', 'space-install:<id>'), or null. A key rather than a boolean so one row's spinner does not appear on every row
@@ -3599,6 +3601,9 @@ ThemeStore:
   - operationLoading: string | null — the id of the theme operation currently in flight, namespaced by kind (e.g. 'marketplace-install:<themeId>'), or null when idle. A key rather than a boolean so one row's spinner does not appear on every row — compare it against the row you are rendering
   - focusedRole: string — the kebab-case role the theme editor should scroll to ('surface-sunken'), or empty. Set by whatever sent somebody to the panel — the inspector's role readout — and re-announced on every set, so pressing the same chip twice scrolls twice
   - systemThemes: { light, dark, resolved } — which two themes 'Follow system' chooses between. light/dark are the ids as chosen, empty for a side left at the built-in; resolved is 'light' | 'dark', whichever the OS is asking for now
+  - themeMode: 'light' | 'dark' | 'system' — which side of a two-sided theme the agent wears. A theme can carry a light and a dark side of one look (its overrides' `light`/`dark`), so an app ships one theme rather than a pair; this picks between them for every such theme, and a theme with one look ignores it
+  - themeSide: 'light' | 'dark' — the side worn right now: themeMode, with 'system' answered by the machine
+  - currentThemeSides: ('light' | 'dark')[] — the sides the theme on screen carries. Offer a Light / Dark / System choice only when it is not empty
   - systemThemeOptions: { label, value }[] — options for either side of the Follow-system pair, with a "Built-in" entry a schema could not prepend itself
   - themeScope: 'global' | 'scoped' — what actually applies right now: the theme editor's session preview if one is active, else the agent's preference
   - themeScopePreference: 'global' | 'scoped' — the agent's persisted choice
@@ -3612,6 +3617,7 @@ ThemeStore:
   - setDefaultTheme(themeId: string): sets the preferred default theme (persists to AgentSettings.defaultThemeId)
   - focusRole(role: string): asks the theme editor to reveal a role, kebab-case as a schema spells it. Pair with editorStore.openThemePanel so there is a panel to scroll
   - setSystemTheme(polarity: 'light' | 'dark', themeId: string): sets one side of the Follow-system pair. An empty id returns that side to the built-in
+  - setThemeMode(mode: 'light' | 'dark' | 'system'): chooses which side of a two-sided theme to wear, for this agent everywhere. A we-select or a segmented control can pass its value bare
   - setThemeInstalled(themeId: string, visible: boolean): shows or hides a custom theme in the pickers; does not delete it. Takes the value rather than toggling, so a `we-switch` can pass `event.detail` straight through
   - previewThemeScope(scope: 'global' | 'scoped' | null): previews a scope for the current theme-editing session without writing the preference; null drops the preview. Cleared when editing ends
   - setThemeScopeGlobal(global: boolean): persists whether a space's theme covers the whole window (true) or only the space's own content (false, the default). Takes a boolean because a switch emits one; an expression over event in the args is evaluated when the switch fires, so pass `event.detail` bare

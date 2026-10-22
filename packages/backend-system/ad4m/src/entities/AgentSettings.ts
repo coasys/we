@@ -68,6 +68,16 @@ export class AgentSettings extends Ad4mModel {
   @Property({ through: 'we://system_dark_theme' })
   systemDarkThemeId: string = '';
 
+  /**
+   * Which side of a two-sided theme to wear: `light`, `dark`, or `system` to follow the machine.
+   *
+   * A theme can carry a light and a dark side of one look (`ThemeOverrides.light`/`dark`), so an
+   * app ships one theme rather than a pair. This picks between them, for every such theme; a theme
+   * with one side ignores it. Empty means `system`.
+   */
+  @Property({ through: 'we://theme_mode' })
+  themeMode: string = '';
+
   @Property({ through: 'we://claude_api_key' })
   claudeApiKey: string = '';
 

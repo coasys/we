@@ -5,10 +5,12 @@ import { resolve } from 'path';
 import { defineConfig } from 'vite';
 import solid from 'vite-plugin-solid';
 
+import { weSeed } from '../../scripts/seed-vite.mjs';
+
 export default defineConfig({
   // The policy itself is a header main.js sets, from the file the prebuild writes — so no meta tag
   // here. The rewrite is what lets the globe load under a policy without 'unsafe-eval'.
-  plugins: [solid(), rewriteKnockoutGlobalEval(), cesiumAssets(), globeLayerAssets()],
+  plugins: [weSeed(), solid(), rewriteKnockoutGlobalEval(), cesiumAssets(), globeLayerAssets()],
   assetsInclude: ['**/*.glb'],
   // Absolute, because the packaged app is served over HTTP from the root of the launcher server and
   // routes are client-side. A relative base resolves `./assets/…` against the current URL, so a

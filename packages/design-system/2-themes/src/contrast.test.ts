@@ -11,6 +11,9 @@
  * the colour without a DOM. That is what makes this a unit test that runs on every commit instead
  * of a screenshot somebody remembers to take.
  */
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import {
   APCA_MINIMUM,
   apcaContrast,
@@ -31,6 +34,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
 import { THEME_PRESETS, type ThemeName } from './presets';
+import { themeSides, withThemeSide } from './sides';
 import {
   DERIVED_FILLS,
   deriveRoleVars,
@@ -494,6 +498,68 @@ describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s', (name) => {
     expect(
       Math.round(lc),
       `${name}: ${pair.what} is Lc ${lc.toFixed(0)}, needs Lc ${APCA_MINIMUM[pair.level]}`,
+    ).toBeGreaterThanOrEqual(APCA_MINIMUM[pair.level]);
+  });
+});
+
+/**
+ * The themes an app brings in a bundle, held to the same pairs as the built-in ones.
+ *
+ * A bundle checked into the repository (`bundles/*.bundle.json`) is built into any deployment that
+ * names it, so its themes are as much WE's to answer for as a preset — and a whitelabelled app's
+ * theme is the one its people see on every screen. Each side a theme carries is worn and measured
+ * on its own: a dark side that passes says nothing about the light one.
+ */
+const BUNDLES_DIR = join(import.meta.dirname, '..', '..', '..', '..', 'bundles');
+const bundleThemeCases: { label: string; theme: ThemeOverrides }[] = readdirSync(BUNDLES_DIR)
+  .filter((file) => file.endsWith('.bundle.json'))
+  .flatMap((file) => {
+    const bundle = JSON.parse(readFileSync(join(BUNDLES_DIR, file), 'utf8')) as {
+      id: string;
+      theme?: { id: string; overrides: ThemeOverrides };
+      themes?: { id: string; overrides: ThemeOverrides }[];
+    };
+    const themes = bundle.themes ?? (bundle.theme ? [bundle.theme] : []);
+    return themes.flatMap((theme) => {
+      const sides = themeSides(theme.overrides);
+      if (!sides.length) return [{ label: `${bundle.id}/${theme.id}`, theme: theme.overrides }];
+      return (['light', 'dark'] as const).map((side) => ({
+        label: `${bundle.id}/${theme.id} (${side})`,
+        theme: withThemeSide(theme.overrides, side),
+      }));
+    });
+  });
+
+describe.each(bundleThemeCases)('$label', ({ label, theme }) => {
+  it.each(PAIRS)('clears AA for $what', (pair) => {
+    const fg = roleColor(pair.fg, theme);
+    const bg = roleColor(pair.bg, theme);
+    expect(fg, `could not resolve ${pair.fg}`).toBeTruthy();
+    expect(bg, `could not resolve ${pair.bg}`).toBeTruthy();
+    const ratio = contrastRatio(fg!, bg!);
+    expect(
+      Number(ratio.toFixed(2)),
+      `${label}: ${pair.what} is ${ratio.toFixed(2)}:1, needs ${CONTRAST_MINIMUM[pair.level]}:1`,
+    ).toBeGreaterThanOrEqual(CONTRAST_MINIMUM[pair.level]);
+  });
+
+  it.each(PAIRS)('clears APCA Lc for $what', (pair) => {
+    const fg = roleColor(pair.fg, theme);
+    const bg = roleColor(pair.bg, theme);
+    expect(fg, `could not resolve ${pair.fg}`).toBeTruthy();
+    expect(bg, `could not resolve ${pair.bg}`).toBeTruthy();
+    const lc = apcaContrast(fg!, bg!);
+    const accepted = ACCEPTED_BELOW_FLOOR[`${label}:${pair.what}`];
+    if (accepted !== undefined) {
+      expect(
+        Math.round(lc),
+        `${label}: ${pair.what} is Lc ${lc.toFixed(0)}, recorded as Lc ${accepted} — see ACCEPTED_BELOW_FLOOR`,
+      ).toBe(accepted);
+      return;
+    }
+    expect(
+      Math.round(lc),
+      `${label}: ${pair.what} is Lc ${lc.toFixed(0)}, needs Lc ${APCA_MINIMUM[pair.level]}`,
     ).toBeGreaterThanOrEqual(APCA_MINIMUM[pair.level]);
   });
 });

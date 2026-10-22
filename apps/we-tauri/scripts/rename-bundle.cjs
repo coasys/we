@@ -24,8 +24,9 @@ const path = require('path');
 /** Tauri's Debian-style arch names to the ones electron-builder writes for an AppImage. */
 const ARCH = { amd64: 'x86_64', i386: 'i386', arm64: 'arm64', armhf: 'armv7l' };
 
-/** Must match `productName` in src-tauri/tauri.conf.json — this is the display spelling. */
-const PRODUCT = 'WE';
+/** The display spelling of the product: the seed's `desktop.productName`, `WE` by default. */
+const seedFile = require('../../../scripts/seed.cjs');
+const PRODUCT = seedFile.desktopOf(seedFile.readSeed()).productName;
 
 const BUNDLE_DIR = path.join(__dirname, '..', 'src-tauri', 'target', 'release', 'bundle');
 

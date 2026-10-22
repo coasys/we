@@ -1,6 +1,8 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { confirmModal, railGroup, railItem, railShell } from '@we/template-kit';
 
+import { brandMark } from './brandMark';
+
 /**
  * Shell Sidebar
  *
@@ -66,7 +68,7 @@ const rail: SchemaNode = railShell({
     // No box of its own — `we-tooltip` is `display: contents`, so the Column below is the flex
     // child the rail sizes, exactly as it was before the tooltip was wrapped around it.
     type: 'we-tooltip',
-    props: { content: 'About WE', placement: 'right' },
+    props: { content: { $: '`About ${templateStore.brand.name}`' }, placement: 'right' },
     children: [
       {
         type: 'Column',
@@ -79,18 +81,7 @@ const rail: SchemaNode = railShell({
           cursor: 'pointer',
           onClick: { $action: 'shellStore.openShellView', args: ['landing-page'] },
         },
-        children: [
-          {
-            type: 'we-image',
-            props: {
-              src: '/we-text.svg',
-              alt: 'WE Logo',
-              width: '38px',
-              height: '38px',
-              gradient: 'var(--we-gradient-primary)',
-            },
-          },
-        ],
+        children: [brandMark({ width: '38px', height: '38px', gradient: 'var(--we-gradient-primary)' })],
       },
     ],
   },

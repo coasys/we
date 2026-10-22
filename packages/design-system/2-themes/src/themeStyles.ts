@@ -63,6 +63,9 @@ type ParametricKey = Exclude<
   | 'disabledOpacity'
   | 'roles'
   | 'schemaVersion'
+  // A theme's other sides, folded in by `withThemeSide` before anything is applied.
+  | 'light'
+  | 'dark'
 >;
 
 /** camelCase role name → --we-role-<kebab-case> custom property. */

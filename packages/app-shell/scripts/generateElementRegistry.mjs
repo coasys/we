@@ -14,22 +14,28 @@
  * Run: `pnpm --filter @we/app-shell generate-elements`
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 import { format, resolveConfig } from 'prettier';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
-const outPath = resolve(here, '../src/shared/registries/foreignElements.generated.ts');
+// Which seed this build is for — `WE_SEED`, or WE's own. See `scripts/seed.cjs`.
+const seedFile = createRequire(import.meta.url)('../../../scripts/seed.cjs');
+const outPath = seedFile.generatedPath(
+  resolve(here, '../src/shared/registries/foreignElements.generated.ts'),
+  resolve(here, '..'),
+);
 const appShellModules = resolve(here, '../node_modules');
 
-const seed = JSON.parse(await readFile(resolve(repoRoot, 'we-seed.json'), 'utf8'));
+const seed = seedFile.readSeed();
 const entries = seed.elements ?? [];
 
 const fail = (message) => {
-  console.error(`we-seed.json elements: ${message}`);
+  console.error(`${seedFile.seedLabel()} elements: ${message}`);
   process.exit(1);
 };
 

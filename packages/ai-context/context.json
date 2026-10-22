@@ -3640,6 +3640,12 @@
           "required": false
         },
         {
+          "name": "themeMode",
+          "type": "string",
+          "predicate": "we://theme_mode",
+          "required": false
+        },
+        {
           "name": "claudeApiKey",
           "type": "string",
           "predicate": "we://claude_api_key",
@@ -7565,6 +7571,10 @@
         "appTemplateOptions": {
           "type": "array"
         },
+        "brand": {
+          "type": "object",
+          "properties": ["active", "bundleId", "name", "mark", "wordmark", "about"]
+        },
         "followTemplateUpdates": {
           "type": "boolean"
         },
@@ -7652,6 +7662,15 @@
         "systemThemes": {
           "type": "object"
         },
+        "themeMode": {
+          "type": "string"
+        },
+        "themeSide": {
+          "type": "string"
+        },
+        "currentThemeSides": {
+          "type": "array"
+        },
         "systemThemeOptions": {
           "type": "array"
         },
@@ -7682,6 +7701,7 @@
         "setDefaultTheme",
         "focusRole",
         "setSystemTheme",
+        "setThemeMode",
         "setThemeInstalled",
         "previewThemeScope",
         "setThemeScopeGlobal",

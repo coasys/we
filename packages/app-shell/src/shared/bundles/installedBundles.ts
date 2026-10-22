@@ -7,7 +7,7 @@
  * display policy, so how an app shows spaces is a property of the app in use rather than a setting;
  * and the record types it brings, so a space can be set up for it later.
  */
-import type { BundleRecordType } from '@we/schema-shared';
+import type { BundleBrand, BundleRecordType, SchemaNode } from '@we/schema-shared';
 
 import type { BundlePieces } from './bundlePieces';
 import type { BundleGrant } from './consent';
@@ -24,6 +24,9 @@ export interface InstalledBundle {
   app?: string;
   /** Every space template and section it wrote, by id. */
   templates: string[];
+  /** The themes it wrote, by the ids they were written under, its default first. */
+  themes?: string[];
+  /** An install from before a bundle could bring several themes. Read with {@link installedThemes}. */
   theme?: string;
   /** Sections, by id — what setting up a space switches on. */
   sections: string[];
@@ -34,6 +37,15 @@ export interface InstalledBundle {
   granted?: BundleGrant;
   /** The file it was installed from, as `bundleDigest` has it: the same file again changes nothing. */
   digest?: string;
+  /** Kept whole, like the record types: the app names itself with it while it is in use. */
+  brand?: BundleBrand;
+  /** Its sign-in screen, kept whole for the same reason. */
+  bootScreen?: SchemaNode;
+}
+
+/** The themes an install wrote, whichever field it recorded them in. */
+export function installedThemes(entry: Pick<InstalledBundle, 'themes' | 'theme'>): string[] {
+  return entry.themes ?? (entry.theme ? [entry.theme] : []);
 }
 
 export function readInstalledBundles(raw: string | undefined | null): InstalledBundle[] {
@@ -71,12 +83,14 @@ export function installedEntry(
     at: meta.at,
     ...(pieces.app ? { app: pieces.app.id } : {}),
     templates: [...pieces.shells, ...pieces.sections].map((template) => template.id),
-    ...(pieces.theme ? { theme: pieces.theme.id } : {}),
+    ...(pieces.themes.length ? { themes: pieces.themes.map((theme) => theme.id) } : {}),
     sections: pieces.sections.map((section) => section.id),
     recordTypes: pieces.recordTypes,
     ...(pieces.display ? { display: pieces.display } : {}),
     ...(meta.granted ? { granted: meta.granted } : {}),
     ...(meta.digest ? { digest: meta.digest } : {}),
+    ...(pieces.brand ? { brand: pieces.brand } : {}),
+    ...(pieces.bootScreen ? { bootScreen: pieces.bootScreen } : {}),
   };
 }
 

@@ -22,7 +22,7 @@
  */
 import type { EntityManifest } from '@we/backend-shared';
 
-import type { TemplateSchema } from './types';
+import type { SchemaNode, TemplateSchema } from './types';
 
 export const BUNDLE_FORMAT = 'we-bundle';
 export const BUNDLE_FORMAT_VERSION = 1;
@@ -34,6 +34,29 @@ export interface BundleTheme {
   icon?: string;
   overrides: Record<string, unknown>;
   css?: string;
+}
+
+/**
+ * What makes one app look like another: its name, its mark, and what its About page says.
+ *
+ * Read wherever the app names itself — the sidebar's header, the sign-in screen, the window title,
+ * a toast saying a new version is available — in place of WE's own, while this bundle's app is the
+ * one in use. A deployment that builds a bundle in is white-labelled by it; nothing in WE's own code
+ * changes.
+ *
+ * The mark and wordmark are SVG source, drawn as images (`data:` URLs), so whatever is in them cannot
+ * run — but `readBundle` still refuses one carrying script, event handlers or a reference to anywhere
+ * outside the file, so a brand never looks like it does more than draw.
+ */
+export interface BundleBrand {
+  /** The product's name, as a person reads it: "Coasys". */
+  name: string;
+  /** A square mark — an app icon, a favicon, the sidebar's header. SVG source. */
+  mark?: string;
+  /** The name drawn as type, where there is room. SVG source. */
+  wordmark?: string;
+  /** What the About page says, as Markdown. */
+  about?: string;
 }
 
 /** A kind of record the app is about, as the model wizard would save it: one entity, by name. */
@@ -71,9 +94,50 @@ export interface Bundle {
   app?: TemplateSchema & { id: string };
   /** Space templates (no role) and sections (`meta.role: 'view'`). */
   templates?: Array<TemplateSchema & { id: string }>;
+  /** One theme. A bundle offering several lists them in `themes` instead. */
   theme?: BundleTheme;
+  /**
+   * The themes the app offers, its default first. A template names the ones it is designed for in
+   * `meta.themeIds`, by their ids here.
+   */
+  themes?: BundleTheme[];
   recordTypes?: BundleRecordType[];
   display?: BundleDisplay;
+  /** The app's name, mark and About page. Absent, the app goes by WE's. */
+  brand?: BundleBrand;
+  /**
+   * The sign-in screen, in place of WE's: any layout, drawn before anybody is signed in. It must
+   * place the host's `CredentialField` — the one piece of it the app does not own — and is judged at
+   * the chrome tier, as the app is. See `docs/architecture/protected-pieces.md`.
+   */
+  bootScreen?: SchemaNode;
+}
+
+/** Every theme a bundle brings, whichever of `theme` and `themes` it used. */
+export function bundleThemes(bundle: Pick<Bundle, 'theme' | 'themes'>): BundleTheme[] {
+  return bundle.themes ?? (bundle.theme ? [bundle.theme] : []);
+}
+
+/**
+ * Why an SVG cannot be a brand's mark, or null when it can.
+ *
+ * It is drawn as an image, where nothing in it can run or load, so this is not what keeps anybody
+ * safe; it keeps a brand honest. An `<svg>` root, and nothing that would mean something somewhere
+ * else: no script, no event handler, no `javascript:`, no foreign HTML, and no reference to a file
+ * or address outside itself (an `#id` or a `data:` URL is fine).
+ */
+export function svgProblem(svg: string): string | null {
+  if (!/^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*<svg[\s>]/i.test(svg))
+    return 'is not SVG (it must start with <svg>)';
+  if (/<script[\s/>]/i.test(svg)) return 'contains a script';
+  if (/<foreignObject[\s/>]/i.test(svg)) return 'contains foreign HTML';
+  if (/\son[a-z]+\s*=/i.test(svg)) return 'contains an event handler';
+  if (/javascript:/i.test(svg)) return 'contains a javascript: URL';
+  for (const match of svg.matchAll(/(?:href|src)\s*=\s*["']([^"']*)["']|url\(\s*["']?([^"')]*)/gi)) {
+    const ref = (match[1] ?? match[2] ?? '').trim();
+    if (ref && !ref.startsWith('#') && !ref.startsWith('data:')) return `refers to something outside itself (${ref})`;
+  }
+  return null;
 }
 
 /** Why a file is not a bundle this build can read, each with where in it. */
@@ -151,17 +215,44 @@ export function readBundle(
     else input.templates.forEach((template, index) => checkTemplate(template, `templates.${index}`, 'any'));
   }
 
-  if (input.theme !== undefined) {
-    const theme = input.theme;
-    if (!isObject(theme)) problem('theme', 'Not a theme');
+  const themeIds = new Set<string>();
+  const checkTheme = (theme: unknown, path: string) => {
+    if (!isObject(theme)) return problem(path, 'Not a theme');
+    if (typeof theme.id !== 'string' || !ID.test(theme.id))
+      problem(`${path}.id`, 'Needs an id of lowercase letters, digits and single dashes');
+    else if (themeIds.has(theme.id)) problem(`${path}.id`, `"${theme.id}" is used twice`);
+    else themeIds.add(theme.id);
+    if (typeof theme.name !== 'string' || !theme.name) problem(`${path}.name`, 'Needs a name');
+    if (!isObject(theme.overrides)) problem(`${path}.overrides`, 'Needs its overrides');
+    if (theme.css !== undefined && typeof theme.css !== 'string') problem(`${path}.css`, 'css must be text');
+  };
+  if (input.theme !== undefined && input.themes !== undefined)
+    problem('themes', 'A bundle lists its themes in "themes" or brings one in "theme", not both');
+  if (input.theme !== undefined) checkTheme(input.theme, 'theme');
+  if (input.themes !== undefined) {
+    if (!Array.isArray(input.themes)) problem('themes', 'themes must be a list');
+    else input.themes.forEach((theme, index) => checkTheme(theme, `themes.${index}`));
+  }
+
+  if (input.brand !== undefined) {
+    const brand = input.brand;
+    if (!isObject(brand)) problem('brand', 'Not a brand');
     else {
-      if (typeof theme.id !== 'string' || !ID.test(theme.id))
-        problem('theme.id', 'Needs an id of lowercase letters, digits and single dashes');
-      if (typeof theme.name !== 'string' || !theme.name) problem('theme.name', 'Needs a name');
-      if (!isObject(theme.overrides)) problem('theme.overrides', 'Needs its overrides');
-      if (theme.css !== undefined && typeof theme.css !== 'string') problem('theme.css', 'css must be text');
+      if (typeof brand.name !== 'string' || !brand.name.trim()) problem('brand.name', 'Needs the name the app goes by');
+      for (const key of ['mark', 'wordmark'] as const) {
+        if (brand[key] === undefined) continue;
+        if (typeof brand[key] !== 'string') problem(`brand.${key}`, `${key} must be SVG source`);
+        else {
+          const why = svgProblem(brand[key] as string);
+          if (why) problem(`brand.${key}`, `The ${key} ${why}`);
+        }
+      }
+      if (brand.about !== undefined && typeof brand.about !== 'string') problem('brand.about', 'about must be text');
     }
   }
+
+  if (input.bootScreen !== undefined && (!isObject(input.bootScreen) || typeof input.bootScreen.type !== 'string'))
+    problem('bootScreen', 'The sign-in screen must be a template node');
 
   if (input.recordTypes !== undefined) {
     if (!Array.isArray(input.recordTypes)) problem('recordTypes', 'recordTypes must be a list');
@@ -209,7 +300,8 @@ export function readBundle(
   if (
     input.app === undefined &&
     !(Array.isArray(input.templates) && input.templates.length) &&
-    input.theme === undefined
+    input.theme === undefined &&
+    !(Array.isArray(input.themes) && input.themes.length)
   )
     problem('', 'A bundle with no app, no templates and no theme has nothing to install');
 

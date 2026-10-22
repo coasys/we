@@ -82,7 +82,7 @@ export const spaceIdentity: SchemaNode = {
           props: { variant: 'footnote', color: 'text-faint' },
           children: [
             {
-              $: "space.isWeSpace ? space.kind == 'shared' ? 'Shared space' : 'Personal space' : 'Joined dataset — not yet a WE space'",
+              $: "space.isWeSpace ? space.kind == 'shared' ? 'Shared space' : 'Personal space' : `Joined dataset — not yet a ${templateStore.brand.name} space`",
             },
           ],
         },
@@ -123,7 +123,11 @@ const notAWeSpaceNotice: SchemaNode = {
     {
       type: 'we-text',
       props: { variant: 'footnote', color: 'text-faint' },
-      children: ['This dataset was synced in from another app and has no WE space in it. Open it to initialize one.'],
+      children: [
+        {
+          $: '`This dataset was synced in from another app and has no ${templateStore.brand.name} space in it. Open it to initialize one.`',
+        },
+      ],
     },
   ],
 };
@@ -171,7 +175,7 @@ const discoveryRow: SchemaNode = attributeRow({
   icon: 'globe',
   label: 'Discovery',
   value: expr`${isListed} ? 'Listed' : 'Hidden'`,
-  description: expr`${isListed} ? 'Appears on the WE discovery globe' : 'Not shown in global discovery'`,
+  description: expr`${isListed} ? \`Appears on the \${templateStore.brand.name} discovery globe\` : 'Not shown in global discovery'`,
   control: {
     type: 'we-switch',
     props: {

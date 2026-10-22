@@ -3,9 +3,9 @@
 import '@we/app-shell/shared/index.scss';
 
 import { App, PlatformProvider, type WeSeedFile } from '@we/app-shell/solid';
+import weSeed from '@we/seed-file';
 import { render } from 'solid-js/web';
 
-import weSeed from '../../../we-seed.json';
 import { ad4mConnector } from './platform/ad4mConnector';
 import { tauriPlatform } from './platform/tauriPlatform';
 

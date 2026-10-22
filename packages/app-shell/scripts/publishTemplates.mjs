@@ -26,17 +26,20 @@
  *
  * Run: `pnpm --filter @we/app-shell publish-templates [outfile]`
  */
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
+// Which seed this build is for — `WE_SEED`, or WE's own. See `scripts/seed.cjs`.
+const seedFile = createRequire(import.meta.url)('../../../scripts/seed.cjs');
 const outPath = process.argv[2] ?? resolve(repoRoot, 'template-bundle.json');
 
 // Run under `tsx` (see the package script): the schemas are TypeScript importing TypeScript, and
 // tsx is already how the schema validator runs them without a build step.
-const seed = JSON.parse(await readFile(resolve(repoRoot, 'we-seed.json'), 'utf8'));
+const seed = seedFile.readSeed();
 const ids = seed.templates ?? ['default'];
 
 const { bundledTemplates } = await import(resolve(here, '../src/shared/registries/bundledTemplates.generated.ts'));

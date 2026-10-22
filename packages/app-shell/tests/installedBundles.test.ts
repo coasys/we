@@ -7,6 +7,7 @@ import { appSpaceTemplate } from '@shared/bundles/display';
 import {
   displaySourceOf,
   installedEntry,
+  installedThemes,
   readInstalledBundles,
   withInstalled,
   withoutInstalled,
@@ -48,7 +49,7 @@ describe('the record of an install', () => {
       app: 'field-guide--app',
       templates: ['field-guide--shell', 'field-guide--species'],
       sections: ['field-guide--species'],
-      theme: 'field-guide--moss',
+      themes: ['field-guide--moss'],
       recordTypes: [{ name: 'Species' }],
       display: { spaces: 'ours', template: 'field-guide--shell' },
     });
@@ -65,6 +66,12 @@ describe('the record of an install', () => {
     expect(readInstalledBundles(JSON.stringify(list))).toEqual(list);
     expect(readInstalledBundles('not json')).toEqual([]);
     expect(readInstalledBundles('')).toEqual([]);
+  });
+
+  it('reads the themes an install wrote, including one recorded before there could be several', () => {
+    expect(installedThemes(entry('1.0.0'))).toEqual(['field-guide--moss']);
+    expect(installedThemes({ theme: 'old--theme' })).toEqual(['old--theme']);
+    expect(installedThemes({})).toEqual([]);
   });
 
   it('carries the display policy of the app it installed', () => {

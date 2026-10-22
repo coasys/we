@@ -101,6 +101,25 @@ Pinning any of these is you overruling the derivation, which is allowed and occa
 `channels` states its own accent because a designed theme should say what its accent _is_. But pin
 one and you own it, including in the polarity you were not looking at.
 
+## A light and a dark side of one look
+
+A theme can carry both sides of itself, so an app ships one theme rather than a pair. Write the base
+as one side, and add a `light` or `dark` block holding only what differs on the other — usually
+`polarity`, the lightness range, and the role pins that only hold there:
+
+```ts
+{
+  polarity: 'dark', primaryHue: 160, lightnessFloor: '16%', lightnessCeiling: '104%',
+  roles: { page: 'oklch(18.5% 0.04 278)', accent: 'oklch(85% 0.12 160)' },
+  light: { polarity: 'light', lightnessFloor: '0%', lightnessCeiling: '100%', roles: { page: 'oklch(98% 0.01 278)' } },
+}
+```
+
+The agent's Light / Dark / System setting (`themeStore.themeMode`) picks the side; `withThemeSide`
+(`src/sides.ts`) lays it over the base, merging role pins key by key. Flipping is rarely just
+`polarity`: a pin chosen for a dark page is wrong on a light one, which is why a side carries its own.
+Both sides are held to the contrast pairs separately.
+
 ## Two rules that are not obvious
 
 **A filled control must sit away from the middle of its ramp.** At mid-lightness neither a light nor

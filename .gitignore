@@ -35,3 +35,9 @@ apps/we-electron/electron/seed-servers.js
 
 # Context eval results — a run's numbers are read and summarised into a PR or note, not tracked.
 packages/app-shell/eval/results/
+
+# Another seed's generated files (WE_SEED=seeds/<name>.seed.json), written beside the package that
+# generates them instead of over WE's checked-in ones. See scripts/seed.cjs.
+.seed-build/
+# The seed's product name, identifier and icons for Tauri, merged in with --config on every build.
+apps/we-tauri/src-tauri/tauri.seed.conf.json

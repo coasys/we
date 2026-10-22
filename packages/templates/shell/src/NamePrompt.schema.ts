@@ -55,7 +55,7 @@ export const namePrompt: SchemaNode = formModal({
       props: { color: 'text-muted' },
       children: [
         {
-          $: "sessionStore.isGuest ? 'You joined as a guest, so this is a brand-new identity with no name on it yet. This is what other people in the space will see on your posts and messages.' : 'Your account was set up outside WE, so we do not have a name for you yet. This is what other people will see on your posts and messages.'",
+          $: "sessionStore.isGuest ? 'You joined as a guest, so this is a brand-new identity with no name on it yet. This is what other people in the space will see on your posts and messages.' : `Your account was set up outside ${templateStore.brand.name}, so we do not have a name for you yet. This is what other people will see on your posts and messages.`",
         },
       ],
     },

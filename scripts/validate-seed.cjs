@@ -13,7 +13,8 @@ const fs = require('fs');
 const path = require('path');
 
 const WORKSPACE_ROOT = path.resolve(__dirname, '..');
-const SEED_FILE = path.join(WORKSPACE_ROOT, 'we-seed.json');
+// The seed this run is for: `WE_SEED`, or WE's own `we-seed.json`. See `scripts/seed.cjs`.
+const SEED_FILE = require('./seed.cjs').seedPath();
 
 let errors = [];
 let warnings = [];
@@ -101,6 +102,35 @@ function main() {
         error(`ad4m.linkServerUrl must be an http(s) URL, got: ${seed.ad4m.linkServerUrl}`);
       } else {
         success(`ad4m.linkServerUrl is ${seed.ad4m.linkServerUrl} (server link language offered for shared spaces)`);
+      }
+    }
+  }
+
+  if (seed.desktop !== undefined) {
+    const desktop = seed.desktop;
+    if (typeof desktop !== 'object' || desktop === null || Array.isArray(desktop)) {
+      error('Invalid field: desktop (must be an object of productName, appId and icon)');
+    } else {
+      for (const key of ['productName', 'appId', 'icon']) {
+        if (desktop[key] !== undefined && (typeof desktop[key] !== 'string' || !desktop[key].trim())) {
+          error(`desktop.${key} must be a non-empty string`);
+        }
+      }
+      // An identifier is what the OS installs by, so it has to look like one.
+      if (typeof desktop.appId === 'string' && !/^[a-z][a-z0-9-]*(\.[a-z0-9-]+)+$/i.test(desktop.appId)) {
+        error(`desktop.appId must be a reverse-domain identifier such as io.example.app, got: ${desktop.appId}`);
+      }
+      if (typeof desktop.icon === 'string') {
+        const icon = path.resolve(path.join(__dirname, '..'), desktop.icon);
+        if (!desktop.icon.endsWith('.svg')) error(`desktop.icon must be an SVG file, got: ${desktop.icon}`);
+        else if (!fs.existsSync(icon))
+          error(`desktop.icon not found: ${desktop.icon} (relative to the repository root)`);
+      }
+      if (desktop.productName && seed.ad4m && !seed.ad4m.dataPath) {
+        warn(
+          `desktop.productName is ${desktop.productName} but ad4m.dataPath is unset, so it shares WE's ~/.ad4m — ` +
+            'set its own unless the two builds should share one executor database',
+        );
       }
     }
   }

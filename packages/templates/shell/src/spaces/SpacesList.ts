@@ -30,7 +30,7 @@ const kindBadge: SchemaNode = {
     else: {
       type: 'we-badge',
       props: { size: 'sm', variant: 'warning' },
-      children: ['Not a WE space'],
+      children: [{ $: '`Not a ${templateStore.brand.name} space`' }],
     },
   },
 };
