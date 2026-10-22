@@ -5,10 +5,10 @@ import { confirmModal, railGroup, railItem, railShell } from '@we/template-kit';
  * The Coasys app: the chrome around every space.
  *
  * One rail down the left, as Josh's design draws it: the Coasys mark, the spaces this device holds
- * with a + to create or join one, and at its foot the person — a menu for their profile, Settings and
- * logging out. Notes and Pocket sit above them, being the person's own and following them between
- * spaces. Collapsed it is icons only at 72px, and it opens over the page while the pointer is on it,
- * so nothing beside it reflows.
+ * with a + to create or join one, Settings, and at its foot the person — a menu for their profile,
+ * About Coasys and logging out. Settings is on the rail rather than in the menu, being one click
+ * either way and always in sight there. Collapsed it is icons only at 72px, and it opens over the
+ * page while the pointer is on it, so nothing beside it reflows.
  *
  * No module rail on the right. What WE puts there — the call, the transcript, the feed — a Coasys
  * space draws in its own tree and views, so a second way to reach them would be two ways to the same
@@ -27,7 +27,6 @@ const accountMenu: SchemaNode = {
     placement: 'right-end',
     items: [
       { id: 'profile', label: 'Profile', icon: 'user' },
-      { id: 'settings', label: 'Settings', icon: 'gear-six' },
       { id: 'about', label: 'About Coasys', icon: 'info' },
       { id: 'logout', label: 'Log out', icon: 'sign-out' },
     ],
@@ -36,12 +35,6 @@ const accountMenu: SchemaNode = {
         $if: {
           condition: { $: "arg.id == 'profile'" },
           then: { $action: 'shellStore.openShellView', args: ['profile'] },
-        },
-      },
-      {
-        $if: {
-          condition: { $: "arg.id == 'settings'" },
-          then: { $action: 'shellStore.openShellView', args: ['settings'] },
         },
       },
       {
@@ -111,15 +104,6 @@ const rail: SchemaNode = railShell({
     type: 'Column',
     props: { width: '100%', gap: '200' },
     children: [
-      { type: '$part', props: { id: 'notes.toggleButton' } },
-      { type: '$part', props: { id: 'pocket.toggleButton' } },
-      railItem({
-        icon: 'squares-four',
-        label: 'Customise layout',
-        tooltip: 'Show what on this page can be moved',
-        active: { $: 'shellStore.customisingLayout' },
-        onClick: { $action: 'shellStore.toggleCustomiseLayout' },
-      }),
       railItem({
         icon: 'gear-six',
         label: 'Settings',

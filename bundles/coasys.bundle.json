@@ -350,64 +350,6 @@
                         "type": "Column",
                         "props": { "width": "100%", "gap": "200" },
                         "children": [
-                          { "type": "$part", "props": { "id": "notes.toggleButton" } },
-                          { "type": "$part", "props": { "id": "pocket.toggleButton" } },
-                          {
-                            "type": "we-tooltip",
-                            "props": { "content": "Show what on this page can be moved", "placement": "right" },
-                            "children": [
-                              {
-                                "type": "we-button",
-                                "props": {
-                                  "variant": "ghost",
-                                  "size": "lg",
-                                  "width": "100%",
-                                  "height": "auto",
-                                  "ax": "start",
-                                  "ay": "center",
-                                  "gap": "300",
-                                  "p": "300",
-                                  "onClick": { "$action": "shellStore.toggleCustomiseLayout" },
-                                  "bg": { "$": "shellStore.customisingLayout ? 'accent-muted' : ''" },
-                                  "color": { "$": "shellStore.customisingLayout ? 'accent-text' : 'text-muted'" },
-                                  "hoverProps": {
-                                    "$": "shellStore.customisingLayout ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
-                                  },
-                                  "activeProps": {
-                                    "$": "shellStore.customisingLayout ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
-                                  }
-                                },
-                                "children": [
-                                  { "type": "we-icon", "props": { "name": "squares-four", "flexShrink": "0" } },
-                                  {
-                                    "type": "$if",
-                                    "props": {
-                                      "condition": { "$": "local.expanded" },
-                                      "enterTransition": [
-                                        { "type": "reveal", "axis": "inline", "duration": 250 },
-                                        { "type": "fade", "duration": 150 }
-                                      ],
-                                      "exitTransition": [
-                                        { "type": "reveal", "axis": "inline", "duration": 250 },
-                                        { "type": "fade", "duration": 150 }
-                                      ],
-                                      "then": {
-                                        "type": "Row",
-                                        "props": { "gap": "200", "ay": "center", "minWidth": "0" },
-                                        "children": [
-                                          {
-                                            "type": "we-text",
-                                            "props": { "truncate": true, "fontSize": "300" },
-                                            "children": ["Customise layout"]
-                                          }
-                                        ]
-                                      }
-                                    }
-                                  }
-                                ]
-                              }
-                            ]
-                          },
                           {
                             "type": "we-button",
                             "props": {
@@ -469,7 +411,6 @@
                               "placement": "right-end",
                               "items": [
                                 { "id": "profile", "label": "Profile", "icon": "user" },
-                                { "id": "settings", "label": "Settings", "icon": "gear-six" },
                                 { "id": "about", "label": "About Coasys", "icon": "info" },
                                 { "id": "logout", "label": "Log out", "icon": "sign-out" }
                               ],
@@ -478,12 +419,6 @@
                                   "$if": {
                                     "condition": { "$": "arg.id == 'profile'" },
                                     "then": { "$action": "shellStore.openShellView", "args": ["profile"] }
-                                  }
-                                },
-                                {
-                                  "$if": {
-                                    "condition": { "$": "arg.id == 'settings'" },
-                                    "then": { "$action": "shellStore.openShellView", "args": ["settings"] }
                                   }
                                 },
                                 {
@@ -659,7 +594,7 @@
         "name": "Coasys",
         "description": "A space as one tree and one view: its channels, calls, flows and people beside what you chose.",
         "icon": "tree-structure",
-        "requires": { "modules": ["call", "transcribe", "notes", "pocket", "graph"] },
+        "requires": { "modules": ["call", "transcribe", "graph"] },
         "panels": [
           {
             "id": "tree",
