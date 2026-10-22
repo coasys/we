@@ -213,13 +213,6 @@ function devLog(...args: unknown[]): void {
 const EditorContext = createContext<EditorStore>();
 
 let msgIdCounter = 0;
-/**
- * WE's template tools as the one file a backend runs them from. Fetched on first use rather than
- * with the editor: it is a couple of megabytes, and most sessions never hand an edit to the node.
- */
-let bundleSource: Promise<string> | undefined;
-const agentToolsBundle = (): Promise<string> =>
-  (bundleSource ??= import('@we/agent-tools/bundle?raw').then((module) => module.default));
 
 /** A template's design, without what saving it stamps on — to tell whether a save changed it. */
 function contentOf(template: TemplateSchema): string {
@@ -1069,7 +1062,8 @@ export function EditorStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
 
   /**
-   * Hand the request to an agent the backend runs, with WE's template tools, and show what it did.
+   * Hand the request to an agent the backend runs, with the template tools it carries, and show
+   * what it did.
    * Answers false when this request is not one to hand over — no such backend, or a template the
    * agent could not save in place — and the editor's own loop then does the work.
    *
@@ -1087,7 +1081,6 @@ export function EditorStoreProvider(props: ParentProps) {
     setMessages((prev) => [...prev, streamMsg]);
     setStreamingContent('<span class="shimmer">*Working on it…*</span>');
     try {
-      await agents.provideTools(await agentToolsBundle());
       const before = deepClone(template) as TemplateSchema;
       const { result, stored: after } = await templateStore.writtenElsewhere(template, () =>
         agents.run({

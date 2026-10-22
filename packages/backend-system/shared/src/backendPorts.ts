@@ -230,7 +230,7 @@ export interface BackendPorts {
    */
   languageModel?: LanguageModelPort;
   /**
-   * Agents the backend runs in a dataset, with its tools and the app's. Optional: a backend that
+   * Agents the backend runs in a dataset, with its tools and WE's template tools. Optional: a backend that
    * cannot run one omits it, and a surface that would have handed it a request does the work
    * itself through {@link languageModel}.
    */

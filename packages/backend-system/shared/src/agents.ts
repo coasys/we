@@ -1,6 +1,6 @@
 /**
  * Agents the backend runs: a model, on the backend, working in one dataset with the backend's own
- * tools — and with tools the app gives it for its own records.
+ * tools, WE's template tools among them.
  *
  * `LanguageModelPort.converse` lets WE run the conversation itself, calling the model one turn at a
  * time and applying what it asks for in the browser. That only works while somebody has WE open,
@@ -9,12 +9,11 @@
  * the conversation and reads the answer. Anything else that can reach the backend — a bot, a
  * scheduled job — can then do the same with the same rules.
  *
- * ## The app's tools travel as a bundle
+ * ## The backend carries WE's template tools
  *
- * What counts as a valid template is WE's to decide, and changes with every WE release. So WE
- * hands the backend its rules as one self-contained JavaScript module (`@we/agent-tools`' bundle),
- * which the backend runs in a sandbox and offers to its agents. {@link AgentPort.provideTools} is
- * idempotent: the same build's bundle changes nothing, and a new build's replaces the old.
+ * What counts as a valid template is WE's to decide, and changes with every WE release. A backend
+ * that offers agents runs WE's own rules for it — `@we/agent-tools`' bundle, at the release the
+ * backend was built with — so an agent there edits a template by the rules the editor uses.
  *
  * ## Reads are free; edits are asked for
  *
@@ -38,7 +37,7 @@ export interface AgentRunRequest {
   turns: AgentTurn[];
   /** The record the person is looking at, as a hint the agent starts from. */
   about?: { entity: string; id: string };
-  /** Whether the agent may change the dataset, using the app's tools. Absent: it only reads. */
+  /** Whether the agent may change the dataset, with the template tools. Absent: it only reads. */
   mayEdit?: boolean;
   /** A model other than the backend's default, as the backend names it. */
   model?: string;
@@ -51,20 +50,14 @@ export interface AgentRunReply {
 }
 
 export interface AgentPort {
-  /**
-   * Give the backend's agents the app's tools: a single-file ES module exporting `toolsets`, as
-   * `@we/agent-tools` builds. Resolves once they are available, whether this call installed them
-   * or they already were; rejects when the backend has none and may not be given them.
-   */
-  provideTools(bundle: string): Promise<void>;
   /** Run an agent to its answer. */
   run(request: AgentRunRequest): Promise<AgentRunReply>;
 }
 
 /**
- * The backend cannot run this agent here — its build predates agents, or it has no app tools and
- * this session may not install them. Not a failure of the request: a caller that can do the work
- * another way does it that way, and anything else is a real error worth showing.
+ * The backend cannot run this agent here: its build predates agents. Not a failure of the request:
+ * a caller that can do the work another way does it that way, and anything else is a real error
+ * worth showing.
  */
 export class AgentUnavailableError extends Error {
   constructor(message: string) {
