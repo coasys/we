@@ -3640,6 +3640,12 @@
           "required": false
         },
         {
+          "name": "themeMode",
+          "type": "string",
+          "predicate": "we://theme_mode",
+          "required": false
+        },
+        {
           "name": "claudeApiKey",
           "type": "string",
           "predicate": "we://claude_api_key",
