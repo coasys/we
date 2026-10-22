@@ -22,6 +22,13 @@
 //   - based on `dev` or `main`: no block (a leftover one is an error);
 //   - based on anything else: a block, naming an open pull request whose branch is that base.
 //
+// One leftover is not a mistake but the ordinary end of a stack: the parent merged, GitHub
+// retargeted this pull request at `dev`, and the block now names a merged pull request. There is
+// one right fix and it is mechanical, so with CLEAR_MERGED_BLOCK=1 (the workflow sets it) the
+// check makes it itself: it takes the alert off the top of the description and passes. The rest
+// of the description is left as written. A pull request from a fork gets a read-only token, so
+// there the edit fails and the check reports the leftover as before.
+//
 // Strict and broad: a line that starts "Stacked on", in any case, heading level or quote, is an
 // attempt, and an attempt not in the exact form is an error with the block to paste. A mention
 // in a sentence is not one.
@@ -32,6 +39,8 @@
 //
 //   stacked=true|false     whether the base is another branch, for the label — printed even
 //                          when the check fails, since the label follows the base alone
+//   cleared=#N             the block naming #N was removed from the description, which needs a
+//                          token allowed to edit pull requests
 //
 // On an error it exits 1 and explains on stderr, with the block to paste.
 // ---------------------------------------------------------------------------
@@ -104,7 +113,9 @@ export function parseStacking(body) {
  *
  * @param {{ repo: string, base: string, body: string }} pr
  * @param {(path: string) => Promise<any>} get  the GitHub API, injected for tests
- * @returns {Promise<{ stacked: boolean, error?: { problem: string, number?: string } }>}
+ * @returns {Promise<{ stacked: boolean, error?: { problem: string, number?: string, clearable?: boolean } }>}
+ *   `clearable` marks the one error that has a mechanical fix: a block left behind on a pull
+ *   request retargeted at a trunk after the one it named merged. See `withoutBlock`.
  */
 export async function checkStacking({ repo, base, body }, get) {
   const stacked = !TRUNKS.has(base);
@@ -118,9 +129,15 @@ export async function checkStacking({ repo, base, body }, get) {
   }
 
   if (!stacked) {
-    return parsed.kind === 'pr'
-      ? fail(`This PR is based on \`${base}\`, so it is no longer stacked on #${parsed.number}: remove the block.`)
-      : { stacked };
+    if (parsed.kind !== 'pr') return { stacked };
+    const problem = `This PR is based on \`${base}\`, so it is no longer stacked on #${parsed.number}: remove the block.`;
+    let merged = false;
+    try {
+      merged = !!(await get(`repos/${repo}/pulls/${parsed.number}`)).merged_at;
+    } catch {
+      // Unreadable is not merged: the leftover is reported, never cleared on a guess.
+    }
+    return { stacked, error: { problem, ...(merged ? { number: parsed.number, clearable: true } : {}) } };
   }
 
   if (parsed.kind === 'none') {
@@ -158,6 +175,24 @@ export async function checkStacking({ repo, base, body }, get) {
   return { stacked };
 }
 
+/**
+ * The description without its stacking block: the alert at the top, every quoted line of it —
+ * the heading and whatever the author wrote under it, which went stale with it — and the blank
+ * lines after. Everything else is returned exactly as written.
+ *
+ * Only for a description `parseStacking` read as `{ kind: 'pr' }`, which is what guarantees the
+ * alert is the first thing in it.
+ */
+export function withoutBlock(body) {
+  const lines = body.split(/(?<=\n)/);
+  let i = 0;
+  while (i < lines.length && !lines[i].trim()) i++;
+  if (lines[i]?.trimEnd() !== ALERT) return body;
+  while (i < lines.length && /^>/.test(lines[i])) i++;
+  while (i < lines.length && !lines[i].trim()) i++;
+  return lines.slice(i).join('');
+}
+
 /** The open pull request from a branch in this repository, if there is one; any failure is none. */
 async function parentOf(repo, branch, get) {
   try {
@@ -170,10 +205,10 @@ async function parentOf(repo, branch, get) {
   }
 }
 
-async function github(path) {
-  const headers = { Accept: 'application/vnd.github+json' };
+async function github(path, init = {}) {
+  const headers = { Accept: 'application/vnd.github+json', ...init.headers };
   if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
-  const res = await fetch(`https://api.github.com/${path}`, { headers });
+  const res = await fetch(`https://api.github.com/${path}`, { ...init, headers });
   if (!res.ok) throw new Error(`GitHub API ${path}: ${res.status} ${res.statusText}`);
   return res.json();
 }
@@ -188,6 +223,23 @@ async function main() {
   const { stacked, error } = await checkStacking({ repo, base: pr.base.ref, body: pr.body ?? '' }, github);
   console.log(`stacked=${stacked}`);
   if (!error) return;
+
+  const cleared = error.clearable ? withoutBlock(pr.body ?? '') : undefined;
+  // Unchanged means something sits above the block (a comment, say): leave that to a person.
+  if (cleared !== undefined && cleared !== (pr.body ?? '') && process.env.CLEAR_MERGED_BLOCK === '1') {
+    try {
+      await github(`repos/${repo}/pulls/${number}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: cleared }),
+      });
+      console.log(`cleared=#${error.number}`);
+      return;
+    } catch (failure) {
+      // A fork's token cannot edit the pull request; say what to do instead.
+      console.error(`Could not remove the block (${failure.message}).`);
+    }
+  }
 
   console.error(error.problem);
   if (stacked) {
