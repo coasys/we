@@ -27,9 +27,7 @@ const channelModes: SchemaNode = {
         $action: 'routeStore.navigate',
         args: [
           {
-            $: page
-              ? `spaceStore.spacePath + '/${page}' + ((${IN_ROOT_EXPR}) ? '' : '?channel=' + (${CHANNEL_EXPR}))`
-              : channelPath(CHANNEL_EXPR),
+            $: page ? `spaceStore.spacePath + '/${page}?channel=' + (${CHANNEL_EXPR})` : channelPath(CHANNEL_EXPR),
           },
         ],
       },

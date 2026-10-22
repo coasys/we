@@ -819,9 +819,7 @@
                               "then": {
                                 "$action": "routeStore.navigate",
                                 "args": [
-                                  {
-                                    "$": "(split(event.detail.value, '|')[1]) == spaceStore.root ? spaceStore.spacePath : spaceStore.spacePath + '?channel=' + (split(event.detail.value, '|')[1])"
-                                  }
+                                  { "$": "spaceStore.spacePath + '?channel=' + (split(event.detail.value, '|')[1])" }
                                 ]
                               }
                             }
@@ -1678,7 +1676,7 @@
                           "$action": "routeStore.navigate",
                           "args": [
                             {
-                              "$": "(routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root ? spaceStore.spacePath : spaceStore.spacePath + '?channel=' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                              "$": "spaceStore.spacePath + '?channel=' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
                             }
                           ]
                         }
@@ -1696,7 +1694,7 @@
                           "$action": "routeStore.navigate",
                           "args": [
                             {
-                              "$": "spaceStore.spacePath + '/canvas' + (((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? '' : '?channel=' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root))"
+                              "$": "spaceStore.spacePath + '/canvas?channel=' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
                             }
                           ]
                         }
@@ -2021,7 +2019,7 @@
                           "$action": "routeStore.navigate",
                           "args": [
                             {
-                              "$": "(routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root ? spaceStore.spacePath : spaceStore.spacePath + '?channel=' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+                              "$": "spaceStore.spacePath + '?channel=' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
                             }
                           ]
                         }
@@ -2039,7 +2037,7 @@
                           "$action": "routeStore.navigate",
                           "args": [
                             {
-                              "$": "spaceStore.spacePath + '/canvas' + (((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? '' : '?channel=' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root))"
+                              "$": "spaceStore.spacePath + '/canvas?channel=' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
                             }
                           ]
                         }
