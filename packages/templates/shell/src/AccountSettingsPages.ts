@@ -10,7 +10,7 @@ import type { SchemaNode } from '@we/schema-shared';
 import { comingSoon, confirmModal } from '@we/template-kit';
 
 import { accountSettings } from './AccountSettings.schema.ts';
-import { hostSection } from './HostSettings.schema.ts';
+import { hostCredits, hostSection } from './HostSettings.schema.ts';
 import { profileEditor } from './Profile.schema.ts';
 import { mcpServer } from './RuntimeSettings.schema.ts';
 
@@ -184,6 +184,8 @@ export const planPage: SchemaNode = {
   props: { gap: '400' },
   children: [
     heading('Plan & usage', 'What your account includes, and how much of it you have used.'),
+    // A hosted node's balance, where the operator charges for it; nothing elsewhere.
+    hostCredits,
     comingSoon({
       available: can('plan'),
       icon: 'chart-bar',
@@ -203,33 +205,36 @@ export const planPage: SchemaNode = {
 
 // ─── Log out ────────────────────────────────────────────────────────────────────
 
-export const logOutPage: SchemaNode = {
+/**
+ * Logging out, as the action at the foot of Settings' nav rather than a page of its own: a page whose
+ * only content is the button was a click spent getting to the click.
+ *
+ * One-way for a guest — see the sidebar's logout, which says why. Told before it happens, not
+ * refused: a guest may genuinely want to leave. The flag sits on this node so the button and the
+ * dialog share it.
+ */
+export const logOutAction: SchemaNode = {
   type: 'Column',
-  props: { gap: '400' },
   $localState: { confirmGuestLogout: { type: 'boolean', initial: false } },
   children: [
-    heading('Log out', 'Sign out of this device. Your account and spaces stay as they are.'),
     {
-      type: 'Row',
-      children: [
-        {
-          type: 'we-button',
-          props: {
-            variant: 'danger',
-            /*
-              One-way for a guest — see the sidebar's logout, which says why. Told before it happens,
-              not refused: a guest may genuinely want to leave.
-            */
-            onClick: {
-              $if: {
-                condition: { $: 'sessionStore.isGuest' },
-                then: { $setLocal: 'confirmGuestLogout', value: true },
-                else: { $action: 'sessionStore.logout' },
-              },
-            },
+      type: 'we-button',
+      props: {
+        variant: 'ghost',
+        width: '100%',
+        ax: 'start',
+        color: 'danger-text',
+        onClick: {
+          $if: {
+            condition: { $: 'sessionStore.isGuest' },
+            then: { $setLocal: 'confirmGuestLogout', value: true },
+            else: { $action: 'sessionStore.logout' },
           },
-          children: [{ type: 'we-icon', props: { name: 'sign-out' } }, 'Log out'],
         },
+      },
+      children: [
+        { type: 'we-icon', props: { name: 'sign-out' } },
+        { type: 'we-text', children: ['Log out'] },
       ],
     },
     confirmModal({

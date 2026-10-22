@@ -12,7 +12,7 @@ import { expr } from '@we/schema-shared';
 import {
   botsPage,
   devicesPage,
-  logOutPage,
+  logOutAction,
   planPage,
   profilePage,
   securityPage,
@@ -1394,7 +1394,6 @@ export const settingsTemplate: TemplateSchema = {
     { path: '/', ...page([profilePage]) },
     { path: '/security', ...page([securityPage]) },
     { path: '/plan', ...page([planPage]) },
-    { path: '/logout', ...page([logOutPage]) },
     // Devices and access — what acts as you.
     { path: '/devices', ...page([devicesPage]) },
     {
@@ -1466,28 +1465,32 @@ export const settingsTemplate: TemplateSchema = {
                   navItem('Profile', 'user', '/'),
                   navItem('Security', 'shield-check', '/security'),
                   navItem('Plan & usage', 'credit-card', '/plan'),
-                  navItem('Log out', 'sign-out', '/logout'),
                 ]),
                 navGroup('Devices and access', [
                   navItem('Devices', 'devices', '/devices'),
+                  /*
+                    The models the backend on this device runs — language and transcription — which
+                    every app connected to it uses, and bots run on; so beside them, not under This
+                    app. Feature-detected, as before.
+                  */
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $: 'runtimeStore.canManageAi' },
+                      then: navItem('AI models', 'sparkle', '/ai'),
+                    },
+                  },
                   navItem('Bots', 'robot', '/bots'),
                   // Feature-detected: a backend that administers no apps has nothing to show here.
                   {
                     type: '$if',
                     props: {
                       condition: { $: 'runtimeStore.canManageApps' },
-                      then: navItem('Connected apps', 'plugs-connected', '/connections'),
+                      then: navItem('Connections', 'plugs-connected', '/connections'),
                     },
                   },
                 ]),
                 navGroup('This app', [
-                  {
-                    type: '$if',
-                    props: {
-                      condition: { $: 'runtimeStore.canManageAi' },
-                      then: navItem('AI', 'sparkle', '/ai'),
-                    },
-                  },
                   // How it looks, what it is drawn with, what it can do — then what you keep.
                   navItem('Appearance', 'palette', '/appearance'),
                   navItem('Apps & templates', 'app-window', '/apps'),
@@ -1506,16 +1509,18 @@ export const settingsTemplate: TemplateSchema = {
                       then: navItem('Camera & microphone', 'video-camera', '/camera'),
                     },
                   },
-                ]),
-                {
-                  type: '$if',
-                  props: {
-                    // `isDevelopment`, NOT `devTools` — see `developerSection`. Gating the way to
-                    // the switch on the switch would make turning it off a one-way door.
-                    condition: { $: 'sessionStore.isDevelopment' },
-                    then: navGroup('Developer', [navItem('Developer', 'flask', '/developer')]),
+                  {
+                    type: '$if',
+                    props: {
+                      // `isDevelopment`, NOT `devTools` — see `developerSection`. Gating the way to
+                      // the switch on the switch would make turning it off a one-way door.
+                      condition: { $: 'sessionStore.isDevelopment' },
+                      then: navItem('Developer', 'flask', '/developer'),
+                    },
                   },
-                },
+                ]),
+                // An action rather than a page, set apart at the foot of the nav — see `logOutAction`.
+                { type: 'Column', props: { pt: '300', borderTop: '1px solid border' }, children: [logOutAction] },
               ],
             },
             { type: 'Column', props: { flex: '1', gap: '600' }, children: [{ type: '$routes' }] },
