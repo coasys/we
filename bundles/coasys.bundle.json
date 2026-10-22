@@ -1349,7 +1349,8 @@
             "title": "This space",
             "home": "tree",
             "snap": "left",
-            "size": "sm"
+            "size": "sm",
+            "grow": 1
           }
         ],
         "recordViews": {

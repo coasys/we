@@ -21,7 +21,9 @@ export const coasysSpace: TemplateSchema & { id: string } = {
     description: 'A space as one tree and one view: its channels, calls, flows and people beside what you chose.',
     icon: 'tree-structure',
     requires: { modules: ['call', 'transcribe'] },
-    panels: [{ id: 'tree', node: treeSection, title: 'This space', home: 'tree', snap: 'left', size: 'sm' }],
+    // `grow` so the tree takes the lane's whole length and scrolls inside it, rather than stopping
+    // where its rows do.
+    panels: [{ id: 'tree', node: treeSection, title: 'This space', home: 'tree', snap: 'left', size: 'sm', grow: 1 }],
     recordViews: { 'CollectionBlock:call': callPage },
   },
   type: 'Row',
