@@ -115,8 +115,15 @@ describe('a node-scoped theme', () => {
       surfaceOpacity: 0.9,
       surfaceBlur: 12,
       animationSpeed: 'fast',
+      light: { polarity: 'light', lightnessFloor: '0%', roles: { page: '#fafafa' } },
+      dark: { polarity: 'dark' },
     };
     expect(validateStructure(themed(theme)).errors).toEqual([]);
+  });
+
+  it('refuses a side that names bookkeeping or another side', () => {
+    expect(validateStructure(themed({ light: { schemaVersion: 6 } })).valid).toBe(false);
+    expect(validateStructure(themed({ light: { dark: {} } })).valid).toBe(false);
   });
 
   it('accepts it at a template root', () => {

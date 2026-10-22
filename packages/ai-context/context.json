@@ -7568,6 +7568,10 @@
         "appTemplateOptions": {
           "type": "array"
         },
+        "brand": {
+          "type": "object",
+          "properties": ["active", "bundleId", "name", "mark", "wordmark", "about"]
+        },
         "followTemplateUpdates": {
           "type": "boolean"
         },
@@ -7655,6 +7659,15 @@
         "systemThemes": {
           "type": "object"
         },
+        "themeMode": {
+          "type": "string"
+        },
+        "themeSide": {
+          "type": "string"
+        },
+        "currentThemeSides": {
+          "type": "array"
+        },
         "systemThemeOptions": {
           "type": "array"
         },
@@ -7685,6 +7698,7 @@
         "setDefaultTheme",
         "focusRole",
         "setSystemTheme",
+        "setThemeMode",
         "setThemeInstalled",
         "previewThemeScope",
         "setThemeScopeGlobal",

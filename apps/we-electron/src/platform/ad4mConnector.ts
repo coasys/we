@@ -1,7 +1,6 @@
 import type { Account, BackendConnector, ExecutorSettings, ScreenSource } from '@we/app-shell/shared';
 import { createLocalAd4mConnector } from '@we/backend-ad4m';
-
-import weSeed from '../../../../we-seed.json';
+import weSeed from '@we/seed-file';
 
 // Electron IPC bridge - will be exposed by preload script
 declare global {

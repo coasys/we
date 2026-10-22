@@ -20,7 +20,7 @@ const byId = <T extends { id: string }>(items: T[]): Record<string, T> =>
 export const seedBundleApps = byId(seedBundlePieces.flatMap((pieces) => (pieces.app ? [pieces.app] : [])));
 export const seedBundleShells = byId(seedBundlePieces.flatMap((pieces) => pieces.shells));
 export const seedBundleSections = byId(seedBundlePieces.flatMap((pieces) => pieces.sections));
-export const seedBundleThemes = byId(seedBundlePieces.flatMap((pieces) => (pieces.theme ? [pieces.theme] : [])));
+export const seedBundleThemes = byId(seedBundlePieces.flatMap((pieces) => pieces.themes));
 
 /**
  * The app the deployment opens in when the seed's `host.ui.app` names none: the first seed bundle that

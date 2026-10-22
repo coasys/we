@@ -40,7 +40,7 @@ describe('the pieces a bundle lands as', () => {
     expect(pieces.app?.id).toBe('field-guide--app');
     expect(pieces.shells.map((t) => t.id)).toEqual(['field-guide--shell', 'field-guide--other']);
     expect(pieces.sections.map((t) => t.id)).toEqual(['field-guide--species']);
-    expect(pieces.theme?.id).toBe('field-guide--moss');
+    expect(pieces.themes.map((t) => t.id)).toEqual(['field-guide--moss']);
   });
 
   it('says where each template came from', () => {
@@ -55,6 +55,31 @@ describe('the pieces a bundle lands as', () => {
 
   it('leaves the bundle it was given alone', () => {
     expect(bundle.templates![0].id).toBe('shell');
+  });
+
+  it('lands every theme a bundle offers, and the list a template names, under the bundle’s id', () => {
+    const offering = bundlePieces({
+      ...bundle,
+      theme: undefined,
+      themes: [
+        { id: 'flat', name: 'Flat', overrides: {} },
+        { id: 'glow', name: 'Glow', overrides: {} },
+      ],
+      app: { id: 'app', type: 'Column', meta: { ...meta('App', 'app'), themeIds: ['flat', 'glow', 'dark'] } },
+    } as unknown as Bundle);
+    expect(offering.themes.map((t) => t.id)).toEqual(['field-guide--flat', 'field-guide--glow']);
+    expect(offering.app?.meta.themeIds).toEqual(['field-guide--flat', 'field-guide--glow', 'dark']);
+  });
+
+  it('carries the brand and the sign-in screen as they are', () => {
+    const branded = bundlePieces({
+      ...bundle,
+      brand: { name: 'Field Guide', mark: '<svg/>' },
+      bootScreen: { type: 'Column' },
+    } as unknown as Bundle);
+    expect(branded.brand).toEqual({ name: 'Field Guide', mark: '<svg/>' });
+    expect(branded.bootScreen).toEqual({ type: 'Column' });
+    expect(pieces.brand).toBeUndefined();
   });
 });
 

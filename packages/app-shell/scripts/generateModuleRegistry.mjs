@@ -19,30 +19,36 @@
  * Run: `pnpm --filter @we/app-shell generate-modules`
  */
 import { existsSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 import { format, resolveConfig } from 'prettier';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
-const outPath = resolve(here, '../src/shared/registries/bundledModules.generated.ts');
+// Which seed this build is for — `WE_SEED`, or WE's own. See `scripts/seed.cjs`.
+const seedFile = createRequire(import.meta.url)('../../../scripts/seed.cjs');
+const outPath = seedFile.generatedPath(
+  resolve(here, '../src/shared/registries/bundledModules.generated.ts'),
+  resolve(here, '..'),
+);
 const appShellModules = resolve(here, '../node_modules');
 
-const seed = JSON.parse(await readFile(resolve(repoRoot, 'we-seed.json'), 'utf8'));
+const seed = seedFile.readSeed();
 const entries = (seed.modules ?? []).map((entry) => (typeof entry === 'string' ? { id: entry } : entry));
 
 const bad = entries.filter((entry) => !entry?.id || !/^[a-z][a-z0-9-]*$/.test(entry.id));
 if (bad.length) {
-  console.error(`we-seed.json has module entries without a usable id: ${JSON.stringify(bad)}`);
+  console.error(`${seedFile.seedLabel()} has module entries without a usable id: ${JSON.stringify(bad)}`);
   process.exit(1);
 }
 
 const seen = new Set();
 for (const { id } of entries) {
   if (seen.has(id)) {
-    console.error(`we-seed.json names module "${id}" twice`);
+    console.error(`${seedFile.seedLabel()} names module "${id}" twice`);
     process.exit(1);
   }
   seen.add(id);
@@ -60,7 +66,7 @@ const resolved = entries.map((entry) => ({ id: entry.id, pkg: entry.package ?? `
 const missing = resolved.filter(({ pkg }) => !existsSync(resolve(appShellModules, pkg)));
 if (missing.length) {
   console.error(
-    `we-seed.json declares modules whose packages are not installed for @we/app-shell:\n` +
+    `${seedFile.seedLabel()} declares modules whose packages are not installed for @we/app-shell:\n` +
       missing.map(({ id, pkg }) => `  ${id} → ${pkg}`).join('\n') +
       `\nAdd each package to packages/app-shell/package.json and run pnpm install.`,
   );

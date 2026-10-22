@@ -16,7 +16,9 @@ const joinPrompt: SchemaNode = gatePrompt({
   icon: 'storefront',
   iconGradient: 'primary',
   title: 'Module Marketplace',
-  body: 'Browse and install templates, themes, blocks, and components shared by the WE community.',
+  body: {
+    $: '`Browse and install templates, themes, blocks, and components shared by the ${templateStore.brand.name} community.`',
+  },
   bodyWidth: '420px',
   children: [
     {

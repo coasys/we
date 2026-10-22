@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { bundlePieceId, readBundle } from '../src/bundle';
+import { bundlePieceId, bundleThemes, readBundle, svgProblem } from '../src/bundle';
 
 const meta = (role?: string) => ({ name: 'X', description: '', icon: 'x', ...(role ? { role } : {}) });
 
@@ -68,6 +68,62 @@ describe('reading a bundle', () => {
   it('refuses a bundle with nothing to install', () => {
     const { app: _app, templates: _templates, theme: _theme, display: _display, ...empty } = minimal();
     expect(paths(empty)).toContain('');
+  });
+});
+
+describe('the themes a bundle offers', () => {
+  const two = [
+    { id: 'flat', name: 'Flat', overrides: {} },
+    { id: 'glow', name: 'Glow', overrides: {} },
+  ];
+
+  it('reads a list of themes, or one theme, the same way', () => {
+    const { theme: _theme, ...rest } = minimal();
+    expect(paths({ ...rest, themes: two })).toEqual([]);
+    expect(bundleThemes({ themes: two }).map((t) => t.id)).toEqual(['flat', 'glow']);
+    expect(bundleThemes(minimal() as never).map((t) => t.id)).toEqual(['moss']);
+  });
+
+  it('refuses both at once, a theme id used twice, and a theme with no overrides', () => {
+    expect(paths({ ...minimal(), themes: two })).toContain('themes');
+    const { theme: _theme, ...rest } = minimal();
+    expect(paths({ ...rest, themes: [two[0], two[0]] })).toContain('themes.1.id');
+    expect(paths({ ...rest, themes: [{ id: 'flat', name: 'Flat' }] })).toContain('themes.0.overrides');
+  });
+
+  it('counts a list of themes as something to install', () => {
+    const { app: _app, templates: _templates, theme: _theme, display: _display, ...empty } = minimal();
+    expect(paths({ ...empty, themes: two })).toEqual([]);
+  });
+});
+
+describe('a brand', () => {
+  const mark = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M0 0h10v10z"/></svg>';
+
+  it('reads a name, a mark, a wordmark and an About page', () => {
+    expect(paths({ ...minimal(), brand: { name: 'Coasys', mark, wordmark: mark, about: '# About' } })).toEqual([]);
+  });
+
+  it('needs a name', () => {
+    expect(paths({ ...minimal(), brand: { mark } })).toContain('brand.name');
+  });
+
+  it('refuses a mark that would do more than draw', () => {
+    expect(paths({ ...minimal(), brand: { name: 'X', mark: '<p>not svg</p>' } })).toContain('brand.mark');
+    expect(svgProblem('<svg><script>alert(1)</script></svg>')).toMatch(/script/);
+    expect(svgProblem('<svg onload="x()"></svg>')).toMatch(/event handler/);
+    expect(svgProblem('<svg><foreignObject/></svg>')).toMatch(/foreign/);
+    expect(svgProblem('<svg><script/></svg>')).toMatch(/script/);
+    expect(svgProblem('<svg><image href="https://example.com/a.png"/></svg>')).toMatch(/outside/);
+    expect(svgProblem('<svg><rect fill="url(#g)"/><image href="data:image/png;base64,AA"/></svg>')).toBeNull();
+    expect(svgProblem('<?xml version="1.0"?>\n<!-- made by hand -->\n<svg></svg>')).toBeNull();
+  });
+});
+
+describe('a sign-in screen', () => {
+  it('is a node, and nothing else', () => {
+    expect(paths({ ...minimal(), bootScreen: { type: 'Column' } })).toEqual([]);
+    expect(paths({ ...minimal(), bootScreen: 'Column' })).toContain('bootScreen');
   });
 });
 

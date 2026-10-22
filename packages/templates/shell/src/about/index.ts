@@ -481,8 +481,8 @@ function roadmapItem(item: { title: string; description: string }, status: Roadm
 
 // ─── Template ─────────────────────────────────────────────────────────────────
 
-export const landingPageTemplate: TemplateSchema = {
-  meta: { name: 'About WE', description: 'What WE is and why it exists', icon: 'info' },
+/** WE's own About page: what WE is and why it exists. */
+const weAboutPage: SchemaNode = {
   type: 'Column',
   props: { width: '100%', minHeight: '100%', bg: 'chrome', ax: 'center' },
   children: [
@@ -1509,6 +1509,64 @@ export const landingPageTemplate: TemplateSchema = {
           ],
         },
       ],
+    },
+  ],
+};
+
+/**
+ * The About page of an app that brings its own brand (`templateStore.brand`): its mark, its name and
+ * what it says about itself. WE's page is about WE, so a whitelabelled app gets its own here rather
+ * than WE's marketing.
+ */
+const brandAboutPage: SchemaNode = {
+  type: 'Column',
+  props: { width: '100%', minHeight: '100%', bg: 'chrome', ax: 'center' },
+  children: [
+    {
+      type: 'Column',
+      props: { px: '500', py: '800', gap: '500', maxWidth: '720px', width: '100%' },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '400', ax: 'center', mt: '100px', mb: '500' },
+          children: [
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'templateStore.brand.mark' },
+                then: {
+                  type: 'we-image',
+                  props: { src: { $: 'templateStore.brand.mark' }, alt: '', width: '96px', height: '96px' },
+                },
+              },
+            },
+            {
+              type: 'we-text',
+              props: { variant: 'heading-xl', tag: 'h1', textAlign: 'center' },
+              children: [{ $: 'templateStore.brand.name' }],
+            },
+          ],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'templateStore.brand.about' },
+            then: { type: 'we-markdown', props: { content: { $: 'templateStore.brand.about' } } },
+          },
+        },
+      ],
+    },
+  ],
+};
+
+export const landingPageTemplate: TemplateSchema = {
+  meta: { name: 'About WE', description: 'What WE is and why it exists', icon: 'info' },
+  type: 'Column',
+  props: { width: '100%', minHeight: '100%', bg: 'chrome' },
+  children: [
+    {
+      type: '$if',
+      props: { condition: { $: 'templateStore.brand.active' }, then: brandAboutPage, else: weAboutPage },
     },
   ],
 };

@@ -1406,7 +1406,11 @@ export const modelsSection: SchemaNode = {
           {
             type: 'we-text',
             props: { variant: 'footnote', color: 'text-faint' },
-            children: ['Ship with WE. Their structure is fixed, but how AI interprets them here is yours to tune.'],
+            children: [
+              {
+                $: '`Ship with ${templateStore.brand.name}. Their structure is fixed, but how AI interprets them here is yours to tune.`',
+              },
+            ],
           },
           {
             type: '$each',

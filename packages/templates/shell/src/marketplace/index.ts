@@ -59,7 +59,7 @@ const marketplaceBrowser = {
             {
               type: 'we-text',
               props: { mb: '500' },
-              children: ['Browse and install community modules for your WE spaces.'],
+              children: [{ $: '`Browse and install community modules for your ${templateStore.brand.name} spaces.`' }],
             },
             tabBar,
           ],

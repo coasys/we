@@ -8,15 +8,21 @@
  *
  * Run: `pnpm --filter @we/app-shell generate-views`
  */
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 import { format, resolveConfig } from 'prettier';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
-const outPath = resolve(here, '../src/shared/registries/bundledViews.generated.ts');
+// Which seed this build is for — `WE_SEED`, or WE's own. See `scripts/seed.cjs`.
+const seedFile = createRequire(import.meta.url)('../../../scripts/seed.cjs');
+const outPath = seedFile.generatedPath(
+  resolve(here, '../src/shared/registries/bundledViews.generated.ts'),
+  resolve(here, '..'),
+);
 
 /**
  * Every view this monorepo can bundle: id → { module, export }.
@@ -36,13 +42,13 @@ const CATALOGUE = {
   flux: { module: '@we/template-views', export: 'fluxView' },
 };
 
-const seed = JSON.parse(await readFile(resolve(repoRoot, 'we-seed.json'), 'utf8'));
+const seed = seedFile.readSeed();
 const requested = seed.views ?? Object.keys(CATALOGUE);
 
 const unknown = requested.filter((id) => !(id in CATALOGUE));
 if (unknown.length) {
   console.error(
-    `we-seed.json declares views this monorepo does not contain: ${unknown.join(', ')}\n` +
+    `${seedFile.seedLabel()} declares views this monorepo does not contain: ${unknown.join(', ')}\n` +
       `Known ids: ${Object.keys(CATALOGUE).join(', ')}`,
   );
   process.exit(1);

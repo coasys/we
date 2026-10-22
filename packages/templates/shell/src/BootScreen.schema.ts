@@ -1,6 +1,8 @@
 import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
 import { field } from '@we/template-kit';
 
+import { brandMark } from './brandMark';
+
 /**
  * A scale step, rotated off the primary hue.
  *
@@ -169,12 +171,7 @@ const logoCorner: SchemaNode = {
     then: {
       type: 'Column',
       props: { position: 'absolute', top: '0', left: '0', width: '80px', height: '80px', ax: 'center', ay: 'center' },
-      children: [
-        {
-          type: 'we-image',
-          props: { src: '/we-text.svg', alt: 'WE', width: '38px', height: '38px', gradient: 'primary' },
-        },
-      ],
+      children: [brandMark({ width: '38px', height: '38px', gradient: 'primary' })],
     },
   },
 };
@@ -190,10 +187,7 @@ const firstRunSplash: SchemaNode = {
   type: 'Column',
   props: { gap: '600', ax: 'center' },
   children: [
-    {
-      type: 'we-image',
-      props: { src: '/we-text.svg', alt: 'WE', width: '150px', height: '75px', gradient: 'primary' },
-    },
+    brandMark({ width: '150px', height: '75px', gradient: 'primary', wordmark: true }),
     {
       type: 'Row',
       props: { gap: '300', ay: 'center', height: '40px' },
@@ -583,7 +577,9 @@ const bootFailure: SchemaNode = {
         {
           type: 'we-text',
           props: { color: 'text-muted', textAlign: 'center' },
-          children: ['WE could not connect to the data layer that holds your account.'],
+          children: [
+            { $: '`${templateStore.brand.name} could not connect to the data layer that holds your account.`' },
+          ],
         },
         {
           type: '$if',

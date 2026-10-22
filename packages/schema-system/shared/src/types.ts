@@ -183,6 +183,12 @@ export type TemplateMeta = {
    */
   themeId?: string;
   /**
+   * The themes this template is designed for, its default first — for an app offering more than one
+   * look (a flat and a glowing one), each by its id. Where both are given, `themeIds` wins and
+   * `themeId` is ignored. Read either with `templateThemeId`, which answers with the default.
+   */
+  themeIds?: string[];
+  /**
    * What this template *is* — a whole interface, one section inside one, or the app around them all.
    *
    * An `'app'` is WE's own chrome as a template: the sidebar, the rail and whatever surrounds every

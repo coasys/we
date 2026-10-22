@@ -15,6 +15,8 @@
     // one of the two packages that cannot currently be typechecked at all (audit P3-1): every
     // `@shared/*` import inside the shell's source resolves in Vite and not in tsc.
     "paths": {
+      // The seed this build is for: `scripts/seed-vite.mjs` resolves it, `WE_SEED` choosing. Typed as WE's own.
+      "@we/seed-file": ["../../we-seed.json"],
       "@shared/*": ["../../packages/app-shell/src/shared/*"],
       "@solid/*": ["../../packages/app-shell/src/frameworks/solid/*"]
     }

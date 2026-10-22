@@ -42,6 +42,7 @@ import {
   parseOverrides,
   SPACE_ROUTE_DEPTH,
   surfaceStyles,
+  withThemeSide,
 } from '@we/schema-shared';
 import { lazy } from 'solid-js';
 
@@ -368,7 +369,7 @@ export function TemplateLayout(
       lastScopedThemeId = null;
       return;
     }
-    const overrides = parseOverrides(td.overrides);
+    const overrides = withThemeSide(parseOverrides(td.overrides), stores.themeStore.themeSide());
     if (isValidThemeKey(td.id) && !overrides.themeName) overrides.themeName = td.id;
     // Editing keeps the id and changes parameters; switching changes the id. Only the second
     // cross-fades — the same distinction the document root makes, and for the same reason.

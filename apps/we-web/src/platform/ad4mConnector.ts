@@ -1,8 +1,8 @@
 import { getAd4mConnect } from '@coasys/ad4m-connect';
 import type { BackendConnector, BackendInitResult } from '@we/app-shell/shared';
 import { capabilitiesFromToken, createAd4mBackendPorts } from '@we/backend-ad4m';
+import weSeed from '@we/seed-file';
 
-import weSeed from '../../../../we-seed.json';
 import { storedGuestHost } from './storedSession';
 
 export const ad4mConnector: BackendConnector = {

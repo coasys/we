@@ -440,8 +440,9 @@ export function isThemeName(value: string): value is ThemeName {
 // `role` comes through here too: the editor reads the defaults to work out which roles are derived
 // from which, and parsing that out of the table is what keeps the answer from drifting away from it.
 export { role } from '@we/tokens';
-export type { ThemeOverrides, ThemeRole } from './overrides';
+export type { ThemeOverrides, ThemeRole, ThemeSide } from './overrides';
 export { migrateOverrides, parseOverrides, THEME_SCHEMA_VERSION } from './migrate';
+export { type ThemeSideName, themeSides, withThemeSide } from './sides';
 export {
   applyThemeVars,
   clearThemeVars,

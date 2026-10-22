@@ -1,5 +1,8 @@
 import { defineConfig } from 'tsup';
 
+// Another seed's generated registries, in place of WE's checked-in ones. See `scripts/seed.cjs`.
+import { weSeedEsbuild } from '../../scripts/seed-vite.mjs';
+
 export default defineConfig({
   entry: {
     // Only build shared utilities (no JSX)
@@ -23,5 +26,6 @@ export default defineConfig({
     /^@we\//, // All @we/* packages
   ],
   outDir: 'dist',
+  esbuildPlugins: [weSeedEsbuild()],
   tsconfig: './tsconfig.json',
 });

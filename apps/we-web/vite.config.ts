@@ -5,6 +5,8 @@ import path from 'path';
 import { defineConfig } from 'vite';
 import solidPlugin from 'vite-plugin-solid';
 
+import { seedPath, weSeed } from '../../scripts/seed-vite.mjs';
+
 export default defineConfig({
   assetsInclude: ['**/*.glb'],
   /*
@@ -13,8 +15,9 @@ export default defineConfig({
     header comes from. The rewrite lets the globe load under a policy without 'unsafe-eval'.
   */
   plugins: [
+    weSeed(),
     solidPlugin(),
-    contentSecurityPolicy({ host: 'web', seedFile: path.resolve(import.meta.dirname, '../../we-seed.json') }),
+    contentSecurityPolicy({ host: 'web', seedFile: seedPath() }),
     rewriteKnockoutGlobalEval(),
     cesiumAssets(),
     globeLayerAssets(),

@@ -356,7 +356,7 @@ export const createSpaceModal = {
                   props: { variant: 'footnote', color: 'text-faint' },
                   children: [
                     {
-                      $: "local.discovery == 'listed' ? 'Appears on the WE discovery globe' : 'Not shown in global discovery'",
+                      $: "local.discovery == 'listed' ? `Appears on the ${templateStore.brand.name} discovery globe` : 'Not shown in global discovery'",
                     },
                   ],
                 },
@@ -407,7 +407,9 @@ export const createSpaceModal = {
                 {
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-muted' },
-                  children: ['Join the WE discovery space to list your space globally.'],
+                  children: [
+                    { $: '`Join the ${templateStore.brand.name} discovery space to list your space globally.`' },
+                  ],
                 },
               ],
             },

@@ -101,6 +101,20 @@ function seedExecutorPath() {
   return join(__dirname, '..', '..', '..', '..', 'ad4m', 'target', 'release', 'ad4m-executor');
 }
 
+/*
+  A seed that names its own product (`desktop.productName`) runs under that name, so its config
+  directory — and the account registry in it — is its own rather than WE's. A packaged build already
+  has the name from electron-builder; this is for a development run. Before `userData` is first read.
+*/
+const seedProductName = (() => {
+  try {
+    return JSON.parse(readFileSync(join(__dirname, 'seed-runtime.json'), 'utf8')).productName;
+  } catch {
+    return undefined;
+  }
+})();
+if (seedProductName && !app.isPackaged) app.setName(seedProductName);
+
 // The registry needs the app's config directory, which is available before `ready`.
 const accounts = createAccountRegistry({
   configDir: app.getPath('userData'),

@@ -19,6 +19,27 @@ pnpm validate:seed        # validates ./we-seed.json against the schema
 
 Run it after any seed edit; `setup-workspace` also depends on a valid seed.
 
+## Building another deployment
+
+`we-seed.json` is WE's own seed and the default. Other deployments keep theirs
+under `seeds/<name>.seed.json` and choose one with `WE_SEED`, which every
+script, generator and app build reads through `scripts/seed.cjs`:
+
+```bash
+WE_SEED=seeds/coasys.seed.json pnpm validate:seed
+WE_SEED=seeds/coasys.seed.json pnpm build
+```
+
+Paths inside any seed (`ad4m.executorPath`, `desktop.icon`, …) are relative to
+the repository root, wherever the seed file sits.
+
+The registries generated from a seed (`*.generated.ts` in the shell) and the
+desktop icons are checked in for WE's own seed. For another seed they are
+written under a `.seed-build/<name>/` directory beside the package that makes
+them, ignored by git, and the apps' Vite plugin (`scripts/seed-vite.mjs`) and
+the shell's tsup build read them from there. Building a second deployment never
+changes a tracked file, and nothing from it can be committed as WE's.
+
 ## The sections
 
 ### `project` (required)
@@ -260,6 +281,25 @@ and a marketplace icon appears in the sidebar. Both are optional: leave one out
 and everything that reaches it goes with it — the discovery entry in the spaces
 list, the "listed" switch when creating a space, the marketplace icon and the
 "Browse the marketplace" buttons in space settings.
+
+### `desktop`
+
+What a desktop build is called and installed as. Fixed at build time, so it
+belongs to the seed rather than to a cartridge, which can rename the window from
+inside but not the binary somebody installed.
+
+- `productName` — the name a person reads: window title, menu, installer, the
+  `.desktop` `Name=`. Defaults to `WE`. The executable is its lower-case form.
+- `appId` — the reverse-domain identifier the OS installs by, without the
+  runtime: `io.coasys.app` builds `io.coasys.app.electron` and
+  `io.coasys.app.tauri`, so the two hosts install side by side. Defaults to
+  `io.weco.we`.
+- `icon` — an SVG, relative to the repository root, drawn as it is with a margin
+  (`@we/brand` makes every size). Defaults to WE's mark on its themed tile.
+
+Give a second deployment its own `ad4m.dataPath` as well: two builds bundle their
+own executors, and two executors at different versions must not write one
+database. `validate:seed` warns when a seed names a product but not a data path.
 
 ### `electron`
 

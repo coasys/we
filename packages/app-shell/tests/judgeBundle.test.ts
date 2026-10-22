@@ -83,9 +83,28 @@ describe('judging a bundle', () => {
       app: 'Guide',
       spaceTemplates: ['Guide shell'],
       sections: ['Map'],
-      theme: 'Moss',
+      themes: ['Moss'],
       recordTypes: ['Species'],
     });
+  });
+
+  it('names the brand and the sign-in screen it brings', () => {
+    const branded = {
+      ...bundle(),
+      brand: { name: 'Field Guide' },
+      bootScreen: { type: 'Column', children: [{ type: 'CredentialField', props: { purpose: 'unlock' } }] },
+    } as Bundle;
+    const result = judgeBundle(branded, deps);
+    expect(result.refusals).toEqual([]);
+    expect(result.adds).toMatchObject({ brand: 'Field Guide', bootScreen: true });
+  });
+
+  it('refuses a sign-in screen without the app’s own password field', () => {
+    const own = {
+      ...bundle(),
+      bootScreen: { type: 'Column', children: [{ type: 'we-input', props: { type: 'password' } }] },
+    } as Bundle;
+    expect(judgeBundle(own, deps).refusals.join(' ')).toMatch(/no password field of the app/);
   });
 
   it('judges the app at the chrome tier and everything else at the space tier', () => {

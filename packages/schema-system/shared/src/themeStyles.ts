@@ -19,4 +19,7 @@ export {
   surfacesForPolarity,
   THEME_SCHEMA_VERSION,
   themeParametersToStyle,
+  type ThemeSideName,
+  themeSides,
+  withThemeSide,
 } from '@we/themes/presets';
