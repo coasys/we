@@ -721,3 +721,35 @@ describe('tokens inside the data a prop holds', () => {
     expect(messages(node, 'error')).toEqual([]);
   });
 });
+
+describe('a template’s own record views', () => {
+  const template = (recordViews: Record<string, unknown>) =>
+    ({
+      type: 'Column',
+      meta: { name: 't', description: '', icon: 'x', recordViews },
+      children: [],
+    }) as unknown as SchemaNode;
+
+  it('checks each view as a node of the template', () => {
+    const result = validateSemantic(template({ TaskBlock: { type: 'we-nonexistent' } }), context);
+    expect(result.errors.some((e) => e.path.startsWith('meta.recordViews.TaskBlock'))).toBe(true);
+  });
+
+  it('refuses a key the record page cannot match', () => {
+    const result = validateSemantic(template({ 'task block': { type: 'Column' } }), context);
+    expect(result.valid).toBe(false);
+    expect(result.errors.map((e) => e.path)).toContain('meta.recordViews.task block');
+  });
+
+  it('accepts an entity, an entity with a kind, and a view named by id', () => {
+    const result = validateSemantic(
+      template({
+        TaskBlock: { type: 'Column' },
+        'CollectionBlock:call': { type: 'Column' },
+        Proposal: 'proposal-page',
+      }),
+      context,
+    );
+    expect(result.errors.filter((e) => e.path.startsWith('meta.recordViews'))).toEqual([]);
+  });
+});

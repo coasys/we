@@ -245,7 +245,7 @@ export class Space extends WeNode {
    * no parent" — which cannot tell top-level content from an orphan, and has no polymorphic read.
    *
    * The host makes it in every space, in `createSpace`, before anything else. It is a
-   * `CollectionBlock` (`kind: 'space'`) rather than containment on this record because the
+   * `CollectionBlock` (the root channel, `kind: 'channel'`) rather than containment on this record because the
    * machinery extraction needs — passes, `extracted`, a board, `mode` — already lives there, and
    * because this record is identity and settings and is copied to the discovery space, which the
    * space's contents must never be.

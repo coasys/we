@@ -6,6 +6,7 @@ import { expandDefinitions } from './definitions';
 import { checkExpression, ExpressionSyntaxError, isCallTime, isExpressionToken, parseExpression } from './expressions';
 import type { Expr } from './expressions/ast';
 import { HOST_PART_IDS, isHostPartId } from './hostPartIds';
+import { parseRecordViewKey } from './recordViews';
 import { isTemplateElement } from './templateElements';
 import type { SchemaNode } from './types';
 import type { ValidationError, ValidationResult } from './validators';
@@ -630,6 +631,14 @@ function walkNode(
         path: `${path}.type`,
         message:
           '{ type: "$panels" } cannot be inside a panel\'s node: lanes hold sections, sections do not hold lanes',
+        severity: 'error',
+      });
+    }
+    const resize = (n.props as { resize?: unknown } | undefined)?.resize;
+    if (resize !== undefined && resize !== 'start' && resize !== 'end') {
+      errors.push({
+        path: `${path}.props.resize`,
+        message: `"resize" names the edge a reader drags: "end" for a column on the left, "start" for one on the right — got ${JSON.stringify(resize)}`,
         severity: 'error',
       });
     }
@@ -2455,6 +2464,25 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
       if (!panel.node || typeof panel.node !== 'object') return;
       walkNode(panel.node, `meta.panels[${index}].node`, context, { ...state, insidePanel: true }, errors);
     });
+  }
+
+  /*
+    A template's own record views are its nodes, drawn on the record page with the rest of it — so
+    they are checked as nodes, and their keys as the types they claim to draw. A key the record page
+    cannot read is a view nobody will ever see, which is worth saying rather than leaving silent.
+  */
+  const recordViews = (schema as { meta?: { recordViews?: Record<string, unknown> } })?.meta?.recordViews;
+  if (recordViews && typeof recordViews === 'object') {
+    for (const [key, value] of Object.entries(recordViews)) {
+      if (!parseRecordViewKey(key)) {
+        errors.push({
+          path: `meta.recordViews.${key}`,
+          message: `"${key}" is not a type the record page can match: write an entity ("TaskBlock") or an entity and a kind ("CollectionBlock:call")`,
+          severity: 'error',
+        });
+      }
+      if (value && typeof value === 'object') walkNode(value, `meta.recordViews.${key}`, context, state, errors);
+    }
   }
 
   return {

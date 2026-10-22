@@ -91,8 +91,16 @@ export function defaultSpaceStarter(starters: readonly SpaceStarter[] | undefine
   return starters?.[0];
 }
 
-/** The `kind` the host gives the space collection — see `Space.root`. */
-export const SPACE_COLLECTION_KIND = 'space';
+/**
+ * The `kind` the host gives the space collection — see `Space.root`.
+ *
+ * `channel`, because the space collection *is* a channel: the root one, which the space's other
+ * channels nest inside, and inside each other, by the same containment. Being the root is a fact
+ * about the space (`Space.root`), never found by looking for a collection of some kind — so a channel
+ * list scoped to the root's children does not list the root, and a space made when this was `space`
+ * reads the same way.
+ */
+export const SPACE_COLLECTION_KIND = 'channel';
 
 /** The space collection, in a starter's references. Always defined. */
 export const ROOT_REF = '$root';

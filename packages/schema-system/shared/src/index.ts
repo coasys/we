@@ -4,6 +4,7 @@ export type {
   RendererOutput,
   SchemaNode,
   SchemaProp,
+  RecordViewDraws,
   TemplateMeta,
   TemplatePanel,
   TemplateSchema,
@@ -149,6 +150,7 @@ export { deriveNodeIds, derivedNodeId, isNodeId, newNodeId, NODE_ID_LENGTH } fro
 export { type PartFork, partForkChanged, partForkPrint } from './forkPrint';
 export { HOST_PART_IDS, type HostPartId, isHostPartId } from './hostPartIds';
 export { templateThemeId, templateThemeIds } from './templateTheme';
+export { parseRecordViewKey, type RecordViewCandidate, recordRouteBody, recordViewCandidates } from './recordViews';
 export {
   type Bundle,
   type BundleBrand,

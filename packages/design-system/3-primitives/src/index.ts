@@ -51,6 +51,7 @@ import './primitives/tooltip';
 import './primitives/tab';
 import './primitives/tabs';
 import './primitives/timestamp';
+import './primitives/tree';
 import './primitives/video';
 
 export { buildCdnUrl, setIconResolver } from './primitives/icon';

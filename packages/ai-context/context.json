@@ -2095,6 +2095,70 @@
       ]
     },
     {
+      "tagName": "we-tree",
+      "className": "Tree",
+      "description": "A tree — the space as a file browser, a folder list, an outline. The root of one, holding its items.\n\n## One root, items to any depth\n\nThe data a tree shows is usually fractal (a channel holds channels), and so is `we-tree-item`: an\nitem's children are more items, nested inside it. The widget is not: there is exactly one\n`we-tree`, because ARIA allows one `tree` per widget and the keyboard treats every visible row as a\nsingle list. Arrow-down from the last row of a sub-channel lands on its parent's next sibling, and\nTab enters and leaves the tree once. A `we-tree` per level would make every subtree its own tab stop\nand its own island of focus, and a screen reader would announce a dozen trees.\n\n## The keyboard\n\nRoving focus: one row is the tab stop, the arrows move it. Down and Up walk the visible rows in\norder; Right opens a closed row, or steps into an open one; Left closes an open row, or steps out to\nits parent; Home and End go to the ends; Enter and Space select. Typing a letter moves to the next\nrow whose label starts with it. This is the WAI-ARIA tree pattern, and it lives here, once, so no\ntemplate has to write it.\n\n## What it emits, and what it does not decide\n\n`select` — `{ value }` — when a row is chosen, by click or key. What choosing means (navigating,\nfiltering) is the template's business. Which row is selected is the template's too: pass\n`selected` and the matching item marks itself, so a selection driven by the address stays in step.",
+      "superclass": "DesignSystemElement",
+      "ownProps": [
+        {
+          "name": "selected",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        }
+      ]
+    },
+    {
+      "tagName": "we-tree-item",
+      "className": "TreeItem",
+      "description": "One row of a `we-tree`, and the rows under it.\n\nThe row's own content goes in the default slot — an icon, a label, a badge, a count, whatever the\ntemplate arranges (the kit's `treeRow` fragment is the usual one). Rows under it go in the\n`children` slot, rendered only while it is open: a template that loads them lazily puts its query\ninside an `$if` on the same open state, so nothing is read for a row nobody has opened.\n\n`open` is the template's to hold, as `selected` is the tree's: the row asks (`openchange`, `{ open }`,\nbound as `onOpenChange`) and the template answers by setting it, so a row's open state can live in the address, in local\nstate or anywhere else.",
+      "superclass": "DesignSystemElement",
+      "ownProps": [
+        {
+          "name": "value",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "open",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "expandable",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "selected",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "tabStop",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "level",
+          "type": "number",
+          "optional": false,
+          "default": "0"
+        }
+      ]
+    },
+    {
       "tagName": "we-video",
       "className": "Video",
       "superclass": "LayoutVisualElement",
@@ -7155,6 +7219,12 @@
         "panelSupplied": {
           "type": "object"
         },
+        "collapsedLanes": {
+          "type": "array"
+        },
+        "customisingLayout": {
+          "type": "boolean"
+        },
         "layoutNames": {
           "type": "array"
         },
@@ -7196,6 +7266,9 @@
         "closeTemplatePanel",
         "openTemplatePanel",
         "resetTemplateLayout",
+        "toggleLane",
+        "setLaneCollapsed",
+        "toggleCustomiseLayout",
         "saveLayout",
         "applyLayout",
         "deleteLayout",
@@ -7226,6 +7299,9 @@
         "closeSpaceSettings",
         "scrollToId",
         "raiseDock",
+        "toggleLane",
+        "setLaneCollapsed",
+        "toggleCustomiseLayout",
         "revealDock",
         "openModulePanel",
         "closeModulePanel",
