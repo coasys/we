@@ -242,6 +242,8 @@ export type {
   FlowWaitingMove,
 } from './flows';
 export type { CallPort, CallSessionOptions } from './call';
+export { NO_IDENTITY_CAPABILITIES } from './identity';
+export type { IdentityCapabilities, IdentityPort } from './identity';
 export type {
   TranscriptionModelOffer,
   TranscriptionRecord,

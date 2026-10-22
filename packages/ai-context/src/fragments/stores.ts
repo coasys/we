@@ -25,6 +25,25 @@ export const storeEntries: StoreEntry[] = [
       },
       hostAccount: { type: 'object', properties: ['email', 'remainingCredits', 'walletAddress', 'freeAccess'] },
       isGuest: { type: 'boolean' },
+      identityCapabilities: {
+        type: 'object',
+        properties: [
+          'password',
+          'passkey',
+          'masterKey',
+          'recoveryWords',
+          'keyLog',
+          'export',
+          'logOutEverywhere',
+          'deleteAccount',
+          'devices',
+          'linkDevice',
+          'switchDevice',
+          'bots',
+          'plan',
+          'billing',
+        ],
+      },
       credentialEntered: { type: 'boolean' },
       credentialConfirmed: { type: 'boolean' },
     },
@@ -712,6 +731,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'BackendAccountInfo | undefined — this agent\'s account with that node (email, remainingCredits, walletAddress, freeAccess). Check freeAccess before showing a balance: on a free node the credit figure means nothing and "0" reads as an account that has run dry',
         isGuest:
           'boolean — this identity was minted for somebody who arrived on a guest invite link rather than chosen by them. NOT the same question as `host`: an ordinary member of a hosted deployment has a host and is not a guest. Read it where the app explains itself to the person using it — why it is asking for a name, what "log out" would mean for an identity with no other way back',
+        identityCapabilities:
+          'IdentityCapabilities — what the backend in use can do with the person\'s identity beyond this session, one boolean per part of Settings: password, passkey, masterKey, recoveryWords, keyLog, export, logOutEverywhere, deleteAccount, devices, linkDevice, switchDevice, bots, plan, billing. All false until a backend reports otherwise, and all false on a backend with no identity support. Gate an identity control on its own flag rather than hiding the section — the kit\'s comingSoon fragment draws it greyed out with a "Coming soon" tag until the flag turns true',
         isDevelopment:
           'boolean — whether this is a development build. A fact about the build. Do NOT gate developer-only UI on it; gate on devTools, which is the same answer plus a switch',
         devTools:

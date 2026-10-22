@@ -12,6 +12,7 @@ import type { CallPort } from './call';
 import type { DatasetHandle, RendererDataBindings } from './dataSource';
 import type { EphemeralPort } from './ephemeral';
 import type { FlowPort } from './flows';
+import type { IdentityPort } from './identity';
 import type { InterpretationPort } from './interpretation';
 import type { LanguageModelPort } from './languageModel';
 import type { AgentSessionPort, DatasetLifecyclePort } from './lifecycle';
@@ -248,6 +249,12 @@ export interface BackendPorts {
    * module cannot build a session there.
    */
   call?: CallPort;
+  /**
+   * The person's identity beyond this session — passwords and passkeys, keys, devices, bots, plan.
+   * Optional: absent, every part of Settings that needs it says "coming soon"; see
+   * {@link IdentityPort}.
+   */
+  identity?: IdentityPort;
 }
 
 /**

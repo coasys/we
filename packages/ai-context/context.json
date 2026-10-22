@@ -6982,6 +6982,25 @@
         "isGuest": {
           "type": "boolean"
         },
+        "identityCapabilities": {
+          "type": "object",
+          "properties": [
+            "password",
+            "passkey",
+            "masterKey",
+            "recoveryWords",
+            "keyLog",
+            "export",
+            "logOutEverywhere",
+            "deleteAccount",
+            "devices",
+            "linkDevice",
+            "switchDevice",
+            "bots",
+            "plan",
+            "billing"
+          ]
+        },
         "isDevelopment": {
           "type": "boolean"
         },

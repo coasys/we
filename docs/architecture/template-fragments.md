@@ -109,7 +109,7 @@ exactly the operator-language pressure named under the falsifiers. The full poli
 
 ```
 @we/schema-kit          (schema-system/kit)   — names no store
-  states/     emptyState · emptyNote · gatePrompt · skeletonList
+  states/     comingSoon · emptyState · emptyNote · gatePrompt · skeletonList
   layout/     pageShell · sectionCard · attributeRow · statChip · railShell · railGroup · railItem
   lists/      gridWrapper · cardShell · cardList · loadMore · pickerRow
   overlays/   composerModal · confirmModal · peopleTooltip · pickerPopover
