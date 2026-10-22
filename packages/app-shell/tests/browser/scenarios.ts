@@ -720,6 +720,56 @@ const compactComposer = (): Scenario => ({
  * The transcript's and the Feed's input as they place it: the compact composer framed as a field,
  * with a send button beside it.
  */
+/**
+ * A tree as a sidebar draws one: three groups down a narrow column, the first open with two rows
+ * under it. What it is for is the stacking — every row on a line of its own, and a row's children
+ * under it rather than beside it — which only a browser laying the hosts out can show.
+ */
+const treeRowsScenario = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { width: '240px', p: '300', bg: 'chrome' },
+    children: [
+      {
+        type: 'we-tree',
+        props: { label: 'This space', selected: 'channel|general' },
+        children: [
+          {
+            type: 'we-tree-item',
+            props: { value: 'group|channels', open: true, expandable: true },
+            children: [
+              { type: 'we-text', children: ['Channels'] },
+              {
+                type: 'we-tree-item',
+                slot: 'children',
+                props: { value: 'channel|general' },
+                children: [{ type: 'we-text', children: ['General'] }],
+              },
+              {
+                type: 'we-tree-item',
+                slot: 'children',
+                props: { value: 'channel|design' },
+                children: [{ type: 'we-text', children: ['Design'] }],
+              },
+            ],
+          },
+          {
+            type: 'we-tree-item',
+            props: { value: 'group|calls', expandable: true },
+            children: [{ type: 'we-text', children: ['Calls'] }],
+          },
+          {
+            type: 'we-tree-item',
+            props: { value: 'group|people', expandable: true },
+            children: [{ type: 'we-text', children: ['People'] }],
+          },
+        ],
+      },
+    ],
+  },
+  tables: {},
+});
+
 const lineComposerScenario = (): Scenario => ({
   node: {
     type: 'Column',
@@ -1448,6 +1498,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:pinned-empty': pinnedShortContent,
   'composer:compact': compactComposer,
   'composer:line': lineComposerScenario,
+  'tree:rows': treeRowsScenario,
   'mention:card': mentionCard,
   'timeline:live-newest-bottom': timelineReading(false, 'newestBottom'),
   'timeline:live-newest-top': timelineReading(false, 'newestTop'),

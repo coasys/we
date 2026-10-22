@@ -12,9 +12,14 @@ export const CHANNEL = { $: CHANNEL_EXPR };
 /** Whether the channel on screen is the space's root — "General", which every space has. */
 export const IN_ROOT_EXPR = `(${CHANNEL_EXPR}) == spaceStore.root`;
 
-/** A channel's address — the root channel's is the space's own. */
-export const channelPath = (idExpr: string): string =>
-  `(${idExpr}) == spaceStore.root ? spaceStore.spacePath : spaceStore.spacePath + '?channel=' + (${idExpr})`;
+/**
+ * A channel's address, General's included: always `?channel=<id>`.
+ *
+ * Not the bare space path for General, though that also shows it: navigating to a bare path brings
+ * back the query string last used there, so "the space with no channel named" came back as the last
+ * channel opened and General could not be reached once another had been.
+ */
+export const channelPath = (idExpr: string): string => `spaceStore.spacePath + '?channel=' + (${idExpr})`;
 
 /** A call's address: its record's own page, drawn by the call view. */
 export const callPath = (idExpr: string): string =>

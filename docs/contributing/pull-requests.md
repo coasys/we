@@ -109,8 +109,13 @@ it names`** fails when a stacked PR has no block, when the block names a PR whos
 base, when that PR has merged or closed, and when a PR that now targets `dev` still has one. It says
 which and gives the block to paste. Editing the description, or retargeting the PR, re-runs it.
 
+One of those it fixes itself: when the PR below merges and this one is retargeted at `dev`, the check
+takes the block off the top of the description and passes. Everything else in the description is
+left as written. A PR from a fork cannot be edited by the check, so there the block is removed by
+hand.
+
 Merge the stack from the bottom. When the PR below merges and its branch is deleted, GitHub retargets
-the next one at `dev`; remove its block then. The label goes by itself.
+the next one at `dev`, and the label and the block go by themselves.
 
 ## Merging
 

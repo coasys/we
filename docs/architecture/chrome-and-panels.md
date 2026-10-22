@@ -235,6 +235,11 @@ are part of a saved layout and undone by "Reset layout". Below `NARROW_VIEWPORT_
 means nothing, so the lane takes its parent's width and the handle goes; how the page stacks there is
 the template's own layout.
 
+**A section is as long as its content unless it says `grow`.** With `grow`, it takes that share of
+the length the lane has left, as a panel in a docked lane does, and is held to it — so a section that
+fills a sidebar (a tree, a list) reaches the end of the lane and scrolls inside itself rather than
+running past it. Its wrapper is a column, so what the section draws can say `height: 100%`.
+
 **Grips are quiet.** A section's grip shows where the pointer or the keyboard is, so a page made of
 sections reads as a page; `shellStore.toggleCustomiseLayout` shows every grip at once, for a reader
 asking what can be moved.

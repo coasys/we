@@ -194,7 +194,7 @@ export function PanelLane(props: {
         'box-sizing': 'border-box',
       }}
     >
-      <For each={here()}>{(panel) => <Section panel={panel} />}</For>
+      <For each={here()}>{(panel) => <Section panel={panel} direction={direction()} />}</For>
       <For each={away()}>{(panel) => <Placeholder panel={panel} />}</For>
       <Show when={props.resize && !narrow()}>
         <we-resize-handle
@@ -214,8 +214,15 @@ export function PanelLane(props: {
   );
 }
 
-/** One section at home: its body, and the grip that takes it away. */
-function Section(props: { panel: TemplatePanel }) {
+/**
+ * One section at home: its body, and the grip that takes it away.
+ *
+ * As long as its content, unless its panel declares `grow`: then it takes that share of whatever
+ * length the lane has left, as a panel in a docked lane does, and is held to it — so a section that
+ * fills a sidebar (a tree, a list) reaches the bottom of the lane and scrolls inside itself rather
+ * than growing past it. A column, so what the section draws can say `height: 100%` and mean it.
+ */
+function Section(props: { panel: TemplatePanel; direction: 'row' | 'column' }) {
   const shellStore = useShellStore();
   const dockId = () => templatePanelDockId(props.panel.id);
   const [hover, setHover] = createSignal(false);
@@ -255,7 +262,18 @@ function Section(props: { panel: TemplatePanel }) {
   return (
     <div
       {...{ [HOME_SECTION_ATTR]: props.panel.id }}
-      style={{ position: 'relative', width: '100%' }}
+      style={{
+        position: 'relative',
+        width: '100%',
+        ...(props.panel.grow
+          ? {
+              flex: `${props.panel.grow} 1 0`,
+              [props.direction === 'row' ? 'min-width' : 'min-height']: '0',
+              display: 'flex',
+              'flex-direction': 'column',
+            }
+          : {}),
+      }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       onFocusIn={() => setFocus(true)}
