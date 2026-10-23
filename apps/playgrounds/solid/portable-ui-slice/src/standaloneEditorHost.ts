@@ -85,6 +85,11 @@ export function createStandaloneEditorHost(initial: TemplateSchema): {
       // third state; this stand-in host still implemented the old one, which nothing called.
       themeScopePreference: () => 'global',
       previewThemeScope: () => {},
+      // No person to have display needs here: the Modes section previews, and these hold its choice.
+      themeMode: () => 'system',
+      setThemeMode: () => {},
+      displayPreferences: () => ({}),
+      setDisplayPreference: () => {},
       publishToSpace: async () => false,
       publishToMarketplace: async () => undefined,
     },
