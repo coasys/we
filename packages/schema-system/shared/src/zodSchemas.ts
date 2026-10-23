@@ -1,4 +1,4 @@
-import { PALETTE_HUES, role } from '@we/tokens';
+import { PALETTE_HUES, role, TYPE_ROLES } from '@we/tokens';
 import { z } from 'zod';
 
 import type { RouteSchema, SchemaNode, SchemaProp, TemplateMeta, TemplateSchema, ThemeOverrides } from './types';
@@ -24,6 +24,35 @@ const lazyRouteSchema = z.lazy(() => zRouteSchema);
   template saved before then is not newly refused.
 */
 type LegacyThemeKey = 'multiplier' | 'subtractor' | 'primaryHue';
+
+const zTypeRole = z.enum(TYPE_ROLES);
+const zTypeStyle = z
+  .object({
+    family: z.string().optional(),
+    weight: z.union([z.string(), z.number()]).optional(),
+    letterSpacing: z.string().optional(),
+    lineHeight: z.string().optional(),
+    textTransform: z.enum(['none', 'uppercase', 'lowercase', 'capitalize']).optional(),
+    color: z.string().optional(),
+  })
+  .strict();
+const componentOverrideShape = {
+  radius: z.string().optional(),
+  padding: z.string().optional(),
+  gap: z.string().optional(),
+  borderWidth: z.string().optional(),
+  shadow: z.string().optional(),
+  type: zTypeRole.optional(),
+  fill: z.string().optional(),
+  text: z.string().optional(),
+  border: z.string().optional(),
+};
+const zComponentOverride = z
+  .object({
+    ...componentOverrideShape,
+    variants: z.record(z.string().regex(/^[a-z][a-z0-9-]*$/), z.object(componentOverrideShape).strict()).optional(),
+  })
+  .strict();
 
 // Role names come from the token table the runtime resolves them against, not from a restated list.
 const zThemeRole = z.enum(Object.keys(role) as [keyof typeof role, ...(keyof typeof role)[]]);
@@ -71,6 +100,8 @@ const themeParameterShape = {
   letterSpacing: z.string().optional(),
   lineHeight: z.string().optional(),
   fontScale: z.number().optional(),
+  typeStyles: z.partialRecord(zTypeRole, zTypeStyle).optional(),
+  components: z.record(z.string().regex(/^[a-z][a-z0-9-]*$/), zComponentOverride).optional(),
   controlRadius: z.string().optional(),
   surfaceRadius: z.string().optional(),
   inputRadius: z.string().optional(),

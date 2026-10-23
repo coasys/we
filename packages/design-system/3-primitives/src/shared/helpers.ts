@@ -30,7 +30,15 @@ import {
   warnIfUnsurfaced,
   zIndexVar,
 } from '@we/design-utils';
-import { type Tier, TIERS, toneVariables } from '@we/tokens';
+import {
+  componentChain,
+  type Tier,
+  TIERS,
+  toneVariables,
+  type TypeRole,
+  type TypeRoleKey,
+  typeRoleVar,
+} from '@we/tokens';
 
 /**
  * Design System CSS Helpers
@@ -156,6 +164,13 @@ export interface ComponentCascade {
   nativePadding?: boolean; // if true, padding is omitted from [part='base'] — the component owns it in CSS_STYLES
   gapGroup?: string; // e.g. '--we-theme-control-gap'
   gapDefault?: string; // explicit override; omit to auto-derive from DEFAULT_PROPS
+  /**
+   * The kind of text the component's words are — see `TYPE_ROLES` in @we/tokens. A theme's
+   * `typeStyles.<role>` reaches the component through it, ahead of the value the component would
+   * otherwise have and behind anything its props say. A function when the role depends on the
+   * variant: `we-text` is a heading in a heading variant and plain text otherwise.
+   */
+  typeRole?: TypeRole | ((variant: string | null) => TypeRole | undefined);
 }
 
 /**
@@ -189,6 +204,7 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   iframe: { radiusGroup: '--we-theme-surface-radius', radiusDefault: '0' },
   // Controls
   button: {
+    typeRole: 'control',
     radiusGroup: '--we-theme-control-radius',
     // Explicit: size-aware CSS var chain — not derivable from DEFAULT_PROPS alone.
     radiusDefault: 'var(--we-button-size-radius, var(--we-radius-400))',
@@ -202,18 +218,20 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     gapDefault: 'var(--we-button-size-gap, var(--we-space-300))',
   },
   badge: {
+    typeRole: 'badge',
     radiusGroup: '--we-theme-control-radius',
     paddingGroup: '--we-theme-control-padding-x', // As button — see the note there.
     nativePadding: true,
     gapGroup: '--we-theme-control-gap',
     gapDefault: 'var(--we-badge-size-gap, 0)',
   },
-  tag: { radiusGroup: '--we-theme-control-radius', nativePadding: true },
+  tag: { radiusGroup: '--we-theme-control-radius', nativePadding: true, typeRole: 'badge' },
   checkbox: { gapGroup: '--we-theme-control-gap', gapDefault: 'var(--we-space-200)' },
   radio: { gapGroup: '--we-theme-control-gap', gapDefault: 'var(--we-space-200)' },
   switch: { gapGroup: '--we-theme-control-gap', gapDefault: 'var(--we-space-200)' },
   slider: { gapGroup: '--we-theme-control-gap', gapDefault: 'var(--we-space-300)' },
   'menu-item': {
+    typeRole: 'control',
     paddingGroup: '--we-theme-control-padding-x',
     gapGroup: '--we-theme-control-gap',
     gapDefault: 'var(--we-space-300)',
@@ -222,8 +240,9 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   // A strip of page controls: the space between them is the control group's, like a button's.
   pagination: { gapGroup: '--we-theme-control-gap' },
   // Inputs
-  input: { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-input-padding' },
+  input: { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-input-padding', typeRole: 'control' },
   textarea: {
+    typeRole: 'control',
     radiusGroup: '--we-theme-input-radius',
     radiusCapGroup: '--we-theme-surface-radius',
     // As button and badge — `nativePadding` says who writes the rule, not which family this belongs
@@ -235,18 +254,21 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     nativePadding: true,
   },
   select: {
+    typeRole: 'control',
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
     paddingGroup: '--we-theme-input-padding',
     paddingDefault: '0', // Explicit: wrapper div — inner parts own their own padding
   },
   'number-input': {
+    typeRole: 'control',
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: intentionally matches input theme, not DEFAULT_PROPS r:'400'
     paddingGroup: '--we-theme-input-padding',
     paddingDefault: '0 var(--we-space-300)', // Explicit: no px in DEFAULT_PROPS
   },
   'date-picker': {
+    typeRole: 'control',
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
     paddingGroup: '--we-theme-input-padding',
@@ -283,7 +305,7 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   },
   // Tabs
   // Padding is owned by CSS_STYLES (own vertical, control-group horizontal) — see the note there.
-  tab: { radiusGroup: '--we-theme-control-radius', nativePadding: true },
+  tab: { radiusGroup: '--we-theme-control-radius', nativePadding: true, typeRole: 'control' },
   // Surfaces
   modal: {
     radiusGroup: '--we-theme-surface-radius',
@@ -306,6 +328,19 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   },
   blockquote: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-padding' },
   code: { radiusGroup: '--we-theme-surface-radius' },
+  /*
+    Text takes its role from its variant: the four heading sizes are headings and `label` is a
+    label. Every other variant, and no variant, takes nothing — plain text inherits, so a `we-text`
+    inside a button is set in the button's control type rather than reset to body text.
+  */
+  text: {
+    typeRole: (variant) =>
+      variant?.startsWith('heading')
+        ? 'heading'
+        : variant === 'label' || variant === 'overline'
+          ? (variant as 'label' | 'overline')
+          : undefined,
+  },
 };
 
 /**
@@ -772,6 +807,163 @@ function applyTone(el: HTMLElement, tone: DesignSystemProps['tone']): void {
   appliedTones.set(el, Object.keys(vars));
 }
 
+// ────────────────────────────────────────────
+// The component tier
+// ────────────────────────────────────────────
+
+/** What one themable key reads: the prop, the instance variable it writes, and its theme key. */
+interface ThemedKey {
+  /** The DS prop whose value is the component's own default for this key. */
+  prop: keyof DesignSystemProps;
+  /** The instance variable, after `--we-<component>-`. */
+  suffix: string;
+  /** The key a theme's `components.<name>` sets — see `COMPONENT_THEME_KEYS` in @we/tokens. */
+  key: string;
+  /** The type-role key this falls back to, for the keys a type role sets. */
+  roleKey?: TypeRoleKey;
+  /** The component's own default for this key, as CSS, or undefined when it has none. */
+  value: (props: Partial<DesignSystemProps>) => string | undefined;
+  /** Whether the props an author wrote set this key, so the theme must not touch it. */
+  explicit: (raw: Partial<DesignSystemProps>) => boolean;
+}
+
+/** The parts of a `border` shorthand, as `syncBorderVars` reads them. */
+const borderPart = (props: Partial<DesignSystemProps>, part: 'width' | 'color'): string | undefined => {
+  if (!props.border) return undefined;
+  const parts = parseBorder(props.border).split(' ');
+  if (parts.length < 3) return undefined;
+  return part === 'width' ? parts[0] : parts.slice(2).join(' ');
+};
+
+const THEMED_KEYS: ThemedKey[] = [
+  {
+    prop: 'bg',
+    suffix: 'bg',
+    key: 'fill',
+    value: (p) => (p.bg ? tokenVar('color', p.bg, '') : undefined),
+    explicit: (raw) => raw.bg !== undefined,
+  },
+  {
+    prop: 'color',
+    suffix: 'color',
+    key: 'text',
+    roleKey: 'color',
+    value: (p) => (p.color ? tokenVar('color', p.color, '') : undefined),
+    explicit: (raw) => raw.color !== undefined,
+  },
+  {
+    prop: 'borderColor',
+    suffix: 'border-color',
+    key: 'border',
+    value: (p) => (p.borderColor ? tokenVar('color', p.borderColor, '') : borderPart(p, 'color')),
+    explicit: (raw) => raw.borderColor !== undefined || raw.border !== undefined,
+  },
+  {
+    prop: 'borderWidth',
+    suffix: 'border-width',
+    key: 'borderWidth',
+    value: (p) => p.borderWidth ?? borderPart(p, 'width'),
+    explicit: (raw) => raw.borderWidth !== undefined || raw.border !== undefined,
+  },
+  {
+    prop: 'fontFamily',
+    suffix: 'font-family',
+    key: 'fontFamily',
+    roleKey: 'family',
+    value: (p) => resolveFontFamily(p.fontFamily),
+    explicit: (raw) => raw.fontFamily !== undefined,
+  },
+  {
+    prop: 'fontWeight',
+    suffix: 'font-weight',
+    key: 'fontWeight',
+    roleKey: 'weight',
+    value: (p) => resolveFontWeight(p.fontWeight),
+    explicit: (raw) => raw.fontWeight !== undefined,
+  },
+  {
+    prop: 'lineHeight',
+    suffix: 'line-height',
+    key: 'lineHeight',
+    roleKey: 'lineHeight',
+    value: (p) => resolveLineHeight(p.lineHeight),
+    explicit: (raw) => raw.lineHeight !== undefined,
+  },
+  {
+    prop: 'letterSpacing',
+    suffix: 'letter-spacing',
+    key: 'letterSpacing',
+    roleKey: 'letterSpacing',
+    value: (p) => (p.letterSpacing ? tokenVar('letter-spacing', p.letterSpacing) : undefined),
+    explicit: (raw) => raw.letterSpacing !== undefined,
+  },
+  {
+    prop: 'textTransform',
+    suffix: 'text-transform',
+    key: 'textTransform',
+    roleKey: 'textTransform',
+    value: (p) => p.textTransform,
+    explicit: (raw) => raw.textTransform !== undefined,
+  },
+];
+
+const THEMED_SUFFIXES = new Map(THEMED_KEYS.map((k) => [k.suffix, k]));
+
+function roleFor(componentName: string, variant: string | null): TypeRole | undefined {
+  const role = COMPONENT_CASCADE[componentName]?.typeRole;
+  return typeof role === 'function' ? role(variant) : role;
+}
+
+/** The type role's variable for one key, ahead of `fallback`, or `fallback` alone without a role. */
+const roleChain = (role: TypeRole | undefined, key: ThemedKey, fallback: string | undefined) =>
+  role && key.roleKey ? `var(${typeRoleVar(role, key.roleKey)}${fallback ? `, ${fallback}` : ''})` : fallback;
+
+/**
+ * The static sheet's fallback for one themable key: the component's theme value, then its type role.
+ *
+ * What an element gets when it has no default of its own for the key and no variant, which is most
+ * of them — so most elements read the component tier without writing a variable for it.
+ */
+function staticThemeChain(componentName: string, suffix: string): string | undefined {
+  const key = THEMED_SUFFIXES.get(suffix);
+  if (!key) return undefined;
+  return componentChain(componentName, key.key, null, roleChain(roleFor(componentName, null), key, undefined));
+}
+
+/**
+ * Put the component tier in front of the defaults this element wrote.
+ *
+ * A value a component's own tables chose — a variant's fill, a size's weight — is wrapped so a
+ * theme's `components.<name>` (and its variant entry) and the component's type role are read ahead
+ * of it. A value the author wrote is left alone: the props on a node are the narrowest statement
+ * there is, and a theme is never more specific than that.
+ *
+ * Where the element has no default for a key and no variant, nothing is written and the static
+ * sheet's chain answers instead (see `staticThemeChain`).
+ */
+function applyComponentTheme(
+  el: HTMLElement,
+  componentName: string,
+  props: Partial<DesignSystemProps>,
+  raw: Partial<DesignSystemProps> | undefined,
+): void {
+  if (!raw) return; // Everything was passed as explicit.
+  const own = (el as { variant?: unknown }).variant;
+  const variant = typeof own === 'string' && own !== '' ? own : null;
+  const role = roleFor(componentName, variant);
+  const staticRole = roleFor(componentName, null);
+  for (const key of THEMED_KEYS) {
+    if (key.explicit(raw)) continue;
+    const value = key.value(props);
+    if (value === undefined && variant === null && role === staticRole) continue;
+    setProperty(
+      el,
+      `--we-${componentName}-${key.suffix}`,
+      componentChain(componentName, key.key, variant, roleChain(role, key, value)),
+    );
+  }
+}
+
 export function updateAllCustomVars(
   el: HTMLElement,
   componentName: string,
@@ -779,6 +971,7 @@ export function updateAllCustomVars(
   rawExplicitProps?: Partial<DesignSystemProps>,
 ) {
   updateCustomVars(el, componentName, props, rawExplicitProps);
+  applyComponentTheme(el, componentName, props, rawExplicitProps);
   applyTone(el, props.tone);
   applyInlineStyles(el, props.styles);
   let hasState = false;
@@ -844,9 +1037,11 @@ function cascadeSpec(
   capGroupVar?: string,
 ): PropSpec {
   if (!groupVar) {
-    // No theme group — emit a direct token fallback so DEFAULT_PROPS values still take
-    // effect even though the runtime no longer sets the custom var for non-explicit props.
-    return tokenDefault ? [cssProp, varSuffix, tokenDefault] : [cssProp, varSuffix];
+    // No theme group — the component's own theme value, then a direct token fallback so
+    // DEFAULT_PROPS values still take effect even though the runtime no longer sets the custom var
+    // for non-explicit props.
+    const own = `--we-theme-${componentName}-${varSuffix}`;
+    return [cssProp, varSuffix, tokenDefault ? `var(${own}, ${tokenDefault})` : `var(${own})`];
   }
   if (!tokenDefault) {
     if (process.env.NODE_ENV !== 'production') {
@@ -963,6 +1158,11 @@ export function getStaticDSStyles(
     cascade?.gapDefault ?? (dp && dp['gap'] !== undefined ? tokenVar('space', dp['gap'] as string) : undefined);
 
   // Build per-component visual and flex specs with cascade fallbacks where applicable.
+  // The component tier for the keys a theme can set per component: its own value, then its role.
+  const themed = (spec: PropSpec): PropSpec => {
+    const chain = spec.length === 2 ? staticThemeChain(componentName, spec[1]) : undefined;
+    return chain ? [spec[0], spec[1], chain] : spec;
+  };
   const baseVisual: PropSpec[] = BASE_VISUAL.map((spec) =>
     spec[1] === 'radius'
       ? cascadeSpec(
@@ -973,8 +1173,9 @@ export function getStaticDSStyles(
           radiusDefault,
           cascade?.radiusCapGroup,
         )
-      : spec,
+      : themed(spec),
   );
+  const baseTypography: PropSpec[] = BASE_TYPOGRAPHY.map(themed);
   const baseFlex: PropSpec[] = BASE_FLEX.flatMap((spec) => {
     if (spec[1] === 'gap') {
       return [cascadeSpec(componentName, 'gap', 'gap', cascade?.gapGroup, gapDefault)];
@@ -1007,7 +1208,7 @@ export function getStaticDSStyles(
   }
   if (l.has('layout')) baseLines.push(joinDecls(p, BASE_LAYOUT));
   if (l.has('flex')) baseLines.push(joinDecls(p, baseFlex));
-  if (l.has('typography')) baseLines.push(joinDecls(p, BASE_TYPOGRAPHY));
+  if (l.has('typography')) baseLines.push(joinDecls(p, baseTypography));
 
   const hasBase = l.has('visual') || l.has('layout') || l.has('flex') || l.has('typography');
   if (hasBase) {
@@ -1052,7 +1253,7 @@ export function getStaticDSStyles(
   if (l.has('visual')) baseSpecs.push(...baseVisual);
   if (l.has('layout')) baseSpecs.push(...BASE_LAYOUT);
   if (l.has('flex')) baseSpecs.push(...baseFlex);
-  if (l.has('typography')) baseSpecs.push(...BASE_TYPOGRAPHY);
+  if (l.has('typography')) baseSpecs.push(...baseTypography);
 
   /*
     A variant's declarations: what it names, and for everything else, the layer below.

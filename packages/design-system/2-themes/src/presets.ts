@@ -196,6 +196,9 @@ export const THEME_PRESETS = {
           - **The status labels, `accentHover`, `accentActive`.** All derived from what is above.
         */
       },
+      // The middle heading in the accent's text colour — one variant of one component, which is
+      // what the component tier is for. It was a selector in this theme's CSS.
+      components: { text: { variants: { 'heading-md': { text: 'accent-text' } } } },
     },
   },
   black: {
@@ -237,6 +240,9 @@ export const THEME_PRESETS = {
       lightnessCeiling: '100%',
       saturation: 97,
       neutralSaturation: 16,
+      // The face is carried by this theme's CSS (`@font-face` for VT323); choosing it is a setting.
+      fontFamily: "'VT323', monospace",
+      components: { tooltip: { radius: '0' } },
     },
   },
   cyberpunk: {
@@ -280,6 +286,10 @@ export const THEME_PRESETS = {
         The general lesson: a pin written against a defect outlives the defect. This one was three
         role-layer changes stale and nothing but a measurement would have said so.
       */
+      fontFamily: 'monospace',
+      // Headings in the accent itself — a fill colour used as text, which is this theme's look.
+      typeStyles: { heading: { color: 'accent' } },
+      components: { tooltip: { radius: '0' }, menu: { border: 'accent-border' } },
     },
   },
 
@@ -440,7 +450,8 @@ export function isThemeName(value: string): value is ThemeName {
 // `role` comes through here too: the editor reads the defaults to work out which roles are derived
 // from which, and parsing that out of the table is what keeps the answer from drifting away from it.
 export { role } from '@we/tokens';
-export type { ThemeOverrides, ThemeRole, ThemeSide } from './overrides';
+export type { ComponentOverride, ThemeOverrides, ThemeRole, ThemeSide, TypeStyle } from './overrides';
+export { COMPONENT_TYPE_PROPERTIES, writeComponentOverrides, writeTypeStyles } from './componentStyles';
 export { migrateOverrides, parseOverrides, THEME_SCHEMA_VERSION } from './migrate';
 export { type ThemeSideName, themeSides, withThemeSide } from './sides';
 export {
@@ -460,5 +471,6 @@ export {
   registerNamedThemes,
   roleVar,
   surfacesForPolarity,
+  BODY_TYPE,
   themeParametersToStyle,
 } from './themeStyles';

@@ -101,6 +101,8 @@ describe('a node-scoped theme', () => {
       letterSpacing: '0.01em',
       lineHeight: '1.5',
       fontScale: 1.125,
+      typeStyles: { heading: { weight: 300, letterSpacing: '-0.01em', color: 'accent-text' } },
+      components: { button: { radius: '0', variants: { soft: { borderWidth: '1.5px' } } } },
       controlRadius: '999px',
       surfaceRadius: '20px',
       inputRadius: '14px',

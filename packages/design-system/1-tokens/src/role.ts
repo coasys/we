@@ -391,8 +391,6 @@ export const ROLE_ALIASES: Record<string, string> = {
   // said `2px`, so a theme widening its ring got the wrong ring on every scoped element.
   '--we-focus-outline': '0 0 0 var(--we-focus-ring-width) var(--we-color-focus)',
   '--we-ring-color': 'var(--we-role-focus)',
-  '--we-border-color': 'var(--we-role-border)',
-  '--we-border-color-strong': 'var(--we-role-border-strong)',
 };
 
 /**

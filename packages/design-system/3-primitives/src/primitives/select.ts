@@ -1,5 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, familyVar, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
+import { typeRoleDeclarations } from '@we/tokens';
 import { css, html, nothing, type PropertyValues, unsafeCSS } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
@@ -222,9 +223,13 @@ const styles = css`
   [part='group-heading'] {
     padding: var(--we-space-200) var(--we-space-300) var(--we-space-100);
     font-size: 0.75em;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--we-role-text-faint);
+    ${unsafeCSS(
+      typeRoleDeclarations('overline', {
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em',
+        color: 'var(--we-role-text-faint)',
+      }),
+    )}
     pointer-events: none;
   }
 

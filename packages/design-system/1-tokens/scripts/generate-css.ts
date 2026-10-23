@@ -142,7 +142,7 @@ ${reducedVars}
   return css;
 }
 
-// The width comes from the shared list of theme-derived variables; the colours are aliases.
+// The width comes from the shared list of theme-derived variables.
 export function generateBorderCSS(_border: typeof borderTokens) {
   const css = `/* BORDER TOKENS - Generated from JS tokens */
 
@@ -150,12 +150,6 @@ export function generateBorderCSS(_border: typeof borderTokens) {
   /* Border Width */
   /* Themeable: a theme sets --we-theme-border-width to move every stroke at once. */
   --we-border-width: ${THEME_DERIVED_VARIABLES['--we-border-width']};
-
-  /* Semantic border radius alias (override in themes) */
-  --we-border-radius: var(--we-radius-400);
-
-  /* Border Colors */
-${aliasVars(['--we-border-color', '--we-border-color-strong'])}
 
   /* Focus ring color — resolves to the focus role, so a theme pinning that role moves the ring
      with it. There is deliberately no separate theme key: two ways to say one thing is how they

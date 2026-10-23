@@ -2,11 +2,14 @@ import { scrollbarRules } from '@we/tokens';
 import { css, unsafeCSS } from 'lit';
 
 export default css`
+  /*
+    No font here: a primitive inherits its type from where it sits. The body type is declared where a
+    theme is applied (see BODY_TYPE in @we/themes), and a component that sets its words in a type
+    role of its own reads it on its base. Restating the body face on every host reset whatever the
+    parent had chosen, so a label inside a button was set in body type rather than the button's.
+  */
   :host {
     box-sizing: border-box;
-    font-family: var(--we-font-family);
-    letter-spacing: var(--we-theme-letter-spacing, normal);
-    line-height: var(--we-theme-line-height, normal);
   }
 
   :host *,

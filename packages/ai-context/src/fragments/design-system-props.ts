@@ -319,7 +319,7 @@ min-content — so under it the long string still pushes its container wider tha
 **Typography defaults:** fontSize and fontWeight have **no built-in defaults** — omitting them inherits from parent elements (browser default is ~16px / normal weight). Do not set fontSize or fontWeight unless you need a non-default value. For example, \`fontSize: '300'\` (16px) and \`fontWeight: '500'\` (normal) are the inherited defaults — omit them.
 
 \`we-text\` variants (set via the \`variant\` prop) bundle typography presets. Always pair with a semantic \`tag\` prop for correct HTML structure:
-body (300, tag: p/span), label (200 + medium, tag: span), footnote (100, tag: span), subheading (400 + medium, tag: h5/p), ingress (400 + lineHeight 1.6, tag: p), heading-sm (500 + bold, tag: h4), heading-md (600 + bold, tag: h3), heading-lg (700 + bold, tag: h2), heading-xl (800 + bold, tag: h1).
+body (300, tag: p/span), label (200 + medium, tag: span), footnote (100, tag: span), subheading (400 + medium, tag: h5/p), ingress (400 + lineHeight 1.6, tag: p), heading-sm (500 + bold, tag: h4), heading-md (600 + bold, tag: h3), heading-lg (700 + bold, tag: h2), heading-xl (800 + bold, tag: h1), overline (100, wide tracking, capitals — the name of a group or an eyebrow above a heading, tag: span).
 Variants set size and weight only — color is always inherited or set explicitly. For muted footnote text add \`color="text-muted"\` explicitly.
 
 ### State

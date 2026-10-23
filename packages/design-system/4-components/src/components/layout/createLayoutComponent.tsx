@@ -1,6 +1,6 @@
 import { designSystemKeys, filterProps, mergeProps, tierKeys } from '@we/design-utils';
 import { buildLayoutStyles, getBgImageAttrs, type LayoutProps, useStateProps } from '@we/design-utils/solid';
-import { type ThemeFamily, themeFamily } from '@we/tokens';
+import { componentChain, type ThemeFamily, themeFamily } from '@we/tokens';
 import { createMemo, type JSX, splitProps } from 'solid-js';
 
 /**
@@ -46,6 +46,12 @@ export interface LayoutComponentConfig<P extends LayoutProps, H = unknown> {
    * caller's own props, so both still override it.
    */
   family?: ThemeFamily;
+  /**
+   * The name a theme's `components.<name>` addresses this component by — the layer-4 counterpart of
+   * a primitive's tag. Absent for the pure layout components: a Column has no look of its own for a
+   * theme to set apart.
+   */
+  name?: string;
   /** DS-prop defaults merged beneath the caller's props. */
   defaults?: Partial<P>;
   /** Component-own prop names: split off with the DS props but excluded from style building. */
@@ -103,6 +109,29 @@ function familyDefaults(family: ThemeFamily | undefined): Record<string, string>
   );
 }
 
+/**
+ * The theme's component tier, in front of whatever the component's defaults gave each key.
+ *
+ * Keys the caller set are left alone — a prop on the node is narrower than any theme. The rest read
+ * `--we-theme-<name>-<key>` first, exactly as a primitive's do (see `componentChain` in @we/tokens).
+ */
+const THEMED_STYLE: [props: string[], css: string, key: string][] = [
+  [['r', 'rt', 'rb', 'rl', 'rr', 'rtl', 'rtr', 'rbr', 'rbl'], 'border-radius', 'radius'],
+  [['p', 'px', 'py', 'pt', 'pr', 'pb', 'pl'], 'padding', 'padding'],
+  [['gap'], 'gap', 'gap'],
+  [['bg'], 'background-color', 'fill'],
+  [['color'], 'color', 'text'],
+  [['shadow', 'ring'], 'box-shadow', 'shadow'],
+];
+
+function themeComponent(name: string, style: JSX.CSSProperties, used: Record<string, unknown>): void {
+  const record = style as Record<string, string | undefined>;
+  for (const [props, css, key] of THEMED_STYLE) {
+    if (props.some((prop) => used[prop] !== undefined)) continue;
+    record[css] = componentChain(name, key, null, record[css]);
+  }
+}
+
 export function createLayoutComponent<P extends LayoutProps, H = unknown>(
   config: LayoutComponentConfig<P, H>,
 ): (allProps: P) => JSX.Element {
@@ -122,6 +151,7 @@ export function createLayoutComponent<P extends LayoutProps, H = unknown>(
       const usedProps = filterProps(designSystemProps as Record<string, unknown>, styleKeys);
       const merged = mergeProps(usedProps, { ...LAYOUT_DEFAULTS, ...family, ...config.defaults }) as P;
       const style = buildLayoutStyles(merged, direction());
+      if (config.name) themeComponent(config.name, style, usedProps);
       return config.finalizeStyle ? config.finalizeStyle(style, designSystemProps as P) : style;
     });
 

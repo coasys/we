@@ -11,7 +11,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   bg: 'surface-raised',
   r: '400',
   overflow: 'hidden',
-  border: '1px solid var(--we-border-color)',
+  border: '1px solid var(--we-role-border)',
 };
 
 const styles = css`

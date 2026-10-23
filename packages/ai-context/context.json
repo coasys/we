@@ -1781,7 +1781,7 @@
         },
         {
           "name": "variant",
-          "type": "'' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl'",
+          "type": "'' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl' | 'overline'",
           "optional": false,
           "default": "''"
         },
@@ -5785,14 +5785,6 @@
         "lg": "3rem",
         "xl": "4rem",
         "xxl": "5rem"
-      }
-    },
-    {
-      "name": "border.color",
-      "type": "Record<BorderColorToken, string>",
-      "values": {
-        "base": "color.neutral['100']",
-        "strong": "color.neutral['200']"
       }
     },
     {

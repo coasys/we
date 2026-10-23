@@ -30,6 +30,8 @@ export const SPECIAL_SETTINGS = [
   'fontScale',
   'roles',
   'palette',
+  'typeStyles',
+  'components',
   'light',
   'dark',
 ] as const satisfies readonly (keyof ThemeOverrides)[];

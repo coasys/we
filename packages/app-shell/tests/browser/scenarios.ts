@@ -418,6 +418,42 @@ const toned = (): Scenario => ({
   tables: {},
 });
 
+/**
+ * A theme's component tier and type roles, beside elements that say something themselves.
+ *
+ * Two copies of one row: the first under no theme, the second under a node-level theme setting a
+ * button radius, a soft-button fill, a control weight and a heading weight. Each copy holds an
+ * untouched button, a soft one, one with its own radius, a heading and a markdown heading.
+ */
+const componentTierRow = (): SchemaNode => ({
+  type: 'Column',
+  props: { gap: '200', p: '200' },
+  children: [
+    { type: 'we-button', props: { variant: 'solid' }, children: ['Solid'] },
+    { type: 'we-button', props: { variant: 'soft' }, children: ['Soft'] },
+    { type: 'we-button', props: { variant: 'solid', r: '600' }, children: ['Own radius'] },
+    { type: 'we-text', props: { variant: 'heading-md' }, children: ['Heading'] },
+    { type: 'we-markdown', props: { content: '## Markdown heading' } },
+  ],
+});
+
+const componentTier = (): Scenario => ({
+  node: {
+    type: 'Column',
+    children: [
+      componentTierRow(),
+      {
+        ...componentTierRow(),
+        theme: {
+          typeStyles: { control: { weight: 700 }, heading: { weight: 300 } },
+          components: { button: { radius: '0', variants: { soft: { fill: 'danger-soft' } } } },
+        },
+      },
+    ],
+  },
+  tables: {},
+});
+
 const nestedInteractive = (): Scenario => ({
   node: {
     type: 'Row',
@@ -1514,6 +1550,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'inspector:provenance': provenanceLine,
   'ds:nested-interactive': nestedInteractive,
   'ds:tone': toned,
+  'ds:component-tier': componentTier,
   'ds:token-offsets': tokenOffsets,
   'ds:square-loading': squareLoading,
   'ds:crowded-square-row': crowdedSquareRow,

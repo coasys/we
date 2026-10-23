@@ -9,6 +9,7 @@ const render = createLayoutComponent<CardProps>({
     same statement repeated because layer 4 had no way to make it.
   */
   family: 'surface',
+  name: 'card',
   defaults: {
     // Not a family axis: shadow has no group, so a theme reaches it through this one variable.
     shadow: 'var(--we-theme-shadow, none)',

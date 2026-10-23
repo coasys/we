@@ -72,3 +72,4 @@ export { holdTopLayer, installTopLayerGuard, mayEnterTopLayer } from './shared/t
 
 /** One icon per status variant — the redundancy that carries status without colour. */
 export { ALERT_TONE_ICONS } from './primitives/alert';
+export { INTERNAL_PARTS, PUBLIC_PARTS } from './parts';

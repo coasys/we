@@ -1580,7 +1580,7 @@ item is considered.
 - we-tag (DesignSystemElement)
   Props: variant: 'soft' | 'solid' = 'soft', dismissible: boolean = false
 - we-text (DesignSystemElement)
-  Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false, truncate: boolean = false, gradient: string = '', loading: boolean = false, loadingWidth: string = '100%'
+  Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl' | 'overline' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false, truncate: boolean = false, gradient: string = '', loading: boolean = false, loadingWidth: string = '100%'
 - we-textarea (DesignSystemElement)
   Props: value: string = '', name: string = '', label: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', autoGrow: boolean = false, maxRows: number = 6, submitOnEnter: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-timestamp (DesignSystemElement) — Displays a formatted or relative timestamp that self-updates each minute
@@ -2354,7 +2354,7 @@ min-content — so under it the long string still pushes its container wider tha
 **Typography defaults:** fontSize and fontWeight have **no built-in defaults** — omitting them inherits from parent elements (browser default is ~16px / normal weight). Do not set fontSize or fontWeight unless you need a non-default value. For example, `fontSize: '300'` (16px) and `fontWeight: '500'` (normal) are the inherited defaults — omit them.
 
 `we-text` variants (set via the `variant` prop) bundle typography presets. Always pair with a semantic `tag` prop for correct HTML structure:
-body (300, tag: p/span), label (200 + medium, tag: span), footnote (100, tag: span), subheading (400 + medium, tag: h5/p), ingress (400 + lineHeight 1.6, tag: p), heading-sm (500 + bold, tag: h4), heading-md (600 + bold, tag: h3), heading-lg (700 + bold, tag: h2), heading-xl (800 + bold, tag: h1).
+body (300, tag: p/span), label (200 + medium, tag: span), footnote (100, tag: span), subheading (400 + medium, tag: h5/p), ingress (400 + lineHeight 1.6, tag: p), heading-sm (500 + bold, tag: h4), heading-md (600 + bold, tag: h3), heading-lg (700 + bold, tag: h2), heading-xl (800 + bold, tag: h1), overline (100, wide tracking, capitals — the name of a group or an eyebrow above a heading, tag: span).
 Variants set size and weight only — color is always inherited or set explicitly. For muted footnote text add `color="text-muted"` explicitly.
 
 ### State
@@ -2433,8 +2433,6 @@ Use design tokens for spacing, color, radius, etc. Do not use raw CSS values unl
 animation.transition: '0', '100', '200', '300', '400', '500'
 
 avatarSize: 'xxs', 'xs', 'sm', 'md', 'lg', 'xl', 'xxl'
-
-border.color: 'base', 'strong'
 
 breakpoint: 'sm', 'md', 'lg'
 

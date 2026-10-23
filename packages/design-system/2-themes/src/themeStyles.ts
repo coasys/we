@@ -31,6 +31,7 @@ import {
   THEME_DERIVED_VARIABLES,
 } from '@we/tokens';
 
+import { writeComponentOverrides, writeTypeStyles } from './componentStyles';
 import type { ThemeOverrides, ThemeRole } from './overrides';
 import { isThemeName, THEME_PRESETS } from './presets';
 import { fetchesRemotely } from './sanitiseCss';
@@ -247,6 +248,23 @@ function namedThemeParameters(name: string): ThemeOverrides | undefined {
   return lookupNamedTheme?.(name);
 }
 
+/**
+ * The body type, declared where a theme applies — the document and every scoped wrapper.
+ *
+ * Text inherits it from here, which is what lets a type role set on a component reach the words
+ * inside it. Declared on the theme's element rather than once at `:root`, because a custom property
+ * is resolved where it is declared: a space theme's own `--we-font-family` has to be read on the
+ * space's wrapper, or its text would inherit a face resolved against the document's theme.
+ */
+export const BODY_TYPE: Record<string, string> = {
+  'font-family': 'var(--we-type-body-family, var(--we-font-family))',
+  'font-weight': 'var(--we-type-body-weight, normal)',
+  'letter-spacing': 'var(--we-type-body-letter-spacing, var(--we-theme-letter-spacing, normal))',
+  'line-height': 'var(--we-type-body-line-height, var(--we-theme-line-height, normal))',
+  'text-transform': 'var(--we-type-body-text-transform, none)',
+  color: 'var(--we-type-body-color, var(--we-role-text))',
+};
+
 /** Drop absent keys so a spread cannot blank a preset value with an explicit `undefined`. */
 function stripUndefined(theme: ThemeOverrides): ThemeOverrides {
   return Object.fromEntries(Object.entries(theme).filter(([, value]) => value !== undefined)) as ThemeOverrides;
@@ -330,6 +348,11 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
   if (theme.animationSpeed) {
     Object.assign(style, ANIMATION_SPEED_VARS[theme.animationSpeed]);
   }
+
+  // Type roles and component overrides: plain variables, read by chains where components draw.
+  Object.assign(style, BODY_TYPE);
+  writeTypeStyles(theme, style);
+  writeComponentOverrides(theme, style);
 
   // Semantic roles → pin individual --we-role-* variables. Roles not listed keep
   // their parametric defaults over the scale (declared in the tokens CSS).

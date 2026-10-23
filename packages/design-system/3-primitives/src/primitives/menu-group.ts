@@ -1,4 +1,5 @@
-import { css, html, nothing } from 'lit';
+import { typeRoleDeclarations } from '@we/tokens';
+import { css, html, nothing, unsafeCSS } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
@@ -51,10 +52,14 @@ const styles = css`
     transform: rotate(45deg) translateX(-50%);
   }
   [part='title'] {
-    text-transform: uppercase;
     font-size: var(--we-font-size-400);
-    color: var(--we-role-text-faint);
-    font-weight: 500;
+    ${unsafeCSS(
+      typeRoleDeclarations('overline', {
+        textTransform: 'uppercase',
+        color: 'var(--we-role-text-faint)',
+        weight: '500',
+      }),
+    )}
     flex: 1;
     white-space: nowrap;
     overflow: hidden;

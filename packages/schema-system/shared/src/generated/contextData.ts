@@ -630,7 +630,7 @@ export const contextData: ContextData = {
         { name: 'text', type: 'string | undefined', optional: true },
         {
           name: 'variant',
-          type: "'' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl'",
+          type: "'' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl' | 'overline'",
           optional: false,
           default: "''",
         },
@@ -2007,11 +2007,6 @@ export const contextData: ContextData = {
       name: 'avatarSize',
       type: 'Record<SizeToken, string>',
       values: { xxs: '1rem', xs: '1.5rem', sm: '2rem', md: '2.5rem', lg: '3rem', xl: '4rem', xxl: '5rem' },
-    },
-    {
-      name: 'border.color',
-      type: 'Record<BorderColorToken, string>',
-      values: { base: "color.neutral['100']", strong: "color.neutral['200']" },
     },
     { name: 'breakpoint', type: 'Record<BreakpointToken, string>', values: { sm: '640px', md: '900px', lg: '1200px' } },
     { name: 'color.base', type: 'Record<ColorBaseToken, HexColor>', values: { white: '#ffffff', black: '#000000' } },

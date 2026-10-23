@@ -7,7 +7,7 @@
  * mapping (`themeParametersToStyle`) that turns it into CSS; schema-shared re-exports it unchanged.
  */
 
-import type { PaletteHue, RoleToken } from '@we/tokens';
+import type { PaletteHue, RoleToken, TypeRole } from '@we/tokens';
 
 /**
  * Semantic role slots a theme can override individually.
@@ -39,6 +39,58 @@ export interface PaletteSettings {
   lightness?: number;
   /** One hue's own angle or fill lightness (0–100). */
   hues?: Partial<Record<PaletteHue, { hue?: number; lightness?: number }>>;
+}
+
+/**
+ * How one kind of text looks — see `TYPE_ROLES` in @we/tokens for the kinds and who draws each.
+ *
+ * Every key is optional and none has a default here: a component keeps the value it always had for
+ * a key the theme leaves unset. `color` is a role (`'accent-text'`), so it follows the theme's
+ * contrast corrections like any other foreground.
+ */
+export interface TypeStyle {
+  /** A font stack: `'Bricolage Grotesque', var(--we-font-family)`. */
+  family?: string;
+  /** `400`, `600`, or a token name: `'semibold'`. */
+  weight?: string | number;
+  /** `'-0.01em'`, or a token name: `'wide'`. */
+  letterSpacing?: string;
+  /** `'1.2'`, or a token name: `'snug'`. */
+  lineHeight?: string;
+  textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+  /** A colour role, kebab-case: `'accent-text'`. */
+  color?: string;
+}
+
+/**
+ * One component's values, apart from its family's — the narrow tier between the system settings and
+ * a theme's CSS. The keys are the family keys, so a component override is spelt the way the setting
+ * it overrides is.
+ */
+export interface ComponentOverride {
+  /** A radius: a length or a radius token (`'0'`, `'pill'`). */
+  radius?: string;
+  /** Padding: a length, a space token, or a shorthand of either. */
+  padding?: string;
+  /** The space between the component's children: a length or a space token. */
+  gap?: string;
+  /** The width of the component's border: `'1.5px'`. */
+  borderWidth?: string;
+  /** A shadow token (`'sm'`…`'xl'`, `'glow'`) or `'none'`. */
+  shadow?: string;
+  /** The type role the component's words are set in, in place of its own. */
+  type?: TypeRole;
+  /** A colour role for the component's fill. */
+  fill?: string;
+  /** A colour role for the component's words. */
+  text?: string;
+  /** A colour role for the component's border. */
+  border?: string;
+  /**
+   * The same keys for one variant — `button: { variants: { soft: { borderWidth: '1.5px' } } }` —
+   * read ahead of the component's own.
+   */
+  variants?: Record<string, Omit<ComponentOverride, 'variants'>>;
 }
 
 export type ThemeOverrides = {
@@ -141,6 +193,17 @@ export type ThemeOverrides = {
   letterSpacing?: string; // --we-theme-letter-spacing  (e.g. "0.05em" for airy headlines)
   lineHeight?: string; // --we-theme-line-height  (e.g. "1.5" or "relaxed")
   fontScale?: number; // scales root font-size (1 = 100%, 1.125 = 112.5%) — affects all rem-based tokens
+  /**
+   * How each kind of text looks: headings, body, labels, controls, badges and overlines. See
+   * `TypeStyle`. `headingFontFamily`, `letterSpacing` and `lineHeight` above stay as the broad
+   * settings a role falls back to.
+   */
+  typeStyles?: Partial<Record<TypeRole, TypeStyle>>;
+  /**
+   * Components set apart from their family, by name as the component registers it (`button`,
+   * `card`, `menu-item`). See `ComponentOverride`.
+   */
+  components?: Record<string, ComponentOverride>;
 
   // Shape — radius cascade: component r= prop → component theme → group theme → token default
   controlRadius?: string; // --we-theme-control-radius  (buttons, badges, tags)

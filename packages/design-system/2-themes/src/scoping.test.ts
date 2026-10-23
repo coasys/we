@@ -66,6 +66,8 @@ const SAMPLE: Required<Omit<ThemeOverrides, 'schemaVersion' | 'light' | 'dark'>>
   surfaceOpacity: 0.8,
   surfaceBlur: 6,
   animationSpeed: 'slow',
+  typeStyles: { heading: { weight: 300 } },
+  components: { button: { radius: 'pill' } },
 };
 
 describe('every setting changes something', () => {

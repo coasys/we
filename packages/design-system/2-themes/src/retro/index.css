@@ -25,9 +25,6 @@
 }
 
 [data-we-theme='retro'] {
-  --we-border-radius: 0px;
-  --we-border-color: silver;
-  --we-font-family: 'VT323', monospace;
   --we-scrollbar-thumb-box-shadow:
     inset -1px -1px #0a0a0a, inset 1px 1px #fff, inset -2px -2px grey, inset 2px 2px #dfdfdf;
   --we-scrollbar-thumb-background: #dfdfdf;
@@ -104,7 +101,6 @@
 [data-we-theme='retro'] we-button::part(base) {
   background: silver !important;
   color: #222 !important;
-  font-weight: 400;
   border: 0 !important;
   box-shadow:
     inset -1px -1px #0a0a0a,
@@ -125,15 +121,6 @@
     inset 2px 2px grey;
 }
 
-[data-we-theme='retro'] we-button[variant='primary']::part(base) {
-  border: 0;
-  box-shadow:
-    inset -1px -1px #0a0a0a,
-    inset 1px 1px #fff,
-    inset -2px -2px grey,
-    inset 2px 2px #dfdfdf;
-}
-
 [data-we-theme='retro'] we-button[square]::part(base) {
   border-radius: 0;
 }
@@ -149,6 +136,9 @@
 
 [data-we-theme='retro'] we-menu::part(base) {
   background: var(--we-color-neutral-100);
+
+  /* Silver is not a role, so it stays here rather than in components.menu.border. */
+  border-color: silver;
 }
 
 [data-we-theme='retro'] we-menu-group::part(summary) {

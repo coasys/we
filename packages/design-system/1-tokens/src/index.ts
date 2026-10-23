@@ -46,7 +46,6 @@ export {
 
 // Export token types
 export type { AnimationTransitionToken } from './animation.js';
-export type { BorderColorToken } from './border.js';
 export type { BreakpointToken, Tier } from './breakpoint.js';
 export type {
   ColorBaseToken,
@@ -91,6 +90,16 @@ export {
 } from './families.js';
 export type { ChromaticFamily, ColorFamily, PaletteHue, SemanticFamily, ToneName } from './families.js';
 export { FAMILY_ROLES, toneVariables } from './familyRoles.js';
+export {
+  COMPONENT_THEME_KEYS,
+  componentChain,
+  componentThemeVar,
+  TYPE_ROLE_KEYS,
+  TYPE_ROLES,
+  typeRoleDeclarations,
+  typeRoleVar,
+} from './componentTheme.js';
+export type { ComponentThemeKey, TypeRole, TypeRoleKey } from './componentTheme.js';
 export type { FamilyRole } from './familyRoles.js';
 export type { Polarity } from './color.js';
 export { AVATAR_TONE_ROLES, AVATAR_TONES, avatarToneColor, avatarToneLabel } from './color.js';

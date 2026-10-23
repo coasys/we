@@ -8,7 +8,8 @@ import {
   shift,
 } from '@floating-ui/dom';
 import type { Placement } from '@we/design-types';
-import { css, html, type PropertyValues } from 'lit';
+import { typeRoleDeclarations } from '@we/tokens';
+import { css, html, type PropertyValues, unsafeCSS } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
 
 import { anchorInSlot, DEV_BUILD, warnAboutBoxlessLayoutProps } from '../shared/boxless';
@@ -85,7 +86,7 @@ const CSS_STYLES = css`
     white-space: normal;
     overflow-wrap: anywhere;
     font-size: var(--we-font-size-200, 14px);
-    font-weight: 500;
+    ${unsafeCSS(typeRoleDeclarations('label', { weight: '500' }, ['color']))}
     padding: var(--we-space-300, 8px) var(--we-space-300, 8px);
     /* The inverse pair. Not text/onInverse: those are scale positions, so they flip with the
        theme and a dark tooltip in light mode became a white one in dark. This pair is measured
@@ -108,7 +109,7 @@ const CSS_STYLES = css`
 
       (No backticks in here either: this is the same tagged template literal.)
     */
-    border-radius: var(--we-border-radius, 4px);
+    border-radius: var(--we-theme-tooltip-radius, var(--we-theme-control-radius, 4px));
     box-shadow: 0 2px 8px color-mix(in srgb, var(--we-role-shadow-color) 15%, transparent);
     /*
       Never takes the pointer, open or closed.

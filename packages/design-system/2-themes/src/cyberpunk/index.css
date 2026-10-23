@@ -1,10 +1,3 @@
-[data-we-theme='cyberpunk'] {
-  --we-font-family: monospace;
-  --we-border-radius: 0px;
-  --we-border-color: var(--we-color-accent-200);
-  --we-border-color-strong: var(--we-color-accent-400);
-}
-
 [data-we-theme='cyberpunk'] we-text[variant^='heading'] {
   display: block;
   position: relative;
@@ -13,7 +6,6 @@
   animation-iteration-count: infinite;
   animation-direction: reverse;
   animation-timing-function: ease-out;
-  --we-text-color: var(--we-color-accent-500);
 }
 
 [data-we-theme='cyberpunk'] we-button::part(base) {
