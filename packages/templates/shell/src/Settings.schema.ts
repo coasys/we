@@ -760,17 +760,13 @@ const themesSection: SchemaNode = {
           props: { items: { $: 'themeStore.themeManagementList' }, as: 'theme' },
           children: [
             {
+              // The fill is the block's, so the light-or-dark row under a theme sits inside its highlight.
               type: 'Column',
+              props: { r: '200', bg: { $: "theme.isDefault ? 'accent-muted' : 'transparent'" } },
               children: [
                 {
                   type: 'Row',
-                  props: {
-                    gap: '300',
-                    ay: 'center',
-                    p: '300',
-                    r: '200',
-                    bg: { $: "theme.isDefault ? 'accent-muted' : 'transparent'" },
-                  },
+                  props: { gap: '300', ay: 'center', p: '300' },
                   children: [
                     // Theme icon + name
                     {
