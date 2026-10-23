@@ -1401,6 +1401,9 @@ importers:
       '@we/graph-protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@we/tokens':
+        specifier: workspace:*
+        version: link:../../design-system/1-tokens
       tsup:
         specifier: ^9.0.0
         version: 9.0.0(jiti@2.7.0)(postcss@8.5.31)(tsx@4.23.15)(typescript@6.0.3)(yaml@2.9.1)

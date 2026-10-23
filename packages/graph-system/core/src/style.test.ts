@@ -7,11 +7,13 @@
  * everything.
  */
 import type { GraphNode, GraphValue, NodeVisual } from '@we/graph-protocol';
+import { PALETTE_HUES } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
 
 import {
   blendColors,
   blendVisual,
+  CATEGORICAL_SCALE,
   edgeVisual,
   matches,
   nodeVisual,
@@ -194,7 +196,23 @@ describe('metric references', () => {
   });
 
   it('maps a metric onto a named colour scale', () => {
-    expect(resolveColor({ metric: 'degree', scale: 'heat' }, a, metrics, 'neutral-500')).toBe('accent-500');
+    expect(resolveColor({ metric: 'degree', scale: 'heat' }, a, metrics, 'neutral-500')).toBe(
+      'color-mix(in oklch, var(--we-role-accent) 55%, var(--we-role-page))',
+    );
+  });
+
+  it("draws the hottest card in the family's own fill, on either ground", () => {
+    // The scale was steps of a ramp, which turns over in a dark theme: the hottest card came out
+    // the faintest. A mix into the page is "more colour" whichever way round the page is.
+    const hot = new Map([['degree', new Map([['a', 1]])]]);
+    expect(resolveColor({ metric: 'degree', scale: 'heat' }, a, hot, 'neutral-500')).toBe('accent');
+    for (const scale of ['heat', 'cool']) {
+      expect(resolveColor({ metric: 'degree', scale }, a, hot, '')).not.toMatch(/-\d+$/);
+    }
+  });
+
+  it("colours communities from the theme's palette, every hue once", () => {
+    expect([...CATEGORICAL_SCALE].sort()).toEqual([...PALETTE_HUES].sort());
   });
 
   it('falls back when the metric has not been computed', () => {

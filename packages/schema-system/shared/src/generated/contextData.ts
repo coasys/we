@@ -1171,7 +1171,7 @@ export const contextData: ContextData = {
     {
       name: 'GraphView',
       description:
-        "A general-purpose graph view: knowledge maps, schema maps, hierarchies, cluster maps and\nfree-positioned canvases, all from the same engine.\n\nThe shape of a graph is set by four independent choices: where it starts (`seeds`), how much of it\nopens (`expansion`), how it is arranged (`layout`), and how it looks (`nodeStyle` / `edgeStyle`).\n\nCommon recipes:\n- **Knowledge map** — `seeds: { source: 'query', options: { entity: 'Belief' } }` with\n`expansion: { defaultDepth: 1 }` and `layout: { type: 'force' }`.\n- **Schema map** — `seeds: { source: 'schema' }`, which draws the dataset's own entity types and\nthe relations between them. Picks up model types added later with no template change.\n- **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.\n- **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.",
+        "A general-purpose graph view: knowledge maps, schema maps, hierarchies, cluster maps and\nfree-positioned canvases, all from the same engine.\n\nThe shape of a graph is set by four independent choices: where it starts (`seeds`), how much of it\nopens (`expansion`), how it is arranged (`layout`), and how it looks (`nodeStyle` / `edgeStyle`).\n\nCommon recipes:\n- **Knowledge map** — `seeds: { source: 'query', options: { entity: 'Belief' } }` with\n`expansion: { defaultDepth: 1 }` and `layout: { type: 'force' }`.\n- **Schema map** — `seeds: { source: 'schema' }`, which draws the dataset's own entity types and\nthe relations between them. Picks up model types added later with no template change.\n- **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.\n- **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.\n- **A canvas with a grid** — `backdrop: { pattern: 'dots', gap: 24 }`, or `'lines'`; it pans and\nzooms with the canvas and is coloured from a role (`border` unless `color` says otherwise).",
       props: [
         { name: 'seeds', type: 'SeedSpec | SeedSpec[]', optional: true },
         { name: 'expansion', type: 'ExpansionSpec', optional: true },
@@ -1189,6 +1189,7 @@ export const contextData: ContextData = {
         { name: 'width', type: 'string', optional: true },
         { name: 'height', type: 'string', optional: true },
         { name: 'bg', type: 'string', optional: true },
+        { name: 'backdrop', type: 'GraphBackdrop', optional: true },
         { name: 'showStatus', type: 'boolean', optional: true },
         { name: 'empty', type: 'string', optional: true },
         { name: 'emptyIcon', type: 'string', optional: true },

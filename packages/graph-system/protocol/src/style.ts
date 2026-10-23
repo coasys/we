@@ -77,7 +77,9 @@ export interface MetricRef {
    * Map onto a colour scale instead of a numeric range: a named one — `heat`, `cool`, `categorical` —
    * or two colours to blend between, `{ from, to }`, low to high.
    *
-   * A named scale steps; a pair blends continuously, in OKLCH so the middle of the range looks like the
+   * A named scale steps, and every one of them is the theme's: `categorical` is its ten palette hues,
+   * `heat` and `cool` its accent and its blue mixed up out of the page, so the hot end is the
+   * strongest colour in a dark theme as in a light one. A pair blends continuously, in OKLCH so the middle of the range looks like the
    * middle rather than a muddy detour. The pair is what a reader picking "cold" and "hot" for a heat
    * map needs, and the continuity is the point of it: with three cards, the middle one's colour says
    * whether it sits nearer the top or the bottom, which five steps cannot. Either colour may be a token,

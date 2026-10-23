@@ -84,7 +84,7 @@ import {
 import { createStore, reconcile, type SetStoreFunction } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
 
-import type { GraphViewProps, NodeBadge, NodeContent } from './GraphView.types';
+import type { GraphBackdrop, GraphViewProps, NodeBadge, NodeContent } from './GraphView.types';
 import { isSettled, patched } from './pending';
 import { isRecordAddress } from './recordAddress';
 import { type Grip, HANDLES, resizeBox } from './resize';
@@ -460,6 +460,40 @@ export function edgeEndAt(
     }
   }
   return nearest;
+}
+
+/**
+ * The backdrop as CSS, for a camera at `{ x, y, zoom }`.
+ *
+ * Painted as the root's own background rather than as an element in the transformed layer: a
+ * repeating gradient is one declaration however far the canvas runs, where marks in world space
+ * would be a node per mark, or a box that has to grow to the edge of wherever somebody pans. Its
+ * size and offset follow the camera, which is all "drawn in canvas coordinates" needs.
+ *
+ * The fade is on the gap as it appears on screen: from twenty pixels apart down to six the marks
+ * thin out, and below that there is nothing, since a mark every few pixels is a grey wash that
+ * says nothing about where anything is.
+ */
+export function backdropStyle(
+  backdrop: GraphBackdrop | undefined,
+  camera: { x: number; y: number; zoom: number },
+): { 'background-image'?: string; 'background-size'?: string; 'background-position'?: string } {
+  const pattern = backdrop?.pattern ?? 'dots';
+  if (!backdrop || pattern === 'none') return {};
+  const step = (backdrop.gap ?? 24) * camera.zoom;
+  const presence = Math.min(1, Math.max(0, (step - 6) / 14));
+  if (!(presence > 0)) return {};
+  const size = backdrop.size ?? 1;
+  const ink = `color-mix(in oklab, ${color(backdrop.color, 'border')} ${Math.round(presence * 100)}%, transparent)`;
+  const image =
+    pattern === 'lines'
+      ? `linear-gradient(to right, ${ink} ${size}px, transparent ${size}px), linear-gradient(to bottom, ${ink} ${size}px, transparent ${size}px)`
+      : `radial-gradient(circle at ${size}px ${size}px, ${ink} ${size}px, transparent ${size + 0.5}px)`;
+  return {
+    'background-image': image,
+    'background-size': `${step}px ${step}px`,
+    'background-position': `${camera.x}px ${camera.y}px`,
+  };
 }
 
 export function arrowId(stroke?: string): string {
@@ -1845,6 +1879,12 @@ export function GraphView(props: GraphViewProps) {
     setPinned: (ids, pinned) => engine.setPinned(ids, pinned),
     isLocked: () => engine.isLocked(),
     setLocked: (locked) => engine.setLocked(locked),
+  });
+
+  const backdrop = createMemo(() => {
+    viewportVersion();
+    version();
+    return backdropStyle(props.backdrop, engine.viewport.get());
   });
 
   /** The camera scale on its own, for anything that has to divide by it. */
@@ -3341,7 +3381,8 @@ export function GraphView(props: GraphViewProps) {
           time skip it entirely. `role-audit` exists to catch exactly this and structurally cannot
           see it here: it walks composed schema trees, and this is a component's own style.
         */
-        background: color(props.bg, 'page'),
+        'background-color': color(props.bg, 'page'),
+        ...backdrop(),
       }}
     >
       {/*

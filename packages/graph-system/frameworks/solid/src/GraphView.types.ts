@@ -38,6 +38,8 @@ import type { JSX } from 'solid-js';
  *   the relations between them. Picks up model types added later with no template change.
  * - **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.
  * - **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.
+ * - **A canvas with a grid** — `backdrop: { pattern: 'dots', gap: 24 }`, or `'lines'`; it pans and
+ * zooms with the canvas and is coloured from a role (`border` unless `color` says otherwise).
  */
 export interface GraphViewProps {
   /** Where the graph starts. A literal fragment, or a named seed source with options. */
@@ -96,6 +98,15 @@ export interface GraphViewProps {
   height?: string;
   /** Background colour — design token or CSS colour. */
   bg?: string;
+  /**
+   * A pattern drawn on the canvas itself — dots or ruled lines — so a reader can tell the canvas is
+   * moving when nothing on it is in view, and line things up by eye.
+   *
+   * Drawn in the canvas's own coordinates: it travels with a pan and spreads with a zoom, `gap`
+   * being world units apart. `size` is in screen pixels, so a dot stays a dot at any zoom. When the
+   * zoom brings the marks closer than a few pixels they fade out rather than turning the ground grey.
+   */
+  backdrop?: GraphBackdrop;
   /** Show the loading/paging/warning strip. Defaults to true. */
   showStatus?: boolean;
   /**
@@ -739,6 +750,17 @@ export interface GraphViewProps {
 }
 
 /** A rectangle in the canvas's own world coordinates. */
+export interface GraphBackdrop {
+  /** Default `dots`. `none` draws nothing. */
+  pattern?: 'dots' | 'lines' | 'none';
+  /** World units between marks. Default 24. */
+  gap?: number;
+  /** A dot's radius or a line's width, in screen pixels. Default 1. */
+  size?: number;
+  /** A role or token. Default `border`. */
+  color?: string;
+}
+
 export interface GraphRegion {
   x: number;
   y: number;
