@@ -9,6 +9,8 @@
 
 import type { PaletteHue, RoleToken, SurfaceImageRole, TypeRole } from '@we/tokens';
 
+import type { FontFaceSetting } from './fontFaces';
+
 /**
  * Semantic role slots a theme can override individually.
  *
@@ -190,6 +192,12 @@ export type ThemeOverrides = {
    * what a code block looks like.
    */
   monoFontFamily?: string;
+  /**
+   * Typefaces the theme carries, as font files in data: URLs, so a family named above can be one
+   * nobody has installed. Registered when the theme is applied and withdrawn when it is not; nothing
+   * is fetched. See `fontFaces.ts`.
+   */
+  fontFaces?: FontFaceSetting[];
   letterSpacing?: string; // --we-theme-letter-spacing  (e.g. "0.05em" for airy headlines)
   lineHeight?: string; // --we-theme-line-height  (e.g. "1.5" or "relaxed")
   fontScale?: number; // scales root font-size (1 = 100%, 1.125 = 112.5%) — affects all rem-based tokens

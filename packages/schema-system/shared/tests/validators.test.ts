@@ -105,6 +105,7 @@ describe('a node-scoped theme', () => {
       glowIntensity: 'medium',
       surfaceImages: { surface: 'linear-gradient(red, blue)' },
       contrast: { more: { roles: { border: '#000' } } },
+      fontFaces: [{ family: 'Face', src: 'data:font/woff2;base64,AAAA' }],
       typeStyles: { heading: { weight: 300, letterSpacing: '-0.01em', color: 'accent-text' } },
       components: { button: { radius: '0', variants: { soft: { borderWidth: '1.5px' } } } },
       controlRadius: '999px',

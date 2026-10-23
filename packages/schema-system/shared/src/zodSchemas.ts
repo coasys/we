@@ -97,6 +97,19 @@ const themeParameterShape = {
   fontFamily: z.string().optional(),
   headingFontFamily: z.string().optional(),
   monoFontFamily: z.string().optional(),
+  fontFaces: z
+    .array(
+      z
+        .object({
+          family: z.string(),
+          src: z.string(),
+          weight: z.string().optional(),
+          style: z.enum(['normal', 'italic']).optional(),
+          unicodeRange: z.string().optional(),
+        })
+        .strict(),
+    )
+    .optional(),
   letterSpacing: z.string().optional(),
   lineHeight: z.string().optional(),
   fontScale: z.number().optional(),

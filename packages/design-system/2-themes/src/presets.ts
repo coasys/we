@@ -24,6 +24,7 @@ import { CHROMA_CEILING } from '@we/tokens';
 
 import { THEME_SCHEMA_VERSION } from './migrate';
 import type { ThemeOverrides } from './overrides';
+import { VT323 } from './retro/vt323';
 
 /**
  * @deprecated One vocabulary, one declaration: `ThemeParameters` was the deliberately-narrow subset
@@ -249,6 +250,7 @@ export const THEME_PRESETS = {
       neutralSaturation: 16,
       // The face is carried by this theme's CSS (`@font-face` for VT323); choosing it is a setting.
       fontFamily: "'VT323', monospace",
+      fontFaces: [VT323],
       components: { tooltip: { radius: '0' } },
     },
   },
@@ -461,6 +463,7 @@ export type { ComponentOverride, ThemeOverrides, ThemeRole, ThemeSide, TypeStyle
 export { COMPONENT_TYPE_PROPERTIES, writeComponentOverrides, writeTypeStyles } from './componentStyles';
 export { migrateOverrides, parseOverrides, THEME_SCHEMA_VERSION } from './migrate';
 export { type ThemeSideName, themeSides, withThemeSide } from './sides';
+export { fontFaceFamilies, fontFaceProblem, type FontFaceSetting, MAX_FONT_FACE_BYTES } from './fontFaces';
 export {
   currentDisplay,
   type DisplayPreferences,

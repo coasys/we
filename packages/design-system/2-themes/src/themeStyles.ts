@@ -35,6 +35,7 @@ import {
 
 import { writeComponentOverrides, writeTypeStyles } from './componentStyles';
 import { currentDisplay, onDisplayChange, withDisplay } from './display';
+import { applyFontFaces } from './fontFaces';
 import type { ThemeOverrides, ThemeRole } from './overrides';
 import { isThemeName, THEME_PRESETS } from './presets';
 import { fetchesRemotely } from './sanitiseCss';
@@ -544,8 +545,10 @@ export function clearThemeVars(root: HTMLElement): void {
   if (!previous) return;
   for (const prop of previous) root.style.removeProperty(prop);
   appliedThemeVars.delete(root);
-  // No longer a theme root, so a change of display preferences leaves it alone.
+  // No longer a theme root, so a change of display preferences leaves it alone, and the faces its
+  // theme carried go unless another theme on screen carries them too.
   appliedThemes.delete(root);
+  applyFontFaces(root, {});
 }
 
 /**
@@ -600,6 +603,7 @@ export function applyThemeVars(root: HTMLElement, asked: ThemeOverrides, options
   if (!appliedThemes.has(root) && typeof WeakRef === 'function') appliedRoots.add(new WeakRef(root));
   appliedThemes.set(root, { theme: asked, options });
   const theme = withDisplay(asked, currentDisplay());
+  applyFontFaces(root, theme);
   const styles = themeParametersToStyle(theme);
   // The font scale: the root font size at the document, the scoped variable anywhere below it.
   if (root === root.ownerDocument?.documentElement) delete styles[SCOPED_FONT_SCALE_VAR];

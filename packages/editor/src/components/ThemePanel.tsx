@@ -673,19 +673,27 @@ export function ThemePanel() {
 
   // ── Select control ──────────────────────────────────────────────────────────
 
+  /** The faces this theme carries (`fontFaces`), offered first, by the name they are used under. */
+  const themeFaces = () =>
+    [...new Set((overrides().fontFaces ?? []).map((face) => face.family))].map((family) => ({
+      value: `'${family}', sans-serif`,
+      label: `${family} (this theme)`,
+    }));
+
   function selectControl(
     label: string,
     key: keyof ThemeOverrides,
-    options: { value: string; label: string }[],
+    options: { value: string; label: string }[] | (() => { value: string; label: string }[]),
     labelWidth = '100px',
     sentinel = '',
   ) {
+    const opts = () => (typeof options === 'function' ? options() : options);
     const current = () => {
       const v = overrides()[key] as string | undefined;
       const resolved = v ?? sentinel;
       // If the stored value isn't one of our known options, treat it as the default.
       // This handles values auto-populated from base theme CSS (e.g. "'DM Sans', sans-serif").
-      if (sentinel && !options.some((o) => o.value === resolved)) return sentinel;
+      if (sentinel && !opts().some((o) => o.value === resolved)) return sentinel;
       return resolved;
     };
     return (
@@ -696,7 +704,7 @@ export function ThemePanel() {
         <we-select
           flex="1"
           value={current()}
-          options={options}
+          options={opts()}
           size="sm"
           on:change={(e: CustomEvent) => {
             const val = e.detail as string;
@@ -1713,8 +1721,14 @@ export function ThemePanel() {
 
             {/* ── Typography ── */}
             <CollapsibleSection title="Typography">
-              {selectControl('Font family', 'fontFamily', FONT_OPTIONS, '100px', 'default')}
-              {selectControl('Heading font', 'headingFontFamily', HEADING_FONT_OPTIONS, '100px', 'match')}
+              {selectControl('Font family', 'fontFamily', () => [...themeFaces(), ...FONT_OPTIONS], '100px', 'default')}
+              {selectControl(
+                'Heading font',
+                'headingFontFamily',
+                () => [HEADING_FONT_OPTIONS[0], ...themeFaces(), ...HEADING_FONT_OPTIONS.slice(1)],
+                '100px',
+                'match',
+              )}
               {selectControl('Code font', 'monoFontFamily', MONO_FONT_OPTIONS, '100px', 'system')}
               {selectControl('Letter spacing', 'letterSpacing', LETTER_SPACING_OPTIONS, '100px', 'default')}
               {selectControl('Line height', 'lineHeight', LINE_HEIGHT_OPTIONS, '100px', 'default')}
