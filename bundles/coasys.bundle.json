@@ -3426,7 +3426,7 @@
           "type": "Column",
           "props": { "width": "100%", "height": "100%" },
           "$localState": {
-            "newFlowOpen": { "type": "boolean", "initial": false, "syncParam": "new" },
+            "newFlowOpen": { "type": "boolean", "initial": false },
             "addStepLane": { "type": "number", "initial": -1 },
             "addStepAfter": { "type": "string", "initial": "" },
             "branchFrom": { "type": "string", "initial": "" },
@@ -5651,10 +5651,16 @@
                     {
                       "type": "$if",
                       "props": {
-                        "condition": { "$": "local.newFlowOpen" },
+                        "condition": { "$": "local.newFlowOpen || routeStore.params.new == '1'" },
                         "then": {
                           "type": "we-modal",
-                          "props": { "size": "sm", "close": { "$setLocal": "newFlowOpen", "value": false } },
+                          "props": {
+                            "size": "sm",
+                            "close": [
+                              { "$setLocal": "newFlowOpen", "value": false },
+                              { "$action": "routeStore.setParam", "args": ["new", null] }
+                            ]
+                          },
                           "$localState": {
                             "flowLabel": { "type": "string", "initial": "" },
                             "flowPreset": { "type": "string", "initial": "proposal" }
@@ -5699,7 +5705,10 @@
                                   "type": "we-button",
                                   "props": {
                                     "variant": "secondary",
-                                    "onClick": { "$setLocal": "newFlowOpen", "value": false }
+                                    "onClick": [
+                                      { "$setLocal": "newFlowOpen", "value": false },
+                                      { "$action": "routeStore.setParam", "args": ["new", null] }
+                                    ]
                                   },
                                   "children": ["Cancel"]
                                 },
@@ -5715,7 +5724,10 @@
                                         { "$": "local.flowLabel" },
                                         { "$": "local.flowPreset == 'proposal' ? ['CollectionBlock'] : ['TaskBlock']" }
                                       ],
-                                      "onSuccess": [{ "$setLocal": "newFlowOpen", "value": false }]
+                                      "onSuccess": [
+                                        { "$setLocal": "newFlowOpen", "value": false },
+                                        { "$action": "routeStore.setParam", "args": ["new", null] }
+                                      ]
                                     }
                                   },
                                   "children": ["Start writing"]

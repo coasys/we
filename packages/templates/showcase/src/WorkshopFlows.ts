@@ -24,8 +24,7 @@ const DRAFT = 'flowStore.draft';
 
 /** The locals the page declares: which modal is open, and what it is about. */
 export const FLOWS_LOCALS = {
-  // In the address, so a control outside the page — a tree's + — can open it by going to `?new=1`.
-  newFlowOpen: { type: 'boolean', initial: false, syncParam: 'new' },
+  newFlowOpen: { type: 'boolean', initial: false },
   addStepLane: { type: 'number', initial: -1 },
   addStepAfter: { type: 'string', initial: '' },
   branchFrom: { type: 'string', initial: '' },
@@ -1069,9 +1068,18 @@ const draftEditor: SchemaNode = {
 
 // ─── Modals ────────────────────────────────────────────────────────────────────
 
+/*
+  Open from the page's own +, or from anywhere that goes to the page with `?new=1` — a tree's +, say.
+  Read off the address while it holds the param, rather than through a synced local: a local reads
+  its param once, when it mounts, and the page is kept alive, so going to `?new=1` a second time
+  opened nothing. Closing it takes the param away again.
+*/
 const newFlowModal: SchemaNode = formModal({
-  open: { $: 'local.newFlowOpen' },
-  close: { $setLocal: 'newFlowOpen', value: false },
+  open: { $: "local.newFlowOpen || routeStore.params.new == '1'" },
+  close: [
+    { $setLocal: 'newFlowOpen', value: false },
+    { $action: 'routeStore.setParam', args: ['new', null] },
+  ],
   title: 'New flow',
   size: 'sm',
   localState: {
