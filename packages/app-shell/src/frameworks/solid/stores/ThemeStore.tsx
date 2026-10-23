@@ -1441,6 +1441,9 @@ export function ThemeStoreProvider(props: ParentProps) {
           ? asFileField(encodeToFileData(editing.overrides, 'overrides.json', 'application/json'))
           : null;
         existing.css = editing.css ? asFileField(encodeToFileData(editing.css, 'theme.css', 'text/css')) : null;
+        // Moved on every save, as a template's is: the theme tools an agent edits with refuse a write
+        // against a version that has moved, and a save here that left it alone was invisible to them.
+        existing.version = (existing.version || 1) + 1;
         await existing.save();
         // Use the current signal state (not the captured `editing`) to avoid overwriting
         // changes made while this async save was in flight.
