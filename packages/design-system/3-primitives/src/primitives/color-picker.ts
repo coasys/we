@@ -1,6 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type ColorFormat, formatColor, hsvToRgb, parseColor, type Rgba, rgbToHsv } from '@we/design-utils';
-import { FOCUS_OUTLINE } from '@we/tokens';
+import { FOCUS_OUTLINE, PALETTE_HUES } from '@we/tokens';
 import { css, html, unsafeCSS } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
@@ -43,38 +43,20 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
  * is what the picker opens on when tokens are enabled.
  */
 const TOKEN_HUES = ['neutral', 'accent', 'success', 'warning', 'danger'] as const;
-const TOKEN_SHADES = ['0', '25', '50', '75', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'];
 
-const PALETTE = [
-  '#000000',
-  '#434343',
-  '#666666',
-  '#999999',
-  '#b7b7b7',
-  '#cccccc',
-  '#d9d9d9',
-  '#ffffff',
-  '#980000',
-  '#ff0000',
-  '#ff9900',
-  '#ffff00',
-  '#00ff00',
-  '#00ffff',
-  '#4a86e8',
-  '#0000ff',
-  '#9900ff',
-  '#ff00ff',
-  '#e6b8af',
-  '#f4cccc',
-  '#fce5cd',
-  '#fff2cc',
-  '#d9ead3',
-  '#d0e0e3',
-  '#c9daf8',
-  '#cfe2f3',
-  '#d9d2e9',
-  '#ead1dc',
-];
+/**
+ * The theme's palette, offered first: a community colouring a task state, a topic or a kind of
+ * connection is naming a category, and the palette is the set of hues a theme designs to stay apart
+ * as categories. Stored as the hue's name (`teal`), which every colour prop resolves to the theme's
+ * own teal — so a pastel theme draws pastel categories and a dark one keeps them readable, where a
+ * hex chosen against one theme is a hole in the next.
+ */
+const PALETTE_NAMES = [...PALETTE_HUES, 'accent', 'neutral'] as const;
+
+/** What a value paints: a palette name as its role, anything else as the CSS it is. */
+const painted = (value: string): string =>
+  (PALETTE_NAMES as readonly string[]).includes(value) ? `var(--we-role-${value})` : value;
+const TOKEN_SHADES = ['0', '25', '50', '75', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'];
 
 /*
   A grey chequerboard, so a translucent colour reads as translucent rather than as a pale one.
@@ -215,8 +197,13 @@ const styles = css`
 
   [part='palette'] {
     display: grid;
-    grid-template-columns: repeat(8, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     gap: 4px;
+  }
+
+  /* The palette above the scale's grid, apart from it: names of categories, then shades. */
+  [part='palette'] + [part='tokens'] {
+    margin-top: var(--we-space-300);
   }
 
   [part~='swatch'] {
@@ -375,8 +362,8 @@ export default class ColorPicker extends DesignSystemElement {
   @property({ type: String }) value = '#000000';
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: String }) name = '';
-  /** Legacy fixed swatch list. Shown only when `tokens` is off. */
-  @property({ type: Array }) palette = PALETTE;
+  /** The swatches offered when `tokens` is off: the theme's palette by default, or any colours. */
+  @property({ type: Array }) palette: string[] = [...PALETTE_NAMES];
   /**
    * Offer the design tokens, and open on them.
    *
@@ -523,13 +510,18 @@ export default class ColorPicker extends DesignSystemElement {
     return m ? m[1] : null;
   }
 
+  /** The palette hue this value names, if it names one. */
+  private get _paletteName(): string | null {
+    return (PALETTE_NAMES as readonly string[]).includes(this.value) ? this.value : null;
+  }
+
   private _syncFromValue() {
-    const parsed = parseColor(this.value ?? '');
+    const parsed = this._paletteName ? null : parseColor(this.value ?? '');
     if (parsed) {
       this._hsv = rgbToHsv(parsed);
       this._alpha = parsed.a;
     }
-    this._tab = this.tokens && (this._token || !parsed) ? 'tokens' : 'custom';
+    this._tab = this.tokens && (this._token || this._paletteName || !parsed) ? 'tokens' : 'custom';
   }
 
   private _openPopover() {
@@ -665,9 +657,19 @@ export default class ColorPicker extends DesignSystemElement {
         @click=${() => this._emit(value)}
       ></button>`;
     };
-    return html`<div part="tokens">
-      ${TOKEN_HUES.map((hue) => TOKEN_SHADES.map((shade) => swatch(`${hue}-${shade}`)))}
-    </div>`;
+    const hue = (name: string) =>
+      html`<button
+        part="swatch token"
+        style=${styleMap({ background: painted(name) })}
+        aria-selected=${this._paletteName === name ? 'true' : 'false'}
+        aria-label=${name}
+        title=${name}
+        @click=${() => this._emit(name)}
+      ></button>`;
+    return html`<div part="palette">${PALETTE_NAMES.map(hue)}</div>
+      <div part="tokens">
+        ${TOKEN_HUES.map((family) => TOKEN_SHADES.map((shade) => swatch(`${family}-${shade}`)))}
+      </div>`;
   }
 
   private _renderCustom() {
@@ -771,7 +773,7 @@ export default class ColorPicker extends DesignSystemElement {
         aria-haspopup="dialog"
         aria-expanded=${this._open ? 'true' : 'false'}
         aria-label=${`Colour: ${this.value}`}
-        style=${styleMap(swatchLayers(this.value || 'transparent'))}
+        style=${styleMap(swatchLayers(painted(this.value) || 'transparent'))}
         ?disabled=${this.disabled}
         @click=${() => (this._open ? this._cancelChoice() : this._openPopover())}
       ></button>
@@ -809,7 +811,7 @@ export default class ColorPicker extends DesignSystemElement {
                             (color) =>
                               html`<button
                                 part="swatch"
-                                style=${styleMap({ background: color })}
+                                style=${styleMap({ background: painted(color) })}
                                 aria-selected=${color === this.value ? 'true' : 'false'}
                                 aria-label=${color}
                                 @click=${() => this._emit(color)}
