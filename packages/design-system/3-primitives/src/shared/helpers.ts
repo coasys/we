@@ -32,6 +32,10 @@ import {
 } from '@we/design-utils';
 import {
   componentChain,
+  surfaceImageFixed,
+  type SurfaceImageRole,
+  surfaceImageRoleOf,
+  surfaceImageVar,
   type Tier,
   TIERS,
   toneVariables,
@@ -171,6 +175,12 @@ export interface ComponentCascade {
    * variant: `we-text` is a heading in a heading variant and plain text otherwise.
    */
   typeRole?: TypeRole | ((variant: string | null) => TypeRole | undefined);
+  /**
+   * The surface role whose image the component wears when its fill is not a bare role name — a
+   * menu's fill is the raised surface mixed through the theme's opacity, which no role names, and
+   * it is still a raised surface. See SURFACE_IMAGE_ROLES in @we/tokens.
+   */
+  surfaceImage?: SurfaceImageRole;
 }
 
 /**
@@ -320,7 +330,7 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     paddingGroup: '--we-theme-surface-padding',
     gapGroup: '--we-theme-surface-gap',
   },
-  menu: { radiusGroup: '--we-theme-surface-radius', nativePadding: true },
+  menu: { radiusGroup: '--we-theme-surface-radius', nativePadding: true, surfaceImage: 'surfaceRaised' },
   alert: {
     radiusGroup: '--we-theme-surface-radius',
     paddingGroup: '--we-theme-surface-padding',
@@ -706,7 +716,20 @@ function updateCustomVars(
   if (!variant) {
     const isFaded = isBgImageFaded(props);
     setProperty(el, `${prefix}bg-image-composite`, isFaded ? computeBgImageComposite(props) : undefined);
-    setProperty(el, `${prefix}bg-image`, props.bgImage && !isFaded ? bgImageLayer(props.bgImage) : undefined);
+    // An element's own image, or else the theme's image for the surface role its fill names.
+    const surface = props.bgImage
+      ? undefined
+      : (surfaceImageRoleOf(props.bg) ?? COMPONENT_CASCADE[componentName]?.surfaceImage);
+    setProperty(
+      el,
+      `${prefix}bg-image`,
+      props.bgImage && !isFaded
+        ? bgImageLayer(props.bgImage)
+        : surface
+          ? `var(${surfaceImageVar(surface)}, none)`
+          : undefined,
+    );
+    setProperty(el, `${prefix}bg-attachment`, surface && surfaceImageFixed(surface) ? 'fixed' : undefined);
     setProperty(el, `${prefix}bg-image-fit`, props.bgImage ? (props.bgFit ?? 'cover') : undefined);
     setProperty(el, `${prefix}bg-image-position`, props.bgImage ? (props.bgPosition ?? 'center') : undefined);
   }
@@ -1253,7 +1276,8 @@ export function getStaticDSStyles(
   if (l.has('visual')) {
     base.push(
       `[part='base'] { background-image: var(${p}bg-image, none); background-size: var(${p}bg-image-fit, cover); ` +
-        `background-position: var(${p}bg-image-position, center); background-repeat: no-repeat; }\n` +
+        `background-position: var(${p}bg-image-position, center); background-repeat: no-repeat; ` +
+        `background-attachment: var(${p}bg-attachment, scroll); }\n` +
         `:host([bgimage]) [part='base'] { position: relative; isolation: isolate; }\n` +
         `:host([bgimage]) [part='base']::before { content: ''; position: absolute; inset: 0; z-index: -1; ` +
         `border-radius: inherit; pointer-events: none; ` +

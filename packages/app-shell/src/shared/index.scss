@@ -19,6 +19,10 @@ body,
   // `neutral-50`, exactly what was hardcoded, so nothing moves for a theme that pins nothing.
   background-color: var(--we-role-page);
 
+  // The theme's page image, held still behind the content as a wallpaper is.
+  background-image: var(--we-surface-image-page, none);
+  background-attachment: fixed;
+
   // The role migration this was waiting for. Most text in the app sets no colour of its own and
   // inherits from here, so while this named a scale position, `text` was the one role a theme could
   // pin and watch do nothing — which is most of what "changing the colours does nothing" meant.

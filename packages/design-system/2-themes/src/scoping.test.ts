@@ -65,6 +65,7 @@ const SAMPLE: Required<Omit<ThemeOverrides, 'schemaVersion' | 'light' | 'dark'>>
   iconWeight: 'bold',
   shadowIntensity: 'dramatic',
   glowIntensity: 'strong',
+  surfaceImages: { page: 'radial-gradient(circle, red, transparent)' },
   surfaceOpacity: 0.8,
   surfaceBlur: 6,
   animationSpeed: 'slow',

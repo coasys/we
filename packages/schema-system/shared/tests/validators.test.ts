@@ -103,6 +103,7 @@ describe('a node-scoped theme', () => {
       fontScale: 1.125,
       iconWeight: 'light',
       glowIntensity: 'medium',
+      surfaceImages: { surface: 'linear-gradient(red, blue)' },
       typeStyles: { heading: { weight: 300, letterSpacing: '-0.01em', color: 'accent-text' } },
       components: { button: { radius: '0', variants: { soft: { borderWidth: '1.5px' } } } },
       controlRadius: '999px',

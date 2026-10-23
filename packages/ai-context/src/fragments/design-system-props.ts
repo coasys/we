@@ -221,7 +221,7 @@ the item is never asked to be narrower than its content in the first place.
 | Prop | Type | Description |
 |------|------|-------------|
 | bg | ColorValue | Background color (token) |
-| bgImage | string | Background image — a URL, or a CSS gradient (linear-, radial- or conic-gradient, including several comma-separated for a mesh). Sets background-image, defaults background-size to cover, background-position to center, background-repeat to no-repeat. Composes with bg, which paints beneath it |
+| bgImage | string | Background image — a URL, or a CSS gradient (linear-, radial- or conic-gradient, including several comma-separated for a mesh). Sets background-image, defaults background-size to cover, background-position to center, background-repeat to no-repeat. Composes with bg, which paints beneath it — one element's own picture. A surface role in \`bg\` (\`page\`, \`surface\`, \`surface-raised\`, …) already wears the theme's image for that kind of surface, if its theme sets one; bgImage replaces it there |
 | bgFit | "cover" \\| "contain" | Background image sizing (default: "cover") — only meaningful with bgImage |
 | bgPosition | string | Background image position (default: "center", e.g. "top", "50% 20%") — only meaningful with bgImage |
 | bgImageOpacity | number | Fades bgImage only (0–1), independent of the element's own content/opacity — only meaningful with bgImage |

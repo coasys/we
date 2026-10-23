@@ -8,6 +8,9 @@ import {
   semanticValues,
   shadow,
   space,
+  surfaceImageFixed,
+  surfaceImageRoleOf,
+  surfaceImageVar,
   type Tier,
   TIERS,
   toneVariables,
@@ -1130,6 +1133,13 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
       style['background-image'] = `var(--we-gradient-${props.bg.slice(9)})`;
     } else {
       style['background-color'] = tokenVar('color', props.bg);
+      // A surface role paints the theme's image for that surface over its colour — see
+      // SURFACE_IMAGE_ROLES in @we/tokens. An element's own bgImage, below, replaces it.
+      const surface = surfaceImageRoleOf(props.bg);
+      if (surface && !props.bgImage) {
+        style['background-image'] = `var(${surfaceImageVar(surface)}, none)`;
+        if (surfaceImageFixed(surface)) style['background-attachment'] = 'fixed';
+      }
     }
   }
   if (props.bgImage) {

@@ -71,3 +71,20 @@ describe('components', () => {
     expect(Object.values(style).some((v) => v.includes('url('))).toBe(false);
   });
 });
+
+describe('surfaceImages', () => {
+  it('writes a gradient for the surface role it names', () => {
+    const style = themeParametersToStyle({
+      surfaceImages: { page: 'radial-gradient(circle at 20% 10%, oklch(80% 0.1 300 / 40%), transparent 60%)' },
+    });
+    expect(style['--we-surface-image-page']).toContain('radial-gradient(');
+  });
+
+  it('drops anything that is not a gradient, a fetch above all', () => {
+    const style = themeParametersToStyle({
+      surfaceImages: { surface: 'url(https://e.example/beacon.png)', surfaceRaised: 'red' },
+    });
+    expect(style['--we-surface-image-surface']).toBeUndefined();
+    expect(style['--we-surface-image-surface-raised']).toBeUndefined();
+  });
+});

@@ -9,7 +9,7 @@ import { unsafeCSS } from 'lit';
  * literal step, and none took the theme's surface opacity or blur, so a glass theme frosted every
  * card and left every menu opaque. Floating is one kind of thing, so it is said once:
  *
- * - the raised surface, through the theme's surface opacity;
+ * - the raised surface, through the theme's surface opacity, with the theme's raised-surface image;
  * - a border in the border role at the theme's border width;
  * - the surface family's corner;
  * - the large shadow, which the theme's elevation settings move;
@@ -26,7 +26,8 @@ export const FLOATING_PANEL_BLUR = 'blur(var(--we-theme-surface-blur, 0px))';
 /** The panel's declarations, for a rule that also says where the panel goes and what it holds. */
 export const floatingPanel = (fill = FLOATING_PANEL_BG) =>
   unsafeCSS(
-    `background: ${fill}; ` +
+    `background-color: ${fill}; ` +
+      `background-image: var(--we-surface-image-surface-raised, none); ` +
       `border: var(--we-border-width) solid var(--we-role-border); ` +
       `border-radius: ${FLOATING_PANEL_RADIUS}; ` +
       `box-shadow: ${FLOATING_PANEL_SHADOW}; ` +

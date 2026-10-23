@@ -7,7 +7,7 @@
  * mapping (`themeParametersToStyle`) that turns it into CSS; schema-shared re-exports it unchanged.
  */
 
-import type { PaletteHue, RoleToken, TypeRole } from '@we/tokens';
+import type { PaletteHue, RoleToken, SurfaceImageRole, TypeRole } from '@we/tokens';
 
 /**
  * Semantic role slots a theme can override individually.
@@ -296,7 +296,12 @@ export type ThemeOverrides = {
   /** How bright and wide `shadow: 'glow'` is: the accent as light, for a theme that glows. */
   glowIntensity?: 'none' | 'subtle' | 'medium' | 'strong';
   surfaceOpacity?: number; // --we-theme-surface-opacity  (0–1, background alpha for surfaces)
-  surfaceBlur?: number; // --we-theme-surface-blur  (px, backdrop-filter blur for frosted glass)
+  surfaceBlur?: number;
+  /**
+   * A gradient laid over every surface of a kind, by surface role: `{ page: 'radial-gradient(…)' }`.
+   * Gradients only — anything else is dropped. See `SURFACE_IMAGE_ROLES` in @we/tokens.
+   */
+  surfaceImages?: Partial<Record<SurfaceImageRole, string>>; // --we-theme-surface-blur  (px, backdrop-filter blur for frosted glass)
 
   // Motion
   animationSpeed?: 'none' | 'fast' | 'normal' | 'slow'; // maps to --we-theme-animation-speed-preset

@@ -1,4 +1,4 @@
-import { PALETTE_HUES, role, TYPE_ROLES } from '@we/tokens';
+import { PALETTE_HUES, role, SURFACE_IMAGE_ROLES, TYPE_ROLES } from '@we/tokens';
 import { z } from 'zod';
 
 import type { RouteSchema, SchemaNode, SchemaProp, TemplateMeta, TemplateSchema, ThemeOverrides } from './types';
@@ -122,6 +122,7 @@ const themeParameterShape = {
   glowIntensity: z.enum(['none', 'subtle', 'medium', 'strong']).optional(),
   surfaceOpacity: z.number().optional(),
   surfaceBlur: z.number().optional(),
+  surfaceImages: z.partialRecord(z.enum(SURFACE_IMAGE_ROLES), z.string()).optional(),
   animationSpeed: z.enum(['none', 'fast', 'normal', 'slow']).optional(),
   multiplier: z.number().optional(),
   subtractor: z.string().optional(),

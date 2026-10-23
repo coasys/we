@@ -31,6 +31,7 @@ export const SPECIAL_SETTINGS = [
   'fontScale',
   'roles',
   'palette',
+  'surfaceImages',
   'typeStyles',
   'components',
   'light',

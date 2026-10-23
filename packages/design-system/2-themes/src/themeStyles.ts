@@ -28,6 +28,8 @@ import {
   ROLE_RELATIVE_FALLBACK,
   SCOPED_FONT_SCALE_VAR,
   STATE_STEPS,
+  type SurfaceImageRole,
+  surfaceImageVar,
   THEME_DERIVED_VARIABLES,
 } from '@we/tokens';
 
@@ -285,6 +287,12 @@ function stripUndefined(theme: ThemeOverrides): ThemeOverrides {
   return Object.fromEntries(Object.entries(theme).filter(([, value]) => value !== undefined)) as ThemeOverrides;
 }
 
+/** A comma-separated list of CSS gradients and nothing else. */
+function isGradientList(value: string): boolean {
+  if (/url\s*\(/i.test(value)) return false;
+  return /^\s*(repeating-)?(linear|radial|conic)-gradient\(/i.test(value);
+}
+
 export function themeParametersToStyle(overrides: ThemeOverrides): Record<string, string> {
   /*
     A named theme brings its own parameters.
@@ -367,6 +375,12 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
   Object.assign(style, BODY_TYPE);
   writeTypeStyles(theme, style);
   writeComponentOverrides(theme, style);
+
+  // Surface images: gradients only, since a theme comes from other people and a URL would report
+  // who opened it. Anything that is not a gradient list is dropped rather than written.
+  for (const [role, image] of Object.entries(theme.surfaceImages ?? {}) as [SurfaceImageRole, string][]) {
+    if (image && isGradientList(image)) style[surfaceImageVar(role)] = image;
+  }
 
   // Semantic roles → pin individual --we-role-* variables. Roles not listed keep
   // their parametric defaults over the scale (declared in the tokens CSS).

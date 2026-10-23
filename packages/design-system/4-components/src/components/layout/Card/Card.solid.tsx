@@ -20,13 +20,14 @@ const render = createLayoutComponent<CardProps>({
     // Apply surface opacity to background only (not element content) when bg is set
     // and the caller hasn't explicitly set opacity.
     if (props.opacity === undefined) {
+      // On the colour alone: the image a surface wears (a theme's surface image, a gradient bg) is
+      // its own layer and must not go through color-mix, which takes colours only. This read
+      // `background`, which nothing writes any more, so the theme's surface opacity never reached a
+      // card at all.
       const styleRecord = style as Record<string, unknown>;
-      const bgColor = styleRecord['background'] as string | undefined;
-      // Gradients aren't <color> values — color-mix() only accepts real colors, so
-      // wrapping a gradient reference in it produces an invalid declaration that gets
-      // silently dropped, leaving the card with no background at all. Skip them.
-      if (bgColor && !bgColor.startsWith('var(--we-gradient-')) {
-        styleRecord['background'] =
+      const bgColor = styleRecord['background-color'] as string | undefined;
+      if (bgColor) {
+        styleRecord['background-color'] =
           `color-mix(in srgb, ${bgColor} calc(var(--we-theme-surface-opacity, 1) * 100%), transparent)`;
         styleRecord['backdrop-filter'] = 'blur(var(--we-theme-surface-blur, 0px))';
       }

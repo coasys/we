@@ -523,6 +523,34 @@ const elevation = (): Scenario => {
   };
 };
 
+/** A theme's surface images on each kind of thing that wears one, and its surface opacity on a card. */
+const surfaceImages = (): Scenario => ({
+  node: {
+    type: 'Column',
+    theme: {
+      surfaceOpacity: 0.5,
+      surfaceImages: {
+        page: 'linear-gradient(rgb(255, 0, 0), rgb(255, 0, 0))',
+        surface: 'linear-gradient(rgb(0, 255, 0), rgb(0, 255, 0))',
+        surfaceRaised: 'linear-gradient(rgb(0, 0, 255), rgb(0, 0, 255))',
+      },
+    },
+    props: { gap: '200', p: '200' },
+    children: [
+      { type: 'Column', props: { id: 'page', bg: 'page', p: '200' }, children: ['page'] },
+      { type: 'Column', props: { id: 'surface', bg: 'surface', p: '200' }, children: ['surface'] },
+      { type: 'Card', props: { id: 'card', bg: 'surface' }, children: ['card'] },
+      {
+        type: 'Column',
+        props: { id: 'own', bg: 'surface', bgImage: 'linear-gradient(black, black)' },
+        children: ['own'],
+      },
+      { type: 'we-menu', children: [{ type: 'we-menu-item', children: ['Item'] }] },
+    ],
+  },
+  tables: {},
+});
+
 const nestedInteractive = (): Scenario => ({
   node: {
     type: 'Row',
@@ -1622,6 +1650,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:component-tier': componentTier,
   'ds:settings-reach': settingsReach,
   'ds:elevation': elevation,
+  'ds:surface-images': surfaceImages,
   'ds:token-offsets': tokenOffsets,
   'ds:square-loading': squareLoading,
   'ds:crowded-square-row': crowdedSquareRow,
