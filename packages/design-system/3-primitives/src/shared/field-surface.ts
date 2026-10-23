@@ -58,7 +58,7 @@ export function fieldSurface(
 
   return css`
     ${box} {
-      border: var(--we-border-width) solid var(--we-role-border);
+      border: var(--we-border-width, 1px) solid var(--we-role-border);
       /* The input family's radius, falling back to the input's own default — the same one we-input has. */
       border-radius: var(--we-theme-input-radius, var(--we-radius-300));
       background: var(--we-role-surface-sunken);

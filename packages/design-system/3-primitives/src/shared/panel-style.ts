@@ -28,7 +28,7 @@ export const floatingPanel = (fill = FLOATING_PANEL_BG) =>
   unsafeCSS(
     `background-color: ${fill}; ` +
       `background-image: var(--we-surface-image-surface-raised, none); ` +
-      `border: var(--we-border-width) solid var(--we-role-border); ` +
+      `border: var(--we-border-width, 1px) solid var(--we-role-border); ` +
       `border-radius: ${FLOATING_PANEL_RADIUS}; ` +
       `box-shadow: ${FLOATING_PANEL_SHADOW}; ` +
       `backdrop-filter: ${FLOATING_PANEL_BLUR};`,

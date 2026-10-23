@@ -89,7 +89,7 @@ const styles = css`
     align-items: center;
     justify-content: space-between;
     padding: var(--we-space-300) var(--we-space-400);
-    border-top: var(--we-border-width) solid var(--we-role-border);
+    border-top: var(--we-border-width, 1px) solid var(--we-role-border);
     gap: var(--we-space-300);
   }
 

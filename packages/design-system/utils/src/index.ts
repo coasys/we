@@ -610,7 +610,7 @@ function topLevelParts(value: string): string[] {
 /**
  * A border shorthand as CSS: its colour resolved from a token or role, and its width from the theme.
  *
- * "1px solid border" → "var(--we-border-width) solid var(--we-role-border)".
+ * "1px solid border" → "var(--we-border-width, 1px) solid var(--we-role-border)".
  *
  * **`1px` is the theme's hairline.** A theme's `borderWidth` moves `--we-border-width`, which is 1px
  * until it does, and a border written `1px` follows it — the same width a theme sets for every
@@ -629,7 +629,7 @@ export function parseBorder(value: string | undefined, defaultValue = ''): strin
   const [width, style, ...colorParts] = parts;
   const color = colorParts.join(' ');
   const resolvedColor = /[(#]/.test(color) ? color : tokenVar('color', color, '');
-  return `${width === '1px' ? 'var(--we-border-width)' : width} ${style} ${resolvedColor}`;
+  return `${width === '1px' ? 'var(--we-border-width, 1px)' : width} ${style} ${resolvedColor}`;
 }
 
 export function getMarginValues(props: DesignSystemProps) {

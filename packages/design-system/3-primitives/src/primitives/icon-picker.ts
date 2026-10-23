@@ -185,7 +185,7 @@ const styles = css`
   [part='tabs'] {
     display: flex;
     gap: var(--we-space-100);
-    border-bottom: var(--we-border-width) solid var(--we-role-border);
+    border-bottom: var(--we-border-width, 1px) solid var(--we-role-border);
     padding-bottom: var(--we-space-200);
   }
 
@@ -252,7 +252,7 @@ const styles = css`
     height: 36px;
     border-radius: var(--we-radius-300);
     cursor: pointer;
-    border: var(--we-border-width) solid transparent;
+    border: var(--we-border-width, 1px) solid transparent;
     transition:
       background var(--we-transition-200, 150ms) ease,
       border-color var(--we-transition-200, 150ms) ease;
@@ -309,7 +309,7 @@ const styles = css`
     width: 36px;
     height: 36px;
     border-radius: var(--we-radius-300);
-    border: var(--we-border-width) solid transparent;
+    border: var(--we-border-width, 1px) solid transparent;
     cursor: pointer;
     font-size: 1.2em;
     line-height: 1;

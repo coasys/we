@@ -141,7 +141,7 @@ const styles = css`
     border-radius: var(--we-radius-300);
     font-size: var(--we-font-size-200);
     color: var(--we-role-text-muted);
-    border: var(--we-border-width) dashed var(--we-role-border);
+    border: var(--we-border-width, 1px) dashed var(--we-role-border);
   }
 
   [part='clear']:hover {
@@ -155,7 +155,7 @@ const styles = css`
     gap: var(--we-space-200);
     justify-content: flex-end;
     padding-top: var(--we-space-100);
-    border-top: var(--we-border-width) solid var(--we-role-border);
+    border-top: var(--we-border-width, 1px) solid var(--we-role-border);
   }
 
   [part='cancel'],
@@ -280,7 +280,7 @@ const styles = css`
   [part='fields'] input {
     all: unset;
     box-sizing: border-box;
-    border: var(--we-border-width) solid var(--we-role-border);
+    border: var(--we-border-width, 1px) solid var(--we-role-border);
     border-radius: var(--we-radius-400);
     padding: var(--we-space-100) var(--we-space-200);
     font-size: 0.875em;
@@ -300,7 +300,7 @@ const styles = css`
   */
   [part='formats'] {
     display: flex;
-    border: var(--we-border-width) solid var(--we-role-border);
+    border: var(--we-border-width, 1px) solid var(--we-role-border);
     border-radius: var(--we-radius-400);
     overflow: hidden;
   }
@@ -326,7 +326,7 @@ const styles = css`
     width: 28px;
     height: 28px;
     flex: 0 0 auto;
-    border: var(--we-border-width) solid var(--we-role-border);
+    border: var(--we-border-width, 1px) solid var(--we-role-border);
     border-radius: var(--we-radius-400);
     cursor: pointer;
     color: var(--we-role-text-muted);

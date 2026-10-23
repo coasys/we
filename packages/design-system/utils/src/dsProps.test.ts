@@ -90,13 +90,13 @@ describe('parseBorder', () => {
   });
 
   it('reads a 1px width as the theme’s hairline', () => {
-    expect(parseBorder('1px solid border')).toBe('var(--we-border-width) solid var(--we-role-border)');
+    expect(parseBorder('1px solid border')).toBe('var(--we-border-width, 1px) solid var(--we-role-border)');
     expect(parseBorder('0.5px dashed border')).toBe('0.5px dashed var(--we-role-border)');
   });
 
   it('resolves the colour even when the width is already a variable', () => {
-    expect(parseBorder('var(--we-border-width) solid border-hover')).toBe(
-      'var(--we-border-width) solid var(--we-role-border-hover)',
+    expect(parseBorder('var(--we-border-width, 1px) solid border-hover')).toBe(
+      'var(--we-border-width, 1px) solid var(--we-role-border-hover)',
     );
   });
 

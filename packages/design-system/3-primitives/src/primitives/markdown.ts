@@ -125,7 +125,7 @@ const styles = css`
   /* Horizontal rule */
   [part='base'] hr {
     border: none;
-    border-top: var(--we-border-width) solid var(--we-role-border);
+    border-top: var(--we-border-width, 1px) solid var(--we-role-border);
     margin: var(--we-markdown-gap, 0.5em) 0;
   }
 

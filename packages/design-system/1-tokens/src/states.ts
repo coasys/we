@@ -24,7 +24,7 @@
 export const FOCUS_RING = '0 0 0 var(--we-focus-ring-width) var(--we-ring-color)';
 export const FOCUS_RING_INSET = 'inset 0 0 0 var(--we-focus-ring-width) var(--we-ring-color)';
 export const FOCUS_RING_BEYOND_BORDER =
-  '0 0 0 max(0px, calc(var(--we-focus-ring-width) - var(--we-border-width))) var(--we-ring-color)';
+  '0 0 0 max(0px, calc(var(--we-focus-ring-width) - var(--we-border-width, 1px))) var(--we-ring-color)';
 export const FOCUS_OUTLINE_WIDTH = 'var(--we-focus-ring-width)';
 export const FOCUS_OUTLINE = `outline: ${FOCUS_OUTLINE_WIDTH} solid var(--we-ring-color); outline-offset: 2px;`;
 export const DISABLED_OPACITY = 'var(--we-theme-disabled-opacity, 0.5)';

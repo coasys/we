@@ -52,7 +52,7 @@ describe('rows', () => {
     */
     const sheet = (Textarea.styles as unknown as { cssText: string }[]).map((s) => s.cssText).join('\n');
     // The theme's border width, which the border itself is drawn with.
-    expect(sheet).toContain('--we-textarea-border-width: var(--we-border-width)');
+    expect(sheet).toContain('--we-textarea-border-width: var(--we-border-width, 1px)');
     expect(sheet).toMatch(/2\s*\*\s*\n?\s*var\(--we-textarea-border-width\)/);
   });
 

@@ -165,7 +165,7 @@ const styles = css`
     margin-top: var(--we-space-200);
     padding-top: var(--we-space-200);
     /* Role tokens, like the panel around it — the raw ramp does not follow a theme. */
-    border-top: var(--we-border-width) solid var(--we-role-border);
+    border-top: var(--we-border-width, 1px) solid var(--we-role-border);
     color: var(--we-role-text);
   }
 
@@ -208,7 +208,7 @@ const styles = css`
     max-height: 200px;
     overflow-y: auto;
     background: var(--we-role-surface-raised);
-    border: var(--we-border-width) solid var(--we-role-border);
+    border: var(--we-border-width, 1px) solid var(--we-role-border);
     /* A surface, though the control that opens it is an input — the panel is its own kind of thing.
        Through the table rather than by hand, so it cannot drift from every other surface. */
     border-radius: ${unsafeCSS(familyVar('surface', 'radius'))};

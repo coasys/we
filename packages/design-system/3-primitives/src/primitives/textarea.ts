@@ -52,7 +52,7 @@ const styles = css`
       twice. CSS cannot read a width back out of a border shorthand, so it is named here, from the
       same variable the border is drawn with.
     */
-    --we-textarea-border-width: var(--we-border-width);
+    --we-textarea-border-width: var(--we-border-width, 1px);
   }
 
   /* Provide icon sizing context for slotted we-icon children */

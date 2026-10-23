@@ -232,7 +232,7 @@ const styles = css`
 
   [part='group-heading']:not(:first-child) {
     margin-top: var(--we-space-100);
-    border-top: var(--we-border-width) solid var(--we-role-border);
+    border-top: var(--we-border-width, 1px) solid var(--we-role-border);
   }
 
   /*
