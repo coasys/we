@@ -60,6 +60,22 @@ editor's inspector is not, and should not be — the tool must keep working whil
 editing is broken, and rebuilding tool UI as schemas would pressure the operator language toward
 general-purpose growth the schema system deliberately refuses.
 
+## Taking part in theming
+
+The rules are the primitives' — `3-primitives/CONVENTIONS.md`, "Taking part in theming" — and a
+component keeps them the same way:
+
+- **A layout component names itself.** `createLayoutComponent({ name: 'card', … })` puts it in the
+  theme's component tier: `components.card.radius` and the rest reach it ahead of its family, and a
+  prop on the node still wins. A component a theme should be able to set apart needs a name.
+- **Colour from roles, and from the accent roles for anything a `tone` should move.** A component
+  that takes a status (`Toast`, `DropdownMenu`'s items) takes a `tone`, never a colour or a
+  colour-named variant.
+- **Compose primitives for the states.** A row that hovers, a chosen item, a focus ring: a
+  `we-button` or a `we-menu-item` already reads the state contract, and a hand-rolled one does not.
+
+How the system fits together is `docs/architecture/theming.md`.
+
 ## Directory Structure
 
 Every component/widget follows the same layout:

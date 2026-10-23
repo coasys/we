@@ -41,11 +41,35 @@ export const SPECIAL_SETTINGS = [
 ] as const satisfies readonly (keyof ThemeOverrides)[];
 
 type SpecialSetting = (typeof SPECIAL_SETTINGS)[number];
+
+/** What each special setting does, for the reference — the bookkeeping ones say nothing. */
+export const SPECIAL_SETTING_DOCS: Record<Exclude<SpecialSetting, 'schemaVersion' | 'themeName'>, string> = {
+  polarity: '`light` or `dark`: which end of the ramp the scale starts from.',
+  shadowIntensity: 'How strong shadows are, and which one a surface rests at: flat, subtle, elevated, dramatic.',
+  glowIntensity: "How bright and wide `shadow: 'glow'` is: none, subtle, medium, strong.",
+  animationSpeed: 'Every transition at once: none, fast, normal, slow.',
+  fontScale: 'Multiplies the root font size, and with it every rem-based token.',
+  roles: 'Pin one colour role to a value — see "Pinning a role".',
+  palette:
+    'The ten palette hues as a set: `saturation`, `lightness` (points lighter or deeper), and `hues.<hue>` to move one.',
+  surfaceImages: 'A gradient laid over every surface of a kind, by surface role. Gradients only.',
+  fontFaces: 'Typefaces the theme carries, as data: URLs, so a family it names can be one nobody has installed.',
+  typeStyles: 'How each kind of text looks, by type role.',
+  components: 'One component apart from its family, by its registered name, with the family keys.',
+  light: 'What differs on the light side of a two-sided theme.',
+  dark: 'What differs on the dark side.',
+  contrast: '`contrast.more`: how the theme looks when somebody asks for more contrast.',
+};
 export type DirectSetting = Exclude<keyof ThemeOverrides, SpecialSetting>;
 
 export interface ThemeSetting<K extends DirectSetting = DirectSetting> {
   /** The custom property the setting writes. */
   variable: string;
+  /**
+   * One line on what the setting does, for the generated reference (`reference.ts`). Required, so a
+   * setting cannot be added without saying what it is for — the reference is built from this list.
+   */
+  doc: string;
   /** How the setting's value is written; `undefined` writes nothing. Defaults to `String(value)`. */
   write?: (value: NonNullable<ThemeOverrides[K]>) => string | undefined;
   /**
@@ -62,7 +86,7 @@ const asNumber = (raw: string): number | undefined => {
 const asString = (raw: string): string | undefined => raw || undefined;
 
 /** A lightness bound is authored as a percentage and written unitless; see `themeStyles.ts`. */
-const lightnessBound: ThemeSetting<'lightnessFloor' | 'lightnessCeiling'> = {
+const lightnessBound: Omit<ThemeSetting<'lightnessFloor' | 'lightnessCeiling'>, 'doc'> = {
   variable: '',
   write: (value) => String(parseFloat(value) / 100),
   read: (raw) => {
@@ -73,61 +97,149 @@ const lightnessBound: ThemeSetting<'lightnessFloor' | 'lightnessCeiling'> = {
 
 export const THEME_SETTINGS: { [K in DirectSetting]: ThemeSetting<K> } = {
   // Colour
-  accentHue: { variable: '--we-color-accent-hue', read: asNumber },
-  successHue: { variable: '--we-color-success-hue', read: asNumber },
-  warningHue: { variable: '--we-color-warning-hue', read: asNumber },
-  dangerHue: { variable: '--we-color-danger-hue', read: asNumber },
+  accentHue: {
+    doc: "The accent family's hue, an OKLCH angle (blue is 263, not 220).",
+    variable: '--we-color-accent-hue',
+    read: asNumber,
+  },
+  successHue: { doc: "The success family's hue.", variable: '--we-color-success-hue', read: asNumber },
+  warningHue: { doc: "The warning family's hue.", variable: '--we-color-warning-hue', read: asNumber },
+  dangerHue: { doc: "The danger family's hue.", variable: '--we-color-danger-hue', read: asNumber },
   // Read through the accent's hue when unset; see `readThemeSettings`.
-  neutralHue: { variable: '--we-color-neutral-hue', read: asNumber },
-  saturation: { variable: '--we-color-saturation', read: asNumber },
-  neutralSaturation: { variable: '--we-color-neutral-saturation', read: asNumber },
-  accentSaturation: { variable: '--we-color-accent-saturation', read: asNumber },
-  successSaturation: { variable: '--we-color-success-saturation', read: asNumber },
-  warningSaturation: { variable: '--we-color-warning-saturation', read: asNumber },
-  dangerSaturation: { variable: '--we-color-danger-saturation', read: asNumber },
-  accentLightness: { variable: '--we-accent-lightness' },
-  dangerLightness: { variable: '--we-danger-lightness' },
-  successLightness: { variable: '--we-success-lightness' },
-  warningLightness: { variable: '--we-warning-lightness' },
-  lightnessFloor: { ...lightnessBound, variable: '--we-color-lightness-floor' },
-  lightnessCeiling: { ...lightnessBound, variable: '--we-color-lightness-ceiling' },
+  neutralHue: {
+    doc: "The greys' hue; follows the accent's when unset.",
+    variable: '--we-color-neutral-hue',
+    read: asNumber,
+  },
+  saturation: {
+    doc: '0–100, a share of the chroma each hue can hold. The default every family starts from.',
+    variable: '--we-color-saturation',
+    read: asNumber,
+  },
+  neutralSaturation: {
+    doc: '0–100, how tinted the greys are.',
+    variable: '--we-color-neutral-saturation',
+    read: asNumber,
+  },
+  accentSaturation: {
+    doc: '0–100, the accent family alone.',
+    variable: '--we-color-accent-saturation',
+    read: asNumber,
+  },
+  successSaturation: {
+    doc: '0–100, the success family alone.',
+    variable: '--we-color-success-saturation',
+    read: asNumber,
+  },
+  warningSaturation: {
+    doc: '0–100, the warning family alone.',
+    variable: '--we-color-warning-saturation',
+    read: asNumber,
+  },
+  dangerSaturation: {
+    doc: '0–100, the danger family alone.',
+    variable: '--we-color-danger-saturation',
+    read: asNumber,
+  },
+  accentLightness: {
+    doc: '0–100, how light the accent fill is. The alternative to pinning the role.',
+    variable: '--we-accent-lightness',
+  },
+  dangerLightness: { doc: '0–100, how light the danger fill is.', variable: '--we-danger-lightness' },
+  successLightness: { doc: '0–100, how light the success fill is.', variable: '--we-success-lightness' },
+  warningLightness: { doc: '0–100, how light the warning fill is.', variable: '--we-warning-lightness' },
+  lightnessFloor: {
+    ...lightnessBound,
+    doc: 'The darkest lightness the theme uses, as a percentage.',
+    variable: '--we-color-lightness-floor',
+  },
+  lightnessCeiling: {
+    ...lightnessBound,
+    doc: "The lightest, as a percentage. With the floor, the theme's contrast.",
+    variable: '--we-color-lightness-ceiling',
+  },
 
   // Strokes and states
-  borderWidth: { variable: '--we-theme-border-width' },
-  focusRingWidth: { variable: '--we-theme-focus-ring-width' },
-  stateDuration: { variable: '--we-theme-state-duration' },
-  disabledOpacity: { variable: '--we-theme-disabled-opacity' },
+  borderWidth: { doc: "Every border's width: hairline or heavy.", variable: '--we-theme-border-width' },
+  focusRingWidth: { doc: "The focus ring's thickness.", variable: '--we-theme-focus-ring-width' },
+  stateDuration: {
+    doc: 'How long a hover, press or focus takes to arrive. Departures snap.',
+    variable: '--we-theme-state-duration',
+  },
+  disabledOpacity: { doc: '0–1, how far a disabled control fades.', variable: '--we-theme-disabled-opacity' },
 
   // Typography. The family is not read back: a base theme's own CSS may set it directly, and reading
   // it would store a font the person never chose.
-  fontFamily: { variable: '--we-font-family' },
-  headingFontFamily: { variable: '--we-theme-heading-font-family' },
-  monoFontFamily: { variable: '--we-font-mono' },
-  letterSpacing: { variable: '--we-theme-letter-spacing', read: asString },
-  lineHeight: { variable: '--we-theme-line-height', read: asString },
+  fontFamily: { doc: 'The body face, as a font stack.', variable: '--we-font-family' },
+  headingFontFamily: {
+    doc: 'A display face for headings; the body face when unset. `typeStyles.heading.family` is the finer setting.',
+    variable: '--we-theme-heading-font-family',
+  },
+  monoFontFamily: { doc: 'The face code is set in.', variable: '--we-font-mono' },
+  letterSpacing: {
+    doc: 'Tracking for all text; what a type role falls back to.',
+    variable: '--we-theme-letter-spacing',
+    read: asString,
+  },
+  lineHeight: {
+    doc: 'Leading for all text; what a type role falls back to.',
+    variable: '--we-theme-line-height',
+    read: asString,
+  },
 
   // Shape
-  controlRadius: { variable: '--we-theme-control-radius', read: asString },
-  surfaceRadius: { variable: '--we-theme-surface-radius', read: asString },
-  inputRadius: { variable: '--we-theme-input-radius', read: asString },
-  avatarRadius: { variable: '--we-theme-avatar-radius', read: asString },
+  controlRadius: {
+    doc: 'Buttons, badges, tags — anything pressed.',
+    variable: '--we-theme-control-radius',
+    read: asString,
+  },
+  surfaceRadius: {
+    doc: 'Cards, modals, drawers, alerts, inset media.',
+    variable: '--we-theme-surface-radius',
+    read: asString,
+  },
+  inputRadius: { doc: 'Fields, selects, pickers.', variable: '--we-theme-input-radius', read: asString },
+  avatarRadius: { doc: 'Avatars. `50%` (a circle) unless set.', variable: '--we-theme-avatar-radius', read: asString },
 
   // Density
-  spacingScale: { variable: '--we-theme-spacing-scale' },
-  controlPaddingX: { variable: '--we-theme-control-padding-x', read: asString },
-  controlGap: { variable: '--we-theme-control-gap', read: asString },
-  controlHeightOffset: { variable: '--we-theme-control-height-offset', read: asString },
-  surfacePadding: { variable: '--we-theme-surface-padding', read: asString },
-  surfaceGap: { variable: '--we-theme-surface-gap', read: asString },
-  inputPadding: { variable: '--we-theme-input-padding', read: asString },
+  spacingScale: { doc: 'Multiplies the spacing tokens, apart from type.', variable: '--we-theme-spacing-scale' },
+  controlPaddingX: { doc: "A control's horizontal padding.", variable: '--we-theme-control-padding-x', read: asString },
+  controlGap: {
+    doc: "The gap between a control's icon and its words.",
+    variable: '--we-theme-control-gap',
+    read: asString,
+  },
+  controlHeightOffset: {
+    doc: 'Added to every fixed-height control: `4px` taller, `-4px` shorter.',
+    variable: '--we-theme-control-height-offset',
+    read: asString,
+  },
+  surfacePadding: {
+    doc: "A card's, modal's or drawer's padding.",
+    variable: '--we-theme-surface-padding',
+    read: asString,
+  },
+  surfaceGap: { doc: "The gap between a surface's children.", variable: '--we-theme-surface-gap', read: asString },
+  inputPadding: { doc: "A field's padding, as a shorthand.", variable: '--we-theme-input-padding', read: asString },
 
   // Icons. Not read back: unset is a meaning (each icon's own weight), not a value to show.
-  iconWeight: { variable: '--we-theme-icon-weight' },
+  iconWeight: {
+    doc: 'The weight every icon is drawn in unless it names its own: thin, light, regular, bold, fill, duotone.',
+    variable: '--we-theme-icon-weight',
+  },
 
   // Surfaces
-  surfaceOpacity: { variable: '--we-theme-surface-opacity', read: asNumber },
+  surfaceOpacity: {
+    doc: '0–1, how opaque surfaces are — below 1 for glass.',
+    variable: '--we-theme-surface-opacity',
+    read: asNumber,
+  },
   // Only written when above zero: a blur of nothing still promotes the element to its own layer.
-  surfaceBlur: { variable: '--we-theme-surface-blur', write: (value) => (value > 0 ? `${value}px` : undefined) },
+  surfaceBlur: {
+    doc: 'Pixels of backdrop blur behind a translucent surface.',
+    variable: '--we-theme-surface-blur',
+    write: (value) => (value > 0 ? `${value}px` : undefined),
+  },
 };
 
 /** The variable each direct setting writes. */

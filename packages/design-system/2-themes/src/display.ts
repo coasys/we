@@ -30,6 +30,28 @@ export interface DisplayPreferences {
   motion?: 'full' | 'reduced' | 'system';
 }
 
+/**
+ * The five axes, for anything that lists them — the settings screen, the generated reference. Each
+ * names its values, whether the operating system has a signal it can follow, and what it does.
+ */
+export const DISPLAY_AXES: { key: keyof DisplayPreferences; values: string; system: boolean; doc: string }[] = [
+  { key: 'colorScheme', values: 'light, dark, system', system: true, doc: 'Which side of a two-sided theme is worn.' },
+  {
+    key: 'contrast',
+    values: 'standard, more, system',
+    system: true,
+    doc: "More separation between text, borders and their ground — the theme's own `contrast.more` where it has one.",
+  },
+  { key: 'textSize', values: 'a multiplier, 1 by default', system: false, doc: "On the theme's own text size." },
+  { key: 'density', values: 'compact, normal, roomy', system: false, doc: 'How much room things take.' },
+  {
+    key: 'motion',
+    values: 'full, reduced, system',
+    system: true,
+    doc: 'Reduced stops every transition and animation.',
+  },
+];
+
 /** What the operating system is asking for right now, on the axes it has a signal for. */
 export interface SystemDisplaySignals {
   dark: boolean;

@@ -153,6 +153,8 @@ that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/pack
 
 ### Where to look
 
+- How a theme becomes CSS, where it reaches, and how to extend it → `docs/architecture/theming.md`;
+  writing one → `packages/design-system/2-themes/THEME_AUTHORING.md`.
 - Change how a token/operator resolves → `packages/schema-system/shared/src/propResolvers/`.
 - Change tree-walking / mounting / control flow → `packages/schema-system/frameworks/solid/src/`.
 - Add/adjust a primitive → `packages/design-system/3-primitives/src/` (Lit).
@@ -285,7 +287,7 @@ the seed's list is correct code that never appears.
 
 | Surface | Lives in | Rules | Register | Verify |
 |---|---|---|---|---|
-| Theme | `design-system/2-themes/src/<name>/` | its `CONVENTIONS.md` | `themeRegistry.ts` | `--filter @we/themes test` |
+| Theme | `design-system/2-themes/src/presets.ts` (+ `src/<name>/` for CSS) | `THEME_AUTHORING.md`, `docs/architecture/theming.md` | `themeRegistry.ts` | `--filter @we/themes test` |
 | Shell template | `templates/showcase/src/` | `docs/architecture/views.md` | seed `templates` + `--filter @we/app-shell generate-templates` | `validate:schemas`, `role-audit` |
 | View | `templates/views/src/views/` | `docs/architecture/views.md` | `CATALOGUE` in `generateViewRegistry.mjs` + seed `views` + `generate-views` | `validate:schemas` |
 | Portable fragment | `schema-system/kit/src/` | `templates/kit/CONVENTIONS.md` | export from `index.ts` | `--filter @we/template-kit test` |
@@ -2051,7 +2053,7 @@ Most @we/primitives inherit **all** layers below. Props use design token values 
 | Token Type | Valid Values |
 |---|---|
 | SpaceValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length e.g. "16px") |
-| ColorValue | A **role** — see the table below — or a scale position "{hue}-{shade}" where hue = neutral, primary, success, warning, danger and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color). **Prefer a role.** |
+| ColorValue | A **role** — see the table below — or a scale position "{hue}-{shade}" where hue = neutral, accent, success, warning, danger or a palette hue (red, orange, yellow, lime, green, teal, cyan, blue, purple, pink) and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color). **Prefer a role.** |
 | RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length). Also five *theme-family* names that follow the theme instead of naming a size — see "Theme families" below. Prefer them on an `EditableImage`, a `Card`, or a raw element standing in for one: a pinned "full" or "pill" cannot follow a theme's shape settings. Note "full" is 50%, so it is an ellipse on any box that is not square; reach for "pill" on wide boxes. |
 | ShadowValue | "sm", "md", "lg", "xl" |
 | FontSizeValue | "base", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length) |
@@ -5407,7 +5409,7 @@ otherwise shove a floating panel down the screen mid-read.
 - Each item in a children array must be either a valid schema node object or a string.
 - Use design tokens for spacing, color, radius, etc. (do not use raw CSS except in styles).
 - Use the styles prop for custom inline CSS (e.g., { "width": "100px" }).
-- Use hoverProps for hover state overrides, activeProps for pressed state, focusProps for keyboard-focus state. Supported on @we/primitives (we-text, we-button, etc.) and layout components (Column, Row). focusProps fires on `:focus-visible` (keyboard), not on mouse click. Do not add a focus ring by hand — `we-button` and `we-input` already have one, themeable via the `ringColor` theme key.
+- Use hoverProps for hover state overrides, activeProps for pressed state, focusProps for keyboard-focus state. Supported on @we/primitives (we-text, we-button, etc.) and layout components (Column, Row). focusProps fires on `:focus-visible` (keyboard), not on mouse click. Do not add a focus ring by hand — `we-button` and `we-input` already have one, in the `focus` role, which a `tone` re-points and a theme's `focusRingWidth` thickens.
 - Use expressions ({ "$": "…" }) for anything computed and handler tokens ($action, $setLocal, …) for anything that happens on an event; a plain string is always text.
 - Nest components using children or slots as needed.
 - For routes, use the routes array with path and child nodes.
@@ -5495,6 +5497,170 @@ After creating or modifying a `.schema.ts` file, always run validation to catch:
 - `$routes` outlet without a `routes` array on an ancestor
 - Orphan `local.*` reads / `$setLocal` writes without a `$localState` ancestor, and references in the old string spelling (`'$item.name'`)
 - DS layer consistency (mixing props from layers the component doesn't support)
+
+---
+
+## Theming
+
+A theme is an object of settings, not a stylesheet: numbers and names the design system turns into
+every colour, shape and kind of text on screen. That is what lets a theme be shared as data, applied
+to a template it has never seen, and corrected for contrast wherever it lands.
+
+### Three tiers, broad to narrow
+
+1. **System settings** — colour families, the palette, type roles, shape and density families,
+   elevation, surface images. Most themes stop here.
+2. **Components** — one component, or one variant of it, apart from its family, with the same keys
+   the families use: `components: { button: { variants: { soft: { borderWidth: '1.5px' } } } }`.
+3. **CSS** — effects no setting should express: a clip-path, keyframes, scanlines. Sanitised and
+   confined to where the theme applies; it targets public `::part()` names only.
+
+Reach for the broadest tier that says it. A component override where a family setting would do
+leaves every other component in that family behind; CSS where a setting would do opts out of the
+contrast corrections and breaks when the component changes.
+
+### Colour
+
+Semantic families: `accent`, `success`, `warning`, `danger`, plus `neutral` for greys. The palette, for categories
+a community names: `red`, `orange`, `yellow`, `lime`, `green`, `teal`, `cyan`, `blue`, `purple`, `pink`. Status uses the semantic families; categories use the palette.
+
+Every family has the same roles, so one pattern names them all (kebab-case in a template):
+
+| Role | What it is |
+| --- | --- |
+| `<family>` | the solid fill |
+| `on-<family>` | text and icons on that fill |
+| `<family>-soft` | a tinted fill: a soft badge, a selected row |
+| `<family>-text` | the family as text on an ordinary surface |
+| `<family>-border` | a border in the family |
+| `<family>-hover`, `<family>-active` | the fill under the pointer and pressed |
+
+Surfaces and text have their own roles — `chrome`, `page`, `surface`, `surface-raised`,
+`surface-sunken`, `text`, `text-muted`, `text-faint`, `border`, `border-strong` and the rest —
+measured from the page, so they invert with the theme while a fill keeps its own lightness.
+
+Each family takes `<family>Hue` (an OKLCH angle — blue is 263, not 220), `<family>Saturation` (0–100,
+a share of what that hue can hold) and `<family>Lightness` (the fill's lightness). The palette is
+tuned as a set through `palette`.
+
+**`tone` on any element** re-points the accent roles inside it at one family, so everything in it —
+buttons, rings, selected rows, `shadow: 'glow'` — follows. `variant` is never a colour: it says how a
+component is drawn (`solid`, `soft`, `outline`, `ghost`, `bare`).
+
+**Pinning a role** (`roles: { surfaceRaised: … }`) overrules what the system derives. Prefer, in order:
+leave it unset; another role (`var(--we-role-page)`); a relative colour from one
+(`oklch(from var(--we-role-page) calc(l + 0.05) c h)`); a literal only for a brand colour that must not
+move. Foregrounds, fills on which no label reads, hover and pressed states and the elevation stack
+are corrected when the theme is applied — but only where they are left unset.
+
+### Type roles
+
+`typeStyles` sets how each kind of text looks: `heading`, `body`, `label`, `control`, `badge`, `overline`. Each role takes
+`family`, `weight`, `letterSpacing`, `lineHeight`, `textTransform`, `color` — `color` is a role name. A role holds no defaults:
+each component keeps the value it had for any key the theme leaves unset.
+
+### Components
+
+`components.<name>` and `components.<name>.variants.<variant>` take `radius`, `padding`, `gap`, `borderWidth`, `shadow`, `type`, `fill`, `text`, `border`.
+`<name>` is what the component registers: a primitive's tag without `we-` (`button`, `menu-item`),
+a component's own name (`card`). `type` names a type role; `fill`, `text` and `border` name colour
+roles. An explicit prop on an element still wins; then the variant, the component, the family, and
+the default.
+
+### Surfaces and elevation
+
+`surfaceImages` lays a gradient over every surface of a kind: `chrome`, `page`, `surface`, `surfaceRaised`, `surfaceSunken`.
+Gradients only — a picture would have to be fetched. `page` and `chrome` stay put while content
+scrolls. An element's own `bgImage` is its own picture and replaces the theme's on that element; use
+`surfaceImages` for the look of a whole kind of surface, `bgImage` for one thing.
+
+Shadows are built from the `shadow-color` role; `shadowIntensity` sets how strong they are and
+which one a surface rests at, `glowIntensity` how bright `shadow: 'glow'` is.
+
+### Modes — the person wins
+
+A theme may say how it looks in a mode — its `light` and `dark` sides, its `contrast.more` block —
+but which mode is worn is the person's, and it applies over every theme, a space's included.
+
+| Axis | Values | Follows the system | What it does |
+| --- | --- | --- | --- |
+| `colorScheme` | light, dark, system | yes | Which side of a two-sided theme is worn. |
+| `contrast` | standard, more, system | yes | More separation between text, borders and their ground — the theme's own `contrast.more` where it has one. |
+| `textSize` | a multiplier, 1 by default | no | On the theme's own text size. |
+| `density` | compact, normal, roomy | no | How much room things take. |
+| `motion` | full, reduced, system | yes | Reduced stops every transition and animation. |
+
+### Every setting
+
+- `accentHue` — The accent family's hue, an OKLCH angle (blue is 263, not 220).
+- `successHue` — The success family's hue.
+- `warningHue` — The warning family's hue.
+- `dangerHue` — The danger family's hue.
+- `neutralHue` — The greys' hue; follows the accent's when unset.
+- `saturation` — 0–100, a share of the chroma each hue can hold. The default every family starts from.
+- `neutralSaturation` — 0–100, how tinted the greys are.
+- `accentSaturation` — 0–100, the accent family alone.
+- `successSaturation` — 0–100, the success family alone.
+- `warningSaturation` — 0–100, the warning family alone.
+- `dangerSaturation` — 0–100, the danger family alone.
+- `accentLightness` — 0–100, how light the accent fill is. The alternative to pinning the role.
+- `dangerLightness` — 0–100, how light the danger fill is.
+- `successLightness` — 0–100, how light the success fill is.
+- `warningLightness` — 0–100, how light the warning fill is.
+- `lightnessFloor` — The darkest lightness the theme uses, as a percentage.
+- `lightnessCeiling` — The lightest, as a percentage. With the floor, the theme's contrast.
+- `borderWidth` — Every border's width: hairline or heavy.
+- `focusRingWidth` — The focus ring's thickness.
+- `stateDuration` — How long a hover, press or focus takes to arrive. Departures snap.
+- `disabledOpacity` — 0–1, how far a disabled control fades.
+- `fontFamily` — The body face, as a font stack.
+- `headingFontFamily` — A display face for headings; the body face when unset. `typeStyles.heading.family` is the finer setting.
+- `monoFontFamily` — The face code is set in.
+- `letterSpacing` — Tracking for all text; what a type role falls back to.
+- `lineHeight` — Leading for all text; what a type role falls back to.
+- `controlRadius` — Buttons, badges, tags — anything pressed.
+- `surfaceRadius` — Cards, modals, drawers, alerts, inset media.
+- `inputRadius` — Fields, selects, pickers.
+- `avatarRadius` — Avatars. `50%` (a circle) unless set.
+- `spacingScale` — Multiplies the spacing tokens, apart from type.
+- `controlPaddingX` — A control's horizontal padding.
+- `controlGap` — The gap between a control's icon and its words.
+- `controlHeightOffset` — Added to every fixed-height control: `4px` taller, `-4px` shorter.
+- `surfacePadding` — A card's, modal's or drawer's padding.
+- `surfaceGap` — The gap between a surface's children.
+- `inputPadding` — A field's padding, as a shorthand.
+- `iconWeight` — The weight every icon is drawn in unless it names its own: thin, light, regular, bold, fill, duotone.
+- `surfaceOpacity` — 0–1, how opaque surfaces are — below 1 for glass.
+- `surfaceBlur` — Pixels of backdrop blur behind a translucent surface.
+- `polarity` — `light` or `dark`: which end of the ramp the scale starts from.
+- `shadowIntensity` — How strong shadows are, and which one a surface rests at: flat, subtle, elevated, dramatic.
+- `glowIntensity` — How bright and wide `shadow: 'glow'` is: none, subtle, medium, strong.
+- `animationSpeed` — Every transition at once: none, fast, normal, slow.
+- `fontScale` — Multiplies the root font size, and with it every rem-based token.
+- `roles` — Pin one colour role to a value — see "Pinning a role".
+- `palette` — The ten palette hues as a set: `saturation`, `lightness` (points lighter or deeper), and `hues.<hue>` to move one.
+- `surfaceImages` — A gradient laid over every surface of a kind, by surface role. Gradients only.
+- `fontFaces` — Typefaces the theme carries, as data: URLs, so a family it names can be one nobody has installed.
+- `typeStyles` — How each kind of text looks, by type role.
+- `components` — One component apart from its family, by its registered name, with the family keys.
+- `light` — What differs on the light side of a two-sided theme.
+- `dark` — What differs on the dark side.
+- `contrast` — `contrast.more`: how the theme looks when somebody asks for more contrast.
+
+### What a theme cannot do
+
+- **Fetch anything.** `url()` to a network address and `@import` are removed: a theme is installed
+  from strangers and a fetch tells a third party who opened the space. Carry a font in `fontFaces`.
+- **Reach the app's chrome from a space, unless the person lets it.** A space's theme is confined to
+  the space's content, and the sidebar and the app's own screens wear the person's theme — until they
+  choose to let a space theme the whole window.
+- **Set an exact size per control.** Sizes stay on the shared scale so a theme cannot break a layout;
+  `controlHeightOffset`, `spacingScale` and `fontScale` move the scale instead.
+- **Override a person's display needs.** Contrast, text size, density and motion are theirs.
+- **Invent a role or a component key.** The vocabulary is the registries; a new word is a code change.
+
+The long form — how a theme becomes CSS, where it reaches, how to extend the system — is
+`docs/architecture/theming.md`; writing one is `packages/design-system/2-themes/THEME_AUTHORING.md`.
 
 ---
 

@@ -464,8 +464,10 @@ export { COMPONENT_TYPE_PROPERTIES, writeComponentOverrides, writeTypeStyles } f
 export { migrateOverrides, parseOverrides, THEME_SCHEMA_VERSION } from './migrate';
 export { type ThemeSideName, themeSides, withThemeSide } from './sides';
 export { fontFaceFamilies, fontFaceProblem, type FontFaceSetting, MAX_FONT_FACE_BYTES } from './fontFaces';
+export { themingReference } from './reference';
 export {
   currentDisplay,
+  DISPLAY_AXES,
   type DisplayPreferences,
   getDisplayPreferences,
   onDisplayChange,
@@ -477,6 +479,7 @@ export {
 export {
   type DirectSetting,
   readThemeSettings,
+  SPECIAL_SETTING_DOCS,
   SPECIAL_SETTINGS,
   type ThemeSetting,
   THEME_SETTINGS,
