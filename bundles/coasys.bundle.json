@@ -726,6 +726,56 @@
                   ]
                 },
                 {
+                  "type": "$if",
+                  "props": {
+                    "condition": { "$": "count(modules.call.liveCalls)" },
+                    "then": {
+                      "type": "Row",
+                      "props": { "gap": "200", "ay": "center", "px": "300", "pb": "300" },
+                      "children": [
+                        { "type": "we-icon", "props": { "name": "phone-call", "size": "sm", "color": "success-text" } },
+                        {
+                          "type": "we-text",
+                          "props": {
+                            "variant": "footnote",
+                            "color": "text-muted",
+                            "flex": "1",
+                            "minWidth": "0",
+                            "truncate": true
+                          },
+                          "children": [{ "$": "`Call running · ${first(modules.call.liveCalls).count} in it`" }]
+                        },
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "size": "xs",
+                            "variant": {
+                              "$": "modules.call.active && !modules.call.elsewhere ? 'secondary' : 'primary'"
+                            },
+                            "onClick": [
+                              {
+                                "$if": {
+                                  "condition": { "$": "modules.call.active && !modules.call.elsewhere" },
+                                  "then": {
+                                    "$action": "routeStore.navigate",
+                                    "args": [
+                                      {
+                                        "$": "spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (modules.call.callRecordId)"
+                                      }
+                                    ]
+                                  },
+                                  "else": { "$action": "modules.call.goToCall" }
+                                }
+                              }
+                            ]
+                          },
+                          "children": [{ "$": "modules.call.active && !modules.call.elsewhere ? 'Open' : 'Join'" }]
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
                   "type": "Column",
                   "props": { "flex": "1", "minHeight": "0", "overflowY": "auto", "px": "200" },
                   "children": [
@@ -1176,23 +1226,15 @@
                 {
                   "type": "$if",
                   "props": {
-                    "condition": { "$": "modules.call.canCall" },
+                    "condition": { "$": "modules.call.canCall && !count(modules.call.liveCalls)" },
                     "then": {
                       "type": "Column",
                       "props": { "p": "300", "ax": "start" },
                       "children": [
                         {
                           "type": "we-button",
-                          "props": {
-                            "variant": { "$": "count(modules.call.liveCalls) ? 'primary' : 'secondary'" },
-                            "onClick": { "$action": "modules.call.goToCall" }
-                          },
-                          "children": [
-                            { "type": "we-icon", "props": { "name": "phone" } },
-                            {
-                              "$": "modules.call.active && !modules.call.elsewhere ? 'Back to the call' : count(modules.call.liveCalls) ? 'Join the call' : 'Start a call'"
-                            }
-                          ]
+                          "props": { "variant": "secondary", "onClick": { "$action": "modules.call.goToCall" } },
+                          "children": [{ "type": "we-icon", "props": { "name": "phone" } }, "Start a call"]
                         }
                       ]
                     }
@@ -1353,7 +1395,7 @@
                   "condition": { "$": "modules.call.callRecordId == routeStore.params.id" },
                   "then": {
                     "type": "Column",
-                    "props": { "gap": "300", "p": "500" },
+                    "props": { "p": "500" },
                     "children": [
                       {
                         "type": "Grid",
@@ -1368,92 +1410,6 @@
                             "type": "$each",
                             "props": { "items": { "$": "modules.call.tiles" }, "as": "tile" },
                             "children": [{ "type": "$part", "props": { "id": "call.tile" } }]
-                          }
-                        ]
-                      },
-                      {
-                        "type": "Row",
-                        "props": { "gap": "200", "ax": "center", "ay": "center" },
-                        "children": [
-                          {
-                            "type": "we-tooltip",
-                            "props": { "content": "Microphone" },
-                            "children": [
-                              {
-                                "type": "we-button",
-                                "props": {
-                                  "square": true,
-                                  "label": "Microphone",
-                                  "variant": { "$": "modules.call.media.audioEnabled ? 'secondary' : 'outline'" },
-                                  "onClick": { "$action": "modules.call.toggleAudio" }
-                                },
-                                "children": [
-                                  {
-                                    "type": "we-icon",
-                                    "props": {
-                                      "name": {
-                                        "$": "modules.call.media.audioEnabled ? 'microphone' : 'microphone-slash'"
-                                      }
-                                    }
-                                  }
-                                ]
-                              }
-                            ]
-                          },
-                          {
-                            "type": "we-tooltip",
-                            "props": { "content": "Camera" },
-                            "children": [
-                              {
-                                "type": "we-button",
-                                "props": {
-                                  "square": true,
-                                  "label": "Camera",
-                                  "variant": { "$": "modules.call.media.videoEnabled ? 'secondary' : 'outline'" },
-                                  "onClick": { "$action": "modules.call.toggleVideo" }
-                                },
-                                "children": [
-                                  {
-                                    "type": "we-icon",
-                                    "props": {
-                                      "name": {
-                                        "$": "modules.call.media.videoEnabled ? 'video-camera' : 'video-camera-slash'"
-                                      }
-                                    }
-                                  }
-                                ]
-                              }
-                            ]
-                          },
-                          {
-                            "type": "we-tooltip",
-                            "props": { "content": "Share your screen" },
-                            "children": [
-                              {
-                                "type": "we-button",
-                                "props": {
-                                  "square": true,
-                                  "label": "Share your screen",
-                                  "variant": { "$": "modules.call.media.screenShareEnabled ? 'secondary' : 'outline'" },
-                                  "onClick": { "$action": "modules.call.toggleScreenShare" }
-                                },
-                                "children": [
-                                  {
-                                    "type": "we-icon",
-                                    "props": {
-                                      "name": {
-                                        "$": "modules.call.media.screenShareEnabled ? 'monitor-play' : 'monitor'"
-                                      }
-                                    }
-                                  }
-                                ]
-                              }
-                            ]
-                          },
-                          {
-                            "type": "we-button",
-                            "props": { "variant": "danger", "onClick": { "$action": "modules.call.leave" } },
-                            "children": [{ "type": "we-icon", "props": { "name": "phone-x" } }, "Leave"]
                           }
                         ]
                       }
@@ -1494,7 +1450,13 @@
               },
               {
                 "type": "Column",
-                "props": { "flex": "1", "minHeight": "0", "px": "500", "pb": "500" },
+                "props": {
+                  "flex": "1",
+                  "minHeight": "0",
+                  "px": "500",
+                  "pb": "calc(var(--we-space-500) + var(--we-covered-bottom, 0px))",
+                  "transition": "padding-bottom 300 ease"
+                },
                 "children": [
                   {
                     "type": "$part",
@@ -1636,40 +1598,6 @@
             {
               "type": "$if",
               "props": {
-                "condition": { "$": "modules.call.active && !modules.call.elsewhere" },
-                "then": {
-                  "type": "Row",
-                  "props": { "gap": "300", "ay": "center", "px": "500", "py": "200", "bg": "success-surface" },
-                  "children": [
-                    { "type": "we-icon", "props": { "name": "phone-call", "color": "success-text" } },
-                    {
-                      "type": "we-text",
-                      "props": { "flex": "1", "color": "success-text" },
-                      "children": ["You are in a call"]
-                    },
-                    {
-                      "type": "we-button",
-                      "props": {
-                        "size": "sm",
-                        "variant": "secondary",
-                        "onClick": {
-                          "$action": "routeStore.navigate",
-                          "args": [
-                            {
-                              "$": "spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (modules.call.callRecordId)"
-                            }
-                          ]
-                        }
-                      },
-                      "children": ["Open the call"]
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "type": "$if",
-              "props": {
                 "condition": {
                   "$": "((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) && local.anyCallLoaded && local.anyChannelLoaded && !count(local.anyCall) && !count(local.anyChannel)"
                 },
@@ -1755,7 +1683,13 @@
             },
             {
               "type": "Column",
-              "props": { "px": "500", "pb": "500", "pt": "200", "gap": "100" },
+              "props": {
+                "px": "500",
+                "pb": "calc(var(--we-space-500) + var(--we-covered-bottom, 0px))",
+                "pt": "200",
+                "gap": "100",
+                "transition": "padding-bottom 300 ease"
+              },
               "children": [
                 {
                   "type": "$if",

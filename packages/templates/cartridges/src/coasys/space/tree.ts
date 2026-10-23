@@ -311,23 +311,60 @@ const purpose: SchemaNode = {
 const callButton: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: 'modules.call.canCall' },
+    // Only while there is no call here: once there is, the line under the header offers it.
+    condition: { $: 'modules.call.canCall && !count(modules.call.liveCalls)' },
     then: {
       type: 'Column',
       props: { p: '300', ax: 'start' },
       children: [
         {
           type: 'we-button',
+          props: { variant: 'secondary', onClick: { $action: 'modules.call.goToCall' } },
+          children: [{ type: 'we-icon', props: { name: 'phone' } }, 'Start a call'],
+        },
+      ],
+    },
+  },
+};
+
+/** Whether this agent is in the call running here, rather than in one somewhere else or none. */
+const IN_IT = 'modules.call.active && !modules.call.elsewhere';
+
+/**
+ * A call running in this space, under its name, as d12's tree draws it: "Call running · 3 in it",
+ * and the way to it — Open its page for somebody in it, Join for somebody who is not. The controls
+ * themselves are the call module's bar, on every page.
+ */
+const callRunning: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'count(modules.call.liveCalls)' },
+    then: {
+      type: 'Row',
+      props: { gap: '200', ay: 'center', px: '300', pb: '300' },
+      children: [
+        { type: 'we-icon', props: { name: 'phone-call', size: 'sm', color: 'success-text' } },
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-muted', flex: '1', minWidth: '0', truncate: true },
+          children: [{ $: '`Call running · ${first(modules.call.liveCalls).count} in it`' }],
+        },
+        {
+          type: 'we-button',
           props: {
-            variant: { $: "count(modules.call.liveCalls) ? 'primary' : 'secondary'" },
-            onClick: { $action: 'modules.call.goToCall' },
+            size: 'xs',
+            variant: { $: `${IN_IT} ? 'secondary' : 'primary'` },
+            onClick: [
+              {
+                $if: {
+                  condition: { $: IN_IT },
+                  then: { $action: 'routeStore.navigate', args: [{ $: callPath('modules.call.callRecordId') }] },
+                  else: { $action: 'modules.call.goToCall' },
+                },
+              },
+            ],
           },
-          children: [
-            { type: 'we-icon', props: { name: 'phone' } },
-            {
-              $: "modules.call.active && !modules.call.elsewhere ? 'Back to the call' : count(modules.call.liveCalls) ? 'Join the call' : 'Start a call'",
-            },
-          ],
+          children: [{ $: `${IN_IT} ? 'Open' : 'Join'` }],
         },
       ],
     },
@@ -384,6 +421,7 @@ export const treeSection: SchemaNode = {
   children: [
     header,
     purpose,
+    callRunning,
     {
       type: 'Column',
       props: { flex: '1', minHeight: '0', overflowY: 'auto', px: '200' },

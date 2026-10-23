@@ -1,7 +1,7 @@
 import type { RouteSchema, SchemaNode, SchemaProp } from '@we/schema-shared';
 import { lineComposer, recordFormModal } from '@we/template-kit';
 
-import { callPath, CHANNEL, CHANNEL_EXPR, channelPath, IN_ROOT_EXPR, PAGE_EXPR } from './paths.ts';
+import { CHANNEL, CHANNEL_EXPR, channelPath, IN_ROOT_EXPR, PAGE_EXPR } from './paths.ts';
 
 /**
  * What the view beside the tree draws: a channel as chat or as a canvas, the space's flows, and — as
@@ -86,30 +86,15 @@ const channelQueries = {
   },
 };
 
-/** "You are in a call" over the chat, with the way to it — the call's own page. */
-const inCallStrip: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $: 'modules.call.active && !modules.call.elsewhere' },
-    then: {
-      type: 'Row',
-      props: { gap: '300', ay: 'center', px: '500', py: '200', bg: 'success-surface' },
-      children: [
-        { type: 'we-icon', props: { name: 'phone-call', color: 'success-text' } },
-        { type: 'we-text', props: { flex: '1', color: 'success-text' }, children: ['You are in a call'] },
-        {
-          type: 'we-button',
-          props: {
-            size: 'sm',
-            variant: 'secondary',
-            onClick: { $action: 'routeStore.navigate', args: [{ $: callPath('modules.call.callRecordId') }] },
-          },
-          children: ['Open the call'],
-        },
-      ],
-    },
-  },
-};
+/**
+ * The bottom of a view, kept clear of the call bar.
+ *
+ * The bar floats along the bottom of the window on every page while a call is up, so whatever a view
+ * pins to its foot — the composer, the end of a transcript — rises above it, and settles back as the
+ * bar goes. `--we-covered-bottom` is how much the host says is covered there.
+ */
+const CLEAR_OF_THE_BAR = 'calc(var(--we-space-500) + var(--we-covered-bottom, 0px))';
+const LIFT = 'padding-bottom 300 ease';
 
 /**
  * Where to start, in a space with nothing in it yet: a hint for each first thing worth doing. Shown in
@@ -198,7 +183,6 @@ const chatRoute: RouteSchema = {
   $localState: { sending: { type: 'boolean', initial: false } },
   children: [
     viewBar([{ $: CHANNEL_TITLE }], 'hash', [channelModes]),
-    inCallStrip,
     firstSteps,
     {
       type: 'Column',
@@ -207,7 +191,7 @@ const chatRoute: RouteSchema = {
     },
     {
       type: 'Column',
-      props: { px: '500', pb: '500', pt: '200', gap: '100' },
+      props: { px: '500', pb: CLEAR_OF_THE_BAR, pt: '200', gap: '100', transition: LIFT },
       children: [
         {
           type: '$if',
@@ -477,29 +461,14 @@ export const spaceRoutes: RouteSchema[] = [chatRoute, canvasRoute, flowsRoute, {
 const CALL_ID = 'routeStore.params.id';
 const MINE = `modules.call.callRecordId == ${CALL_ID}`;
 
-const control = (icon: string, onIcon: string, on: string, label: string, action: string): SchemaNode => ({
-  type: 'we-tooltip',
-  props: { content: label },
-  children: [
-    {
-      type: 'we-button',
-      props: {
-        square: true,
-        label,
-        variant: { $: `${on} ? 'secondary' : 'outline'` },
-        onClick: { $action: action },
-      },
-      children: [{ type: 'we-icon', props: { name: { $: `${on} ? '${onIcon}' : '${icon}'` } } }],
-    },
-  ],
-});
-
 /**
- * A call, as its own page: the people in it, the controls, and what is being said.
+ * A call, as its own page: the people in it and what is being said.
  *
  * The space template's page for a call's record (`meta.recordViews`), so wherever a call is linked —
- * the tree, a message, a search — it opens here rather than as a generic record. The tiles and
- * controls are the call module's; the transcript is the transcribe module's, pointed at this call.
+ * the tree, a message, a search — it opens here rather than as a generic record. The tiles are the
+ * call module's; the transcript is the transcribe module's, pointed at this call. The controls are
+ * not here: the call module's bar holds them on every page, this one included, so a second set
+ * would be the same buttons twice.
  */
 export const callPage: SchemaNode = {
   type: 'Column',
@@ -523,7 +492,7 @@ export const callPage: SchemaNode = {
         condition: { $: MINE },
         then: {
           type: 'Column',
-          props: { gap: '300', p: '500' },
+          props: { p: '500' },
           children: [
             {
               type: 'Grid',
@@ -533,38 +502,6 @@ export const callPage: SchemaNode = {
                   type: '$each',
                   props: { items: { $: 'modules.call.tiles' }, as: 'tile' },
                   children: [{ type: '$part', props: { id: 'call.tile' } }],
-                },
-              ],
-            },
-            {
-              type: 'Row',
-              props: { gap: '200', ax: 'center', ay: 'center' },
-              children: [
-                control(
-                  'microphone-slash',
-                  'microphone',
-                  'modules.call.media.audioEnabled',
-                  'Microphone',
-                  'modules.call.toggleAudio',
-                ),
-                control(
-                  'video-camera-slash',
-                  'video-camera',
-                  'modules.call.media.videoEnabled',
-                  'Camera',
-                  'modules.call.toggleVideo',
-                ),
-                control(
-                  'monitor',
-                  'monitor-play',
-                  'modules.call.media.screenShareEnabled',
-                  'Share your screen',
-                  'modules.call.toggleScreenShare',
-                ),
-                {
-                  type: 'we-button',
-                  props: { variant: 'danger', onClick: { $action: 'modules.call.leave' } },
-                  children: [{ type: 'we-icon', props: { name: 'phone-x' } }, 'Leave'],
                 },
               ],
             },
@@ -597,7 +534,7 @@ export const callPage: SchemaNode = {
     },
     {
       type: 'Column',
-      props: { flex: '1', minHeight: '0', px: '500', pb: '500' },
+      props: { flex: '1', minHeight: '0', px: '500', pb: CLEAR_OF_THE_BAR, transition: LIFT },
       children: [{ type: '$part', props: { id: 'transcribe.transcriptFeed', subject: { $: CALL_ID } } }],
     },
   ],
