@@ -789,9 +789,7 @@
                         "onSelect": [
                           {
                             "$if": {
-                              "condition": {
-                                "$": "startsWith(event.detail.value, 'group|') && event.detail.value != 'group|flows'"
-                              },
+                              "condition": { "$": "startsWith(event.detail.value, 'group|')" },
                               "then": { "$toggleLocalIn": "openRows", "value": { "$": "event.detail.value" } }
                             }
                           },
@@ -6228,12 +6226,22 @@
       "polarity": "dark",
       "lightnessFloor": "16%",
       "lightnessCeiling": "104%",
-      "roles": { "page": "oklch(18.5% 0.04 278)", "accent": "oklch(85% 0.12 160)", "onAccent": "oklch(20% 0.045 278)" },
+      "roles": {
+        "page": "oklch(18.5% 0.04 278)",
+        "chrome": "oklch(16% 0.04 278)",
+        "accent": "oklch(85% 0.12 160)",
+        "onAccent": "oklch(20% 0.045 278)"
+      },
       "light": {
         "polarity": "light",
         "lightnessFloor": "0%",
         "lightnessCeiling": "100%",
-        "roles": { "page": "oklch(98% 0.012 278)", "accent": "oklch(55% 0.14 160)", "onAccent": "oklch(99% 0.005 278)" }
+        "roles": {
+          "page": "oklch(98% 0.012 278)",
+          "chrome": "oklch(96% 0.016 278)",
+          "accent": "oklch(55% 0.14 160)",
+          "onAccent": "oklch(99% 0.005 278)"
+        }
       },
       "dark": {
         "polarity": "dark",
@@ -6241,6 +6249,7 @@
         "lightnessCeiling": "104%",
         "roles": {
           "page": "oklch(18.5% 0.04 278)",
+          "chrome": "oklch(16% 0.04 278)",
           "accent": "oklch(85% 0.12 160)",
           "onAccent": "oklch(20% 0.045 278)"
         }

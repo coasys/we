@@ -24,7 +24,7 @@ const toggle = (value: SchemaProp): SchemaProp => ({ $toggleLocalIn: 'openRows',
 /**
  * A group: one of the space's kinds of thing, with its glyph, opened or closed by a press anywhere on
  * its row — a group is not a place to go, so choosing it is opening it (see `onSelect`). Flows is the
- * exception: its row opens the Flows page, and its caret opens the group.
+ * exception: its row opens the Flows page as well as the group.
  */
 const group = (key: string, label: string, icon: string, children: SchemaNode[], badge?: SchemaNode): SchemaNode =>
   treeRow({
@@ -187,7 +187,7 @@ const socialDna = group('dna', 'Social DNA', 'dna', [
 const onSelect: SchemaProp = [
   {
     $if: {
-      condition: { $: "startsWith(event.detail.value, 'group|') && event.detail.value != 'group|flows'" },
+      condition: { $: "startsWith(event.detail.value, 'group|')" },
       then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
     },
   },
