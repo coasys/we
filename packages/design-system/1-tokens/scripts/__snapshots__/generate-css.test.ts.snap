@@ -291,16 +291,16 @@ exports[`token CSS generation > font.css — families, sizes, weights, line heig
 
   /* Font Sizes */
   --we-font-base-size: 16px;
-  --we-font-size-100: 0.75rem;
-  --we-font-size-200: 0.875rem;
-  --we-font-size-300: 1rem;
-  --we-font-size-400: 1.125rem;
-  --we-font-size-500: 1.25rem;
-  --we-font-size-600: 1.5rem;
-  --we-font-size-700: 2rem;
-  --we-font-size-800: 2.5rem;
-  --we-font-size-900: 3.5rem;
-  --we-font-size-1000: 4.5rem;
+  --we-font-size-100: calc(0.75rem * var(--we-theme-scoped-font-scale, 1));
+  --we-font-size-200: calc(0.875rem * var(--we-theme-scoped-font-scale, 1));
+  --we-font-size-300: calc(1rem * var(--we-theme-scoped-font-scale, 1));
+  --we-font-size-400: calc(1.125rem * var(--we-theme-scoped-font-scale, 1));
+  --we-font-size-500: calc(1.25rem * var(--we-theme-scoped-font-scale, 1));
+  --we-font-size-600: calc(1.5rem * var(--we-theme-scoped-font-scale, 1));
+  --we-font-size-700: calc(2rem * var(--we-theme-scoped-font-scale, 1));
+  --we-font-size-800: calc(2.5rem * var(--we-theme-scoped-font-scale, 1));
+  --we-font-size-900: calc(3.5rem * var(--we-theme-scoped-font-scale, 1));
+  --we-font-size-1000: calc(4.5rem * var(--we-theme-scoped-font-scale, 1));
 
   /* Font Weights */
   --we-font-weight-100: 100;
@@ -386,16 +386,16 @@ exports[`token CSS generation > space.css 1`] = `
 :root {
   /* Spacing Values */
   --we-space-0: 0rem;
-  --we-space-100: calc(0.25rem * var(--we-theme-spacing-scale, 1));
-  --we-space-200: calc(0.5rem * var(--we-theme-spacing-scale, 1));
-  --we-space-300: calc(0.75rem * var(--we-theme-spacing-scale, 1));
-  --we-space-400: calc(1rem * var(--we-theme-spacing-scale, 1));
-  --we-space-500: calc(1.5rem * var(--we-theme-spacing-scale, 1));
-  --we-space-600: calc(2rem * var(--we-theme-spacing-scale, 1));
-  --we-space-700: calc(2.5rem * var(--we-theme-spacing-scale, 1));
-  --we-space-800: calc(3rem * var(--we-theme-spacing-scale, 1));
-  --we-space-900: calc(4rem * var(--we-theme-spacing-scale, 1));
-  --we-space-1000: calc(6rem * var(--we-theme-spacing-scale, 1));
+  --we-space-100: calc(0.25rem * var(--we-theme-spacing-scale, 1) * var(--we-theme-scoped-font-scale, 1));
+  --we-space-200: calc(0.5rem * var(--we-theme-spacing-scale, 1) * var(--we-theme-scoped-font-scale, 1));
+  --we-space-300: calc(0.75rem * var(--we-theme-spacing-scale, 1) * var(--we-theme-scoped-font-scale, 1));
+  --we-space-400: calc(1rem * var(--we-theme-spacing-scale, 1) * var(--we-theme-scoped-font-scale, 1));
+  --we-space-500: calc(1.5rem * var(--we-theme-spacing-scale, 1) * var(--we-theme-scoped-font-scale, 1));
+  --we-space-600: calc(2rem * var(--we-theme-spacing-scale, 1) * var(--we-theme-scoped-font-scale, 1));
+  --we-space-700: calc(2.5rem * var(--we-theme-spacing-scale, 1) * var(--we-theme-scoped-font-scale, 1));
+  --we-space-800: calc(3rem * var(--we-theme-spacing-scale, 1) * var(--we-theme-scoped-font-scale, 1));
+  --we-space-900: calc(4rem * var(--we-theme-spacing-scale, 1) * var(--we-theme-scoped-font-scale, 1));
+  --we-space-1000: calc(6rem * var(--we-theme-spacing-scale, 1) * var(--we-theme-scoped-font-scale, 1));
 }"
 `;
 

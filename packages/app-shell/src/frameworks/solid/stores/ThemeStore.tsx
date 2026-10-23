@@ -21,7 +21,9 @@ import type { BundleTheme, ThemeOverrides } from '@we/schema-shared';
 import {
   applyThemeVars,
   parseOverrides,
+  readThemeSettings,
   reconcileSurfaces,
+  registerNamedThemes,
   // Aliased: the store has a `templateThemeId` of its own, the id the template surface is asking for.
   templateThemeId as themeOfTemplate,
   THEME_SCHEMA_VERSION,
@@ -38,6 +40,7 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  onCleanup,
   ParentProps,
   untrack,
   useContext,
@@ -448,37 +451,6 @@ function applyThemeToDOM(theme: ThemeData, side?: ThemeSideName) {
   injectCssString('we-custom-theme-css', theme.css ?? '', { namespace: cssNamespace(theme) });
 }
 
-const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
-  // Color — only independent inputs, not derived tokens (ringColor derives from primary)
-  primaryHue: '--we-color-primary-hue',
-  successHue: '--we-color-success-hue',
-  warningHue: '--we-color-warning-hue',
-  dangerHue: '--we-color-danger-hue',
-  neutralHue: '--we-color-neutral-hue',
-  saturation: '--we-color-saturation',
-  neutralSaturation: '--we-color-neutral-saturation',
-  lightnessFloor: '--we-color-lightness-floor',
-  lightnessCeiling: '--we-color-lightness-ceiling',
-  // Typography — fontFamily intentionally omitted: the base theme CSS may set it directly,
-  // causing populateMissingOverrides to store a font string the user never explicitly chose.
-  letterSpacing: '--we-theme-letter-spacing',
-  lineHeight: '--we-theme-line-height',
-  // Shape
-  controlRadius: '--we-theme-control-radius',
-  surfaceRadius: '--we-theme-surface-radius',
-  inputRadius: '--we-theme-input-radius',
-  avatarRadius: '--we-theme-avatar-radius',
-  // Density
-  controlPaddingX: '--we-theme-control-padding-x',
-  controlGap: '--we-theme-control-gap',
-  controlHeightOffset: '--we-theme-control-height-offset',
-  surfacePadding: '--we-theme-surface-padding',
-  surfaceGap: '--we-theme-surface-gap',
-  inputPadding: '--we-theme-input-padding',
-  // Effects
-  surfaceOpacity: '--we-theme-surface-opacity',
-};
-
 /**
  * For any override keys missing from `overrides`, reads their actual computed CSS values so
  * sliders initialise at the position matching what the user sees, not hardcoded defaults.
@@ -498,35 +470,11 @@ function populateMissingOverrides(
   from: HTMLElement = document.documentElement,
 ): ThemeOverrides {
   const result = { ...overrides };
-  // Every override is read back out of CSS as a string, then narrowed to a number for the
-  // numeric ones. Naming that shape once keeps the writes below typed.
-  const writable = result as Record<keyof ThemeOverrides, string | number>;
   // Normalize legacy fontFamily: 'base' sentinel saved before the font-family fix
   if (result.fontFamily === 'base') delete result.fontFamily;
-  const styles = getComputedStyle(from);
-
-  for (const [key, cssVar] of Object.entries(OVERRIDE_CSS_VARS) as [keyof ThemeOverrides, string][]) {
-    if (result[key] !== undefined) continue;
-    let raw = styles.getPropertyValue(cssVar).trim();
-    // --we-color-neutral-hue is defined as var(--we-color-primary-hue) in the token CSS —
-    // getComputedStyle returns the var() reference, not the resolved number.
-    // Only apply this fallback for neutralHue; other undefined vars (e.g. radius) must not
-    // inherit the primary hue value, which would produce invalid CSS when used as a length.
-    if (key === 'neutralHue' && (!raw || raw.startsWith('var('))) {
-      raw = styles.getPropertyValue('--we-color-primary-hue').trim();
-    }
-    if (!raw || raw.startsWith('var(')) continue;
-
-    // Hues and saturations are plain numbers; a lightness bound is a percentage string.
-    if ((key as string).endsWith('Hue') || (key as string).toLowerCase().includes('saturation')) {
-      const n = Number(raw);
-      if (!isNaN(n)) writable[key] = n;
-    } else {
-      writable[key] = raw;
-    }
-  }
-
-  return result;
+  // Read through the settings registry, which says for each setting where it lives and how its value
+  // comes back — the second, drifted copy of that map this used to keep is gone.
+  return readThemeSettings(result, getComputedStyle(from));
 }
 
 export function ThemeStoreProvider(props: ParentProps) {
@@ -762,6 +710,18 @@ export function ThemeStoreProvider(props: ParentProps) {
     const visible = ids.size > 0 ? installedThemes().filter((t) => ids.has(t.id)) : installedThemes();
     return [...builtInThemes(), ...visible, ...spaceThemes()];
   };
+
+  /*
+    A theme named on a schema node (`theme: { themeName }`) finds its settings here, whichever kind of
+    theme it is. Built-ins resolve inside the theme package; installed and space themes only this store
+    knows. Reading `allThemes` from inside the renderer's effect makes a node's theme re-apply when the
+    theme it names finishes loading.
+  */
+  registerNamedThemes((name) => {
+    const named = allThemes().find((theme) => theme.id === name || theme.slug === name);
+    return named ? parseOverrides(named.overrides) : undefined;
+  });
+  onCleanup(() => registerNamedThemes(undefined));
 
   /**
    * What either half of the pair may be set to, ready for a `we-select`.

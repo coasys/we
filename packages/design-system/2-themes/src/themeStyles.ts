@@ -22,12 +22,15 @@ import {
   role,
   ROLE_ALIASES,
   ROLE_RELATIVE_FALLBACK,
+  SCOPED_FONT_SCALE_VAR,
   STATE_STEPS,
+  THEME_DERIVED_VARIABLES,
 } from '@we/tokens';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
 import { isThemeName, THEME_PRESETS } from './presets';
 import { fetchesRemotely } from './sanitiseCss';
+import { type DirectSetting, THEME_SETTING_VARIABLES, writeThemeSettings } from './themeSettings';
 
 /**
  * The chroma taper at step 500, as CSS rather than as a number computed here.
@@ -42,31 +45,6 @@ import { fetchesRemotely } from './sanitiseCss';
  * JS and CSS models of this came to disagree by 2.3× at step 200 without anyone noticing.
  */
 const TAPER_500 = '2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))';
-
-/**
- * Parametric keys that map 1:1 to a CSS custom property.
- * Keys that need special multi-var handling (shadowIntensity, animationSpeed, roles) are excluded.
- */
-type ParametricKey = Exclude<
-  keyof ThemeOverrides,
-  // `schemaVersion` is bookkeeping rather than a value — it says which vocabulary the theme was
-  // written against and never becomes a custom property.
-  | 'themeName'
-  | 'polarity'
-  | 'lightnessFloor'
-  | 'lightnessCeiling'
-  | 'shadowIntensity'
-  | 'animationSpeed'
-  | 'surfaceBlur'
-  | 'fontScale'
-  | 'spacingScale'
-  | 'disabledOpacity'
-  | 'roles'
-  | 'schemaVersion'
-  // A theme's other sides, folded in by `withThemeSide` before anything is applied.
-  | 'light'
-  | 'dark'
->;
 
 /** camelCase role name → --we-role-<kebab-case> custom property. */
 export function roleVar(role: ThemeRole): string {
@@ -185,49 +163,11 @@ const ANIMATION_SPEED_VARS: Record<NonNullable<ThemeOverrides['animationSpeed']>
   },
 };
 
-/** Map parametric ThemeOverrides keys to their CSS custom property equivalents. */
 /**
- * Exported so `themeFamily.test.ts` can cross-check it: every shape and density group declared here
- * has to be nameable from a call site, and the test fails when one is not.
+ * The variable each direct setting writes — from the settings registry (`themeSettings.ts`), kept under
+ * this name because `themeFamily.test.ts` cross-checks the shape and density groups against it.
  */
-export const THEME_CSS_MAP: Record<ParametricKey, string> = {
-  // Color
-  primaryHue: '--we-color-primary-hue',
-  successHue: '--we-color-success-hue',
-  warningHue: '--we-color-warning-hue',
-  dangerHue: '--we-color-danger-hue',
-  neutralHue: '--we-color-neutral-hue',
-  saturation: '--we-color-saturation',
-  neutralSaturation: '--we-color-neutral-saturation',
-  accentLightness: '--we-accent-lightness',
-  dangerLightness: '--we-danger-lightness',
-  successLightness: '--we-success-lightness',
-  warningLightness: '--we-warning-lightness',
-
-  borderWidth: '--we-theme-border-width',
-  stateDuration: '--we-theme-state-duration',
-  focusRingWidth: '--we-theme-focus-ring-width',
-  // Typography
-  fontFamily: '--we-font-family',
-  headingFontFamily: '--we-theme-heading-font-family',
-  monoFontFamily: '--we-font-mono',
-  letterSpacing: '--we-theme-letter-spacing',
-  lineHeight: '--we-theme-line-height',
-  // Shape
-  controlRadius: '--we-theme-control-radius',
-  surfaceRadius: '--we-theme-surface-radius',
-  inputRadius: '--we-theme-input-radius',
-  avatarRadius: '--we-theme-avatar-radius',
-  // Density
-  controlPaddingX: '--we-theme-control-padding-x',
-  controlGap: '--we-theme-control-gap',
-  controlHeightOffset: '--we-theme-control-height-offset',
-  surfacePadding: '--we-theme-surface-padding',
-  surfaceGap: '--we-theme-surface-gap',
-  inputPadding: '--we-theme-input-padding',
-  // Effects
-  surfaceOpacity: '--we-theme-surface-opacity',
-};
+export const THEME_CSS_MAP: Record<DirectSetting, string> = THEME_SETTING_VARIABLES;
 
 /** Saturation variable used by each color family. */
 const FAMILY_SAT_VAR: Record<ColorHueToken, string> = {
@@ -278,6 +218,28 @@ const COLOR_FAMILIES = Object.keys(color.hues) as ColorHueToken[];
  * variables via [data-we-theme] selectors. We unconditionally re-declare ALL
  * derived formulas so they resolve locally against whatever inputs the theme sets.
  */
+/**
+ * Where a theme named on a node finds its settings, beyond the built-ins.
+ *
+ * `{ themeName: 'x' }` on a schema node resolved its parameters only when `x` was a built-in preset;
+ * a theme somebody installed or wrote got its stylesheet (the store injects that by name) and none
+ * of its settings, so it rendered as its CSS over whatever theme was ambient. The app knows its
+ * installed themes and this package does not, so the app registers how to look one up. Read inside
+ * the renderer's effect, so a lookup that reads reactive state re-applies the theme when it arrives.
+ */
+type NamedThemeLookup = (name: string) => ThemeOverrides | undefined;
+let lookupNamedTheme: NamedThemeLookup | undefined;
+
+export function registerNamedThemes(lookup: NamedThemeLookup | undefined): void {
+  lookupNamedTheme = lookup;
+}
+
+/** A named theme's settings: a built-in preset's, else whatever the app registered. */
+function namedThemeParameters(name: string): ThemeOverrides | undefined {
+  if (isThemeName(name)) return THEME_PRESETS[name].parameters;
+  return lookupNamedTheme?.(name);
+}
+
 /** Drop absent keys so a spread cannot blank a preset value with an explicit `undefined`. */
 function stripUndefined(theme: ThemeOverrides): ThemeOverrides {
   return Object.fromEntries(Object.entries(theme).filter(([, value]) => value !== undefined)) as ThemeOverrides;
@@ -300,8 +262,9 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
   */
   // Widened to the vocabulary: `THEME_PRESETS` is `as const`, so its inferred union only carries
   // `roles` on the members that happen to pin one, and reading it off the union does not typecheck.
-  const preset: ThemeOverrides | undefined =
-    overrides.themeName && isThemeName(overrides.themeName) ? THEME_PRESETS[overrides.themeName].parameters : undefined;
+  const preset: ThemeOverrides | undefined = overrides.themeName
+    ? namedThemeParameters(overrides.themeName)
+    : undefined;
   /*
     `roles` merges key by key; every other override replaces.
 
@@ -325,27 +288,20 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
   const style: Record<string, string> = { ...ROLE_DEFAULT_VARS };
   const hasNamedTheme = !!theme.themeName;
 
-  // 1. Set any explicit parametric overrides as custom properties
-  for (const [key, cssVar] of Object.entries(THEME_CSS_MAP)) {
-    const value = theme[key as ParametricKey];
-    if (value !== undefined) style[cssVar] = String(value);
-  }
-
   /*
-    The lightness bounds, authored as percentages and emitted as numbers.
-
-    A theme says `lightnessFloor: '19.5%'`, which is what somebody can picture. The ramp needs it
-    unitless, because the chroma taper is `2 × max(0, min(l, 1 − l))` and `calc()` cannot divide a
-    percentage into the number a chroma has to be. `oklch()` accepts either form for lightness, so
-    the conversion happens here and nothing downstream has to care.
+    The variables the token CSS works out on `:root` from a setting — border and ring width, every
+    spacing and font-size step — restated here, because a custom property is settled where it is
+    declared. Without them a theme applied anywhere but the document set its inputs on its own
+    element and changed nothing below it. Always written, like the aliases further down: cheap to
+    over-apply, and a theme that leaves them unset gets exactly the document's values.
   */
-  for (const [key, cssVar] of [
-    ['lightnessFloor', '--we-color-lightness-floor'],
-    ['lightnessCeiling', '--we-color-lightness-ceiling'],
-  ] as const) {
-    const value = theme[key];
-    if (value !== undefined) style[cssVar] = String(parseFloat(value) / 100);
-  }
+  Object.assign(style, THEME_DERIVED_VARIABLES);
+
+  // 1. Every direct setting, as the settings registry says to write it.
+  writeThemeSettings(theme, style);
+
+  // The lightness bounds are authored as percentages and written unitless — see the registry entry:
+  // the chroma taper divides by them, and `calc()` cannot divide a percentage into a chroma.
 
   // `polarity` is the one authored key that is a word rather than a value; it expands to the two
   // numbers the ramp formula multiplies by. See RAMP in @we/tokens for why those are not authored.
@@ -361,12 +317,6 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
   // shadowIntensity → --we-theme-shadow (used by Card and other surface components)
   if (theme.shadowIntensity) {
     style['--we-theme-shadow'] = SHADOW_INTENSITY_VALUES[theme.shadowIntensity];
-  }
-
-  // surfaceBlur → --we-theme-surface-blur (backdrop-filter blur for frosted glass)
-  // Only emitted when > 0 to avoid triggering GPU compositing on the default state.
-  if (theme.surfaceBlur && theme.surfaceBlur > 0) {
-    style['--we-theme-surface-blur'] = `${theme.surfaceBlur}px`;
   }
 
   // animationSpeed → override --we-transition-N tokens consumed by all primitives
@@ -423,7 +373,7 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
   // the theme's values here).
   const affectsAllSatFamilies = hasNamedTheme || theme.saturation !== undefined || affectsLightness;
   for (const family of COLOR_FAMILIES) {
-    const hueKey = family === 'neutral' ? 'neutralHue' : (`${family}Hue` as ParametricKey);
+    const hueKey = family === 'neutral' ? 'neutralHue' : (`${family}Hue` as DirectSetting);
     const familyAffected =
       hasNamedTheme ||
       theme[hueKey] !== undefined ||
@@ -476,14 +426,17 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
       `oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${TAPER_500}) calc(var(--we-color-primary-hue) + 30)) 100%)`;
   }
 
-  // fontScale: sets font-size on the root element, scaling all rem-based tokens
+  /*
+    The font scale, two ways at once, and `applyThemeVars` keeps whichever the element needs.
+
+    At the document it sets the root font size, which every `rem` follows. Below the document `rem`
+    cannot move — it is the root's — so the scoped variable carries it instead and the font-size and
+    spacing steps restated above multiply by it. Never both on one element: they would compound.
+  */
   if (theme.fontScale !== undefined) {
     style['font-size'] = `${theme.fontScale * 16}px`;
+    style[SCOPED_FONT_SCALE_VAR] = String(theme.fontScale);
   }
-
-  // Spacing scales on its own, so "denser" does not have to mean "smaller text".
-  if (theme.spacingScale !== undefined) style['--we-theme-spacing-scale'] = String(theme.spacingScale);
-  if (theme.disabledOpacity !== undefined) style['--we-theme-disabled-opacity'] = String(theme.disabledOpacity);
 
   /*
     No parameter may fetch.
@@ -563,6 +516,8 @@ export interface ApplyThemeOptions {
 
 export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides, options?: ApplyThemeOptions): void {
   const styles = themeParametersToStyle(theme);
+  // The font scale: the root font size at the document, the scoped variable anywhere below it.
+  if (root === root.ownerDocument?.documentElement) delete styles[SCOPED_FONT_SCALE_VAR];
   const previous = appliedThemeVars.get(root);
 
   /*

@@ -444,11 +444,20 @@ export type { ThemeOverrides, ThemeRole, ThemeSide } from './overrides';
 export { migrateOverrides, parseOverrides, THEME_SCHEMA_VERSION } from './migrate';
 export { type ThemeSideName, themeSides, withThemeSide } from './sides';
 export {
+  type DirectSetting,
+  readThemeSettings,
+  SPECIAL_SETTINGS,
+  type ThemeSetting,
+  THEME_SETTINGS,
+  writeThemeSettings,
+} from './themeSettings';
+export {
   applyThemeVars,
   clearThemeVars,
   DARK_SURFACES,
   isDarkPolarity,
   reconcileSurfaces,
+  registerNamedThemes,
   roleVar,
   surfacesForPolarity,
   themeParametersToStyle,

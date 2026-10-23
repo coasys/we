@@ -19,6 +19,7 @@ import type {
   size as sizeTokens,
 } from '../src/size.js';
 import type { space as spaceTokens } from '../src/space.js';
+import { THEME_DERIVED_VARIABLES } from '../src/themeInputs.js';
 import type { zIndex as zIndexTokens } from '../src/z-index.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -140,13 +141,14 @@ ${reducedVars}
   return css;
 }
 
-export function generateBorderCSS(border: typeof borderTokens) {
+// The width comes from the shared list of theme-derived variables; the colours are aliases.
+export function generateBorderCSS(_border: typeof borderTokens) {
   const css = `/* BORDER TOKENS - Generated from JS tokens */
 
 :root {
   /* Border Width */
   /* Themeable: a theme sets --we-theme-border-width to move every stroke at once. */
-  --we-border-width: var(--we-theme-border-width, ${border.width});
+  --we-border-width: ${THEME_DERIVED_VARIABLES['--we-border-width']};
 
   /* Semantic border radius alias (override in themes) */
   --we-border-radius: var(--we-radius-400);
@@ -281,8 +283,8 @@ ${lightnessVars}
 ${colorPalettes}
 
   /* Base Colors */
-  --we-color-white: oklch(var(--we-color-lightness-0) 0 var(--we-color-neutral-hue));
-  --we-color-black: oklch(var(--we-color-lightness-1000) 0 var(--we-color-neutral-hue));
+  --we-color-white: ${THEME_DERIVED_VARIABLES['--we-color-white']};
+  --we-color-black: ${THEME_DERIVED_VARIABLES['--we-color-black']};
 
   /* Semantic Roles — intent over scale position. Defaults are parametric expressions
      so every theme keeps working untouched; themes may pin individual roles
@@ -293,7 +295,7 @@ ${roleVars}
 ${aliasVars(['--we-color-focus'])}
   /* Themeable width, like --we-border-width: a focus ring is a stroke, and a theme that
      thickens its borders and cannot thicken its rings looks half-converted. */
-  --we-focus-ring-width: var(--we-theme-focus-ring-width, 2px);
+  --we-focus-ring-width: ${THEME_DERIVED_VARIABLES['--we-focus-ring-width']};
 ${aliasVars(['--we-focus-outline'])}
 
   /* Gradient */
@@ -405,7 +407,8 @@ export function generateFontCSS(font: typeof fontTokens) {
 
   const fontSizeVars = Object.entries(font.size)
     .filter(([key]) => key !== 'base')
-    .map(([key, value]) => `  --we-font-size-${key}: ${value};`)
+    // From the shared list: a theme applied below the document scales these by its own font scale.
+    .map(([key]) => `  --we-font-size-${key}: ${THEME_DERIVED_VARIABLES[`--we-font-size-${key}`]};`)
     .join('\n');
 
   const fontWeightVars = Object.entries(font.weight)
@@ -530,12 +533,9 @@ export function generateSpaceCSS(space: typeof spaceTokens) {
     was to also shrink the text. `0` stays `0` — scaling nothing is still nothing, and a `calc()`
     there would turn a plain zero into a length for no reason.
   */
-  const spaceVars = Object.entries(space)
-    .map(([key, value]) =>
-      parseFloat(String(value)) === 0
-        ? `  --we-space-${key}: ${value};`
-        : `  --we-space-${key}: calc(${value} * var(--we-theme-spacing-scale, 1));`,
-    )
+  // From the shared list, so a theme applied below the document re-declares exactly these.
+  const spaceVars = Object.keys(space)
+    .map((key) => `  --we-space-${key}: ${THEME_DERIVED_VARIABLES[`--we-space-${key}`]};`)
     .join('\n');
 
   const css = `/* SPACE TOKENS - Generated from JS tokens */

@@ -78,6 +78,7 @@ export type { GapValue, PaddingValue, SpaceToken, SpaceValue } from './space.js'
 export type { ZIndexLayer, ZIndexValue } from './z-index.js';
 export type { LayoutToken } from './layout.js';
 export { CHROMA_CEILING, CHROMA_PER_SATURATION, chromaTaper, RAMP, STATE_STEPS } from './color.js';
+export { SCOPED_FONT_SCALE_VAR, THEME_DERIVED_VARIABLES } from './themeInputs.js';
 export type { Polarity } from './color.js';
 export { AVATAR_TONE_ROLES, AVATAR_TONES, avatarToneColor, avatarToneLabel } from './color.js';
 export type { AvatarTone } from './color.js';
