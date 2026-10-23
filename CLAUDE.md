@@ -2499,7 +2499,7 @@ AgentSettings extends Ad4mModel:
   - defaultThemeId: string = 'default' [we://default_theme]
   - systemLightThemeId: string [we://system_light_theme]
   - systemDarkThemeId: string [we://system_dark_theme]
-  - themeMode: string [we://theme_mode]
+  - displayPreferences: string [we://display_preferences]
   - claudeApiKey: string [we://claude_api_key]
   - datasetOrder: string [we://dataset_order]
   - globalSpaceJoined: boolean = false [we://global_space_joined]
@@ -3670,6 +3670,7 @@ ThemeStore:
   - themeMode: 'light' | 'dark' | 'system' — which side of a two-sided theme the agent wears. A theme can carry a light and a dark side of one look (its overrides' `light`/`dark`), so an app ships one theme rather than a pair; this picks between them for every such theme, and a theme with one look ignores it
   - themeSide: 'light' | 'dark' — the side worn right now: themeMode, with 'system' answered by the machine
   - currentThemeSides: ('light' | 'dark')[] — the sides the theme on screen carries. Offer a Light / Dark / System choice only when it is not empty
+  - displayPreferences: { colorScheme?, contrast?, textSize?, density?, motion? } — the agent's display needs, applied over every theme on screen, a space's included: colorScheme 'light' | 'dark' | 'system' (themeMode is this axis), contrast 'standard' | 'more' | 'system', textSize a multiplier (1 = the theme's own), density 'compact' | 'normal' | 'roomy', motion 'full' | 'reduced' | 'system'. An axis left out follows the system where it has a signal, and changes nothing otherwise
   - systemThemeOptions: { label, value }[] — options for either side of the Follow-system pair, with a "Built-in" entry a schema could not prepend itself
   - themeScope: 'global' | 'scoped' — what actually applies right now: the theme editor's session preview if one is active, else the agent's preference
   - themeScopePreference: 'global' | 'scoped' — the agent's persisted choice
@@ -3684,6 +3685,7 @@ ThemeStore:
   - focusRole(role: string): asks the theme editor to reveal a role, kebab-case as a schema spells it. Pair with editorStore.openThemePanel so there is a panel to scroll
   - setSystemTheme(polarity: 'light' | 'dark', themeId: string): sets one side of the Follow-system pair. An empty id returns that side to the built-in
   - setThemeMode(mode: 'light' | 'dark' | 'system'): chooses which side of a two-sided theme to wear, for this agent everywhere. A we-select or a segmented control can pass its value bare
+  - setDisplayPreference(key: 'colorScheme' | 'contrast' | 'textSize' | 'density' | 'motion', value): sets one display need for this agent everywhere. 'system' or null returns it to the default. A we-select can pass its value as event.detail
   - setThemeInstalled(themeId: string, visible: boolean): shows or hides a custom theme in the pickers; does not delete it. Takes the value rather than toggling, so a `we-switch` can pass `event.detail` straight through
   - previewThemeScope(scope: 'global' | 'scoped' | null): previews a scope for the current theme-editing session without writing the preference; null drops the preview. Cleared when editing ends
   - setThemeScopeGlobal(global: boolean): persists whether a space's theme covers the whole window (true) or only the space's own content (false, the default). Takes a boolean because a switch emits one; an expression over event in the args is evaluated when the switch fires, so pass `event.detail` bare

@@ -34,6 +34,7 @@ import {
 } from '@we/tokens';
 
 import { writeComponentOverrides, writeTypeStyles } from './componentStyles';
+import { currentDisplay, onDisplayChange, withDisplay } from './display';
 import type { ThemeOverrides, ThemeRole } from './overrides';
 import { isThemeName, THEME_PRESETS } from './presets';
 import { fetchesRemotely } from './sanitiseCss';
@@ -543,6 +544,8 @@ export function clearThemeVars(root: HTMLElement): void {
   if (!previous) return;
   for (const prop of previous) root.style.removeProperty(prop);
   appliedThemeVars.delete(root);
+  // No longer a theme root, so a change of display preferences leaves it alone.
+  appliedThemes.delete(root);
 }
 
 /**
@@ -571,7 +574,32 @@ export interface ApplyThemeOptions {
   crossFade?: boolean;
 }
 
-export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides, options?: ApplyThemeOptions): void {
+/*
+  Every root a theme is applied to, with what was asked for, so a change of display preferences can
+  redo them all. Held weakly: a wrapper that unmounts is collected, and is skipped when it no longer
+  answers.
+*/
+const appliedRoots = new Set<WeakRef<HTMLElement>>();
+const appliedThemes = new WeakMap<HTMLElement, { theme: ThemeOverrides; options?: ApplyThemeOptions }>();
+
+onDisplayChange(() => {
+  for (const ref of appliedRoots) {
+    const root = ref.deref();
+    const applied = root && appliedThemes.get(root);
+    if (!root || !applied || !root.isConnected) {
+      appliedRoots.delete(ref);
+      continue;
+    }
+    applyThemeVars(root, applied.theme, applied.options);
+  }
+});
+
+export function applyThemeVars(root: HTMLElement, asked: ThemeOverrides, options?: ApplyThemeOptions): void {
+  // The person's display needs over whatever was asked for — here, so no caller can leave them out.
+  // See display.ts.
+  if (!appliedThemes.has(root) && typeof WeakRef === 'function') appliedRoots.add(new WeakRef(root));
+  appliedThemes.set(root, { theme: asked, options });
+  const theme = withDisplay(asked, currentDisplay());
   const styles = themeParametersToStyle(theme);
   // The font scale: the root font size at the document, the scoped variable anywhere below it.
   if (root === root.ownerDocument?.documentElement) delete styles[SCOPED_FONT_SCALE_VAR];

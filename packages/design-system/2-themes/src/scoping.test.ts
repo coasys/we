@@ -19,7 +19,7 @@ import { SPECIAL_SETTINGS, THEME_SETTINGS } from './themeSettings';
 import { applyThemeVars, themeParametersToStyle } from './themeStyles';
 
 /** A value for every setting that differs from its default. */
-const SAMPLE: Required<Omit<ThemeOverrides, 'schemaVersion' | 'light' | 'dark'>> = {
+const SAMPLE: Required<Omit<ThemeOverrides, 'schemaVersion' | 'light' | 'dark' | 'contrast'>> = {
   themeName: 'cyberpunk',
   accentHue: 300,
   successHue: 150,
@@ -76,7 +76,7 @@ const SAMPLE: Required<Omit<ThemeOverrides, 'schemaVersion' | 'light' | 'dark'>>
 describe('every setting changes something', () => {
   const baseline = themeParametersToStyle({});
   const settings = [...Object.keys(THEME_SETTINGS), ...SPECIAL_SETTINGS].filter(
-    (key) => !['schemaVersion', 'light', 'dark'].includes(key),
+    (key) => !['schemaVersion', 'light', 'dark', 'contrast'].includes(key),
   ) as (keyof typeof SAMPLE)[];
 
   it.each(settings)('%s', (key) => {

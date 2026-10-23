@@ -462,6 +462,16 @@ export { COMPONENT_TYPE_PROPERTIES, writeComponentOverrides, writeTypeStyles } f
 export { migrateOverrides, parseOverrides, THEME_SCHEMA_VERSION } from './migrate';
 export { type ThemeSideName, themeSides, withThemeSide } from './sides';
 export {
+  currentDisplay,
+  type DisplayPreferences,
+  getDisplayPreferences,
+  onDisplayChange,
+  type ResolvedDisplay,
+  resolveDisplay,
+  setDisplayPreferences,
+  withDisplay,
+} from './display';
+export {
   type DirectSetting,
   readThemeSettings,
   SPECIAL_SETTINGS,

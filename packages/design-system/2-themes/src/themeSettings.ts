@@ -36,6 +36,7 @@ export const SPECIAL_SETTINGS = [
   'components',
   'light',
   'dark',
+  'contrast',
 ] as const satisfies readonly (keyof ThemeOverrides)[];
 
 type SpecialSetting = (typeof SPECIAL_SETTINGS)[number];

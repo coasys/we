@@ -3697,9 +3697,9 @@
           "required": false
         },
         {
-          "name": "themeMode",
+          "name": "displayPreferences",
           "type": "string",
-          "predicate": "we://theme_mode",
+          "predicate": "we://display_preferences",
           "required": false
         },
         {
@@ -7749,6 +7749,9 @@
         "currentThemeSides": {
           "type": "array"
         },
+        "displayPreferences": {
+          "type": "object"
+        },
         "systemThemeOptions": {
           "type": "array"
         },
@@ -7780,6 +7783,7 @@
         "focusRole",
         "setSystemTheme",
         "setThemeMode",
+        "setDisplayPreference",
         "setThemeInstalled",
         "previewThemeScope",
         "setThemeScopeGlobal",

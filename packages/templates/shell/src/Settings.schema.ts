@@ -745,6 +745,116 @@ const themeModeRow = (where: string): SchemaNode => ({
   },
 });
 
+/**
+ * One of the person's display needs: a label, what it does, and a choice. See `displayPreferences`.
+ *
+ * Every one applies over whatever theme is on screen, a space's included — which is the point of
+ * them, and why they sit apart from the themes rather than under one.
+ */
+const displayRow = (
+  key: 'contrast' | 'textSize' | 'density' | 'motion',
+  label: string,
+  hint: string,
+  options: { label: string; value: string }[],
+  fallback: string | number,
+): SchemaNode => ({
+  type: 'Row',
+  props: { gap: '300', ay: 'center', ax: 'between', wrap: true },
+  children: [
+    {
+      type: 'Column',
+      props: { gap: '100', flex: '1 1 16rem', minWidth: '0' },
+      children: [
+        { type: 'we-text', props: { fontWeight: 'medium' }, children: [label] },
+        { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [hint] },
+      ],
+    },
+    {
+      type: 'we-select',
+      props: {
+        fit: true,
+        // A select's values are strings, so a number is read back as one; the action turns it back.
+        value: {
+          $:
+            typeof fallback === 'number'
+              ? `(themeStore.displayPreferences.${key} ?? ${fallback}) + ''`
+              : `themeStore.displayPreferences.${key} ?? '${fallback}'`,
+        },
+        options,
+        onChange: {
+          $action: 'themeStore.setDisplayPreference',
+          args: [key, key === 'textSize' ? { $: 'event.detail * 1' } : { $: 'event.detail' }],
+        },
+      },
+    },
+  ],
+});
+
+const displaySection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300' },
+  children: [
+    {
+      type: 'Column',
+      props: { gap: '100' },
+      children: [
+        { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Display'] },
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-muted' },
+          children: ['What you need to read comfortably. These apply in every space, whatever its theme.'],
+        },
+      ],
+    },
+    displayRow(
+      'contrast',
+      'Contrast',
+      'More separates text, borders and controls from what is behind them.',
+      [
+        { label: 'Follow system', value: 'system' },
+        { label: 'Standard', value: 'standard' },
+        { label: 'More', value: 'more' },
+      ],
+      'system',
+    ),
+    displayRow(
+      'textSize',
+      'Text size',
+      'Larger or smaller than the theme sets it.',
+      [
+        { label: '90%', value: '0.9' },
+        { label: '100%', value: '1' },
+        { label: '115%', value: '1.15' },
+        { label: '130%', value: '1.3' },
+        { label: '150%', value: '1.5' },
+      ],
+      1,
+    ),
+    displayRow(
+      'density',
+      'Density',
+      'How much room things take.',
+      [
+        { label: 'Compact', value: 'compact' },
+        { label: 'Normal', value: 'normal' },
+        { label: 'Roomy', value: 'roomy' },
+      ],
+      'normal',
+    ),
+    displayRow(
+      'motion',
+      'Motion',
+      'Reduced stops transitions and animations.',
+      [
+        { label: 'Follow system', value: 'system' },
+        { label: 'Full', value: 'full' },
+        { label: 'Reduced', value: 'reduced' },
+      ],
+      'system',
+    ),
+  ],
+};
+
 const themesSection: SchemaNode = {
   type: 'Column',
   props: { gap: '300' },
@@ -1413,7 +1523,7 @@ export const settingsTemplate: TemplateSchema = {
     { path: '/connections', ...page([runtimeError, connectedApps]) },
     // This app — how it looks and what it does here.
     // How things look — and only that. What you run is its own page, below.
-    { path: '/appearance', ...page([themeScopeSection, themesSection]) },
+    { path: '/appearance', ...page([themeScopeSection, themesSection, displaySection]) },
     // What you run: the app around every space, the apps you installed, and the templates spaces
     // are drawn with. A question apart from how they look, and from the spaces themselves.
     { path: '/apps', ...page([appSection, appsSection, templatesSection, templateUpdatesSection]) },

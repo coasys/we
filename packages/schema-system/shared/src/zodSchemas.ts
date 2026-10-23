@@ -139,6 +139,8 @@ const themeOverridesShape = {
   /** A theme's light and dark sides — see `ThemeOverrides.light`. */
   light: zThemeSide,
   dark: zThemeSide,
+  /** How the theme looks when somebody asks for more contrast — see `ThemeOverrides.contrast`. */
+  contrast: z.object({ more: zThemeSide }).strict().optional(),
 } satisfies {
   [K in keyof ThemeOverrides | LegacyThemeKey]-?: z.ZodType<(ThemeOverrides & Record<LegacyThemeKey, unknown>)[K]>;
 };

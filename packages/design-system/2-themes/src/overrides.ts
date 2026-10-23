@@ -315,7 +315,13 @@ export type ThemeOverrides = {
    */
   light?: ThemeSide;
   dark?: ThemeSide;
+  /**
+   * How this theme looks when somebody asks for more contrast — a block like a side, laid over the
+   * general rule (`display.ts`) when their contrast preference is `more`. For a theme whose colours
+   * need saying differently rather than merely firmer.
+   */
+  contrast?: { more?: ThemeSide };
 };
 
 /** One side of a two-sided theme: any parameter of the base, except the sides and the bookkeeping. */
-export type ThemeSide = Omit<ThemeOverrides, 'light' | 'dark' | 'schemaVersion' | 'themeName'>;
+export type ThemeSide = Omit<ThemeOverrides, 'light' | 'dark' | 'contrast' | 'schemaVersion' | 'themeName'>;

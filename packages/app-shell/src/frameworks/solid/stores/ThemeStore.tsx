@@ -17,13 +17,14 @@ import {
   modelToThemeData,
   Theme,
 } from '@we/entities';
-import type { BundleTheme, ThemeOverrides } from '@we/schema-shared';
+import type { BundleTheme, DisplayPreferences, ThemeOverrides } from '@we/schema-shared';
 import {
   applyThemeVars,
   parseOverrides,
   readThemeSettings,
   reconcileSurfaces,
   registerNamedThemes,
+  setDisplayPreferences,
   // Aliased: the store has a `templateThemeId` of its own, the id the template surface is asking for.
   templateThemeId as themeOfTemplate,
   THEME_SCHEMA_VERSION,
@@ -63,14 +64,25 @@ const THEME_KEY = 'we.theme';
 const SYSTEM_LIGHT_KEY = 'we.system-light';
 const SYSTEM_DARK_KEY = 'we.system-dark';
 const EDITING_THEME_KEY = 'we.editing-theme';
-/** Which side of a two-sided theme to wear, cached for the first paint like the theme itself. */
-const THEME_MODE_KEY = 'we.theme-mode';
+/** The person's display needs, cached for the first paint like the theme itself. */
+const DISPLAY_KEY = 'we.display';
 
-/** `light`, `dark`, or `system` to follow the machine. See `AgentSettings.themeMode`. */
+/** `light`, `dark`, or `system` to follow the machine — the colour-scheme axis of the display needs. */
 export type ThemeMode = 'light' | 'dark' | 'system';
 
 function asThemeMode(value: string | null | undefined): ThemeMode {
   return value === 'light' || value === 'dark' ? value : 'system';
+}
+
+/** Stored display preferences, or none for anything that does not parse. */
+function parseDisplay(raw: string | null | undefined): DisplayPreferences {
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? (parsed as DisplayPreferences) : {};
+  } catch {
+    return {};
+  }
 }
 
 export type ThemeManagementItem = {
@@ -148,6 +160,16 @@ export interface ThemeStore {
   currentThemeSides: Accessor<('light' | 'dark')[]>;
   /** Choose the side, for this agent everywhere. */
   setThemeMode: (mode: ThemeMode) => Promise<boolean>;
+  /**
+   * The person's display needs — colour scheme, contrast, text size, density, motion — applied over
+   * every theme on screen, a space's included. See `DisplayPreferences` in @we/themes.
+   */
+  displayPreferences: Accessor<DisplayPreferences>;
+  /** Set one display need for this agent everywhere; `system` or null returns it to the default. */
+  setDisplayPreference: <K extends keyof DisplayPreferences>(
+    key: K,
+    value: DisplayPreferences[K] | null,
+  ) => Promise<boolean>;
   /** Options for either side, with a "Built-in" entry a schema could not prepend itself. */
   systemThemeOptions: Accessor<{ label: string; value: string }[]>;
   /**
@@ -566,19 +588,36 @@ export function ThemeStoreProvider(props: ParentProps) {
     The side a two-sided theme is worn on. The agent's own setting once it has loaded; before that,
     what this device last wore, so the first paint does not flip sides when the settings land.
   */
-  const themeMode = createMemo<ThemeMode>(() => {
-    const own = datasetStore.agentSettings()?.themeMode;
-    if (own !== undefined) return asThemeMode(own);
-    return asThemeMode(typeof window !== 'undefined' ? localStorage.getItem(THEME_MODE_KEY) : null);
+  const displayPreferences = createMemo<DisplayPreferences>(() => {
+    const own = datasetStore.agentSettings()?.displayPreferences;
+    if (own !== undefined) return parseDisplay(own);
+    return parseDisplay(typeof window !== 'undefined' ? localStorage.getItem(DISPLAY_KEY) : null);
   });
+  /*
+    Handed to @we/themes, which lays them over every theme it applies and redoes every theme on
+    screen when they change — a space's and a node's as well as this store's. Set once now, from the
+    cache, so the first paint already has them.
+  */
+  setDisplayPreferences(displayPreferences());
+  createEffect(() => setDisplayPreferences(displayPreferences()));
+  function setDisplayPreference<K extends keyof DisplayPreferences>(
+    key: K,
+    value: DisplayPreferences[K] | null,
+  ): Promise<boolean> {
+    const next: DisplayPreferences = { ...displayPreferences() };
+    if (value === null || value === undefined || value === 'system') delete next[key];
+    else next[key] = value;
+    const stored = Object.keys(next).length ? JSON.stringify(next) : '';
+    localStorage.setItem(DISPLAY_KEY, stored);
+    return datasetStore.updateAgentSettings({ displayPreferences: stored });
+  }
+  const themeMode = createMemo<ThemeMode>(() => asThemeMode(displayPreferences().colorScheme));
   const themeSide = createMemo<'light' | 'dark'>(() => {
     const mode = themeMode();
     return mode === 'system' ? systemScheme() : mode;
   });
   function setThemeMode(mode: ThemeMode): Promise<boolean> {
-    const next = asThemeMode(mode);
-    localStorage.setItem(THEME_MODE_KEY, next);
-    return datasetStore.updateAgentSettings({ themeMode: next === 'system' ? '' : next });
+    return setDisplayPreference('colorScheme', asThemeMode(mode));
   }
 
   /*
@@ -878,10 +917,10 @@ export function ThemeStoreProvider(props: ParentProps) {
   /** The sides the theme on screen carries. See `ThemeStore.currentThemeSides`. */
   const currentThemeSides = createMemo(() => themeSides(parseOverrides((editingTheme() ?? currentTheme()).overrides)));
 
-  // The side, cached for the next first paint.
+  // The display needs, cached for the next first paint.
   createEffect(() => {
     if (!datasetStore.agentSettings()) return;
-    localStorage.setItem(THEME_MODE_KEY, themeMode());
+    localStorage.setItem(DISPLAY_KEY, datasetStore.agentSettings()?.displayPreferences ?? '');
   });
 
   /** What the scoped wrapper renders. Null in global mode — the template inherits documentElement. */
@@ -1883,6 +1922,8 @@ export function ThemeStoreProvider(props: ParentProps) {
     focusRole,
     setSystemTheme,
     themeMode,
+    displayPreferences,
+    setDisplayPreference,
     themeSide,
     currentThemeSides,
     setThemeMode,
