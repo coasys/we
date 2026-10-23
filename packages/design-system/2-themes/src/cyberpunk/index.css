@@ -1,8 +1,8 @@
 [data-we-theme='cyberpunk'] {
   --we-font-family: monospace;
   --we-border-radius: 0px;
-  --we-border-color: var(--we-color-primary-200);
-  --we-border-color-strong: var(--we-color-primary-400);
+  --we-border-color: var(--we-color-accent-200);
+  --we-border-color-strong: var(--we-color-accent-400);
 }
 
 [data-we-theme='cyberpunk'] we-text[variant^='heading'] {
@@ -13,7 +13,7 @@
   animation-iteration-count: infinite;
   animation-direction: reverse;
   animation-timing-function: ease-out;
-  --we-text-color: var(--we-color-primary-500);
+  --we-text-color: var(--we-color-accent-500);
 }
 
 [data-we-theme='cyberpunk'] we-button::part(base) {
@@ -47,11 +47,11 @@
 [data-we-theme='cyberpunk'] we-input::part(base) {
   height: 60px;
   font-size: 16px;
-  border: 10px solid var(--we-color-primary-500);
-  border-left: 2px solid var(--we-color-primary-500);
-  border-right: 2px solid var(--we-color-primary-500);
-  border-bottom: 10px solid var(--we-color-primary-500);
-  border-color: var(--we-color-primary-200);
+  border: 10px solid var(--we-color-accent-500);
+  border-left: 2px solid var(--we-color-accent-500);
+  border-right: 2px solid var(--we-color-accent-500);
+  border-bottom: 10px solid var(--we-color-accent-500);
+  border-color: var(--we-color-accent-200);
   clip-path: polygon(
     0 5px,
     5px 0,
@@ -68,7 +68,7 @@
 }
 
 [data-we-theme='cyberpunk'] we-input::part(base):focus-within {
-  border-color: var(--we-color-primary-500);
+  border-color: var(--we-color-accent-500);
 }
 
 [data-we-theme='cyberpunk'] we-text[variant^='heading']::after {
@@ -79,7 +79,7 @@
   left: 0;
   height: 10px;
   clip-path: polygon(0 0, 85px 0, 90px 5px, 100% 5px, 100% 6px, 85px 6px, 80px 10px, 0 10px);
-  background: var(--we-color-primary-500);
+  background: var(--we-color-accent-500);
 }
 
 @keyframes glitched {

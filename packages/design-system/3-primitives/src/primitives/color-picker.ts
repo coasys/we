@@ -40,7 +40,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
  * convenience over the colour area — it is the option that keeps a theme a theme, which is why it
  * is what the picker opens on when tokens are enabled.
  */
-const TOKEN_HUES = ['neutral', 'primary', 'success', 'warning', 'danger'] as const;
+const TOKEN_HUES = ['neutral', 'accent', 'success', 'warning', 'danger'] as const;
 const TOKEN_SHADES = ['0', '25', '50', '75', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'];
 
 const PALETTE = [
@@ -148,7 +148,7 @@ const styles = css`
   }
 
   [part='tab'][aria-selected='true'] {
-    background: var(--we-role-accent-muted);
+    background: var(--we-role-accent-soft);
     color: var(--we-role-accent-text);
   }
 
@@ -330,7 +330,7 @@ const styles = css`
   }
 
   [part='format'][aria-pressed='true'] {
-    background: var(--we-role-accent-muted);
+    background: var(--we-role-accent-soft);
     color: var(--we-role-accent-text);
   }
 

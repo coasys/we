@@ -1071,7 +1071,7 @@ export const contextData: ContextData = {
         { name: 'triggerIcon', type: 'string', optional: true },
         {
           name: 'triggerVariant',
-          type: '"primary" | "danger" | "secondary" | "ghost" | "outline" | "bare"',
+          type: '"danger" | "primary" | "secondary" | "ghost" | "outline" | "bare"',
           optional: true,
         },
         { name: 'triggerTitle', type: 'string', optional: true },
@@ -2051,11 +2051,6 @@ export const contextData: ContextData = {
         saturation: '60',
         neutralSaturation: '10',
       },
-    },
-    {
-      name: 'color.hues',
-      type: 'Record<ColorHueToken, number>',
-      values: { neutral: '288', primary: '288', success: '145', warning: '90', danger: '17' },
     },
     {
       name: 'color.lightness',

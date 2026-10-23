@@ -53,7 +53,7 @@ describe('DesignSystemProps ↔ designSystemKeys invariant', () => {
 describe('tokenVar', () => {
   it('resolves token names to CSS variables', () => {
     expect(tokenVar('space', '400')).toBe('var(--we-space-400)');
-    expect(tokenVar('color', 'primary-500')).toBe('var(--we-color-primary-500)');
+    expect(tokenVar('color', 'accent-500')).toBe('var(--we-color-accent-500)');
   });
 
   it('passes raw CSS values through', () => {
@@ -125,8 +125,8 @@ describe('mergeProps', () => {
   });
 
   it('otherwise primary simply wins over secondary', () => {
-    expect(mergeProps({ bg: 'primary-500' }, { bg: 'neutral-0', color: 'white' })).toEqual({
-      bg: 'primary-500',
+    expect(mergeProps({ bg: 'accent-500' }, { bg: 'neutral-0', color: 'white' })).toEqual({
+      bg: 'accent-500',
       color: 'white',
     });
   });
@@ -273,7 +273,7 @@ describe('semantic roles as colour prop values', () => {
 
   it('leaves scale positions and raw CSS alone', () => {
     expect(tokenVar('color', 'neutral-100')).toBe('var(--we-color-neutral-100)');
-    expect(tokenVar('color', 'primary-500')).toBe('var(--we-color-primary-500)');
+    expect(tokenVar('color', 'accent-500')).toBe('var(--we-color-accent-500)');
     expect(tokenVar('color', '#1a1a1e')).toBe('#1a1a1e');
     expect(tokenVar('color', 'transparent')).toBe('transparent');
   });

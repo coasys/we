@@ -22,7 +22,7 @@ const TRANSPARENT: Rgba = [0, 0, 0, 0];
  * theme may pin outright. A theme that changes none of these changes no colour a layer can paint.
  */
 const THEME_INPUTS = [
-  '--we-color-primary-hue',
+  '--we-color-accent-hue',
   '--we-color-success-hue',
   '--we-color-warning-hue',
   '--we-color-danger-hue',
@@ -115,7 +115,7 @@ export function createColorResolver(host: HTMLElement): ColorResolver {
   };
 
   return {
-    rgba(value, fallback = 'primary-500') {
+    rgba(value, fallback = 'accent-500') {
       const css = colorValueCss(value, fallback);
       if (!css) return TRANSPARENT;
       let rgba = cache.get(css);

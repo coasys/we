@@ -21,8 +21,8 @@ import { expr } from '@we/schema-shared';
  */
 export const SWATCHES = [
   { token: '' },
-  { token: 'primary-100' },
-  { token: 'primary-300' },
+  { token: 'accent-100' },
+  { token: 'accent-300' },
   { token: 'success-100' },
   { token: 'warning-100' },
   { token: 'danger-100' },

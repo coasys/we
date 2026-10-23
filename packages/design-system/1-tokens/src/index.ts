@@ -77,8 +77,22 @@ export type { SizeToken, SizeValue, RadiusToken, RadiusValue, ComponentSize } fr
 export type { GapValue, PaddingValue, SpaceToken, SpaceValue } from './space.js';
 export type { ZIndexLayer, ZIndexValue } from './z-index.js';
 export type { LayoutToken } from './layout.js';
-export { CHROMA_CEILING, CHROMA_PER_SATURATION, chromaTaper, RAMP, STATE_STEPS } from './color.js';
+export { CHROMA_CEILING, CHROMA_PER_SATURATION, chromaTaper, RAMP, RAMP_FAMILIES, STATE_STEPS } from './color.js';
 export { SCOPED_FONT_SCALE_VAR, THEME_DERIVED_VARIABLES } from './themeInputs.js';
+export {
+  capitalise,
+  CHROMATIC_FAMILIES,
+  COLOR_FAMILIES,
+  familyFillLightness,
+  familySaturationDefault,
+  familySaturationVar,
+  PALETTE_HUES,
+  SEMANTIC_FAMILIES,
+  TONES,
+} from './families.js';
+export type { ChromaticFamily, ColorFamily, PaletteHue, SemanticFamily, ToneName } from './families.js';
+export { FAMILY_ROLES } from './familyRoles.js';
+export type { FamilyRole } from './familyRoles.js';
 export type { Polarity } from './color.js';
 export { AVATAR_TONE_ROLES, AVATAR_TONES, avatarToneColor, avatarToneLabel } from './color.js';
 export type { AvatarTone } from './color.js';

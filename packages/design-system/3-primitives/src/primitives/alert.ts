@@ -34,10 +34,10 @@ export const ALERT_APPEARANCE_DEFAULTS: Record<
     // `surfaceSunken`, not `page`: an alert is a tinted panel, and the three status variants beside
     // it are tints. `page` won this slot only because neutral-50 happened to be the value here.
     neutral: { bg: 'surface-sunken', color: 'text' },
-    primary: { bg: 'accent-muted', color: 'accent-text' },
-    success: { bg: 'success-surface', color: 'success-text' },
-    warning: { bg: 'warning-surface', color: 'warning-text' },
-    danger: { bg: 'danger-surface', color: 'danger-text' },
+    primary: { bg: 'accent-soft', color: 'accent-text' },
+    success: { bg: 'success-soft', color: 'success-text' },
+    warning: { bg: 'warning-soft', color: 'warning-text' },
+    danger: { bg: 'danger-soft', color: 'danger-text' },
   },
   /*
     `text`, not the status colour, for every one of these. The edge is what carries the status; the

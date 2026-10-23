@@ -181,7 +181,7 @@ export function PartCard(props: { node: SchemaNode }) {
 
           <Column px="400" gap="100">
             <Show when={part().missing}>
-              <Column gap="200" p="300" r="surface" bg="warning-surface">
+              <Column gap="200" p="300" r="surface" bg="warning-soft">
                 <we-text variant="footnote" color="warning-text">
                   {part().missing}
                 </we-text>
@@ -564,7 +564,7 @@ function ViewCard(props: { id: string }) {
                     />
                   }
                 >
-                  <Column gap="200" p="300" r="surface" bg="warning-surface">
+                  <Column gap="200" p="300" r="surface" bg="warning-soft">
                     <we-text variant="footnote" color="warning-text">
                       Replace {view().name} with a copy for everyone here? The copy stops receiving updates to the
                       original.
@@ -752,7 +752,7 @@ export function EditingSectionBar() {
           px="300"
           py="200"
           r="surface"
-          bg="accent-muted"
+          bg="accent-soft"
           flexShrink="0"
         >
           <we-text variant="footnote">{sentence()} Escape or a press outside it comes back out.</we-text>

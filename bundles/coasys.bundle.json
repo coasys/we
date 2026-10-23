@@ -229,7 +229,7 @@
                                                 }
                                               ],
                                               "bg": {
-                                                "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-muted' : ''"
+                                                "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-soft' : ''"
                                               },
                                               "color": {
                                                 "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-text' : 'text-muted'"
@@ -366,7 +366,7 @@
                                 { "$action": "appStore.deactivateApp" },
                                 { "$action": "shellStore.openShellView", "args": ["settings"] }
                               ],
-                              "bg": { "$": "(shellStore.activeShellView == 'settings') ? 'accent-muted' : ''" },
+                              "bg": { "$": "(shellStore.activeShellView == 'settings') ? 'accent-soft' : ''" },
                               "color": {
                                 "$": "(shellStore.activeShellView == 'settings') ? 'accent-text' : 'text-muted'"
                               },
@@ -454,7 +454,7 @@
                                   "ay": "center",
                                   "gap": "300",
                                   "p": "300",
-                                  "bg": { "$": "(shellStore.activeShellView == 'profile') ? 'accent-muted' : ''" },
+                                  "bg": { "$": "(shellStore.activeShellView == 'profile') ? 'accent-soft' : ''" },
                                   "color": {
                                     "$": "(shellStore.activeShellView == 'profile') ? 'accent-text' : 'text-muted'"
                                   },
@@ -5219,7 +5219,7 @@
                                                                         "px": "200",
                                                                         "py": "100",
                                                                         "r": "full",
-                                                                        "bg": "warning-surface",
+                                                                        "bg": "warning-soft",
                                                                         "ay": "center",
                                                                         "gap": "100"
                                                                       },
@@ -6215,7 +6215,7 @@
     "icon": "hexagon",
     "overrides": {
       "schemaVersion": 6,
-      "primaryHue": 160,
+      "accentHue": 160,
       "saturation": 60,
       "neutralHue": 278,
       "neutralSaturation": 22,

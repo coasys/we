@@ -15,7 +15,7 @@ import { css, type CSSResult, unsafeCSS } from 'lit';
  * site that wanted them to look like one row of controls restated the select's two values by hand."
  * The restatements went stale one at a time, and each was invisible on its own — `we-select` was
  * moved onto the recessed fill and the ring, and `we-location-picker`, `we-icon-picker` and
- * `we-date-picker` were left on `surface` with a `2px accent-muted` outline inset by `-1px`. The
+ * `we-date-picker` were left on `surface` with a `2px accent-soft` outline inset by `-1px`. The
  * create-space modal is where that finally showed: two inputs reading as fields above a location
  * picker painted the same colour as the sheet behind it.
  *

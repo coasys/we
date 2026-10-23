@@ -82,17 +82,17 @@
   }
 
   &--success {
-    background-color: var(--we-role-success-surface);
+    background-color: var(--we-role-success-soft);
     border: 1px solid color-mix(in srgb, var(--we-role-success) 30%, transparent);
   }
 
   &--warning {
-    background-color: var(--we-role-warning-surface);
+    background-color: var(--we-role-warning-soft);
     border: 1px solid color-mix(in srgb, var(--we-role-warning) 30%, transparent);
   }
 
   &--error {
-    background-color: var(--we-role-danger-surface);
+    background-color: var(--we-role-danger-soft);
     border: 1px solid color-mix(in srgb, var(--we-role-danger) 30%, transparent);
   }
 

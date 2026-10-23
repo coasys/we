@@ -118,7 +118,7 @@ export function heavyTokenCard(id: number): SchemaNode {
           fontSize: '400',
           fontWeight: '600',
           color: {
-            $: "benchStore.numberValue == 42 || benchStore.stringValue != 'goodbye' ? 'primary-700' : 'danger-700'",
+            $: "benchStore.numberValue == 42 || benchStore.stringValue != 'goodbye' ? 'accent-700' : 'danger-700'",
           },
         },
         children: [{ $: `\`Heavy #${id} — \${benchStore.boolTrue ? benchStore.stringValue : 'fallback'}\`` }],
@@ -244,7 +244,7 @@ export function solidCard(id: number): SchemaNode {
         type: 'Row',
         props: { gap: '200', ay: 'center' },
         children: [
-          { type: 'Column', props: { width: '8px', height: '8px', r: 'full', bg: 'primary-400' } },
+          { type: 'Column', props: { width: '8px', height: '8px', r: 'full', bg: 'accent-400' } },
           {
             type: 'Column',
             children: [{ type: 'we-text', props: { text: `Solid ${id}`, fontSize: '300', color: 'neutral-700' } }],
@@ -264,7 +264,7 @@ export function boundCard(id: number): SchemaNode {
       { type: 'we-text', props: { fontSize: '200', color: 'neutral-500' }, children: [`Cell ${id}`] },
       {
         type: 'we-text',
-        props: { fontWeight: '600', color: 'primary-700' },
+        props: { fontWeight: '600', color: 'accent-700' },
         children: [{ $: '`#${benchStore.counter}`' }],
       },
     ],
@@ -274,7 +274,7 @@ export function boundCard(id: number): SchemaNode {
 function deepNest(depth: number, current = 0): SchemaNode {
   const child: SchemaNode =
     current >= depth
-      ? { type: 'we-text', props: { text: `Depth ${current}`, fontSize: '200', color: 'primary-600' } }
+      ? { type: 'we-text', props: { text: `Depth ${current}`, fontSize: '200', color: 'accent-600' } }
       : deepNest(depth, current + 1);
   return {
     type: current % 2 === 0 ? 'Column' : 'Row',

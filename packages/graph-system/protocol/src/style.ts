@@ -122,7 +122,7 @@ export type CardShape = 'note' | 'square' | 'round' | 'triangle' | 'diamond' | '
 export interface NodeStyle {
   /** Radius in world units, or the box's half-height for non-circular shapes. */
   size?: StyleValue<number>;
-  /** Design token (`primary-500`) or CSS colour. Tokens resolve against the live theme. */
+  /** Design token (`accent-500`) or CSS colour. Tokens resolve against the live theme. */
   color?: StyleValue<string>;
   borderColor?: string;
   borderWidth?: number;

@@ -10,7 +10,7 @@ knowing about the other.
   "polarity": "dark",
   "lightnessFloor": "12%",
   "lightnessCeiling": "112%",
-  "primaryHue": 263,
+  "accentHue": 263,
   "saturation": 81,
   "neutralSaturation": 32,
   "accentLightness": 53,
@@ -57,7 +57,7 @@ Five rungs, in descending order of how much a pin survives:
 | unset                                                 | everything                            | most roles, most of the time         |
 | `var(--we-role-page)`                                 | whatever that role follows            | "this theme has no elevation"        |
 | `oklch(from var(--we-role-page) calc(l + 0.045) c h)` | the role it names, in both polarities | "one step above the page"            |
-| `var(--we-color-primary-700)`                         | the parameters, but not the decisions | a palette, not a meaning — see below |
+| `var(--we-color-accent-700)`                          | the parameters, but not the decisions | a palette, not a meaning — see below |
 | `oklch(53% 0.18 266)`                                 | nothing                               | a brand colour that must not move    |
 
 Prefer the highest rung that expresses the intent. A literal is the only form that stops following
@@ -109,7 +109,7 @@ as one side, and add a `light` or `dark` block holding only what differs on the 
 
 ```ts
 {
-  polarity: 'dark', primaryHue: 160, lightnessFloor: '16%', lightnessCeiling: '104%',
+  polarity: 'dark', accentHue: 160, lightnessFloor: '16%', lightnessCeiling: '104%',
   roles: { page: 'oklch(18.5% 0.04 278)', accent: 'oklch(85% 0.12 160)' },
   light: { polarity: 'light', lightnessFloor: '0%', lightnessCeiling: '100%', roles: { page: 'oklch(98% 0.01 278)' } },
 }

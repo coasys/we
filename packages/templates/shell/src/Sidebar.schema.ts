@@ -81,7 +81,7 @@ const rail: SchemaNode = railShell({
           cursor: 'pointer',
           onClick: { $action: 'shellStore.openShellView', args: ['landing-page'] },
         },
-        children: [brandMark({ width: '38px', height: '38px', gradient: 'var(--we-gradient-primary)' })],
+        children: [brandMark({ width: '38px', height: '38px', gradient: 'var(--we-gradient-accent)' })],
       },
     ],
   },

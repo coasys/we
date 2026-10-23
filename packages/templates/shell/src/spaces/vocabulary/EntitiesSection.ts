@@ -513,9 +513,9 @@ const propertyRow: SchemaNode = {
  */
 const relationshipRow: SchemaNode = {
   type: 'Row',
-  // A tint is fine where a fill is not: primary-50 is a different step from the neutral-50 that
+  // A tint is fine where a fill is not: accent-50 is a different step from the neutral-50 that
   // `we-input` paints itself, so the fields still read as recessed against it.
-  props: { gap: '200', p: '300', bg: 'accent-muted', r: '300', border: '1px solid accent-muted', ay: 'start' },
+  props: { gap: '200', p: '300', bg: 'accent-soft', r: '300', border: '1px solid accent-soft', ay: 'start' },
   children: [
     dragHandle,
     {

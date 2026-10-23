@@ -841,7 +841,7 @@ function tabStrip(id: string): SchemaNode {
                     eye finds it. A token duration, so a theme's animation speed and a reduced-motion
                     setting still decide.
 
-                    The accent fill itself rather than `accent-muted`: muted is
+                    The accent fill itself rather than `accent-soft`: muted is
                     a tint toward the ground, so in a dark theme it came out darker than the resting
                     tab's `control-surface` — a flash that dimmed the thing it was pointing at. The name
                     keeps its own colour throughout — see the text, below.
@@ -1288,7 +1288,7 @@ function dragGhost(id: string): SchemaNode {
           zIndex: 'chrome',
           r: '500',
           border: '2px solid accent',
-          bg: 'accent-muted',
+          bg: 'accent-soft',
           opacity: 0.7,
           // No shadow: this is an outline of where a panel would go, not a panel. A shadow would
           // make it read as one — and `chromeLayering.test.ts` picks the frame's own box out of this
@@ -1355,8 +1355,8 @@ function snapTargets(id: string): SchemaNode {
                 than none, since the rule it is teaching looks intermittent.
               */
               zIndex: 'chrome',
-              border: { $: `${SNAP_IS_ACTIVE} ? '2px solid primary-500' : '2px dashed neutral-300'` },
-              bg: { $: `${SNAP_IS_ACTIVE} ? 'accent-muted' : 'transparent'` },
+              border: { $: `${SNAP_IS_ACTIVE} ? '2px solid accent-500' : '2px dashed neutral-300'` },
+              bg: { $: `${SNAP_IS_ACTIVE} ? 'accent-soft' : 'transparent'` },
               opacity: { $: `${SNAP_IS_ACTIVE} ? 0.9 : 0.5` },
             },
           },

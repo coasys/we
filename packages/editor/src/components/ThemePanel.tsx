@@ -14,6 +14,7 @@ import {
 import { PANEL_TITLE_PROPS, SECTION_LABEL_PROPS } from '@we/schema-kit';
 import type { ThemeOverrides, ThemeRole } from '@we/schema-shared';
 import { applyThemeVars, roleVar, surfacesForPolarity, themeParametersToStyle } from '@we/schema-shared';
+import { RAMP_FAMILIES } from '@we/tokens';
 import type { JSX } from 'solid-js';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
@@ -246,7 +247,7 @@ const ROLE_GROUPS: { label: string; hint: string; roles: { role: ThemeRole; labe
         hint: 'The accent used AS text — a coloured heading or icon on an ordinary surface, where the fill colour is often too light to read.',
       },
       {
-        role: 'accentMuted',
+        role: 'accentSoft',
         label: 'Accent tint',
         hint: 'An accent-tinted fill — a selected row, a subtle highlight.',
       },
@@ -269,11 +270,11 @@ const ROLE_GROUPS: { label: string; hint: string; roles: { role: ThemeRole; labe
     hint: 'Each status has a foreground and a tint. The foreground is the message; the tint is the panel behind it.',
     roles: [
       { role: 'dangerText', label: 'Danger', hint: 'Error text, a destructive icon, a failed state.' },
-      { role: 'dangerSurface', label: 'Danger tint', hint: 'The panel behind danger content.' },
+      { role: 'dangerSoft', label: 'Danger tint', hint: 'The panel behind danger content.' },
       { role: 'successText', label: 'Success', hint: 'A confirmation, a connected tick.' },
-      { role: 'successSurface', label: 'Success tint', hint: 'The panel behind success content.' },
+      { role: 'successSoft', label: 'Success tint', hint: 'The panel behind success content.' },
       { role: 'warningText', label: 'Warning', hint: 'A caution, something needing attention.' },
-      { role: 'warningSurface', label: 'Warning tint', hint: 'The panel behind warning content.' },
+      { role: 'warningSoft', label: 'Warning tint', hint: 'The panel behind warning content.' },
     ],
   },
   {
@@ -301,7 +302,7 @@ const ROLE_GROUPS: { label: string; hint: string; roles: { role: ThemeRole; labe
  * This is the check nothing was doing: you could pin `text` to the same colour as `surface` and the
  * editor would smile at you. It is possible here *only* because the roles name their pairings —
  * `onAccent` is defined as the thing that sits on `accent`, `dangerText` as the message on
- * `dangerSurface` — so the foreground and the background of each test are known rather than guessed
+ * `dangerSoft` — so the foreground and the background of each test are known rather than guessed
  * at by walking the DOM.
  *
  * `ui` pairs are the 3:1 ones: a border or a focus ring is not text, and holding it to 4.5 would
@@ -332,12 +333,12 @@ const CONTRAST_PAIRS: { fg: ThemeRole; bg: ThemeRole; level: ContrastLevel; what
   { fg: 'onAccent', bg: 'accent', level: 'body', what: 'Label on a primary button' },
   { fg: 'onAccent', bg: 'accentHover', level: 'body', what: 'Label on a hovered primary button' },
   { fg: 'accentText', bg: 'surface', level: 'body', what: 'Accent text on a card' },
-  { fg: 'accentText', bg: 'accentMuted', level: 'body', what: 'Accent text on its own tint' },
+  { fg: 'accentText', bg: 'accentSoft', level: 'body', what: 'Accent text on its own tint' },
   { fg: 'onInverse', bg: 'surfaceInverse', level: 'body', what: 'Tooltip text' },
-  { fg: 'dangerText', bg: 'dangerSurface', level: 'body', what: 'Danger text on its tint' },
+  { fg: 'dangerText', bg: 'dangerSoft', level: 'body', what: 'Danger text on its tint' },
   { fg: 'dangerText', bg: 'surface', level: 'body', what: 'Danger text on a card' },
-  { fg: 'successText', bg: 'successSurface', level: 'body', what: 'Success text on its tint' },
-  { fg: 'warningText', bg: 'warningSurface', level: 'body', what: 'Warning text on its tint' },
+  { fg: 'successText', bg: 'successSoft', level: 'body', what: 'Success text on its tint' },
+  { fg: 'warningText', bg: 'warningSoft', level: 'body', what: 'Warning text on its tint' },
   { fg: 'border', bg: 'surface', level: 'ui', what: 'A border against a card' },
   { fg: 'focus', bg: 'page', level: 'ui', what: 'The focus ring on the page' },
 ];
@@ -875,7 +876,7 @@ export function ThemePanel() {
     setRoleColors(next);
 
     const ceilings: Record<string, string> = {};
-    for (const family of ['neutral', 'primary', 'danger', 'success', 'warning']) {
+    for (const family of RAMP_FAMILIES) {
       for (const suffix of ['chroma-max', 'fill-chroma-max']) {
         const prop = `--we-color-${family}-${suffix}`;
         const value = roleProbe.style.getPropertyValue(prop);
@@ -1061,7 +1062,7 @@ export function ThemePanel() {
     /*
       Real badges, in both appearances — not hand-drawn chips.
 
-      These were five `Column`s painting `danger-surface` on `danger-text` and so on, which is a
+      These were five `Column`s painting `danger-soft` on `danger-text` and so on, which is a
       copy of `we-badge`'s own soft table in another package. Two things were wrong with that. It
       could drift from the component it was standing in for, which is the failure this repo keeps
       finding; and because every chip was a *tint*, the preview showed no fill anywhere — so the
@@ -1585,7 +1586,7 @@ export function ThemePanel() {
                   beside an "Accent" group made the two read as a matched pair of colours when one
                   is the source of the other, and it is the first thing anyone asks about.
                 */}
-                {hueSlider('Brand', 'primaryHue', 220)}
+                {hueSlider('Brand', 'accentHue', 220)}
                 {hueSlider('Success', 'successHue', 142)}
                 {hueSlider('Warning', 'warningHue', 38)}
                 {hueSlider('Danger', 'dangerHue', 4)}

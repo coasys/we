@@ -20,10 +20,10 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 
 const VARIANT_DEFAULTS: Record<ComponentVariant, Partial<DesignSystemProps>> = {
   neutral: { bg: 'surface-sunken', color: 'text' },
-  primary: { bg: 'accent-muted', color: 'accent-text' },
-  success: { bg: 'success-surface', color: 'success-text' },
-  warning: { bg: 'warning-surface', color: 'warning-text' },
-  danger: { bg: 'danger-surface', color: 'danger-text' },
+  primary: { bg: 'accent-soft', color: 'accent-text' },
+  success: { bg: 'success-soft', color: 'success-text' },
+  warning: { bg: 'warning-soft', color: 'warning-text' },
+  danger: { bg: 'danger-soft', color: 'danger-text' },
 };
 
 const styles = css`

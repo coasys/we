@@ -5,7 +5,7 @@ import type { Content } from '../types.ts';
 /** Tone decides the icon, the colour it is drawn in, and the confirm button's variant, together. */
 const TONES = {
   danger: { icon: 'warning', color: 'danger-text', variant: 'danger' },
-  primary: { icon: 'question', color: 'accent-text', variant: 'primary' },
+  accent: { icon: 'question', color: 'accent-text', variant: 'primary' },
 } as const;
 
 export interface ConfirmModalOptions {

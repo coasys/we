@@ -334,7 +334,7 @@ const templatesSection: SchemaNode = {
                 ay: 'center',
                 p: '300',
                 r: '200',
-                bg: { $: "template.isDefault ? 'accent-muted' : 'transparent'" },
+                bg: { $: "template.isDefault ? 'accent-soft' : 'transparent'" },
               },
               children: [
                 // Template icon + name
@@ -762,7 +762,7 @@ const themesSection: SchemaNode = {
             {
               // The fill is the block's, so the light-or-dark row under a theme sits inside its highlight.
               type: 'Column',
-              props: { r: '200', bg: { $: "theme.isDefault ? 'accent-muted' : 'transparent'" } },
+              props: { r: '200', bg: { $: "theme.isDefault ? 'accent-soft' : 'transparent'" } },
               children: [
                 {
                   type: 'Row',

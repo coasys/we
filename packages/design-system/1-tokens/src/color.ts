@@ -7,11 +7,17 @@
 export type Percentage = `${string}%`;
 export type HexColor = `#${string}`;
 
-// Literal union types
-export type ColorHueToken = 'neutral' | 'primary' | 'success' | 'warning' | 'danger';
+import { CHROMATIC_FAMILIES, type ChromaticFamily, COLOR_FAMILIES } from './families.js';
 
-/** Semantic variant scale used by component variant props — maps 1:1 to color hues */
-export type ComponentVariant = ColorHueToken;
+// Literal union types
+/** Every colour family with a ramp: neutral, the semantic families and the palette. See families.ts. */
+export type ColorHueToken = 'neutral' | ChromaticFamily;
+
+/**
+ * The colour families a component's colour prop takes, until `tone` replaces it. `primary` here is
+ * the accent; the component maps it.
+ */
+export type ComponentVariant = 'neutral' | 'primary' | 'success' | 'warning' | 'danger';
 export type ColorBaseToken = 'white' | 'black';
 export type ColorConfigToken = 'polarity' | 'lightnessFloor' | 'lightnessCeiling' | 'saturation' | 'neutralSaturation';
 export type ColorLightnessToken =
@@ -105,12 +111,9 @@ export const RAMP = {
  * Absolute, so they do not move with polarity — which is what makes a brand colour a brand colour.
  * `saturation` still scales their chroma, so a theme turning itself down turns its fills down too.
  */
-export const FILL_LIGHTNESS = {
-  primary: 0.55,
-  danger: 0.62,
-  success: 0.75,
-  warning: 0.76,
-} as const;
+export const FILL_LIGHTNESS = Object.fromEntries(
+  CHROMATIC_FAMILIES.map((family) => [family, COLOR_FAMILIES[family].fill]),
+) as Record<ChromaticFamily, number>;
 
 export const STATE_STEPS = {
   light: { hover: -0.05, active: -0.09 },
@@ -131,11 +134,15 @@ export const STATE_STEPS = {
  */
 export const colorHues = {
   neutral: 288,
-  primary: 288,
-  success: 145,
-  warning: 90,
-  danger: 17,
-} satisfies Record<ColorHueToken, number>;
+  ...Object.fromEntries(CHROMATIC_FAMILIES.map((family) => [family, COLOR_FAMILIES[family].hue])),
+} as Record<ColorHueToken, number>;
+
+/**
+ * Every family with a ramp — neutral, the semantic families and the palette — in registry order.
+ * The list anything spelling out "which families have scale positions" reads, so a family added to
+ * the registry reaches the colour picker, the validator and the role audit without anyone listing it.
+ */
+export const RAMP_FAMILIES = Object.keys(colorHues) as ColorHueToken[];
 
 /**
  * Lightness scale from 0-1000, in OKLCH lightness.
@@ -257,12 +264,19 @@ function generateColorScale(hue: number, saturation: number): Record<ColorLightn
   );
 }
 
-// Generate concrete color scales using the hue and saturation values
-export const colorNeutral = generateColorScale(colorHues.neutral, colorConfig.neutralSaturation);
-export const colorPrimary = generateColorScale(colorHues.primary, colorConfig.saturation);
-export const colorSuccess = generateColorScale(colorHues.success, colorConfig.saturation);
-export const colorWarning = generateColorScale(colorHues.warning, colorConfig.saturation);
-export const colorDanger = generateColorScale(colorHues.danger, colorConfig.saturation);
+/**
+ * Every family's ramp, at the default configuration. Neutral takes its own saturation; every other
+ * family the shared one — a theme's per-family saturation is applied in CSS, not here.
+ */
+const colorScales = Object.fromEntries(
+  (Object.keys(colorHues) as ColorHueToken[]).map((family) => [
+    family,
+    generateColorScale(
+      colorHues[family],
+      family === 'neutral' ? colorConfig.neutralSaturation : colorConfig.saturation,
+    ),
+  ]),
+) as Record<ColorHueToken, Record<ColorLightnessToken, string>>;
 
 /**
  * Complete color token object that combines all color categories.
@@ -273,11 +287,7 @@ export const color = {
   hues: colorHues,
   lightness: colorLightness,
   base: colorBase,
-  neutral: colorNeutral,
-  primary: colorPrimary,
-  success: colorSuccess,
-  warning: colorWarning,
-  danger: colorDanger,
+  ...colorScales,
 };
 
 /**
@@ -323,21 +333,16 @@ export const color = {
  * to the page", which is what an absent peer should look like, and unlike `borderStrong` it comes
  * with a label a glyph can use.
  */
-export type AvatarTone = 'success' | 'warning' | 'danger' | 'primary' | 'neutral';
+export type AvatarTone = 'success' | 'warning' | 'danger' | 'accent' | 'neutral';
 
-export const AVATAR_TONES = ['success', 'warning', 'danger', 'primary', 'neutral'] as const;
+export const AVATAR_TONES = ['success', 'warning', 'danger', 'accent', 'neutral'] as const;
 
-/**
- * The fill each tone paints, and the label that sits on it — kebab-case, as both grammars spell it.
- *
- * `primary` maps to `accent` because that is what the *role* is called: the parameter names the
- * role, not the hue family it is built from. The same rename `FILL_LIGHTNESS_KEY` makes.
- */
+/** The fill each tone paints, and the label that sits on it — kebab-case, as both grammars spell it. */
 export const AVATAR_TONE_ROLES = {
   success: { fill: 'success', label: 'on-success' },
   warning: { fill: 'warning', label: 'on-warning' },
   danger: { fill: 'danger', label: 'on-danger' },
-  primary: { fill: 'accent', label: 'on-accent' },
+  accent: { fill: 'accent', label: 'on-accent' },
   neutral: { fill: 'surface-inverse', label: 'on-inverse' },
 } as const satisfies Record<AvatarTone, { fill: string; label: string }>;
 

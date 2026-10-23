@@ -12,6 +12,7 @@ import {
   replaceNodeInTree,
 } from '@we/schema-shared';
 import { useVisualEditor } from '@we/schema-solid';
+import { RAMP_FAMILIES } from '@we/tokens';
 import type { JSX } from 'solid-js';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
@@ -116,7 +117,7 @@ const COLOR_PROP_KEYS = new Set(['bg', 'color', 'borderColor']);
 // instead of ColorSwatchPicker.
 const RING_DEFAULT_WIDTH_PX = 2;
 const RING_DEFAULT_BLUR_PX = 0;
-const RING_DEFAULT_COLOR = 'primary-500';
+const RING_DEFAULT_COLOR = 'accent-500';
 // Sentinel color value meaning "follow the active theme's ring color" — writes
 // var(--we-ring-color) directly instead of a hardcoded token, so it stays in sync
 // if the theme's accent color changes later.
@@ -150,7 +151,8 @@ const TEXT_CONTENT_TYPES = new Set([
   'blockquote',
 ]);
 
-const COLOR_HUES = ['neutral', 'primary', 'success', 'warning', 'danger'] as const;
+// Every family with a ramp, from the family registry.
+const COLOR_HUES = RAMP_FAMILIES;
 
 /**
  * The roles this picker offers, and the reason it leads with them.
@@ -171,11 +173,11 @@ function isRole(value: string): boolean {
 const COLOR_ROLES: { group: string; roles: string[] }[] = [
   { group: 'Surfaces', roles: ['chrome', 'page', 'surface', 'surface-raised', 'surface-sunken', 'surface-inverse'] },
   { group: 'Text', roles: ['text', 'text-muted', 'text-faint', 'on-inverse'] },
-  { group: 'Accent', roles: ['accent', 'accent-text', 'on-accent', 'accent-muted'] },
+  { group: 'Accent', roles: ['accent', 'accent-text', 'on-accent', 'accent-soft'] },
   { group: 'Lines', roles: ['border', 'border-strong'] },
   {
     group: 'Status',
-    roles: ['danger-text', 'danger-surface', 'success-text', 'success-surface', 'warning-text', 'warning-surface'],
+    roles: ['danger-text', 'danger-soft', 'success-text', 'success-soft', 'warning-text', 'warning-soft'],
   },
 ];
 const COLOR_SHADES = ['0', '25', '50', '75', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'];
@@ -285,7 +287,7 @@ function TreeNode(props: TreeNodeProps) {
           cursor: 'pointer',
           'flex-shrink': '0',
           background: isSelected()
-            ? 'var(--we-role-accent-muted)'
+            ? 'var(--we-role-accent-soft)'
             : isHovered()
               ? 'var(--we-role-surface-hover)'
               : 'transparent',
@@ -1273,7 +1275,7 @@ function ColorSwatchPicker(props: { value: string; onChange: (v: string) => void
                           width: '20px',
                           height: '20px',
                           background: `var(--we-color-${v})`,
-                          'box-shadow': `0 0 0 1px var(--we-color-primary-${hovered() === v ? 600 : 300})`,
+                          'box-shadow': `0 0 0 1px var(--we-color-accent-${hovered() === v ? 600 : 300})`,
                           'border-radius': '3px',
                           cursor: 'pointer',
                           padding: '0',
@@ -1307,7 +1309,7 @@ function ColorSwatchPicker(props: { value: string; onChange: (v: string) => void
                                   width: '20px',
                                   height: '20px',
                                   background: `var(--we-color-${v})`,
-                                  'box-shadow': `0 0 0 1px var(--we-color-primary-${hovered() === v ? 600 : 300})`,
+                                  'box-shadow': `0 0 0 1px var(--we-color-accent-${hovered() === v ? 600 : 300})`,
                                   'border-radius': '3px',
                                   cursor: 'pointer',
                                   padding: '0',
@@ -1528,7 +1530,7 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
                       cursor: 'pointer',
                       padding: '4px 6px',
                       'border-radius': '4px',
-                      background: color() === RING_THEME_ACCENT ? 'var(--we-role-accent-muted)' : 'transparent',
+                      background: color() === RING_THEME_ACCENT ? 'var(--we-role-accent-soft)' : 'transparent',
                     }}
                   >
                     <div
@@ -1914,7 +1916,7 @@ function BgImagePicker(props: {
 // -----------------------------------------------------------------------
 
 const BOX_MARGIN = {
-  bg: 'var(--we-role-warning-surface)',
+  bg: 'var(--we-role-warning-soft)',
   border: 'var(--we-role-warning-text)',
   label: 'var(--we-role-warning-text)',
   value: 'var(--we-role-warning-text)',
@@ -1922,7 +1924,7 @@ const BOX_MARGIN = {
 };
 
 const BOX_PADDING = {
-  bg: 'var(--we-role-success-surface)',
+  bg: 'var(--we-role-success-soft)',
   border: 'var(--we-role-success-text)',
   label: 'var(--we-role-success-text)',
   value: 'var(--we-role-success-text)',
@@ -1930,7 +1932,7 @@ const BOX_PADDING = {
 };
 
 const BOX_ELEMENT = {
-  bg: 'var(--we-role-accent-muted)',
+  bg: 'var(--we-role-accent-soft)',
   border: 'var(--we-role-accent)',
   text: 'var(--we-role-accent-text)',
 };

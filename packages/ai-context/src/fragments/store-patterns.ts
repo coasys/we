@@ -251,7 +251,7 @@ Example: add "highlighted": true to one item's data, then use $if on the flag in
 { "type": "$if", "props": { "condition": { "$": "post.highlighted" }, "then": { "type": "we-badge", "props": { "variant": "primary" }, "children": ["Featured"] } } }
 For a conditional PROP, use a ternary in an expression — NOT a prop-level $if, which is a node type
 and resolves to a handler in a value position:
-{ "bg": { "$": "post.highlighted ? 'accent-muted' : 'surface'" } }
+{ "bg": { "$": "post.highlighted ? 'accent-soft' : 'surface'" } }
 
 Boolean toggle (show/hide, expand/collapse):
 {

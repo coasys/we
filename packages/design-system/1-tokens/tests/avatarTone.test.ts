@@ -58,7 +58,7 @@ describe('avatar tones', () => {
     // The ring used to be a box-shadow built here and painted outside the face; it is `we-avatar`'s
     // own now, drawn inside, so the token layer only answers what colour a tone is.
     expect(avatarToneColor('success')).toBe('var(--we-role-success)');
-    expect(avatarToneColor('primary')).toBe('var(--we-role-accent)');
+    expect(avatarToneColor('accent')).toBe('var(--we-role-accent)');
   });
 
   it('return the label as a role name, not a var()', () => {

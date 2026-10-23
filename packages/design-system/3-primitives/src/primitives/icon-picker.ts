@@ -210,7 +210,7 @@ const styles = css`
   }
 
   [part='tab'][aria-selected='true'] {
-    background: var(--we-role-accent-muted);
+    background: var(--we-role-accent-soft);
     color: var(--we-role-accent-text);
   }
 
@@ -266,7 +266,7 @@ const styles = css`
   }
 
   [part='icon-btn'][aria-selected='true'] {
-    background: var(--we-role-accent-muted);
+    background: var(--we-role-accent-soft);
     border-color: var(--we-role-accent);
   }
 
@@ -326,7 +326,7 @@ const styles = css`
   }
 
   [part='emoji-btn'][aria-selected='true'] {
-    background: var(--we-role-accent-muted);
+    background: var(--we-role-accent-soft);
     border-color: var(--we-role-accent);
   }
 

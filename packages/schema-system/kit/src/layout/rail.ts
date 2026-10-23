@@ -413,14 +413,14 @@ export function railItem(opts: RailItemOptions): SchemaNode {
       ...(opts.disabled !== undefined && { disabled: opts.disabled }),
       ...(opts.onClick !== undefined && { onClick: opts.onClick }),
       /*
-        Roles, not steps. `accent-muted` is the role for a selected row and `accent-text` the accent
+        Roles, not steps. `accent-soft` is the role for a selected row and `accent-text` the accent
         used as a foreground; the steps these replace could not follow a theme's decision about
         either, and a rail is the most-looked-at chrome in the app.
 
-        `accent-muted` is a small chroma shift from the `neutral-100` it replaces rather than a
+        `accent-soft` is a small chroma shift from the `neutral-100` it replaces rather than a
         redesign — same lightness, the theme's primary saturation instead of its neutral one.
       */
-      bg: expr`${active} ? 'accent-muted' : ''`,
+      bg: expr`${active} ? 'accent-soft' : ''`,
       color: expr`${active} ? 'accent-text' : 'text-muted'`,
       /*
         The current row deepens on hover rather than losing its colour.

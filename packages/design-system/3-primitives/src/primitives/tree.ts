@@ -49,7 +49,7 @@ const ITEM_STYLES = css`
     color: var(--we-role-text);
   }
   :host([selected]) [part='row'] {
-    background: var(--we-role-accent-muted);
+    background: var(--we-role-accent-soft);
     color: var(--we-role-text);
   }
   [part='row']:focus-visible {

@@ -34,7 +34,7 @@ const accountRow: SchemaNode = {
                 image: { $: 'account.avatar' },
                 initials: { $: 'account.name' },
                 size: 'sm',
-                bg: 'accent-muted',
+                bg: 'accent-soft',
               },
             },
             { type: 'we-text', props: { variant: 'label' }, children: [{ $: 'account.name' }] },

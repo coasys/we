@@ -79,7 +79,7 @@ describe('paintedRoles', () => {
 describe('borderColorOf', () => {
   it('takes the colour out of a shorthand', () => {
     expect(borderColorOf({ border: '1px solid border' })).toBe('border');
-    expect(borderColorOf({ border: '2px dashed accent-muted' })).toBe('accent-muted');
+    expect(borderColorOf({ border: '2px dashed accent-soft' })).toBe('accent-soft');
   });
 
   it('prefers an explicit borderColor over the shorthand', () => {

@@ -3547,7 +3547,7 @@ const canvas: SchemaNode = {
         /*
           Plain, and a role rather than a scale position.
 
-          `primary-50` is a step on a ramp, and the ramp flips with the theme's polarity: the pale
+          `accent-50` is a step on a ramp, and the ramp flips with the theme's polarity: the pale
           tint it names in a light theme is a near-black in a dark one, and there is no number that
           is right in both. A role is the thing a theme redefines, and the tinted panels the key
           draws with are the ones the design system already maintains for exactly this — legible in
@@ -4381,7 +4381,7 @@ function callGate(icon: string, message: string, action?: SchemaNode): SchemaNod
     children: [
       {
         type: 'we-icon',
-        props: { name: icon, size: 'xl', gradient: 'primary' },
+        props: { name: icon, size: 'xl', gradient: 'accent' },
       },
       {
         type: 'we-text',
@@ -5468,9 +5468,9 @@ const calendarRoute: RouteSchema = {
                                 overflow: 'hidden',
                                 // A tint and an outline rather than a fill: with titles in the cell, a solid
                                 // fill wins every contrast fight against its own contents.
-                                bg: { $: "cell.date == local.day ? 'accent-muted' : cell.inMonth ? '' : 'page'" },
+                                bg: { $: "cell.date == local.day ? 'accent-soft' : cell.inMonth ? '' : 'page'" },
                                 border: { $: "cell.date == local.day ? '1px solid accent' : '1px solid transparent'" },
-                                hoverProps: { bg: { $: "cell.date == local.day ? 'accent-muted' : 'surface-hover'" } },
+                                hoverProps: { bg: { $: "cell.date == local.day ? 'accent-soft' : 'surface-hover'" } },
                                 // Pressing the selected day again releases it — the first thing anyone tries.
                                 // Inside the handler so it reads the state at click time, not at paint.
                                 onClick: [
@@ -5536,7 +5536,7 @@ const calendarRoute: RouteSchema = {
                                         text: { $: `(mark.id in ${CHANGED} ? '✎ ' : '') + mark.title` },
                                         // Faded for the neighbouring months, so a busy 1st of next month
                                         // does not read as part of the month being looked at.
-                                        bg: { $: "cell.inMonth ? 'accent-muted' : 'surface-sunken'" },
+                                        bg: { $: "cell.inMonth ? 'accent-soft' : 'surface-sunken'" },
                                         color: { $: "cell.inMonth ? 'accent-text' : 'text-muted'" },
                                         border: {
                                           $: `(${UNCONFIRMED_EVENT('mark')}) ? '1px dashed accent-text' : '1px solid transparent'`,

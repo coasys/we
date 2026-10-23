@@ -93,7 +93,7 @@ const neutral = (lightness: number) => {
  * default uses.
  */
 const fill = (lightness: number, chromaFactor: number) =>
-  `oklch(calc(var(--we-accent-lightness, ${lightness}) * 1%) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-fill-chroma-max, 0.2663) * ${chromaFactor}) var(--we-color-primary-hue))`;
+  `oklch(calc(var(--we-accent-lightness, ${lightness}) * 1%) calc(var(--we-color-saturation) / 100 * var(--we-color-accent-fill-chroma-max, 0.2663) * ${chromaFactor}) var(--we-color-accent-hue))`;
 
 export const THEME_PRESETS = {
   light: {
@@ -231,7 +231,7 @@ export const THEME_PRESETS = {
     icon: 'floppy-disk',
     parameters: {
       schemaVersion: THEME_SCHEMA_VERSION,
-      primaryHue: 271,
+      accentHue: 271,
       polarity: 'light',
       lightnessFloor: '0%',
       lightnessCeiling: '100%',
@@ -308,7 +308,7 @@ export const THEME_PRESETS = {
     name: 'Channels',
     icon: 'hash',
     parameters: {
-      primaryHue: 266,
+      accentHue: 266,
       neutralHue: 266,
       saturation: 100,
       neutralSaturation: 10,
@@ -377,7 +377,7 @@ export const THEME_PRESETS = {
     name: 'Timeline',
     icon: 'list-dashes',
     parameters: {
-      primaryHue: 245,
+      accentHue: 245,
       neutralHue: 255,
       saturation: 100,
       neutralSaturation: 15,

@@ -8,6 +8,7 @@ import type { breakpoint as breakpointTokens } from '../src/breakpoint.js';
 import type { color as colorTokens } from '../src/color.js';
 import { CHROMA_CEILING, RAMP, STATE_STEPS } from '../src/color.js';
 import type { component as componentTokens } from '../src/component.js';
+import { CHROMATIC_FAMILIES, familySaturationVar } from '../src/families.js';
 import type { font as fontTokens } from '../src/font.js';
 import type { layout as layoutTokens } from '../src/layout.js';
 import { role as roleTokens, ROLE_ALIASES, ROLE_RELATIVE_FALLBACK } from '../src/role.js';
@@ -192,8 +193,8 @@ ${vars}
 export function generateColorCSS(color: typeof colorTokens) {
   const hueVars = Object.entries(color.hues)
     .map(([key, value]) => {
-      // neutral-hue inherits from primary-hue by default so neutral surfaces tint to match the primary color
-      if (key === 'neutral') return `  --we-color-${key}-hue: var(--we-color-primary-hue);`;
+      // The neutral hue follows the accent's by default, so the greys tint to match it.
+      if (key === 'neutral') return `  --we-color-${key}-hue: var(--we-color-accent-hue);`;
       return `  --we-color-${key}-hue: ${value};`;
     })
     .join('\n');
@@ -214,13 +215,15 @@ export function generateColorCSS(color: typeof colorTokens) {
     )
     .join('\n');
 
-  const colorTypes = ['neutral', 'primary', 'success', 'warning', 'danger'];
+  // Every family in the registry gets a ramp. Neutral takes its own saturation; every other family
+  // its own saturation variable, which falls back to the theme's (see THEME_DERIVED_VARIABLES).
+  const colorTypes = Object.keys(color.hues);
   const colorPalettes = colorTypes
     .map((type) => {
       const paletteVars = Object.keys(color.lightness)
         .map((lightnessKey) => {
           const saturationVar =
-            type === 'neutral' ? 'var(--we-color-neutral-saturation)' : 'var(--we-color-saturation)';
+            type === 'neutral' ? 'var(--we-color-neutral-saturation)' : `var(--we-color-${type}-saturation)`;
           /*
             The taper is computed in CSS, from the lightness this step actually renders at.
 
@@ -273,6 +276,7 @@ ${paletteVars}`;
   --we-state-active: ${STATE_STEPS[color.config.polarity].active};
   --we-color-saturation: ${color.config.saturation};
   --we-color-neutral-saturation: ${color.config.neutralSaturation};
+${CHROMATIC_FAMILIES.map((family) => `  ${familySaturationVar(family)}: ${THEME_DERIVED_VARIABLES[familySaturationVar(family)]};`).join('\n')}
 
   /* Color Hues */
 ${hueVars}
@@ -299,7 +303,7 @@ ${aliasVars(['--we-color-focus'])}
 ${aliasVars(['--we-focus-outline'])}
 
   /* Gradient */
-  --we-gradient-primary: linear-gradient(135deg, oklch(var(--we-color-lightness-500) ${GRADIENT_CHROMA} calc(var(--we-color-primary-hue) - 25)) 0%, oklch(var(--we-color-lightness-500) ${GRADIENT_CHROMA} calc(var(--we-color-primary-hue) + 25)) 100%);
+  --we-gradient-accent: linear-gradient(135deg, oklch(var(--we-color-lightness-500) ${GRADIENT_CHROMA} calc(var(--we-color-accent-hue) - 25)) 0%, oklch(var(--we-color-lightness-500) ${GRADIENT_CHROMA} calc(var(--we-color-accent-hue) + 25)) 100%);
 }
 
 @supports not (color: oklch(from red calc(l + 0.1) c h)) {

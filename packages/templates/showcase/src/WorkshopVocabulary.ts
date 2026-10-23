@@ -126,7 +126,7 @@ export const vocabularyCanvas: SchemaNode = {
           what is in them a tint of it, and a card's properties the quietest.
         */
         nodeStyle: [
-          { style: { shape: 'card', width: 180, height: 64, color: 'accent-muted' } },
+          { style: { shape: 'card', width: 180, height: 64, color: 'accent-soft' } },
           { when: { kind: 'cluster', type: 'vocabulary' }, style: { color: 'accent', height: 56 } },
           { when: { 'data.final': true }, style: { borderColor: 'accent-text', borderWidth: 2 } },
           { when: { kind: 'property' }, style: { color: 'control-surface', height: 44, content: 'property' } },

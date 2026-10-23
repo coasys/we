@@ -3557,7 +3557,7 @@ export const captureStatus: SchemaNode = {
  * been written — several seconds during which a panel showing saved lines alone looks exactly like
  * a panel that has stopped listening. This is that gap, said out loud.
  *
- * `accent-muted` rather than the feed's `surface-sunken`, and labelled: it is deliberately not one
+ * `accent-soft` rather than the feed's `surface-sunken`, and labelled: it is deliberately not one
  * of the transcript's rows. What it holds is provisional — the model has not seen it, so the words
  * can change before they land — and a block that looked like the others would be quietly asserting
  * otherwise.
@@ -3599,7 +3599,7 @@ export const pendingUtterance: SchemaNode = {
     condition: { $: `modules.transcribe.pending && (${VIEWING_LIVE_EXPR})` },
     then: {
       type: 'Column',
-      props: { bg: 'accent-muted', r: '300', p: '300', gap: '200' },
+      props: { bg: 'accent-soft', r: '300', p: '300', gap: '200' },
       children: [
         {
           type: 'Row',

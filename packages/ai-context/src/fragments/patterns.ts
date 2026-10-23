@@ -163,7 +163,7 @@ Cancel, and the action's \`onSuccess\`.
   (\`{ $: 'shapeStore.confirmDiscard' }\`) or on a string id works the same way.
 - \`cancel\` for a cancel button that does more than close — "Keep editing" dismisses the question
   and leaves the wizard behind it open.
-- \`tone: 'primary'\` for a question with no casualty; the default \`danger\` picks a warning icon and
+- \`tone: 'accent'\` for a question with no casualty; the default \`danger\` picks a warning icon and
   a danger confirm button.
 - \`detail\` for a quieter second line, \`children\` for a \`we-alert\` naming a surprising consequence.
 - \`busyLocal\` if the action is not instant — a write that walks a board or a thread takes a while, and

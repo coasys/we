@@ -983,7 +983,7 @@ function waitingLine(waiting: string, as: string): SchemaNode {
     children: [
       {
         type: 'Row',
-        props: { gap: '200', ay: 'center', wrap: true, bg: 'warning-surface', r: 'control', px: '200', py: '100' },
+        props: { gap: '200', ay: 'center', wrap: true, bg: 'warning-soft', r: 'control', px: '200', py: '100' },
         children: [
           { type: 'we-icon', props: { name: 'hourglass', size: 'xs', color: 'warning-text' } },
           {

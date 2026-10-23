@@ -11,12 +11,16 @@ import {
   type Rgba,
   rgbToOklch,
 } from '@we/design-utils';
-import type { ColorHueToken, ColorLightnessToken } from '@we/tokens';
+import type { ChromaticFamily, ColorHueToken, ColorLightnessToken, PaletteHue } from '@we/tokens';
 import {
+  capitalise,
   CHROMA_CEILING,
   CHROMA_PER_SATURATION,
+  CHROMATIC_FAMILIES,
   color,
+  COLOR_FAMILIES,
   component,
+  familySaturationVar,
   FILL_LIGHTNESS,
   RAMP,
   role,
@@ -169,17 +173,20 @@ const ANIMATION_SPEED_VARS: Record<NonNullable<ThemeOverrides['animationSpeed']>
  */
 export const THEME_CSS_MAP: Record<DirectSetting, string> = THEME_SETTING_VARIABLES;
 
-/** Saturation variable used by each color family. */
-const FAMILY_SAT_VAR: Record<ColorHueToken, string> = {
-  primary: '--we-color-saturation',
-  success: '--we-color-saturation',
-  warning: '--we-color-saturation',
-  danger: '--we-color-saturation',
-  neutral: '--we-color-neutral-saturation',
-};
+/** The saturation variable each family's ramp reads: neutral its own, every other family its own. */
+const familySatVar = (family: ColorHueToken): string =>
+  family === 'neutral' ? '--we-color-neutral-saturation' : familySaturationVar(family);
 
 const LIGHTNESS_STEPS = Object.keys(color.lightness) as ColorLightnessToken[];
-const COLOR_FAMILIES = Object.keys(color.hues) as ColorHueToken[];
+/** Every family with a ramp, neutral included. */
+const RAMP_FAMILIES = Object.keys(color.hues) as ColorHueToken[];
+
+/** Whether a theme sets anything that moves a colour family's ramp. */
+function movesColour(theme: ThemeOverrides): boolean {
+  return (Object.keys(theme) as (keyof ThemeOverrides)[]).some(
+    (key) => key === 'palette' || key === 'saturation' || /(Hue|Saturation)$/.test(key),
+  );
+}
 
 /**
  * A theme's **parameters** as CSS custom properties — its inputs and its role defaults, and nothing
@@ -209,9 +216,9 @@ const COLOR_FAMILIES = Object.keys(color.hues) as ColorHueToken[];
  *
  * CSS custom properties are resolved at the element where they are DEFINED,
  * not where they are inherited.  :root defines derived tokens like
- *   --we-color-primary-500: hsl(var(--we-color-primary-hue) ...)
+ *   --we-color-accent-500: hsl(var(--we-color-accent-hue) ...)
  * which are computed once using :root's values.  Children inherit the computed
- * color, so overriding --we-color-primary-hue on a descendant has no effect
+ * color, so overriding --we-color-accent-hue on a descendant has no effect
  * unless we ALSO re-declare the derived token formulas on that descendant.
  *
  * When a named theme is used (themeName), the CSS theme file sets the input
@@ -257,7 +264,7 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
 
     Resolving the preset here rather than duplicating the numbers into each theme's CSS keeps the
     design system owning theme parameters as data — and it means every built-in works immediately,
-    with no per-theme edit. Explicit overrides still win, so `{ themeName: 'cyberpunk', primaryHue:
+    with no per-theme edit. Explicit overrides still win, so `{ themeName: 'cyberpunk', accentHue:
     320 }` is cyberpunk with a different accent, which is what it reads as.
   */
   // Widened to the vocabulary: `THEME_PRESETS` is `as const`, so its inferred union only carries
@@ -346,9 +353,20 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
     style['color-scheme'] = theme.polarity;
   }
 
-  // 2. Re-declare neutral-hue linkage when primaryHue is explicitly overridden
-  if (theme.primaryHue !== undefined && theme.neutralHue === undefined) {
-    style['--we-color-neutral-hue'] = 'var(--we-color-primary-hue)';
+  // 2. Re-declare neutral-hue linkage when the accent's hue is explicitly overridden
+  if (theme.accentHue !== undefined && theme.neutralHue === undefined) {
+    style['--we-color-neutral-hue'] = 'var(--we-color-accent-hue)';
+  }
+
+  // 2b. The palette, as a set and per hue.
+  if (theme.palette) {
+    const { saturation, lightness, hues } = theme.palette;
+    if (saturation !== undefined) style['--we-color-palette-saturation'] = String(saturation);
+    if (lightness !== undefined) style['--we-color-palette-lightness'] = String(lightness);
+    for (const [hue, own] of Object.entries(hues ?? {}) as [PaletteHue, { hue?: number; lightness?: number }][]) {
+      if (own?.hue !== undefined) style[`--we-color-${hue}-hue`] = String(own.hue);
+      if (own?.lightness !== undefined) style[`--we-${hue}-lightness`] = String(own.lightness);
+    }
   }
 
   // 3. Re-declare lightness scale
@@ -367,22 +385,12 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
     }
   }
 
-  // 4. Re-declare derived color tokens for affected families
-  // Named themes: re-declare all families unconditionally (the CSS theme file
-  // may change any input variable, and we can't know which without duplicating
-  // the theme's values here).
-  const affectsAllSatFamilies = hasNamedTheme || theme.saturation !== undefined || affectsLightness;
-  for (const family of COLOR_FAMILIES) {
-    const hueKey = family === 'neutral' ? 'neutralHue' : (`${family}Hue` as DirectSetting);
-    const familyAffected =
-      hasNamedTheme ||
-      theme[hueKey] !== undefined ||
-      (family === 'neutral'
-        ? theme.primaryHue !== undefined || theme.neutralSaturation !== undefined || affectsLightness
-        : affectsAllSatFamilies);
-    if (!familyAffected) continue;
-
-    const satVar = FAMILY_SAT_VAR[family];
+  // 4. Re-declare every family's ramp when anything moving colour or lightness is set. Named themes:
+  // always (their CSS may change any input, and duplicating the theme's values here is not worth it).
+  const affectsRamps = hasNamedTheme || affectsLightness || movesColour(theme);
+  for (const family of RAMP_FAMILIES) {
+    if (!affectsRamps) break;
+    const satVar = familySatVar(family);
     for (const step of LIGHTNESS_STEPS) {
       // The taper reads the step's *rendered* lightness, exactly as the generated CSS does — baked
       // from the base lightness it inverts along the ramp. See the note in generate-css.ts.
@@ -416,14 +424,12 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
   // Its own token rather than an alias entry — see the note on ROLE_ALIASES for why it is not there.
   style['--we-scrollbar-thumb-background'] = component.scrollbar.thumbBackground;
 
-  // 5. Re-declare gradient when primary hue or saturation may have changed
-  const affectsPrimaryGradient =
-    hasNamedTheme || theme.primaryHue !== undefined || theme.saturation !== undefined || affectsLightness;
-  if (affectsPrimaryGradient) {
-    style['--we-gradient-primary'] =
+  // 5. Re-declare the accent gradient when its hue, saturation or the ramp may have changed.
+  if (affectsRamps) {
+    style['--we-gradient-accent'] =
       `linear-gradient(135deg, ` +
-      `oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${TAPER_500}) calc(var(--we-color-primary-hue) - 30)) 0%, ` +
-      `oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${TAPER_500}) calc(var(--we-color-primary-hue) + 30)) 100%)`;
+      `oklch(var(--we-color-lightness-500) calc(min(var(--we-color-accent-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${TAPER_500}) calc(var(--we-color-accent-hue) - 30)) 0%, ` +
+      `oklch(var(--we-color-lightness-500) calc(min(var(--we-color-accent-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${TAPER_500}) calc(var(--we-color-accent-hue) + 30)) 100%)`;
   }
 
   /*
@@ -647,7 +653,7 @@ function applyChromaCeilings(root: HTMLElement, theme: ThemeOverrides): string[]
   */
   const gamut: Gamut = typeof matchMedia === 'function' && matchMedia('(color-gamut: p3)').matches ? 'p3' : 'srgb';
 
-  for (const family of COLOR_FAMILIES) {
+  for (const family of RAMP_FAMILIES) {
     const hue = parseFloat(computed.getPropertyValue(`--we-color-${family}-hue`));
     if (Number.isNaN(hue)) continue;
     const prop = `--we-color-${family}-chroma-max`;
@@ -672,11 +678,8 @@ function applyChromaCeilings(root: HTMLElement, theme: ThemeOverrides): string[]
       told it had less colour available than it does, and a bright green would come out muted at
       exactly the point somebody had asked for it to be bright.
     */
-    const declared = FILL_LIGHTNESS_KEY[family as keyof typeof FILL_LIGHTNESS_KEY]
-      ? theme[FILL_LIGHTNESS_KEY[family as keyof typeof FILL_LIGHTNESS_KEY]]
-      : undefined;
-    const fillLightness =
-      declared !== undefined ? declared / 100 : FILL_LIGHTNESS[family as keyof typeof FILL_LIGHTNESS];
+    if (family === 'neutral') continue;
+    const fillLightness = familyFillLightness(theme, family);
     if (fillLightness === undefined) continue;
     const fillProp = `--we-color-${family}-fill-chroma-max`;
     root.style.setProperty(fillProp, maxChromaFor(fillLightness, hue, gamut).toFixed(4));
@@ -686,17 +689,20 @@ function applyChromaCeilings(root: HTMLElement, theme: ThemeOverrides): string[]
 }
 
 /**
- * Which theme parameter moves each family's fill, when one is set.
- *
- * `primary` is spelt `accent` because that is what the role is called — the parameter names the
- * role, not the hue family it happens to be built from, and a theme author sets an accent.
+ * Where a family's fill sits for this theme, 0–1: the theme's own setting for it if there is one,
+ * else the family's default — a palette hue's shifted by the palette's lightness setting. The same
+ * answer the fill role's CSS gives, worked out here because the chroma ceiling has to be measured at
+ * it.
  */
-const FILL_LIGHTNESS_KEY = {
-  primary: 'accentLightness',
-  danger: 'dangerLightness',
-  success: 'successLightness',
-  warning: 'warningLightness',
-} as const satisfies Record<keyof typeof FILL_LIGHTNESS, keyof ThemeOverrides>;
+function familyFillLightness(theme: ThemeOverrides, family: ChromaticFamily): number {
+  if (COLOR_FAMILIES[family].kind === 'palette') {
+    const own = theme.palette?.hues?.[family as PaletteHue]?.lightness;
+    if (own !== undefined) return own / 100;
+    return FILL_LIGHTNESS[family] + (theme.palette?.lightness ?? 0) / 100;
+  }
+  const declared = theme[`${family}Lightness` as 'accentLightness'];
+  return declared !== undefined ? declared / 100 : FILL_LIGHTNESS[family];
+}
 
 /** Where chroma peaks on the ramp, and so where the family's ceiling is measured. */
 const CHROMA_PEAK_LIGHTNESS = 0.6;
@@ -732,7 +738,8 @@ export const fillStateDeltas = (polarity: 'light' | 'dark' = 'light') => [
   STATE_STEPS[polarity].active,
 ];
 
-export const DERIVED_FILLS: ThemeRole[] = ['accent', 'danger', 'success', 'warning'];
+/** Every family's fill, from the family registry. */
+export const DERIVED_FILLS: ThemeRole[] = [...CHROMATIC_FAMILIES];
 
 /**
  * Move a fill until some label can sit on it, or report that none can.
@@ -802,10 +809,10 @@ export function labelCandidates(hue: string): string[] {
  * stopped sharing one.
  */
 export const FILL_LABELS: { fill: ThemeRole; label: ThemeRole }[] = [
-  { fill: 'accent', label: 'onAccent' },
-  { fill: 'danger', label: 'onDanger' },
-  { fill: 'success', label: 'onSuccess' },
-  { fill: 'warning', label: 'onWarning' },
+  ...CHROMATIC_FAMILIES.map((family) => ({ fill: family, label: `on${capitalise(family)}` as ThemeRole })),
+  // Neutral's fill is the inverse surface, whose label is chosen below; this entry only decides which
+  // way a solid neutral's hover and pressed states move.
+  { fill: 'neutral', label: 'onNeutral' },
 ];
 
 /**
@@ -886,9 +893,12 @@ export const LEGIBLE_FOREGROUNDS: { fg: ThemeRole; on: ThemeRole[]; level: Contr
     `textMuted` and the rest keep a single background because they have one: muted text on a tint is
     not a thing the vocabulary offers.
   */
-  { fg: 'dangerText', on: ['dangerSurface', 'surface'], level: 'body' },
-  { fg: 'successText', on: ['successSurface', 'surface'], level: 'body' },
-  { fg: 'warningText', on: ['warningSurface', 'surface'], level: 'body' },
+  // Every family other than the accent, from the registry: its text on its own tint and on a card.
+  ...CHROMATIC_FAMILIES.filter((family) => family !== 'accent').map((family) => ({
+    fg: `${family}Text` as ThemeRole,
+    on: [`${family}Soft` as ThemeRole, 'surface' as ThemeRole],
+    level: 'body' as ContrastLevel,
+  })),
 ];
 
 /**
@@ -915,12 +925,12 @@ export const LEGIBLE_FOREGROUNDS: { fg: ThemeRole; on: ThemeRole[]; level: Contr
  * them, and the states follow from the label.
  */
 export const AUTO_CONTRAST: { fg: ThemeRole; against: ThemeRole[] }[] = [
-  { fg: 'onAccent', against: ['accent'] },
+  // One label per family, against the fill it actually sits on — see `familyRoles.ts` in @we/tokens.
+  ...CHROMATIC_FAMILIES.map((family) => ({
+    fg: `on${capitalise(family)}` as ThemeRole,
+    against: [family as ThemeRole],
+  })),
   { fg: 'onInverse', against: ['surfaceInverse'] },
-  // One each, against the fill it actually sits on — see the note on `onDanger` in @we/tokens.
-  { fg: 'onDanger', against: ['danger'] },
-  { fg: 'onSuccess', against: ['success'] },
-  { fg: 'onWarning', against: ['warning'] },
 ];
 
 /**

@@ -7,6 +7,8 @@
  * mapping (`themeParametersToStyle`) that turns it into CSS; schema-shared re-exports it unchanged.
  */
 
+import type { PaletteHue, RoleToken } from '@we/tokens';
+
 /**
  * Semantic role slots a theme can override individually.
  *
@@ -17,50 +19,27 @@
  * theme needs: raised surfaces get *lighter* in dark rather than casting shadows, a relationship a
  * uniform lightness inversion cannot express.
  */
-export type ThemeRole =
-  | 'page'
-  | 'chrome'
-  | 'surface'
-  | 'surfaceRaised'
-  | 'surfaceSunken'
-  | 'surfaceHover'
-  | 'surfaceActive'
-  | 'controlSurface'
-  | 'text'
-  | 'textMuted'
-  | 'textFaint'
-  | 'onInverse'
-  | 'surfaceInverse'
-  | 'border'
-  | 'borderStrong'
-  | 'accent'
-  | 'onAccent'
-  | 'onAccentMuted'
-  | 'accentMuted'
-  | 'accentText'
-  | 'accentHover'
-  | 'accentActive'
-  | 'overlay'
-  | 'shadowColor'
-  | 'focus'
-  | 'danger'
-  | 'dangerHover'
-  | 'dangerActive'
-  | 'successHover'
-  | 'successActive'
-  | 'warningHover'
-  | 'warningActive'
-  | 'success'
-  | 'warning'
-  | 'onDanger'
-  | 'onSuccess'
-  | 'onWarning'
-  | 'dangerSurface'
-  | 'successSurface'
-  | 'warningSurface'
-  | 'dangerText'
-  | 'successText'
-  | 'warningText';
+export type ThemeRole = RoleToken;
+
+/**
+ * The palette's settings: how vivid and how light its ten hues are as a set, and any one hue moved.
+ *
+ * As a group rather than ten settings per hue, because a palette is designed as a set — pastel,
+ * neon, deep — and the hues are spaced to stay apart. `saturation` and `lightness` change the set's
+ * character; a hue's own entry moves that hue alone.
+ */
+export interface PaletteSettings {
+  /** 0–100, like `saturation`; falls back to the theme's `saturation`. */
+  saturation?: number;
+  /**
+   * Points to move every palette fill's lightness by, from where each hue is most itself — positive
+   * for lighter (pastel), negative for deeper. Text on the fills is corrected for contrast either
+   * way, and the tints sit a step off the page, so this mostly moves the solid fills.
+   */
+  lightness?: number;
+  /** One hue's own angle or fill lightness (0–100). */
+  hues?: Partial<Record<PaletteHue, { hue?: number; lightness?: number }>>;
+}
 
 export type ThemeOverrides = {
   /**
@@ -73,8 +52,9 @@ export type ThemeOverrides = {
   // Named preset
   themeName?: string; // Named theme preset (e.g. 'dark', 'cyberpunk', 'retro') — sets data-we-theme attribute
 
-  // Color
-  primaryHue?: number; // --we-color-primary-hue
+  // Color. Each colour family takes a hue, a saturation and a fill lightness: `<family>Hue`,
+  // `<family>Saturation`, `<family>Lightness`. A family's saturation falls back to `saturation`.
+  accentHue?: number; // --we-color-accent-hue
   successHue?: number; // --we-color-success-hue
   warningHue?: number; // --we-color-warning-hue
   dangerHue?: number; // --we-color-danger-hue
@@ -88,6 +68,12 @@ export type ThemeOverrides = {
    */
   saturation?: number; // --we-color-saturation
   neutralSaturation?: number; // --we-color-neutral-saturation
+  accentSaturation?: number; // --we-color-accent-saturation
+  successSaturation?: number; // --we-color-success-saturation
+  warningSaturation?: number; // --we-color-warning-saturation
+  dangerSaturation?: number; // --we-color-danger-saturation
+  /** The ten palette hues as a set; see `PaletteSettings`. */
+  palette?: PaletteSettings;
   /**
    * How light the accent fill is, 0–100.
    *
@@ -103,8 +89,7 @@ export type ThemeOverrides = {
    * the accent was pinned at 55%.
    *
    * Unset means the theme's own default: whatever lightness its `accent` states, or the shared
-   * FILL_LIGHTNESS.primary if it states none. Only the accent takes this. `danger`, `success` and
-   * `warning` sit where their hues live and are not brand decisions to be dragged around.
+   * FILL_LIGHTNESS.accent if it states none. `danger`, `success` and `warning` have their own.
    */
   accentLightness?: number; // --we-accent-lightness
   dangerLightness?: number; // --we-danger-lightness

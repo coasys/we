@@ -94,12 +94,12 @@ a user-chosen swatch.
 | \`accent\` | An accent *fill* — a primary button, a selected disc. |
 | \`accent-hover\` / \`accent-active\` | Hover and pressed states of an accent fill. |
 | \`on-accent\` | Text or an icon **on top of** an accent fill. |
-| \`on-accent-muted\` | Secondary text on an accent fill — a caption under a heading on an accent panel, or on \`gradient-primary\`. The \`text-muted\` of fills, and the **only** correct choice there: \`text-muted\` and \`text-faint\` are measured against the *page*, so on a fill they are measured against the wrong thing and can vanish entirely. |
+| \`on-accent-muted\` | Secondary text on an accent fill — a caption under a heading on an accent panel, or on \`gradient-accent\`. The \`text-muted\` of fills, and the **only** correct choice there: \`text-muted\` and \`text-faint\` are measured against the *page*, so on a fill they are measured against the wrong thing and can vanish entirely. |
 | \`accent-text\` | The accent used **as text** — an accented heading or icon on an ordinary surface, where \`accent\` is often too light to read. |
-| \`accent-muted\` | An accent-tinted fill — a selected row, a subtle highlight. |
+| \`accent-soft\` | An accent-tinted fill — a selected row, a subtle highlight. |
 | \`focus\` | The focus ring. Rarely set directly; \`--we-ring-color\` already resolves to it. |
 | \`danger-text\` / \`success-text\` / \`warning-text\` | Status as a **foreground** — an error message, a warning icon, a "connected" tick. |
-| \`danger-surface\` / \`success-surface\` / \`warning-surface\` | The tinted **panel** behind status content. |
+| \`danger-soft\` / \`success-soft\` / \`warning-soft\` | The tinted **panel** behind status content. |
 | \`overlay\` | The scrim behind a modal or drawer. Carries its own alpha. |
 | \`shadow-color\` | The colour shadows are built from. |
 
@@ -112,7 +112,7 @@ a user-chosen swatch.
 
 Roles work anywhere a colour token does, including inside a border shorthand
 (\`"1px solid border"\`) and behind a ternary
-(\`{ "$": "row.selected ? 'accent-muted' : 'surface-sunken'" }\`).
+(\`{ "$": "row.selected ? 'accent-soft' : 'surface-sunken'" }\`).
 
 **Not \`$if\` in a prop.** \`$if\` is a *node* type and, in a value position, resolves to a handler —
 so the colour resolver is handed a function, paints nothing, and warns about nothing at runtime. A

@@ -29,6 +29,7 @@ export const SPECIAL_SETTINGS = [
   'animationSpeed',
   'fontScale',
   'roles',
+  'palette',
   'light',
   'dark',
 ] as const satisfies readonly (keyof ThemeOverrides)[];
@@ -66,14 +67,18 @@ const lightnessBound: ThemeSetting<'lightnessFloor' | 'lightnessCeiling'> = {
 
 export const THEME_SETTINGS: { [K in DirectSetting]: ThemeSetting<K> } = {
   // Colour
-  primaryHue: { variable: '--we-color-primary-hue', read: asNumber },
+  accentHue: { variable: '--we-color-accent-hue', read: asNumber },
   successHue: { variable: '--we-color-success-hue', read: asNumber },
   warningHue: { variable: '--we-color-warning-hue', read: asNumber },
   dangerHue: { variable: '--we-color-danger-hue', read: asNumber },
-  // Read through `--we-color-primary-hue` when unset, which the editor handles; see the store.
+  // Read through the accent's hue when unset; see `readThemeSettings`.
   neutralHue: { variable: '--we-color-neutral-hue', read: asNumber },
   saturation: { variable: '--we-color-saturation', read: asNumber },
   neutralSaturation: { variable: '--we-color-neutral-saturation', read: asNumber },
+  accentSaturation: { variable: '--we-color-accent-saturation', read: asNumber },
+  successSaturation: { variable: '--we-color-success-saturation', read: asNumber },
+  warningSaturation: { variable: '--we-color-warning-saturation', read: asNumber },
+  dangerSaturation: { variable: '--we-color-danger-saturation', read: asNumber },
   accentLightness: { variable: '--we-accent-lightness' },
   dangerLightness: { variable: '--we-danger-lightness' },
   successLightness: { variable: '--we-success-lightness' },
@@ -143,7 +148,7 @@ export function readThemeSettings(theme: ThemeOverrides, styles: CSSStyleDeclara
     // The neutral hue follows the accent's unless a theme separates them, and computed style hands
     // back the reference rather than the number. Only here: an unset radius must not become a hue.
     if (key === 'neutralHue' && (!raw || raw.startsWith('var('))) {
-      raw = styles.getPropertyValue(THEME_SETTINGS.primaryHue.variable).trim();
+      raw = styles.getPropertyValue(THEME_SETTINGS.accentHue.variable).trim();
     }
     if (!raw || raw.startsWith('var(')) continue;
     const value = setting.read(raw);

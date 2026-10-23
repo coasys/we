@@ -74,7 +74,7 @@ describe('fieldSurface is the one definition', () => {
   });
 
   it.each(PART_PAINTED)('%s answers focus with the ring rather than an inset halo', (_name, ctor) => {
-    // The old spelling: `2px solid accent-muted` inset by -1px, which read as a halo inside the edge
+    // The old spelling: `2px solid accent-soft` inset by -1px, which read as a halo inside the edge
     // rather than as the edge thickening — and made these the controls answering focus differently.
     expect(cssTextOf(ctor)).not.toContain('outline-offset: -1px');
     expect(cssTextOf(ctor)).toContain('--we-ring-color');

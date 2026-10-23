@@ -88,24 +88,24 @@ Without these, a scoped theme inherits whatever the parent context has set — e
 These are inherited from `:root` if not set, which is usually fine:
 
 ```css
---we-color-primary-hue: 270; /* Override the primary hue */
+--we-color-accent-hue: 270; /* Override the primary hue */
 /* success, warning, danger hues are rarely overridden by themes */
 ```
 
 ## Never Use `!important` on Overridable Variables
 
-The schema system supports inline parametric overrides via `theme: { primaryHue: 180, saturation: '70%' }`. These are applied as inline styles, which `!important` in CSS will defeat.
+The schema system supports inline parametric overrides via `theme: { accentHue: 180, saturation: '70%' }`. These are applied as inline styles, which `!important` in CSS will defeat.
 
 ```css
 /* ❌ Wrong — blocks schema overrides */
 [data-we-theme='retro'] {
-  --we-color-primary-hue: 230 !important;
+  --we-color-accent-hue: 230 !important;
   --we-font-family: monospace !important;
 }
 
 /* ✅ Correct — schema overrides can take precedence */
 [data-we-theme='retro'] {
-  --we-color-primary-hue: 230;
+  --we-color-accent-hue: 230;
   --we-font-family: monospace;
 }
 ```
@@ -129,10 +129,10 @@ Token overrides on the `[data-we-theme]` selector:
   --we-color-neutral-saturation: 10%;
 
   /* Optional overrides */
-  --we-color-primary-hue: 180;
+  --we-color-accent-hue: 180;
   --we-font-family: monospace;
   --we-border-radius: 0px;
-  --we-border-color: var(--we-color-primary-200);
+  --we-border-color: var(--we-color-accent-200);
   --we-size-sm: 30px;
   --we-size-md: 40px;
   --we-size-lg: 50px;
@@ -158,8 +158,8 @@ Visual effects on primitive `::part()` selectors for properties not covered by d
 When referencing colors in component overrides, use CSS custom properties rather than hardcoded values. This ensures colors respond to schema overrides:
 
 ```css
-/* ✅ Correct — adapts to primaryHue overrides */
-border-color: var(--we-color-primary-200);
+/* ✅ Correct — adapts to accentHue overrides */
+border-color: var(--we-color-accent-200);
 background: var(--we-color-neutral-50);
 
 /* ❌ Avoid — hardcoded colors don't respond to overrides */

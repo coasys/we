@@ -1,4 +1,5 @@
 import { BASE_CLASS_LAYERS, getKeysForLayers } from '@we/design-utils';
+import { RAMP_FAMILIES } from '@we/tokens';
 
 import type { ContextData, PropEntry } from './contextTypes';
 
@@ -30,7 +31,8 @@ const RADIUS = ['0', '100', '200', '300', '400', '500', '600', '700', '800', '90
 
 const SHADOW = ['sm', 'md', 'lg', 'xl'];
 
-const COLOR_HUES = ['neutral', 'primary', 'success', 'warning', 'danger'];
+// Every family with a ramp, from the family registry: a scale position in any of them is a colour token.
+const COLOR_HUES: readonly string[] = RAMP_FAMILIES;
 const COLOR_SHADES = ['0', '25', '50', '75', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'];
 const COLOR = ['white', 'black', ...COLOR_HUES.flatMap((h) => COLOR_SHADES.map((l) => `${h}-${l}`))];
 

@@ -603,7 +603,7 @@ const recordRow: SchemaNode = {
           type: '$if',
           props: {
             condition: { $: 'rec.stalled' },
-            then: chip('Stuck between two moves — one has to be withdrawn', 'warning-surface'),
+            then: chip('Stuck between two moves — one has to be withdrawn', 'warning-soft'),
           },
         },
         { type: 'Row', props: { flex: '1' } },
@@ -1595,12 +1595,12 @@ export function flowsSection(opts: { type: string; open: { field: string }; flow
                                 type: '$if',
                                 props: {
                                   condition: { $: 'inFlow.waiting' },
-                                  then: chip({ $: '`${inFlow.waiting} waiting`' }, 'warning-surface'),
+                                  then: chip({ $: '`${inFlow.waiting} waiting`' }, 'warning-soft'),
                                 },
                               },
                               {
                                 type: '$if',
-                                props: { condition: { $: 'inFlow.stalled' }, then: chip('Stuck', 'warning-surface') },
+                                props: { condition: { $: 'inFlow.stalled' }, then: chip('Stuck', 'warning-soft') },
                               },
                               { type: 'Row', props: { flex: '1' } },
                               {

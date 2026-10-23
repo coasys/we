@@ -1,4 +1,4 @@
-import { role } from '@we/tokens';
+import { PALETTE_HUES, role } from '@we/tokens';
 import { z } from 'zod';
 
 import type { RouteSchema, SchemaNode, SchemaProp, TemplateMeta, TemplateSchema, ThemeOverrides } from './types';
@@ -19,10 +19,11 @@ const lazyRouteSchema = z.lazy(() => zRouteSchema);
   density key came to fail `acceptTemplate` and the editor's validation. The `satisfies` makes the
   drift a type error that names the key, in either direction.
 
-  `multiplier` and `subtractor` predate `polarity` and the lightness range (see @we/themes
-  `migrate.ts`). They stay accepted so a template saved before then is not newly refused.
+  `multiplier` and `subtractor` predate `polarity` and the lightness range, and `primaryHue` is the
+  accent's hue before the accent had one name (see @we/themes `migrate.ts`). They stay accepted so a
+  template saved before then is not newly refused.
 */
-type LegacyThemeKey = 'multiplier' | 'subtractor';
+type LegacyThemeKey = 'multiplier' | 'subtractor' | 'primaryHue';
 
 // Role names come from the token table the runtime resolves them against, not from a restated list.
 const zThemeRole = z.enum(Object.keys(role) as [keyof typeof role, ...(keyof typeof role)[]]);
@@ -31,7 +32,7 @@ const zThemeRole = z.enum(Object.keys(role) as [keyof typeof role, ...(keyof typ
 const themeParameterShape = {
   schemaVersion: z.number().int().positive().optional(),
   themeName: z.string().optional(),
-  primaryHue: z.number().optional(),
+  accentHue: z.number().optional(),
   successHue: z.number().optional(),
   warningHue: z.number().optional(),
   dangerHue: z.number().optional(),
@@ -39,6 +40,23 @@ const themeParameterShape = {
   // 0–100 numbers, not percentage strings: OKLCH takes an absolute chroma. See @we/tokens.
   saturation: z.number().optional(),
   neutralSaturation: z.number().optional(),
+  accentSaturation: z.number().optional(),
+  successSaturation: z.number().optional(),
+  warningSaturation: z.number().optional(),
+  dangerSaturation: z.number().optional(),
+  palette: z
+    .object({
+      saturation: z.number().optional(),
+      lightness: z.number().optional(),
+      hues: z
+        .partialRecord(
+          z.enum(PALETTE_HUES),
+          z.object({ hue: z.number().optional(), lightness: z.number().optional() }).strict(),
+        )
+        .optional(),
+    })
+    .strict()
+    .optional(),
   accentLightness: z.number().optional(),
   dangerLightness: z.number().optional(),
   successLightness: z.number().optional(),
@@ -74,6 +92,7 @@ const themeParameterShape = {
   animationSpeed: z.enum(['none', 'fast', 'normal', 'slow']).optional(),
   multiplier: z.number().optional(),
   subtractor: z.string().optional(),
+  primaryHue: z.number().optional(),
 };
 
 const zThemeSide = z

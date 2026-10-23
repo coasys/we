@@ -23,7 +23,7 @@ import { brandMark } from './brandMark';
  * still looks like the theme.
  */
 const sweep = (step: '100' | '200', hueOffset: string) =>
-  `oklch(from var(--we-color-primary-${step}) l c calc(h ${hueOffset}))`;
+  `oklch(from var(--we-color-accent-${step}) l c calc(h ${hueOffset}))`;
 
 /**
  * The boot screen: the four states a session can be in before the app is usable.
@@ -57,7 +57,7 @@ const sweep = (step: '100' | '200', hueOffset: string) =>
 /**
  * The boot background: the logo's own hue sweep, centred and made pale.
  *
- * The same `primary-hue ± 25` sweep as `--we-gradient-primary` (the mark, the gradient buttons),
+ * The same `primary-hue ± 25` sweep as `--we-gradient-accent` (the mark, the gradient buttons),
  * turned radial — so the screen and the logo are lit by one idea rather than two.
  *
  * Lightness is what differs, and must: at 500 the sweep is a saturated mid-tone, right for a 38px
@@ -123,7 +123,7 @@ function accountBadge(account: string): SchemaNode {
           image: { $: `${account}.avatar` },
           initials: { $: `${account}.name` },
           size: '120px',
-          bg: 'accent-muted',
+          bg: 'accent-soft',
         },
       },
       {
@@ -171,7 +171,7 @@ const logoCorner: SchemaNode = {
     then: {
       type: 'Column',
       props: { position: 'absolute', top: '0', left: '0', width: '80px', height: '80px', ax: 'center', ay: 'center' },
-      children: [brandMark({ width: '38px', height: '38px', gradient: 'primary' })],
+      children: [brandMark({ width: '38px', height: '38px', gradient: 'accent' })],
     },
   },
 };
@@ -187,7 +187,7 @@ const firstRunSplash: SchemaNode = {
   type: 'Column',
   props: { gap: '600', ax: 'center' },
   children: [
-    brandMark({ width: '150px', height: '75px', gradient: 'primary', wordmark: true }),
+    brandMark({ width: '150px', height: '75px', gradient: 'accent', wordmark: true }),
     {
       type: 'Row',
       props: { gap: '300', ay: 'center', height: '40px' },
@@ -259,7 +259,7 @@ function accountSwitcher(): SchemaNode {
                 image: { $: 'account.avatar' },
                 initials: { $: 'account.name' },
                 size: 'lg',
-                bg: 'accent-muted',
+                bg: 'accent-soft',
               },
             },
             { $action: 'accountStore.switchAccount', args: [{ $: 'account.id' }] },
@@ -278,7 +278,7 @@ function accountSwitcher(): SchemaNode {
           // corner.
           then: tile(
             'New account',
-            // `surface` rather than the `accent-muted` its siblings wear: this is the secondary
+            // `surface` rather than the `accent-soft` its siblings wear: this is the secondary
             // action and should be quieter. Not `surface-sunken`, which is what the boot screen's
             // own ground is painted — the disc was the same colour as the thing behind it.
             { type: 'we-avatar', props: { icon: 'plus', size: 'lg', bg: 'surface' } },

@@ -56,10 +56,10 @@ export const BADGE_APPEARANCE_DEFAULTS: Record<
       as a quiet chip on either rather than vanishing into one of them.
     */
     neutral: { bg: 'control-surface', color: 'text-muted' },
-    primary: { bg: 'accent-muted', color: 'accent-text' },
-    success: { bg: 'success-surface', color: 'success-text' },
-    warning: { bg: 'warning-surface', color: 'warning-text' },
-    danger: { bg: 'danger-surface', color: 'danger-text' },
+    primary: { bg: 'accent-soft', color: 'accent-text' },
+    success: { bg: 'success-soft', color: 'success-text' },
+    warning: { bg: 'warning-soft', color: 'warning-text' },
+    danger: { bg: 'danger-soft', color: 'danger-text' },
   },
   solid: {
     neutral: { bg: 'control-surface', color: 'text' },

@@ -265,7 +265,7 @@ function subHeader(text: string, icon?: string) {
       type: 'Row',
       props: { gap: '10px', ay: 'center', mb: '-10px' },
       children: [
-        { type: 'we-icon', props: { name: icon, size: '36px', gradient: 'primary' } },
+        { type: 'we-icon', props: { name: icon, size: '36px', gradient: 'accent' } },
         { type: 'we-text', props: { variant: 'heading-sm', color: 'accent-text' }, children: [text] },
       ],
     };
@@ -332,7 +332,7 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
               name: card.icon,
               size: 'lg',
               color: 'accent-text',
-              // gradient: 'primary',
+              // gradient: 'accent',
             },
           }, // color: 'text-muted'
           {
@@ -340,7 +340,7 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
             props: {
               variant: 'heading-md',
               // color: 'accent-text',
-              // gradient: 'primary',
+              // gradient: 'accent',
               textTransform: 'uppercase',
               // letterSpacing: '0.08em',
             },
@@ -417,7 +417,7 @@ function roadmapCard(
             type: 'Row',
             props: { gap: '400', ay: 'center', mb: '400' },
             children: [
-              { type: 'we-icon', props: { name: icon, size: 'lg', gradient: 'primary' } },
+              { type: 'we-icon', props: { name: icon, size: 'lg', gradient: 'accent' } },
               {
                 type: 'we-text',
                 props: { variant: 'heading-md', textTransform: 'uppercase' },
@@ -451,7 +451,7 @@ function roadmapItem(item: { title: string; description: string }, status: Roadm
         props: {
           name: iconName,
           size: '30px',
-          gradient: 'primary',
+          gradient: 'accent',
           weight: 'bold',
         },
       },
@@ -498,7 +498,7 @@ const weAboutPage: SchemaNode = {
             { type: 'WeCube', props: { width: '350px', height: '350px' } },
             // {
             //   type: 'we-image',
-            //   props: { src: '/we-text.svg', alt: 'WE Logo', width: '50px', height: '35px', gradient: 'primary' },
+            //   props: { src: '/we-text.svg', alt: 'WE Logo', width: '50px', height: '35px', gradient: 'accent' },
             // },
             {
               type: 'Column',
@@ -522,7 +522,7 @@ const weAboutPage: SchemaNode = {
                       type: 'we-text',
                       props: {
                         inline: true,
-                        gradient: 'primary',
+                        gradient: 'accent',
                         fontWeight: 'bold',
                         fontSize: '52px',
                       },
@@ -558,7 +558,7 @@ const weAboutPage: SchemaNode = {
             //         'Social infrastructure for the ',
             //         {
             //           type: 'we-text',
-            //           props: { inline: true, gradient: 'primary', fontWeight: 'bold', fontSize: '50px' },
+            //           props: { inline: true, gradient: 'accent', fontWeight: 'bold', fontSize: '50px' },
             //           children: ['living web'],
             //         },
             //       ],
@@ -754,7 +754,7 @@ const weAboutPage: SchemaNode = {
                   border: '1px solid var(--we-role-border)',
                 },
                 children: [
-                  { type: 'we-icon', props: { name: card.front.icon, size: 'xl', gradient: 'primary' } },
+                  { type: 'we-icon', props: { name: card.front.icon, size: 'xl', gradient: 'accent' } },
                   {
                     type: 'we-text',
                     props: {
@@ -781,7 +781,7 @@ const weAboutPage: SchemaNode = {
               },
               back: {
                 type: 'Card',
-                props: { ay: 'center', bg: 'gradient-primary', height: '100%' },
+                props: { ay: 'center', bg: 'gradient-accent', height: '100%' },
                 children: [
                   { type: 'we-icon', props: { name: card.back.icon, size: 'xl', color: 'on-accent' } },
                   {
@@ -952,7 +952,7 @@ const weAboutPage: SchemaNode = {
                 //     name: 'arrow-down',
                 //     // size: 'sm',
                 //     color: 'text-muted',
-                //     // gradient: 'primary',
+                //     // gradient: 'accent',
                 //   },
                 // },
               ],
@@ -1279,7 +1279,7 @@ const weAboutPage: SchemaNode = {
                 children: [
                   {
                     type: 'we-icon',
-                    props: { name: block.icon, size: '48px', gradient: 'primary' },
+                    props: { name: block.icon, size: '48px', gradient: 'accent' },
                   },
                   {
                     type: 'we-text',

@@ -442,7 +442,7 @@ const tile: SchemaNode = {
             styles: { $: 'modules.call.pictureStyle' },
             // A ring on whoever has the stage, so clicking a tile has a visible result even in the moment
             // before the layout settles. On the picture rather than the cell, so it frames the video.
-            border: expr`${stateOf('focused')} ? '2px solid primary-500' : '2px solid transparent'`,
+            border: expr`${stateOf('focused')} ? '2px solid accent-500' : '2px solid transparent'`,
           },
           children: [
             {

@@ -56,8 +56,8 @@ const schemaGraph: SchemaNode = {
     expansion: { defaultDepth: 0 },
     layout: layoutSpec,
     nodeStyle: [
-      { style: { shape: 'rect', size: 18, color: 'primary-500' } },
-      { when: { 'data.relations': { gt: 2 } }, style: { size: 26, color: 'primary-700' } },
+      { style: { shape: 'rect', size: 18, color: 'accent-500' } },
+      { when: { 'data.relations': { gt: 2 } }, style: { size: 26, color: 'accent-700' } },
       { when: { 'data.relations': 0 }, style: { color: 'neutral-400' } },
     ],
     edgeStyle: [{ style: { showLabel: true, arrow: 'target' } }],
@@ -105,7 +105,7 @@ const knowledgeGraph: SchemaNode = {
     layout: layoutSpec,
     nodeStyle: [
       { style: { size: 12, color: 'neutral-400' } },
-      { when: { type: 'CollectionBlock' }, style: { size: 20, color: 'primary-500' } },
+      { when: { type: 'CollectionBlock' }, style: { size: 20, color: 'accent-500' } },
       { when: { kind: 'literal' }, style: { shape: 'rect', size: 10, color: 'neutral-300' } },
       { when: { unresolved: true }, style: { color: 'neutral-200' } },
     ],
@@ -114,7 +114,7 @@ const knowledgeGraph: SchemaNode = {
       // A drawn connection carries somebody's own words, so it says them. Heavier and coloured
       // because the distinction that matters on this map is "a schema says so" against "a person
       // says so", and the second is the one worth arguing with.
-      { when: { type: 'relates' }, style: { showLabel: true, color: 'primary-500', width: 2 } },
+      { when: { type: 'relates' }, style: { showLabel: true, color: 'accent-500', width: 2 } },
       /*
         One rule per kind this community has named — the payoff of the middle tier.
 
@@ -179,14 +179,14 @@ const contentGraph: SchemaNode = {
     layout: layoutSpec,
     nodeStyle: [
       { style: { size: 10, color: 'neutral-400', shape: 'rect' } },
-      { when: { type: 'CollectionBlock' }, style: { size: 18, color: 'primary-500' } },
+      { when: { type: 'CollectionBlock' }, style: { size: 18, color: 'accent-500' } },
       { when: { 'data.kind': 'call' }, style: { color: 'success-500' } },
       { when: { 'data.kind': 'notes' }, style: { color: 'warning-500' } },
       // Extracted records, after the collection rules so a call keeps its own colour. Circles
       // against the rectangles of composed blocks: the distinction that matters at a glance is
       // "somebody wrote this" against "something was inferred from it", and shape carries that
       // without depending on colour being legible in the viewer's theme.
-      { when: { type: 'TaskBlock' }, style: { shape: 'circle', size: 14, color: 'primary-600' } },
+      { when: { type: 'TaskBlock' }, style: { shape: 'circle', size: 14, color: 'accent-600' } },
       { when: { type: 'EventBlock' }, style: { shape: 'circle', size: 14, color: 'warning-600' } },
     ],
     edgeStyle: [{ style: { curve: 'step', color: 'neutral-200' } }],

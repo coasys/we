@@ -38,7 +38,7 @@ export const installPrompt: SchemaNode = confirmModal({
   title: { $: '`Install ${templateStore.pendingInstall.name}?`' },
   // Not `danger`: installing a template is an ordinary thing to want to do, and a red dialog on
   // every install teaches people to click through the one that mattered.
-  tone: 'primary',
+  tone: 'accent',
   icon: 'shield-check',
   body: {
     $: "templateStore.pendingInstall.destination == 'space' ? 'Every member of this space will get this template.' : 'This will be added to your own library.'",

@@ -326,15 +326,15 @@ const monthGrid: SchemaNode = {
                   restyled to survive it. The outline says "this one" just as clearly and leaves
                   what is inside legible.
                 */
-                bg: { $: "cell.date == local.day ? 'accent-muted' : cell.inMonth ? '' : 'page'" },
-                // `accent`, matching the `accent-muted` fill in the line above — the outline and the
+                bg: { $: "cell.date == local.day ? 'accent-soft' : cell.inMonth ? '' : 'page'" },
+                // `accent`, matching the `accent-soft` fill in the line above — the outline and the
                 // tint are one decision and were written as a role and a step.
                 border: { $: "cell.date == local.day ? '1px solid accent' : '1px solid transparent'" },
                 hoverProps: {
                   // `surface-sunken-hover`, not `surface-sunken`: the month grid this cell sits in
                   // is itself sunken, so hovering to the same role was no hover at all. That role
                   // exists for exactly this — a well lifted, rather than a surface pressed.
-                  bg: { $: "cell.date == local.day ? 'accent-muted' : 'surface-sunken-hover'" },
+                  bg: { $: "cell.date == local.day ? 'accent-soft' : 'surface-sunken-hover'" },
                 },
                 /*
                   Clicking the selected day again clears the selection.
@@ -414,7 +414,7 @@ const monthGrid: SchemaNode = {
                         text: { $: 'mark.title' },
                         // Faded for the neighbouring months, so a busy 1st of next month does not
                         // read as part of the month being looked at.
-                        bg: { $: "cell.inMonth ? 'accent-muted' : 'surface-sunken'" },
+                        bg: { $: "cell.inMonth ? 'accent-soft' : 'surface-sunken'" },
                         color: { $: "cell.inMonth ? 'accent-text' : 'text-muted'" },
                       },
                     },

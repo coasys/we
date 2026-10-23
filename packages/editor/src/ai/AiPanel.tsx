@@ -256,7 +256,7 @@ function MessageBubble(props: { message: ChatMessage; isStreaming?: boolean; str
         out as a stray rectangle behind the text rather than as anything holding it. The user's own
         messages keep theirs, where the tint is doing the work of saying who is speaking.
       */
-      bg={isUser() ? 'accent-muted' : undefined}
+      bg={isUser() ? 'accent-soft' : undefined}
       maxWidth={isUser() ? '90%' : '100%'}
       alignSelf={isUser() ? 'flex-end' : 'flex-start'}
     >

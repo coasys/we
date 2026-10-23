@@ -3903,7 +3903,7 @@ export function GraphView(props: GraphViewProps) {
                   // Only where a rule chose an order; unset, document order stands, as it always has.
                   ...(entry.visual.z !== undefined ? { 'z-index': String(entry.visual.z) } : {}),
                   '--node-size': `${entry.visual.size * 2}px`,
-                  '--node-color': color(entry.visual.color, 'primary-500'),
+                  '--node-color': color(entry.visual.color, 'accent-500'),
                   '--node-border': color(entry.visual.borderColor, 'transparent'),
                   '--node-border-width': `${entry.visual.borderWidth ?? 0}px`,
                   '--node-border-style': entry.visual.borderStyle ?? 'solid',
@@ -4377,7 +4377,7 @@ export function GraphView(props: GraphViewProps) {
                                   component={component()}
                                   node={entry.node}
                                   value={action.value ? readField(entry.node, action.value.from) : undefined}
-                                  fill={color(entry.visual.color, 'primary-500')}
+                                  fill={color(entry.visual.color, 'accent-500')}
                                   title={action.title}
                                   onPreview={(value: unknown) => report({ value, preview: true })}
                                   onChange={(value: unknown) => report({ value })}
@@ -4487,7 +4487,7 @@ export function GraphView(props: GraphViewProps) {
                                         .find((value) => value !== undefined && value !== '')
                                     : undefined
                                 }
-                                fill={color(selectedRows()[0]?.entry.visual.color, 'primary-500')}
+                                fill={color(selectedRows()[0]?.entry.visual.color, 'accent-500')}
                                 title={action.title}
                                 onPreview={(value: unknown) => report({ value, preview: true })}
                                 onChange={(value: unknown) => report({ value })}

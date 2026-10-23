@@ -41,10 +41,10 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 const VARIANT_DEFAULTS: Partial<Record<MenuItemVariant, Partial<DesignSystemProps>>> = {
   danger: {
     color: 'danger-text',
-    hoverProps: { bg: 'danger-surface', color: 'danger-text' },
+    hoverProps: { bg: 'danger-soft', color: 'danger-text' },
     // Restated rather than inherited: a variant's own state props replace the defaults wholesale,
     // so omitting this would land a destructive item on the neutral fill when tabbed to.
-    focusProps: { bg: 'danger-surface', color: 'danger-text', ring: 'inset 0 0 0 2px var(--we-ring-color)' },
+    focusProps: { bg: 'danger-soft', color: 'danger-text', ring: 'inset 0 0 0 2px var(--we-ring-color)' },
   },
 };
 

@@ -21,13 +21,18 @@ import { applyThemeVars, themeParametersToStyle } from './themeStyles';
 /** A value for every setting that differs from its default. */
 const SAMPLE: Required<Omit<ThemeOverrides, 'schemaVersion' | 'light' | 'dark'>> = {
   themeName: 'cyberpunk',
-  primaryHue: 300,
+  accentHue: 300,
   successHue: 150,
   warningHue: 80,
   dangerHue: 20,
   neutralHue: 200,
   saturation: 40,
   neutralSaturation: 10,
+  accentSaturation: 45,
+  successSaturation: 45,
+  warningSaturation: 45,
+  dangerSaturation: 45,
+  palette: { saturation: 30, lightness: 10, hues: { purple: { hue: 305 } } },
   accentLightness: 60,
   dangerLightness: 60,
   successLightness: 60,
@@ -104,7 +109,7 @@ describe('what the document works out from a setting is restated wherever a them
       .map(([, name]) => name)
       // The inputs themselves, declared with a default, are not dependents.
       .filter((name) => !inputs.has(name));
-    const restated = new Set(Object.keys(themeParametersToStyle({ polarity: 'dark', primaryHue: 300 })));
+    const restated = new Set(Object.keys(themeParametersToStyle({ polarity: 'dark', accentHue: 300 })));
     const missing = [...new Set(dependent)].filter((name) => !restated.has(name));
     expect(missing).toEqual([]);
   });

@@ -279,7 +279,7 @@ describe('restyling a selection', () => {
     const store = mount();
     await store.placeOnCanvas(CANVAS, 'n1', 'TaskBlock', 10, 10);
     await store.placeOnCanvas(CANVAS, 'n2', 'TaskBlock', 20, 20);
-    await store.setCardStyle(CANVAS, 'n1', 'color', 'primary-500');
+    await store.setCardStyle(CANVAS, 'n1', 'color', 'accent-500');
     await store.setCardStyle(CANVAS, 'n2', 'color', 'success-500');
 
     await store.setCardStyle(CANVAS, ['n1', 'n2'], 'color', 'danger-500');
@@ -288,7 +288,7 @@ describe('restyling a selection', () => {
 
     await store.undoCanvas(CANVAS);
 
-    expect([colourOf('n1'), colourOf('n2')]).toEqual(['primary-500', 'success-500']);
+    expect([colourOf('n1'), colourOf('n2')]).toEqual(['accent-500', 'success-500']);
   });
 });
 
@@ -348,7 +348,7 @@ describe('a peer who changed the same card', () => {
   it('keeps their colour rather than putting yours back', async () => {
     const store = mount();
     await store.placeOnCanvas(CANVAS, 'n1', 'TaskBlock', 10, 10);
-    await store.setCardStyle(CANVAS, 'n1', 'color', 'primary-500');
+    await store.setCardStyle(CANVAS, 'n1', 'color', 'accent-500');
 
     rowOf('n1')!.color = 'success-500';
     await store.undoCanvas(CANVAS);
@@ -421,7 +421,7 @@ describe('records being made', () => {
     await store.placeOnCanvas(CANVAS, 'n1', 'TaskBlock', 10, 10);
     // A restyle, so the label on top is one a stray placement entry could not be mistaken for —
     // two "move card" entries look identical and the assertion below would hold either way.
-    await store.setCardStyle(CANVAS, 'n1', 'color', 'primary-500');
+    await store.setCardStyle(CANVAS, 'n1', 'color', 'accent-500');
     expect(store.canvasHistory().undoLabel).toBe('restyle card');
 
     await store.dropOnCanvas(CANVAS, { entity: 'TaskBlock', id: 'n2', dataset: 'elsewhere', x: 5, y: 5 });

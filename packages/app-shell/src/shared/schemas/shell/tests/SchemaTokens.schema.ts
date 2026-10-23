@@ -327,7 +327,7 @@ const ifTest = section('$if', 'Conditional rendering (prop + node level)', [
       condition: { $: 'testStore.toggleValue' },
       then: {
         type: 'Row',
-        props: { gap: '200', ay: 'center', p: '200', bg: 'success-surface', r: '300' },
+        props: { gap: '200', ay: 'center', p: '200', bg: 'success-soft', r: '300' },
         children: [
           { type: 'we-icon', props: { name: 'check', color: 'success-text' } },
           { type: 'we-text', props: { color: 'success-text' }, children: ['Visible!'] },
@@ -353,7 +353,7 @@ const ifTest = section('$if', 'Conditional rendering (prop + node level)', [
       exitTransition: { type: 'fade', duration: 1000, easing: 'ease-in-out' },
       then: {
         type: 'Row',
-        props: { gap: '200', ay: 'center', p: '200', bg: 'accent-muted', r: '300' },
+        props: { gap: '200', ay: 'center', p: '200', bg: 'accent-soft', r: '300' },
         children: [
           { type: 'we-icon', props: { name: 'sparkle', color: 'accent' } },
           {
@@ -586,7 +586,7 @@ const queryOneShotTest = section('$query (one-shot)', 'FindAll $query without su
       },
       else: {
         type: 'Row',
-        props: { gap: '200', p: '200', bg: 'warning-surface', r: '300', ay: 'center' },
+        props: { gap: '200', p: '200', bg: 'warning-soft', r: '300', ay: 'center' },
         children: [
           { type: 'we-icon', props: { name: 'clock', color: 'warning-text' } },
           {
@@ -666,7 +666,7 @@ const querySubscriptionTest = section('$query (subscription)', 'FindAll $query w
       },
       else: {
         type: 'Row',
-        props: { gap: '200', p: '200', bg: 'warning-surface', r: '300', ay: 'center' },
+        props: { gap: '200', p: '200', bg: 'warning-soft', r: '300', ay: 'center' },
         children: [
           { type: 'we-icon', props: { name: 'clock', color: 'warning-text' } },
           { type: 'we-text', props: { color: 'warning-text' }, children: ['Waiting for AD4M perspective...'] },
@@ -712,7 +712,7 @@ const queryFilteringTest = section('$query (filtering)', 'Query with where, orde
       },
       else: {
         type: 'Row',
-        props: { gap: '200', p: '200', bg: 'warning-surface', r: '300', ay: 'center' },
+        props: { gap: '200', p: '200', bg: 'warning-soft', r: '300', ay: 'center' },
         children: [
           { type: 'we-icon', props: { name: 'clock', color: 'warning-text' } },
           {
@@ -1253,7 +1253,7 @@ const formValidationStylingTest: SchemaNode = {
       props: {
         p: '300',
         r: '300',
-        bg: { $: "touched('age') ? valid('age') ? 'success-surface' : 'danger-surface' : 'page'" },
+        bg: { $: "touched('age') ? valid('age') ? 'success-soft' : 'danger-soft' : 'page'" },
       },
       children: [
         {
@@ -1391,7 +1391,7 @@ const fragmentThemeTest = section('Fragment + theme', 'Themeable fragment wraps 
     children: ['A fragment with theme overrides wraps children in a themed div:'],
   },
   {
-    theme: { primaryHue: 234, saturation: 80 },
+    theme: { accentHue: 234, saturation: 80 },
     children: [
       { type: 'we-text', props: { color: 'accent' }, children: ['Fragment themed child (should be blue-ish)'] },
     ],
@@ -1404,9 +1404,9 @@ const fragmentThemeTest = section('Fragment + theme', 'Themeable fragment wraps 
 
 const tokenThemeTest: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', r: '400', bg: 'surface-sunken', border: '1px solid var(--we-role-accent-muted)' },
+  props: { gap: '300', p: '400', r: '400', bg: 'surface-sunken', border: '1px solid var(--we-role-accent-soft)' },
   // Apply theme overrides to this section
-  theme: { primaryHue: 344, saturation: 90 },
+  theme: { accentHue: 344, saturation: 90 },
   children: [
     {
       type: 'Row',
@@ -1420,7 +1420,7 @@ const tokenThemeTest: SchemaNode = {
     {
       type: 'we-text',
       props: { color: 'text-faint' },
-      children: ['This section has primaryHue: 344 (pink) — the "primary" colors below should appear pink:'],
+      children: ['This section has accentHue: 344 (pink) — the "primary" colors below should appear pink:'],
     },
     {
       type: 'Row',
@@ -1435,7 +1435,7 @@ const tokenThemeTest: SchemaNode = {
 
 const namedThemeTest: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', r: '400', bg: 'surface-sunken', border: '1px solid var(--we-role-accent-muted)' },
+  props: { gap: '300', p: '400', r: '400', bg: 'surface-sunken', border: '1px solid var(--we-role-accent-soft)' },
   theme: { themeName: 'cyberpunk' },
   children: [
     {

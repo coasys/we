@@ -7,8 +7,8 @@ import { mountOverlay, POPOVER_RESETS } from './topLayer';
  * is offset by to sit centred on the edge it marks — and the two drifting apart is invisible until
  * somebody looks closely at where a drop would land.
  *
- * One number, in one place, because this drifted: the same line was 4px `primary-400` in the block
- * editor and 2px `primary-500` in the sortable, from two unrelated pieces of code.
+ * One number, in one place, because this drifted: the same line was 4px `accent-400` in the block
+ * editor and 2px `accent-500` in the sortable, from two unrelated pieces of code.
  */
 export const DROP_LINE_THICKNESS = 4;
 

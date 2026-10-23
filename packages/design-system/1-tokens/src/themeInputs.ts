@@ -17,6 +17,7 @@
  * themes package's scoping test fails when a setting changes nothing inside a scoped wrapper.
  */
 import { borderWidth } from './border.js';
+import { CHROMATIC_FAMILIES, familySaturationDefault, familySaturationVar } from './families.js';
 import { fontSize } from './font.js';
 import { space } from './space.js';
 
@@ -37,6 +38,11 @@ const isZero = (value: string): boolean => parseFloat(value) === 0;
 export const THEME_DERIVED_VARIABLES: Readonly<Record<string, string>> = {
   '--we-border-width': `var(--we-theme-border-width, ${borderWidth})`,
   '--we-focus-ring-width': 'var(--we-theme-focus-ring-width, 2px)',
+  // Each family's saturation, which falls back to the theme's (or the palette's) until a theme sets
+  // the family's own.
+  ...Object.fromEntries(
+    CHROMATIC_FAMILIES.map((family) => [familySaturationVar(family), familySaturationDefault(family)]),
+  ),
   // The ends of the lightness ramp, which a theme's polarity and range move.
   '--we-color-white': 'oklch(var(--we-color-lightness-0) 0 var(--we-color-neutral-hue))',
   '--we-color-black': 'oklch(var(--we-color-lightness-1000) 0 var(--we-color-neutral-hue))',

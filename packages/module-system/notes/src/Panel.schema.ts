@@ -275,7 +275,7 @@ const noteCard: SchemaNode = {
 const confirmShare = confirmModal({
   open: { $: 'local.confirmShareId' },
   close: { $setLocal: 'confirmShareId', value: '' },
-  tone: 'primary',
+  tone: 'accent',
   icon: 'share-network',
   title: 'Share this note?',
   body: {

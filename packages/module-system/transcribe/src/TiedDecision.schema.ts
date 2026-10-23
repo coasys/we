@@ -34,7 +34,7 @@ const dialog = (kind: 'accept' | 'reject'): SchemaNode =>
     ],
     confirmLabel: { $: `${DECISION}.confirmLabel` },
     confirm: { $action: 'modules.transcribe.confirmTiedDecision' },
-    tone: kind === 'accept' ? 'primary' : 'danger',
+    tone: kind === 'accept' ? 'accent' : 'danger',
     busy: { $: 'modules.transcribe.tiedBusy' },
   });
 

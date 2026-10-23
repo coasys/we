@@ -107,10 +107,10 @@ export function CountMark(props: CountMarkProps) {
         have answered and one you have not are told apart at a glance — and fully present under the pointer.
       */
       opacity={!props.mine && props.emphasis === 'present' ? 0.7 : undefined}
-      // Yours: one step past `accent-text` (primary-700). It went to 500, which is two steps nearer the
+      // Yours: one step past `accent-text` (accent-700). It went to 500, which is two steps nearer the
       // background, so hovering your own mark dimmed it where every other mark brightens.
       hoverProps={{
-        color: props.mine ? 'primary-800' : props.emphasis === 'present' ? 'text-muted' : 'neutral-400',
+        color: props.mine ? 'accent-800' : props.emphasis === 'present' ? 'text-muted' : 'neutral-400',
         ...(!props.mine && props.emphasis === 'present' ? { opacity: 1 } : {}),
       }}
     >

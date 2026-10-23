@@ -258,8 +258,8 @@ export function SignalControl(props: SignalControlProps) {
               */
               size={pressSize()}
               square
-              color={mineIs((v) => v > 0) ? 'primary-500' : 'neutral-300'}
-              prop:hoverProps={{ color: mineIs((v) => v > 0) ? 'primary-500' : 'neutral-400' }}
+              color={mineIs((v) => v > 0) ? 'accent-500' : 'neutral-300'}
+              prop:hoverProps={{ color: mineIs((v) => v > 0) ? 'accent-500' : 'neutral-400' }}
               disabled={isDisabled()}
               label="Vote up"
               onClick={() => signal(mineIs((v) => v > 0) ? null : 1)}
@@ -272,8 +272,8 @@ export function SignalControl(props: SignalControlProps) {
               variant="bare"
               size={pressSize()}
               square
-              color={mineIs((v) => v < 0) ? 'primary-500' : 'neutral-300'}
-              prop:hoverProps={{ color: mineIs((v) => v < 0) ? 'primary-500' : 'neutral-400' }}
+              color={mineIs((v) => v < 0) ? 'accent-500' : 'neutral-300'}
+              prop:hoverProps={{ color: mineIs((v) => v < 0) ? 'accent-500' : 'neutral-400' }}
               disabled={isDisabled()}
               label="Vote down"
               onClick={() => signal(mineIs((v) => v < 0) ? null : -1)}

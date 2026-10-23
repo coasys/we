@@ -24,7 +24,7 @@ export const toolLibrary: Cartridge = {
       polarity: 'dark',
       lightnessFloor: '9%',
       lightnessCeiling: '96%',
-      primaryHue: 65,
+      accentHue: 65,
       saturation: 75,
       neutralSaturation: 10,
       surfaceRadius: '4px',

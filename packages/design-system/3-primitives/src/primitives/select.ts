@@ -234,7 +234,7 @@ const styles = css`
   }
 
   /*
-    Pointer feedback, and surfaceHover is the role for precisely that. This shared accentMuted
+    Pointer feedback, and surfaceHover is the role for precisely that. This shared accentSoft
     with the selected row below, so hovering anything looked like choosing it — three different
     questions (pointer here, keyboard here, this one is chosen) answered in one colour.
   */
@@ -243,7 +243,7 @@ const styles = css`
   }
 
   [part='option'][aria-selected='true'] {
-    background: var(--we-role-accent-muted);
+    background: var(--we-role-accent-soft);
   }
 
   /*
@@ -251,7 +251,7 @@ const styles = css`
     highlight with the arrows must be visible before Enter commits it, or the keys appear to do
     nothing.
 
-    That was the stated intent and the rule then painted accentMuted, the identical value the
+    That was the stated intent and the rule then painted accentSoft, the identical value the
     selected row carries. Since the highlight *starts* on the current value, arrowing moved it from
     a tinted row to an identically tinted row: the arrows genuinely did appear to do nothing.
 

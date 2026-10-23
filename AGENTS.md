@@ -1673,7 +1673,7 @@ state or anywhere else.
 - CountMark
   Props: icon: string, count?: number, mine?: boolean, size?: "xs" | "sm" | "md", countTone?: "text" | "glyph", countFirst?: boolean, emphasis?: "quiet" | "present", onPress?: (() => void), label?: string, disabled?: boolean, class?: string, styles?: Record<string, string | number>
 - DropdownMenu — Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.
-  Props: styles?: Record<string, string | number>, class?: string, onSelect?: ((item: DropdownMenuAction | DropdownMenuToggle) => void), searchable?: boolean, searchPlaceholder?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, triggerVariant?: "primary" | "danger" | "secondary" | "ghost" | "outline" | "bare", triggerTitle?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", itemSize?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[], children?: JSX.Element
+  Props: styles?: Record<string, string | number>, class?: string, onSelect?: ((item: DropdownMenuAction | DropdownMenuToggle) => void), searchable?: boolean, searchPlaceholder?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, triggerVariant?: "danger" | "primary" | "secondary" | "ghost" | "outline" | "bare", triggerTitle?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", itemSize?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[], children?: JSX.Element
 - EditableImage (DesignSystemElement)
   Props: src?: string, alt?: string, fit?: "cover" | "contain" | "none" | "fill" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), onImageRemove?: (() => void), uploadLabel?: string, editLabel?: string, class?: string, aspect?: number, maxSize?: number
 - FlipCard
@@ -2129,12 +2129,12 @@ a user-chosen swatch.
 | `accent` | An accent *fill* — a primary button, a selected disc. |
 | `accent-hover` / `accent-active` | Hover and pressed states of an accent fill. |
 | `on-accent` | Text or an icon **on top of** an accent fill. |
-| `on-accent-muted` | Secondary text on an accent fill — a caption under a heading on an accent panel, or on `gradient-primary`. The `text-muted` of fills, and the **only** correct choice there: `text-muted` and `text-faint` are measured against the *page*, so on a fill they are measured against the wrong thing and can vanish entirely. |
+| `on-accent-muted` | Secondary text on an accent fill — a caption under a heading on an accent panel, or on `gradient-accent`. The `text-muted` of fills, and the **only** correct choice there: `text-muted` and `text-faint` are measured against the *page*, so on a fill they are measured against the wrong thing and can vanish entirely. |
 | `accent-text` | The accent used **as text** — an accented heading or icon on an ordinary surface, where `accent` is often too light to read. |
-| `accent-muted` | An accent-tinted fill — a selected row, a subtle highlight. |
+| `accent-soft` | An accent-tinted fill — a selected row, a subtle highlight. |
 | `focus` | The focus ring. Rarely set directly; `--we-ring-color` already resolves to it. |
 | `danger-text` / `success-text` / `warning-text` | Status as a **foreground** — an error message, a warning icon, a "connected" tick. |
-| `danger-surface` / `success-surface` / `warning-surface` | The tinted **panel** behind status content. |
+| `danger-soft` / `success-soft` / `warning-soft` | The tinted **panel** behind status content. |
 | `overlay` | The scrim behind a modal or drawer. Carries its own alpha. |
 | `shadow-color` | The colour shadows are built from. |
 
@@ -2147,7 +2147,7 @@ a user-chosen swatch.
 
 Roles work anywhere a colour token does, including inside a border shorthand
 (`"1px solid border"`) and behind a ternary
-(`{ "$": "row.selected ? 'accent-muted' : 'surface-sunken'" }`).
+(`{ "$": "row.selected ? 'accent-soft' : 'surface-sunken'" }`).
 
 **Not `$if` in a prop.** `$if` is a *node* type and, in a value position, resolves to a handler —
 so the colour resolver is handed a function, paints nothing, and warns about nothing at runtime. A
@@ -2415,8 +2415,6 @@ breakpoint: 'sm', 'md', 'lg'
 color.base: 'white', 'black'
 
 color.config: 'polarity', 'lightnessFloor', 'lightnessCeiling', 'saturation', 'neutralSaturation'
-
-color.hues: 'neutral', 'primary', 'success', 'warning', 'danger'
 
 color.lightness: '0', '25', '50', '75', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'
 
@@ -4231,7 +4229,7 @@ Example: add "highlighted": true to one item's data, then use $if on the flag in
 { "type": "$if", "props": { "condition": { "$": "post.highlighted" }, "then": { "type": "we-badge", "props": { "variant": "primary" }, "children": ["Featured"] } } }
 For a conditional PROP, use a ternary in an expression — NOT a prop-level $if, which is a node type
 and resolves to a handler in a value position:
-{ "bg": { "$": "post.highlighted ? 'accent-muted' : 'surface'" } }
+{ "bg": { "$": "post.highlighted ? 'accent-soft' : 'surface'" } }
 
 Boolean toggle (show/hide, expand/collapse):
 {
@@ -4483,7 +4481,7 @@ Cancel, and the action's `onSuccess`.
   (`{ $: 'shapeStore.confirmDiscard' }`) or on a string id works the same way.
 - `cancel` for a cancel button that does more than close — "Keep editing" dismisses the question
   and leaves the wizard behind it open.
-- `tone: 'primary'` for a question with no casualty; the default `danger` picks a warning icon and
+- `tone: 'accent'` for a question with no casualty; the default `danger` picks a warning icon and
   a danger confirm button.
 - `detail` for a quieter second line, `children` for a `we-alert` naming a surprising consequence.
 - `busyLocal` if the action is not instant — a write that walks a board or a thread takes a while, and

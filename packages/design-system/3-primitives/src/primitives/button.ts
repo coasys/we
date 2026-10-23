@@ -363,7 +363,7 @@ export default class Button extends DesignSystemElement {
     super.updated(changedProperties);
     // Gradients are a primary-variant affordance; anywhere else the flag is meaningless.
     const hasGradient = this.gradient && this.variant === 'primary';
-    this.style.setProperty('--we-button-gradient', hasGradient ? 'var(--we-gradient-primary)' : 'none');
+    this.style.setProperty('--we-button-gradient', hasGradient ? 'var(--we-gradient-accent)' : 'none');
     // Generates the overlay pseudo-element only when it has something to draw — see the note beside
     // `[part='base']::before`. `none` suppresses the box entirely rather than drawing an invisible one.
     this.style.setProperty('--we-button-gradient-overlay', hasGradient ? "''" : 'none');

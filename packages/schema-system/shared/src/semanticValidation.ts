@@ -1079,7 +1079,7 @@ const BORDER_PROPS = new Set(['border', 'borderTop', 'borderRight', 'borderBotto
 
 /** Flag a role named in camelCase, wherever a colour can appear — including behind `$if`. */
 function checkColourValue(propName: string, value: unknown, path: string, errors: ValidationError[]): void {
-  // A colour computed by an expression is one of its string literals — `open ? 'accentMuted' : 'surface'`.
+  // A colour computed by an expression is one of its string literals — `open ? 'accentSoft' : 'surface'`.
   if (isExpressionToken(value)) {
     for (const literal of value.$.matchAll(/'([^'\\]*)'|"([^"\\]*)"/g)) {
       checkColourValue(propName, literal[1] ?? literal[2], path, errors);
@@ -1590,7 +1590,7 @@ function checkProps(
  * unconditionally returns a handler. So
  *
  * ```json
- * { "bg": { "$if": { "condition": …, "then": "primary-50", "else": "neutral-0" } } }
+ * { "bg": { "$if": { "condition": …, "then": "accent-50", "else": "neutral-0" } } }
  * ```
  *
  * hands a *function* to the colour resolver. Nothing is painted, nothing warns, nothing throws —

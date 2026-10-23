@@ -18,7 +18,7 @@ export type MenuItemVariant = 'default' | 'danger';
   How loud a badge is, orthogonal to what it means.
 
   `variant` says which meaning — neutral, success, danger — and this says how much of the screen it
-  takes: `soft` is the tinted panel pair (`success-surface` on `success-text`), `solid` is the fill
+  takes: `soft` is the tinted panel pair (`success-soft` on `success-text`), `solid` is the fill
   and its measured label (`success` on `on-success`). Every design system with a badge ends up with
   both axes, because "the connection is degraded" and "WE ARE RECORDING" are the same meaning at
   different volumes, and one appearance cannot serve both.

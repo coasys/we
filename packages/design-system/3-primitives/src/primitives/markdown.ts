@@ -162,15 +162,15 @@ const styles = css`
   }
   [part='base'] .success {
     color: var(--we-role-success-text);
-    background: var(--we-role-success-surface);
+    background: var(--we-role-success-soft);
   }
   [part='base'] .warning {
     color: var(--we-role-warning-text);
-    background: var(--we-role-warning-surface);
+    background: var(--we-role-warning-soft);
   }
   [part='base'] .danger {
     color: var(--we-role-danger-text);
-    background: var(--we-role-danger-surface);
+    background: var(--we-role-danger-soft);
   }
   [part='base'] .shimmer {
     color: var(--we-role-text-muted);

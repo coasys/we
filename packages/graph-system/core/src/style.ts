@@ -214,9 +214,9 @@ export function resolveText<T extends string>(
  * token exists, so a scale still answers to the active theme.
  */
 const SCALES: Record<string, string[]> = {
-  categorical: ['primary-500', 'success-500', 'warning-500', 'danger-500', 'neutral-500'],
-  heat: ['primary-100', 'primary-300', 'primary-500', 'primary-700', 'primary-900'],
-  cool: ['neutral-200', 'neutral-400', 'primary-400', 'primary-600', 'primary-800'],
+  categorical: ['accent-500', 'success-500', 'warning-500', 'danger-500', 'neutral-500'],
+  heat: ['accent-100', 'accent-300', 'accent-500', 'accent-700', 'accent-900'],
+  cool: ['neutral-200', 'neutral-400', 'accent-400', 'accent-600', 'accent-800'],
 };
 
 /**
@@ -268,7 +268,7 @@ export function resolveColor(
 const DEFAULT_NODE: Required<Pick<NodeVisual, 'shape' | 'size' | 'color' | 'labelSize'>> = {
   shape: 'circle',
   size: 14,
-  color: 'primary-500',
+  color: 'accent-500',
   labelSize: 12,
 };
 

@@ -74,9 +74,9 @@ describe('badge and alert appearances', () => {
     // The default, so this is the assertion that nothing already on screen moved. Both tables are
     // asserted because the two drifting apart is exactly what happened to the field family.
     for (const table of [BADGE_APPEARANCE_DEFAULTS.soft, ALERT_APPEARANCE_DEFAULTS.soft]) {
-      expect(table.success).toMatchObject({ bg: 'success-surface', color: 'success-text' });
-      expect(table.warning).toMatchObject({ bg: 'warning-surface', color: 'warning-text' });
-      expect(table.danger).toMatchObject({ bg: 'danger-surface', color: 'danger-text' });
+      expect(table.success).toMatchObject({ bg: 'success-soft', color: 'success-text' });
+      expect(table.warning).toMatchObject({ bg: 'warning-soft', color: 'warning-text' });
+      expect(table.danger).toMatchObject({ bg: 'danger-soft', color: 'danger-text' });
     }
   });
 

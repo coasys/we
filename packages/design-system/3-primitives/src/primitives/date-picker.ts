@@ -232,7 +232,7 @@ const styles = css`
   [part='time-option']:hover,
   [part='time-option']:focus-visible,
   [part='time-option'][aria-selected='true'] {
-    background: var(--we-role-accent-muted);
+    background: var(--we-role-accent-soft);
   }
 
   [part='time-toggle'] {
