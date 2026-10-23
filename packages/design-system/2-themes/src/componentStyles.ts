@@ -12,6 +12,7 @@
 import {
   componentThemeVar,
   font,
+  GLOW_SHADOW,
   radius,
   shadow,
   space,
@@ -22,6 +23,14 @@ import {
 } from '@we/tokens';
 
 import type { ComponentOverride, ThemeOverrides, TypeStyle } from './overrides';
+
+/**
+ * A shadow token as the value a component reads. `glow` has no variable of its own — it is written
+ * out where it is drawn, so `tone` can colour it (see `GLOW_SHADOW`) — and passed through as the
+ * bare word it was a `box-shadow` of nothing.
+ */
+const resolveShadow = (value: string): string =>
+  value === 'glow' ? GLOW_SHADOW : has(shadow, value) ? `var(--we-shadow-${value})` : value;
 
 const kebab = (name: string): string => name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 const has = (table: object, key: string) => Object.prototype.hasOwnProperty.call(table, key);
@@ -90,10 +99,7 @@ function writeOverride(
   set('padding', override.padding && resolveSpace(override.padding));
   set('gap', override.gap && resolveSpace(override.gap));
   set('borderWidth', override.borderWidth);
-  set(
-    'shadow',
-    override.shadow && (has(shadow, override.shadow) ? `var(--we-shadow-${override.shadow})` : override.shadow),
-  );
+  set('shadow', override.shadow && resolveShadow(override.shadow));
   set('fill', override.fill && roleColor(override.fill));
   set('border', override.border && roleColor(override.border));
   if (override.type) {

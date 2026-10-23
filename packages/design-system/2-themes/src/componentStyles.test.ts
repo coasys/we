@@ -5,6 +5,7 @@
  * tests. These pin the spellings: a token name becomes its variable, a role its role, a raw value
  * passes through, and a variant gets the double dash that keeps it apart from a component's name.
  */
+import { GLOW_SHADOW } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
 
 import { themeParametersToStyle } from './themeStyles';
@@ -41,6 +42,13 @@ describe('components', () => {
     expect(style['--we-theme-button-padding']).toBe('var(--we-space-200) var(--we-space-400)');
     expect(style['--we-theme-button-fill']).toBe('var(--we-role-surface-raised)');
     expect(style['--we-theme-button-border-width']).toBe('1.5px');
+  });
+
+  it('writes a shadow token as a shadow, glow included', () => {
+    const style = themeParametersToStyle({ components: { card: { shadow: 'glow' }, modal: { shadow: 'lg' } } });
+    // `glow` has no variable; written as the bare word it was a box-shadow of nothing.
+    expect(style['--we-theme-card-shadow']).toBe(GLOW_SHADOW);
+    expect(style['--we-theme-modal-shadow']).toBe('var(--we-shadow-lg)');
   });
 
   it('keeps a variant apart with a double dash', () => {
