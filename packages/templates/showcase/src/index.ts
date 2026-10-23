@@ -29,6 +29,11 @@ export { scrapbookTemplate } from './ScrapbookTemplate.schema.ts';
 export { twitterTemplate } from './TwitterTemplate.schema.ts';
 export { CALL_CHROME_BAND, workshopTemplate } from './WorkshopTemplate.schema.ts';
 export { youtubeTemplate } from './YoutubeTemplate.schema.ts';
+/*
+  The Flows page — every flow, the records going through one, and the editor — for another app to
+  place: the Coasys cartridge draws it as its own Flows view.
+*/
+export { FLOWS_LOCALS, flowsPage } from './WorkshopFlows.ts';
 export { KIND, MODE } from './shared.ts';
 
 /*

@@ -89,7 +89,6 @@ import { tiedDecisionModals } from './TiedDecision.schema';
 export { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
 export { extractionActivity } from './ExtractionStatus.schema';
 export { type FeedFind, readFeedWindow } from './feed';
-export { lineComposer } from './lineComposer';
 export {
   captureMeter,
   captureStatus,

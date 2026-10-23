@@ -702,14 +702,18 @@ const themeScopeSection: SchemaNode = {
  * Light, dark or the machine's choice — offered only while the theme on screen has both sides
  * (`themeStore.currentThemeSides`). A theme with one look has nothing to choose between, and a control
  * that changes nothing is worse than none.
+ *
+ * Drawn under the row of the theme it sets, indented, so it reads as that theme's option rather than
+ * as a setting of the whole list. `where` says which row it sits under: the theme on screen's own,
+ * or the top of the list when that theme is not one listed (a space's own theme, say).
  */
-const themeModeRow: SchemaNode = {
+const themeModeRow = (where: string): SchemaNode => ({
   type: '$if',
   props: {
-    condition: { $: 'count(themeStore.currentThemeSides)' },
+    condition: { $: `count(themeStore.currentThemeSides) && (${where})` },
     then: {
       type: 'Row',
-      props: { gap: '300', ay: 'center', ax: 'between', wrap: true },
+      props: { gap: '300', ay: 'center', ax: 'between', wrap: true, pl: '600', pr: '300', pb: '200' },
       children: [
         {
           type: 'Column',
@@ -739,14 +743,14 @@ const themeModeRow: SchemaNode = {
       ],
     },
   },
-};
+});
 
 const themesSection: SchemaNode = {
   type: 'Column',
   props: { gap: '300' },
   children: [
     { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Themes'] },
-    themeModeRow,
+    themeModeRow('!themeStore.themeManagementList.exists(t, t.id == themeStore.currentTheme.id)'),
     {
       type: 'Column',
       props: { gap: '100' },
@@ -756,127 +760,129 @@ const themesSection: SchemaNode = {
           props: { items: { $: 'themeStore.themeManagementList' }, as: 'theme' },
           children: [
             {
-              type: 'Row',
-              props: {
-                gap: '300',
-                ay: 'center',
-                p: '300',
-                r: '200',
-                bg: { $: "theme.isDefault ? 'accent-muted' : 'transparent'" },
-              },
+              // The fill is the block's, so the light-or-dark row under a theme sits inside its highlight.
+              type: 'Column',
+              props: { r: '200', bg: { $: "theme.isDefault ? 'accent-muted' : 'transparent'" } },
               children: [
-                // Theme icon + name
                 {
                   type: 'Row',
-                  props: { gap: '300', ay: 'center', flex: '1', minWidth: '0' },
+                  props: { gap: '300', ay: 'center', p: '300' },
                   children: [
-                    { type: 'we-icon', props: { name: { $: 'theme.icon' }, size: '20px' } },
+                    // Theme icon + name
                     {
-                      type: 'we-text',
-                      props: { variant: 'body', fontWeight: 'medium' },
-                      children: [{ $: 'theme.name' }],
-                    },
-                  ],
-                },
-
-                // Built-in badge
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: 'theme.isBuiltIn' },
-                    then: {
-                      type: 'we-tag',
-                      props: { variant: 'neutral' },
-                      children: ['Built-in'],
-                    },
-                  },
-                },
-
-                // Install toggle (custom themes only)
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: '!theme.isBuiltIn' },
-                    then: {
                       type: 'Row',
-                      props: { gap: '200', ay: 'center' },
+                      props: { gap: '300', ay: 'center', flex: '1', minWidth: '0' },
                       children: [
+                        { type: 'we-icon', props: { name: { $: 'theme.icon' }, size: '20px' } },
                         {
                           type: 'we-text',
-                          props: { variant: 'label' },
-                          children: ['Installed'],
-                        },
-                        {
-                          type: 'we-switch',
-                          props: {
-                            checked: { $: 'theme.isInstalled' },
-                            size: 'sm',
-                            onChange: {
-                              $action: 'themeStore.setThemeInstalled',
-                              args: [{ $: 'theme.id' }, { $: 'event.detail' }],
-                            },
-                          },
+                          props: { variant: 'body', fontWeight: 'medium' },
+                          children: [{ $: 'theme.name' }],
                         },
                       ],
                     },
-                  },
-                },
 
-                // Default radio button (only shown if theme is installed)
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: 'theme.isInstalled' },
-                    then: {
-                      type: 'Row',
-                      props: { gap: '200', ay: 'center' },
-                      children: [
-                        {
-                          type: 'we-text',
-                          props: { variant: 'label' },
-                          children: ['Default'],
+                    // Built-in badge
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: 'theme.isBuiltIn' },
+                        then: {
+                          type: 'we-tag',
+                          props: { variant: 'neutral' },
+                          children: ['Built-in'],
                         },
-                        {
-                          type: 'we-radio',
+                      },
+                    },
+
+                    // Install toggle (custom themes only)
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: '!theme.isBuiltIn' },
+                        then: {
+                          type: 'Row',
+                          props: { gap: '200', ay: 'center' },
+                          children: [
+                            {
+                              type: 'we-text',
+                              props: { variant: 'label' },
+                              children: ['Installed'],
+                            },
+                            {
+                              type: 'we-switch',
+                              props: {
+                                checked: { $: 'theme.isInstalled' },
+                                size: 'sm',
+                                onChange: {
+                                  $action: 'themeStore.setThemeInstalled',
+                                  args: [{ $: 'theme.id' }, { $: 'event.detail' }],
+                                },
+                              },
+                            },
+                          ],
+                        },
+                      },
+                    },
+
+                    // Default radio button (only shown if theme is installed)
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: 'theme.isInstalled' },
+                        then: {
+                          type: 'Row',
+                          props: { gap: '200', ay: 'center' },
+                          children: [
+                            {
+                              type: 'we-text',
+                              props: { variant: 'label' },
+                              children: ['Default'],
+                            },
+                            {
+                              type: 'we-radio',
+                              props: {
+                                checked: { $: 'theme.isDefault' },
+                                name: 'default-theme',
+                                value: { $: 'theme.id' },
+                                onChange: {
+                                  $action: 'themeStore.setDefaultTheme',
+                                  args: [{ $: 'theme.id' }],
+                                },
+                              },
+                            },
+                          ],
+                        },
+                      },
+                    },
+
+                    // Delete button (custom themes only)
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: '!theme.isBuiltIn' },
+                        then: {
+                          type: 'we-button',
                           props: {
-                            checked: { $: 'theme.isDefault' },
-                            name: 'default-theme',
-                            value: { $: 'theme.id' },
-                            onChange: {
-                              $action: 'themeStore.setDefaultTheme',
+                            variant: 'ghost',
+                            size: 'sm',
+                            onClick: {
+                              $action: 'themeStore.deleteTheme',
                               args: [{ $: 'theme.id' }],
                             },
                           },
-                        },
-                      ],
-                    },
-                  },
-                },
-
-                // Delete button (custom themes only)
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: '!theme.isBuiltIn' },
-                    then: {
-                      type: 'we-button',
-                      props: {
-                        variant: 'ghost',
-                        size: 'sm',
-                        onClick: {
-                          $action: 'themeStore.deleteTheme',
-                          args: [{ $: 'theme.id' }],
+                          children: [
+                            {
+                              type: 'we-icon',
+                              props: { name: 'trash', size: '16px', color: 'danger-text' },
+                            },
+                          ],
                         },
                       },
-                      children: [
-                        {
-                          type: 'we-icon',
-                          props: { name: 'trash', size: '16px', color: 'danger-text' },
-                        },
-                      ],
                     },
-                  },
+                  ],
                 },
+                themeModeRow('theme.id == themeStore.currentTheme.id'),
               ],
             },
           ],

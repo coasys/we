@@ -3381,7 +3381,7 @@ ShellStore:
   - spaceSettingsFocus: string — the record the space-settings panel was opened about, by id, or ''. A vocabulary row for it marks itself, and the panel scrolls to it — give the row's element the DOM id `vocab-<record id>`. Set by openSpaceSettings' second argument; cleared when the panel closes
   - dockGeometry: Record<dockId, DockGeometry> — every registered panel's resolved box (top, left, width, height, edge, mode) and its state — hidden behind another tab, collapsed to its bar, stowed in a lane collapsed to its edge, and which of those its titlebar may offer (canCollapse, canStow). Read a field as { $: "shellStore.dockGeometry['<id>'].<field>" } — by index, since a dock id holds a colon; the frame a panel is wrapped in binds its geometry this way so a move rewrites props rather than remounting
   - contentInset: { top, right, bottom, left } in pixels — what the content viewport gives up to panels that displace it. Read it to keep your own fixed chrome clear of docked panels
-  - coveredInset: { top, right, bottom, left } in pixels — what FLOATING panels are covering. They take no room, so they leave contentInset at zero while still sitting over the content: this is the part of your own box the reader cannot see. Read it to keep something in the clear where contentInset would say there is nothing in the way
+  - coveredInset: { top, right, bottom, left } in pixels — what FLOATING panels and floating chrome (the call bar along the bottom) are covering. They take no room, so they leave contentInset at zero while still sitting over the content: this is the part of your own box the reader cannot see. Read it to keep something in the clear where contentInset would say there is nothing in the way. Chrome only; a space template reads the same numbers as CSS, `var(--we-covered-bottom, 0px)` and its three siblings — pad a composer pinned to the bottom of a view by it, and it rises above the call bar while one is up and settles when it goes
   - dockResizing: boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor
   - panelMaximised: boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too
   - dockPlacement: Record<dockId, { snap, displace, canDisplace, … }> — where each panel is parked, for its frame to read: which of the eight snaps it is at, whether it displaces content, and whether it may. The state a position menu ticks; dockGeometry is the resulting box
@@ -5626,7 +5626,8 @@ with it rather than by hand.
 So a local `cd ad4m/core && pnpm run build` does NOT get picked up by WE — changes to `@coasys/ad4m`
 reach WE once they are pushed to an ad4m PR or `dev` and the pin moves to that commit. A bot keeps
 one PR open that moves it to ad4m `dev`'s head once a day (`.github/workflows/bump-ad4m.yaml`); a
-feature that needs a new ad4m pins it in its own PR. Run `pnpm verify:ad4m` before merging either.
+feature that needs a new ad4m pins it in its own PR. CI runs `pnpm verify:ad4m` on both (the `AD4M
+live` workflow); it is not a required check, so read its result before merging either.
 The whole policy is in `docs/contributing/ad4m-and-deploys.md`.
 
 For active local iteration you can temporarily switch the override to
