@@ -11,7 +11,7 @@
     "icon": "packages/templates/cartridges/src/coasys/assets/mark.svg"
   },
   "bundles": ["coasys"],
-  "modules": ["call", "transcribe", "live", "pocket", "notes", "graph"],
+  "modules": ["call", "transcribe", "live", "graph"],
   "templates": ["default", "workshop"],
   "views": ["about", "cards", "graph", "boards", "calendar"],
   "spaceStarters": [

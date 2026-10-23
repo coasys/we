@@ -2883,6 +2883,18 @@ export function coveredInset(requests: DockRequest[], viewport: Viewport): Conte
 }
 
 /**
+ * What is covered once the chrome floating along the top and bottom is counted too — the call bar,
+ * a template's pinned strip: what modules and templates report as their reserve.
+ *
+ * The larger of the two per edge rather than their sum, for `coveredInset`'s reason: both are bands
+ * measured from the same edge, and where they overlap, adding them would push content further in than
+ * anything reaches. Under-reporting is the direction to be wrong in.
+ */
+export function withChromeCovered(covered: ContentInset, chrome: { top: number; bottom: number }): ContentInset {
+  return { ...covered, top: Math.max(covered.top, chrome.top), bottom: Math.max(covered.bottom, chrome.bottom) };
+}
+
+/**
  * What the content viewport gives up: every displacing **lane**, summed across the edge.
  *
  * Floating panels contribute nothing by definition — see {@link coveredInset} for what they do

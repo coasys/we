@@ -137,8 +137,8 @@ no snapshot unless it is on ad4m `dev`: open a draft ad4m PR to get one. A PR fr
 | ---- | -------------- | ----------------------------------------------------------------------------------------------- |
 | 1    | ad4m CI        | On every push to ad4m `dev`, publish a snapshot of both packages                                |
 | 2    | WE's bump bot  | Once a day, if ad4m `dev` has moved, open a PR pinning its head, listing the ad4m changes since |
-| 3    | CI and preview | Build and test WE against the new commit                                                        |
-| 4    | A person       | Run `pnpm verify:ad4m`, check the preview, and merge                                            |
+| 3    | CI and preview | Build and test WE against the new commit, and run `pnpm verify:ad4m` (the `AD4M live` workflow) |
+| 4    | A person       | Read the live tests' result, check the preview, and merge                                       |
 
 **The bump bot** is `.github/workflows/bump-ad4m.yaml`. Once a day it runs `pnpm bump:ad4m dev` from
 WE `dev`, and when ad4m `dev` has moved it pushes the result to the branch `bot/bump-ad4m`. So there is

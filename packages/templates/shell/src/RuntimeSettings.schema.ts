@@ -51,10 +51,15 @@ export const connectedApps: SchemaNode = {
   props: {
     condition: { $: 'runtimeStore.canManageApps' },
     then: adminSection({
-      title: 'Connected apps',
-      icon: 'squares-four',
+      title: 'Connections',
+      icon: 'plugs-connected',
       refresh: 'runtimeStore.loadAuthorizedApps',
       children: [
+        {
+          type: 'we-text',
+          props: { variant: 'body', color: 'text-muted' },
+          children: ['Apps and agents you’ve let act with your account, and what each may do.'],
+        },
         {
           type: '$if',
           props: {

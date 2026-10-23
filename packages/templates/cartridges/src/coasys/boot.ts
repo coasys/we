@@ -8,9 +8,10 @@ import { field } from '@we/template-kit';
  * The password is typed into the host's `CredentialField` and nowhere else — what is typed there never
  * becomes template state, so this screen cannot keep or forward it. Everything around it is the app's.
  *
- * WE's own screen also lists the other accounts on a desktop build; that is left to WE's. The Coasys
- * way in — passkeys, a master key, linking a device — waits for the identity backend, and arrives here
- * as more states of the same column.
+ * On a desktop build the column ends with the other accounts on this machine and a way to add one,
+ * as WE's own screen offers them: switching and creating restart the app, so they are sign-in's to
+ * offer, not the app's. The Coasys way in — passkeys, a master key, linking a device — waits for the
+ * identity backend, and arrives here as more states of the same column.
  */
 
 const brandBar: SchemaNode = {
@@ -30,7 +31,7 @@ const brandBar: SchemaNode = {
 };
 
 /** A heading and the sentence under it, as every step of the ceremony opens. */
-const head = (heading: SchemaNode['children'], intro: string): SchemaNode => ({
+const head = (heading: SchemaNode['children'], intro: NonNullable<SchemaNode['children']>[number]): SchemaNode => ({
   type: 'Column',
   props: { gap: '300' },
   children: [
@@ -40,7 +41,7 @@ const head = (heading: SchemaNode['children'], intro: string): SchemaNode => ({
 });
 
 /** A wait with nothing to do but read why. */
-const waiting = (words: string): SchemaNode => ({
+const waiting = (words: NonNullable<SchemaNode['children']>[number]): SchemaNode => ({
   type: 'Row',
   props: { gap: '300', ay: 'center' },
   children: [
@@ -53,7 +54,10 @@ const signIn: SchemaNode = {
   type: 'Column',
   props: { gap: '600' },
   children: [
-    head(['Welcome back'], 'Unlock your account on this device.'),
+    // Names the account once there is more than one, so the password is typed into the right one.
+    head(['Welcome back'], {
+      $: "accountStore.hasOtherAccounts && accountStore.activeAccount ? `Unlock ${accountStore.activeAccount.name} on this device.` : 'Unlock your account on this device.'",
+    }),
     {
       type: 'we-form-field',
       props: {
@@ -99,7 +103,11 @@ const createAccount: SchemaNode = {
     name: { type: 'string', initial: '', validate: [{ rule: 'required', message: 'A name is required' }] },
   },
   children: [
-    head(['Make your account'], 'A name people will know you by, and a password that unlocks you on this device.'),
+    head(
+      // Another account on a machine that has one already, rather than the first.
+      [{ $: "accountStore.isFirstRun ? 'Make your account' : 'Add an account'" }],
+      'A name people will know you by, and a password that unlocks you on this device.',
+    ),
     {
       type: 'Column',
       props: { gap: '400' },
@@ -160,6 +168,87 @@ const failed: SchemaNode = {
   ],
 };
 
+/**
+ * The other accounts on this machine, and a way to add one.
+ *
+ * Only accounts somebody has set up are listed: one with no identity is not a destination, since
+ * switching to it lands on the setup form. "New account" waits until the account on screen exists,
+ * so it is never offered beside the form that is itself making one. Both restart the app, which
+ * shows `switching` or `preparing` in the column until it is back.
+ */
+const otherAccounts: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300', pt: '400', borderTop: '1px solid border' },
+  children: [
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'accountStore.error' },
+        then: { type: 'we-alert', props: { variant: 'danger' }, children: [{ $: 'accountStore.error' }] },
+      },
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'count(filter(accountStore.accounts, { active: false, hasAgent: true }))' },
+        then: {
+          type: 'we-text',
+          props: { variant: 'label', color: 'text-muted' },
+          children: ['Other accounts on this device'],
+        },
+      },
+    },
+    {
+      type: '$each',
+      props: { items: { $: 'filter(accountStore.accounts, { active: false, hasAgent: true })' }, as: 'account' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'ghost',
+            ax: 'start',
+            onClick: { $action: 'accountStore.switchAccount', args: [{ $: 'account.id' }] },
+          },
+          children: [
+            {
+              type: 'Row',
+              props: { gap: '300', ay: 'center' },
+              children: [
+                {
+                  type: 'we-avatar',
+                  props: {
+                    image: { $: 'account.avatar' },
+                    initials: { $: 'account.name' },
+                    hash: { $: 'account.id' },
+                    size: 'sm',
+                  },
+                },
+                { type: 'we-text', props: { truncate: true }, children: [{ $: 'account.name' }] },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: 'accountStore.activeAccount.hasAgent' },
+        then: {
+          type: 'Row',
+          children: [
+            {
+              type: 'we-button',
+              props: { variant: 'ghost', onClick: { $action: 'accountStore.createAccount' } },
+              children: [{ type: 'we-icon', props: { name: 'user-plus' } }, 'New account'],
+            },
+          ],
+        },
+      },
+    },
+  ],
+};
+
 /** One state of the column at a time, chosen by where boot has got to. */
 const step = (condition: string, then: SchemaNode): SchemaNode => ({
   type: '$if',
@@ -191,14 +280,37 @@ export const coasysBootScreen: SchemaNode = {
               type: 'Column',
               props: { width: '100%', maxWidth: '440px', gap: '600' },
               children: [
-                step("sessionStore.bootState == 'initialising'", waiting('Starting up…')),
+                // A switch or a new account restarts the app; until it is back, the column says
+                // which, rather than a form the restart is about to take away.
+                step('accountStore.switchingTo', waiting({ $: '`Switching to ${accountStore.switchingTo.name}…`' })),
+                step('accountStore.creating && !accountStore.switchingTo', waiting('Preparing a new account…')),
+                step(
+                  "sessionStore.bootState == 'initialising' && !accountStore.switchingTo && !accountStore.creating",
+                  waiting('Starting up…'),
+                ),
                 step(
                   "sessionStore.createAgentLoading || sessionStore.bootState == 'finishing'",
                   waiting('Setting up your account…'),
                 ),
-                step("sessionStore.bootState == 'login'", signIn),
-                step("sessionStore.bootState == 'createAgent' && !sessionStore.createAgentLoading", createAccount),
+                step(
+                  "sessionStore.bootState == 'login' && !accountStore.switchingTo && !accountStore.creating",
+                  signIn,
+                ),
+                step(
+                  "sessionStore.bootState == 'createAgent' && !sessionStore.createAgentLoading && !accountStore.switchingTo",
+                  createAccount,
+                ),
                 step("sessionStore.bootState == 'error'", failed),
+                // Outside the steps, so it stays put while the state above it changes.
+                {
+                  type: '$if',
+                  props: {
+                    condition: {
+                      $: "sessionStore.bootState in ['login', 'createAgent', 'error'] && !sessionStore.createAgentLoading && !accountStore.switchingTo && !accountStore.creating && accountStore.canManageAccounts && accountStore.activeAccount && !accountStore.isFirstRun",
+                    },
+                    then: otherAccounts,
+                  },
+                },
               ],
             },
           ],

@@ -86,6 +86,7 @@ import {
   targetRank,
   unlaned,
   widestMin,
+  withChromeCovered,
 } from '../src/shared/dockGeometry';
 
 const desktop = { width: 1600, height: 900 };
@@ -1357,6 +1358,19 @@ describe('a template’s declared placement', () => {
  * layout parks an unplaced card in the top-left of what it believes is in view, which is where a
  * left-snapped transcript panel sits, so every freshly extracted record was drawn underneath one.
  */
+describe('what floating chrome covers', () => {
+  it('counts the call bar along the bottom, and drops it when the bar goes', () => {
+    const none = { left: 0, right: 0, top: 0, bottom: 0 };
+    expect(withChromeCovered(none, { top: 0, bottom: 74 })).toEqual({ ...none, bottom: 74 });
+    expect(withChromeCovered(none, { top: 0, bottom: 0 })).toEqual(none);
+  });
+
+  it('takes the larger of a panel and the chrome on one edge, never their sum', () => {
+    const panel = { left: 320, right: 0, top: 0, bottom: 200 };
+    expect(withChromeCovered(panel, { top: 40, bottom: 74 })).toEqual({ left: 320, right: 0, top: 40, bottom: 200 });
+  });
+});
+
 describe('what floating panels cover', () => {
   const floating = (over: Partial<FloatPlacement> = {}) => placement({ displace: false, ...over });
 

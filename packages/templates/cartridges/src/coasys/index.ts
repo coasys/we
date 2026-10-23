@@ -28,7 +28,7 @@ export const coasys: Cartridge = {
   brand: coasysBrand,
   bootScreen: coasysBootScreen,
   shapes: [],
-  modules: ['call', 'transcribe', 'notes', 'pocket', 'graph'],
+  modules: ['call', 'transcribe', 'graph'],
   // Every space a member opens in Coasys is drawn as a Coasys space.
   display: 'ours',
   sample: {

@@ -21,18 +21,35 @@ const OPEN = 'local.openRows';
 const isOpen = (value: string): SchemaProp => ({ $: `'${value}' in ${OPEN}` });
 const toggle = (value: SchemaProp): SchemaProp => ({ $toggleLocalIn: 'openRows', value });
 
-/** A group heading: quieter than a row, open or closed on its own. */
-const group = (key: string, label: string, children: SchemaNode[], badge?: SchemaNode): SchemaNode =>
+/**
+ * A group: one of the space's kinds of thing, with its glyph, opened or closed by a press anywhere on
+ * its row — a group is not a place to go, so choosing it is opening it (see `onSelect`). Flows is the
+ * exception: its row opens the Flows page as well as the group.
+ */
+const group = (key: string, label: string, icon: string, children: SchemaNode[], badge?: SchemaNode): SchemaNode =>
   treeRow({
     value: `group|${key}`,
     label,
-    heading: true,
+    icon,
     open: isOpen(`group|${key}`),
     onOpenChange: toggle(`group|${key}`),
     expandable: true,
     ...(badge ? { badge } : {}),
     children,
   });
+
+/** A small + at the end of a group's row, for making one more of what it holds. */
+const addButton = (label: string, onClick: SchemaProp): SchemaNode => ({
+  type: 'we-tooltip',
+  props: { content: label, placement: 'right' },
+  children: [
+    {
+      type: 'we-button',
+      props: { variant: 'ghost', size: 'xs', square: true, label, onClick },
+      children: [{ type: 'we-icon', props: { name: 'plus' } }],
+    },
+  ],
+});
 
 const countBadge = (expr: string): SchemaNode => ({
   type: '$if',
@@ -42,21 +59,27 @@ const countBadge = (expr: string): SchemaNode => ({
   },
 });
 
-const channels = group('channels', 'Channels', [
-  treeRow({ nested: true, value: { $: "'channel|' + spaceStore.root" }, label: 'General', icon: 'hash' }),
-  {
-    type: '$each',
-    props: { items: { $: 'local.subChannels' }, as: 'channel' },
-    children: [
-      treeRow({
-        nested: true,
-        value: { $: "'channel|' + channel.id" },
-        label: { $: "channel.title ? channel.title : 'Untitled channel'" },
-        icon: 'hash',
-      }),
-    ],
-  },
-]);
+const channels = group(
+  'channels',
+  'Channels',
+  'chats-circle',
+  [
+    treeRow({ nested: true, value: { $: "'channel|' + spaceStore.root" }, label: 'General', icon: 'hash' }),
+    {
+      type: '$each',
+      props: { items: { $: 'local.subChannels' }, as: 'channel' },
+      children: [
+        treeRow({
+          nested: true,
+          value: { $: "'channel|' + channel.id" },
+          label: { $: "channel.title ? channel.title : 'Untitled channel'" },
+          icon: 'hash',
+        }),
+      ],
+    },
+  ],
+  addButton('New channel', { $setLocal: 'newChannelOpen', value: true }),
+);
 
 /** A call still running carries a Live tag, so the way back into it is on the row. */
 const LIVE = 'find(modules.call.liveCalls, { recordId: call.id })';
@@ -64,6 +87,7 @@ const LIVE = 'find(modules.call.liveCalls, { recordId: call.id })';
 const calls = group(
   'calls',
   'Calls',
+  'phone',
   [
     {
       type: '$each',
@@ -98,25 +122,34 @@ const calls = group(
   countBadge('count(modules.call.liveCalls)'),
 );
 
-const flows = group('flows', 'Flows', [
-  {
-    type: '$each',
-    props: { items: { $: 'flowStore.flows.filter(f, !f.archived)' }, as: 'flow' },
-    children: [
-      treeRow({
-        nested: true,
-        value: { $: "'flow|' + flow.name" },
-        label: { $: 'flow.label' },
-        icon: 'flow-arrow',
-        badge: countBadge('flow.records'),
-      }),
-    ],
-  },
-]);
+const FLOWS_PAGE = "spaceStore.spacePath + '/flows'";
+
+const flows = group(
+  'flows',
+  'Flows',
+  'flow-arrow',
+  [
+    {
+      type: '$each',
+      props: { items: { $: 'flowStore.flows.filter(f, !f.archived)' }, as: 'flow' },
+      children: [
+        treeRow({
+          nested: true,
+          value: { $: "'flow|' + flow.name" },
+          label: { $: 'flow.label' },
+          icon: 'flow-arrow',
+          badge: countBadge('flow.records'),
+        }),
+      ],
+    },
+  ],
+  addButton('New flow', { $action: 'routeStore.navigate', args: [{ $: `${FLOWS_PAGE} + '?new=1'` }] }),
+);
 
 const people = group(
   'people',
   'People',
+  'users',
   [
     {
       type: '$each',
@@ -135,7 +168,7 @@ const people = group(
 );
 
 /** The kinds of record this space defines — what it is about, as data. */
-const socialDna = group('dna', 'Social DNA', [
+const socialDna = group('dna', 'Social DNA', 'dna', [
   {
     type: '$each',
     props: { items: { $: 'shapeStore.spaceShapes' }, as: 'shape' },
@@ -152,6 +185,19 @@ const socialDna = group('dna', 'Social DNA', [
 
 /** What choosing a row does, by the kind its value names. */
 const onSelect: SchemaProp = [
+  {
+    $if: {
+      condition: { $: "startsWith(event.detail.value, 'group|')" },
+      then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
+    },
+  },
+  // Flows is a place as well as a group: its page lists every flow and makes new ones.
+  {
+    $if: {
+      condition: { $: "event.detail.value == 'group|flows'" },
+      then: [{ $action: 'flowStore.closeFlow' }, { $action: 'routeStore.navigate', args: [{ $: FLOWS_PAGE }] }],
+    },
+  },
   {
     $if: {
       condition: { $: "startsWith(event.detail.value, 'channel|')" },
@@ -181,7 +227,7 @@ const onSelect: SchemaProp = [
   },
 ];
 
-/** The space's name and a menu of what can be done to it, with the way to fold the tree away. */
+/** The space's name, the way to its settings, and the way to fold the tree away. */
 const header: SchemaNode = {
   type: 'Row',
   props: { gap: '200', ay: 'center', px: '300', pt: '400', pb: '200' },
@@ -201,33 +247,21 @@ const header: SchemaNode = {
       children: [{ $: 'spaceStore.currentSpace.name' }],
     },
     {
-      type: 'DropdownMenu',
-      props: {
-        triggerIcon: 'dots-three',
-        triggerVariant: 'ghost',
-        triggerTitle: 'This space',
-        size: 'sm',
-        itemSize: 'sm',
-        placement: 'bottom-end',
-        items: [
-          { id: 'channel', label: 'New channel', icon: 'hash' },
-          { id: 'settings', label: 'Space settings', icon: 'gear-six' },
-        ],
-        onSelect: [
-          {
-            $if: {
-              condition: { $: "arg.id == 'channel'" },
-              then: { $setLocal: 'newChannelOpen', value: true },
-            },
+      type: 'we-tooltip',
+      props: { content: 'Space settings', placement: 'bottom' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'ghost',
+            size: 'sm',
+            square: true,
+            label: 'Space settings',
+            onClick: { $action: 'shellStore.toggleSpaceSettings' },
           },
-          {
-            $if: {
-              condition: { $: "arg.id == 'settings'" },
-              then: { $action: 'shellStore.openSpaceSettings' },
-            },
-          },
-        ],
-      },
+          children: [{ type: 'we-icon', props: { name: 'gear-six' } }],
+        },
+      ],
     },
     {
       type: 'we-tooltip',
@@ -293,24 +327,60 @@ const purpose: SchemaNode = {
 const callButton: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: 'modules.call.canCall' },
+    // Only while there is no call here: once there is, the line under the header offers it.
+    condition: { $: 'modules.call.canCall && !count(modules.call.liveCalls)' },
     then: {
       type: 'Column',
-      props: { p: '300' },
+      props: { p: '300', ax: 'start' },
       children: [
         {
           type: 'we-button',
+          props: { variant: 'secondary', onClick: { $action: 'modules.call.goToCall' } },
+          children: [{ type: 'we-icon', props: { name: 'phone' } }, 'Start a call'],
+        },
+      ],
+    },
+  },
+};
+
+/** Whether this agent is in the call running here, rather than in one somewhere else or none. */
+const IN_IT = 'modules.call.active && !modules.call.elsewhere';
+
+/**
+ * A call running in this space, under its name, as d12's tree draws it: "Call running · 3 in it",
+ * and the way to it — Open its page for somebody in it, Join for somebody who is not. The controls
+ * themselves are the call module's bar, on every page.
+ */
+const callRunning: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'count(modules.call.liveCalls)' },
+    then: {
+      type: 'Row',
+      props: { gap: '200', ay: 'center', px: '300', pb: '300' },
+      children: [
+        { type: 'we-icon', props: { name: 'phone-call', size: 'sm', color: 'success-text' } },
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-muted', flex: '1', minWidth: '0', truncate: true },
+          children: [{ $: '`Call running · ${first(modules.call.liveCalls).count} in it`' }],
+        },
+        {
+          type: 'we-button',
           props: {
-            variant: { $: "count(modules.call.liveCalls) ? 'primary' : 'secondary'" },
-            width: '100%',
-            onClick: { $action: 'modules.call.goToCall' },
+            size: 'xs',
+            variant: { $: `${IN_IT} ? 'secondary' : 'primary'` },
+            onClick: [
+              {
+                $if: {
+                  condition: { $: IN_IT },
+                  then: { $action: 'routeStore.navigate', args: [{ $: callPath('modules.call.callRecordId') }] },
+                  else: { $action: 'modules.call.goToCall' },
+                },
+              },
+            ],
           },
-          children: [
-            { type: 'we-icon', props: { name: 'phone' } },
-            {
-              $: "modules.call.active && !modules.call.elsewhere ? 'Back to the call' : count(modules.call.liveCalls) ? 'Join the call' : 'Start a call'",
-            },
-          ],
+          children: [{ $: `${IN_IT} ? 'Open' : 'Join'` }],
         },
       ],
     },
@@ -367,6 +437,7 @@ export const treeSection: SchemaNode = {
   children: [
     header,
     purpose,
+    callRunning,
     {
       type: 'Column',
       props: { flex: '1', minHeight: '0', overflowY: 'auto', px: '200' },
