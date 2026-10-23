@@ -7,7 +7,7 @@ import { discardGuard } from './discardGuard.ts';
 export interface FormModalOptions {
   /** What decides whether it is showing — `{ $: 'local.composerOpen' }` or a store flag. */
   open: SchemaProp;
-  /** How it is dismissed. The backdrop, the close button and Cancel all run it. A handler or a list. */
+  /** How it is dismissed. The backdrop, the close button and Cancel all run it. */
   close: SchemaProp;
   title: Content;
   /** `sm` for one or two fields, `md` (the default) for a form, `lg` for a workspace. */
@@ -112,15 +112,13 @@ export function formModal(opts: FormModalOptions): SchemaNode {
     last entry instead, recursively, and only falls back to appending where nothing in the branch
     can carry it.
   */
-  // A list where a list is spliced in, so a close written as several handlers stays flat.
-  const closeSteps: unknown[] = Array.isArray(opts.close) ? opts.close : [opts.close];
   const closing = (handler: unknown): unknown => {
     if (Array.isArray(handler)) {
-      if (handler.length === 0) return closeSteps;
+      if (handler.length === 0) return [opts.close];
       const last = closing(handler[handler.length - 1]);
       return [...handler.slice(0, -1), ...(Array.isArray(last) ? last : [last])];
     }
-    if (!handler || typeof handler !== 'object') return [handler, ...closeSteps];
+    if (!handler || typeof handler !== 'object') return [handler, opts.close];
 
     const token = handler as Record<string, unknown>;
     const branches = token.$if as { then?: unknown; else?: unknown } | undefined;
@@ -135,8 +133,8 @@ export function formModal(opts: FormModalOptions): SchemaNode {
       };
     }
     // Only an action settles; anything else is run and done, so the close follows it.
-    if (!('$action' in token)) return [token, ...closeSteps];
-    return { ...token, onSuccess: [...closeSteps, ...((token.onSuccess as unknown[]) ?? [])] };
+    if (!('$action' in token)) return [token, opts.close];
+    return { ...token, onSuccess: [opts.close, ...((token.onSuccess as unknown[]) ?? [])] };
   };
 
   const submitAction = closing(opts.submit) as Record<string, unknown>;

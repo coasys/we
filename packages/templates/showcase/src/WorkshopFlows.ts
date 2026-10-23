@@ -1076,10 +1076,20 @@ const draftEditor: SchemaNode = {
 */
 const newFlowModal: SchemaNode = formModal({
   open: { $: "local.newFlowOpen || routeStore.params.new == '1'" },
-  close: [
-    { $setLocal: 'newFlowOpen', value: false },
-    { $action: 'routeStore.setParam', args: ['new', null] },
-  ],
+  /*
+    One handler rather than a list: `we-modal`'s `close` is a prop, not an event, and a list there is
+    read as a value, so the ✕ and the backdrop did nothing. A `$if` is a handler and may run a list.
+  */
+  close: {
+    $if: {
+      condition: { $: "routeStore.params.new == '1'" },
+      then: [
+        { $action: 'routeStore.setParam', args: ['new', null] },
+        { $setLocal: 'newFlowOpen', value: false },
+      ],
+      else: { $setLocal: 'newFlowOpen', value: false },
+    },
+  },
   title: 'New flow',
   size: 'sm',
   localState: {

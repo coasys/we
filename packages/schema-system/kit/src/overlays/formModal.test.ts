@@ -37,13 +37,6 @@ describe('formModal closes when the submit succeeds', () => {
     expect(onClick.onSuccess).toEqual([close, { $action: 'store.ping' }]);
   });
 
-  it('spreads a close written as several handlers, rather than nesting the list', () => {
-    const steps = [close, { $action: 'store.clear', args: [] }];
-    const onClick = onClickOf(formModal({ ...base, close: steps, submit: { $action: 'store.save', args: [] } }));
-
-    expect(onClick.onSuccess).toEqual(steps);
-  });
-
   it('puts it down BOTH branches when the submit chooses between actions', () => {
     const submit = {
       $if: {
