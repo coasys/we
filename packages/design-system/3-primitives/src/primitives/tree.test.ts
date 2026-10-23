@@ -155,6 +155,22 @@ describe('a tree', () => {
     expect(byValue(tree, 'people').selected).toBe(false);
   });
 
+  it('leaves a press on a control in the row to the control, however deep it lands', async () => {
+    const tree = await makeTree(rows);
+    const chosen: string[] = [];
+    tree.addEventListener('select', (event) => chosen.push((event as CustomEvent<{ value: string }>).detail.value));
+    // A + at the end of a row: a button whose glyph sits in its own shadow root, as `we-button`'s does.
+    const button = document.createElement('we-button');
+    const glyph = document.createElement('span');
+    button.attachShadow({ mode: 'open' }).appendChild(glyph);
+    byValue(tree, 'people').appendChild(button);
+    glyph.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+    expect(chosen).toEqual([]);
+    // The rest of the row is still the row's.
+    rowOf(byValue(tree, 'people')).click();
+    expect(chosen).toEqual(['people']);
+  });
+
   it('moves to the next row starting with what is typed', async () => {
     const tree = await makeTree(rows);
     rowOf(byValue(tree, 'root')).focus();

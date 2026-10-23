@@ -351,9 +351,16 @@ export class TreeItem extends DesignSystemElement {
   }
 
   private onRowClick = (event: MouseEvent) => {
-    // A press on a control the row holds (a pin button, a menu) is that control's.
-    const origin = event.composedPath()[0] as HTMLElement | undefined;
-    if (origin?.closest?.('button, a, we-button, we-icon-button, input')) return;
+    /*
+      A press on a control the row holds (a + , a menu) is that control's. Walked along the event's
+      path rather than asked with `closest`, which stops at a shadow root: a press lands on the
+      glyph inside a button's icon, two shadow roots below the button, and `closest` from there
+      never reaches it — so the row chose itself as well, after the control had acted.
+    */
+    for (const node of event.composedPath()) {
+      if (node === event.currentTarget) break;
+      if (node instanceof Element && node.matches('button, a, we-button, we-icon-button, input')) return;
+    }
     this.choose();
   };
 
