@@ -10,10 +10,9 @@
  * it scrolls, pages and re-anchors exactly as the transcript does, and follows the same per-viewer
  * orientation.
  */
-import { panelShell, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
+import { lineComposer, panelShell, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 
-import { lineComposer } from './lineComposer';
 import { messageLine } from './messageLine';
 import { TIMELINE_ORIENTATION, timelineOrderButton } from './Panel.schema';
 

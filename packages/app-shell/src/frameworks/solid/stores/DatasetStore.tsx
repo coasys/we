@@ -943,11 +943,9 @@ export function DatasetStoreProvider(props: ParentProps) {
     const created = toApp(await lifecycle.create(SYSTEM_DATASET_NAMES.root));
     made.push(created);
     await schemas.installRoot(created.handle);
-    await AgentSettings.create(created.handle, {
-      currentTemplateId: 'default',
-      currentThemeId: 'dark',
-      defaultThemeId: 'dark',
-    });
+    // No theme: a new agent has not chosen one, so they wear the theme their app offers first
+    // (WE's own offers Dark). Writing one here made it a choice that outranked every app's theme.
+    await AgentSettings.create(created.handle, { currentTemplateId: 'default' });
     setRootDataset(created);
     // Read back rather than holding what the create answered with, which is the same thing the
     // `existing` branch above does one screen up. This signal lives for the life of the app and its

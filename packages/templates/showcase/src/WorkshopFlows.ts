@@ -1068,9 +1068,28 @@ const draftEditor: SchemaNode = {
 
 // ─── Modals ────────────────────────────────────────────────────────────────────
 
+/*
+  Open from the page's own +, or from anywhere that goes to the page with `?new=1` — a tree's +, say.
+  Read off the address while it holds the param, rather than through a synced local: a local reads
+  its param once, when it mounts, and the page is kept alive, so going to `?new=1` a second time
+  opened nothing. Closing it takes the param away again.
+*/
 const newFlowModal: SchemaNode = formModal({
-  open: { $: 'local.newFlowOpen' },
-  close: { $setLocal: 'newFlowOpen', value: false },
+  open: { $: "local.newFlowOpen || routeStore.params.new == '1'" },
+  /*
+    One handler rather than a list: `we-modal`'s `close` is a prop, not an event, and a list there is
+    read as a value, so the ✕ and the backdrop did nothing. A `$if` is a handler and may run a list.
+  */
+  close: {
+    $if: {
+      condition: { $: "routeStore.params.new == '1'" },
+      then: [
+        { $action: 'routeStore.setParam', args: ['new', null] },
+        { $setLocal: 'newFlowOpen', value: false },
+      ],
+      else: { $setLocal: 'newFlowOpen', value: false },
+    },
+  },
   title: 'New flow',
   size: 'sm',
   localState: {

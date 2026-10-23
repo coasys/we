@@ -20,6 +20,7 @@ import {
   emptyState,
   foldingBody,
   foldingSectionLabel,
+  lineComposer,
   panelScroll,
   panelShell,
   timeline,
@@ -30,7 +31,6 @@ import { type SchemaNode, type SchemaProp } from '@we/schema-shared';
 import { expr } from '@we/schema-shared';
 
 import { CARET_SIZE, codePane, extractionActivity } from './ExtractionStatus.schema';
-import { lineComposer } from './lineComposer';
 import { messageLine } from './messageLine';
 import { SUBJECT_EXPR as SHARED_SUBJECT_EXPR, VIEWING_LIVE_EXPR } from './subject';
 import { repliesInclude } from './thread';
@@ -3154,13 +3154,30 @@ export const transcriptLines: SchemaNode = {
       include: repliesInclude(),
       when: { $: 'modules.transcribe.collectionId' },
       /*
-        Live only while the call is.
+        A call's lines are live only while the call is; anything else — a channel these lines are
+        pointed at — always is, since somebody can write into it at any moment.
 
         A finished transcript is settled, so a subscription over it has the node re-running this
         query on every change in the space to be told nothing changed. Reading one back is the
-        commonest thing anybody does to a long transcript, and it was the case paying most.
+        commonest thing anybody does to a long transcript, and it was the case paying most. Until
+        the subject's kind is known it is not followed, so a past call is never subscribed to on the
+        way to finding out it is one.
       */
-      subscribe: { $: CALL_ON_SCREEN_LIVE },
+      subscribe: {
+        $: `${CALL_ON_SCREEN_LIVE} || (local.subjectKindLoaded && first(local.subjectKind).kind != 'call')`,
+      },
+    },
+    /*
+      What the subject is, read once. Through the same token as the scope, so a placement pointing
+      these lines at a channel points this at the channel too.
+    */
+    subjectKind: {
+      entity: 'CollectionBlock',
+      where: { id: { $: 'modules.transcribe.collectionId' } },
+      select: ['kind'],
+      limit: 1,
+      when: { $: 'modules.transcribe.collectionId' },
+      subscribe: false,
     },
   },
   children: [

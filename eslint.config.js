@@ -189,6 +189,9 @@ export default [
       '**/old/**',
       '**/target/**',
       '**/dist-electron/**',
+      // Registries generated for a seed other than WE's own (`WE_SEED`), gitignored and outside every
+      // tsconfig — see scripts/seed.cjs.
+      '**/.seed-build/**',
       // Machine-generated sources (e.g. packages/entities/src/generated/coreManifest.ts,
       // written by generateCoreManifest.mjs) — emitted JSON-style, not prettier-style.
       '**/src/generated/**',

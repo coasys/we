@@ -1711,7 +1711,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         contentInset:
           '{ top, right, bottom, left } in pixels — what the content viewport gives up to panels that displace it. Read it to keep your own fixed chrome clear of docked panels',
         coveredInset:
-          '{ top, right, bottom, left } in pixels — what FLOATING panels are covering. They take no room, so they leave contentInset at zero while still sitting over the content: this is the part of your own box the reader cannot see. Read it to keep something in the clear where contentInset would say there is nothing in the way',
+          '{ top, right, bottom, left } in pixels — what FLOATING panels and floating chrome (the call bar along the bottom) are covering. They take no room, so they leave contentInset at zero while still sitting over the content: this is the part of your own box the reader cannot see. Read it to keep something in the clear where contentInset would say there is nothing in the way. Chrome only; a space template reads the same numbers as CSS, `var(--we-covered-bottom, 0px)` and its three siblings — pad a composer pinned to the bottom of a view by it, and it rises above the call bar while one is up and settles when it goes',
         dockResizing:
           'boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor',
         panelMaximised:

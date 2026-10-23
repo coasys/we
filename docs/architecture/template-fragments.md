@@ -111,9 +111,9 @@ exactly the operator-language pressure named under the falsifiers. The full poli
 @we/schema-kit          (schema-system/kit)   — names no store
   states/     comingSoon · emptyState · emptyNote · gatePrompt · skeletonList
   layout/     pageShell · sectionCard · attributeRow · statChip · railShell · railGroup · railItem
-  lists/      gridWrapper · cardShell · cardList · loadMore · pickerRow
+  lists/      gridWrapper · cardShell · cardList · loadMore · pickerRow · treeRow
   overlays/   composerModal · confirmModal · peopleTooltip · pickerPopover
-  input/      field
+  input/      field · lineComposer
 
 @we/template-kit        (templates/kit)       — names WE's stores; re-exports all of the above
   lists/      channelRail · collectionFeed · commentThread · mediaGrid   (spaceStore.mutedDids)

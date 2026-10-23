@@ -331,6 +331,19 @@ function main() {
   reading the manifest from its source files rather than importing it, so this script keeps running
   under plain node. A starter that would half-apply at a create press fails here instead.
 */
+/** The space templates (not sections) the named bundles bring, by the id an install gives them. */
+function bundleSpaceTemplates(ids) {
+  if (!Array.isArray(ids)) return [];
+  return ids.flatMap((id) => {
+    try {
+      const bundle = JSON.parse(fs.readFileSync(path.join(WORKSPACE_ROOT, 'bundles', `${id}.bundle.json`), 'utf8'));
+      return (bundle.templates || []).filter((t) => t.meta?.role !== 'view').map((t) => `${id}--${t.id}`);
+    } catch {
+      return [];
+    }
+  });
+}
+
 function validateSpaceStarter(seed) {
   const starters = seed.spaceStarters;
   if (!starters) return;
@@ -349,7 +362,10 @@ function validateSpaceStarter(seed) {
     ),
   );
   const identity = new Set(['uuid', 'url', 'name', 'description', 'discovery', 'avatar', 'coverImage']);
-  const templates = new Set(seed.templates || []);
+  // The seed's own templates, and the space templates its bundles bring — under the id an install gives
+  // them (`<bundle>--<template>`, as `bundlePieceId` writes it). A bundle that cannot be read is
+  // reported by the bundle check; here it simply brings nothing.
+  const templates = new Set([...(seed.templates || []), ...bundleSpaceTemplates(seed.bundles)]);
   const modules = new Set((seed.modules || []).map((m) => (typeof m === 'string' ? m : m.id)));
   // A string that is exactly `$<name>` is a reference; see packages/app-shell/src/shared/spaceStarter.ts.
   const refOf = (v) => (typeof v === 'string' ? (/^\$([A-Za-z_][\w-]*)$/.exec(v) || [])[1] || null : null);

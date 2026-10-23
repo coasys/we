@@ -256,8 +256,14 @@ describe('a transcript with nothing in it', () => {
    * space to be told nothing changed — and reading one back is the commonest thing anybody does to
    * a long transcript.
    */
-  it('subscribes only while the call is live', () => {
-    expect(linesJson).toContain('"subscribe":{"$":"modules.transcribe.callOnScreenLive"}');
+  it('subscribes to a call only while it is live, and to anything else always', () => {
+    expect(linesJson).toContain(
+      `"subscribe":{"$":"modules.transcribe.callOnScreenLive || (local.subjectKindLoaded && first(local.subjectKind).kind != 'call')"}`,
+    );
+    // The kind is read through the subject token, so a placement's substitution reaches it.
+    expect(linesJson).toContain(
+      '"subjectKind":{"entity":"CollectionBlock","where":{"id":{"$":"modules.transcribe.collectionId"}}',
+    );
   });
 
   /**

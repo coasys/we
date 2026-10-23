@@ -15,6 +15,8 @@ import type { TemplateSchema } from '@we/schema-shared';
  *
  * `display: contents` at the root, as the shell's own chrome list has: every piece positions itself,
  * so the app's root must not be a box that anything is laid out in.
+ *
+ * Its theme is Dark: what somebody who has never chosen a theme wears while they are in this app.
  */
 export const weApp: TemplateSchema = {
   type: 'Column',
@@ -23,6 +25,7 @@ export const weApp: TemplateSchema = {
     description: 'WE’s own app: your spaces on the left, a module’s panels on the right.',
     icon: 'app-window',
     role: 'app',
+    themeId: 'dark',
     frame: { left: 80, right: 56 },
   },
   props: { styles: { display: 'contents' } },
