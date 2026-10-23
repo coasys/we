@@ -136,11 +136,25 @@ function supportsRelativeColor(): boolean {
 }
 
 /** Maps shadowIntensity preset to the CSS box-shadow value emitted as --we-theme-shadow. */
-const SHADOW_INTENSITY_VALUES: Record<NonNullable<ThemeOverrides['shadowIntensity']>, string> = {
-  flat: 'none',
-  subtle: 'var(--we-shadow-sm)',
-  elevated: 'var(--we-shadow-md)',
-  dramatic: 'var(--we-shadow-xl)',
+/**
+ * What `shadowIntensity` writes: how strong every shadow step is, and which step a surface rests at.
+ *
+ * The strength scales the alpha of all four steps (see shadow.ts in @we/tokens), so `shadow: 'md'`
+ * anywhere follows the setting; the resting step is what a Card wears by default.
+ */
+const SHADOW_INTENSITY_VALUES: Record<NonNullable<ThemeOverrides['shadowIntensity']>, Record<string, string>> = {
+  flat: { '--we-theme-shadow-strength': '0', '--we-theme-shadow': 'none' },
+  subtle: { '--we-theme-shadow-strength': '0.6', '--we-theme-shadow': 'var(--we-shadow-sm)' },
+  elevated: { '--we-theme-shadow-strength': '1', '--we-theme-shadow': 'var(--we-shadow-md)' },
+  dramatic: { '--we-theme-shadow-strength': '1.8', '--we-theme-shadow': 'var(--we-shadow-xl)' },
+};
+
+/** What `glowIntensity` writes: how bright and how wide `shadow: 'glow'` is. */
+const GLOW_INTENSITY_VALUES: Record<NonNullable<ThemeOverrides['glowIntensity']>, Record<string, string>> = {
+  none: { '--we-theme-glow-strength': '0', '--we-theme-glow-size': '0px' },
+  subtle: { '--we-theme-glow-strength': '0.2', '--we-theme-glow-size': '10px' },
+  medium: { '--we-theme-glow-strength': '0.35', '--we-theme-glow-size': '16px' },
+  strong: { '--we-theme-glow-strength': '0.55', '--we-theme-glow-size': '24px' },
 };
 
 /** Maps animationSpeed preset to the --we-transition-N overrides applied globally. */
@@ -341,9 +355,8 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
   }
 
   // shadowIntensity → --we-theme-shadow (used by Card and other surface components)
-  if (theme.shadowIntensity) {
-    style['--we-theme-shadow'] = SHADOW_INTENSITY_VALUES[theme.shadowIntensity];
-  }
+  if (theme.shadowIntensity) Object.assign(style, SHADOW_INTENSITY_VALUES[theme.shadowIntensity]);
+  if (theme.glowIntensity) Object.assign(style, GLOW_INTENSITY_VALUES[theme.glowIntensity]);
 
   // animationSpeed → override --we-transition-N tokens consumed by all primitives
   if (theme.animationSpeed) {

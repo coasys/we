@@ -19,6 +19,7 @@
 import { borderWidth } from './border.js';
 import { CHROMATIC_FAMILIES, familySaturationDefault, familySaturationVar } from './families.js';
 import { fontSize } from './font.js';
+import { shadow } from './shadow.js';
 import { space } from './space.js';
 
 /**
@@ -38,6 +39,8 @@ const isZero = (value: string): boolean => parseFloat(value) === 0;
 export const THEME_DERIVED_VARIABLES: Readonly<Record<string, string>> = {
   '--we-border-width': `var(--we-theme-border-width, ${borderWidth})`,
   '--we-focus-ring-width': 'var(--we-theme-focus-ring-width, 2px)',
+  // Elevation, built from the shadowColor role and the theme's strength — see shadow.ts.
+  ...Object.fromEntries(Object.entries(shadow).map(([step, value]) => [`--we-shadow-${step}`, value])),
   // Each family's saturation, which falls back to the theme's (or the palette's) until a theme sets
   // the family's own.
   ...Object.fromEntries(

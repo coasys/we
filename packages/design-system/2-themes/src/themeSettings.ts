@@ -26,6 +26,7 @@ export const SPECIAL_SETTINGS = [
   'themeName',
   'polarity',
   'shadowIntensity',
+  'glowIntensity',
   'animationSpeed',
   'fontScale',
   'roles',

@@ -13,6 +13,7 @@ import {
   tierKeys,
   toInteractiveVars,
   warnIfUnsurfaced,
+  withRestingShadow,
 } from '../index';
 
 // Re-export neutral pieces consumed unchanged elsewhere (e.g. app-framework's dsInterop
@@ -120,18 +121,21 @@ export function useStateProps(
     // here reproduces the same active-over-hover-over-focus precedence the old
     // JS-merge order (focus, then hover, then active) produced.
     const focusVars = hasFocus()
-      ? toInteractiveVars('focus-', buildStateFragmentStyles(props.focusProps!, direction))
+      ? toInteractiveVars('focus-', buildStateFragmentStyles(withRestingShadow(props.focusProps!, props), direction))
       : {};
     const hoverVars = hasHover()
-      ? toInteractiveVars('hover-', buildStateFragmentStyles(props.hoverProps!, direction))
+      ? toInteractiveVars('hover-', buildStateFragmentStyles(withRestingShadow(props.hoverProps!, props), direction))
       : {};
     const activeVars = hasActive()
-      ? toInteractiveVars('active-', buildStateFragmentStyles(props.activeProps!, direction))
+      ? toInteractiveVars('active-', buildStateFragmentStyles(withRestingShadow(props.activeProps!, props), direction))
       : {};
     // Layout elements have no native :disabled — the stylesheet keys the disabled
     // state off aria-disabled="true", which the consumer sets alongside disabledProps.
     const disabledVars = hasDisabled()
-      ? toInteractiveVars('disabled-', buildStateFragmentStyles(props.disabledProps!, direction))
+      ? toInteractiveVars(
+          'disabled-',
+          buildStateFragmentStyles(withRestingShadow(props.disabledProps!, props), direction),
+        )
       : {};
 
     /*

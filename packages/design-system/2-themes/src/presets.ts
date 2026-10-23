@@ -198,7 +198,14 @@ export const THEME_PRESETS = {
       },
       // The middle heading in the accent's text colour — one variant of one component, which is
       // what the component tier is for. It was a selector in this theme's CSS.
-      components: { text: { variants: { 'heading-md': { text: 'accent-text' } } } },
+      components: {
+        text: { variants: { 'heading-md': { text: 'accent-text' } } },
+        // A faint halo in the accent's hue around a dialog, where a dark theme's shadow cannot show.
+        modal: {
+          shadow:
+            '0 0 40px 20px oklch(20% calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.4) var(--we-color-accent-hue) / 5%)',
+        },
+      },
     },
   },
   black: {

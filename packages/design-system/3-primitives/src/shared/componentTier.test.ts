@@ -62,3 +62,13 @@ describe('the static sheet', () => {
     expect(getStaticDSStyles('text')).toContain('var(--we-theme-text-radius)');
   });
 });
+
+describe('a state’s ring', () => {
+  it('stacks on the shadow the element rests with rather than replacing it', async () => {
+    const el = await mount('we-button', { variant: 'solid', shadow: 'md' });
+    expect(el.style.getPropertyValue('--we-button-focus-box-shadow')).toBe(
+      '0 0 0 var(--we-focus-ring-width) var(--we-ring-color), ' +
+        'var(--we-button-shadow, var(--we-theme-button-shadow, 0 0 #0000))',
+    );
+  });
+});

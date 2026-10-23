@@ -501,6 +501,28 @@ const settingsReach = (): Scenario => ({
   tables: {},
 });
 
+/** Elevation and glow: a raised box under no theme and under a flat one, and two glowing ones. */
+const elevation = (): Scenario => {
+  const box = (id: string, props: Record<string, unknown>): SchemaNode => ({
+    type: 'Column',
+    props: { id, p: '300', bg: 'surface', ...props },
+    children: [id],
+  });
+  return {
+    node: {
+      type: 'Column',
+      props: { gap: '400', p: '400' },
+      children: [
+        box('raised', { shadow: 'md' }),
+        { type: 'Column', theme: { shadowIntensity: 'flat' }, children: [box('flat', { shadow: 'md' })] },
+        box('glow', { shadow: 'glow' }),
+        box('glow-teal', { shadow: 'glow', tone: 'teal' }),
+      ],
+    },
+    tables: {},
+  };
+};
+
 const nestedInteractive = (): Scenario => ({
   node: {
     type: 'Row',
@@ -1599,6 +1621,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:tone': toned,
   'ds:component-tier': componentTier,
   'ds:settings-reach': settingsReach,
+  'ds:elevation': elevation,
   'ds:token-offsets': tokenOffsets,
   'ds:square-loading': squareLoading,
   'ds:crowded-square-row': crowdedSquareRow,

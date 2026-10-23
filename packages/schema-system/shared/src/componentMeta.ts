@@ -29,7 +29,7 @@ const SPACE = ['0', '100', '200', '300', '400', '500', '600', '700', '800', '900
 
 const RADIUS = ['0', '100', '200', '300', '400', '500', '600', '700', '800', '900', 'pill', 'full'];
 
-const SHADOW = ['sm', 'md', 'lg', 'xl'];
+const SHADOW = ['sm', 'md', 'lg', 'xl', 'glow'];
 
 // Every family with a ramp, from the family registry: a scale position in any of them is a colour token.
 const COLOR_HUES: readonly string[] = RAMP_FAMILIES;

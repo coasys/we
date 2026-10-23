@@ -64,6 +64,7 @@ const SAMPLE: Required<Omit<ThemeOverrides, 'schemaVersion' | 'light' | 'dark'>>
   disabledOpacity: 0.3,
   iconWeight: 'bold',
   shadowIntensity: 'dramatic',
+  glowIntensity: 'strong',
   surfaceOpacity: 0.8,
   surfaceBlur: 6,
   animationSpeed: 'slow',

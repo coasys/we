@@ -716,8 +716,17 @@ function updateCustomVars(
   // Compose box-shadow from shadow + ring (both are optional, comma-separated when both present)
   const shadowVal = props.shadow ? tokenVar('shadow', props.shadow) : undefined;
   const ringVal = props.ring ?? undefined;
+  /*
+    A state that adds a ring and says nothing about the shadow keeps the shadow the element rests
+    with, as a separate layer. Writing the ring alone replaced it: a raised card lost its elevation
+    the moment it took focus, and a glowing one went dark exactly when it was chosen.
+  */
+  const resting =
+    variant && (ELEMENT_STATES as readonly string[]).includes(variant) && ringVal && !shadowVal
+      ? `var(--we-${componentName}-shadow, var(--we-theme-${componentName}-shadow, 0 0 #0000))`
+      : undefined;
   if (shadowVal || ringVal) {
-    const parts = [ringVal, shadowVal].filter(Boolean).join(', ');
+    const parts = [ringVal, shadowVal ?? resting].filter(Boolean).join(', ');
     setProperty(el, `${prefix}box-shadow`, parts);
   } else {
     setProperty(el, `${prefix}box-shadow`, undefined);
@@ -866,6 +875,14 @@ const THEMED_KEYS: ThemedKey[] = [
     key: 'borderWidth',
     value: (p) => p.borderWidth ?? borderPart(p, 'width'),
     explicit: (raw) => raw.borderWidth !== undefined || raw.border !== undefined,
+  },
+  {
+    prop: 'shadow',
+    suffix: 'box-shadow',
+    key: 'shadow',
+    value: (p) => (p.shadow ? tokenVar('shadow', p.shadow) : undefined),
+    // A resting ring is composed into the same property, so a component that has one keeps its own.
+    explicit: (raw) => raw.shadow !== undefined || raw.ring !== undefined,
   },
   {
     prop: 'fontFamily',

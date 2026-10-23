@@ -119,6 +119,7 @@ const themeParameterShape = {
   disabledOpacity: z.number().optional(),
   iconWeight: z.enum(['thin', 'light', 'regular', 'bold', 'fill', 'duotone']).optional(),
   shadowIntensity: z.enum(['flat', 'subtle', 'elevated', 'dramatic']).optional(),
+  glowIntensity: z.enum(['none', 'subtle', 'medium', 'strong']).optional(),
   surfaceOpacity: z.number().optional(),
   surfaceBlur: z.number().optional(),
   animationSpeed: z.enum(['none', 'fast', 'normal', 'slow']).optional(),

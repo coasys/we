@@ -1,5 +1,17 @@
 import type { DesignSystemProps, FlexDirection } from '@we/design-types';
-import { color, font, radius, role, semanticValues, shadow, space, type Tier, TIERS, toneVariables } from '@we/tokens';
+import {
+  color,
+  font,
+  GLOW_SHADOW,
+  radius,
+  role,
+  semanticValues,
+  shadow,
+  space,
+  type Tier,
+  TIERS,
+  toneVariables,
+} from '@we/tokens';
 
 import { dataUriToBlob } from './saveFile';
 import { tierQuery } from './surface';
@@ -418,6 +430,10 @@ export function tokenVar(prefix: string, token?: string, fallback = '0', axis?: 
 
   // A colour prop may name a semantic role instead of a scale position.
   if (prefix === 'color' && ROLE_NAMES.has(token)) return `var(--we-role-${token})`;
+
+  // The glow is written out in place, so it resolves against the accent where it is drawn and a
+  // `tone` colours it — see GLOW_SHADOW in @we/tokens.
+  if (prefix === 'shadow' && token === 'glow') return GLOW_SHADOW;
 
   // `white` and `black` are the colour scale's two named positions. Every other one is
   // `<hue>-<step>`, whose digit keeps it clear of the typo check below; these two are not, and were
@@ -1065,6 +1081,17 @@ export function mapFlexAxes(props: DesignSystemProps, direction: FlexDirection) 
 /** Framework-neutral CSS style object: CSS-canonical kebab-case keys → value. */
 export type CSSStyleObject = Record<string, string | number | undefined>;
 
+/**
+ * A state bag that adds a ring and says nothing about the shadow keeps the element's resting shadow
+ * as a second layer, rather than replacing it — a raised card stays raised while it has focus.
+ */
+export function withRestingShadow<T extends { ring?: string; shadow?: string }>(
+  state: T,
+  resting: { shadow?: string },
+): T {
+  return state.ring && !state.shadow && resting.shadow ? { ...state, shadow: resting.shadow } : state;
+}
+
 /** Props accepted by buildLayoutStyles — DS props plus a `reverse` flag and a `styles` escape hatch. */
 export type LayoutStyleProps = DesignSystemProps & {
   reverse?: boolean;
@@ -1146,7 +1173,9 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
   if (props.borderLeft) style['border-left'] = parseBorder(props.borderLeft);
   if (props.borderWidth) style['border-width'] = props.borderWidth;
   if (props.shadow || props.ring) {
-    const parts = [props.ring, props.shadow].filter(Boolean).join(', ');
+    // Resolved as a token: it was passed through as written, so `shadow: 'md'` on a Column became
+    // `box-shadow: md`, which is invalid, and the elevation every template asked for was never drawn.
+    const parts = [props.ring, props.shadow ? tokenVar('shadow', props.shadow) : undefined].filter(Boolean).join(', ');
     style['box-shadow'] = parts;
   }
   // `x`/`y`/`rotate` compose into this, in front of whatever the caller wrote — see composeTransform.

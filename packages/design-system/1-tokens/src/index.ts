@@ -71,6 +71,7 @@ export type {
   LetterSpacingValue,
 } from './font.js';
 export type { ShadowToken, ShadowValue } from './shadow.js';
+export { GLOW_SHADOW } from './shadow.js';
 export type { SizeToken, SizeValue, RadiusToken, RadiusValue, ComponentSize } from './size.js';
 export type { GapValue, PaddingValue, SpaceToken, SpaceValue } from './space.js';
 export type { ZIndexLayer, ZIndexValue } from './z-index.js';

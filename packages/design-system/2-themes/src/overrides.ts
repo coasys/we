@@ -291,7 +291,10 @@ export type ThemeOverrides = {
    * theme's filled glyphs are a decision about the whole set, not about each icon.
    */
   iconWeight?: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone';
-  shadowIntensity?: 'flat' | 'subtle' | 'elevated' | 'dramatic'; // maps to --we-theme-shadow-preset
+  /** How strong every shadow is, and which one a surface rests at — see SHADOW_INTENSITY_VALUES. */
+  shadowIntensity?: 'flat' | 'subtle' | 'elevated' | 'dramatic';
+  /** How bright and wide `shadow: 'glow'` is: the accent as light, for a theme that glows. */
+  glowIntensity?: 'none' | 'subtle' | 'medium' | 'strong';
   surfaceOpacity?: number; // --we-theme-surface-opacity  (0–1, background alpha for surfaces)
   surfaceBlur?: number; // --we-theme-surface-blur  (px, backdrop-filter blur for frosted glass)
 

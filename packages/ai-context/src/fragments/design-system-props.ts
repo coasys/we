@@ -235,7 +235,7 @@ the item is never asked to be narrower than its content in the first place.
 | borderBottom | string | Bottom border shorthand (color tokens resolved) |
 | borderLeft | string | Left border shorthand (color tokens resolved) |
 | borderWidth | string | Border width (raw CSS, e.g. "1px", "2px 0") |
-| shadow | "sm" \\| "md" \\| "lg" \\| "xl" | Shadow token |
+| shadow | "sm" \\| "md" \\| "lg" \\| "xl" \\| "glow" | Elevation, built from the theme's shadow colour and strength. "glow" is the accent as light — a thin ring and a soft halo — and follows the element's \`tone\` |
 | cursor | "pointer" \\| "default" \\| "text" \\| "not-allowed" | Cursor style |
 | pointerEvents | "none" \\| "auto" | Pointer events |
 | transform | string | CSS transform |
