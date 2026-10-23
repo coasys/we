@@ -27,8 +27,8 @@
  * without it.
  *
  * Prints the ad4m commits between the old pin and the new, for the PR description, and with
- * --pr-body writes that description to a file. Run `pnpm verify:ad4m` before merging a bump
- * (docs/contributing/ad4m-and-deploys.md).
+ * --pr-body writes that description to a file. CI runs `pnpm verify:ad4m` on a bump, as the
+ * `AD4M live` workflow; read its result before merging (docs/contributing/ad4m-and-deploys.md).
  *
  * A snapshot whose executor ad4m's CI is still building is not moved to yet, with --if-newer: WE
  * downloads the executor ad4m publishes for a commit, and a commit pinned before marvin's build
@@ -373,8 +373,9 @@ if (!from || !to) {
 }
 
 report.push(
-  `\nBefore merging, run \`pnpm verify:ad4m\` against an executor built from ` +
+  `\nBefore merging, read the **AD4M live / Live tests** check: it runs \`pnpm verify:ad4m\` against an executor built from ` +
     (to ? `coasys/ad4m@${to.slice(0, 9)}` : 'the commit this version was published from') +
+    '. It is not a required check, so a red run does not block the merge on its own' +
     ' (see docs/contributing/ad4m-and-deploys.md).',
 );
 

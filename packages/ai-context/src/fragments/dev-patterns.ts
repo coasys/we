@@ -165,7 +165,8 @@ with it rather than by hand.
 So a local \`cd ad4m/core && pnpm run build\` does NOT get picked up by WE — changes to \`@coasys/ad4m\`
 reach WE once they are pushed to an ad4m PR or \`dev\` and the pin moves to that commit. A bot keeps
 one PR open that moves it to ad4m \`dev\`'s head once a day (\`.github/workflows/bump-ad4m.yaml\`); a
-feature that needs a new ad4m pins it in its own PR. Run \`pnpm verify:ad4m\` before merging either.
+feature that needs a new ad4m pins it in its own PR. CI runs \`pnpm verify:ad4m\` on both (the \`AD4M
+live\` workflow); it is not a required check, so read its result before merging either.
 The whole policy is in \`docs/contributing/ad4m-and-deploys.md\`.
 
 For active local iteration you can temporarily switch the override to
