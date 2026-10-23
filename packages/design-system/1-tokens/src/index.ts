@@ -91,6 +91,14 @@ export {
 export type { ChromaticFamily, ColorFamily, PaletteHue, SemanticFamily, ToneName } from './families.js';
 export { FAMILY_ROLES, toneVariables } from './familyRoles.js';
 export {
+  DISABLED_OPACITY,
+  FOCUS_OUTLINE,
+  FOCUS_OUTLINE_WIDTH,
+  FOCUS_RING,
+  FOCUS_RING_BEYOND_BORDER,
+  FOCUS_RING_INSET,
+} from './states.js';
+export {
   COMPONENT_THEME_KEYS,
   componentChain,
   componentThemeVar,

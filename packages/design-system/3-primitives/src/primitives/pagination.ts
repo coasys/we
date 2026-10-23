@@ -1,6 +1,7 @@
 import type { DesignSystemProps } from '@we/design-types';
-import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html, nothing } from 'lit';
+import { type DSLayer, familyVar, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
+import { DISABLED_OPACITY, FOCUS_RING } from '@we/tokens';
+import { css, html, nothing, unsafeCSS } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
@@ -38,23 +39,28 @@ const styles = css`
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    border-radius: var(--we-radius-400);
+    border-radius: ${unsafeCSS(familyVar('control', 'radius'))};
     transition: background var(--we-transition-200, 150ms) ease;
     user-select: none;
   }
 
   [part='page']:hover,
   [part='nav']:hover {
-    background: var(--we-role-surface-sunken);
+    background: var(--we-role-item-hover);
   }
 
   [part='page'][aria-current='page'] {
-    background: var(--we-role-accent);
-    color: white;
+    background: var(--we-role-selected);
+    color: var(--we-role-on-selected);
+  }
+
+  [part='page']:focus-visible,
+  [part='nav']:focus-visible {
+    box-shadow: ${unsafeCSS(FOCUS_RING)};
   }
 
   [part='nav'][disabled] {
-    opacity: 0.4;
+    opacity: ${unsafeCSS(DISABLED_OPACITY)};
     cursor: default;
     pointer-events: none;
   }

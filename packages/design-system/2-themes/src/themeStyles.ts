@@ -153,6 +153,7 @@ const ANIMATION_SPEED_VARS: Record<NonNullable<ThemeOverrides['animationSpeed']>
     '--we-transition-500': '0ms',
   },
   fast: {
+    '--we-transition-100': '25ms',
     '--we-transition-200': '75ms',
     '--we-transition-300': '125ms',
     '--we-transition-400': '250ms',
@@ -587,6 +588,12 @@ export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides, options
   }
   // Inline, so a theme beats any stylesheet — including a component's own defaults.
   for (const [prop, value] of Object.entries(styles)) root.style.setProperty(prop, value);
+  // For what a variable cannot reach by itself: an icon's weight picks which drawing it fetches, so
+  // the icons under this root have to be told to read it again (see we-icon).
+  const doc = root.ownerDocument;
+  if (typeof doc?.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+    doc.dispatchEvent(new CustomEvent('we-theme-change', { detail: { root } }));
+  }
 
   // Tracked alongside the rest, so the next theme clears them: a derived value from the old theme
   // outliving it would be worse than never deriving one.

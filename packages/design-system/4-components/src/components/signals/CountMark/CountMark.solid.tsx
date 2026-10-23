@@ -110,7 +110,7 @@ export function CountMark(props: CountMarkProps) {
       // Yours: one step past `accent-text` (accent-700). It went to 500, which is two steps nearer the
       // background, so hovering your own mark dimmed it where every other mark brightens.
       hoverProps={{
-        color: props.mine ? 'accent-800' : props.emphasis === 'present' ? 'text-muted' : 'neutral-400',
+        color: props.mine ? 'accent-text' : props.emphasis === 'present' ? 'text-muted' : 'text-faint',
         ...(!props.mine && props.emphasis === 'present' ? { opacity: 1 } : {}),
       }}
     >

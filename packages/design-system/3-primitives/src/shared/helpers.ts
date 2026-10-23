@@ -501,7 +501,7 @@ const THEME_FADE_PROPS = [...ANIMATABLE_STATE_PROPS, 'color'];
   is to say so rather than keep changing the design system in front of it.
 */
 const STATE_TRANSITION = ANIMATABLE_STATE_PROPS.map(
-  (prop) => `${prop} var(--we-theme-state-duration, var(--we-transition-100, 50ms)) ease-out`,
+  (prop) => `${prop} var(--we-theme-state-duration, var(--we-transition-100, 50ms)) var(--we-ease-out, ease-out)`,
 ).join(', ');
 
 /**
@@ -511,7 +511,9 @@ const STATE_TRANSITION = ANIMATABLE_STATE_PROPS.map(
  * that lets a theme change animate the same properties without a hover exit ever inheriting a
  * duration from it.
  */
-const REST_TRANSITION = THEME_FADE_PROPS.map((prop) => `${prop} var(--we-theme-switch-duration, 0s) ease`).join(', ');
+const REST_TRANSITION = THEME_FADE_PROPS.map(
+  (prop) => `${prop} var(--we-theme-switch-duration, 0s) var(--we-ease-standard, ease)`,
+).join(', ');
 
 // ────────────────────────────────────────────
 // Runtime: CSS custom property updates

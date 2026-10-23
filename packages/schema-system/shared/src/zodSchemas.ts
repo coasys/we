@@ -117,6 +117,7 @@ const themeParameterShape = {
   inputPadding: z.string().optional(),
   spacingScale: z.number().optional(),
   disabledOpacity: z.number().optional(),
+  iconWeight: z.enum(['thin', 'light', 'regular', 'bold', 'fill', 'duotone']).optional(),
   shadowIntensity: z.enum(['flat', 'subtle', 'elevated', 'dramatic']).optional(),
   surfaceOpacity: z.number().optional(),
   surfaceBlur: z.number().optional(),

@@ -285,6 +285,12 @@ export type ThemeOverrides = {
    * genuinely shared — and genuinely a design decision — is how far off "off" reads.
    */
   disabledOpacity?: number;
+  /**
+   * --we-theme-icon-weight — the weight every icon is drawn in unless it names its own: `thin`,
+   * `light`, `regular`, `bold`, `fill` or `duotone`. A light theme's thin strokes and a playful
+   * theme's filled glyphs are a decision about the whole set, not about each icon.
+   */
+  iconWeight?: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone';
   shadowIntensity?: 'flat' | 'subtle' | 'elevated' | 'dramatic'; // maps to --we-theme-shadow-preset
   surfaceOpacity?: number; // --we-theme-surface-opacity  (0–1, background alpha for surfaces)
   surfaceBlur?: number; // --we-theme-surface-blur  (px, backdrop-filter blur for frosted glass)

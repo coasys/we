@@ -569,27 +569,48 @@ export function zIndexVar(value?: string | number): string | undefined {
 }
 
 /**
- * Parse border shorthand value and convert color tokens to CSS variables
- * Example: "1px solid ui-200" -> "1px solid var(--we-color-neutral-200)"
+ * Split CSS at top-level whitespace, keeping anything inside parentheses together:
+ * `var(--a) solid color-mix(in srgb, red, blue)` is three parts, not seven.
+ */
+function topLevelParts(value: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const char of value.trim()) {
+    if (char === '(') depth++;
+    if (char === ')') depth--;
+    if (/\s/.test(char) && depth === 0) {
+      if (current) parts.push(current);
+      current = '';
+    } else current += char;
+  }
+  if (current) parts.push(current);
+  return parts;
+}
+
+/**
+ * A border shorthand as CSS: its colour resolved from a token or role, and its width from the theme.
+ *
+ * "1px solid border" → "var(--we-border-width) solid var(--we-role-border)".
+ *
+ * **`1px` is the theme's hairline.** A theme's `borderWidth` moves `--we-border-width`, which is 1px
+ * until it does, and a border written `1px` follows it — the same width a theme sets for every
+ * component it draws. So a template's dividers and outlines thicken with the theme's rather than
+ * staying behind as the only thin lines on the screen. A border that must not follow writes some
+ * other width; `2px` and `0.5px` are their own.
+ *
+ * Parts are split at the top level, so a colour written as `var(…)`, `color-mix(…)` or `rgb(…)`
+ * passes through whole while the width and the style are still read.
  */
 export function parseBorder(value: string | undefined, defaultValue = ''): string {
   const val = value ?? defaultValue;
   if (!val) return '';
-
-  // If it contains var(, #, or rgb, assume it's already processed
-  if (val.includes('var(') || val.includes('#') || val.includes('rgb')) {
-    return val;
-  }
-
-  // Parse border shorthand: "1px solid ui-200" — all 3 parts required
-  const parts = val.split(' ');
-  if (parts.length >= 3) {
-    const [width, style, ...colorParts] = parts;
-    const color = colorParts.join(' ');
-    return `${width} ${style} ${tokenVar('color', color, '')}`;
-  }
-
-  return val;
+  const parts = topLevelParts(val);
+  if (parts.length < 3) return val;
+  const [width, style, ...colorParts] = parts;
+  const color = colorParts.join(' ');
+  const resolvedColor = /[(#]/.test(color) ? color : tokenVar('color', color, '');
+  return `${width === '1px' ? 'var(--we-border-width)' : width} ${style} ${resolvedColor}`;
 }
 
 export function getMarginValues(props: DesignSystemProps) {

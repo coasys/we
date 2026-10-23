@@ -1,21 +1,26 @@
 import type { DesignSystemProps } from '@we/design-types';
-import { css, html } from 'lit';
+import { css, html, unsafeCSS } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
+import { FLOATING_PANEL_BG, FLOATING_PANEL_BLUR } from '../shared/panel-style';
 import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   direction: 'column',
-  bg: 'surface-raised',
-  r: '400',
+  // A floating panel (panel-style.ts): its fill, corner and shadow through the DS props, which
+  // the generated sheet would otherwise declare over any CSS here, and its blur below.
+  bg: FLOATING_PANEL_BG,
+  r: 'surface',
+  shadow: 'lg',
   overflow: 'hidden',
   border: '1px solid var(--we-role-border)',
 };
 
 const styles = css`
   [part='base'] {
+    backdrop-filter: ${unsafeCSS(FLOATING_PANEL_BLUR)};
     padding: var(--we-space-200) 0;
     min-width: 200px;
   }

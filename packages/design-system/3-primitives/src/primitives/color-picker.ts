@@ -1,11 +1,13 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type ColorFormat, formatColor, hsvToRgb, parseColor, type Rgba, rgbToHsv } from '@we/design-utils';
-import { css, html } from 'lit';
+import { FOCUS_OUTLINE } from '@we/tokens';
+import { css, html, unsafeCSS } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import { openFloatingPanel } from '../shared/floating-panel';
+import { floatingPanel } from '../shared/panel-style';
 import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
@@ -113,18 +115,14 @@ const styles = css`
   }
 
   [part='preview']:focus-visible {
-    outline: 2px solid var(--we-ring-color, var(--we-role-focus));
-    outline-offset: 2px;
+    ${unsafeCSS(FOCUS_OUTLINE)}
   }
 
   [part='popover'] {
     position: absolute;
     z-index: var(--we-z-dropdown);
     width: max-content;
-    background: var(--we-role-surface-raised);
-    border: 1px solid var(--we-role-border);
-    border-radius: var(--we-radius-500);
-    box-shadow: 0 4px 16px color-mix(in srgb, var(--we-role-shadow-color) 12%, transparent);
+    ${floatingPanel()}
     padding: var(--we-space-400);
     display: flex;
     flex-direction: column;
@@ -161,7 +159,7 @@ const styles = css`
     border-radius: var(--we-radius-300);
     font-size: var(--we-font-size-200);
     color: var(--we-role-text-muted);
-    border: 1px dashed var(--we-role-border);
+    border: var(--we-border-width) dashed var(--we-role-border);
   }
 
   [part='clear']:hover {
@@ -175,7 +173,7 @@ const styles = css`
     gap: var(--we-space-200);
     justify-content: flex-end;
     padding-top: var(--we-space-100);
-    border-top: 1px solid var(--we-role-border);
+    border-top: var(--we-border-width) solid var(--we-role-border);
   }
 
   [part='cancel'],
@@ -295,7 +293,7 @@ const styles = css`
   [part='fields'] input {
     all: unset;
     box-sizing: border-box;
-    border: 1px solid var(--we-role-border);
+    border: var(--we-border-width) solid var(--we-role-border);
     border-radius: var(--we-radius-400);
     padding: var(--we-space-100) var(--we-space-200);
     font-size: 0.875em;
@@ -315,7 +313,7 @@ const styles = css`
   */
   [part='formats'] {
     display: flex;
-    border: 1px solid var(--we-role-border);
+    border: var(--we-border-width) solid var(--we-role-border);
     border-radius: var(--we-radius-400);
     overflow: hidden;
   }
@@ -341,7 +339,7 @@ const styles = css`
     width: 28px;
     height: 28px;
     flex: 0 0 auto;
-    border: 1px solid var(--we-role-border);
+    border: var(--we-border-width) solid var(--we-role-border);
     border-radius: var(--we-radius-400);
     cursor: pointer;
     color: var(--we-role-text-muted);
@@ -353,7 +351,6 @@ const styles = css`
   }
 
   :host([disabled]) {
-    opacity: 0.5;
     pointer-events: none;
   }
 `;

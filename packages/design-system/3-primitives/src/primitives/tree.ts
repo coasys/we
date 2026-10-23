@@ -1,5 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
-import { css, html } from 'lit';
+import { FOCUS_RING } from '@we/tokens';
+import { css, html, unsafeCSS } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
 
@@ -45,15 +46,15 @@ const ITEM_STYLES = css`
     box-sizing: border-box;
   }
   [part='row']:hover {
-    background: var(--we-role-surface-hover);
+    background: var(--we-role-item-hover);
     color: var(--we-role-text);
   }
   :host([selected]) [part='row'] {
-    background: var(--we-role-accent-soft);
-    color: var(--we-role-text);
+    background: var(--we-role-selected);
+    color: var(--we-role-on-selected);
   }
   [part='row']:focus-visible {
-    box-shadow: 0 0 0 var(--we-theme-focus-ring-width, 2px) var(--we-ring-color);
+    box-shadow: ${unsafeCSS(FOCUS_RING)};
   }
   [part='caret'] {
     all: unset;

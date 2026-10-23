@@ -1,5 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
+import { FOCUS_RING_BEYOND_BORDER } from '@we/tokens';
 import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
@@ -29,7 +30,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   focusProps: {
     bg: 'surface-sunken-hover',
     border: '1px solid var(--we-ring-color)',
-    ring: '0 0 0 1px var(--we-ring-color)',
+    ring: FOCUS_RING_BEYOND_BORDER,
   },
 };
 
@@ -46,12 +47,12 @@ const styles = css`
     /*
       The resting border's width, as a number the padding maths can use.
 
-      [part='base'] carries a 1px border from DEFAULT_PROPS and sits outside the textarea, so the
-      row the text has to fit inside is the control height less that border, twice. CSS cannot read
-      a width back out of a border shorthand, so it is named here — once, so a theme changing the
-      border sets this beside it rather than hunting through a calc.
+      [part='base'] carries the theme's hairline border from DEFAULT_PROPS and sits outside the
+      textarea, so the row the text has to fit inside is the control height less that border,
+      twice. CSS cannot read a width back out of a border shorthand, so it is named here, from the
+      same variable the border is drawn with.
     */
-    --we-textarea-border-width: 1px;
+    --we-textarea-border-width: var(--we-border-width);
   }
 
   /* Provide icon sizing context for slotted we-icon children */

@@ -62,11 +62,14 @@
   align-items: center;
   gap: var(--we-space-200);
   padding: var(--we-space-300) var(--we-space-400);
-  border-radius: var(--we-radius-400);
-  box-shadow: var(--we-shadow-md, 0 4px 12px rgb(0 0 0 / 10%));
+
+  // A floating panel, drawn as every other one is (panel-style.ts in @we/primitives): the surface
+  // family's corner, the large shadow and the theme's blur. Its fill is its tone's, below.
+  border-radius: var(--we-theme-surface-radius, var(--we-radius-400));
+  box-shadow: var(--we-shadow-lg);
+  backdrop-filter: blur(var(--we-theme-surface-blur, 0));
   min-width: 280px;
   max-width: 420px;
-  font-family: var(--we-font-family);
   font-size: var(--we-font-size-300);
 
   /*
@@ -78,22 +81,22 @@
   */
   &--neutral {
     background-color: var(--we-role-surface-sunken);
-    border: 1px solid var(--we-role-border);
+    border: var(--we-border-width) solid var(--we-role-border);
   }
 
   &--success {
     background-color: var(--we-role-success-soft);
-    border: 1px solid color-mix(in srgb, var(--we-role-success) 30%, transparent);
+    border: var(--we-border-width) solid color-mix(in srgb, var(--we-role-success) 30%, transparent);
   }
 
   &--warning {
     background-color: var(--we-role-warning-soft);
-    border: 1px solid color-mix(in srgb, var(--we-role-warning) 30%, transparent);
+    border: var(--we-border-width) solid color-mix(in srgb, var(--we-role-warning) 30%, transparent);
   }
 
   &--danger {
     background-color: var(--we-role-danger-soft);
-    border: 1px solid color-mix(in srgb, var(--we-role-danger) 30%, transparent);
+    border: var(--we-border-width) solid color-mix(in srgb, var(--we-role-danger) 30%, transparent);
   }
 
   &__message {

@@ -44,7 +44,7 @@ const styles = css`
     border-bottom: 1px solid var(--we-role-border-strong);
     width: 4px;
     height: 4px;
-    transition: all var(--we-transition-300, 250ms) ease;
+    transition: transform var(--we-transition-300, 250ms) var(--we-ease-standard, ease);
     transform: rotate(-45deg) translateX(-50%);
     transform-origin: center;
   }

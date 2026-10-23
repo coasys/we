@@ -27,8 +27,14 @@ body,
   // text softens by one step off pure black in themes that pin nothing. That is the conventional
   // choice for body copy and the cost of having the role reach anything at all.
   color: var(--we-role-text);
+
   // The body type, until a theme restates it inline here — see BODY_TYPE in @we/themes.
   font-family: var(--we-type-body-family, var(--we-font-family));
+}
+
+// Selected text in the theme's colour rather than the operating system's (see textSelection).
+::selection {
+  background: var(--we-role-text-selection);
 }
 
 // Before the app has mounted anything, paint what the boot screen is about to paint.

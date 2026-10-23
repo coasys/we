@@ -454,6 +454,53 @@ const componentTier = (): Scenario => ({
   tables: {},
 });
 
+/**
+ * Settings that have to reach every component drawing what they name, under a node-level theme:
+ * a border width, a disabled opacity, an icon weight, and the state contract's two roles pinned to
+ * colours nothing else uses, across the list components.
+ */
+const settingsReach = (): Scenario => ({
+  node: {
+    type: 'Column',
+    theme: {
+      borderWidth: '3px',
+      disabledOpacity: 0.2,
+      iconWeight: 'bold',
+      roles: { selected: 'rgb(255, 0, 0)', itemHover: 'rgb(0, 0, 255)' },
+    },
+    props: { gap: '200', p: '200' },
+    children: [
+      { type: 'we-input', props: { value: 'A field' } },
+      { type: 'we-button', props: { variant: 'outline' }, children: ['Outline'] },
+      { type: 'we-button', props: { variant: 'solid', disabled: true }, children: ['Disabled'] },
+      { type: 'we-checkbox', props: { disabled: true, label: 'Disabled box' } },
+      { type: 'we-icon', props: { name: 'house' } },
+      {
+        type: 'we-menu',
+        children: [
+          { type: 'we-menu-item', children: ['Plain'] },
+          { type: 'we-menu-item', props: { selected: true }, children: ['Chosen'] },
+        ],
+      },
+      { type: 'we-pagination', props: { page: 2, total: 3 } },
+      {
+        type: 'we-tabs',
+        props: { selectedKey: 'b' },
+        children: [
+          { type: 'we-tab', props: { key: 'a', label: 'A' } },
+          { type: 'we-tab', props: { key: 'b', label: 'B', selected: true } },
+        ],
+      },
+      {
+        type: 'we-tree',
+        props: { selected: 'one' },
+        children: [{ type: 'we-tree-item', props: { value: 'one', selected: true }, children: ['One'] }],
+      },
+    ],
+  },
+  tables: {},
+});
+
 const nestedInteractive = (): Scenario => ({
   node: {
     type: 'Row',
@@ -1551,6 +1598,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:nested-interactive': nestedInteractive,
   'ds:tone': toned,
   'ds:component-tier': componentTier,
+  'ds:settings-reach': settingsReach,
   'ds:token-offsets': tokenOffsets,
   'ds:square-loading': squareLoading,
   'ds:crowded-square-row': crowdedSquareRow,

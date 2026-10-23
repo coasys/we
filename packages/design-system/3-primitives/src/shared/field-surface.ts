@@ -1,3 +1,4 @@
+import { FOCUS_RING_BEYOND_BORDER } from '@we/tokens';
 import { css, type CSSResult, unsafeCSS } from 'lit';
 
 /**
@@ -57,8 +58,9 @@ export function fieldSurface(
 
   return css`
     ${box} {
-      border: 1px solid var(--we-role-border);
-      border-radius: var(--we-theme-input-radius, var(--we-radius-400));
+      border: var(--we-border-width) solid var(--we-role-border);
+      /* The input family's radius, falling back to the input's own default — the same one we-input has. */
+      border-radius: var(--we-theme-input-radius, var(--we-radius-300));
       background: var(--we-role-surface-sunken);
     }
 
@@ -77,7 +79,7 @@ export function fieldSurface(
     ${focus} {
       background: var(--we-role-surface-sunken-hover);
       border-color: var(--we-ring-color);
-      box-shadow: 0 0 0 1px var(--we-ring-color);
+      box-shadow: ${unsafeCSS(FOCUS_RING_BEYOND_BORDER)};
       /* Both properties travel together or the ring pops in over an edge that is still moving. */
       transition:
         border-color ${stateTransition},

@@ -7,6 +7,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 import { DesignSystemElement } from '../shared/design-system-element';
 import { fieldSurface } from '../shared/field-surface';
 import { openFloatingPanel } from '../shared/floating-panel';
+import { floatingPanel } from '../shared/panel-style';
 import sharedStyles from '../shared/styles';
 import type { ComponentSize } from '../types';
 
@@ -92,10 +93,7 @@ const styles = css`
   [part='calendar'] {
     position: fixed;
     z-index: var(--we-z-dropdown);
-    background: var(--we-role-surface-raised);
-    border: 1px solid var(--we-role-border);
-    border-radius: var(--we-radius-400);
-    box-shadow: 0 4px 12px color-mix(in srgb, var(--we-role-shadow-color) 10%, transparent);
+    ${floatingPanel()}
     padding: var(--we-space-300);
     margin-top: var(--we-space-100);
   }
@@ -119,7 +117,7 @@ const styles = css`
   }
 
   [part='month-nav']:hover {
-    background: var(--we-role-surface-sunken);
+    background: var(--we-role-item-hover);
   }
 
   [part='grid'] {
@@ -148,12 +146,12 @@ const styles = css`
   }
 
   [part='day']:hover {
-    background: var(--we-role-surface-sunken);
+    background: var(--we-role-item-hover);
   }
 
   [part='day'][aria-selected='true'] {
-    background: var(--we-role-accent);
-    color: white;
+    background: var(--we-role-selected);
+    color: var(--we-role-on-selected);
   }
 
   [part='day'][data-other-month] {
@@ -167,7 +165,7 @@ const styles = css`
     margin-top: var(--we-space-200);
     padding-top: var(--we-space-200);
     /* Role tokens, like the panel around it — the raw ramp does not follow a theme. */
-    border-top: 1px solid var(--we-role-border);
+    border-top: var(--we-border-width) solid var(--we-role-border);
     color: var(--we-role-text);
   }
 
@@ -210,7 +208,7 @@ const styles = css`
     max-height: 200px;
     overflow-y: auto;
     background: var(--we-role-surface-raised);
-    border: 1px solid var(--we-role-border);
+    border: var(--we-border-width) solid var(--we-role-border);
     /* A surface, though the control that opens it is an input — the panel is its own kind of thing.
        Through the table rather than by hand, so it cannot drift from every other surface. */
     border-radius: ${unsafeCSS(familyVar('surface', 'radius'))};
@@ -251,7 +249,6 @@ const styles = css`
   }
 
   :host([disabled]) {
-    opacity: 0.5;
     pointer-events: none;
   }
 `;

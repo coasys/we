@@ -14,6 +14,7 @@ import { customElement, property, query, state } from 'lit/decorators.js';
 
 import { anchorInSlot, DEV_BUILD, warnAboutBoxlessLayoutProps } from '../shared/boxless';
 import { LayoutElement } from '../shared/design-system-element';
+import { FLOATING_PANEL_SHADOW } from '../shared/panel-style';
 import sharedStyles from '../shared/styles';
 
 let tooltipIdCounter = 0;
@@ -110,7 +111,9 @@ const CSS_STYLES = css`
       (No backticks in here either: this is the same tagged template literal.)
     */
     border-radius: var(--we-theme-tooltip-radius, var(--we-theme-control-radius, 4px));
-    box-shadow: 0 2px 8px color-mix(in srgb, var(--we-role-shadow-color) 15%, transparent);
+    /* The floating panels' shadow (panel-style.ts); the inverse fill and the small corner are this
+       bubble's own. */
+    box-shadow: ${unsafeCSS(FLOATING_PANEL_SHADOW)};
     /*
       Never takes the pointer, open or closed.
 

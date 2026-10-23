@@ -233,9 +233,9 @@ export const contextData: ContextData = {
         { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}'", optional: false, default: "''" },
         {
           name: 'weight',
-          type: "'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone'",
+          type: "'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' | ''",
           optional: false,
-          default: "'regular'",
+          default: "''",
         },
         { name: 'gradient', type: 'string', optional: false, default: "''" },
       ],
@@ -378,6 +378,7 @@ export const contextData: ContextData = {
       ownProps: [
         { name: 'selected', type: 'boolean', optional: false, default: 'false' },
         { name: 'active', type: 'boolean', optional: false, default: 'false' },
+        { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'label', type: 'unknown', optional: false },
         { name: 'value', type: 'unknown', optional: false },
       ],
@@ -603,6 +604,7 @@ export const contextData: ContextData = {
       ownProps: [
         { name: 'key', type: 'string', optional: false, default: "''" },
         { name: 'selected', type: 'boolean', optional: false, default: 'false' },
+        { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'label', type: 'string | undefined', optional: true },
         { name: 'selectedProps', type: 'Partial<DesignSystemProps> | undefined', optional: true },
       ],
@@ -1998,6 +2000,11 @@ export const contextData: ContextData = {
     },
   ],
   tokens: [
+    {
+      name: 'animation.easing',
+      type: 'Record<AnimationEasingToken, string>',
+      values: { standard: 'ease', out: 'ease-out', in: 'ease-in' },
+    },
     {
       name: 'animation.transition',
       type: 'Record<AnimationTransitionToken, string>',

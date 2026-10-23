@@ -246,7 +246,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
             opacity={getGroup().disabled ? 0.5 : 1}
             cursor={getGroup().disabled ? 'not-allowed' : 'pointer'}
             color="text-faint"
-            prop:hoverProps={{ color: 'neutral-500' }}
+            prop:hoverProps={{ color: 'text-muted' }}
           >
             <we-icon name={collapsed() ? 'caret-right' : 'caret-down'} size="xs" />
             <we-text variant="overline">{getGroup().label}</we-text>

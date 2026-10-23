@@ -117,6 +117,9 @@ export const THEME_SETTINGS: { [K in DirectSetting]: ThemeSetting<K> } = {
   surfaceGap: { variable: '--we-theme-surface-gap', read: asString },
   inputPadding: { variable: '--we-theme-input-padding', read: asString },
 
+  // Icons. Not read back: unset is a meaning (each icon's own weight), not a value to show.
+  iconWeight: { variable: '--we-theme-icon-weight' },
+
   // Surfaces
   surfaceOpacity: { variable: '--we-theme-surface-opacity', read: asNumber },
   // Only written when above zero: a blur of nothing still promotes the element to its own layer.

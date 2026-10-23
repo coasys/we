@@ -640,9 +640,9 @@
         },
         {
           "name": "weight",
-          "type": "'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone'",
+          "type": "'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' | ''",
           "optional": false,
-          "default": "'regular'"
+          "default": "''"
         },
         {
           "name": "gradient",
@@ -1051,6 +1051,12 @@
         },
         {
           "name": "active",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "disabled",
           "type": "boolean",
           "optional": false,
           "default": "false"
@@ -1721,6 +1727,12 @@
         },
         {
           "name": "selected",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "disabled",
           "type": "boolean",
           "optional": false,
           "default": "false"
@@ -5762,6 +5774,15 @@
     }
   ],
   "tokens": [
+    {
+      "name": "animation.easing",
+      "type": "Record<AnimationEasingToken, string>",
+      "values": {
+        "standard": "ease",
+        "out": "ease-out",
+        "in": "ease-in"
+      }
+    },
     {
       "name": "animation.transition",
       "type": "Record<AnimationTransitionToken, string>",

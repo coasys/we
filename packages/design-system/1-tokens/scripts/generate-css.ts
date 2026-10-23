@@ -81,9 +81,10 @@ export async function generateCSS() {
 
 // Helper functions for CSS generation
 export function generateAnimationCSS(animation: typeof animationTokens) {
-  const transitionVars = Object.entries(animation.transition)
-    .map(([key, value]) => `  --we-transition-${key}: ${value};`)
-    .join('\n');
+  const transitionVars = [
+    ...Object.entries(animation.transition).map(([key, value]) => `  --we-transition-${key}: ${value};`),
+    ...Object.entries(animation.easing).map(([key, value]) => `  --we-ease-${key}: ${value};`),
+  ].join('\n');
 
   const reducedVars = Object.keys(animation.transition)
     .map((key) => `    --we-transition-${key}: 0ms !important;`)

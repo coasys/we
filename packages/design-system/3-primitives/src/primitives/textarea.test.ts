@@ -51,7 +51,8 @@ describe('rows', () => {
       direction. CSS cannot read a width out of a border shorthand, so the primitive names it.
     */
     const sheet = (Textarea.styles as unknown as { cssText: string }[]).map((s) => s.cssText).join('\n');
-    expect(sheet).toContain('--we-textarea-border-width: 1px');
+    // The theme's border width, which the border itself is drawn with.
+    expect(sheet).toContain('--we-textarea-border-width: var(--we-border-width)');
     expect(sheet).toMatch(/2\s*\*\s*\n?\s*var\(--we-textarea-border-width\)/);
   });
 

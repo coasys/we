@@ -68,7 +68,6 @@ const styles = css`
   }
 
   :host([disabled]) {
-    opacity: 0.5;
     pointer-events: none;
   }
 `;

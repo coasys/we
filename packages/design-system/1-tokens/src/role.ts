@@ -272,10 +272,39 @@ export const role = {
    * is dark, carry the hierarchy with size and weight and leave both at `onAccent`.
    */
   onAccentMuted: 'oklch(from var(--we-role-on-accent) l c h / 0.8)',
-  /** Hover tint on a surface (menu items, list rows, ghost buttons). */
-  surfaceHover: 'var(--we-color-neutral-100)',
-  /** Pressed tint on a surface. */
-  surfaceActive: 'var(--we-color-neutral-200)',
+  /**
+   * Hover tint on a surface (menu items, list rows, ghost buttons), and its pressed step.
+   *
+   * A step from the surface toward the text, rather than a ramp position. The ramp positions these
+   * were — `neutral-100` and `neutral-200` — followed the polarity but not the surface: a theme
+   * pinning `surface` kept a hover from the ramp it had left, and in every dark theme the two came
+   * out on opposite sides of the surface, hover darker and pressed lighter, so a press reversed the
+   * direction the hover had just moved. Toward the text is the one direction that is right in both
+   * polarities without being told which is which — the move `surfaceSunkenHover` and the soft
+   * button's states already make. 9% and 18% reproduce the light themes' old steps within 0.015.
+   */
+  surfaceHover: 'color-mix(in oklab, var(--we-role-surface) 91%, var(--we-role-text))',
+  surfaceActive: 'color-mix(in oklab, var(--we-role-surface) 82%, var(--we-role-text))',
+
+  /**
+   * The state contract for anything in a list or a grid of choices: a menu, a listbox, a tree, a
+   * calendar's days, a pager, a picker's tiles, a tab strip.
+   *
+   * `itemHover` is where the pointer is; `selected` and `onSelected` are what has been chosen and
+   * its words. Three questions with three answers — they were one colour in places, so hovering a
+   * row looked like choosing it — and each a role, so a theme answers them once for every list.
+   * The keyboard's position is the focus ring, not a fourth fill.
+   */
+  itemHover: 'var(--we-role-surface-hover)',
+  selected: 'var(--we-role-accent-soft)',
+  onSelected: 'var(--we-role-text)',
+
+  /**
+   * Text somebody has selected with the pointer — the browser's ::selection, which no role reached,
+   * so every theme highlighted in the operating system's blue. A tint of the accent over the text
+   * as it is, so selected text keeps its own colour and stays readable.
+   */
+  textSelection: 'color-mix(in srgb, var(--we-role-accent) 30%, transparent)',
 
   /**
    * The lifted state of a *well* — an input, a textarea, a select trigger.

@@ -1415,7 +1415,7 @@ is the diagnostic. It says what was dropped and what to write instead, once per 
 development only.
   Props: content: string = ''
 - we-icon (LayoutElement)
-  Props: name: string = '', color: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}' = '', weight: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' = 'regular', gradient: string = ''
+  Props: name: string = '', color: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}' = '', weight: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' | '' = '', gradient: string = ''
 - we-icon-picker (DesignSystemElement)
   Props: value: string = '', disabled: boolean = false, name: string = '', label: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', placeholder: string = 'Pick icon'
 - we-iframe (LayoutVisualElement)
@@ -1438,7 +1438,7 @@ Not a standalone selector — wrap in we-popover for dropdown behavior.
   Props: collapsible: boolean = false, open: boolean = false, heading: string = ''
 - we-menu-item (DesignSystemElement) — Single actionable item inside a we-menu.
 Supports selected and active states; `tone: 'danger'` marks a destructive item.
-  Props: selected: boolean = false, active: boolean = false, label: unknown, value: unknown
+  Props: selected: boolean = false, active: boolean = false, disabled: boolean = false, label: unknown, value: unknown
 - we-modal (OverlayElement)
   Props: size: 'sm' | 'md' | 'lg' | 'fullscreen' = 'md', hideclosebutton: boolean = false, close: () => void
 - we-move-handle (LayoutElement)
@@ -1574,7 +1574,7 @@ item is considered.
 - we-switch (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', labelOff: string = '', labelOn: string = ''
 - we-tab (DesignSystemElement)
-  Props: key: string = '', selected: boolean = false, label?: string | undefined, selectedProps?: Partial<DesignSystemProps> | undefined
+  Props: key: string = '', selected: boolean = false, disabled: boolean = false, label?: string | undefined, selectedProps?: Partial<DesignSystemProps> | undefined
 - we-tabs (DesignSystemElement)
   Props: selectedKey: string = ''
 - we-tag (DesignSystemElement)
@@ -2429,6 +2429,8 @@ genuinely change its mind, not merely stretch.
 ## Design Tokens
 
 Use design tokens for spacing, color, radius, etc. Do not use raw CSS values unless using the styles prop.
+
+animation.easing: 'standard', 'out', 'in'
 
 animation.transition: '0', '100', '200', '300', '400', '500'
 

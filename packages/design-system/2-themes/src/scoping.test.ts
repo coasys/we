@@ -62,6 +62,7 @@ const SAMPLE: Required<Omit<ThemeOverrides, 'schemaVersion' | 'light' | 'dark'>>
   inputPadding: '6px',
   spacingScale: 1.3,
   disabledOpacity: 0.3,
+  iconWeight: 'bold',
   shadowIntensity: 'dramatic',
   surfaceOpacity: 0.8,
   surfaceBlur: 6,

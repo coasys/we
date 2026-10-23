@@ -6,6 +6,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { DesignSystemElement } from '../shared/design-system-element';
 import { fieldSurface } from '../shared/field-surface';
 import { openFloatingPanel } from '../shared/floating-panel';
+import { floatingPanel } from '../shared/panel-style';
 import sharedStyles from '../shared/styles';
 import type { ComponentSize } from '../types';
 
@@ -173,10 +174,7 @@ const styles = css`
     z-index: var(--we-z-dropdown, 9999);
     min-width: 320px;
     max-width: 380px;
-    background: var(--we-role-surface-raised);
-    border: 1px solid var(--we-role-border);
-    border-radius: var(--we-radius-500);
-    box-shadow: 0 8px 24px color-mix(in srgb, var(--we-role-shadow-color) 12%, transparent);
+    ${floatingPanel()}
     padding: var(--we-space-400);
     display: flex;
     flex-direction: column;
@@ -187,7 +185,7 @@ const styles = css`
   [part='tabs'] {
     display: flex;
     gap: var(--we-space-100);
-    border-bottom: 1px solid var(--we-role-border);
+    border-bottom: var(--we-border-width) solid var(--we-role-border);
     padding-bottom: var(--we-space-200);
   }
 
@@ -205,13 +203,13 @@ const styles = css`
   }
 
   [part='tab']:hover {
-    background: var(--we-role-page);
+    background: var(--we-role-item-hover);
     color: var(--we-role-text);
   }
 
   [part='tab'][aria-selected='true'] {
-    background: var(--we-role-accent-soft);
-    color: var(--we-role-accent-text);
+    background: var(--we-role-selected);
+    color: var(--we-role-on-selected);
   }
 
   /* Search */
@@ -254,19 +252,19 @@ const styles = css`
     height: 36px;
     border-radius: var(--we-radius-300);
     cursor: pointer;
-    border: 1px solid transparent;
+    border: var(--we-border-width) solid transparent;
     transition:
       background var(--we-transition-200, 150ms) ease,
       border-color var(--we-transition-200, 150ms) ease;
   }
 
   [part='icon-btn']:hover {
-    background: var(--we-role-page);
+    background: var(--we-role-item-hover);
     border-color: var(--we-role-border);
   }
 
   [part='icon-btn'][aria-selected='true'] {
-    background: var(--we-role-accent-soft);
+    background: var(--we-role-selected);
     border-color: var(--we-role-accent);
   }
 
@@ -311,7 +309,7 @@ const styles = css`
     width: 36px;
     height: 36px;
     border-radius: var(--we-radius-300);
-    border: 1px solid transparent;
+    border: var(--we-border-width) solid transparent;
     cursor: pointer;
     font-size: 1.2em;
     line-height: 1;
@@ -321,12 +319,12 @@ const styles = css`
   }
 
   [part='emoji-btn']:hover {
-    background: var(--we-role-page);
+    background: var(--we-role-item-hover);
     border-color: var(--we-role-border);
   }
 
   [part='emoji-btn'][aria-selected='true'] {
-    background: var(--we-role-accent-soft);
+    background: var(--we-role-selected);
     border-color: var(--we-role-accent);
   }
 
@@ -350,7 +348,6 @@ const styles = css`
   ${fieldSurface("[part='emoji-input']", ':focus-within')}
 
   :host([disabled]) {
-    opacity: 0.5;
     pointer-events: none;
   }
 `;

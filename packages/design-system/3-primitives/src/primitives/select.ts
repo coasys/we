@@ -1,6 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
-import { type DSLayer, familyVar, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { typeRoleDeclarations } from '@we/tokens';
+import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
+import { DISABLED_OPACITY, FOCUS_RING_INSET, typeRoleDeclarations } from '@we/tokens';
 import { css, html, nothing, type PropertyValues, unsafeCSS } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
@@ -8,6 +8,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 import { DesignSystemElement } from '../shared/design-system-element';
 import { fieldSurface } from '../shared/field-surface';
 import { openFloatingPanel } from '../shared/floating-panel';
+import { floatingPanel } from '../shared/panel-style';
 import sharedStyles from '../shared/styles';
 import type { ComponentSize } from '../types';
 
@@ -193,12 +194,8 @@ const styles = css`
     z-index: var(--we-z-dropdown);
     max-height: 200px;
     overflow-y: auto;
-    background: var(--we-role-surface-raised);
-    border: 1px solid var(--we-role-border);
-    /* A surface, though the control that opens it is an input — the panel is its own kind of thing.
-       Through the table rather than by hand, so it cannot drift from every other surface. */
-    border-radius: ${unsafeCSS(familyVar('surface', 'radius'))};
-    box-shadow: 0 4px 12px color-mix(in srgb, var(--we-role-shadow-color) 10%, transparent);
+    /* A floating panel, though the control that opens it is an input — see panel-style.ts. */
+    ${floatingPanel()}
     margin-top: var(--we-space-100);
     padding: var(--we-space-100) 0;
   }
@@ -235,7 +232,7 @@ const styles = css`
 
   [part='group-heading']:not(:first-child) {
     margin-top: var(--we-space-100);
-    border-top: 1px solid var(--we-role-border);
+    border-top: var(--we-border-width) solid var(--we-role-border);
   }
 
   /*
@@ -244,11 +241,12 @@ const styles = css`
     questions (pointer here, keyboard here, this one is chosen) answered in one colour.
   */
   [part='option']:hover {
-    background: var(--we-role-surface-hover);
+    background: var(--we-role-item-hover);
   }
 
   [part='option'][aria-selected='true'] {
-    background: var(--we-role-accent-soft);
+    background: var(--we-role-selected);
+    color: var(--we-role-on-selected);
   }
 
   /*
@@ -265,11 +263,11 @@ const styles = css`
     listbox's own edge would clip it.
   */
   [part='option'][data-active='true'] {
-    box-shadow: inset 0 0 0 2px var(--we-ring-color);
+    box-shadow: ${unsafeCSS(FOCUS_RING_INSET)};
   }
 
   [part='option'][aria-disabled='true'] {
-    opacity: 0.5;
+    opacity: ${unsafeCSS(DISABLED_OPACITY)};
     cursor: default;
   }
 
@@ -280,7 +278,6 @@ const styles = css`
   }
 
   :host([disabled]) {
-    opacity: 0.5;
     pointer-events: none;
   }
 `;

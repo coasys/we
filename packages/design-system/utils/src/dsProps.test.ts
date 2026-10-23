@@ -86,18 +86,31 @@ describe('zIndexVar', () => {
 
 describe('parseBorder', () => {
   it('resolves the color token in a border shorthand', () => {
-    expect(parseBorder('1px solid neutral-200')).toBe('1px solid var(--we-color-neutral-200)');
+    expect(parseBorder('2px solid neutral-200')).toBe('2px solid var(--we-color-neutral-200)');
   });
 
-  it('passes already-processed values through', () => {
-    expect(parseBorder('1px solid #ccc')).toBe('1px solid #ccc');
-    expect(parseBorder('1px solid var(--we-color-neutral-200)')).toBe('1px solid var(--we-color-neutral-200)');
+  it('reads a 1px width as the theme’s hairline', () => {
+    expect(parseBorder('1px solid border')).toBe('var(--we-border-width) solid var(--we-role-border)');
+    expect(parseBorder('0.5px dashed border')).toBe('0.5px dashed var(--we-role-border)');
+  });
+
+  it('resolves the colour even when the width is already a variable', () => {
+    expect(parseBorder('var(--we-border-width) solid border-hover')).toBe(
+      'var(--we-border-width) solid var(--we-role-border-hover)',
+    );
+  });
+
+  it('passes a colour written as CSS through whole', () => {
+    expect(parseBorder('2px solid #ccc')).toBe('2px solid #ccc');
+    expect(parseBorder('2px solid color-mix(in srgb, var(--we-role-accent) 30%, transparent)')).toBe(
+      '2px solid color-mix(in srgb, var(--we-role-accent) 30%, transparent)',
+    );
   });
 
   it('returns short values untouched and empty for nothing', () => {
     expect(parseBorder('none')).toBe('none');
     expect(parseBorder(undefined)).toBe('');
-    expect(parseBorder(undefined, '1px solid neutral-100')).toBe('1px solid var(--we-color-neutral-100)');
+    expect(parseBorder(undefined, '2px solid neutral-100')).toBe('2px solid var(--we-color-neutral-100)');
   });
 });
 
@@ -307,8 +320,8 @@ describe('semantic roles as colour prop values', () => {
   });
 
   it('resolves a border shorthand naming a role', () => {
-    expect(parseBorder('1px solid border')).toBe('1px solid var(--we-role-border)');
-    expect(parseBorder('1px solid border-strong')).toBe('1px solid var(--we-role-border-strong)');
+    expect(parseBorder('2px solid border')).toBe('2px solid var(--we-role-border)');
+    expect(parseBorder('2px solid border-strong')).toBe('2px solid var(--we-role-border-strong)');
   });
 });
 

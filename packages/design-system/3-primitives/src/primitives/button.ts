@@ -1,6 +1,7 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
 import { safeHref } from '@we/design-utils';
+import { FOCUS_RING, FOCUS_RING_BEYOND_BORDER } from '@we/tokens';
 import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
@@ -21,8 +22,9 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   // WCAG 2.4.7. Ring colour follows --we-ring-color (the themeable `ringColor` key) rather than
   // a fixed token, matching we-input, so a theme restyles both together and we-form-field's
   // danger-state override reaches buttons nested inside it.
-  focusProps: { ring: '0 0 0 2px var(--we-ring-color)' },
-  disabledProps: { cursor: 'default', opacity: 'var(--we-theme-disabled-opacity, 0.5)' },
+  focusProps: { ring: FOCUS_RING },
+  // Faded by the shared host rule (shared/styles.ts), which reads the theme's disabledOpacity.
+  disabledProps: { cursor: 'default' },
 };
 
 /**
@@ -114,7 +116,7 @@ export const VARIANT_DEFAULTS: Record<
         The ring is restated rather than inherited: `mergeProps` is a shallow spread, so a variant's
         `focusProps` *replaces* the one on DEFAULT_PROPS.
       */
-      focusProps: { border: '1px solid var(--we-ring-color)', ring: '0 0 0 1px var(--we-ring-color)' },
+      focusProps: { border: '1px solid var(--we-ring-color)', ring: FOCUS_RING_BEYOND_BORDER },
     },
     toned: {
       bg: 'transparent',
@@ -122,7 +124,7 @@ export const VARIANT_DEFAULTS: Record<
       border: '1px solid var(--we-role-accent-border)',
       hoverProps: { bg: 'accent-soft', color: 'accent-text', border: '1px solid var(--we-role-accent-border)' },
       activeProps: { bg: softStep(84), color: 'accent-text', border: '1px solid var(--we-role-accent-border)' },
-      focusProps: { border: '1px solid var(--we-ring-color)', ring: '0 0 0 1px var(--we-ring-color)' },
+      focusProps: { border: '1px solid var(--we-ring-color)', ring: FOCUS_RING_BEYOND_BORDER },
     },
   },
   ghost: {
