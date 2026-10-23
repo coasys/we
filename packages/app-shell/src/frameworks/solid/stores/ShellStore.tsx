@@ -68,6 +68,7 @@ import {
   type TopChrome,
   unlaned,
   widestMin,
+  withChromeCovered,
 } from '@shared/dockGeometry';
 import type { ScreenSource } from '@shared/platform/types';
 import { appFrame } from '@shared/registries/appFrame';
@@ -321,7 +322,8 @@ export interface ShellStore {
    * A floating panel takes no room, so it contributes nothing to `contentInset` and the content
    * region is the whole area. It still sits over part of it, and a surface drawing into its own box
    * cannot see which part. Read this to keep something in the clear — a board putting a new card
-   * where the reader can actually see it, a toast, a first-run pointer.
+   * where the reader can actually see it, a toast, a first-run pointer, a composer pinned to the
+   * bottom of a view. Floating chrome counts too: the call bar along the bottom, while it is up.
    */
   coveredInset: Accessor<ContentInset>;
   /** True while a dock is being dragged, so transitions can be suspended and the edge track the cursor. */
@@ -2530,7 +2532,12 @@ export function ShellStoreProvider(props: ParentProps) {
     about arithmetic — a strip of displacing panels sums and a column of floating ones takes the
     maximum — and a function answering both would have to explain which number it was returning.
   */
-  const covered = createMemo(() => (panelsAway() ? { ...NO_INSET } : coveredInset(dockRequests(), viewport())));
+  //
+  // And the chrome floating over the content — the call bar above all — which stays while the panels
+  // are away, so a composer pinned to the bottom of a view can rise above it and settle when it goes.
+  const covered = createMemo(() =>
+    withChromeCovered(panelsAway() ? { ...NO_INSET } : coveredInset(dockRequests(), viewport()), moduleChrome()),
+  );
 
   /**
    * Publish where the content's edges are, as CSS custom properties, so chrome can sit against the
@@ -2563,6 +2570,22 @@ export function ShellStoreProvider(props: ParentProps) {
    * sidebar, not over it — and does so in CSS so `--we-sidebar-width` stays the only place that
    * width is decided.
    */
+  /*
+    What is covered, published the same way — `--we-covered-<edge>`, the CSS face of `coveredInset`.
+
+    A space's template cannot read the store member, which is chrome's, but it can pad by a variable:
+    a composer pinned to the bottom of a view writes `pb: 'calc(var(--we-space-500) +
+    var(--we-covered-bottom, 0px))'` and rises above the call bar while one is up. Geometry it is
+    drawn into, not anything it can move.
+  */
+  createEffect(() => {
+    if (typeof document === 'undefined') return;
+    const edges = covered();
+    const root = document.documentElement.style;
+    for (const edge of ['top', 'right', 'bottom', 'left'] as const)
+      root.setProperty(`--we-covered-${edge}`, `${edges[edge]}px`);
+  });
+
   createEffect(() => {
     if (typeof document === 'undefined') return;
     /*
