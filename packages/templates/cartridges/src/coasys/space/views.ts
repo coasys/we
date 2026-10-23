@@ -1,5 +1,6 @@
 import type { RouteSchema, SchemaNode, SchemaProp } from '@we/schema-shared';
 import { lineComposer, recordFormModal } from '@we/template-kit';
+import { FLOWS_LOCALS, flowsPage } from '@we/template-showcase';
 
 import { CHANNEL, CHANNEL_EXPR, channelPath, IN_ROOT_EXPR, PAGE_EXPR } from './paths.ts';
 
@@ -274,183 +275,22 @@ const canvasRoute: RouteSchema = {
   ],
 };
 
-/** One flow: its steps in order, and what is going through it now. */
-const openFlow: SchemaNode = {
-  type: 'Column',
-  props: { gap: '400' },
-  children: [
-    {
-      type: 'Row',
-      props: { gap: '200', wrap: true, ay: 'center' },
-      children: [
-        {
-          type: '$each',
-          props: { items: { $: 'flowStore.open.lanes[0].steps' }, as: 'step' },
-          children: [
-            {
-              type: 'Row',
-              props: { gap: '200', ay: 'center' },
-              children: [
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: 'index' },
-                    then: { type: 'we-icon', props: { name: 'caret-right', color: 'text-faint' } },
-                  },
-                },
-                {
-                  type: 'we-tag',
-                  props: { variant: { $: "step.final ? 'success' : 'neutral'" } },
-                  children: [{ $: 'step.label' }],
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-    {
-      type: '$if',
-      props: {
-        condition: { $: 'count(flowStore.open.records)' },
-        then: {
-          type: 'Column',
-          props: { gap: '200' },
-          children: [
-            {
-              type: '$each',
-              props: { items: { $: 'flowStore.open.records' }, as: 'item' },
-              children: [
-                {
-                  type: 'Card',
-                  props: { bg: 'surface', gap: '200' },
-                  children: [
-                    {
-                      type: 'Row',
-                      props: { gap: '300', ay: 'center', ax: 'between' },
-                      children: [
-                        {
-                          type: 'we-text',
-                          props: { fontWeight: 'semibold', truncate: true, minWidth: '0' },
-                          children: [{ $: 'item.title' }],
-                        },
-                        {
-                          type: 'we-badge',
-                          props: { variant: { $: "item.stalled ? 'warning' : 'primary'" } },
-                          children: [{ $: 'item.stateLabel' }],
-                        },
-                      ],
-                    },
-                    {
-                      type: 'Row',
-                      props: { gap: '100', wrap: true },
-                      children: [
-                        {
-                          type: '$each',
-                          props: { items: { $: 'item.walk' }, as: 'stop' },
-                          children: [
-                            {
-                              type: 'we-text',
-                              props: {
-                                variant: 'footnote',
-                                color: {
-                                  $: "stop.at == 'current' ? 'accent-text' : stop.at == 'done' ? 'text-muted' : 'text-faint'",
-                                },
-                                fontWeight: { $: "stop.at == 'current' ? 'semibold' : 'regular'" },
-                              },
-                              children: [{ $: "(index ? '→ ' : '') + stop.label" }],
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-        else: {
-          type: 'we-text',
-          props: { color: 'text-muted' },
-          children: [{ $: "flowStore.open.recordsLoaded ? 'Nothing is going through this flow yet.' : ''" }],
-        },
-      },
-    },
-  ],
-};
-
-/** The space's flows: each one, how many things are going through it, and the one chosen, opened. */
+/**
+ * The space's flows: WE's own Flows page — every flow down the left, the one chosen beside it with
+ * the records going through it, and the editor for a new or changed one. `?new=1` opens the new-flow
+ * dialog, which is what the + on the tree's Flows row goes to.
+ */
 const flowsRoute: RouteSchema = {
   path: '/flows',
   type: 'Column',
   props: { width: '100%', height: '100%' },
+  $localState: { ...FLOWS_LOCALS },
   children: [
     viewBar([{ $: "flowStore.open ? flowStore.open.label : 'Flows'" }], 'flow-arrow'),
     {
       type: 'Column',
-      props: { flex: '1', minHeight: '0', overflowY: 'auto', px: '500', py: '500', gap: '500' },
-      children: [
-        {
-          type: '$if',
-          props: {
-            condition: { $: 'flowStore.available' },
-            then: {
-              type: 'Column',
-              props: { gap: '500' },
-              children: [
-                {
-                  type: 'Row',
-                  props: { gap: '300', wrap: true },
-                  children: [
-                    {
-                      type: '$each',
-                      props: { items: { $: 'flowStore.flows.filter(f, !f.archived)' }, as: 'flow' },
-                      children: [
-                        {
-                          type: 'we-button',
-                          props: {
-                            variant: {
-                              $: "flowStore.open && flowStore.open.name == flow.name ? 'secondary' : 'outline'",
-                            },
-                            onClick: { $action: 'flowStore.openFlow', args: [{ $: 'flow.name' }] },
-                          },
-                          children: [
-                            { type: 'we-icon', props: { name: 'flow-arrow' } },
-                            { $: 'flow.label' },
-                            { type: 'we-badge', props: { size: 'xs' }, children: [{ $: 'flow.records' }] },
-                          ],
-                        },
-                      ],
-                    },
-                  ],
-                },
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: 'flowStore.open' },
-                    then: openFlow,
-                    else: {
-                      type: 'we-text',
-                      props: { color: 'text-muted' },
-                      children: [
-                        {
-                          $: "flowStore.flowsLoaded && !count(flowStore.flows) ? 'This space has no flows yet.' : 'Choose a flow to see what is going through it.'",
-                        },
-                      ],
-                    },
-                  },
-                },
-              ],
-            },
-            else: {
-              type: 'we-text',
-              props: { color: 'text-muted' },
-              children: ['Flows are not available in this space.'],
-            },
-          },
-        },
-      ],
+      props: { flex: '1', minHeight: '0', overflowY: 'auto' },
+      children: [flowsPage({ pt: '500', pb: '600' })],
     },
   ],
 };

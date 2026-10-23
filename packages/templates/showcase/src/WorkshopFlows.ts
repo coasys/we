@@ -24,7 +24,8 @@ const DRAFT = 'flowStore.draft';
 
 /** The locals the page declares: which modal is open, and what it is about. */
 export const FLOWS_LOCALS = {
-  newFlowOpen: { type: 'boolean', initial: false },
+  // In the address, so a control outside the page — a tree's + — can open it by going to `?new=1`.
+  newFlowOpen: { type: 'boolean', initial: false, syncParam: 'new' },
   addStepLane: { type: 'number', initial: -1 },
   addStepAfter: { type: 'string', initial: '' },
   branchFrom: { type: 'string', initial: '' },

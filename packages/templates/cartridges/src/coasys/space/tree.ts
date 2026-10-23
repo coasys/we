@@ -23,7 +23,8 @@ const toggle = (value: SchemaProp): SchemaProp => ({ $toggleLocalIn: 'openRows',
 
 /**
  * A group: one of the space's kinds of thing, with its glyph, opened or closed by a press anywhere on
- * its row — a group is not a place to go, so choosing it is opening it (see `onSelect`).
+ * its row — a group is not a place to go, so choosing it is opening it (see `onSelect`). Flows is the
+ * exception: its row opens the Flows page, and its caret opens the group.
  */
 const group = (key: string, label: string, icon: string, children: SchemaNode[], badge?: SchemaNode): SchemaNode =>
   treeRow({
@@ -121,21 +122,29 @@ const calls = group(
   countBadge('count(modules.call.liveCalls)'),
 );
 
-const flows = group('flows', 'Flows', 'flow-arrow', [
-  {
-    type: '$each',
-    props: { items: { $: 'flowStore.flows.filter(f, !f.archived)' }, as: 'flow' },
-    children: [
-      treeRow({
-        nested: true,
-        value: { $: "'flow|' + flow.name" },
-        label: { $: 'flow.label' },
-        icon: 'flow-arrow',
-        badge: countBadge('flow.records'),
-      }),
-    ],
-  },
-]);
+const FLOWS_PAGE = "spaceStore.spacePath + '/flows'";
+
+const flows = group(
+  'flows',
+  'Flows',
+  'flow-arrow',
+  [
+    {
+      type: '$each',
+      props: { items: { $: 'flowStore.flows.filter(f, !f.archived)' }, as: 'flow' },
+      children: [
+        treeRow({
+          nested: true,
+          value: { $: "'flow|' + flow.name" },
+          label: { $: 'flow.label' },
+          icon: 'flow-arrow',
+          badge: countBadge('flow.records'),
+        }),
+      ],
+    },
+  ],
+  addButton('New flow', { $action: 'routeStore.navigate', args: [{ $: `${FLOWS_PAGE} + '?new=1'` }] }),
+);
 
 const people = group(
   'people',
@@ -178,8 +187,15 @@ const socialDna = group('dna', 'Social DNA', 'dna', [
 const onSelect: SchemaProp = [
   {
     $if: {
-      condition: { $: "startsWith(event.detail.value, 'group|')" },
+      condition: { $: "startsWith(event.detail.value, 'group|') && event.detail.value != 'group|flows'" },
       then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
+    },
+  },
+  // Flows is a place as well as a group: its page lists every flow and makes new ones.
+  {
+    $if: {
+      condition: { $: "event.detail.value == 'group|flows'" },
+      then: [{ $action: 'flowStore.closeFlow' }, { $action: 'routeStore.navigate', args: [{ $: FLOWS_PAGE }] }],
     },
   },
   {

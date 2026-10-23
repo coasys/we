@@ -18,7 +18,8 @@
   "dependencies": {
     "@we/schema-shared": "workspace:*",
     "@we/template-fixtures": "workspace:*",
-    "@we/template-kit": "workspace:*"
+    "@we/template-kit": "workspace:*",
+    "@we/template-showcase": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
