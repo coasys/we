@@ -12,9 +12,27 @@ import {
   tokenVar,
 } from '@we/design-utils';
 import { PANEL_TITLE_PROPS, SECTION_LABEL_PROPS } from '@we/schema-kit';
-import type { ThemeOverrides, ThemeRole } from '@we/schema-shared';
-import { applyThemeVars, roleVar, surfacesForPolarity, themeParametersToStyle } from '@we/schema-shared';
-import { RAMP_FAMILIES } from '@we/tokens';
+import type { FontFaceSetting, ThemeOverrides, ThemeRole } from '@we/schema-shared';
+import {
+  applyThemeVars,
+  fontFaceProblem,
+  roleVar,
+  surfacesForPolarity,
+  themeParametersToStyle,
+  themeSides,
+} from '@we/schema-shared';
+import {
+  capitalise,
+  COLOR_FAMILIES,
+  PALETTE_HUES,
+  type PaletteHue,
+  RAMP_FAMILIES,
+  SEMANTIC_FAMILIES,
+  SURFACE_IMAGE_ROLES,
+  type SurfaceImageRole,
+  TYPE_ROLES,
+  type TypeRole,
+} from '@we/tokens';
 import type { JSX } from 'solid-js';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
@@ -128,6 +146,120 @@ const DISABLED_OPACITY_OPTIONS = [
   { value: '0.3', label: 'Strong' },
 ];
 
+type ComponentOverride = NonNullable<ThemeOverrides['components']>[string];
+type TypeStyle = NonNullable<NonNullable<ThemeOverrides['typeStyles']>[TypeRole]>;
+
+const WEIGHT_OPTIONS = [
+  { value: '', label: 'Default' },
+  { value: '300', label: 'Light' },
+  { value: '400', label: 'Regular' },
+  { value: '500', label: 'Medium' },
+  { value: '600', label: 'Semibold' },
+  { value: '700', label: 'Bold' },
+  { value: '800', label: 'Heavy' },
+];
+
+const TRACKING_OPTIONS = [
+  { value: '', label: 'Default' },
+  { value: 'tight', label: 'Tight' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'wide', label: 'Wide' },
+  { value: 'wider', label: 'Wider' },
+];
+
+const CASE_OPTIONS = [
+  { value: '', label: 'Default' },
+  { value: 'none', label: 'As written' },
+  { value: 'uppercase', label: 'Capitals' },
+];
+
+/** The foregrounds a type role or a component's words can take — roles, so contrast is measured. */
+const TEXT_ROLE_OPTIONS = [
+  { value: '', label: 'Default' },
+  { value: 'text', label: 'Text' },
+  { value: 'text-muted', label: 'Muted' },
+  { value: 'text-faint', label: 'Faint' },
+  { value: 'accent-text', label: 'Accent' },
+];
+
+/** Fills a component can be set apart with — roles only, for the reason above. */
+const FILL_ROLE_OPTIONS = [
+  { value: '', label: 'Default' },
+  { value: 'surface', label: 'Surface' },
+  { value: 'surface-raised', label: 'Raised' },
+  { value: 'surface-sunken', label: 'Sunken' },
+  { value: 'control-surface', label: 'Control' },
+  { value: 'accent', label: 'Accent' },
+  { value: 'accent-soft', label: 'Accent tint' },
+];
+
+const BORDER_ROLE_OPTIONS = [
+  { value: '', label: 'Default' },
+  { value: 'border', label: 'Border' },
+  { value: 'border-strong', label: 'Strong' },
+  { value: 'accent-border', label: 'Accent' },
+];
+
+const SHADOW_OPTIONS = [
+  { value: '', label: 'Default' },
+  { value: 'none', label: 'None' },
+  { value: 'sm', label: 'Small' },
+  { value: 'md', label: 'Medium' },
+  { value: 'lg', label: 'Large' },
+  { value: 'glow', label: 'Glow' },
+];
+
+const STATE_DURATION_OPTIONS = [
+  { value: '', label: 'Default' },
+  { value: '0ms', label: 'Instant' },
+  { value: '80ms', label: 'Quick' },
+  { value: '150ms', label: 'Easy' },
+];
+
+/** The kinds of text a theme styles, in the order a reader meets them. */
+const TYPE_ROLE_LABELS: Record<TypeRole, string> = {
+  heading: 'Headings',
+  body: 'Body',
+  label: 'Labels',
+  control: 'Controls',
+  badge: 'Badges',
+  overline: 'Overlines',
+};
+
+/** The surfaces a theme can lay an image over — see SURFACE_IMAGE_ROLES in @we/tokens. */
+const SURFACE_IMAGE_LABELS: Record<SurfaceImageRole, string> = {
+  chrome: 'Chrome',
+  page: 'Page',
+  surface: 'Surfaces',
+  surfaceRaised: 'Raised',
+  surfaceSunken: 'Sunken',
+};
+
+/**
+ * Components a theme can set apart here, by the name a theme's `components` addresses them by — the
+ * ones whose look themes most often want to change. Any registered component's name works in the
+ * theme's JSON; this list is what the panel offers, not what the system accepts.
+ */
+const COMPONENT_NAMES = [
+  'alert',
+  'avatar',
+  'badge',
+  'button',
+  'card',
+  'checkbox',
+  'input',
+  'menu',
+  'menu-item',
+  'modal',
+  'select',
+  'switch',
+  'tab',
+  'tag',
+  'text',
+  'textarea',
+  'tooltip',
+];
+
 const SPACING_SCALE_OPTIONS = [
   { value: '', label: 'Default' },
   { value: '0.85', label: 'Compact' },
@@ -168,6 +300,16 @@ const INPUT_SPACING_OPTIONS = [
  * only way for anyone else to do it was hand-writing the theme's CSS.
  */
 const ROLE_GROUPS: { label: string; hint: string; roles: { role: ThemeRole; label: string; hint: string }[] }[] = [
+  {
+    label: 'Lists and selection',
+    hint: 'Where the pointer is and what has been chosen, for every list, menu, tree, calendar and tab strip at once.',
+    roles: [
+      { role: 'itemHover', label: 'Hover', hint: 'A row or a cell under the pointer.' },
+      { role: 'selected', label: 'Selected', hint: 'The chosen item — a menu entry, a tab, a day, a page.' },
+      { role: 'onSelected', label: 'On selected', hint: 'The words on the chosen item.' },
+      { role: 'textSelection', label: 'Text selection', hint: 'Text somebody has selected with the pointer.' },
+    ],
+  },
   {
     label: 'Elevation',
     hint: 'How far a thing sits from the page. Ordered here the way they stack.',
@@ -669,6 +811,121 @@ export function ThemePanel() {
         </we-text>
       </Row>
     );
+  }
+
+  // ── Generic rows, for settings nested inside an object ──────────────────────
+
+  /** A labelled slider over any value, for the nested settings the keyed helpers cannot reach. */
+  function sliderRow(
+    label: string,
+    value: () => number,
+    onInput: (value: number) => void,
+    { min, max, step = 1, format }: { min: number; max: number; step?: number; format: (v: number) => string },
+  ) {
+    return (
+      <Row ay="center" gap="300">
+        <we-text minWidth="100px" fontSize="300" color="text-muted">
+          {label}
+        </we-text>
+        <we-slider
+          flex="1"
+          value={value()}
+          min={min}
+          max={max}
+          step={step}
+          on:input={(e: CustomEvent) => onInput(Number(e.detail))}
+          on:change={() => saveTheme()}
+        />
+        <we-text minWidth="40px" fontSize="200" color="text-muted" textAlign="right">
+          {format(value())}
+        </we-text>
+      </Row>
+    );
+  }
+
+  /** A labelled select over any value; an empty choice clears it. */
+  function choiceRow(
+    label: string,
+    value: () => string,
+    options: { value: string; label: string }[],
+    onChange: (value: string | undefined) => void,
+  ) {
+    return (
+      <Row ay="center" gap="300">
+        <we-text minWidth="100px" fontSize="300" color="text-muted">
+          {label}
+        </we-text>
+        <we-select
+          flex="1"
+          size="sm"
+          value={value()}
+          options={options}
+          on:change={(e: CustomEvent) => {
+            onChange((e.detail as string) || undefined);
+            saveTheme();
+          }}
+        />
+      </Row>
+    );
+  }
+
+  /** Drop the keys a nested object no longer sets, and the object itself once it sets nothing. */
+  function pruned<T extends object>(value: T): T | undefined {
+    const entries = Object.entries(value).filter(([, v]) => v !== undefined && v !== '');
+    return entries.length ? (Object.fromEntries(entries) as T) : undefined;
+  }
+
+  function setPalette(change: Partial<NonNullable<ThemeOverrides['palette']>>) {
+    setOverride('palette', pruned({ ...overrides().palette, ...change }));
+  }
+
+  function setPaletteHue(hue: PaletteHue, angle: number) {
+    const hues = { ...overrides().palette?.hues, [hue]: { ...overrides().palette?.hues?.[hue], hue: angle } };
+    setPalette({ hues });
+  }
+
+  function setTypeStyle(role: TypeRole, key: keyof TypeStyle, value: string | undefined) {
+    const current = overrides().typeStyles ?? {};
+    const next = pruned({ ...current, [role]: pruned({ ...current[role], [key]: value }) });
+    setOverride('typeStyles', next as ThemeOverrides['typeStyles']);
+  }
+
+  const [component, setComponent] = createSignal('button');
+
+  function setComponentKey(key: keyof ComponentOverride, value: string | undefined) {
+    const current = overrides().components ?? {};
+    const next = pruned({ ...current, [component()]: pruned({ ...current[component()], [key]: value }) });
+    setOverride('components', next as ThemeOverrides['components']);
+  }
+
+  function setSurfaceImage(role: SurfaceImageRole, value: string | undefined) {
+    setOverride('surfaceImages', pruned({ ...overrides().surfaceImages, [role]: value }));
+  }
+
+  const [fontProblem, setFontProblem] = createSignal('');
+
+  /** Read a chosen font file into the theme as a face, named after the file. */
+  function addFontFace(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const family = file.name
+        .replace(/\.(woff2?|ttf|otf)$/i, '')
+        .replace(/[^\p{L}\p{N} _-]/gu, ' ')
+        .trim();
+      const face: FontFaceSetting = { family, src: String(reader.result) };
+      const problem = fontFaceProblem(face);
+      setFontProblem(problem ?? '');
+      if (problem) return;
+      setOverride('fontFaces', [...(overrides().fontFaces ?? []).filter((f) => f.family !== family), face]);
+      saveThemeNow();
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function removeFontFace(family: string) {
+    const rest = (overrides().fontFaces ?? []).filter((f) => f.family !== family);
+    setOverride('fontFaces', rest.length ? rest : undefined);
+    saveThemeNow();
   }
 
   // ── Select control ──────────────────────────────────────────────────────────
@@ -1579,82 +1836,88 @@ export function ThemePanel() {
               </Row>
             </CollapsibleSection>
 
-            {/* ── Color ── */}
-            <CollapsibleSection title="Color">
+            {/* ── Colour ── */}
+            {/*
+              By family, the way the system is built: each family's hue, how vivid it is and where
+              its fill sits, together — then the palette, then the whole theme. It was laid out by
+              kind of control (every hue, then every saturation, then every lightness), which put
+              one family's three settings in three places and called the accent "Brand".
+            */}
+            <CollapsibleSection title="Colour">
+              <For each={[...SEMANTIC_FAMILIES]}>
+                {(family) => (
+                  <Column gap="200">
+                    <we-text fontSize="200" color="text-faint">
+                      {capitalise(family)}
+                    </we-text>
+                    {hueSlider('Hue', `${family}Hue` as keyof ThemeOverrides, COLOR_FAMILIES[family].hue)}
+                    {percentSlider('Saturation', `${family}Saturation` as keyof ThemeOverrides, 0, 100, 50, '')}
+                    {percentSlider(
+                      'Fill lightness',
+                      `${family}Lightness` as keyof ThemeOverrides,
+                      20,
+                      95,
+                      Math.round(COLOR_FAMILIES[family].fill * 100),
+                      '',
+                    )}
+                  </Column>
+                )}
+              </For>
               <Column gap="200">
                 <we-text fontSize="200" color="text-faint">
-                  Hues
+                  Neutral
                 </we-text>
-                {/*
-                  "Brand" rather than "Primary", because of what it actually moves.
-
-                  `primary` is a hue *family* — it generates a whole ramp, and the accent fill, the
-                  accent text, the muted tint, the focus ring and the gradients are all built from
-                  it, as are the greys unless a theme separates `neutralHue`. Labelling it "Primary"
-                  beside an "Accent" group made the two read as a matched pair of colours when one
-                  is the source of the other, and it is the first thing anyone asks about.
-                */}
-                {hueSlider('Brand', 'accentHue', 220)}
-                {hueSlider('Success', 'successHue', 142)}
-                {hueSlider('Warning', 'warningHue', 38)}
-                {hueSlider('Danger', 'dangerHue', 4)}
-                {hueSlider('Neutral', 'neutralHue', 220)}
+                {hueSlider('Hue', 'neutralHue', COLOR_FAMILIES.accent.hue)}
+                {percentSlider('Saturation', 'neutralSaturation', 0, 100, 20, '')}
               </Column>
               <Column gap="200">
                 <we-text fontSize="200" color="text-faint">
-                  Saturation
+                  Palette
                 </we-text>
-                {percentSlider('Colors', 'saturation', 0, 100, 50, '')}
-                {percentSlider('Neutrals', 'neutralSaturation', 0, 100, 20, '')}
+                <we-text fontSize="100" color="text-faint" lineHeight="1.4">
+                  The ten hues communities colour categories with. Set as one: how vivid and how light the whole set is,
+                  then any one hue moved.
+                </we-text>
+                {sliderRow(
+                  'Saturation',
+                  () => overrides().palette?.saturation ?? 50,
+                  (v) => setPalette({ saturation: v }),
+                  {
+                    min: 0,
+                    max: 100,
+                    format: (v) => `${v}%`,
+                  },
+                )}
+                {sliderRow(
+                  'Lightness',
+                  () => overrides().palette?.lightness ?? 0,
+                  (v) => setPalette({ lightness: v }),
+                  {
+                    min: -20,
+                    max: 20,
+                    format: (v) => (v > 0 ? `+${v}` : `${v}`),
+                  },
+                )}
+                <For each={[...PALETTE_HUES]}>
+                  {(hue) =>
+                    sliderRow(
+                      capitalise(hue),
+                      () => overrides().palette?.hues?.[hue]?.hue ?? COLOR_FAMILIES[hue].hue,
+                      (v) => setPaletteHue(hue, v),
+                      { min: 0, max: 359, format: (v) => `${v}°` },
+                    )
+                  }
+                </For>
               </Column>
               <Column gap="200">
                 <we-text fontSize="200" color="text-faint">
-                  Accent fill
+                  Whole theme
                 </we-text>
                 {/*
-                  The third axis of the accent, and the one that was missing.
-
-                  Hue and saturation had sliders; lightness did not, because fills sit off the
-                  neutral ramp so a red stays red in both polarities — which is right, and quietly
-                  meant nobody could choose how light their accent was. The "Lightness range" group
-                  below governs the *neutral* ramp, so it looked like the control for this and is
-                  not: dragging it to 120% left a green accent at exactly the same #3a862d.
-
-                  The default reads 55 because that is where the shared fill lightness sits; a theme
-                  stating its own — `dark` states 55.3 — shows that instead until this is touched.
+                  The two ends of the ramp, stated rather than encoded — a narrow span is a soft
+                  theme, a full one is stark — and the saturation every family starts from.
                 */}
-                {percentSlider('Lightness', 'accentLightness', 20, 95, 55, '')}
-              </Column>
-              <Column gap="200">
-                <we-text fontSize="200" color="text-faint">
-                  Status fills
-                </we-text>
-                {/*
-                  The same axis for the other three fills, which had the same gap for longer.
-
-                  Each default is where its own hue is most itself (FILL_LIGHTNESS in @we/tokens) —
-                  they differ because gold at violet's lightness is a stone. A theme that brightened
-                  its accent and left these alone used to end up with a delete button that read as
-                  the one muted control on the screen, and the only way out was pinning the role,
-                  which throws away the derivations that keep its label readable.
-                */}
-                {percentSlider('Danger', 'dangerLightness', 20, 95, 62, '')}
-                {percentSlider('Success', 'successLightness', 20, 95, 75, '')}
-                {percentSlider('Warning', 'warningLightness', 20, 95, 76, '')}
-              </Column>
-              <Column gap="200">
-                <we-text fontSize="200" color="text-faint">
-                  Lightness range
-                </we-text>
-                {/*
-                  The two ends of the ramp, stated rather than encoded.
-
-                  These replaced a single "Subtractor 0–200" slider, which is what the old model
-                  exposed and which meant nothing on its own — `112` was "floor at 12%", and finding
-                  that out took dragging it and looking. Together they are also the contrast control
-                  the system had by accident and could not reach: a narrow span is a soft theme, a
-                  full one is stark.
-                */}
+                {percentSlider('Saturation', 'saturation', 0, 100, 50, '')}
                 {percentSlider('Darkest', 'lightnessFloor', 0, 100, 0)}
                 {percentSlider('Lightest', 'lightnessCeiling', 0, 120, 100)}
               </Column>
@@ -1681,6 +1944,44 @@ export function ThemePanel() {
                   </Column>
                 )}
               </For>
+            </CollapsibleSection>
+
+            {/* ── Modes ── */}
+            {/*
+              Preview, not settings: which side and which contrast are worn is the person's to say,
+              over any theme. These change the editor's own display preferences so a theme can be seen
+              the way somebody will see it.
+            */}
+            <CollapsibleSection title="Modes">
+              <we-text fontSize="200" color="text-muted" lineHeight="1.5">
+                People choose light or dark and more contrast for themselves, over any theme. See this theme the way
+                they will:
+              </we-text>
+              {choiceRow(
+                'Colour scheme',
+                () => themeStore.themeMode(),
+                [
+                  { value: 'system', label: 'Follow system' },
+                  { value: 'light', label: 'Light' },
+                  { value: 'dark', label: 'Dark' },
+                ],
+                (v) => void themeStore.setThemeMode((v as 'light' | 'dark' | 'system') ?? 'system'),
+              )}
+              {choiceRow(
+                'Contrast',
+                () => themeStore.displayPreferences().contrast ?? 'system',
+                [
+                  { value: 'system', label: 'Follow system' },
+                  { value: 'standard', label: 'Standard' },
+                  { value: 'more', label: 'More' },
+                ],
+                (v) => void themeStore.setDisplayPreference('contrast', (v as 'standard' | 'more') ?? null),
+              )}
+              <we-text fontSize="100" color="text-faint" lineHeight="1.4">
+                {themeSides(overrides()).length
+                  ? 'This theme has a light and a dark side.'
+                  : 'This theme has one look, worn in either scheme.'}
+              </we-text>
             </CollapsibleSection>
 
             {/* ── Shape ── */}
@@ -1719,8 +2020,8 @@ export function ThemePanel() {
               </Column>
             </CollapsibleSection>
 
-            {/* ── Typography ── */}
-            <CollapsibleSection title="Typography">
+            {/* ── Type ── */}
+            <CollapsibleSection title="Type">
               {selectControl('Font family', 'fontFamily', () => [...themeFaces(), ...FONT_OPTIONS], '100px', 'default')}
               {selectControl(
                 'Heading font',
@@ -1745,6 +2046,43 @@ export function ThemePanel() {
                   },
                 )}
               </Column>
+              {/*
+                The kinds of text, each set once and reached wherever it is drawn — a heading in a
+                template, in markdown and in a post alike. Unset keeps each component's own.
+              */}
+              <For each={[...TYPE_ROLES]}>
+                {(role) => (
+                  <Column gap="200">
+                    <we-text fontSize="200" color="text-faint">
+                      {TYPE_ROLE_LABELS[role]}
+                    </we-text>
+                    {choiceRow(
+                      'Weight',
+                      () => String(overrides().typeStyles?.[role]?.weight ?? ''),
+                      WEIGHT_OPTIONS,
+                      (v) => setTypeStyle(role, 'weight', v),
+                    )}
+                    {choiceRow(
+                      'Tracking',
+                      () => overrides().typeStyles?.[role]?.letterSpacing ?? '',
+                      TRACKING_OPTIONS,
+                      (v) => setTypeStyle(role, 'letterSpacing', v),
+                    )}
+                    {choiceRow(
+                      'Case',
+                      () => overrides().typeStyles?.[role]?.textTransform ?? '',
+                      CASE_OPTIONS,
+                      (v) => setTypeStyle(role, 'textTransform', v),
+                    )}
+                    {choiceRow(
+                      'Colour',
+                      () => overrides().typeStyles?.[role]?.color ?? '',
+                      TEXT_ROLE_OPTIONS,
+                      (v) => setTypeStyle(role, 'color', v),
+                    )}
+                  </Column>
+                )}
+              </For>
             </CollapsibleSection>
 
             {/* ── Spacing & Density ── */}
@@ -1784,20 +2122,11 @@ export function ThemePanel() {
               </Column>
             </CollapsibleSection>
 
-            {/* ── Effects & Motion ── */}
-            <CollapsibleSection title="Effects & Motion">
+            {/* ── Elevation ── */}
+            <CollapsibleSection title="Elevation">
               <Column gap="200">
                 <we-text fontSize="200" color="text-faint">
-                  States
-                </we-text>
-                {/* How far "off" reads. A control rather than a role: one colour cannot serve a
-                    disabled ghost button and a disabled danger one, since they start from
-                    different fills. */}
-                {selectControl('Disabled', 'disabledOpacity', DISABLED_OPACITY_OPTIONS)}
-              </Column>
-              <Column gap="200">
-                <we-text fontSize="200" color="text-faint">
-                  Shadow intensity
+                  Shadows
                 </we-text>
                 {presetRow(
                   { flat: 'Flat', subtle: 'Subtle', elevated: 'Elevated', dramatic: 'Dramatic' } as Record<
@@ -1811,6 +2140,27 @@ export function ThemePanel() {
                   },
                 )}
               </Column>
+              <Column gap="200">
+                <we-text fontSize="200" color="text-faint">
+                  Glow
+                </we-text>
+                {/* What shadow: 'glow' draws — the accent as light, coloured by an element's tone. */}
+                {presetRow(
+                  { none: 'None', subtle: 'Subtle', medium: 'Medium', strong: 'Strong' } as Record<
+                    NonNullable<ThemeOverrides['glowIntensity']>,
+                    string
+                  >,
+                  (p) => (overrides().glowIntensity ?? 'medium') === p,
+                  (p) => {
+                    setOverride('glowIntensity', p === 'medium' ? undefined : p);
+                    saveTheme();
+                  },
+                )}
+              </Column>
+            </CollapsibleSection>
+
+            {/* ── Surfaces ── */}
+            <CollapsibleSection title="Surfaces">
               {numericSlider('Surface opacity', 'surfaceOpacity', 1, {
                 min: 0,
                 max: 1,
@@ -1824,6 +2174,38 @@ export function ThemePanel() {
                 format: (v) => `${v}px`,
                 clearOnZero: true,
               })}
+              <Column gap="200">
+                <we-text fontSize="200" color="text-faint">
+                  Images
+                </we-text>
+                <we-text fontSize="100" color="text-faint" lineHeight="1.4">
+                  A gradient laid over every surface of a kind — radial-, linear- or conic-gradient. The page and the
+                  chrome hold still behind scrolling content.
+                </we-text>
+                <For each={[...SURFACE_IMAGE_ROLES]}>
+                  {(role) => (
+                    <Row ay="center" gap="300">
+                      <we-text minWidth="100px" fontSize="300" color="text-muted">
+                        {SURFACE_IMAGE_LABELS[role]}
+                      </we-text>
+                      <we-input
+                        flex="1"
+                        size="sm"
+                        placeholder="radial-gradient(…)"
+                        value={overrides().surfaceImages?.[role] ?? ''}
+                        on:change={(e: CustomEvent) => {
+                          setSurfaceImage(role, (e.detail as string).trim() || undefined);
+                          saveTheme();
+                        }}
+                      />
+                    </Row>
+                  )}
+                </For>
+              </Column>
+            </CollapsibleSection>
+
+            {/* ── Motion ── */}
+            <CollapsibleSection title="Motion">
               <Column gap="200">
                 <we-text fontSize="200" color="text-faint">
                   Animation speed
@@ -1840,6 +2222,124 @@ export function ThemePanel() {
                   },
                 )}
               </Column>
+              {selectControl('Hover and press', 'stateDuration', STATE_DURATION_OPTIONS, '120px')}
+              {/* How far "off" reads. A control rather than a role: one colour cannot serve a disabled
+                  ghost button and a disabled danger one, since they start from different fills. */}
+              {selectControl('Disabled', 'disabledOpacity', DISABLED_OPACITY_OPTIONS, '120px')}
+              {choiceRow(
+                'Icon weight',
+                () => overrides().iconWeight ?? '',
+                [
+                  { value: '', label: 'Default' },
+                  { value: 'thin', label: 'Thin' },
+                  { value: 'light', label: 'Light' },
+                  { value: 'regular', label: 'Regular' },
+                  { value: 'bold', label: 'Bold' },
+                  { value: 'fill', label: 'Filled' },
+                ],
+                (v) => setOverride('iconWeight', v as ThemeOverrides['iconWeight']),
+              )}
+            </CollapsibleSection>
+
+            {/* ── Components ── */}
+            {/*
+              The narrow tier: one component set apart from its family, with the family's own keys.
+              Per variant is a level further and lives in the theme's JSON (components.<name>.variants).
+            */}
+            <CollapsibleSection title="Components">
+              {choiceRow(
+                'Component',
+                () => component(),
+                COMPONENT_NAMES.map((name) => ({ value: name, label: name })),
+                (v) => setComponent(v ?? 'button'),
+              )}
+              {choiceRow(
+                'Radius',
+                () => overrides().components?.[component()]?.radius ?? '',
+                RADIUS_OPTIONS,
+                (v) => setComponentKey('radius', v),
+              )}
+              {choiceRow(
+                'Padding',
+                () => overrides().components?.[component()]?.padding ?? '',
+                SPACING_OPTIONS,
+                (v) => setComponentKey('padding', v),
+              )}
+              {choiceRow(
+                'Gap',
+                () => overrides().components?.[component()]?.gap ?? '',
+                SPACING_OPTIONS,
+                (v) => setComponentKey('gap', v),
+              )}
+              {choiceRow(
+                'Border width',
+                () => overrides().components?.[component()]?.borderWidth ?? '',
+                BORDER_WIDTH_OPTIONS,
+                (v) => setComponentKey('borderWidth', v),
+              )}
+              {choiceRow(
+                'Shadow',
+                () => overrides().components?.[component()]?.shadow ?? '',
+                SHADOW_OPTIONS,
+                (v) => setComponentKey('shadow', v),
+              )}
+              {choiceRow(
+                'Type',
+                () => overrides().components?.[component()]?.type ?? '',
+                [
+                  { value: '', label: 'Default' },
+                  ...TYPE_ROLES.map((role) => ({ value: role, label: TYPE_ROLE_LABELS[role] })),
+                ],
+                (v) => setComponentKey('type', v),
+              )}
+              {choiceRow(
+                'Fill',
+                () => overrides().components?.[component()]?.fill ?? '',
+                FILL_ROLE_OPTIONS,
+                (v) => setComponentKey('fill', v),
+              )}
+              {choiceRow(
+                'Text',
+                () => overrides().components?.[component()]?.text ?? '',
+                TEXT_ROLE_OPTIONS,
+                (v) => setComponentKey('text', v),
+              )}
+              {choiceRow(
+                'Border',
+                () => overrides().components?.[component()]?.border ?? '',
+                BORDER_ROLE_OPTIONS,
+                (v) => setComponentKey('border', v),
+              )}
+            </CollapsibleSection>
+
+            {/* ── Fonts ── */}
+            <CollapsibleSection title="Fonts">
+              <we-text fontSize="200" color="text-muted" lineHeight="1.5">
+                Typefaces this theme carries, so its fonts work for everybody who opens it. Added faces appear in the
+                font choices under Type.
+              </we-text>
+              <For each={overrides().fontFaces ?? []}>
+                {(face) => (
+                  <Row ay="center" ax="between" gap="300">
+                    <we-text fontSize="300">{face.family}</we-text>
+                    <we-button size="sm" variant="ghost" onClick={() => removeFontFace(face.family)}>
+                      Remove
+                    </we-button>
+                  </Row>
+                )}
+              </For>
+              <we-file-upload
+                accept=".woff2,.woff,.ttf,.otf"
+                on:change={(e: CustomEvent) => {
+                  const file = (Array.isArray(e.detail) ? e.detail[0] : e.detail) as File | undefined;
+                  if (file instanceof File) addFontFace(file);
+                }}
+              />
+              <Show when={fontProblem()}>
+                <we-text fontSize="200" color="danger-text">
+                  {fontProblem()}
+                </we-text>
+              </Show>
             </CollapsibleSection>
 
             {/* ── Custom CSS ── */}

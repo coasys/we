@@ -1,3 +1,4 @@
+import type { DisplayPreferences } from '@we/schema-shared';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { createContext, useContext } from 'solid-js';
 
@@ -105,6 +106,12 @@ export interface ThemePort {
   themeScopePreference: () => 'global' | 'scoped';
   /** Preview a scope for this editing session only; null returns to the preference. */
   previewThemeScope: (scope: 'global' | 'scoped' | null) => void;
+  /** The colour scheme the person wears — the editor's Modes section previews a theme in each. */
+  themeMode: () => 'light' | 'dark' | 'system';
+  setThemeMode: (mode: 'light' | 'dark' | 'system') => unknown;
+  /** The person's display needs (`DisplayPreferences` in @we/themes), applied over any theme. */
+  displayPreferences: () => DisplayPreferences;
+  setDisplayPreference: <K extends keyof DisplayPreferences>(key: K, value: DisplayPreferences[K] | null) => unknown;
   publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
   publishToMarketplace: (options: PublishOptions) => Promise<unknown>;
 }

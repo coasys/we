@@ -120,6 +120,8 @@ export {
   applyThemeVars,
   clearThemeVars,
   DARK_SURFACES,
+  fontFaceProblem,
+  type FontFaceSetting,
   type DisplayPreferences,
   migrateOverrides,
   parseOverrides,
