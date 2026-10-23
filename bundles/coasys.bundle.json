@@ -1352,7 +1352,8 @@
             "home": "tree",
             "snap": "left",
             "size": "sm",
-            "grow": 1
+            "grow": 1,
+            "fixed": true
           }
         ],
         "recordViews": {
