@@ -69,16 +69,16 @@ const DENSITY = {
 /**
  * More contrast, for a theme that has not said what that means for it.
  *
- * Each quieter foreground moves halfway to the one above it, borders take the strong border, and
- * the focus ring thickens. Mixed toward the theme's own roles rather than replaced with fixed
- * colours, so a theme's identity survives — it is the same theme, said more firmly.
+ * The quieter foregrounds are rebuilt nearer the text — as mixes of the theme's own text and page,
+ * so they follow whatever the theme pinned — borders take the strong border, and the focus ring
+ * thickens. It is the same theme, said more firmly.
  */
 const MORE_CONTRAST: ThemeOverrides = {
   focusRingWidth: '3px',
   roles: {
-    textMuted: 'color-mix(in oklab, var(--we-color-neutral-900) 50%, var(--we-color-neutral-700))',
-    textFaint: 'color-mix(in oklab, var(--we-color-neutral-900) 35%, var(--we-color-neutral-600))',
-    border: 'var(--we-color-neutral-400)',
+    textMuted: 'color-mix(in oklab, var(--we-role-text) 82%, var(--we-role-page))',
+    textFaint: 'color-mix(in oklab, var(--we-role-text) 68%, var(--we-role-page))',
+    border: 'var(--we-role-border-strong)',
   },
 };
 
