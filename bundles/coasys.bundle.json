@@ -36,6 +36,7 @@
                   "height": "100%",
                   "overflow": "hidden",
                   "bg": "chrome",
+                  "borderRight": "1px solid border",
                   "position": "fixed",
                   "zIndex": "chrome",
                   "top": "0",
@@ -808,7 +809,7 @@
                               "children": [
                                 {
                                   "type": "we-icon",
-                                  "props": { "name": "chats-circle", "size": "sm", "color": "text-muted" }
+                                  "props": { "name": "chats-circle", "size": "sm", "color": "text-faint" }
                                 },
                                 {
                                   "type": "we-text",
@@ -845,7 +846,7 @@
                                   "children": [
                                     {
                                       "type": "we-icon",
-                                      "props": { "name": "hash", "size": "sm", "color": "text-muted" }
+                                      "props": { "name": "hash", "size": "sm", "color": "text-faint" }
                                     },
                                     {
                                       "type": "we-text",
@@ -871,7 +872,7 @@
                                       "children": [
                                         {
                                           "type": "we-icon",
-                                          "props": { "name": "hash", "size": "sm", "color": "text-muted" }
+                                          "props": { "name": "hash", "size": "sm", "color": "text-faint" }
                                         },
                                         {
                                           "type": "we-text",
@@ -901,7 +902,7 @@
                               "children": [
                                 {
                                   "type": "we-icon",
-                                  "props": { "name": "phone", "size": "sm", "color": "text-muted" }
+                                  "props": { "name": "phone", "size": "sm", "color": "text-faint" }
                                 },
                                 {
                                   "type": "we-text",
@@ -941,7 +942,7 @@
                                               "$": "find(modules.call.liveCalls, { recordId: call.id }) ? 'phone-call' : 'phone'"
                                             },
                                             "size": "sm",
-                                            "color": "text-muted"
+                                            "color": "text-faint"
                                           }
                                         },
                                         {
@@ -993,7 +994,7 @@
                               "children": [
                                 {
                                   "type": "we-icon",
-                                  "props": { "name": "flow-arrow", "size": "sm", "color": "text-muted" }
+                                  "props": { "name": "flow-arrow", "size": "sm", "color": "text-faint" }
                                 },
                                 {
                                   "type": "we-text",
@@ -1017,7 +1018,7 @@
                                       "children": [
                                         {
                                           "type": "we-icon",
-                                          "props": { "name": "flow-arrow", "size": "sm", "color": "text-muted" }
+                                          "props": { "name": "flow-arrow", "size": "sm", "color": "text-faint" }
                                         },
                                         {
                                           "type": "we-text",
@@ -1058,7 +1059,7 @@
                               "children": [
                                 {
                                   "type": "we-icon",
-                                  "props": { "name": "users", "size": "sm", "color": "text-muted" }
+                                  "props": { "name": "users", "size": "sm", "color": "text-faint" }
                                 },
                                 {
                                   "type": "we-text",
@@ -1126,7 +1127,7 @@
                               "type": "Row",
                               "props": { "gap": "200", "ay": "center", "minWidth": "0", "width": "100%" },
                               "children": [
-                                { "type": "we-icon", "props": { "name": "dna", "size": "sm", "color": "text-muted" } },
+                                { "type": "we-icon", "props": { "name": "dna", "size": "sm", "color": "text-faint" } },
                                 {
                                   "type": "we-text",
                                   "props": { "truncate": true, "flex": "1", "minWidth": "0" },
@@ -1152,7 +1153,7 @@
                                           "props": {
                                             "name": { "$": "shape.icon ? shape.icon : 'dna'" },
                                             "size": "sm",
-                                            "color": "text-muted"
+                                            "color": "text-faint"
                                           }
                                         },
                                         {

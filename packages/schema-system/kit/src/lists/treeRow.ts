@@ -47,7 +47,7 @@ export function treeRow(opts: TreeRowOptions): SchemaNode {
         },
       ]
     : opts.icon
-      ? [{ type: 'we-icon', props: { name: opts.icon, size: 'sm', color: 'text-muted' } }]
+      ? [{ type: 'we-icon', props: { name: opts.icon, size: 'sm', color: 'text-faint' } }]
       : [];
   const nested = opts.children ?? [];
   return {

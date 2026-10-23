@@ -33,8 +33,9 @@ const ITEM_STYLES = css`
     align-items: center;
     gap: var(--we-space-200);
     padding: var(--we-tree-row-padding, var(--we-space-100) var(--we-space-200));
+    /* A level indents by one caret and the gap after it — see the nested leaf below. */
     padding-inline-start: calc(
-      var(--we-tree-indent, var(--we-space-300)) * var(--we-tree-level, 0) + var(--we-space-200)
+      var(--we-tree-indent, calc(16px + var(--we-space-200))) * var(--we-tree-level, 0) + var(--we-space-200)
     );
     border-radius: var(--we-theme-tree-radius, var(--we-radius-300));
     color: var(--we-role-text-muted);
@@ -69,13 +70,21 @@ const ITEM_STYLES = css`
     transform: rotate(90deg);
   }
   /*
-    A leaf keeps the caret's space with nothing in it, so its label lines up under its parent's
-    label rather than under its parent's caret. Not the hidden attribute: the shared sheet makes that
-    display: none !important, which takes the space away and pulls every leaf back by one indent.
+    A leaf at the top keeps the caret's space with nothing in it, so it lines up with the rows beside
+    it that have one. Not the hidden attribute: the shared sheet makes that display: none !important,
+    which takes the space away.
   */
   [part='caret'][data-leaf] {
     visibility: hidden;
     pointer-events: none;
+  }
+  /*
+    A nested leaf has no caret at all, and its level's indent is that caret's width: so its glyph
+    sits under its parent's glyph, and its label under its parent's label. A nested row with rows of
+    its own keeps its caret there instead, and its own rows line up under it the same way.
+  */
+  [part='caret'][data-nested-leaf] {
+    display: none;
   }
   [part='content'] {
     display: flex;
@@ -377,7 +386,14 @@ export class TreeItem extends DesignSystemElement {
           @click=${this.onRowClick}
           @focus=${this.onRowFocus}
         >
-          <button part="caret" tabindex="-1" aria-hidden="true" ?data-leaf=${!expandable} @click=${this.onCaretClick}>
+          <button
+            part="caret"
+            tabindex="-1"
+            aria-hidden="true"
+            ?data-leaf=${!expandable}
+            ?data-nested-leaf=${!expandable && this.level > 0}
+            @click=${this.onCaretClick}
+          >
             <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
               <path
                 d="M3 1.5 L7 5 L3 8.5"

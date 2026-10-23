@@ -80,7 +80,7 @@ const rail: SchemaNode = railShell({
   position: 'fixed',
   zIndex: 'chrome',
   bg: 'chrome',
-  border: '0',
+  border: '1px solid border',
   localState: { confirmGuestLogout: { type: 'boolean', initial: false } },
   header: {
     type: 'Row',
