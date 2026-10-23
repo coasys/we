@@ -127,6 +127,32 @@ TypeScript key of a \`ThemeRole\`; a schema writes the CSS spelling. Getting it 
 the value resolves to a variable that does not exist and the element paints nothing at all — so the
 validator rejects it with the right spelling rather than letting it through.
 
+### \`tone\` — which colour family an element is in
+
+Colour is **\`tone\`**, a prop every element takes, and never \`variant\`. \`variant\` says only how a
+component is drawn — \`solid\`, \`soft\`, \`outline\`, \`ghost\`, \`bare\` on a button; \`soft\` or \`solid\`
+on a badge or a tag; \`soft\` or \`edge\` on an alert — so any tone combines with any style.
+
+| Tone | For |
+|---|---|
+| \`accent\` | The theme's own colour. What an untoned \`solid\` button, alert or progress bar already is. |
+| \`neutral\` | Grey. What an untoned \`soft\`, \`outline\` or \`ghost\` button, badge or tag already is. |
+| \`success\` / \`warning\` / \`danger\` | A status. A destructive button is \`variant: 'solid', tone: 'danger'\`. |
+| \`red\` \`orange\` \`yellow\` \`lime\` \`green\` \`teal\` \`cyan\` \`blue\` \`purple\` \`pink\` | The theme's palette, for categories a community names — a label, a lane, a kind of thing. |
+
+A tone re-points the accent's roles inside the element, so **everything in it follows**: a toned
+Card's buttons, selected rows and focus rings are drawn in its family without being told.
+
+\`\`\`json
+{ "type": "we-button", "props": { "variant": "solid", "tone": "danger" }, "children": ["Delete"] }
+{ "type": "we-badge", "props": { "tone": "warning" }, "children": ["Pending"] }
+{ "type": "Card", "props": { "tone": "teal", "bg": "accent-soft" }, "children": ["…drawn in teal…"] }
+\`\`\`
+
+A palette name is also a colour role — \`"bg": "teal-soft"\`, \`"color": "teal-text"\` — with the same
+seven roles every family has. So \`"red"\` as a colour is the theme's red, not CSS red; write \`#f00\`
+for that.
+
 **Layout-only primitives** — these accept only Layout props (not Visual, Flex, Typography, or State):
 we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 

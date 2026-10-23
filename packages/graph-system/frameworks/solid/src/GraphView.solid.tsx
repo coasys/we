@@ -4532,7 +4532,7 @@ export function GraphView(props: GraphViewProps) {
               >
                 <we-tooltip content={foldTitle(entry, foldSays(entry))}>
                   <we-button
-                    variant="secondary"
+                    variant="soft"
                     size="xs"
                     r="pill"
                     label={`Unfold ${entry.foldedCount}`}
@@ -4588,7 +4588,7 @@ export function GraphView(props: GraphViewProps) {
               });
               return (
                 <we-button
-                  variant={state().active ? 'primary' : 'secondary'}
+                  variant={state().active ? 'solid' : 'soft'}
                   size="sm"
                   square
                   disabled={!state().enabled}
@@ -4703,9 +4703,9 @@ export function GraphView(props: GraphViewProps) {
             </Row>
           </Show>
           <Show when={status().budgetReached}>
-            <we-alert variant="warning">Node limit reached — collapse something to keep exploring</we-alert>
+            <we-alert tone="warning">Node limit reached — collapse something to keep exploring</we-alert>
           </Show>
-          <For each={status().warnings}>{(warning) => <we-alert variant="warning">{warning}</we-alert>}</For>
+          <For each={status().warnings}>{(warning) => <we-alert tone="warning">{warning}</we-alert>}</For>
         </Column>
       </Show>
 

@@ -154,7 +154,7 @@ export function wcCard(id: number): SchemaNode {
  * variants all differ, so the fixture is not 400 copies of one string.
  */
 export const POST_AUTHORS = ['Ada Lovelace', 'Bo', 'Grace Hopper', 'Kai', 'Margaret Hamilton'];
-export const POST_BADGES = ['primary', 'success', 'warning', 'neutral'];
+export const POST_BADGES = ['accent', 'success', 'warning', 'neutral'];
 export const POST_BODIES = [
   'A short note.',
   'Something a little longer, with enough text to wrap onto a second line in most layouts.',
@@ -207,7 +207,7 @@ export function realisticCard(id: number): SchemaNode {
               { type: 'we-text', props: { text: c.time, fontSize: '200', color: 'neutral-400' } },
             ],
           },
-          { type: 'we-badge', props: { variant: c.badge, size: 'sm' }, children: [c.badgeLabel] },
+          { type: 'we-badge', props: { tone: c.badge, size: 'sm' }, children: [c.badgeLabel] },
         ],
       },
       { type: 'we-text', props: { text: c.title, fontSize: '400', fontWeight: '600', color: 'neutral-900' } },

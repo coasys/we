@@ -285,7 +285,7 @@ export function EditableImage(allProps: EditableImageProps) {
         <Show when={props.src && props.onImageRemove}>
           <we-button
             class="editable-image__remove"
-            variant="secondary"
+            variant="soft"
             size="sm"
             square
             position="absolute"
@@ -316,7 +316,7 @@ export function EditableImage(allProps: EditableImageProps) {
               }}
             />
             <Row ax="end" gap="200">
-              <we-button variant="secondary" onClick={changePhoto}>
+              <we-button variant="soft" onClick={changePhoto}>
                 Change photo
               </we-button>
               <we-button onClick={confirm}>Save</we-button>

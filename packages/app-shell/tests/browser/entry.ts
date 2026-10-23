@@ -369,6 +369,29 @@ function pageColor(): string {
   return getComputedStyle(document.body).backgroundColor;
 }
 
+/**
+ * One computed style of the nth host's part — a colour read where it is painted.
+ *
+ * A primitive paints into its shadow root, so the host's own background is transparent; and a
+ * colour role is a chain of variables a jsdom test can only compare as text. This is the resolved
+ * colour, which is the only thing that says a re-pointed variable reached the thing it re-points.
+ */
+function partStyle(selector: string, property: string, part = 'base', nth = 0): string | null {
+  const host = document.querySelectorAll(selector)[nth];
+  const el = host?.shadowRoot?.querySelector(`[part='${part}']`) ?? host;
+  return el ? getComputedStyle(el).getPropertyValue(property) : null;
+}
+
+/** What a role resolves to at the document root, through a probe painted with it. */
+function roleColor(role: string): string {
+  const probe = document.createElement('div');
+  probe.style.backgroundColor = `var(--we-role-${role})`;
+  document.body.appendChild(probe);
+  const color = getComputedStyle(probe).backgroundColor;
+  probe.remove();
+  return color;
+}
+
 /** The mounted tree as markup — what a failing assertion is looked at through. */
 function html(): string {
   return document.getElementById('mount')?.innerHTML ?? '';
@@ -1137,6 +1160,8 @@ function composerFrame(): { border: string; height: number; button: number } | n
   measureText,
   chain,
   pageColor,
+  partStyle,
+  roleColor,
   focused,
   html,
   scenarios: Object.keys(scenarios),

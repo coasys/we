@@ -53,7 +53,6 @@ export type {
   ColorConfigToken,
   ColorHueToken,
   ColorLightnessToken,
-  ComponentVariant,
   HexColor,
   Percentage,
   ColorToken,
@@ -91,7 +90,7 @@ export {
   TONES,
 } from './families.js';
 export type { ChromaticFamily, ColorFamily, PaletteHue, SemanticFamily, ToneName } from './families.js';
-export { FAMILY_ROLES } from './familyRoles.js';
+export { FAMILY_ROLES, toneVariables } from './familyRoles.js';
 export type { FamilyRole } from './familyRoles.js';
 export type { Polarity } from './color.js';
 export { AVATAR_TONE_ROLES, AVATAR_TONES, avatarToneColor, avatarToneLabel } from './color.js';

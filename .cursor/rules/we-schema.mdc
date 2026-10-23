@@ -1290,16 +1290,16 @@ Most @we/primitives also accept Design System Props (see next section for detail
 
 @we/primitives:
 - we-alert (DesignSystemElement)
-  Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'primary', appearance: 'soft' | 'accent' = 'soft', dismissible: boolean = false
+  Props: variant: 'soft' | 'edge' = 'soft', dismissible: boolean = false
 - we-audio (LayoutVisualElement)
   Props: src: string = '', controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, stream?: MediaStream | null | undefined
 - we-avatar (LayoutVisualElement)
   Props: image: string = '', hash: string = '', initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false, ringColor: string = '', ringWidth: string = '', edgeColor: string = ''
 - we-badge (DesignSystemElement)
-  Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', appearance: 'soft' | 'solid' = 'soft', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: variant: 'soft' | 'solid' = 'soft', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
 - we-button (DesignSystemElement)
-  Props: variant: 'primary' | 'secondary' | 'ghost' | 'success' | 'danger' | 'outline' | 'bare' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', expanded?: boolean | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
+  Props: variant: 'solid' | 'soft' | 'outline' | 'ghost' | 'bare' = 'solid', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', expanded?: boolean | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
 - we-checkbox (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-code (DesignSystemElement)
@@ -1437,8 +1437,8 @@ Not a standalone selector — wrap in we-popover for dropdown behavior.
 - we-menu-group (LayoutElement)
   Props: collapsible: boolean = false, open: boolean = false, heading: string = ''
 - we-menu-item (DesignSystemElement) — Single actionable item inside a we-menu.
-Supports selected, active, and danger states.
-  Props: selected: boolean = false, active: boolean = false, variant: 'default' | 'danger' = 'default', label: unknown, value: unknown
+Supports selected and active states; `tone: 'danger'` marks a destructive item.
+  Props: selected: boolean = false, active: boolean = false, label: unknown, value: unknown
 - we-modal (OverlayElement)
   Props: size: 'sm' | 'md' | 'lg' | 'fullscreen' = 'md', hideclosebutton: boolean = false, close: () => void
 - we-move-handle (LayoutElement)
@@ -1453,7 +1453,7 @@ Supports selected, active, and danger states.
 Use DropdownMenu component for dropdown menus.
   Props: open: boolean = false, placement: 'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end' = 'bottom', popoverElement: HTMLElement, triggerElement: HTMLElement
 - we-progress-bar (DesignSystemElement)
-  Props: value: number = 0, max: number = 100, variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', label: string = ''
+  Props: value: number = 0, max: number = 100, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', label: string = ''
 - we-radio (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-resize-handle (LayoutElement) — A drag target that reports how far it has moved, and nothing else.
@@ -1578,7 +1578,7 @@ item is considered.
 - we-tabs (DesignSystemElement)
   Props: selectedKey: string = ''
 - we-tag (DesignSystemElement)
-  Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', dismissible: boolean = false
+  Props: variant: 'soft' | 'solid' = 'soft', dismissible: boolean = false
 - we-text (DesignSystemElement)
   Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false, truncate: boolean = false, gradient: string = '', loading: boolean = false, loadingWidth: string = '100%'
 - we-textarea (DesignSystemElement)
@@ -1673,7 +1673,7 @@ state or anywhere else.
 - CountMark
   Props: icon: string, count?: number, mine?: boolean, size?: "xs" | "sm" | "md", countTone?: "text" | "glyph", countFirst?: boolean, emphasis?: "quiet" | "present", onPress?: (() => void), label?: string, disabled?: boolean, class?: string, styles?: Record<string, string | number>
 - DropdownMenu — Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.
-  Props: styles?: Record<string, string | number>, class?: string, onSelect?: ((item: DropdownMenuAction | DropdownMenuToggle) => void), searchable?: boolean, searchPlaceholder?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, triggerVariant?: "danger" | "primary" | "secondary" | "ghost" | "outline" | "bare", triggerTitle?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", itemSize?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[], children?: JSX.Element
+  Props: styles?: Record<string, string | number>, class?: string, onSelect?: ((item: DropdownMenuAction | DropdownMenuToggle) => void), searchable?: boolean, searchPlaceholder?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, triggerVariant?: "solid" | "soft" | "outline" | "ghost" | "bare", triggerTone?: ToneName, triggerTitle?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", itemSize?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[], children?: JSX.Element
 - EditableImage (DesignSystemElement)
   Props: src?: string, alt?: string, fit?: "cover" | "contain" | "none" | "fill" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), onImageRemove?: (() => void), uploadLabel?: string, editLabel?: string, class?: string, aspect?: number, maxSize?: number
 - FlipCard
@@ -2161,6 +2161,32 @@ starts with `on`, so a handler prop that is not an event — `we-modal`'s `close
 TypeScript key of a `ThemeRole`; a schema writes the CSS spelling. Getting it wrong fails silently —
 the value resolves to a variable that does not exist and the element paints nothing at all — so the
 validator rejects it with the right spelling rather than letting it through.
+
+### `tone` — which colour family an element is in
+
+Colour is **`tone`**, a prop every element takes, and never `variant`. `variant` says only how a
+component is drawn — `solid`, `soft`, `outline`, `ghost`, `bare` on a button; `soft` or `solid`
+on a badge or a tag; `soft` or `edge` on an alert — so any tone combines with any style.
+
+| Tone | For |
+|---|---|
+| `accent` | The theme's own colour. What an untoned `solid` button, alert or progress bar already is. |
+| `neutral` | Grey. What an untoned `soft`, `outline` or `ghost` button, badge or tag already is. |
+| `success` / `warning` / `danger` | A status. A destructive button is `variant: 'solid', tone: 'danger'`. |
+| `red` `orange` `yellow` `lime` `green` `teal` `cyan` `blue` `purple` `pink` | The theme's palette, for categories a community names — a label, a lane, a kind of thing. |
+
+A tone re-points the accent's roles inside the element, so **everything in it follows**: a toned
+Card's buttons, selected rows and focus rings are drawn in its family without being told.
+
+```json
+{ "type": "we-button", "props": { "variant": "solid", "tone": "danger" }, "children": ["Delete"] }
+{ "type": "we-badge", "props": { "tone": "warning" }, "children": ["Pending"] }
+{ "type": "Card", "props": { "tone": "teal", "bg": "accent-soft" }, "children": ["…drawn in teal…"] }
+```
+
+A palette name is also a colour role — `"bg": "teal-soft"`, `"color": "teal-text"` — with the same
+seven roles every family has. So `"red"` as a colour is the theme's red, not CSS red; write `#f00`
+for that.
 
 **Layout-only primitives** — these accept only Layout props (not Visual, Flex, Typography, or State):
 we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
@@ -4226,7 +4252,7 @@ Use $query or a store read for dynamic data (more common in production):
 Per-item customization inside $each:
 To style or highlight specific items, add a data flag to those items and use $if on the flag inside the template. Do NOT use index == N comparisons — they are fragile, repetitive, and break when items are reordered.
 Example: add "highlighted": true to one item's data, then use $if on the flag in the template:
-{ "type": "$if", "props": { "condition": { "$": "post.highlighted" }, "then": { "type": "we-badge", "props": { "variant": "primary" }, "children": ["Featured"] } } }
+{ "type": "$if", "props": { "condition": { "$": "post.highlighted" }, "then": { "type": "we-badge", "props": { "tone": "accent" }, "children": ["Featured"] } } }
 For a conditional PROP, use a ternary in an expression — NOT a prop-level $if, which is a node type
 and resolves to a handler in a value position:
 { "bg": { "$": "post.highlighted ? 'accent-soft' : 'surface'" } }
@@ -4413,14 +4439,14 @@ placeholder and the grid can never disagree about how many rows there are.
   "type": "Column",
   "props": { "flex": "1", "height": "100%", "ax": "center", "ay": "center", "gap": "400", "p": "600" },
   "children": [
-    { "type": "we-icon", "props": { "name": "lock", "size": "xl", "gradient": "primary" } },
+    { "type": "we-icon", "props": { "name": "lock", "size": "xl", "gradient": "accent" } },
     { "type": "we-text", "props": { "variant": "heading-md", "textAlign": "center" }, "children": ["Join this Space"] },
     {
       "type": "we-text",
       "props": { "variant": "body", "textAlign": "center", "maxWidth": "var(--we-layout-xs)" },
       "children": ["You haven't joined this space yet."]
     },
-    { "type": "we-button", "props": { "variant": "primary", "onClick": { "$action": "…" } }, "children": ["Join"] }
+    { "type": "we-button", "props": { "variant": "solid", "onClick": { "$action": "…" } }, "children": ["Join"] }
   ]
 }
 ```
@@ -4602,7 +4628,7 @@ through `onReady`. So the sequence is: `onReady` stores that function in a **`fu
     {
       "type": "we-button",
       "props": {
-        "variant": "primary",
+        "variant": "solid",
         "loading": { "$": "local.submitting" },
         "disabled": { "$": "local.submitting" },
         "onClick": { "$callLocal": "savePost" }
@@ -5387,7 +5413,7 @@ otherwise shove a floating panel down the screen mid-read.
 - Do not use `as const` on schema node `type` fields — `SchemaNode.type` is `string`, so it is never needed.
 - For icon-only buttons, nest a `we-icon` child inside `we-button` rather than using a `text` prop with a Unicode character. **Omit the `size` prop on `we-icon` when nesting inside sized primitives** (`we-button`, `we-input`, `we-badge`, `we-textarea`) — these components auto-size nested icons via `--we-context-icon-size` (xs→12px, sm→16px, md→24px, lg→32px, xl→40px). Only set an explicit icon `size` if you need to override the automatic sizing. Example: `{ type: 'we-button', props: { variant: 'ghost', size: 'sm' }, children: [{ type: 'we-icon', props: { name: 'x' } }] }`.
 - NEVER pass a bare number like "16" as a size or dimension prop — it is not valid CSS. Always check the component's declared prop type: if it's a string union, use one of the listed values; if it accepts arbitrary strings, include a CSS unit (e.g. "16px", "2rem").
-- For interactive list items and selectable options, use `we-button` with variant switching (e.g., `secondary` when selected, `ghost` when not) instead of manually styling `Row` with cursor, bg, and onClick. Buttons provide hover, focus, and active states for free.
+- For interactive list items and selectable options, use `we-button` with variant switching (e.g., `soft` when selected, `ghost` when not) instead of manually styling `Row` with cursor, bg, and onClick. Buttons provide hover, focus, and active states for free.
 - To make a block of content clickable **without any button appearance**, use `we-button` with `variant: 'bare'` — never a `Column`/`Row` with an `onClick`. `bare` is the appearance-free variant: no background, no hover, no padding, no radius, inherited colour — but still a real `<button>`, so it keeps keyboard activation, the `disabled` prop, and the accessibility role that a clickable `Column` silently loses. Do not use `ghost` for this: ghost's hover background is deliberate, and it paints a rectangle over content that supplies its own affordance. Example: `{ type: 'we-button', props: { variant: 'bare', disabled: { $: 'someStore.busy' }, onClick }, children: [{ type: 'Column', props: { gap: '100', ax: 'center' }, children: [...] }] }`.
 - For card-like layouts, compose from `Column` with DS props (bg, r, border, p, gap). This gives full control over spacing and appearance.
 - When rendering lists of similar items (posts, cards, users, etc.), ALWAYS use `$each` with a single template child — never duplicate the same node structure multiple times. Use literal arrays in `items` for static data, or a store read/`$query` for dynamic data.

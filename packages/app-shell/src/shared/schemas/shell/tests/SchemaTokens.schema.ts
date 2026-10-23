@@ -116,7 +116,7 @@ function filterModeButton(mode: string, label: string, icon: string): SchemaNode
   return {
     type: 'we-button',
     props: {
-      variant: expr`testStore.queryFilterMode == ${mode} ? 'primary' : 'secondary'`,
+      variant: expr`testStore.queryFilterMode == ${mode} ? 'solid' : 'soft'`,
       onClick: { $action: 'testStore.setQueryFilterMode', args: [mode] },
     },
     children: [{ type: 'we-icon', props: { name: icon } }, label],
@@ -301,7 +301,7 @@ const orTest = section('||', 'Logical OR', [
 
 const ifTest = section('$if', 'Conditional rendering (prop + node level)', [
   // Prop-level: button variant changes based on toggle
-  interactiveLabel('Toggle — button variant should switch between "primary" and "ghost"'),
+  interactiveLabel('Toggle — button variant should switch between "solid" and "ghost"'),
   {
     type: 'Row',
     props: { gap: '300', ay: 'center' },
@@ -313,7 +313,7 @@ const ifTest = section('$if', 'Conditional rendering (prop + node level)', [
       },
       {
         type: 'we-button',
-        props: { variant: { $: "testStore.toggleValue ? 'primary' : 'ghost'" } },
+        props: { variant: { $: "testStore.toggleValue ? 'solid' : 'ghost'" } },
         children: [{ $: "testStore.toggleValue ? 'ON' : 'OFF'" }],
       },
       { type: 'we-text', props: { color: 'text-faint' }, children: ['(prop-level $if)'] },
@@ -625,7 +625,7 @@ const querySubscriptionTest = section('$query (subscription)', 'FindAll $query w
             children: [
               {
                 type: 'we-button',
-                props: { variant: 'primary', onClick: { $action: 'testStore.createTestItem' } },
+                props: { variant: 'solid', onClick: { $action: 'testStore.createTestItem' } },
                 children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add item'],
               },
               {
@@ -652,7 +652,7 @@ const querySubscriptionTest = section('$query (subscription)', 'FindAll $query w
                   {
                     type: 'we-button',
                     props: {
-                      variant: 'secondary',
+                      variant: 'soft',
                       size: 'xs', // TODO: not having any effect
                       onClick: { $action: 'testStore.deleteTestItem', args: [{ $: 'q.id' }] },
                     },
@@ -774,7 +774,7 @@ const localStateBasicTest: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: 'primary',
+            variant: 'solid',
             onClick: { $action: 'testStore.setTypedText', args: [{ $: 'local.name' }] },
           },
           children: ['Log name'],
@@ -811,7 +811,7 @@ const localStateBasicTest: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'primary', disabled: { $: '!local.name' } },
+          props: { variant: 'solid', disabled: { $: '!local.name' } },
           children: [{ $: "`Submit: ${local.name ? local.name : '(empty)'}`" }],
         },
         {
@@ -977,7 +977,7 @@ const formValidationBasicTest: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: 'primary',
+            variant: 'solid',
             disabled: { $: '!formValid()' },
             onClick: {
               $action: 'testStore.setTypedText',
@@ -1059,7 +1059,7 @@ const formValidationActionsTest: SchemaNode = {
       type: 'Row',
       props: { gap: '300', ay: 'center' },
       children: [
-        { type: 'we-button', props: { variant: 'secondary', onClick: { $touch: '$all' } }, children: ['Touch All'] },
+        { type: 'we-button', props: { variant: 'soft', onClick: { $touch: '$all' } }, children: ['Touch All'] },
       ],
     },
     // --- Handler array: touch-all-then-submit pattern ---
@@ -1071,7 +1071,7 @@ const formValidationActionsTest: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: 'primary',
+            variant: 'solid',
             onClick: [
               { $touch: '$all' },
               {
@@ -1099,14 +1099,14 @@ const formValidationActionsTest: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'secondary', onClick: { $resetLocal: '$scope' } },
+          props: { variant: 'soft', onClick: { $resetLocal: '$scope' } },
           children: ['Reset'],
         },
         // --- Handler array: submit then reset ---
         {
           type: 'we-button',
           props: {
-            variant: 'primary',
+            variant: 'solid',
             disabled: { $: '!formValid()' },
             onClick: [
               {
@@ -1192,7 +1192,7 @@ const formValidationMatchTest: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: 'primary',
+            variant: 'solid',
             disabled: { $: '!formValid()' },
             onClick: [
               { $touch: '$all' },
@@ -1324,7 +1324,7 @@ const wcReactivePropsTest = section('WC reactive props', 'Web component props up
   interactiveLabel('Toggle to switch text color between success-600 and danger-600'),
   {
     type: 'we-button',
-    props: { variant: 'secondary', onClick: { $action: 'testStore.toggle' } },
+    props: { variant: 'soft', onClick: { $action: 'testStore.toggle' } },
     children: ['Toggle'],
   },
   {
@@ -1343,8 +1343,8 @@ const wcReactivePropsTest = section('WC reactive props', 'Web component props up
   },
   {
     type: 'we-button',
-    props: { variant: { $: "testStore.toggleValue ? 'primary' : 'outline'" } },
-    children: [{ $: "`Variant: ${testStore.toggleValue ? 'primary' : 'outline'}`" }],
+    props: { variant: { $: "testStore.toggleValue ? 'solid' : 'outline'" } },
+    children: [{ $: "`Variant: ${testStore.toggleValue ? 'solid' : 'outline'}`" }],
   },
 ]);
 
@@ -1426,7 +1426,7 @@ const tokenThemeTest: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center' },
       children: [
-        { type: 'we-button', props: { variant: 'primary' }, children: ['Primary Button'] },
+        { type: 'we-button', props: { variant: 'solid' }, children: ['Primary Button'] },
         { type: 'we-text', props: { color: 'accent' }, children: ['Primary Text'] },
       ],
     },
@@ -1456,7 +1456,7 @@ const namedThemeTest: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center' },
       children: [
-        { type: 'we-button', props: { variant: 'primary' }, children: ['Cyberpunk Theme Button'] },
+        { type: 'we-button', props: { variant: 'solid' }, children: ['Cyberpunk Theme Button'] },
         { type: 'we-text', props: { color: 'accent' }, children: ['Cyberpunk Theme Text'] },
       ],
     },
@@ -1528,7 +1528,7 @@ function navTab(group: (typeof groups)[number]): SchemaNode {
   return {
     type: 'we-button',
     props: {
-      variant: expr`${isActive} ? 'primary' : 'secondary'`,
+      variant: expr`${isActive} ? 'solid' : 'soft'`,
       onClick: { $action: 'routeStore.navigate', args: [navPath] },
     },
     children: [group.label],

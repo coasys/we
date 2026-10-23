@@ -1,5 +1,5 @@
 import { BASE_CLASS_LAYERS, getKeysForLayers } from '@we/design-utils';
-import { RAMP_FAMILIES } from '@we/tokens';
+import { RAMP_FAMILIES, TONES } from '@we/tokens';
 
 import type { ContextData, PropEntry } from './contextTypes';
 
@@ -89,6 +89,7 @@ const DS_PROP_OPTIONS: Record<string, string[]> = {
   color: COLOR,
   borderColor: COLOR,
   bgImageTint: COLOR,
+  tone: [...TONES],
   // shadow
   shadow: SHADOW,
   // typography
@@ -160,7 +161,7 @@ const TYPE_ALIAS_OPTIONS: Record<string, string[]> = {
   ScrollbarWidth: ['auto', 'thin', 'none'],
   ScrollbarGutter: ['auto', 'stable', 'stable both-edges'],
   ComponentSize: ['xs', 'sm', 'md', 'lg', 'xl'],
-  ComponentVariant: ['neutral', 'primary', 'success', 'warning', 'danger'],
+  ToneName: [...TONES],
 };
 
 // ── Editor layer key index ──────────────────────────────────────────────────
@@ -236,6 +237,7 @@ const EDITOR_LAYER_FOR_KEY: Record<string, PropLayer> = {
   shadow: 'visual',
   ring: 'visual',
   cursor: 'visual',
+  tone: 'visual',
   pointerEvents: 'visual',
   visibility: 'visual',
   transform: 'visual',

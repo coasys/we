@@ -366,7 +366,8 @@ const deleteFolderConfirm: SchemaNode = {
                 {
                   type: 'we-button',
                   props: {
-                    variant: 'danger',
+                    variant: 'solid',
+                    tone: 'danger',
                     loading: { $: 'modules.pocket.busy' },
                     onClick: {
                       $action: 'modules.pocket.deleteFolder',

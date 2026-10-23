@@ -395,6 +395,29 @@ const vocabulary = (): Scenario => {
  * Deliberately not a fragment: this is a fact about the interop stylesheet, and stating it in
  * fourteen nodes is what keeps the next reader from thinking it is about comment threads.
  */
+/**
+ * Buttons and a card given a tone, beside untoned ones — what `tone` paints, read off real pixels.
+ */
+const toned = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { gap: '300', p: '300' },
+    children: [
+      { type: 'we-button', props: { variant: 'solid' }, children: ['Untoned solid'] },
+      { type: 'we-button', props: { variant: 'solid', tone: 'danger' }, children: ['Danger'] },
+      { type: 'we-button', props: { variant: 'solid', tone: 'teal' }, children: ['Teal'] },
+      { type: 'we-button', props: { variant: 'soft' }, children: ['Untoned soft'] },
+      { type: 'we-button', props: { variant: 'soft', tone: 'success' }, children: ['Success soft'] },
+      {
+        type: 'Column',
+        props: { tone: 'warning', bg: 'accent-soft', p: '300' },
+        children: [{ type: 'we-button', props: { variant: 'solid' }, children: ['Inside a warning card'] }],
+      },
+    ],
+  },
+  tables: {},
+});
+
 const nestedInteractive = (): Scenario => ({
   node: {
     type: 'Row',
@@ -442,7 +465,7 @@ const tokenOffsets = (): Scenario => ({
         type: 'we-button',
         props: {
           id: 'pin-lit',
-          variant: 'secondary',
+          variant: 'soft',
           size: 'xs',
           square: true,
           position: 'absolute',
@@ -479,17 +502,17 @@ const squareLoading = (): Scenario => ({
     children: [
       {
         type: 'we-button',
-        props: { id: 'md-idle', variant: 'secondary', square: true },
+        props: { id: 'md-idle', variant: 'soft', square: true },
         children: [{ type: 'we-icon', props: { name: 'paper-plane-tilt' } }],
       },
       {
         type: 'we-button',
-        props: { id: 'md-busy', variant: 'secondary', square: true, loading: true },
+        props: { id: 'md-busy', variant: 'soft', square: true, loading: true },
         children: [{ type: 'we-icon', props: { name: 'paper-plane-tilt' } }],
       },
       {
         type: 'we-button',
-        props: { id: 'xs-busy', variant: 'secondary', size: 'xs', square: true, loading: true },
+        props: { id: 'xs-busy', variant: 'soft', size: 'xs', square: true, loading: true },
         children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }],
       },
     ],
@@ -1490,6 +1513,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'signals:one-reactor': oneReactor,
   'inspector:provenance': provenanceLine,
   'ds:nested-interactive': nestedInteractive,
+  'ds:tone': toned,
   'ds:token-offsets': tokenOffsets,
   'ds:square-loading': squareLoading,
   'ds:crowded-square-row': crowdedSquareRow,

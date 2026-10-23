@@ -166,7 +166,7 @@ export const consentSecret: SchemaNode = {
         },
         {
           type: 'we-button',
-          props: { variant: 'primary', onClick: { $action: 'runtimeStore.dismissConsentSecret' } },
+          props: { variant: 'solid', onClick: { $action: 'runtimeStore.dismissConsentSecret' } },
           children: ['Done'],
         },
       ],

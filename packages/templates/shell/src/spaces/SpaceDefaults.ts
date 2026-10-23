@@ -54,7 +54,7 @@ const defaultPickerRow = (opts: {
             nothing to press on the row you are already using, and a greyed-out "Set as default"
             invites the press anyway.
           */
-          then: { type: 'we-badge', props: { variant: 'primary', size: 'sm' }, children: ['Default'] },
+          then: { type: 'we-badge', props: { tone: 'accent', size: 'sm' }, children: ['Default'] },
           else: {
             type: '$if',
             props: {
@@ -62,7 +62,7 @@ const defaultPickerRow = (opts: {
               then: {
                 type: 'we-button',
                 props: {
-                  variant: 'secondary',
+                  variant: 'soft',
                   size: 'sm',
                   // The space is named explicitly. On the route this replaced it could be omitted,
                   // because there was only ever one space in question; here the row being configured
@@ -133,7 +133,7 @@ const browseToggle = (localFlag: string, browser: SchemaNode): SchemaNode => ({
       children: [
         {
           type: 'we-button',
-          props: { variant: 'secondary', size: 'sm', onClick: { $toggleLocal: localFlag } },
+          props: { variant: 'soft', size: 'sm', onClick: { $toggleLocal: localFlag } },
           children: [{ $: `local.${localFlag} ? 'Hide' : 'Browse the marketplace'` }],
         },
         { type: '$if', props: { condition: { $: `local.${localFlag}` }, then: browser } },

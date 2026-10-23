@@ -1,5 +1,5 @@
 import type { DesignSystemProps, FlexDirection } from '@we/design-types';
-import { color, font, radius, role, semanticValues, shadow, space, type Tier, TIERS } from '@we/tokens';
+import { color, font, radius, role, semanticValues, shadow, space, type Tier, TIERS, toneVariables } from '@we/tokens';
 
 import { dataUriToBlob } from './saveFile';
 import { tierQuery } from './surface';
@@ -66,6 +66,9 @@ export const layoutKeys = [
 
 /** Visual layer: appearance & decoration. Most components. */
 export const visualKeys = [
+  // The colour family the element draws with: re-points the accent's roles inside it. See
+  // `toneVariables` in @we/tokens. Declares nothing in the generated stylesheet; it sets variables.
+  'tone',
   'bg',
   'bgImage',
   'bgFit',
@@ -1054,6 +1057,9 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
     'flex-direction': props.reverse ? `${direction}-reverse` : direction,
     'flex-wrap': props.wrap ? 'wrap' : 'nowrap',
   };
+
+  // The tone first: it re-points the accent roles that `bg`, `color` and borders may name below.
+  if (props.tone) Object.assign(style, toneVariables(props.tone));
 
   // Colors & backgrounds
   if (props.bg) {

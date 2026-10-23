@@ -49,7 +49,7 @@ function Route(props: { title: string; detail: string; action: string; onPress: 
     <Column gap="100" py="200">
       <Row ax="between" ay="center" gap="300">
         <we-text variant="label">{props.title}</we-text>
-        <we-button size="xs" variant="secondary" disabled={props.disabled} onClick={props.onPress}>
+        <we-button size="xs" variant="soft" disabled={props.disabled} onClick={props.onPress}>
           {props.action}
         </we-button>
       </Row>
@@ -188,7 +188,7 @@ export function PartCard(props: { node: SchemaNode }) {
                 <Show when={part().fix}>
                   {(fix) => (
                     <Row>
-                      <we-button size="xs" variant="secondary" onClick={() => fix().go()}>
+                      <we-button size="xs" variant="soft" onClick={() => fix().go()}>
                         {fix().label}
                       </we-button>
                     </Row>
@@ -570,7 +570,7 @@ function ViewCard(props: { id: string }) {
                       original.
                     </we-text>
                     <Row gap="200">
-                      <we-button size="xs" variant="primary" loading={step() === 'busy'} onClick={fork}>
+                      <we-button size="xs" variant="solid" loading={step() === 'busy'} onClick={fork}>
                         Make the copy
                       </we-button>
                       <we-button size="xs" variant="ghost" disabled={step() === 'busy'} onClick={() => setStep('idle')}>
@@ -655,7 +655,7 @@ export function SuppliedPanelNote(props: { nodeId: string }) {
           Giving it back throws this arrangement away, and the panel is drawn the way {moduleName()} draws it again.
         </we-text>
         <Row>
-          <we-button size="xs" variant="secondary" disabled={host.session.isReadOnly()} onClick={giveBack}>
+          <we-button size="xs" variant="soft" disabled={host.session.isReadOnly()} onClick={giveBack}>
             Give it back
           </we-button>
         </Row>
@@ -703,7 +703,7 @@ export function SectionOnItsOwnBar() {
           </we-text>
           <Show when={on().shell}>
             {(shell) => (
-              <we-button size="xs" variant="secondary" onClick={() => shell().back()}>
+              <we-button size="xs" variant="soft" onClick={() => shell().back()}>
                 Back to {shell().name}
               </we-button>
             )}
@@ -758,11 +758,11 @@ export function EditingSectionBar() {
           <we-text variant="footnote">{sentence()} Escape or a press outside it comes back out.</we-text>
           <Row gap="200" flexShrink="0">
             <Show when={app() && host.session.isReadOnly()}>
-              <we-button size="xs" variant="primary" onClick={() => host.session.startFork()}>
+              <we-button size="xs" variant="solid" onClick={() => host.session.startFork()}>
                 Fork
               </we-button>
             </Show>
-            <we-button size="xs" variant="secondary" onClick={leave}>
+            <we-button size="xs" variant="soft" onClick={leave}>
               Done
             </we-button>
           </Row>
@@ -797,12 +797,12 @@ export function EditTargetSwitch() {
     <Show when={host.targets?.enterApp}>
       <Row ay="center" gap="100" data-we-edit-target-switch="">
         <we-tooltip content="Edit the template on screen" placement="bottom">
-          <we-button size="sm" variant={onApp() ? 'ghost' : 'secondary'} onClick={toPage}>
+          <we-button size="sm" variant={onApp() ? 'ghost' : 'soft'} onClick={toPage}>
             Page
           </we-button>
         </we-tooltip>
         <we-tooltip content="Edit the app around every space: the sidebar, the rail" placement="bottom">
-          <we-button size="sm" variant={onApp() ? 'secondary' : 'ghost'} onClick={toApp}>
+          <we-button size="sm" variant={onApp() ? 'soft' : 'ghost'} onClick={toApp}>
             App
           </we-button>
         </we-tooltip>

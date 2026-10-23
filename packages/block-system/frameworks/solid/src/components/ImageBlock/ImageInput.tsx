@@ -132,7 +132,7 @@ export function ImageInput(props: ImageInputProps) {
               {(preset) => (
                 <we-button
                   square
-                  variant={activeWidth() === preset.value ? 'secondary' : 'ghost'}
+                  variant={activeWidth() === preset.value ? 'soft' : 'ghost'}
                   onClick={() => props.onChange('width', preset.value)}
                 >
                   {preset.label}
@@ -197,7 +197,7 @@ export function ImageInput(props: ImageInputProps) {
               }}
             />
             <Row ax="center" gap="300">
-              <we-button variant="secondary" onClick={handleCropBack}>
+              <we-button variant="soft" onClick={handleCropBack}>
                 Back
               </we-button>
               <we-button onClick={handleCropSave}>Save</we-button>

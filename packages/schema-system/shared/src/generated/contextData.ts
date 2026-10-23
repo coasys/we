@@ -9,13 +9,7 @@ export const contextData: ContextData = {
       className: 'Alert',
       superclass: 'DesignSystemElement',
       ownProps: [
-        {
-          name: 'variant',
-          type: "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
-          optional: false,
-          default: "'primary'",
-        },
-        { name: 'appearance', type: "'soft' | 'accent'", optional: false, default: "'soft'" },
+        { name: 'variant', type: "'soft' | 'edge'", optional: false, default: "'soft'" },
         { name: 'dismissible', type: 'boolean', optional: false, default: 'false' },
       ],
     },
@@ -58,13 +52,7 @@ export const contextData: ContextData = {
       className: 'Badge',
       superclass: 'DesignSystemElement',
       ownProps: [
-        {
-          name: 'variant',
-          type: "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
-          optional: false,
-          default: "'neutral'",
-        },
-        { name: 'appearance', type: "'soft' | 'solid'", optional: false, default: "'soft'" },
+        { name: 'variant', type: "'soft' | 'solid'", optional: false, default: "'soft'" },
         { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
       ],
     },
@@ -76,9 +64,9 @@ export const contextData: ContextData = {
       ownProps: [
         {
           name: 'variant',
-          type: "'primary' | 'secondary' | 'ghost' | 'success' | 'danger' | 'outline' | 'bare'",
+          type: "'solid' | 'soft' | 'outline' | 'ghost' | 'bare'",
           optional: false,
-          default: "'primary'",
+          default: "'solid'",
         },
         { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
         { name: 'text', type: 'string | undefined', optional: true },
@@ -384,12 +372,12 @@ export const contextData: ContextData = {
     {
       tagName: 'we-menu-item',
       className: 'MenuItem',
-      description: 'Single actionable item inside a we-menu.\nSupports selected, active, and danger states.',
+      description:
+        "Single actionable item inside a we-menu.\nSupports selected and active states; `tone: 'danger'` marks a destructive item.",
       superclass: 'DesignSystemElement',
       ownProps: [
         { name: 'selected', type: 'boolean', optional: false, default: 'false' },
         { name: 'active', type: 'boolean', optional: false, default: 'false' },
-        { name: 'variant', type: "'default' | 'danger'", optional: false, default: "'default'" },
         { name: 'label', type: 'unknown', optional: false },
         { name: 'value', type: 'unknown', optional: false },
       ],
@@ -479,12 +467,6 @@ export const contextData: ContextData = {
       ownProps: [
         { name: 'value', type: 'number', optional: false, default: '0' },
         { name: 'max', type: 'number', optional: false, default: '100' },
-        {
-          name: 'variant',
-          type: "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
-          optional: false,
-          default: "'primary'",
-        },
         { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
         { name: 'label', type: 'string', optional: false, default: "''" },
       ],
@@ -636,12 +618,7 @@ export const contextData: ContextData = {
       className: 'Tag',
       superclass: 'DesignSystemElement',
       ownProps: [
-        {
-          name: 'variant',
-          type: "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
-          optional: false,
-          default: "'neutral'",
-        },
+        { name: 'variant', type: "'soft' | 'solid'", optional: false, default: "'soft'" },
         { name: 'dismissible', type: 'boolean', optional: false, default: 'false' },
       ],
     },
@@ -1069,11 +1046,8 @@ export const contextData: ContextData = {
         { name: 'placement', type: 'Placement', optional: true },
         { name: 'triggerLabel', type: 'string', optional: true },
         { name: 'triggerIcon', type: 'string', optional: true },
-        {
-          name: 'triggerVariant',
-          type: '"danger" | "primary" | "secondary" | "ghost" | "outline" | "bare"',
-          optional: true,
-        },
+        { name: 'triggerVariant', type: '"solid" | "soft" | "outline" | "ghost" | "bare"', optional: true },
+        { name: 'triggerTone', type: 'ToneName', optional: true },
         { name: 'triggerTitle', type: 'string', optional: true },
         { name: 'size', type: '"xs" | "sm" | "md" | "lg" | "xl"', optional: true },
         { name: 'itemSize', type: '"xs" | "sm" | "md" | "lg" | "xl"', optional: true },

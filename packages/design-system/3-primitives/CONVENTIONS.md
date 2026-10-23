@@ -238,7 +238,7 @@ This is read once at class registration to generate the static DS stylesheet (CS
 
 ## Naming
 
-- Unique variant/size type unions live in `types.ts` (e.g. `ButtonVariant`, `ModalSize`). Shared types (`ComponentSize`, `ComponentVariant`) come from `@we/tokens`.
+- Unique variant/size type unions live in `types.ts` (e.g. `ButtonVariant`, `ModalSize`). Shared types (`ComponentSize`, `ToneName`) come from `@we/tokens`. Colour is never a variant: it is `tone`, a DS prop every element takes.
 - Default props map: `DEFAULT_PROPS`
 - Variant map: `VARIANT_DEFAULTS`
 - Size map: `SIZE_DEFAULTS`

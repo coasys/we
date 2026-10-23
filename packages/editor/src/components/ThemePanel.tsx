@@ -718,7 +718,7 @@ export function ThemePanel() {
     return (
       <Row gap="100">
         {(Object.keys(labels) as T[]).map((p) => (
-          <we-button size="sm" variant={isActive(p) ? 'secondary' : 'ghost'} onClick={() => onSelect(p)} flex="1">
+          <we-button size="sm" variant={isActive(p) ? 'soft' : 'ghost'} onClick={() => onSelect(p)} flex="1">
             {labels[p]}
           </we-button>
         ))}
@@ -1060,7 +1060,7 @@ export function ThemePanel() {
 
   function previewStrip() {
     /*
-      Real badges, in both appearances — not hand-drawn chips.
+      Real badges, in both variants — not hand-drawn chips.
 
       These were five `Column`s painting `danger-soft` on `danger-text` and so on, which is a
       copy of `we-badge`'s own soft table in another package. Two things were wrong with that. It
@@ -1068,15 +1068,15 @@ export function ThemePanel() {
       finding; and because every chip was a *tint*, the preview showed no fill anywhere — so the
       "Status fills" sliders below had nothing on screen to move, and reasonably read as broken.
 
-      Both rows, because the two appearances are the two halves of the status palette and a theme
-      author is choosing for both at once: `soft` shows what `*-surface` and `*-text` do, `solid`
+      Both rows, because the two variants are the two halves of the status palette and a theme
+      author is choosing for both at once: `soft` shows what `*-soft` and `*-text` do, `solid`
       shows the fills and their corrected labels — the ones the sliders drive.
     */
-    const badgeRow = (appearance: 'soft' | 'solid') => (
+    const badgeRow = (variant: 'soft' | 'solid') => (
       <Row gap="100" wrap ay="center">
-        {(['neutral', 'primary', 'success', 'warning', 'danger'] as const).map((variant) => (
-          <we-badge variant={variant} appearance={appearance} size="xs">
-            {variant}
+        {(['neutral', 'accent', 'success', 'warning', 'danger'] as const).map((tone) => (
+          <we-badge variant={variant} tone={tone} size="xs">
+            {tone}
           </we-badge>
         ))}
       </Row>
@@ -1095,10 +1095,10 @@ export function ThemePanel() {
               Faint metadata.
             </we-text>
             <Row gap="200" ay="center" wrap>
-              <we-button size="xs" variant="primary">
+              <we-button size="xs" variant="solid">
                 Primary
               </we-button>
-              <we-button size="xs" variant="secondary">
+              <we-button size="xs" variant="soft">
                 Secondary
               </we-button>
               <we-button size="xs" variant="ghost">
@@ -1312,7 +1312,7 @@ export function ThemePanel() {
             <we-text fontSize="400" color="text-muted" textAlign="center">
               No theme selected for editing
             </we-text>
-            <we-button variant="secondary" size="sm" onClick={() => themeStore.startEditing()}>
+            <we-button variant="soft" size="sm" onClick={() => themeStore.startEditing()}>
               Edit current theme
             </we-button>
           </Column>
@@ -1421,7 +1421,7 @@ export function ThemePanel() {
                     past that.
                   */}
                   <Row ay="center" gap="200">
-                    <we-button size="sm" variant="secondary" onClick={runAudit}>
+                    <we-button size="sm" variant="soft" onClick={runAudit}>
                       {auditResults() ? 'Re-test' : auditRun() ? 'Re-test' : 'Test theme'}
                     </we-button>
                     <Show when={auditResults()}>
@@ -1538,7 +1538,7 @@ export function ThemePanel() {
               <Row gap="200">
                 <we-button
                   size="sm"
-                  variant={(overrides().polarity ?? 'light') === 'light' ? 'secondary' : 'ghost'}
+                  variant={(overrides().polarity ?? 'light') === 'light' ? 'soft' : 'ghost'}
                   flex="1"
                   onClick={() => {
                     setOverrides({
@@ -1554,7 +1554,7 @@ export function ThemePanel() {
                 </we-button>
                 <we-button
                   size="sm"
-                  variant={overrides().polarity === 'dark' ? 'secondary' : 'ghost'}
+                  variant={overrides().polarity === 'dark' ? 'soft' : 'ghost'}
                   flex="1"
                   onClick={() => {
                     setOverrides({

@@ -101,7 +101,7 @@ function destinationToggle(): SchemaNode {
     type: 'we-button',
     props: {
       size: 'sm',
-      variant: expr`local.destination == ${value} ? 'secondary' : 'ghost'`,
+      variant: expr`local.destination == ${value} ? 'soft' : 'ghost'`,
       onClick: { $setLocal: 'destination', value },
     },
     children: [label],

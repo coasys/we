@@ -45,7 +45,7 @@ function labeledRow(label: string, query: SchemaProp): SchemaNode {
       {
         type: '$each',
         props: { items: query, as: 'item' },
-        children: [{ type: 'we-tag', props: { variant: 'primary' }, children: [{ $: 'item.name' }] }],
+        children: [{ type: 'we-tag', props: { tone: 'accent' }, children: [{ $: 'item.name' }] }],
       },
     ],
   };
@@ -61,7 +61,7 @@ const seedControls: SchemaNode = {
   children: [
     {
       type: 'we-button',
-      props: { variant: 'primary', onClick: { $action: 'testStore.seedQueryData' } },
+      props: { variant: 'solid', onClick: { $action: 'testStore.seedQueryData' } },
       children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }, 'Seed known data'],
     },
     {
@@ -168,10 +168,10 @@ const projectionSection = section(
         props: { gap: '300', ay: 'center', wrap: true },
         children: [
           { type: 'we-text', props: { variant: 'label', width: '120px' }, children: [{ $: 'item.name' }] },
-          { type: 'we-tag', props: { variant: 'neutral' }, children: [{ $: '`count: ${item.$childCount}`' }] },
+          { type: 'we-tag', props: {}, children: [{ $: '`count: ${item.$childCount}`' }] },
           {
             type: 'we-tag',
-            props: { variant: { $: "item.$myChild ? 'success' : 'neutral'" } },
+            props: { tone: { $: "item.$myChild ? 'success' : ''" } },
             children: [{ $: "item.$myChild ? `mine: ${item.$myChild.label}` : 'mine: —'" }],
           },
           {
@@ -194,7 +194,7 @@ const liveSection = section(
     children: [
       {
         type: 'we-button',
-        props: { variant: 'secondary', onClick: { $action: 'testStore.createTestItem' } },
+        props: { variant: 'soft', onClick: { $action: 'testStore.createTestItem' } },
         children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add item'],
       },
       labeledRow('all, name asc', {

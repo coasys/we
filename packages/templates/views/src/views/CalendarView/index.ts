@@ -141,7 +141,7 @@ const monthPicker: SchemaNode = {
                   props: {
                     size: 'sm',
                     width: 'calc(33.33% - 6px)',
-                    variant: { $: "month.isShown ? 'secondary' : 'ghost'" },
+                    variant: { $: "month.isShown ? 'soft' : 'ghost'" },
                     // The offset is computed by the source and read off the row, because
                     // `$setLocal` cannot work out how far away a month is. `from` takes a context
                     // path, so the arithmetic arrives as data.
@@ -660,7 +660,7 @@ export const calendarView: TemplateSchema = {
                           type: 'we-button',
                           props: {
                             size: 'sm',
-                            variant: 'secondary',
+                            variant: 'soft',
                             /*
                               Opens the composer, without prefilling the date — which it should do,
                               and cannot. `$setLocal` sets a literal (`value`) or reads a path off

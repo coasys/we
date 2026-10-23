@@ -647,7 +647,7 @@ const fromLensControl: SchemaNode = {
       $: `(${FROM_ON}) ? (${SCOPE_LABEL}) + ((${FROM_HIDE}) ? ' · others hidden' : ' · others dimmed') : 'All'`,
     },
     triggerTitle: 'Show what came from one call, or from outside calls',
-    triggerVariant: { $: `(${FROM_ON}) ? 'secondary' : 'ghost'` },
+    triggerVariant: { $: `(${FROM_ON}) ? 'soft' : 'ghost'` },
     items: {
       $:
         `[{ type: 'group', id: 'scope', label: 'Scope', items: [` +
@@ -735,7 +735,7 @@ const switcher: SchemaNode = {
             // were reading as a row of small ornaments over a full-bleed canvas.
             r: 'control',
             gap: '200',
-            variant: { $: "nav.segment in routeStore.segments ? 'secondary' : 'ghost'" },
+            variant: { $: "nav.segment in routeStore.segments ? 'soft' : 'ghost'" },
             onClick: { $action: 'routeStore.navigate', args: [navPath] },
           },
           children: [
@@ -954,7 +954,7 @@ const startCallButton = (size: 'sm' | 'md'): SchemaNode => ({
               props: {
                 size,
                 gap: '200',
-                variant: { $: `${IN_A_CALL_HERE} ? 'secondary' : 'primary'` },
+                variant: { $: `${IN_A_CALL_HERE} ? 'soft' : 'solid'` },
                 /*
                   Three branches, flat, and read at the press.
 
@@ -2500,7 +2500,7 @@ const inspectorPanel: SchemaNode = {
                     props: {
                       size: 'sm',
                       square: true,
-                      variant: { $: `!(${COMPOSED_CARD}) && local.editing ? 'secondary' : 'ghost'` },
+                      variant: { $: `!(${COMPOSED_CARD}) && local.editing ? 'soft' : 'ghost'` },
                       onClick: {
                         $if: {
                           condition: { $: COMPOSED_CARD },
@@ -3069,7 +3069,7 @@ const callsPanel: SchemaNode = {
                             {
                               type: 'we-button',
                               props: {
-                                variant: { $: `call.id == (${CALL_EXPR}) ? 'secondary' : 'ghost'` },
+                                variant: { $: `call.id == (${CALL_EXPR}) ? 'soft' : 'ghost'` },
                                 flex: '1',
                                 /*
                               The half of `flex: '1'` that is easy to forget, and without which this
@@ -3330,7 +3330,7 @@ const callsPanel: SchemaNode = {
                                   type: 'we-button',
                                   props: {
                                     size: 'sm',
-                                    variant: 'primary',
+                                    variant: 'solid',
                                     /*
                                       `joinCall` rather than `goToCall`: the latter means "bring me to
                                       my call", so pressed on somebody else's row while in a call of
@@ -3715,7 +3715,7 @@ const canvas: SchemaNode = {
       one voice. Neither state is a dead end: one is waiting for a call to be started or chosen, the
       other for the conversation to produce something.
     */
-    emptyGradient: 'primary',
+    emptyGradient: 'accent',
     /*
       The graph's own status strip, on.
 
@@ -4707,7 +4707,7 @@ const rsvp: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'xs',
-                variant: { $: `${ON_EVENTS}.answers[event.id] == answer.slug ? 'secondary' : 'ghost'` },
+                variant: { $: `${ON_EVENTS}.answers[event.id] == answer.slug ? 'soft' : 'ghost'` },
                 onClick: {
                   $action: 'spaceStore.respondTo',
                   args: [{ $: 'event.id' }, { $: `${ON_EVENTS}.answers[event.id] == answer.slug ? '' : answer.slug` }],
@@ -4860,7 +4860,7 @@ const eventList: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'sm',
-                variant: 'secondary',
+                variant: 'soft',
                 ml: 'auto',
                 onClick: { $setLocal: 'newEventOpen', value: true },
               },
@@ -5040,7 +5040,7 @@ const eventList: SchemaNode = {
                                       children: [
                                         {
                                           type: 'we-badge',
-                                          props: { size: 'xs', variant: 'warning', appearance: 'solid' },
+                                          props: { size: 'xs', variant: 'solid', tone: 'warning' },
                                           children: ['suggested'],
                                         },
                                       ],

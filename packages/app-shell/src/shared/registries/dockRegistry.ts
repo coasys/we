@@ -948,7 +948,7 @@ function collapseButton(id: string): SchemaNode {
         props: {
           size: 'xs',
           square: true,
-          variant: { $: `${place('collapsed')} ? 'secondary' : 'ghost'` },
+          variant: { $: `${place('collapsed')} ? 'soft' : 'ghost'` },
           disabled: { $: `!${place('canCollapse')}` },
           onClick: { $action: 'shellStore.toggleCollapseDock', args: [id] },
         },
@@ -992,7 +992,7 @@ function displaceControl(id: string, place: (field: string) => string): SchemaNo
         props: {
           size: 'xs',
           square: true,
-          variant: { $: `${place('displace')} ? 'secondary' : 'ghost'` },
+          variant: { $: `${place('displace')} ? 'soft' : 'ghost'` },
           disabled: { $: `!${place('canDisplace')}` },
           onClick: { $action: 'shellStore.toggleDockDisplace', args: [id] },
         },
@@ -1027,7 +1027,7 @@ function maximiseButton(id: string): SchemaNode {
         props: {
           size: 'xs',
           square: true,
-          variant: { $: `${maximised} ? 'secondary' : 'ghost'` },
+          variant: { $: `${maximised} ? 'soft' : 'ghost'` },
           onClick: { $action: 'shellStore.toggleMaximiseDock', args: [id] },
         },
         children: [
@@ -1115,7 +1115,7 @@ function positionMenu(entry: DockEntry): SchemaNode {
         The four controls beside it are `xs` ghost squares, and this drew `DropdownMenu`'s own
         trigger: a filled pill, because without `square` the size's horizontal padding still
         applies, and one that hovered to the accent, because the component overrode the fill of the
-        `primary` variant and not its hover. Asking for `ghost` is enough now — icon-only is
+        `solid` variant and not its hover. Asking for `ghost` is enough now — icon-only is
         inferred from an icon with no label, and brings the square with it.
       */
       triggerVariant: 'ghost',

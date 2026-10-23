@@ -126,7 +126,7 @@ export const spaceModal = {
                       type: 'we-button',
                       props: {
                         text: 'Enter Space',
-                        variant: 'primary',
+                        variant: 'solid',
                         height: '40px',
                         onClick: [
                           { $setLocal: 'selectedPin', value: null },
@@ -138,7 +138,7 @@ export const spaceModal = {
                       type: 'we-button',
                       props: {
                         text: 'Join Space',
-                        variant: 'primary',
+                        variant: 'solid',
                         height: '40px',
                         onClick: {
                           $action: 'spaceStore.joinSpace',

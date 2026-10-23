@@ -19,7 +19,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const typeExpansions: Record<string, string> = {
   // Primitives
   ComponentSize: "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
-  ComponentVariant: "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
   IconSize: "'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}'",
   SizeValue: "'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}'",
   TextVariant:

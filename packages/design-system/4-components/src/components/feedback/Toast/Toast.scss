@@ -76,7 +76,7 @@
     own tinted panel; the edge is `color-mix` against the role, which is how the system builds a step
     it has no role for.
   */
-  &--info {
+  &--neutral {
     background-color: var(--we-role-surface-sunken);
     border: 1px solid var(--we-role-border);
   }
@@ -91,7 +91,7 @@
     border: 1px solid color-mix(in srgb, var(--we-role-warning) 30%, transparent);
   }
 
-  &--error {
+  &--danger {
     background-color: var(--we-role-danger-soft);
     border: 1px solid color-mix(in srgb, var(--we-role-danger) 30%, transparent);
   }

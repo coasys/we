@@ -1502,7 +1502,7 @@ const weAboutPage: SchemaNode = {
               type: 'we-button',
               props: {
                 text: 'Back to WE',
-                variant: 'secondary',
+                variant: 'soft',
                 onClick: { $action: 'shellStore.closeShellView', args: [] },
               },
             },

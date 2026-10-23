@@ -7,13 +7,7 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
-          "optional": false,
-          "default": "'primary'"
-        },
-        {
-          "name": "appearance",
-          "type": "'soft' | 'accent'",
+          "type": "'soft' | 'edge'",
           "optional": false,
           "default": "'soft'"
         },
@@ -140,12 +134,6 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
-          "optional": false,
-          "default": "'neutral'"
-        },
-        {
-          "name": "appearance",
           "type": "'soft' | 'solid'",
           "optional": false,
           "default": "'soft'"
@@ -171,9 +159,9 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "'primary' | 'secondary' | 'ghost' | 'success' | 'danger' | 'outline' | 'bare'",
+          "type": "'solid' | 'soft' | 'outline' | 'ghost' | 'bare'",
           "optional": false,
-          "default": "'primary'"
+          "default": "'solid'"
         },
         {
           "name": "size",
@@ -1052,7 +1040,7 @@
     {
       "tagName": "we-menu-item",
       "className": "MenuItem",
-      "description": "Single actionable item inside a we-menu.\nSupports selected, active, and danger states.",
+      "description": "Single actionable item inside a we-menu.\nSupports selected and active states; `tone: 'danger'` marks a destructive item.",
       "superclass": "DesignSystemElement",
       "ownProps": [
         {
@@ -1066,12 +1054,6 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
-        },
-        {
-          "name": "variant",
-          "type": "'default' | 'danger'",
-          "optional": false,
-          "default": "'default'"
         },
         {
           "name": "label",
@@ -1309,12 +1291,6 @@
           "type": "number",
           "optional": false,
           "default": "100"
-        },
-        {
-          "name": "variant",
-          "type": "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
-          "optional": false,
-          "default": "'primary'"
         },
         {
           "name": "size",
@@ -1781,9 +1757,9 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
+          "type": "'soft' | 'solid'",
           "optional": false,
-          "default": "'neutral'"
+          "default": "'soft'"
         },
         {
           "name": "dismissible",
@@ -3018,7 +2994,12 @@
         },
         {
           "name": "triggerVariant",
-          "type": "\"danger\" | \"primary\" | \"secondary\" | \"ghost\" | \"outline\" | \"bare\"",
+          "type": "\"solid\" | \"soft\" | \"outline\" | \"ghost\" | \"bare\"",
+          "optional": true
+        },
+        {
+          "name": "triggerTone",
+          "type": "ToneName",
           "optional": true
         },
         {

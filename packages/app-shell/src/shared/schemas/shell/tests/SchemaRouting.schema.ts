@@ -52,7 +52,7 @@ export const schemaRoutingTemplate: TemplateSchema = {
             {
               type: 'we-button',
               props: {
-                variant: expr`routeStore.currentPath == ${`${basePath}`} ? 'primary' : 'secondary'`,
+                variant: expr`routeStore.currentPath == ${`${basePath}`} ? 'solid' : 'soft'`,
                 onClick: { $action: 'routeStore.navigate', args: [`${basePath}`] },
               },
               children: ['Home'],
@@ -60,7 +60,7 @@ export const schemaRoutingTemplate: TemplateSchema = {
             {
               type: 'we-button',
               props: {
-                variant: expr`routeStore.currentPath == ${`${basePath}/route-1`} ? 'primary' : 'secondary'`,
+                variant: expr`routeStore.currentPath == ${`${basePath}/route-1`} ? 'solid' : 'soft'`,
                 onClick: { $action: 'routeStore.navigate', args: [`${basePath}/route-1`] },
               },
               children: ['Route 1'],
@@ -68,7 +68,7 @@ export const schemaRoutingTemplate: TemplateSchema = {
             {
               type: 'we-button',
               props: {
-                variant: expr`routeStore.currentPath == ${`${basePath}/route-2`} ? 'primary' : 'secondary'`,
+                variant: expr`routeStore.currentPath == ${`${basePath}/route-2`} ? 'solid' : 'soft'`,
                 onClick: { $action: 'routeStore.navigate', args: [`${basePath}/route-2`] },
               },
               children: ['Route 2'],
@@ -124,7 +124,7 @@ export const schemaRoutingTemplate: TemplateSchema = {
             {
               type: 'we-button',
               props: {
-                variant: expr`routeStore.currentPath == ${`${basePath}/route-1`} ? 'primary' : 'outline'`,
+                variant: expr`routeStore.currentPath == ${`${basePath}/route-1`} ? 'solid' : 'outline'`,
                 onClick: { $action: 'routeStore.navigate', args: [`${basePath}/route-1`] },
               },
               children: ['Route 1.0 (Home)'],
@@ -132,7 +132,7 @@ export const schemaRoutingTemplate: TemplateSchema = {
             {
               type: 'we-button',
               props: {
-                variant: expr`routeStore.currentPath == ${`${basePath}/route-1/nested`} ? 'primary' : 'outline'`,
+                variant: expr`routeStore.currentPath == ${`${basePath}/route-1/nested`} ? 'solid' : 'outline'`,
                 onClick: { $action: 'routeStore.navigate', args: [`${basePath}/route-1/nested`] },
               },
               children: ['Route 1.1'],

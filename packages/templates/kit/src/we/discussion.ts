@@ -952,7 +952,7 @@ export function discussionSection(opts: DiscussionSectionOptions): SchemaNode {
                     cannot be found by somebody looking for how to send.
                   */
                   square: true,
-                  variant: 'secondary',
+                  variant: 'soft',
                   label: 'Post this reply',
                   disabled: { $: `!local.${COMPOSER_DIRTY} || local.${COMPOSER_BUSY}` },
                   loading: { $: `local.${COMPOSER_BUSY}` },

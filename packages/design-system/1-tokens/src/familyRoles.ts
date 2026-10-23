@@ -108,3 +108,48 @@ export const FAMILY_STATE_FALLBACKS = Object.fromEntries(
     [`${family}Active`, `var(--we-role-${family})`],
   ]),
 ) as Record<`${ChromaticFamily | 'neutral'}${'Hover' | 'Active'}`, string>;
+
+/** The accent's roles a `tone` re-points, as role-name suffixes: `accent`, `accentSoft`, …. */
+const TONED_SUFFIXES = ['', 'Soft', 'Text', 'Border', 'Hover', 'Active'] as const;
+
+const kebab = (name: string): string => name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+const roleVariable = (name: string): string => `--we-role-${kebab(name)}`;
+
+/**
+ * What `tone` sets on an element: the accent's roles, re-pointed at one family.
+ *
+ * Components draw their colour from the accent (`accent`, `on-accent`, `accent-soft`, the focus
+ * ring, `shadow: 'glow'`), so re-pointing the accent inside an element recolours everything in it —
+ * a primary button, a selected row, a ring — the way Radix's `color`, Chakra's `colorScheme` and
+ * Shopify Polaris's `tone` do. One setting colours an element and everything in it; no component has
+ * a colour prop of its own.
+ *
+ * The values are references to the family's own roles, which the theme has already corrected for
+ * contrast — so a toned button's label is the family's label, chosen against the family's fill, and
+ * nothing is measured again.
+ *
+ * `accent` writes the accent's own definitions rather than references, so `tone: 'accent'` inside a
+ * purple-toned element restores the real accent instead of aliasing a variable to itself.
+ */
+export function toneVariables(tone: ChromaticFamily | 'neutral'): Record<string, string> {
+  const vars: Record<string, string> = {};
+  for (const suffix of TONED_SUFFIXES) {
+    const accentRole = `accent${suffix}`;
+    vars[roleVariable(accentRole)] =
+      tone === 'accent' ? FAMILY_ROLES[accentRole as FamilyRole] : `var(${roleVariable(`${tone}${suffix}`)})`;
+  }
+  const label = tone === 'accent' ? FAMILY_ROLES.onAccent : `var(${roleVariable(`on${capitalise(tone)}`)})`;
+  vars['--we-role-on-accent'] = label;
+  vars['--we-role-on-accent-muted'] = 'oklch(from var(--we-role-on-accent) l c h / 0.8)';
+  // The focus ring and what reads it, restated here because each is worked out where it is declared.
+  vars['--we-role-focus'] = 'var(--we-role-accent)';
+  vars['--we-color-focus'] = 'var(--we-role-focus)';
+  vars['--we-ring-color'] = 'var(--we-role-focus)';
+  vars['--we-focus-outline'] = '0 0 0 var(--we-focus-ring-width) var(--we-color-focus)';
+  // The gradient a `gradient` prop draws, swept ±25° around the toned fill's hue as the root one is
+  // around the accent's.
+  vars['--we-gradient-accent'] =
+    'linear-gradient(135deg, oklch(from var(--we-role-accent) l c calc(h - 25)) 0%, ' +
+    'oklch(from var(--we-role-accent) l c calc(h + 25)) 100%)';
+  return vars;
+}

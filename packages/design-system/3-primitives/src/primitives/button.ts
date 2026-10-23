@@ -29,116 +29,114 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
  * The variants that paint a colour of their own, and so already have a foreground chosen against it.
  *
  * Only used to pick the spinner's colour — see `_spinner`. Kept as its own set rather than derived
- * from `VARIANT_DEFAULTS[v].bg`, because the question is not "does it set a background" (`secondary`
- * does, a neutral one) but "is its foreground already the answer to a contrast problem". Those come
- * apart exactly here, and a clever derivation would put an invisible spinner on a primary button the
- * first time somebody gave `ghost` a fill.
+ * from the tables below, because the question is not "does it set a background" (a neutral `soft`
+ * does) but "is its foreground already the answer to a contrast problem".
  */
-const FILLED_VARIANTS = new Set<ButtonVariant>(['primary', 'success', 'danger']);
+const FILLED_VARIANTS = new Set<ButtonVariant>(['solid']);
 
-export const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
-  primary: {
-    bg: 'accent',
-    color: 'on-accent',
-    hoverProps: { bg: 'accent-hover', color: 'on-accent' },
-    activeProps: { bg: 'accent-active', color: 'on-accent' },
+/*
+  A step of a tinted fill toward its own fill, for the hover and pressed states of a toned `soft`.
+
+  Mixing rather than two more roles per family: nobody pins "soft button, pressed", and a mix toward
+  the fill moves the same way in every theme.
+*/
+const softStep = (percent: number) =>
+  `color-mix(in srgb, var(--we-role-accent-soft) ${percent}%, var(--we-role-accent))`;
+
+/*
+  How a button is painted, and in which colour family — `variant` is the first and `tone` the second.
+
+  A tone re-points the accent's roles inside the element (`toneVariables` in @we/tokens), so every
+  entry below that names `accent` draws in whatever family the button was given: a `solid` with
+  `tone: 'danger'` is the destructive button, with `tone: 'success'` the confirming half of a yes/no
+  pair, with `tone: 'teal'` a palette hue. The labels are each family's own `on-<family>`, corrected
+  at apply time against wherever that fill landed, so none of them is chosen here.
+
+  `solid` has one entry because an untoned button is the accent — the main action — and a
+  `tone: 'neutral'` one re-points the accent at the neutral family, which is the inverse surface.
+  The other styles have a neutral entry as well, because an untoned `soft`, `outline` or `ghost` is
+  a quiet grey control rather than an accent one, and every screen that has one depends on that.
+*/
+export const VARIANT_DEFAULTS: Record<
+  ButtonVariant,
+  { neutral: Partial<DesignSystemProps>; toned: Partial<DesignSystemProps> }
+> = {
+  solid: {
+    neutral: {
+      bg: 'accent',
+      color: 'on-accent',
+      // Steps from the fill, not positions on the scale — see `accentHover` in @we/tokens for why:
+      // the label is chosen against the worst of the three states, so they have to stay together.
+      hoverProps: { bg: 'accent-hover', color: 'on-accent' },
+      activeProps: { bg: 'accent-active', color: 'on-accent' },
+    },
+    toned: {
+      bg: 'accent',
+      color: 'on-accent',
+      hoverProps: { bg: 'accent-hover', color: 'on-accent' },
+      activeProps: { bg: 'accent-active', color: 'on-accent' },
+    },
   },
-  /*
-    The ladder by mixing, not by two more roles.
+  soft: {
+    /*
+      The ladder by mixing, not by two more roles.
 
-    A filled neutral control needs three steps and the vocabulary has a role for the first. Naming
-    the other two would mean roles ("secondary button, pressed") nobody would ever pin, and leaving
-    them on the scale meant the rest state followed a theme's pin while hover jumped somewhere else.
-    Mixing toward `text` gives both, and because `text` inverts with the theme the same expression
-    darkens in a light theme and lightens in a dark one. The percentages reproduce the neutral-300
-    and neutral-400 that were here to within a point.
-  */
-  secondary: {
-    bg: 'control-surface',
-    color: 'text',
-    hoverProps: { bg: 'color-mix(in srgb, var(--we-role-control-surface) 88%, var(--we-role-text))', color: 'text' },
-    activeProps: { bg: 'color-mix(in srgb, var(--we-role-control-surface) 76%, var(--we-role-text))', color: 'text' },
-  },
-  ghost: {
-    bg: 'transparent',
-    color: 'text',
-    hoverProps: { bg: 'surface-hover', color: 'text' },
-    activeProps: { bg: 'control-surface', color: 'text' },
-  },
-  /*
-    The confirming half of a yes/no pair — `danger`'s counterpart, and only that.
-
-    ## When it earns its place, and when `primary` is still right
-
-    Reach for it where a screen asks a **binary** question and the two answers sit side by side:
-    keep or discard a suggestion, approve or refuse a request. It is not "the important button" and
-    it is not a louder `primary` — a form's Save is `primary`, however positive saving feels. Used
-    that way a status colour becomes an emphasis level, and the vocabulary stops meaning anything.
-
-    ## Why not `primary` for the yes
-
-    `accent` is the *brand* colour. A theme may legitimately set it to anything, including something
-    close to `danger`, at which point the two answers to a yes/no question read as the same kind of
-    thing. `success` is semantic, so a theme that keeps roles meaning what they say keeps this
-    readable. That is the same argument the `danger` note below makes from the other side: a status
-    fill deserves a role, so a theme can say something about it beyond its hue.
-
-    ## The colour is never the whole message
-
-    Green and red are the classic pair to fail on, which is why `we-alert` carries a glyph per
-    variant. A confirm/refuse pair built from these two must pair them with icons or words that say
-    the same thing — the colour is the fast path for people who can use it, never the only one.
-
-    Nothing new was needed underneath: `success`, `on-success`, `successHover` and `successActive`
-    all exist, and `success` is in FILL_LABELS, so its label is derived and contrast-corrected
-    exactly as `danger`'s is.
-  */
-  success: {
-    bg: 'success',
-    color: 'on-success',
-    // Steps from the fill, for `danger`'s reason below.
-    hoverProps: { bg: 'var(--we-role-success-hover)', color: 'on-success' },
-    activeProps: { bg: 'var(--we-role-success-active)', color: 'on-success' },
-  },
-  /*
-    On the `danger` role, which exists now.
-
-    It was on the scale for a long time, with a comment arguing that a status fill had no role and
-    that `danger-500` stayed themeable through `dangerHue`. That was true and not enough: it meant a
-    theme could restyle the primary button completely and could not say anything about the
-    destructive one beyond its hue. Hover and pressed stay on the scale deliberately — they are
-    steps *from* the fill, and giving each its own role would add two more things to keep in sync
-    for a state nobody themes separately.
-  */
-  danger: {
-    bg: 'danger',
-    color: 'on-danger',
-    // Steps from the fill, not positions on the scale — see `accentHover` in @we/tokens for why:
-    // the label is chosen against the worst of the three states, so they have to stay together.
-    hoverProps: { bg: 'var(--we-role-danger-hover)', color: 'on-danger' },
-    activeProps: { bg: 'var(--we-role-danger-active)', color: 'on-danger' },
+      A filled neutral control needs three steps and the vocabulary has a role for the first. Mixing
+      toward `text` gives the other two, and because `text` inverts with the theme the same
+      expression darkens in a light theme and lightens in a dark one.
+    */
+    neutral: {
+      bg: 'control-surface',
+      color: 'text',
+      hoverProps: { bg: 'color-mix(in srgb, var(--we-role-control-surface) 88%, var(--we-role-text))', color: 'text' },
+      activeProps: { bg: 'color-mix(in srgb, var(--we-role-control-surface) 76%, var(--we-role-text))', color: 'text' },
+    },
+    toned: {
+      bg: 'accent-soft',
+      color: 'accent-text',
+      hoverProps: { bg: softStep(84), color: 'accent-text' },
+      activeProps: { bg: softStep(70), color: 'accent-text' },
+    },
   },
   outline: {
-    bg: 'transparent',
-    color: 'text',
-    border: '1px solid var(--we-role-border)',
-    hoverProps: { bg: 'surface-hover', color: 'text', border: '1px solid var(--we-role-border-hover)' },
-    activeProps: { bg: 'control-surface', color: 'text', border: '1px solid var(--we-role-border-hover)' },
-    /*
-      The only variant with an outline of its own, and so the only one whose focus ring would
-      otherwise be a second line rather than the same one thickened. It takes `we-input`'s
-      treatment — border recoloured to the ring, one pixel of ring outside it, one 2px perimeter —
-      because a Select trigger and a field sit in the same row and must answer focus the same way.
-      The filled variants keep the shared 2px ring: with no outline to recolour there is nothing to
-      double up on, and both spellings land on 2px of accent.
+    neutral: {
+      bg: 'transparent',
+      color: 'text',
+      border: '1px solid var(--we-role-border)',
+      hoverProps: { bg: 'surface-hover', color: 'text', border: '1px solid var(--we-role-border-hover)' },
+      activeProps: { bg: 'control-surface', color: 'text', border: '1px solid var(--we-role-border-hover)' },
+      /*
+        The only variant with an outline of its own, and so the only one whose focus ring would
+        otherwise be a second line rather than the same one thickened. It takes `we-input`'s
+        treatment — border recoloured to the ring, one pixel of ring outside it, one 2px perimeter —
+        because a Select trigger and a field sit in the same row and must answer focus the same way.
 
-      The ring is restated rather than inherited: `mergeProps` is a shallow spread, so a variant's
-      `focusProps` *replaces* the one on DEFAULT_PROPS. Omitting it here would not add a border to
-      the shared ring, it would trade the ring for a border.
-    */
-    focusProps: {
-      border: '1px solid var(--we-ring-color)',
-      ring: '0 0 0 1px var(--we-ring-color)',
+        The ring is restated rather than inherited: `mergeProps` is a shallow spread, so a variant's
+        `focusProps` *replaces* the one on DEFAULT_PROPS.
+      */
+      focusProps: { border: '1px solid var(--we-ring-color)', ring: '0 0 0 1px var(--we-ring-color)' },
+    },
+    toned: {
+      bg: 'transparent',
+      color: 'accent-text',
+      border: '1px solid var(--we-role-accent-border)',
+      hoverProps: { bg: 'accent-soft', color: 'accent-text', border: '1px solid var(--we-role-accent-border)' },
+      activeProps: { bg: softStep(84), color: 'accent-text', border: '1px solid var(--we-role-accent-border)' },
+      focusProps: { border: '1px solid var(--we-ring-color)', ring: '0 0 0 1px var(--we-ring-color)' },
+    },
+  },
+  ghost: {
+    neutral: {
+      bg: 'transparent',
+      color: 'text',
+      hoverProps: { bg: 'surface-hover', color: 'text' },
+      activeProps: { bg: 'control-surface', color: 'text' },
+    },
+    toned: {
+      bg: 'transparent',
+      color: 'accent-text',
+      hoverProps: { bg: 'accent-soft', color: 'accent-text' },
+      activeProps: { bg: softStep(84), color: 'accent-text' },
     },
   },
   // The appearance-free member of the scale: button semantics, no chrome. For wrapping arbitrary
@@ -148,11 +146,14 @@ export const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>>
   // No hoverProps/activeProps is the point, not an omission: ghost's hover background is ghost's
   // whole job, and reusing it for a content wrapper paints a rectangle over content that supplies
   // its own affordance. `color` is deliberately absent too — an unset custom property resolves to
-  // `inherit` for inherited properties (see the PropSpec contract in @we/design-utils), so leaving
-  // it out inherits, whereas a literal 'inherit' would pointlessly enter the colour-token resolver.
+  // `inherit` for inherited properties (see the PropSpec contract in @we/design-utils). A tone does
+  // not change it: there is nothing here to colour.
   // `height` and `r` neutralize the size and component defaults; padding, white-space and overflow
   // are not DS props, so they are unset by the :host([variant='bare']) rules below.
-  bare: { bg: 'transparent', height: 'auto', r: '0' },
+  bare: {
+    neutral: { bg: 'transparent', height: 'auto', r: '0' },
+    toned: { bg: 'transparent', height: 'auto', r: '0' },
+  },
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
@@ -315,7 +316,7 @@ const CSS_STYLES = css`
 export default class Button extends DesignSystemElement {
   static styles = [sharedStyles, CSS_STYLES];
 
-  @property({ type: String, reflect: true }) variant: ButtonVariant = 'primary';
+  @property({ type: String, reflect: true }) variant: ButtonVariant = 'solid';
   @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: String }) text?: string;
   /**
@@ -361,8 +362,8 @@ export default class Button extends DesignSystemElement {
 
   override updated(changedProperties: Map<string, unknown>) {
     super.updated(changedProperties);
-    // Gradients are a primary-variant affordance; anywhere else the flag is meaningless.
-    const hasGradient = this.gradient && this.variant === 'primary';
+    // Gradients are a solid-variant affordance; anywhere else the flag is meaningless.
+    const hasGradient = this.gradient && this.variant === 'solid';
     this.style.setProperty('--we-button-gradient', hasGradient ? 'var(--we-gradient-accent)' : 'none');
     // Generates the overlay pseudo-element only when it has something to draw — see the note beside
     // `[part='base']::before`. `none` suppresses the box entirely rather than drawing an invisible one.
@@ -373,7 +374,8 @@ export default class Button extends DesignSystemElement {
     const ctor = this.constructor as typeof Button & { __dsLayers: readonly DSLayer[] };
     const activeKeys = getKeysForLayers([...ctor.__dsLayers]);
     const usedProps = filterProps(this as unknown as Record<string, unknown>, activeKeys);
-    const variantDefaults = VARIANT_DEFAULTS[this.variant] ?? {};
+    const table = VARIANT_DEFAULTS[this.variant] ?? VARIANT_DEFAULTS.solid;
+    const variantDefaults = this.tone && this.tone !== 'neutral' ? table.toned : table.neutral;
     const sizeDefaults = SIZE_DEFAULTS[this.size] ?? {};
     // Merge chain: explicit user props > variant > size > component defaults
     const props = mergeProps(

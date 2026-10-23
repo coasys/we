@@ -251,7 +251,7 @@ export interface RailButtonOptions {
  *
  * Extracted because it was written three times — the two module launchers in WE's chrome rail, and
  * again inside `pickerPopover` for the template and theme pickers that sit in the same rail — and
- * the three had already drifted: two lit up with `variant: 'secondary'` when active while the
+ * the three had already drifted: two lit up with `variant: 'soft'` when active while the
  * settings button had no active state to drift *to*, so it was the one row of that rail that could
  * never show you where you were. A rail whose buttons disagree about what "selected" looks like is
  * not a set of tabs, and that is the only thing the arrangement was for.
@@ -272,7 +272,7 @@ export function railButton(opts: RailButtonOptions): SchemaNode {
         type: 'we-button',
         props: {
           square: true,
-          variant: expr`${opts.active ?? false} ? 'secondary' : 'ghost'`,
+          variant: expr`${opts.active ?? false} ? 'soft' : 'ghost'`,
           ...(opts.onClick !== undefined && { onClick: opts.onClick }),
         },
         children: [

@@ -95,14 +95,14 @@ placeholder and the grid can never disagree about how many rows there are.
   "type": "Column",
   "props": { "flex": "1", "height": "100%", "ax": "center", "ay": "center", "gap": "400", "p": "600" },
   "children": [
-    { "type": "we-icon", "props": { "name": "lock", "size": "xl", "gradient": "primary" } },
+    { "type": "we-icon", "props": { "name": "lock", "size": "xl", "gradient": "accent" } },
     { "type": "we-text", "props": { "variant": "heading-md", "textAlign": "center" }, "children": ["Join this Space"] },
     {
       "type": "we-text",
       "props": { "variant": "body", "textAlign": "center", "maxWidth": "var(--we-layout-xs)" },
       "children": ["You haven't joined this space yet."]
     },
-    { "type": "we-button", "props": { "variant": "primary", "onClick": { "$action": "…" } }, "children": ["Join"] }
+    { "type": "we-button", "props": { "variant": "solid", "onClick": { "$action": "…" } }, "children": ["Join"] }
   ]
 }
 \`\`\`
@@ -284,7 +284,7 @@ through \`onReady\`. So the sequence is: \`onReady\` stores that function in a *
     {
       "type": "we-button",
       "props": {
-        "variant": "primary",
+        "variant": "solid",
         "loading": { "$": "local.submitting" },
         "disabled": { "$": "local.submitting" },
         "onClick": { "$callLocal": "savePost" }

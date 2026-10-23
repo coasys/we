@@ -30,7 +30,7 @@ import {
   warnIfUnsurfaced,
   zIndexVar,
 } from '@we/design-utils';
-import { type Tier, TIERS } from '@we/tokens';
+import { type Tier, TIERS, toneVariables } from '@we/tokens';
 
 /**
  * Design System CSS Helpers
@@ -753,6 +753,25 @@ function updateCustomVars(
   setProperty(el, `${prefix}overflow-wrap`, props.overflowWrap);
 }
 
+/**
+ * The tone's variables on the host, and only those: the previous tone's are removed by name, so a
+ * host's other inline variables (a shell's layout variables, `styles`) are left alone. Set on the
+ * host rather than in the shadow root so the tone reaches slotted children too — a toned card's
+ * buttons are its light-DOM children.
+ */
+const appliedTones = new WeakMap<HTMLElement, string[]>();
+
+function applyTone(el: HTMLElement, tone: DesignSystemProps['tone']): void {
+  for (const prop of appliedTones.get(el) ?? []) el.style.removeProperty(prop);
+  if (!tone) {
+    appliedTones.delete(el);
+    return;
+  }
+  const vars = toneVariables(tone);
+  for (const [prop, value] of Object.entries(vars)) el.style.setProperty(prop, value);
+  appliedTones.set(el, Object.keys(vars));
+}
+
 export function updateAllCustomVars(
   el: HTMLElement,
   componentName: string,
@@ -760,6 +779,7 @@ export function updateAllCustomVars(
   rawExplicitProps?: Partial<DesignSystemProps>,
 ) {
   updateCustomVars(el, componentName, props, rawExplicitProps);
+  applyTone(el, props.tone);
   applyInlineStyles(el, props.styles);
   let hasState = false;
   ELEMENT_STATES.forEach((state) => {

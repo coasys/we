@@ -389,7 +389,7 @@ export const canvasBar: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'sm',
-                variant: { $: "local.connecting ? 'primary' : 'ghost'" },
+                variant: { $: "local.connecting ? 'solid' : 'ghost'" },
                 onClick: { $toggleLocal: 'connecting' },
               },
               children: [{ type: 'we-icon', props: { name: 'flow-arrow' } }, 'Connect'],
@@ -407,7 +407,7 @@ export const canvasBar: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'sm',
-                variant: { $: "local.selecting ? 'primary' : 'ghost'" },
+                variant: { $: "local.selecting ? 'solid' : 'ghost'" },
                 onClick: { $toggleLocal: 'selecting' },
               },
               children: [{ type: 'we-icon', props: { name: 'selection' } }, 'Select'],
@@ -478,14 +478,14 @@ export const canvasBar: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'sm',
-                variant: { $: "local.legendOpen ? 'secondary' : 'ghost'" },
+                variant: { $: "local.legendOpen ? 'soft' : 'ghost'" },
                 onClick: { $toggleLocal: 'legendOpen' },
               },
               children: [{ type: 'we-icon', props: { name: 'palette' } }, 'Key'],
             },
             {
               type: 'we-button',
-              props: { size: 'sm', variant: 'secondary', onClick: { $setLocal: 'newCardOpen', value: true } },
+              props: { size: 'sm', variant: 'soft', onClick: { $setLocal: 'newCardOpen', value: true } },
               children: [{ type: 'we-icon', props: { name: 'note' } }, 'Card'],
             },
             /*

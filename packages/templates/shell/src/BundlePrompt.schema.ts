@@ -182,7 +182,7 @@ const newInVersion: SchemaNode = {
         },
         then: {
           type: 'we-alert',
-          props: { variant: 'warning' },
+          props: { tone: 'warning' },
           children: [
             {
               type: 'Column',
@@ -228,7 +228,7 @@ const missingModules: SchemaNode = {
     condition: { $: `count(${pending}.modulesNotInBuild)` },
     then: {
       type: 'we-alert',
-      props: { variant: 'warning' },
+      props: { tone: 'warning' },
       children: [
         {
           type: 'we-text',
@@ -250,7 +250,7 @@ const blocked: SchemaNode = {
     condition: { $: `count(${pending}.blocked)` },
     then: {
       type: 'we-alert',
-      props: { variant: 'warning' },
+      props: { tone: 'warning' },
       children: [
         {
           type: 'we-text',
@@ -407,7 +407,7 @@ export const bundlePrompt: SchemaNode = {
               type: '$if',
               props: {
                 condition: { $: `${pending}.unchanged` },
-                then: { type: 'we-button', props: { variant: 'secondary', onClick: close }, children: ['Close'] },
+                then: { type: 'we-button', props: { variant: 'soft', onClick: close }, children: ['Close'] },
                 else: {
                   type: 'Row',
                   props: { gap: '200' },
@@ -420,7 +420,7 @@ export const bundlePrompt: SchemaNode = {
                     {
                       type: 'we-button',
                       props: {
-                        variant: 'primary',
+                        variant: 'solid',
                         loading: { $: 'bundleStore.busy' },
                         disabled: { $: 'bundleStore.busy' },
                         onClick: { $action: 'bundleStore.confirmInstall' },

@@ -13,11 +13,6 @@ import { CHROMATIC_FAMILIES, type ChromaticFamily, COLOR_FAMILIES } from './fami
 /** Every colour family with a ramp: neutral, the semantic families and the palette. See families.ts. */
 export type ColorHueToken = 'neutral' | ChromaticFamily;
 
-/**
- * The colour families a component's colour prop takes, until `tone` replaces it. `primary` here is
- * the accent; the component maps it.
- */
-export type ComponentVariant = 'neutral' | 'primary' | 'success' | 'warning' | 'danger';
 export type ColorBaseToken = 'white' | 'black';
 export type ColorConfigToken = 'polarity' | 'lightnessFloor' | 'lightnessCeiling' | 'saturation' | 'neutralSaturation';
 export type ColorLightnessToken =

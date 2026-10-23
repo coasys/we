@@ -543,7 +543,7 @@ export default class ScrollArea extends DesignSystemElement {
           ? html`
               <div part="jump-start">
                 <we-button
-                  variant="secondary"
+                  variant="soft"
                   size="sm"
                   square
                   r="pill"
@@ -562,7 +562,7 @@ export default class ScrollArea extends DesignSystemElement {
           ? html`
               <div part="jump-end">
                 <we-button
-                  variant="secondary"
+                  variant="soft"
                   size="sm"
                   square
                   r="pill"

@@ -99,7 +99,7 @@ const pageHeader: SchemaNode = {
     {
       type: 'we-button',
       props: {
-        variant: 'secondary',
+        variant: 'soft',
         size: 'sm',
         onClick: { $action: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
       },
@@ -215,7 +215,7 @@ const locationRow: SchemaNode = attributeRow({
     children: [
       {
         type: 'we-button',
-        props: { variant: 'secondary', size: 'sm', onClick: { $toggleLocal: 'editLocation' } },
+        props: { variant: 'soft', size: 'sm', onClick: { $toggleLocal: 'editLocation' } },
         children: [{ $: "local.editLocation ? 'Hide' : 'Edit'" }],
       },
       {
@@ -228,7 +228,8 @@ const locationRow: SchemaNode = attributeRow({
             type: 'we-button',
             props: {
               size: 'sm',
-              variant: 'danger',
+              variant: 'solid',
+              tone: 'danger',
               onClick: [
                 { $setLocal: 'location', value: null },
                 { $action: 'spaceStore.updateSpaceMeta', args: [{ location: null }, { $: 'space.uuid' }] },
@@ -500,7 +501,7 @@ const shareSection: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                variant: 'secondary',
+                variant: 'soft',
                 size: 'sm',
                 onClick: { $action: 'spaceStore.copyShareLink', args: [{ $: 'space.uuid' }] },
               },
@@ -550,7 +551,7 @@ const shareSection: SchemaNode = {
                     {
                       type: 'we-button',
                       props: {
-                        variant: 'secondary',
+                        variant: 'soft',
                         size: 'sm',
                         onClick: { $action: 'spaceStore.copyGuestLink', args: [{ $: 'space.uuid' }] },
                       },

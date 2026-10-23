@@ -62,7 +62,7 @@ type SolidDropdownMenuProps = Omit<DropdownMenuProps, 'items'> & {
  *     { type: 'divider' },
  *     { type: 'toggle', id: 'pin', label: 'Pinned', icon: 'push-pin', checked: isPinned, onToggle: togglePin },
  *     { type: 'divider' },
- *     { id: 'delete', label: 'Delete', icon: 'trash', variant: 'danger', onAction: handleDelete },
+ *     { id: 'delete', label: 'Delete', icon: 'trash', tone: 'danger', onAction: handleDelete },
  *   ]}
  * />
  * ```
@@ -184,7 +184,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
       <we-menu-item
         on:select={() => handleAction(getItem())}
         selected={Boolean(getItem().selected)}
-        variant={getItem().variant || 'default'}
+        tone={getItem().tone}
         opacity={getItem().disabled ? 0.5 : 1}
         cursor={getItem().disabled ? 'not-allowed' : 'pointer'}
         px={metrics().px}
@@ -386,7 +386,8 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
       */
       slot={slot}
       size={props.size}
-      variant={props.triggerVariant ?? 'secondary'}
+      variant={props.triggerVariant ?? 'soft'}
+      tone={props.triggerTone}
       square={iconOnly()}
       aria-label={iconOnly() ? (props.triggerTitle ?? 'Options') : undefined}
     >

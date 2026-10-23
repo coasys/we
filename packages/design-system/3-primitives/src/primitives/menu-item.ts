@@ -6,7 +6,6 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { MenuItemVariant } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   cursor: 'pointer',
@@ -38,14 +37,16 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   },
 };
 
-const VARIANT_DEFAULTS: Partial<Record<MenuItemVariant, Partial<DesignSystemProps>>> = {
-  danger: {
-    color: 'danger-text',
-    hoverProps: { bg: 'danger-soft', color: 'danger-text' },
-    // Restated rather than inherited: a variant's own state props replace the defaults wholesale,
-    // so omitting this would land a destructive item on the neutral fill when tabbed to.
-    focusProps: { bg: 'danger-soft', color: 'danger-text', ring: 'inset 0 0 0 2px var(--we-ring-color)' },
-  },
+/*
+  A toned item — `tone: 'danger'` for a destructive one — draws its words and its hover in the
+  accent's roles, which the tone has re-pointed at its family. An untoned item is the plain row.
+*/
+const TONED_DEFAULTS: Partial<DesignSystemProps> = {
+  color: 'accent-text',
+  hoverProps: { bg: 'accent-soft', color: 'accent-text' },
+  // Restated rather than inherited: these state props replace the defaults wholesale, so omitting
+  // this would land a destructive item on the neutral fill when tabbed to.
+  focusProps: { bg: 'accent-soft', color: 'accent-text', ring: 'inset 0 0 0 2px var(--we-ring-color)' },
 };
 
 const styles = css`
@@ -62,7 +63,7 @@ const styles = css`
 
 /**
  * Single actionable item inside a we-menu.
- * Supports selected, active, and danger states.
+ * Supports selected and active states; `tone: 'danger'` marks a destructive item.
  */
 @customElement('we-menu-item')
 export default class MenuItem extends DesignSystemElement {
@@ -70,7 +71,6 @@ export default class MenuItem extends DesignSystemElement {
 
   @property({ type: Boolean, reflect: true }) selected = false;
   @property({ type: Boolean, reflect: true }) active = false;
-  @property({ type: String, reflect: true }) variant: MenuItemVariant = 'default';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {
@@ -81,7 +81,7 @@ export default class MenuItem extends DesignSystemElement {
     const ctor = this.constructor as typeof MenuItem & { __dsLayers: readonly DSLayer[] };
     const activeKeys = getKeysForLayers([...ctor.__dsLayers]);
     const usedProps = filterProps(this as unknown as Record<string, unknown>, activeKeys);
-    const variantDefaults = VARIANT_DEFAULTS[this.variant] ?? {};
+    const variantDefaults = this.tone && this.tone !== 'neutral' ? TONED_DEFAULTS : {};
     return mergeProps(usedProps, mergeProps(variantDefaults, DEFAULT_PROPS)) as Partial<DesignSystemProps>;
   }
 

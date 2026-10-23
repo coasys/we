@@ -96,7 +96,7 @@ export const installPrompt: SchemaNode = confirmModal({
         condition: { $: 'count(templateStore.pendingInstall.blocked)' },
         then: {
           type: 'we-alert',
-          props: { variant: 'warning' },
+          props: { tone: 'warning' },
           children: [
             {
               type: 'we-text',

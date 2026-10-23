@@ -10,9 +10,9 @@ interface TaskDisplayProps {
   assignee: string | undefined;
 }
 
-type TagVariant = 'neutral' | 'primary' | 'success' | 'warning' | 'danger';
+type ToneName = 'neutral' | 'warning' | 'danger';
 
-const PRIORITY_VARIANTS: Record<string, TagVariant> = {
+const PRIORITY_TONES: Record<string, ToneName> = {
   low: 'neutral',
   medium: 'warning',
   high: 'danger',
@@ -34,7 +34,7 @@ export function TaskDisplay(props: TaskDisplayProps) {
         </we-text>
         <Row gap="200" ay="center">
           <Show when={props.priority}>
-            <we-tag variant={PRIORITY_VARIANTS[props.priority!] || 'neutral'} fontSize="200">
+            <we-tag tone={PRIORITY_TONES[props.priority!]} fontSize="200">
               {props.priority}
             </we-tag>
           </Show>

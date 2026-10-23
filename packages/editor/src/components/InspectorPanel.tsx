@@ -1110,7 +1110,7 @@ function IconSegmentedRow(props: { propKey: string; options: string[]; value: st
               title={opt}
               size="sm"
               square
-              variant={selected(opt) ? 'secondary' : 'outline'}
+              variant={selected(opt) ? 'soft' : 'outline'}
               onClick={() => props.onChange(selected(opt) ? '' : opt)}
             >
               {icon ? <we-icon name={icon} /> : opt.slice(0, 3)}
@@ -1764,7 +1764,7 @@ function BgImagePicker(props: {
                   {(t) => (
                     <we-button
                       size="xs"
-                      variant={tab() === t.key ? 'secondary' : 'ghost'}
+                      variant={tab() === t.key ? 'soft' : 'ghost'}
                       flex="1"
                       onClick={() => setTab(t.key)}
                     >

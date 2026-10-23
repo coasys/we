@@ -1044,7 +1044,7 @@ function newType(opts: Resolved, { labelled, under }: { labelled: boolean; under
   const button: SchemaNode = {
     type: 'we-button',
     props: {
-      variant: labelled ? 'secondary' : 'bare',
+      variant: labelled ? 'soft' : 'bare',
       size: opts.size === 'xs' && !labelled ? 'xs' : 'sm',
       ...(labelled ? {} : { color: 'text-faint', hoverProps: { color: 'text' } }),
       label: 'New reaction type',

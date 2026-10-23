@@ -610,7 +610,7 @@ const generateButton: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: 'secondary',
+            variant: 'soft',
             loading: { $: 'shapeStore.generating' },
             // 'none' is the only state with nothing to work from. A generation that would discard
             // written rows stays clickable and asks instead — refusing the click outright is what made
@@ -909,7 +909,7 @@ const shapeWizardModal: SchemaNode = {
                 condition: { $: 'shapeStore.extractionNeedsIdentity' },
                 then: {
                   type: 'we-alert',
-                  props: { variant: 'warning' },
+                  props: { tone: 'warning' },
                   children: [
                     'Without an identifying field below, every extraction pass will create fresh entries rather than recognising ones it already made.',
                   ],
@@ -990,7 +990,7 @@ const shapeWizardModal: SchemaNode = {
                 {
                   type: '$each',
                   props: { items: { $: 'shapeStore.draftErrors' }, as: 'error' },
-                  children: [{ type: 'we-alert', props: { variant: 'danger' }, children: [{ $: 'error' }] }],
+                  children: [{ type: 'we-alert', props: { tone: 'danger' }, children: [{ $: 'error' }] }],
                 },
               ],
             },
@@ -1011,7 +1011,7 @@ const shapeWizardModal: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: 'primary',
+            variant: 'solid',
             loading: { $: 'shapeStore.savingShape' },
             disabled: { $: 'shapeStore.savingShape' },
             onClick: { $action: 'shapeStore.saveShapeDraft' },
@@ -1062,8 +1062,8 @@ const hintEditorModal: SchemaNode = {
           type: '$if',
           props: {
             condition: { $: 'shapeStore.hintEditor.customized' },
-            then: { type: 'we-badge', props: { variant: 'primary' }, children: ['Customized for this space'] },
-            else: { type: 'we-badge', props: { variant: 'neutral' }, children: ['Using defaults'] },
+            then: { type: 'we-badge', props: { tone: 'accent' }, children: ['Customized for this space'] },
+            else: { type: 'we-badge', props: {}, children: ['Using defaults'] },
           },
         },
       ],
@@ -1157,7 +1157,7 @@ const hintEditorModal: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                variant: 'primary',
+                variant: 'solid',
                 loading: { $: 'shapeStore.hintBusy' },
                 disabled: { $: 'shapeStore.hintBusy' },
                 onClick: { $action: 'shapeStore.saveHintEditor' },
@@ -1205,7 +1205,7 @@ const shapeRow: SchemaNode = {
                     { type: 'we-text', props: { fontWeight: 'semibold' }, children: [{ $: 'shape.name' }] },
                     {
                       type: 'we-badge',
-                      props: { variant: 'neutral', size: 'xs' },
+                      props: { size: 'xs' },
                       children: [
                         {
                           $: "`${shape.propertyCount} ${plural(shape.propertyCount, 'field', 'fields')} · v${shape.version}`",
@@ -1279,7 +1279,7 @@ const shapeRow: SchemaNode = {
         then: {
           type: '$each',
           props: { items: { $: 'shape.problems' }, as: 'problem' },
-          children: [{ type: 'we-alert', props: { variant: 'warning' }, children: [{ $: 'problem' }] }],
+          children: [{ type: 'we-alert', props: { tone: 'warning' }, children: [{ $: 'problem' }] }],
         },
       },
     },
@@ -1297,7 +1297,7 @@ const hintEntityRow: SchemaNode = {
       children: [
         { type: 'we-icon', props: { name: 'package', color: 'text-muted' } },
         { type: 'we-text', children: [{ $: 'entity.entity' }] },
-        { type: 'we-badge', props: { variant: 'neutral', size: 'xs' }, children: ['Built-in'] },
+        { type: 'we-badge', props: { size: 'xs' }, children: ['Built-in'] },
       ],
     },
     {
@@ -1354,7 +1354,7 @@ export const modelsSection: SchemaNode = {
     description: 'The kinds of content this space defines — its own record types, and how AI interprets them.',
     aside: {
       type: 'we-button',
-      props: { variant: 'secondary', size: 'sm', onClick: { $action: 'shapeStore.openShapeWizard' } },
+      props: { variant: 'soft', size: 'sm', onClick: { $action: 'shapeStore.openShapeWizard' } },
       children: [
         { type: 'we-icon', props: { name: 'plus' } },
         { type: 'we-text', children: ['New model'] },

@@ -143,7 +143,7 @@ export const deviceSettings: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                variant: 'secondary',
+                variant: 'soft',
                 size: 'sm',
                 alignSelf: 'start',
                 onClick: { $action: 'modules.call.nameDevices' },
@@ -187,7 +187,7 @@ export const deviceSettingsModal: SchemaNode = {
           children: [
             {
               type: 'we-button',
-              props: { variant: 'primary', onClick: { $action: 'modules.call.closeDeviceSettings' } },
+              props: { variant: 'solid', onClick: { $action: 'modules.call.closeDeviceSettings' } },
               children: ['Done'],
             },
           ],

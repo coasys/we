@@ -80,7 +80,7 @@
                                   "type": "we-button",
                                   "props": {
                                     "variant": {
-                                      "$": "contains(routeStore.currentPath, view.segment) ? 'secondary' : 'ghost'"
+                                      "$": "contains(routeStore.currentPath, view.segment) ? 'soft' : 'ghost'"
                                     },
                                     "width": "100%",
                                     "ax": "start",
@@ -145,7 +145,7 @@
                       "type": "we-button",
                       "props": {
                         "size": "sm",
-                        "variant": { "$": "local.category == '' ? 'primary' : 'outline'" },
+                        "variant": { "$": "local.category == '' ? 'solid' : 'outline'" },
                         "onClick": { "$setLocal": "category", "value": "" }
                       },
                       "children": ["Everything"]
@@ -158,7 +158,7 @@
                           "type": "we-button",
                           "props": {
                             "size": "sm",
-                            "variant": { "$": "local.category == c ? 'primary' : 'outline'" },
+                            "variant": { "$": "local.category == c ? 'solid' : 'outline'" },
                             "onClick": { "$setLocal": "category", "value": { "$": "c" } }
                           },
                           "children": [
@@ -176,7 +176,7 @@
                 {
                   "type": "we-button",
                   "props": {
-                    "variant": "primary",
+                    "variant": "solid",
                     "size": "sm",
                     "flexShrink": "0",
                     "onClick": { "$action": "recordStore.openRecordForm", "args": ["Item"] }
@@ -267,7 +267,7 @@
                                   "children": [
                                     {
                                       "type": "we-badge",
-                                      "props": { "size": "sm", "variant": "warning" },
+                                      "props": { "size": "sm", "tone": "warning" },
                                       "children": [{ "$": "local.loans.find(l, l.item.id == it.id).status" }]
                                     },
                                     {
@@ -288,7 +288,7 @@
                                       "type": "we-badge",
                                       "props": {
                                         "size": "sm",
-                                        "variant": { "$": "it.condition == 'needs-repair' ? 'danger' : 'success'" }
+                                        "tone": { "$": "it.condition == 'needs-repair' ? 'danger' : 'success'" }
                                       },
                                       "children": [
                                         { "$": "it.condition == 'needs-repair' ? 'in repair' : 'available'" }
@@ -955,7 +955,7 @@
                                                             {
                                                               "type": "we-button",
                                                               "props": {
-                                                                "variant": "secondary",
+                                                                "variant": "soft",
                                                                 "size": "xs",
                                                                 "square": true,
                                                                 "label": { "$": "`Remove ${entry.label}`" },
@@ -1146,7 +1146,7 @@
                                                         "then": {
                                                           "type": "we-button",
                                                           "props": {
-                                                            "variant": "secondary",
+                                                            "variant": "soft",
                                                             "size": "sm",
                                                             "onClick": {
                                                               "$action": "recordStore.openRelationForm",
@@ -1209,7 +1209,7 @@
                     {
                       "type": "we-button",
                       "props": {
-                        "variant": "secondary",
+                        "variant": "soft",
                         "onClick": {
                           "$if": {
                             "condition": { "$": "recordStore.recordDraftDirty" },
@@ -1223,7 +1223,7 @@
                     {
                       "type": "we-button",
                       "props": {
-                        "variant": "primary",
+                        "variant": "solid",
                         "loading": { "$": "recordStore.savingRecord" },
                         "disabled": { "$": "recordStore.savingRecord" },
                         "onClick": { "$action": "recordStore.saveRecord" }
@@ -1595,17 +1595,14 @@
                             {
                               "type": "we-button",
                               "props": {
-                                "variant": "secondary",
+                                "variant": "soft",
                                 "onClick": { "$action": "recordStore.cancelRelationForm" }
                               },
                               "children": ["Cancel"]
                             },
                             {
                               "type": "we-button",
-                              "props": {
-                                "variant": "primary",
-                                "onClick": { "$action": "recordStore.saveRelationForm" }
-                              },
+                              "props": { "variant": "solid", "onClick": { "$action": "recordStore.saveRelationForm" } },
                               "children": ["Add"]
                             }
                           ]
@@ -1655,7 +1652,7 @@
                             {
                               "type": "we-button",
                               "props": {
-                                "variant": "secondary",
+                                "variant": "soft",
                                 "onClick": { "$setLocal": "confirmDiscardOpen", "value": false }
                               },
                               "children": ["Keep editing"]
@@ -1663,7 +1660,8 @@
                             {
                               "type": "we-button",
                               "props": {
-                                "variant": "danger",
+                                "variant": "solid",
+                                "tone": "danger",
                                 "onClick": {
                                   "$action": "recordStore.cancelRecordForm",
                                   "onSuccess": [{ "$setLocal": "confirmDiscardOpen", "value": false }]
@@ -1825,7 +1823,7 @@
                                   "type": "we-button",
                                   "props": {
                                     "size": "sm",
-                                    "variant": "primary",
+                                    "variant": "solid",
                                     "onClick": {
                                       "$action": "record.update",
                                       "args": ["Loan", { "$": "loan.id" }, { "status": "out" }]
@@ -1837,7 +1835,7 @@
                                   "type": "we-button",
                                   "props": {
                                     "size": "sm",
-                                    "variant": "secondary",
+                                    "variant": "soft",
                                     "onClick": {
                                       "$action": "record.update",
                                       "args": ["Loan", { "$": "loan.id" }, { "status": "returned" }]

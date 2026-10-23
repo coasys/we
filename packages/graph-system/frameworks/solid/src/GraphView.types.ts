@@ -115,7 +115,7 @@ export interface GraphViewProps {
   /** The icon above it. Defaults to `graph`. */
   emptyIcon?: string;
   /**
-   * Draw that icon in a gradient — a `we-icon` gradient name, `primary` being the one every template
+   * Draw that icon in a gradient — a `we-icon` gradient name, `accent` being the one every template
    * has — rather than flat and faint.
    *
    * The distinction the design system draws everywhere else: gradient where there is something to do

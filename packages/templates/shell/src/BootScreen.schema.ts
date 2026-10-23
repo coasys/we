@@ -142,7 +142,7 @@ const accountError: SchemaNode = {
     condition: { $: 'accountStore.error' },
     then: {
       type: 'we-alert',
-      props: { variant: 'danger', maxWidth: '320px' },
+      props: { tone: 'danger', maxWidth: '320px' },
       children: [{ $: 'accountStore.error' }],
     },
   },
@@ -483,7 +483,7 @@ const unlockForm: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                variant: 'primary',
+                variant: 'solid',
                 // Gated on the value, not on a validation rule. There is nothing to submit until
                 // something is typed, which is a precondition rather than a judgement — and the
                 // OS sign-in screens this follows all hold the button until there is.
@@ -594,7 +594,7 @@ const bootFailure: SchemaNode = {
         },
         {
           type: 'we-button',
-          props: { text: 'Try again', variant: 'primary', onClick: { $action: 'sessionStore.retryBoot' } },
+          props: { text: 'Try again', variant: 'solid', onClick: { $action: 'sessionStore.retryBoot' } },
         },
       ],
     },

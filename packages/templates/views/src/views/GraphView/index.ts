@@ -210,7 +210,7 @@ const picker = (field: string, options: readonly { value: string; label: string 
     type: 'we-button',
     props: {
       size: 'sm',
-      variant: expr`${{ $: `local.${field}` }} == ${option.value} ? 'primary' : 'ghost'`,
+      variant: expr`${{ $: `local.${field}` }} == ${option.value} ? 'solid' : 'ghost'`,
       onClick: { $setLocal: field, value: option.value },
     },
     children: [option.label],
@@ -377,7 +377,7 @@ export const graphView: TemplateSchema = {
                       type: 'we-button',
                       props: {
                         size: 'sm',
-                        variant: { $: "local.connecting ? 'primary' : 'ghost'" },
+                        variant: { $: "local.connecting ? 'solid' : 'ghost'" },
                         onClick: { $toggleLocal: 'connecting' },
                       },
                       children: [{ type: 'we-icon', props: { name: 'flow-arrow' } }, 'Connect'],
@@ -423,7 +423,7 @@ export const graphView: TemplateSchema = {
                       type: 'we-button',
                       props: {
                         size: 'sm',
-                        variant: 'secondary',
+                        variant: 'soft',
                         // `args` given explicitly, and not omitted: a `$action` with no args forwards
                         // the handler's own arguments, so the button would call this with the click
                         // event as its optional `entity`. The store guards against that too — this is

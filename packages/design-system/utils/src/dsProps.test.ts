@@ -371,3 +371,21 @@ describe('what the state and tier axes cover', () => {
     }
   });
 });
+
+describe('tone on a layout component', () => {
+  /*
+    A Card or a Column has no Lit host to set variables on, so `buildLayoutStyles` writes them into
+    the inline style it returns — first, so a `bg: 'accent-soft'` on the same element resolves against
+    the toned accent.
+  */
+  it('re-points the accent in the inline style', () => {
+    const style = buildLayoutStyles({ tone: 'danger', bg: 'accent-soft' }, 'column');
+    expect(style['--we-role-accent']).toBe('var(--we-role-danger)');
+    expect(style['--we-role-accent-soft']).toBe('var(--we-role-danger-soft)');
+  });
+
+  it('writes nothing for an untoned one', () => {
+    const style = buildLayoutStyles({}, 'column');
+    expect(Object.keys(style).some((k) => k.startsWith('--we-role-'))).toBe(false);
+  });
+});

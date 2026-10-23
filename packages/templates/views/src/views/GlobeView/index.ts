@@ -250,7 +250,7 @@ export const globeView: TemplateSchema = {
                 {
                   type: 'we-button',
                   props: {
-                    variant: { $: "local.showTimeline ? 'primary' : 'secondary'" },
+                    variant: { $: "local.showTimeline ? 'solid' : 'soft'" },
                     height: '40px',
                     onClick: [
                       {
@@ -283,7 +283,7 @@ export const globeView: TemplateSchema = {
                   type: 'we-button',
                   props: {
                     text: 'Create New Space',
-                    variant: 'primary',
+                    variant: 'solid',
                     height: '40px',
                     onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
                   },

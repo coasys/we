@@ -176,7 +176,7 @@ export const vocabularyToggle: SchemaNode = {
     {
       type: 'we-button',
       props: {
-        variant: { $: `${VOCAB_ON} ? 'secondary' : 'ghost'` },
+        variant: { $: `${VOCAB_ON} ? 'soft' : 'ghost'` },
         onClick: { $action: 'routeStore.setParam', args: [VOCAB_PARAM, { $: `${VOCAB_ON} ? null : '1'` }] },
       },
       children: [
@@ -204,7 +204,7 @@ export function vocabularyEditLink(cardType: string): SchemaNode {
         type: 'we-button',
         props: {
           size: 'sm',
-          variant: 'secondary',
+          variant: 'soft',
           // About this record, so the settings land on its row — see `spaceSettingsFocus`.
           onClick: { $action: 'shellStore.openSpaceSettings', args: ['vocabulary', { $: 'row.id' }] },
         },

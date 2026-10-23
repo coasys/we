@@ -166,7 +166,7 @@ export default class FileUpload extends DesignSystemElement {
                         <span>${file.name}</span>
                         <we-button
                           part="remove"
-                          variant="secondary"
+                          variant="soft"
                           aria-label="Remove file"
                           @click=${() => this._removeFile(i)}
                         >

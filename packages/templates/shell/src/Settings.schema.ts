@@ -112,7 +112,7 @@ const appSection: SchemaNode = {
                       type: '$if',
                       props: {
                         condition: { $: 'app.value == templateStore.appTemplateId' },
-                        then: { type: 'we-tag', props: { variant: 'primary' }, children: ['In use'] },
+                        then: { type: 'we-tag', props: { tone: 'accent' }, children: ['In use'] },
                       },
                     },
                     {
@@ -181,7 +181,7 @@ const setUpPicker: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                variant: 'primary',
+                variant: 'solid',
                 disabled: { $: '!bundleStore.spaceChoices.exists(c, c.chosen)' },
                 loading: { $: 'bundleStore.busy' },
                 onClick: { $action: 'bundleStore.confirmSetUp' },
@@ -249,7 +249,7 @@ const appsSection: SchemaNode = {
                 then: {
                   type: 'we-button',
                   props: {
-                    variant: 'secondary',
+                    variant: 'soft',
                     size: 'sm',
                     disabled: { $: 'bundleStore.busy' },
                     onClick: { $action: 'bundleStore.openSetUp', args: [{ $: 'app.id' }] },
@@ -262,7 +262,7 @@ const appsSection: SchemaNode = {
               type: '$if',
               props: {
                 condition: { $: "app.setUp == 'done'" },
-                then: { type: 'we-tag', props: { variant: 'success' }, children: ['Set up in your spaces'] },
+                then: { type: 'we-tag', props: { tone: 'success' }, children: ['Set up in your spaces'] },
               },
             },
             {
@@ -374,7 +374,7 @@ const templatesSection: SchemaNode = {
                     condition: { $: 'template.isBuiltIn' },
                     then: {
                       type: 'we-tag',
-                      props: { variant: 'neutral' },
+                      props: {},
                       children: ['Built-in'],
                     },
                   },
@@ -448,7 +448,7 @@ const templatesSection: SchemaNode = {
                     condition: { $: 'template.fromApp' },
                     then: {
                       type: 'we-tag',
-                      props: { variant: 'neutral' },
+                      props: {},
                       children: [{ $: '`From ${template.fromApp}`' }],
                     },
                   },
@@ -789,7 +789,7 @@ const themesSection: SchemaNode = {
                         condition: { $: 'theme.isBuiltIn' },
                         then: {
                           type: 'we-tag',
-                          props: { variant: 'neutral' },
+                          props: {},
                           children: ['Built-in'],
                         },
                       },
@@ -1193,7 +1193,7 @@ const modulesSection: SchemaNode = {
       'Template components',
       'These supply pieces that templates build with, and have no chrome of their own. They stay on \u2014 a template that mounts one would break without it, and a template that has no use for one never loads it.',
       'capability',
-      { type: 'we-tag', props: { variant: 'neutral' }, children: ['Always on'] },
+      { type: 'we-tag', props: {}, children: ['Always on'] },
     ),
     agentModuleSettingsSection,
   ],
@@ -1218,7 +1218,7 @@ const spaceActions: SchemaNode = {
       type: 'we-button',
       props: {
         text: 'Create New Space',
-        variant: 'primary',
+        variant: 'solid',
         height: '40px',
         onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
       },
@@ -1227,7 +1227,7 @@ const spaceActions: SchemaNode = {
       type: 'we-button',
       props: {
         text: 'Join a Space',
-        variant: 'secondary',
+        variant: 'soft',
         height: '40px',
         onClick: { $action: 'shellStore.setJoinSpaceOpen', args: [true] },
       },
@@ -1280,7 +1280,7 @@ function navItem(label: string, icon: string, path: string): SchemaNode {
   return {
     type: 'we-button',
     props: {
-      variant: expr`${selected} ? 'secondary' : 'ghost'`,
+      variant: expr`${selected} ? 'soft' : 'ghost'`,
       width: '100%',
       ax: 'start',
       onClick: { $action: 'routeStore.navigate', args: [path] },
