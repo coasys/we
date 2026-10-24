@@ -25,7 +25,10 @@ fn os_random(out: &mut [u8]) {
 
 impl DesktopVault {
     pub fn new(store: Box<dyn SecretStore>) -> Self {
-        DesktopVault { store, kdf: Kdf::DESKTOP }
+        DesktopVault {
+            store,
+            kdf: Kdf::DESKTOP,
+        }
     }
 
     /// With another Argon2id cost (tests).
@@ -47,7 +50,10 @@ impl DesktopVault {
     /// The vault for one flow, with the passphrase the identity window collected (ignored where the
     /// OS unlocks the item itself). The passphrase is wiped when the returned value drops.
     pub fn unlocking<'a>(&'a self, passphrase: Option<Secret<String>>) -> Unlocking<'a> {
-        Unlocking { vault: self, passphrase }
+        Unlocking {
+            vault: self,
+            passphrase,
+        }
     }
 
     /// Whether an item for `scid` is held, without an unlock (no prompt, no passphrase).
@@ -55,9 +61,18 @@ impl DesktopVault {
         Ok(self.store.get(&item_name(scid))?.is_some())
     }
 
-    fn read(&self, scid: &str, passphrase: Option<&str>, why: MasterUse) -> Result<CustodyItem, VaultError> {
+    fn read(
+        &self,
+        scid: &str,
+        passphrase: Option<&str>,
+        why: MasterUse,
+    ) -> Result<CustodyItem, VaultError> {
         log::info!("custody: read for {why:?}");
-        let bytes = Zeroizing::new(self.store.get(&item_name(scid))?.ok_or(VaultError::NotFound)?);
+        let bytes = Zeroizing::new(
+            self.store
+                .get(&item_name(scid))?
+                .ok_or(VaultError::NotFound)?,
+        );
         if self.store.kind().unlocks_itself() {
             return CustodyItem::from_bytes(&bytes);
         }
@@ -90,14 +105,26 @@ impl Unlocking<'_> {
 }
 
 impl Vault for Unlocking<'_> {
-    fn store_master(&self, scid: &str, index: u32, secret: Secret<[u8; 32]>) -> Result<(), VaultError> {
-        let item = CustodyItem { scid: scid.to_string(), index, master: Zeroizing::new(*secret.expose()) };
+    fn store_master(
+        &self,
+        scid: &str,
+        index: u32,
+        secret: Secret<[u8; 32]>,
+    ) -> Result<(), VaultError> {
+        let item = CustodyItem {
+            scid: scid.to_string(),
+            index,
+            master: Zeroizing::new(*secret.expose()),
+        };
         self.vault.write(&item, self.passphrase())
     }
 
     fn unlock(&self, scid: &str, why: MasterUse, now: u64) -> Result<Unlocked, VaultError> {
         let item = self.vault.read(scid, self.passphrase(), why)?;
-        Ok(Unlocked::new(Box::new(KeySigner::new(&item.master, item.index)), now))
+        Ok(Unlocked::new(
+            Box::new(KeySigner::new(&item.master, item.index)),
+            now,
+        ))
     }
 }
 
@@ -106,7 +133,11 @@ mod tests {
     use super::*;
     use crate::store::{MemoryStore, StoreKind};
 
-    const CHEAP: Kdf = Kdf { m_kib: 64, t: 1, p: 1 };
+    const CHEAP: Kdf = Kdf {
+        m_kib: 64,
+        t: 1,
+        p: 1,
+    };
 
     fn pass(p: &str) -> Option<Secret<String>> {
         Some(Secret::new(p.to_string()))
@@ -134,17 +165,33 @@ mod tests {
         assert!(vault.needs_passphrase());
         let flow = vault.unlocking(pass("a passphrase of length"));
         assert!(!vault.holds("QmScid").unwrap());
-        flow.store_master("QmScid", 0, Secret::new([9u8; 32])).unwrap();
+        flow.store_master("QmScid", 0, Secret::new([9u8; 32]))
+            .unwrap();
         // At rest the key is sealed: its bytes are nowhere in the store.
         assert!(!store.all_bytes().windows(32).any(|w| w == [9u8; 32]));
         assert!(vault.holds("QmScid").unwrap());
         let unlocked = flow.unlock("QmScid", MasterUse::Link, 10).unwrap();
         let expected = ed25519_signing_key_multikey([9u8; 32]);
-        assert_eq!(ad4m_identity_core::build::Signer::key(unlocked.signer(10).unwrap()), expected);
+        assert_eq!(
+            ad4m_identity_core::build::Signer::key(unlocked.signer(10).unwrap()),
+            expected
+        );
 
         // Another flow with the wrong passphrase, or none, cannot use it.
-        assert_eq!(vault.unlocking(pass("not the passphrase!!")).unlock("QmScid", MasterUse::Revoke, 10).err(), Some(VaultError::Cancelled));
-        assert_eq!(vault.unlocking(None).unlock("QmScid", MasterUse::Revoke, 10).err(), Some(VaultError::Cancelled));
+        assert_eq!(
+            vault
+                .unlocking(pass("not the passphrase!!"))
+                .unlock("QmScid", MasterUse::Revoke, 10)
+                .err(),
+            Some(VaultError::Cancelled)
+        );
+        assert_eq!(
+            vault
+                .unlocking(None)
+                .unlock("QmScid", MasterUse::Revoke, 10)
+                .err(),
+            Some(VaultError::Cancelled)
+        );
         assert_eq!(unlocked.signer(10).unwrap().index(), 0);
     }
 
@@ -153,9 +200,20 @@ mod tests {
         let vault = DesktopVault::new(Box::new(MemoryStore::as_kind(StoreKind::Keychain)));
         assert!(!vault.needs_passphrase());
         let flow = vault.unlocking(None);
-        flow.store_master("QmScid", 3, Secret::new([4u8; 32])).unwrap();
-        assert_eq!(flow.unlock("QmScid", MasterUse::Link, 0).unwrap().signer(0).unwrap().index(), 3);
-        assert_eq!(flow.unlock("QmOther", MasterUse::Link, 0).err(), Some(VaultError::NotFound));
+        flow.store_master("QmScid", 3, Secret::new([4u8; 32]))
+            .unwrap();
+        assert_eq!(
+            flow.unlock("QmScid", MasterUse::Link, 0)
+                .unwrap()
+                .signer(0)
+                .unwrap()
+                .index(),
+            3
+        );
+        assert_eq!(
+            flow.unlock("QmOther", MasterUse::Link, 0).err(),
+            Some(VaultError::NotFound)
+        );
     }
 
     fn ed25519_signing_key_multikey(secret: [u8; 32]) -> ad4m_identity_core::Multikey {

@@ -32,14 +32,22 @@ pub struct WrongWindow {
 pub fn require(command: &str, label: &str) -> Result<(), WrongWindow> {
     match COMMANDS.iter().find(|(name, _)| *name == command) {
         Some((_, window)) if *window == label => Ok(()),
-        _ => Err(WrongWindow { command: command.into(), label: label.into() }),
+        _ => Err(WrongWindow {
+            command: command.into(),
+            label: label.into(),
+        }),
     }
 }
 
 /// Whether the identity window may navigate to `url`: its own bundle only (AR-03 4.4.2).
 pub fn identity_may_navigate(url: &str) -> bool {
-    let Some((scheme, rest)) = url.split_once("://") else { return false };
-    let (host, path) = rest.split_once('/').map(|(h, p)| (h, format!("/{p}"))).unwrap_or((rest, "/".into()));
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return false;
+    };
+    let (host, path) = rest
+        .split_once('/')
+        .map(|(h, p)| (h, format!("/{p}")))
+        .unwrap_or((rest, "/".into()));
     let own_origin = matches!((scheme, host), ("tauri", "localhost") | ("http", "tauri.localhost") | ("https", "tauri.localhost"))
         // `tauri dev` serves both bundles from Vite.
         || (cfg!(debug_assertions) && scheme == "http" && host == "localhost:1420");
@@ -56,7 +64,12 @@ mod tests {
         assert!(require("identity_public_state", MAIN).is_ok());
         assert!(require("identity_flow_start", IDENTITY).is_ok());
         // The chrome cannot run a flow, and the identity window cannot open another one.
-        for command in ["identity_flow_start", "identity_flow_step", "identity_flow_cancel", "identity_flow_finish"] {
+        for command in [
+            "identity_flow_start",
+            "identity_flow_step",
+            "identity_flow_cancel",
+            "identity_flow_finish",
+        ] {
             assert!(require(command, MAIN).is_err(), "{command} from main");
         }
         assert!(require("identity_open", IDENTITY).is_err());
@@ -66,11 +79,19 @@ mod tests {
 
     #[test]
     fn the_identity_window_stays_in_its_bundle() {
-        assert!(identity_may_navigate("tauri://localhost/identity/index.html"));
-        assert!(identity_may_navigate("http://tauri.localhost/identity/index.html"));
+        assert!(identity_may_navigate(
+            "tauri://localhost/identity/index.html"
+        ));
+        assert!(identity_may_navigate(
+            "http://tauri.localhost/identity/index.html"
+        ));
         assert!(!identity_may_navigate("tauri://localhost/index.html"));
-        assert!(!identity_may_navigate("https://example.org/identity/index.html"));
-        assert!(!identity_may_navigate("tauri://localhost/identity/../index.html"));
+        assert!(!identity_may_navigate(
+            "https://example.org/identity/index.html"
+        ));
+        assert!(!identity_may_navigate(
+            "tauri://localhost/identity/../index.html"
+        ));
         assert!(!identity_may_navigate("javascript:alert(1)"));
     }
 }

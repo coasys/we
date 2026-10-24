@@ -176,10 +176,17 @@ pub fn run() {
     // own CLI reads (`AD4M_IDENTITY_STORE_URL`, `AD4M_IDENTITY_STORE_KEYS`): the staging store for
     // slice 1's demo, a local one in development. Unset, the agent language keeps its own setting,
     // and the custody service cannot make an offer link, which names the store.
-    let identity_store_url = std::env::var("AD4M_IDENTITY_STORE_URL").ok().filter(|s| !s.is_empty());
+    let identity_store_url = std::env::var("AD4M_IDENTITY_STORE_URL")
+        .ok()
+        .filter(|s| !s.is_empty());
     let identity_store_keys = std::env::var("AD4M_IDENTITY_STORE_KEYS")
         .ok()
-        .map(|keys| keys.split(',').map(|k| k.trim().to_string()).filter(|k| !k.is_empty()).collect::<Vec<_>>())
+        .map(|keys| {
+            keys.split(',')
+                .map(|k| k.trim().to_string())
+                .filter(|k| !k.is_empty())
+                .collect::<Vec<_>>()
+        })
         .filter(|keys| !keys.is_empty());
 
     // The custody service: the person's master key, behind the OS unlock, in this process but never

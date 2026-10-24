@@ -49,7 +49,10 @@ pub enum Screen {
     /// The 12 words, to write on paper.
     ShowWords { words: Vec<String> },
     /// Ask for the words at these positions (from 1).
-    ConfirmWords { positions: [usize; 2], error: Option<String> },
+    ConfirmWords {
+        positions: [usize; 2],
+        error: Option<String>,
+    },
     /// Choose the passphrase this computer keeps the master key behind (Linux).
     SetPassphrase { error: Option<String> },
     /// The passphrase, to unlock the master key for this step (Linux).
@@ -92,7 +95,9 @@ impl Screen {
     /// How the step ended, once the screen is a last one.
     pub fn outcome(&self) -> Option<StepOutcome> {
         match self {
-            Screen::IdentityReady { .. } | Screen::Linked { .. } | Screen::Revoked { .. } => Some(StepOutcome::Done),
+            Screen::IdentityReady { .. } | Screen::Linked { .. } | Screen::Revoked { .. } => {
+                Some(StepOutcome::Done)
+            }
             Screen::Failed { .. } => Some(StepOutcome::Failed),
             _ => None,
         }
@@ -112,14 +117,21 @@ pub enum StepOutcome {
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum StepInput {
     WordsWritten,
-    Words { answers: [String; 2] },
-    Passphrase { passphrase: String, confirm: Option<String> },
+    Words {
+        answers: [String; 2],
+    },
+    Passphrase {
+        passphrase: String,
+        confirm: Option<String>,
+    },
     /// Wait for the new device to claim the offer (resolves with `Match`).
     WaitClaim,
     /// The codes match: sign the `add`.
     Confirm,
     /// Revoke, with the passphrase where the computer needs one.
-    Revoke { passphrase: Option<String> },
+    Revoke {
+        passphrase: Option<String>,
+    },
 }
 
 impl std::fmt::Debug for StepInput {
@@ -163,7 +175,10 @@ pub struct ExecutorAddress {
 
 impl std::fmt::Debug for ExecutorAddress {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ExecutorAddress").field("url", &self.url).field("store_url", &self.store_url).finish_non_exhaustive()
+        f.debug_struct("ExecutorAddress")
+            .field("url", &self.url)
+            .field("store_url", &self.store_url)
+            .finish_non_exhaustive()
     }
 }
 
@@ -194,7 +209,10 @@ pub struct CustodyHandle {
 }
 
 impl CustodyHandle {
-    async fn ask<T>(&self, make: impl FnOnce(oneshot::Sender<T>) -> Request) -> Result<T, CustodyError> {
+    async fn ask<T>(
+        &self,
+        make: impl FnOnce(oneshot::Sender<T>) -> Request,
+    ) -> Result<T, CustodyError> {
         let (tx, rx) = oneshot::channel();
         self.tx.send(make(tx)).map_err(|_| CustodyError::Stopped)?;
         rx.await.map_err(|_| CustodyError::Stopped)
@@ -224,7 +242,10 @@ pub fn spawn(vault: DesktopVault, executor: ExecutorAddress) -> CustodyHandle {
     std::thread::Builder::new()
         .name("custody".into())
         .spawn(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("custody runtime");
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("custody runtime");
             runtime.block_on(serve(vault, executor, rx));
         })
         .expect("custody thread");
@@ -243,11 +264,19 @@ async fn connect(address: &ExecutorAddress) -> Result<ViaExecutor<WsRpcClient>, 
 /// Words a person reads, for each way a flow stops.
 fn failed(e: &ClientError) -> Screen {
     let message = match e {
-        ClientError::Vault(VaultError::Cancelled) => "The unlock was cancelled. Nothing changed.".into(),
-        ClientError::Vault(VaultError::NotFound) => "This computer does not keep your master key.".into(),
-        ClientError::Vault(VaultError::Unavailable(why)) => format!("This computer could not keep your master key: {why}"),
+        ClientError::Vault(VaultError::Cancelled) => {
+            "The unlock was cancelled. Nothing changed.".into()
+        }
+        ClientError::Vault(VaultError::NotFound) => {
+            "This computer does not keep your master key.".into()
+        }
+        ClientError::Vault(VaultError::Unavailable(why)) => {
+            format!("This computer could not keep your master key: {why}")
+        }
         ClientError::HasIdentity(did) => format!("This computer already speaks for {did}."),
-        ClientError::OfferEnded(state) => format!("The offer ended ({state}) before it was confirmed. Nothing was added."),
+        ClientError::OfferEnded(state) => {
+            format!("The offer ended ({state}) before it was confirmed. Nothing was added.")
+        }
         ClientError::Rpc(e) => format!("Coasys on this computer answered: {}", e.message),
         other => other.to_string(),
     };
@@ -261,8 +290,12 @@ async fn serve(vault: DesktopVault, address: ExecutorAddress, mut rx: Rx) {
                 let mut reply = Some(reply);
                 match step {
                     IdentityStep::Create => run_create(&vault, &address, &mut rx, &mut reply).await,
-                    IdentityStep::AddDevice => run_link(&vault, &address, &mut rx, &mut reply).await,
-                    IdentityStep::Revoke { key_id } => run_revoke(&vault, &address, &mut rx, &mut reply, key_id).await,
+                    IdentityStep::AddDevice => {
+                        run_link(&vault, &address, &mut rx, &mut reply).await
+                    }
+                    IdentityStep::Revoke { key_id } => {
+                        run_revoke(&vault, &address, &mut rx, &mut reply, key_id).await
+                    }
                 }
             }
             Request::Step(_, reply) => {
@@ -279,7 +312,11 @@ async fn serve(vault: DesktopVault, address: ExecutorAddress, mut rx: Rx) {
 }
 
 async fn public_state(vault: &DesktopVault, address: &ExecutorAddress) -> CustodyPublic {
-    let unlock = if vault.needs_passphrase() { "passphrase" } else { "touch-id-or-password" };
+    let unlock = if vault.needs_passphrase() {
+        "passphrase"
+    } else {
+        "touch-id-or-password"
+    };
     let did = match connect(address).await {
         Ok(executor) => executor.status().await.ok().and_then(|s| s.did),
         Err(_) => None,
@@ -291,7 +328,11 @@ async fn public_state(vault: &DesktopVault, address: &ExecutorAddress) -> Custod
         .filter(|held| *held)
         // The index sits inside the sealed item; slice 1 holds only master #0 (no rotation yet).
         .map(|_| HoldsMaster { index: 0 });
-    CustodyPublic { did, holds_master, unlock }
+    CustodyPublic {
+        did,
+        holds_master,
+        unlock,
+    }
 }
 
 type Reply = Option<oneshot::Sender<Result<Screen, CustodyError>>>;
@@ -337,7 +378,12 @@ fn passphrase_error(problem: PassphraseProblem) -> Option<String> {
 
 // ─── create (AR-03 4.8.1) ───────────────────────────────────────────────────────
 
-async fn run_create(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, reply: &mut Reply) {
+async fn run_create(
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
     let executor = match connect(address).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
@@ -345,25 +391,43 @@ async fn run_create(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx
     // Refuse before showing words that would make nothing: this device speaks for someone already.
     match executor.status().await {
         Ok(status) if status.did.is_some() => {
-            return answer(reply, Ok(failed(&ClientError::HasIdentity(status.did.unwrap_or_default()))))
+            return answer(
+                reply,
+                Ok(failed(&ClientError::HasIdentity(
+                    status.did.unwrap_or_default(),
+                ))),
+            )
         }
         Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
         Ok(_) => {}
     }
     let (mut flow, first) = CreateFlow::start(&RANDOM);
     let CreateScreen::ShowWords(words) = first else {
-        return answer(reply, Ok(Screen::Failed { message: "The words were not made.".into() }));
+        return answer(
+            reply,
+            Ok(Screen::Failed {
+                message: "The words were not made.".into(),
+            }),
+        );
     };
     answer(reply, Ok(Screen::ShowWords { words }));
 
     let mut positions = [0usize; 2];
     loop {
-        let Some(input) = next_input(vault, address, rx, reply).await else { return };
+        let Some(input) = next_input(vault, address, rx, reply).await else {
+            return;
+        };
         match input {
             StepInput::WordsWritten if positions == [0, 0] => match flow.words_written(&RANDOM) {
                 Ok(CreateScreen::ConfirmWords { positions: p }) => {
                     positions = p;
-                    answer(reply, Ok(Screen::ConfirmWords { positions, error: None }));
+                    answer(
+                        reply,
+                        Ok(Screen::ConfirmWords {
+                            positions,
+                            error: None,
+                        }),
+                    );
                 }
                 Ok(_) => answer(reply, Err(CustodyError::WrongInput)),
                 Err(e) => return answer(reply, Ok(failed(&e))),
@@ -378,7 +442,9 @@ async fn run_create(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx
                         reply,
                         Ok(Screen::ConfirmWords {
                             positions,
-                            error: Some("Those are not the words at those places. Check your paper.".into()),
+                            error: Some(
+                                "Those are not the words at those places. Check your paper.".into(),
+                            ),
                         }),
                     ),
                     Err(e) => return answer(reply, Ok(failed(&e))),
@@ -393,9 +459,14 @@ async fn run_create(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx
     if vault.needs_passphrase() {
         answer(reply, Ok(Screen::SetPassphrase { error: None }));
         loop {
-            let Some(input) = next_input(vault, address, rx, reply).await else { return };
+            let Some(input) = next_input(vault, address, rx, reply).await else {
+                return;
+            };
             match input {
-                StepInput::Passphrase { passphrase: p, confirm } => {
+                StepInput::Passphrase {
+                    passphrase: p,
+                    confirm,
+                } => {
                     let p = Secret::new(p);
                     let confirm = Secret::new(confirm.unwrap_or_default());
                     match seal::check_new(p.expose(), confirm.expose()) {
@@ -403,7 +474,12 @@ async fn run_create(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx
                             passphrase = Some(p);
                             break;
                         }
-                        Err(problem) => answer(reply, Ok(Screen::SetPassphrase { error: passphrase_error(problem) })),
+                        Err(problem) => answer(
+                            reply,
+                            Ok(Screen::SetPassphrase {
+                                error: passphrase_error(problem),
+                            }),
+                        ),
                     }
                 }
                 _ => answer(reply, Err(CustodyError::WrongInput)),
@@ -414,7 +490,10 @@ async fn run_create(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx
     // incept, the executor's co-signature, publish, then the vault keeps master #0.
     let unlocking = vault.unlocking(passphrase);
     let screen = match flow.finish(&executor, &unlocking).await {
-        Ok(created) => Screen::IdentityReady { did: created.did, key_id: created.device_key_id },
+        Ok(created) => Screen::IdentityReady {
+            did: created.did,
+            key_id: created.device_key_id,
+        },
         Err(e) => failed(&e),
     };
     answer(reply, Ok(screen));
@@ -426,7 +505,11 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
     let Some(store_url) = address.store_url.clone() else {
         return answer(
             reply,
-            Ok(Screen::Failed { message: "This computer has no identity store configured, so it cannot make an offer.".into() }),
+            Ok(Screen::Failed {
+                message:
+                    "This computer has no identity store configured, so it cannot make an offer."
+                        .into(),
+            }),
         );
     };
     let executor = match connect(address).await {
@@ -436,7 +519,14 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
     let did = match executor.status().await {
         Ok(status) => match status.did {
             Some(did) => did,
-            None => return answer(reply, Ok(Screen::Failed { message: "Make your identity first.".into() })),
+            None => {
+                return answer(
+                    reply,
+                    Ok(Screen::Failed {
+                        message: "Make your identity first.".into(),
+                    }),
+                )
+            }
         },
         Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
     };
@@ -448,7 +538,9 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
     }
     let flow = loop {
         if vault.needs_passphrase() {
-            let Some(input) = next_input(vault, address, rx, reply).await else { return };
+            let Some(input) = next_input(vault, address, rx, reply).await else {
+                return;
+            };
             let StepInput::Passphrase { passphrase: p, .. } = input else {
                 answer(reply, Err(CustodyError::WrongInput));
                 continue;
@@ -456,20 +548,44 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
             passphrase = Some(Secret::new(p));
         }
         let unlocking = vault.unlocking(passphrase.take());
-        match LinkFlow::open(&executor, &unlocking, &did, OfferKind::Node, &store_url, &CLOCK, &RANDOM).await {
+        match LinkFlow::open(
+            &executor,
+            &unlocking,
+            &did,
+            OfferKind::Node,
+            &store_url,
+            &CLOCK,
+            &RANDOM,
+        )
+        .await
+        {
             Ok(flow) => break flow,
             Err(ClientError::Vault(VaultError::Cancelled)) if vault.needs_passphrase() => {
-                answer(reply, Ok(Screen::EnterPassphrase { error: Some("That passphrase does not open your master key.".into()) }));
+                answer(
+                    reply,
+                    Ok(Screen::EnterPassphrase {
+                        error: Some("That passphrase does not open your master key.".into()),
+                    }),
+                );
             }
             Err(e) => return answer(reply, Ok(failed(&e))),
         }
     };
     let link = flow.link();
-    answer(reply, Ok(Screen::Offer { qr_svg: qr_svg(&link), link, expires: offer_expiry() }));
+    answer(
+        reply,
+        Ok(Screen::Offer {
+            qr_svg: qr_svg(&link),
+            link,
+            expires: offer_expiry(),
+        }),
+    );
 
     let mut claimed: Option<Claimed> = None;
     loop {
-        let Some(input) = next_input(vault, address, rx, reply).await else { return };
+        let Some(input) = next_input(vault, address, rx, reply).await else {
+            return;
+        };
         match input {
             StepInput::WaitClaim if claimed.is_none() => {
                 // Waits for the claim, or for the window to cancel meanwhile.
@@ -479,7 +595,10 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
                 };
                 match outcome {
                     Some(Ok(claim)) => {
-                        let screen = Screen::Match { code: claim.match_code.clone(), hint: claim.hint.clone() };
+                        let screen = Screen::Match {
+                            code: claim.match_code.clone(),
+                            hint: claim.hint.clone(),
+                        };
                         claimed = Some(claim);
                         answer(reply, Ok(screen));
                     }
@@ -540,7 +659,13 @@ pub fn qr_svg(link: &str) -> String {
 
 // ─── revoke (AR-02 4.12) ────────────────────────────────────────────────────────
 
-async fn run_revoke(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, reply: &mut Reply, key_id: String) {
+async fn run_revoke(
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    key_id: String,
+) {
     let executor = match connect(address).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
@@ -548,27 +673,62 @@ async fn run_revoke(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx
     let (did, own) = match executor.status().await {
         Ok(status) => match status.did {
             Some(did) => (did, status.key_id),
-            None => return answer(reply, Ok(Screen::Failed { message: "Make your identity first.".into() })),
+            None => {
+                return answer(
+                    reply,
+                    Ok(Screen::Failed {
+                        message: "Make your identity first.".into(),
+                    }),
+                )
+            }
         },
         Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
     };
     if own.as_deref() == Some(key_id.as_str()) {
         return answer(
             reply,
-            Ok(Screen::Failed { message: "This computer cannot revoke its own key. Revoke it from another device.".into() }),
+            Ok(Screen::Failed {
+                message: "This computer cannot revoke its own key. Revoke it from another device."
+                    .into(),
+            }),
         );
     }
     let needs = vault.needs_passphrase();
-    answer(reply, Ok(Screen::RevokeConfirm { key_id: key_id.clone(), passphrase: needs, error: None }));
+    answer(
+        reply,
+        Ok(Screen::RevokeConfirm {
+            key_id: key_id.clone(),
+            passphrase: needs,
+            error: None,
+        }),
+    );
     loop {
-        let Some(input) = next_input(vault, address, rx, reply).await else { return };
+        let Some(input) = next_input(vault, address, rx, reply).await else {
+            return;
+        };
         let StepInput::Revoke { passphrase } = input else {
             answer(reply, Err(CustodyError::WrongInput));
             continue;
         };
         let unlocking = vault.unlocking(passphrase.map(Secret::new));
-        match revoke(&executor, &unlocking, &did, std::slice::from_ref(&key_id), &CLOCK).await {
-            Ok(head) => return answer(reply, Ok(Screen::Revoked { key_id, seq: head.seq })),
+        match revoke(
+            &executor,
+            &unlocking,
+            &did,
+            std::slice::from_ref(&key_id),
+            &CLOCK,
+        )
+        .await
+        {
+            Ok(head) => {
+                return answer(
+                    reply,
+                    Ok(Screen::Revoked {
+                        key_id,
+                        seq: head.seq,
+                    }),
+                )
+            }
             Err(ClientError::Vault(VaultError::Cancelled)) if needs => answer(
                 reply,
                 Ok(Screen::RevokeConfirm {
@@ -589,10 +749,19 @@ mod tests {
     #[test]
     fn steps_and_screens_cross_ipc_in_the_shapes_the_windows_expect() {
         let step: IdentityStep = serde_json::from_str(r#"{"kind":"revoke","keyId":"d2"}"#).unwrap();
-        assert_eq!(step, IdentityStep::Revoke { key_id: "d2".into() });
+        assert_eq!(
+            step,
+            IdentityStep::Revoke {
+                key_id: "d2".into()
+            }
+        );
         let step: IdentityStep = serde_json::from_str(r#"{"kind":"add-device"}"#).unwrap();
         assert_eq!(step, IdentityStep::AddDevice);
-        let screen = serde_json::to_value(Screen::ConfirmWords { positions: [3, 11], error: None }).unwrap();
+        let screen = serde_json::to_value(Screen::ConfirmWords {
+            positions: [3, 11],
+            error: None,
+        })
+        .unwrap();
         assert_eq!(screen["screen"], "confirm-words");
         assert_eq!(screen["positions"][1], 11);
         let public = serde_json::to_value(CustodyPublic {
@@ -607,9 +776,11 @@ mod tests {
     #[test]
     fn an_input_never_prints_what_was_typed() {
         let input: StepInput =
-            serde_json::from_str(r#"{"kind":"passphrase","passphrase":"hunter2 hunter2 hunter2"}"#).unwrap();
+            serde_json::from_str(r#"{"kind":"passphrase","passphrase":"hunter2 hunter2 hunter2"}"#)
+                .unwrap();
         assert_eq!(format!("{input:?}"), "passphrase");
-        let input: StepInput = serde_json::from_str(r#"{"kind":"words","answers":["orbit","lamp"]}"#).unwrap();
+        let input: StepInput =
+            serde_json::from_str(r#"{"kind":"words","answers":["orbit","lamp"]}"#).unwrap();
         assert!(!format!("{input:?}").contains("orbit"));
     }
 
@@ -617,7 +788,13 @@ mod tests {
     fn only_the_last_screens_end_a_step() {
         assert_eq!(Screen::ShowWords { words: vec![] }.outcome(), None);
         assert_eq!(Screen::Linked { seq: 1 }.outcome(), Some(StepOutcome::Done));
-        assert_eq!(Screen::Failed { message: String::new() }.outcome(), Some(StepOutcome::Failed));
+        assert_eq!(
+            Screen::Failed {
+                message: String::new()
+            }
+            .outcome(),
+            Some(StepOutcome::Failed)
+        );
     }
 
     #[test]
@@ -631,15 +808,25 @@ mod tests {
         let vault = DesktopVault::new(Box::new(crate::store::MemoryStore::new()));
         let handle = spawn(
             vault,
-            ExecutorAddress { url: "http://127.0.0.1:9".into(), admin_credential: Arc::from("x"), store_url: None },
+            ExecutorAddress {
+                url: "http://127.0.0.1:9".into(),
+                admin_credential: Arc::from("x"),
+                store_url: None,
+            },
         );
-        assert_eq!(handle.step(StepInput::Confirm).await, Err(CustodyError::NoStep));
+        assert_eq!(
+            handle.step(StepInput::Confirm).await,
+            Err(CustodyError::NoStep)
+        );
         handle.cancel().await;
         // No executor answers on port 9: the step stops at once, publishing nothing.
         let screen = handle.start(IdentityStep::Create).await.unwrap();
         assert!(matches!(screen, Screen::Failed { .. }));
         // With no executor there is no identity to report.
         let public = handle.public_state().await.unwrap();
-        assert_eq!((public.did, public.holds_master, public.unlock), (None, None, "passphrase"));
+        assert_eq!(
+            (public.did, public.holds_master, public.unlock),
+            (None, None, "passphrase")
+        );
     }
 }

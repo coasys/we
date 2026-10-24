@@ -14,10 +14,22 @@ fn app_dir() -> PathBuf {
 }
 
 fn capability(file: &str) -> (Vec<String>, BTreeSet<String>) {
-    let json: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(app_dir().join("capabilities").join(file)).unwrap()).unwrap();
-    let windows = json["windows"].as_array().unwrap().iter().map(|w| w.as_str().unwrap().to_string()).collect();
-    let permissions = json["permissions"].as_array().unwrap().iter().map(|p| p.as_str().unwrap().to_string()).collect();
+    let json: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(app_dir().join("capabilities").join(file)).unwrap(),
+    )
+    .unwrap();
+    let windows = json["windows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|w| w.as_str().unwrap().to_string())
+        .collect();
+    let permissions = json["permissions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p.as_str().unwrap().to_string())
+        .collect();
     (windows, permissions)
 }
 
@@ -28,7 +40,13 @@ fn permission(command: &str) -> String {
 /// The command names in `build.rs`'s app manifest.
 fn manifest_commands() -> BTreeSet<String> {
     let build = std::fs::read_to_string(app_dir().join("build.rs")).unwrap();
-    let list = build.split(".commands(&[").nth(1).expect("build.rs declares an app manifest").split("])").next().unwrap();
+    let list = build
+        .split(".commands(&[")
+        .nth(1)
+        .expect("build.rs declares an app manifest")
+        .split("])")
+        .next()
+        .unwrap();
     list.lines()
         .map(str::trim)
         .filter(|l| l.starts_with('"'))
@@ -40,7 +58,10 @@ fn manifest_commands() -> BTreeSet<String> {
 fn every_custody_command_is_in_the_app_manifest() {
     let declared = manifest_commands();
     for (command, _) in COMMANDS {
-        assert!(declared.contains(*command), "{command} is not in build.rs's app manifest");
+        assert!(
+            declared.contains(*command),
+            "{command} is not in build.rs's app manifest"
+        );
     }
 }
 
@@ -48,10 +69,15 @@ fn every_custody_command_is_in_the_app_manifest() {
 fn the_identity_windows_capability_grants_its_flow_commands_and_nothing_else() {
     let (windows, permissions) = capability("identity.json");
     assert_eq!(windows, vec![IDENTITY.to_string()]);
-    let expected: BTreeSet<String> =
-        COMMANDS.iter().filter(|(_, w)| *w == IDENTITY).map(|(c, _)| permission(c)).collect();
+    let expected: BTreeSet<String> = COMMANDS
+        .iter()
+        .filter(|(_, w)| *w == IDENTITY)
+        .map(|(c, _)| permission(c))
+        .collect();
     assert_eq!(permissions, expected);
-    assert!(!permissions.iter().any(|p| p.starts_with("core:") || p.contains(':')));
+    assert!(!permissions
+        .iter()
+        .any(|p| p.starts_with("core:") || p.contains(':')));
 }
 
 #[test]
@@ -60,12 +86,19 @@ fn the_main_windows_capability_grants_no_flow_command() {
     assert_eq!(windows, vec![MAIN.to_string()]);
     for (command, window) in COMMANDS {
         let granted = permissions.contains(&permission(command));
-        assert_eq!(granted, *window == MAIN, "{command}: granted to main = {granted}");
+        assert_eq!(
+            granted,
+            *window == MAIN,
+            "{command}: granted to main = {granted}"
+        );
     }
     // The main window cannot make a window: it could otherwise make one labelled `identity`.
     for p in &permissions {
         assert!(
-            !matches!(p.as_str(), "core:window:allow-create" | "core:webview:allow-create-webview-window"),
+            !matches!(
+                p.as_str(),
+                "core:window:allow-create" | "core:webview:allow-create-webview-window"
+            ),
             "main may {p}"
         );
     }

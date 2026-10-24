@@ -120,12 +120,18 @@ impl MemoryStore {
 
     /// A memory store that behaves as `kind` does — a keychain that unlocks itself, say.
     pub fn as_kind(kind: StoreKind) -> Self {
-        MemoryStore { kind: Some(kind), ..Default::default() }
+        MemoryStore {
+            kind: Some(kind),
+            ..Default::default()
+        }
     }
 
     /// Every byte the store holds, for tests that look for a key where it must not be.
     pub fn all_bytes(&self) -> Vec<u8> {
-        self.items.lock().map(|m| m.values().flatten().copied().collect()).unwrap_or_default()
+        self.items
+            .lock()
+            .map(|m| m.values().flatten().copied().collect())
+            .unwrap_or_default()
     }
 }
 
@@ -134,14 +140,25 @@ impl SecretStore for MemoryStore {
         self.kind.unwrap_or(StoreKind::Memory)
     }
     fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
-        self.items.lock().map_err(|_| VaultError::Unavailable("poisoned".into()))?.insert(name.into(), bytes.to_vec());
+        self.items
+            .lock()
+            .map_err(|_| VaultError::Unavailable("poisoned".into()))?
+            .insert(name.into(), bytes.to_vec());
         Ok(())
     }
     fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
-        Ok(self.items.lock().map_err(|_| VaultError::Unavailable("poisoned".into()))?.get(name).cloned())
+        Ok(self
+            .items
+            .lock()
+            .map_err(|_| VaultError::Unavailable("poisoned".into()))?
+            .get(name)
+            .cloned())
     }
     fn delete(&self, name: &str) -> Result<(), VaultError> {
-        self.items.lock().map_err(|_| VaultError::Unavailable("poisoned".into()))?.remove(name);
+        self.items
+            .lock()
+            .map_err(|_| VaultError::Unavailable("poisoned".into()))?
+            .remove(name);
         Ok(())
     }
 }
@@ -193,14 +210,26 @@ mod secret_service_store {
                 collection.unlock().map_err(unavailable)?;
             }
             collection
-                .create_item(name, HashMap::from([(ATTRIBUTE, name)]), bytes, true, "application/octet-stream")
+                .create_item(
+                    name,
+                    HashMap::from([(ATTRIBUTE, name)]),
+                    bytes,
+                    true,
+                    "application/octet-stream",
+                )
                 .map_err(unavailable)?;
             Ok(())
         }
 
         fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
-            let found = self.service.search_items(HashMap::from([(ATTRIBUTE, name)])).map_err(unavailable)?;
-            let item = match (found.unlocked.into_iter().next(), found.locked.into_iter().next()) {
+            let found = self
+                .service
+                .search_items(HashMap::from([(ATTRIBUTE, name)]))
+                .map_err(unavailable)?;
+            let item = match (
+                found.unlocked.into_iter().next(),
+                found.locked.into_iter().next(),
+            ) {
                 (Some(item), _) => item,
                 (None, Some(item)) => {
                     item.unlock().map_err(unavailable)?;
@@ -212,7 +241,10 @@ mod secret_service_store {
         }
 
         fn delete(&self, name: &str) -> Result<(), VaultError> {
-            let found = self.service.search_items(HashMap::from([(ATTRIBUTE, name)])).map_err(unavailable)?;
+            let found = self
+                .service
+                .search_items(HashMap::from([(ATTRIBUTE, name)]))
+                .map_err(unavailable)?;
             for item in found.unlocked.into_iter().chain(found.locked) {
                 item.delete().map_err(unavailable)?;
             }
@@ -229,8 +261,8 @@ pub use keychain_store::KeychainStore;
 #[cfg(target_os = "macos")]
 mod keychain_store {
     use security_framework::passwords::{
-        delete_generic_password, generic_password, set_generic_password_options, AccessControlOptions,
-        PasswordOptions,
+        delete_generic_password, generic_password, set_generic_password_options,
+        AccessControlOptions, PasswordOptions,
     };
 
     use super::*;
@@ -296,7 +328,9 @@ pub fn system_store(fallback_dir: PathBuf) -> Box<dyn SecretStore> {
     {
         match SecretServiceStore::connect() {
             Ok(store) => return Box::new(store),
-            Err(e) => log::warn!("custody: no Secret Service ({e}); keeping the sealed item in a file"),
+            Err(e) => {
+                log::warn!("custody: no Secret Service ({e}); keeping the sealed item in a file")
+            }
         }
     }
     #[allow(unreachable_code)]
@@ -319,7 +353,10 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mode = std::fs::metadata(dir.path().join("custody/QmScid.bin")).unwrap().permissions().mode();
+            let mode = std::fs::metadata(dir.path().join("custody/QmScid.bin"))
+                .unwrap()
+                .permissions()
+                .mode();
             assert_eq!(mode & 0o777, 0o600);
         }
         store.delete(&name).unwrap();

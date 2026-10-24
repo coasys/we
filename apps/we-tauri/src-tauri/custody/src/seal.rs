@@ -53,8 +53,14 @@ impl CustodyItem {
         let index = u32::from_le_bytes(bytes[1..5].try_into().map_err(|_| VaultError::Tampered)?);
         let mut master = Zeroizing::new([0u8; 32]);
         master.copy_from_slice(&bytes[5..37]);
-        let scid = std::str::from_utf8(&bytes[37..]).map_err(|_| VaultError::Tampered)?.to_string();
-        Ok(CustodyItem { scid, index, master })
+        let scid = std::str::from_utf8(&bytes[37..])
+            .map_err(|_| VaultError::Tampered)?
+            .to_string();
+        Ok(CustodyItem {
+            scid,
+            index,
+            master,
+        })
     }
 }
 
@@ -110,7 +116,11 @@ pub struct Kdf {
 
 impl Kdf {
     /// AR-03 4.4.4: m = 64 MiB, t = 3, p = 4.
-    pub const DESKTOP: Kdf = Kdf { m_kib: 64 * 1024, t: 3, p: 4 };
+    pub const DESKTOP: Kdf = Kdf {
+        m_kib: 64 * 1024,
+        t: 3,
+        p: 4,
+    };
 }
 
 fn derive(passphrase: &str, salt: &[u8], kdf: Kdf) -> Result<Zeroizing<[u8; 32]>, VaultError> {
@@ -125,7 +135,12 @@ fn derive(passphrase: &str, salt: &[u8], kdf: Kdf) -> Result<Zeroizing<[u8; 32]>
 
 /// `magic | m_kib | t | p | salt | nonce | ciphertext`, the parameters in the blob so a later
 /// change of cost still opens what was sealed before it. The scid is the AEAD's associated data.
-pub fn seal(item: &CustodyItem, passphrase: &str, kdf: Kdf, random: &dyn Fn(&mut [u8])) -> Result<Vec<u8>, VaultError> {
+pub fn seal(
+    item: &CustodyItem,
+    passphrase: &str,
+    kdf: Kdf,
+    random: &dyn Fn(&mut [u8]),
+) -> Result<Vec<u8>, VaultError> {
     let mut salt = [0u8; SALT_LEN];
     let mut nonce = [0u8; NONCE_LEN];
     random(&mut salt);
@@ -134,7 +149,13 @@ pub fn seal(item: &CustodyItem, passphrase: &str, kdf: Kdf, random: &dyn Fn(&mut
     let cipher = XChaCha20Poly1305::new_from_slice(&key[..]).map_err(|_| VaultError::Tampered)?;
     let plain = item.to_bytes();
     let sealed = cipher
-        .encrypt(XNonce::from_slice(&nonce), Payload { msg: &plain, aad: item.scid.as_bytes() })
+        .encrypt(
+            XNonce::from_slice(&nonce),
+            Payload {
+                msg: &plain,
+                aad: item.scid.as_bytes(),
+            },
+        )
         .map_err(|_| VaultError::Unavailable("sealing failed".into()))?;
     let mut out = Vec::with_capacity(16 + 12 + SALT_LEN + NONCE_LEN + sealed.len());
     out.extend_from_slice(SEALED_MAGIC);
@@ -155,7 +176,11 @@ pub fn open(blob: &[u8], scid: &str, passphrase: &str) -> Result<CustodyItem, Va
         return Err(VaultError::Tampered);
     }
     let num = |at: usize| u32::from_le_bytes(blob[at..at + 4].try_into().unwrap_or([0; 4]));
-    let kdf = Kdf { m_kib: num(16), t: num(20), p: num(24) };
+    let kdf = Kdf {
+        m_kib: num(16),
+        t: num(20),
+        p: num(24),
+    };
     // Refuse a blob asking for a cost below the floor a hostile file could pick to make guessing cheap.
     if kdf.m_kib < 8 * 1024 && !cfg!(test) && !cfg!(feature = "cheap-kdf") {
         return Err(VaultError::Tampered);
@@ -165,7 +190,13 @@ pub fn open(blob: &[u8], scid: &str, passphrase: &str) -> Result<CustodyItem, Va
     let key = derive(passphrase, salt, kdf)?;
     let cipher = XChaCha20Poly1305::new_from_slice(&key[..]).map_err(|_| VaultError::Tampered)?;
     let mut plain = cipher
-        .decrypt(XNonce::from_slice(nonce), Payload { msg: &blob[header..], aad: scid.as_bytes() })
+        .decrypt(
+            XNonce::from_slice(nonce),
+            Payload {
+                msg: &blob[header..],
+                aad: scid.as_bytes(),
+            },
+        )
         .map_err(|_| VaultError::Cancelled)?;
     let item = CustodyItem::from_bytes(&plain);
     plain.zeroize();
@@ -180,10 +211,18 @@ pub fn open(blob: &[u8], scid: &str, passphrase: &str) -> Result<CustodyItem, Va
 mod tests {
     use super::*;
 
-    const CHEAP: Kdf = Kdf { m_kib: 64, t: 1, p: 1 };
+    const CHEAP: Kdf = Kdf {
+        m_kib: 64,
+        t: 1,
+        p: 1,
+    };
 
     fn item() -> CustodyItem {
-        CustodyItem { scid: "QmScid".into(), index: 2, master: Zeroizing::new([7u8; 32]) }
+        CustodyItem {
+            scid: "QmScid".into(),
+            index: 2,
+            master: Zeroizing::new([7u8; 32]),
+        }
     }
 
     fn counter() -> impl Fn(&mut [u8]) {
@@ -195,7 +234,10 @@ mod tests {
         let blob = seal(&item(), "correct horse battery", CHEAP, &counter()).unwrap();
         let opened = open(&blob, "QmScid", "correct horse battery").unwrap();
         assert_eq!((opened.index, *opened.master), (2, [7u8; 32]));
-        assert_eq!(open(&blob, "QmScid", "wrong horse battery!").err(), Some(VaultError::Cancelled));
+        assert_eq!(
+            open(&blob, "QmScid", "wrong horse battery!").err(),
+            Some(VaultError::Cancelled)
+        );
         // The blob is bound to its identity.
         assert!(open(&blob, "QmOther", "correct horse battery").is_err());
     }
@@ -212,7 +254,10 @@ mod tests {
         let last = blob.len() - 1;
         blob[last] ^= 1;
         assert!(open(&blob, "QmScid", "correct horse battery").is_err());
-        assert_eq!(open(b"nonsense", "QmScid", "x").err(), Some(VaultError::Tampered));
+        assert_eq!(
+            open(b"nonsense", "QmScid", "x").err(),
+            Some(VaultError::Tampered)
+        );
     }
 
     #[test]
@@ -224,14 +269,30 @@ mod tests {
 
     #[test]
     fn a_new_passphrase_needs_fifteen_characters_typed_twice() {
-        assert_eq!(check_new("short", "short"), Err(PassphraseProblem::TooShort));
-        assert_eq!(check_new("fifteen chars ok", "fifteen chars ok!"), Err(PassphraseProblem::Mismatch));
+        assert_eq!(
+            check_new("short", "short"),
+            Err(PassphraseProblem::TooShort)
+        );
+        assert_eq!(
+            check_new("fifteen chars ok", "fifteen chars ok!"),
+            Err(PassphraseProblem::Mismatch)
+        );
         assert_eq!(check_new("fifteen chars ok", "fifteen chars ok"), Ok(()));
-        assert_eq!(check_new(&"x".repeat(257), &"x".repeat(257)), Err(PassphraseProblem::TooLong));
+        assert_eq!(
+            check_new(&"x".repeat(257), &"x".repeat(257)),
+            Err(PassphraseProblem::TooLong)
+        );
     }
 
     #[test]
     fn the_desktop_cost_is_the_one_ar03_names() {
-        assert_eq!(Kdf::DESKTOP, Kdf { m_kib: 65536, t: 3, p: 4 });
+        assert_eq!(
+            Kdf::DESKTOP,
+            Kdf {
+                m_kib: 65536,
+                t: 3,
+                p: 4
+            }
+        );
     }
 }

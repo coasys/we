@@ -11,7 +11,9 @@
 use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder, Window, WindowEvent};
+use tauri::{
+    AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder, Window, WindowEvent,
+};
 use we_custody::window::{self as rule, IDENTITY, MAIN};
 use we_custody::{CustodyHandle, CustodyPublic, IdentityStep, Screen, StepInput, StepOutcome};
 
@@ -24,7 +26,11 @@ pub struct IdentityState {
 
 impl IdentityState {
     pub fn new(custody: CustodyHandle) -> Self {
-        IdentityState { custody, step: Arc::default(), outcome: Arc::default() }
+        IdentityState {
+            custody,
+            step: Arc::default(),
+            outcome: Arc::default(),
+        }
     }
 }
 
@@ -58,38 +64,62 @@ pub async fn identity_open(
     *state.step.lock().map_err(|e| e.to_string())? = Some(step);
     *state.outcome.lock().map_err(|e| e.to_string())? = None;
 
-    let identity = WebviewWindowBuilder::new(&app, IDENTITY, WebviewUrl::App("identity/index.html".into()))
-        .title("Coasys Identity")
-        .inner_size(480.0, 640.0)
-        .resizable(false)
-        .focused(true)
-        .center()
-        // Its own bundle only; nothing a template or a post can point it at (AR-03 4.4.2).
-        .on_navigation(|url| rule::identity_may_navigate(url.as_str()))
-        .build()
-        .map_err(|e| format!("could not open the identity window: {e}"))?;
+    let identity = WebviewWindowBuilder::new(
+        &app,
+        IDENTITY,
+        WebviewUrl::App("identity/index.html".into()),
+    )
+    .title("Coasys Identity")
+    .inner_size(480.0, 640.0)
+    .resizable(false)
+    .focused(true)
+    .center()
+    // Its own bundle only; nothing a template or a post can point it at (AR-03 4.4.2).
+    .on_navigation(|url| rule::identity_may_navigate(url.as_str()))
+    .build()
+    .map_err(|e| format!("could not open the identity window: {e}"))?;
 
     // Closing the window ends the step: an unfinished one is cancelled and wiped, and the main
     // window hears how it ended either way.
-    let (custody, step, outcome, events) = (state.custody.clone(), state.step.clone(), state.outcome.clone(), app.clone());
+    let (custody, step, outcome, events) = (
+        state.custody.clone(),
+        state.step.clone(),
+        state.outcome.clone(),
+        app.clone(),
+    );
     identity.on_window_event(move |event| {
         if let WindowEvent::Destroyed = event {
-            let ended = outcome.lock().ok().and_then(|o| *o).unwrap_or(StepOutcome::Cancelled);
+            let ended = outcome
+                .lock()
+                .ok()
+                .and_then(|o| *o)
+                .unwrap_or(StepOutcome::Cancelled);
             let kind = step_kind(&step.lock().map(|s| s.clone()).unwrap_or(None));
             if ended == StepOutcome::Cancelled {
                 let custody = custody.clone();
                 tauri::async_runtime::spawn(async move { custody.cancel().await });
             }
-            let _ = events.emit_to(MAIN, "identity-step-done", json!({ "step": kind, "outcome": ended }));
+            let _ = events.emit_to(
+                MAIN,
+                "identity-step-done",
+                json!({ "step": kind, "outcome": ended }),
+            );
         }
     });
     Ok(json!({ "opened": true }))
 }
 
 #[tauri::command]
-pub async fn identity_public_state(window: Window, state: State<'_, IdentityState>) -> Result<CustodyPublic, String> {
+pub async fn identity_public_state(
+    window: Window,
+    state: State<'_, IdentityState>,
+) -> Result<CustodyPublic, String> {
     check("identity_public_state", &window)?;
-    state.custody.public_state().await.map_err(|e| e.to_string())
+    state
+        .custody
+        .public_state()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 fn remember(state: &IdentityState, screen: &Screen) {
@@ -102,16 +132,28 @@ fn remember(state: &IdentityState, screen: &Screen) {
 
 /// Starts the step the main window opened this window for. The window cannot choose another.
 #[tauri::command]
-pub async fn identity_flow_start(window: Window, state: State<'_, IdentityState>) -> Result<Screen, String> {
+pub async fn identity_flow_start(
+    window: Window,
+    state: State<'_, IdentityState>,
+) -> Result<Screen, String> {
     check("identity_flow_start", &window)?;
-    let step = state.step.lock().map_err(|e| e.to_string())?.clone().ok_or("no step was asked for")?;
+    let step = state
+        .step
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone()
+        .ok_or("no step was asked for")?;
     let screen = state.custody.start(step).await.map_err(|e| e.to_string())?;
     remember(&state, &screen);
     Ok(screen)
 }
 
 #[tauri::command]
-pub async fn identity_flow_step(window: Window, state: State<'_, IdentityState>, input: StepInput) -> Result<Screen, String> {
+pub async fn identity_flow_step(
+    window: Window,
+    state: State<'_, IdentityState>,
+    input: StepInput,
+) -> Result<Screen, String> {
     check("identity_flow_step", &window)?;
     let screen = state.custody.step(input).await.map_err(|e| e.to_string())?;
     remember(&state, &screen);
@@ -120,7 +162,10 @@ pub async fn identity_flow_step(window: Window, state: State<'_, IdentityState>,
 
 /// Cancels the step and closes the window.
 #[tauri::command]
-pub async fn identity_flow_cancel(window: Window, state: State<'_, IdentityState>) -> Result<(), String> {
+pub async fn identity_flow_cancel(
+    window: Window,
+    state: State<'_, IdentityState>,
+) -> Result<(), String> {
     check("identity_flow_cancel", &window)?;
     state.custody.cancel().await;
     window.close().map_err(|e| e.to_string())

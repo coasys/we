@@ -27,7 +27,11 @@ fn custody_names_no_executor_crate_in_its_code() {
     for file in files {
         let text = std::fs::read_to_string(&file).unwrap();
         for forbidden in ["rust_executor", "ad4m_executor"] {
-            assert!(!text.contains(forbidden), "{} names {forbidden}", file.display());
+            assert!(
+                !text.contains(forbidden),
+                "{} names {forbidden}",
+                file.display()
+            );
         }
     }
 }
@@ -40,12 +44,18 @@ fn custody_depends_on_no_executor_crate() {
         .filter(|l| !l.trim_start().starts_with('#'))
         .collect();
     for line in &dependencies {
-        assert!(!line.contains("ad4m-executor") && !line.contains("rust-executor"), "Cargo.toml: {line}");
+        assert!(
+            !line.contains("ad4m-executor") && !line.contains("rust-executor"),
+            "Cargo.toml: {line}"
+        );
     }
     // And nothing it depends on brings the executor in either: the lockfile is the whole graph.
     let lock = std::fs::read_to_string(crate_dir().join("Cargo.lock")).unwrap();
     for name in ["ad4m-executor", "rust-executor", "deno_core", "holochain"] {
-        assert!(!lock.contains(&format!("name = \"{name}\"")), "Cargo.lock holds {name}");
+        assert!(
+            !lock.contains(&format!("name = \"{name}\"")),
+            "Cargo.lock holds {name}"
+        );
     }
 }
 
@@ -56,7 +66,10 @@ fn custody_builds_against_the_ad4m_commit_we_pins() {
     let root = crate_dir().join("../../../..");
     let package: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(root.join("package.json")).unwrap()).unwrap();
-    let pin = package["pnpm"]["overrides"]["@coasys/ad4m"].as_str().unwrap().to_string();
+    let pin = package["pnpm"]["overrides"]["@coasys/ad4m"]
+        .as_str()
+        .unwrap()
+        .to_string();
     if !pin.starts_with("https://") {
         // A release pins a published version, whose commit is its npm `gitHead`: checked by
         // `node scripts/ad4m-pin.mjs --commit`, which needs the network this test does not use.

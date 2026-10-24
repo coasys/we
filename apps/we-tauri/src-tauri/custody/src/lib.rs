@@ -16,6 +16,7 @@ pub mod vault;
 pub mod window;
 
 pub use service::{
-    spawn, CustodyError, CustodyHandle, CustodyPublic, ExecutorAddress, IdentityStep, Screen, StepInput, StepOutcome,
+    spawn, CustodyError, CustodyHandle, CustodyPublic, ExecutorAddress, IdentityStep, Screen,
+    StepInput, StepOutcome,
 };
 pub use vault::DesktopVault;
