@@ -1,0 +1,198 @@
+/*
+  The identity window, in the Coasys identity palette: a deep indigo page and one mint accent for
+  the primary action.
+  Its own stylesheet, not the app's: this bundle loads nothing a template could influence.
+*/
+:root {
+  color-scheme: dark;
+  --page: oklch(18.5% 0.04 278deg);
+  --surface: oklch(22% 0.04 278deg);
+  --sunken: oklch(16% 0.035 278deg);
+  --border: oklch(32% 0.04 278deg);
+  --text: oklch(93% 0.015 278deg);
+  --muted: oklch(74% 0.03 278deg);
+  --accent: oklch(85% 0.12 160deg);
+  --on-accent: oklch(22% 0.05 160deg);
+  --danger: oklch(72% 0.16 25deg);
+
+  font-family: system-ui, sans-serif;
+  background: var(--page);
+  color: var(--text);
+}
+
+body {
+  margin: 0;
+  padding: 20px 28px 28px;
+}
+
+.brand {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 15px;
+}
+
+.mark {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--accent);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 28px;
+}
+
+h1 {
+  font-size: 26px;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.words {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.word {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--surface);
+}
+
+.word .n,
+.mono {
+  font-family: ui-monospace, monospace;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.code {
+  font-family: ui-monospace, monospace;
+  font-size: 34px;
+  letter-spacing: 0.12em;
+  text-align: center;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.note {
+  font-size: 13px;
+}
+
+.error {
+  color: var(--danger);
+  font-size: 14px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+label.check {
+  flex-direction: row;
+  gap: 10px;
+  align-items: flex-start;
+  color: var(--text);
+}
+
+input[type='text'],
+input[type='password'] {
+  font: inherit;
+  color: var(--text);
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+button {
+  font: inherit;
+  border-radius: 999px;
+  padding: 10px 20px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+input:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+
+button.danger {
+  background: var(--danger);
+  color: oklch(20% 0.04 25deg);
+  border-color: var(--danger);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.link {
+  word-break: break-all;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+}
+
+.qr {
+  width: 200px;
+  height: 200px;
+  align-self: center;
+  background: white;
+  border-radius: 12px;
+  padding: 8px;
+}
+
+ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  line-height: 1.6;
+}

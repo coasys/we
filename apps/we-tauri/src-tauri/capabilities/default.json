@@ -1,7 +1,24 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
+  "description": "Capability for the main window: the chrome. It may open the identity window and read public custody state, and run no identity flow.",
   "windows": ["main"],
-  "permissions": ["core:default", "opener:default"]
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "allow-get-port",
+    "allow-request-credential",
+    "allow-list-accounts",
+    "allow-create-account",
+    "allow-set-account-display",
+    "allow-select-account",
+    "allow-remove-account",
+    "allow-apply-account-selection",
+    "allow-get-executor-settings",
+    "allow-set-executor-settings",
+    "allow-restart-executor",
+    "allow-choose-file",
+    "allow-identity-open",
+    "allow-identity-public-state"
+  ]
 }

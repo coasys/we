@@ -65,6 +65,8 @@ export const CAPABILITY_GROUPS = {
   editor: 'Drive the template and theme editing surface',
   'host-layout': "Move and resize the app's own panels and docks",
   clipboard: 'Put text on your clipboard when you ask it to',
+  keys: 'See your identity and its key log, and open the window that changes it',
+  devices: 'See the devices that act as you, and open the window that adds or removes one',
 } as const;
 
 export type CapabilityGroup = keyof typeof CAPABILITY_GROUPS;
@@ -122,6 +124,13 @@ export const CHROME_TIER: readonly CapabilityGroup[] = [
     until somebody decides it should have it.
   */
   'clipboard',
+  /*
+    Chrome only, and decided so: a space template learns nothing of
+    who a person is beyond their profile — not their `did:scid`, not their devices, not that a key log
+    exists. The actions here only open the host's identity window, which asks for itself.
+  */
+  'keys',
+  'devices',
 ];
 
 /** Host wiring: never in any template bag, at any tier. */
@@ -1338,6 +1347,44 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setSpeed: ambient('view-state'),
     setLoop: ambient('view-state'),
     configure: ambient('view-state'),
+  },
+
+  /*
+    Reading the identity and opening the identity window. Neither action is `destructive`: the change
+    happens in the host's identity window, which is its own confirmation — it shows what will be
+    signed and asks for the unlock — so a host dialog in front of it would be a second question.
+  */
+  identityStore: {
+    available: state('keys'),
+    canChange: state('keys'),
+    status: state('keys'),
+    statusLoaded: state('keys'),
+    did: state('keys'),
+    keyId: state('keys'),
+    thisDeviceRevoked: state('keys'),
+    keyLog: state('keys'),
+    keyLogLoaded: state('keys'),
+    forked: state('keys'),
+    fork: state('keys'),
+    custody: state('keys'),
+    needsFirstRun: state('keys'),
+    busy: state('keys'),
+    lastOutcome: state('keys'),
+    error: state('keys'),
+    refresh: ambient('keys'),
+    open: action('keys'),
+    makeIdentity: action('keys'),
+    startWithoutIdentity: action('keys'),
+  },
+  deviceStore: {
+    devices: state('devices'),
+    devicesLoaded: state('devices'),
+    validCount: state('devices'),
+    canManage: state('devices'),
+    error: state('devices'),
+    refresh: ambient('devices'),
+    addDevice: action('devices'),
+    revoke: action('devices'),
   },
 
   /*

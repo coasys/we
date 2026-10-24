@@ -4,8 +4,10 @@ import type {
   BundleStore,
   ClockStore,
   DatasetStore,
+  DeviceStore,
   EditorStore,
   FlowStore,
+  IdentityStore,
   InterpretationStore,
   PresenceStore,
   ProfileStore,
@@ -76,6 +78,8 @@ export interface Stores extends RendererStores {
   bundleStore: BundleStore;
   clockStore: ClockStore;
   flowStore: FlowStore;
+  identityStore: IdentityStore;
+  deviceStore: DeviceStore;
   record?: RecordActions;
   /** Neutral identity — the current agent (templates read `$me.did`). Backed by `sessionStore.me`;
    *  typed `unknown` so the seam stays backend-agnostic. Host-specific: not part of the data contract. */

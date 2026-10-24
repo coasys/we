@@ -4,8 +4,10 @@ import {
   BundleStoreProvider,
   ClockStoreProvider,
   DatasetStoreProvider,
+  DeviceStoreProvider,
   EditorStoreProvider,
   FlowStoreProvider,
+  IdentityStoreProvider,
   InterpretationStoreProvider,
   PresenceStoreProvider,
   ProfileStoreProvider,
@@ -39,57 +41,63 @@ export default function StoreProvider(props: ParentProps) {
               must be live before anything below it can mount an embedded app that asks for
               credentials. */}
               <RuntimeStoreProvider>
-                <DatasetStoreProvider>
-                  {/* Directly beneath Dataset: the shape adoption rail follows the current dataset,
+                {/* Beside Runtime and for the same reason: they read only the port bundle and the
+                  host's custody. Identity before devices, whose changes it opens. */}
+                <IdentityStoreProvider>
+                  <DeviceStoreProvider>
+                    <DatasetStoreProvider>
+                      {/* Directly beneath Dataset: the shape adoption rail follows the current dataset,
                     and everything below that renders a space may query the entities it registers. */}
-                  <ShapeStoreProvider>
-                    {/* Beneath Shape: it offers a form for every model this space carries, which is
+                      <ShapeStoreProvider>
+                        {/* Beneath Shape: it offers a form for every model this space carries, which is
                       exactly the list the adoption rail above assembles. */}
-                    <RecordStoreProvider>
-                      <ProfileStoreProvider>
-                        <ThemeStoreProvider>
-                          <TemplateStoreProvider>
-                            <EditorStoreProvider>
-                              <AppStoreProvider>
-                                <SpaceStoreProvider>
-                                  {/* BootController composes the post-unlock load across the stores above —
+                        <RecordStoreProvider>
+                          <ProfileStoreProvider>
+                            <ThemeStoreProvider>
+                              <TemplateStoreProvider>
+                                <EditorStoreProvider>
+                                  <AppStoreProvider>
+                                    <SpaceStoreProvider>
+                                      {/* BootController composes the post-unlock load across the stores above —
                             it must mount beneath them all. Renders nothing. */}
-                                  <BootController />
-                                  {/* Innermost: presence follows the current dataset and the route, so it needs
+                                      <BootController />
+                                      {/* Innermost: presence follows the current dataset and the route, so it needs
                             the session/dataset stores and RouteStore above it. App-lifetime, not
                             view-lifetime — it must outlive navigation rather than being torn down
                             with a view. */}
-                                  {/* Innermost of all: the editor's host port is built from every store above
+                                      {/* Innermost of all: the editor's host port is built from every store above
                             it, so it must sit below them all. It provides only a context — nothing
                             renders here — so a deployment that ships no editing surface pays a
                             context and nothing else. */}
-                                  <PresenceStoreProvider>
-                                    {/* Beside presence, and for the same reasons: it follows the
+                                      <PresenceStoreProvider>
+                                        {/* Beside presence, and for the same reasons: it follows the
                                       current dataset, reads the same ephemeral port, and has to
                                       outlive the panel that started a pass — a call bar is still
                                       showing an extraction after the transcript panel closes. */}
-                                    <InterpretationStoreProvider>
-                                      {/* Beneath the space store, whose task states, involvement kinds,
+                                        <InterpretationStoreProvider>
+                                          {/* Beneath the space store, whose task states, involvement kinds,
                                         archive list and administrator it reads. */}
-                                      <FlowStoreProvider>
-                                        {/* Beneath every store an install writes through — templates,
+                                          <FlowStoreProvider>
+                                            {/* Beneath every store an install writes through — templates,
                                           themes, record types, modules, settings — none of which has
                                           to know what a bundle is. */}
-                                        <BundleStoreProvider>
-                                          <EditorHostAdapter>{props.children}</EditorHostAdapter>
-                                        </BundleStoreProvider>
-                                      </FlowStoreProvider>
-                                    </InterpretationStoreProvider>
-                                  </PresenceStoreProvider>
-                                </SpaceStoreProvider>
-                              </AppStoreProvider>
-                            </EditorStoreProvider>
-                          </TemplateStoreProvider>
-                        </ThemeStoreProvider>
-                      </ProfileStoreProvider>
-                    </RecordStoreProvider>
-                  </ShapeStoreProvider>
-                </DatasetStoreProvider>
+                                            <BundleStoreProvider>
+                                              <EditorHostAdapter>{props.children}</EditorHostAdapter>
+                                            </BundleStoreProvider>
+                                          </FlowStoreProvider>
+                                        </InterpretationStoreProvider>
+                                      </PresenceStoreProvider>
+                                    </SpaceStoreProvider>
+                                  </AppStoreProvider>
+                                </EditorStoreProvider>
+                              </TemplateStoreProvider>
+                            </ThemeStoreProvider>
+                          </ProfileStoreProvider>
+                        </RecordStoreProvider>
+                      </ShapeStoreProvider>
+                    </DatasetStoreProvider>
+                  </DeviceStoreProvider>
+                </IdentityStoreProvider>
               </RuntimeStoreProvider>
             </SessionStoreProvider>
           </AccountStoreProvider>

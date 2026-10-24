@@ -244,8 +244,18 @@ export type {
   FlowWaitingMove,
 } from './flows';
 export type { CallPort, CallSessionOptions } from './call';
-export { NO_IDENTITY_CAPABILITIES } from './identity';
-export type { IdentityCapabilities, IdentityPort } from './identity';
+export { NO_IDENTITY_CAPABILITIES, readKeyLogEvent } from './identity';
+export type {
+  DeviceKeyView,
+  IdentityCapabilities,
+  IdentityPort,
+  IdentityStatusView,
+  KeyLogDevice,
+  KeyLogEvent,
+  KeyLogFork,
+  KeyLogHead,
+  KeyLogView,
+} from './identity';
 export type {
   TranscriptionModelOffer,
   TranscriptionRecord,

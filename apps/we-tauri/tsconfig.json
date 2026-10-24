@@ -37,5 +37,5 @@
     which is why this package could not be typechecked at all.
   */
   // `vite.config.ts` belongs to the referenced node project, which builds it separately.
-  "include": ["src", "../../packages/app-shell/src/shared/global.d.ts"]
+  "include": ["src", "identity", "../../packages/app-shell/src/shared/global.d.ts"]
 }

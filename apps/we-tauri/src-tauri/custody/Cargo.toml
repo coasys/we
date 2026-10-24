@@ -1,0 +1,53 @@
+# The desktop custody service: the person's master key, kept by the shell's main
+# process behind the OS unlock, and the identity flows that use it.
+#
+# Its own crate, and on purpose not a module of the `we` app: the app links `ad4m-executor` into its
+# process, and this crate must not (the master key never rests where language code
+# runs). It reaches the executor only over its RPC, with the admin credential. `tests/boundary.rs`
+# fails if that changes.
+[package]
+name = "we-custody"
+version = "0.1.0"
+edition = "2021"
+description = "The desktop app's master-key custody: DesktopVault and the identity flows"
+publish = false
+
+[features]
+default = []
+# Lets a sealed item name an Argon2id cost below the floor `seal::open` otherwise refuses, so the
+# end-to-end test (tests/live.rs) does not spend seconds per unlock. Never in an app build.
+cheap-kdf = []
+
+[dependencies]
+# The master-key flows (create, link, revoke), the Vault trait and the executor's identity calls.
+# From the ad4m commit WE pins (`node scripts/ad4m-pin.mjs --commit`): `tests/boundary.rs` checks
+# the two agree. For a local ad4m checkout, override with
+#   cargo test --config 'patch."https://github.com/coasys/ad4m".ad4m-identity-client.path="<ad4m>/ad4m-identity-client"' …
+# (and the same for ad4m-identity-core and ad4m-client), as `apps/we-tauri/DEVELOPMENT.md` says.
+ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "19ea894c0f63246cf6ab922d502a8c392db05caa", features = ["ws"] }
+ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "19ea894c0f63246cf6ab922d502a8c392db05caa", features = ["build", "words"] }
+ad4m-client = { git = "https://github.com/coasys/ad4m", rev = "19ea894c0f63246cf6ab922d502a8c392db05caa" }
+tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+zeroize = { version = "1.8", features = ["derive"] }
+argon2 = "0.5"
+chacha20poly1305 = "0.10"
+rand_core = { version = "0.6", features = ["getrandom"] }
+unicode-normalization = "0.1"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+log = "0.4"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Pure Rust over zbus, so no libdbus or libsecret is needed to build.
+secret-service = { version = "4", features = ["rt-tokio-crypto-rust"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+bs58 = "0.5"
+sha2 = "0.10"

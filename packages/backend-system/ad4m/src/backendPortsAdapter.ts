@@ -34,6 +34,7 @@ import { installClearOnEmpty } from './clearOnEmpty';
 import { installContainmentPredicate } from './containment';
 import { Space } from './entities';
 import { createAd4mFlowPort } from './flowPort';
+import { createAd4mIdentityPort } from './identityPort';
 import { createAd4mInterpretationPort } from './interpretationAdapter';
 import { readInterpretationHints, resetInterpretationHints, writeInterpretationHints } from './interpretationHints';
 import { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './languageModelPort';
@@ -215,6 +216,8 @@ export function createAd4mBackendPorts(
     interpretation: createAd4mInterpretationPort(ctx.selfId),
     flows: createAd4mFlowPort(ctx.selfId),
     references: createAd4mReferencePort(),
+    // The key log and the device list, as the executor's identity module holds them.
+    identity: createAd4mIdentityPort(backendClient),
     // Per-dataset like interpretation: every operation names the space the call is in.
     call: createAd4mCallPort(),
     ephemeral,

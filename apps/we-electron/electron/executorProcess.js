@@ -96,7 +96,7 @@ export async function stopExecutorsFor(dataPath, log = console.log) {
   let psOutput;
   try {
     // `ww`: without it, `ps` cuts each line to `COLUMNS` when that is set, which drops
-    // `--app-data-path` (it comes after the binary path and the admin credential) and the match misses.
+    // `--app-data-path` (it comes after the binary path and the port) and the match misses.
     psOutput = execFileSync('ps', ['-axwwo', 'pid=,command='], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
   } catch (err) {
     log(`[main] Could not list processes, not stopping a previous executor: ${err.message}`);

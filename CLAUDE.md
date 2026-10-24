@@ -3020,6 +3020,18 @@ DatasetStore:
   - removeDataset(uuid: string): removes a dataset from the backend and from local state. The low-level half of spaceStore.removeSpace, which also clears the global-discovery listing — call that from a template, and this only for a dataset that is not a space
   - cleanupSpaceSdna(uuid?: string): one-time remediation for a space that accumulated duplicate SDNA installs — removes the redundant duplicate link copies. Defaults to the current dataset. Returns a display-ready summary string naming how many links were removed and the DIDs that authored them (your own DID annotated with "(you)"), or an empty string if nothing needed cleaning up
 
+DeviceStore:
+- State:
+  - devices: { keyId, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Valid' or 'Revoked at #2'; `canRevoke` is a valid key that is not this computer's
+  - devicesLoaded: boolean — the list has been read once
+  - validCount: number — how many keys are valid
+  - canManage: boolean — Add a device and Revoke can be offered: this computer keeps the master key of the identity
+  - error: string — why the last read failed, or empty
+- Actions:
+  - refresh(): reads the device list again
+  - addDevice(): opens the identity window on Add a device — the offer link and QR code, then the match code, then the confirmation that signs the `add`. Resolves with the outcome; the list is read again
+  - revoke(keyId: string): opens the identity window on revoking that key, which signs the `revoke`. Resolves with the outcome
+
 EditorStore:
 - State:
   - messages: ChatMessage[] — the active AI session's messages (id, role: 'user' | 'assistant' | 'system', content, createdAt, status). Empty for a new chat
@@ -3128,6 +3140,30 @@ FlowStore:
   - setApprovals(name: string, count: number, kind?: string): how many people must agree before a record enters the step, and whose agreement counts — an involvement kind's slug, or '' for anybody's. 1 and '' is a plain ask
   - addGuard(name: string, entity: string, tie?: string, min?: number): something that must be there before a record enters the step — at least `min` of `entity`, held by the record through the relation `tie` ('responses' for what was made in response to it), or anywhere when `tie` is ''. `entity` is 'comment', 'call', 'task', 'file', 'link' or 'image' — a comment is a reply post, not the text inside one — or an entity name
   - removeGuard(name: string, index: number): takes away the step's guard at that position in its `guards`
+
+IdentityStore:
+- State:
+  - available: boolean — the backend keeps a key log, so it can say who this device speaks for
+  - canChange: boolean — this app keeps master keys (the desktop app’s custody service), so the identity can be changed from here. False on the web and in Electron: Settings shows the log and devices and offers no change
+  - status: { did, deviceKey, keyId, revoked, head, fork } | null — what this device’s key speaks for, as the executor reports it
+  - statusLoaded: boolean — the backend has answered `status` once. Gate a "no identity yet" sentence on it
+  - did: string — the person’s `did:scid:coasys:1:…`, or empty while this device speaks for nobody
+  - keyId: string — this device’s id in the key log (`d1`), or empty
+  - thisDeviceRevoked: boolean — the key log revoked this device’s key: it no longer speaks for the person
+  - keyLog: { seq, position, icon, title, detail, hash, hashShort, thisComputer }[] — the key log, newest first, already worded: `title` "Created your identity", "Added d2", "Revoked d2"; `detail` the keys it names with this computer’s marked "This computer"; `hashShort` the event’s hash for a monospace column
+  - keyLogLoaded: boolean — the log has been read once
+  - forked: boolean — the backend found two different logs for this identity
+  - fork: { seq, ours, theirs } | null — where they part
+  - custody: { did, holdsMaster, unlock } | null — the custody service's public state: whether this computer keeps a master key (`holdsMaster.index`) and how it unlocks ('touch-id-or-password' or 'passphrase'). Null where the app keeps none
+  - needsFirstRun: boolean — ask the first-run question now: this app keeps master keys, this device speaks for nobody, and "Start now" was not chosen on this computer
+  - busy: boolean — a step is open in the identity window
+  - lastOutcome: 'done' | 'cancelled' | 'failed' | '' — how the last step ended
+  - error: string — why the last read failed, or empty
+- Actions:
+  - refresh(): reads the status, the key log and the custody state again
+  - open(step: { kind: 'create' } | { kind: 'add-device' } | { kind: 'revoke', keyId }): opens the identity window on a step and resolves with its outcome once the window is done; everything is read again then. Words, passphrases and keys never reach the app
+  - makeIdentity(): "Make my identity here" — opens the identity window on `create`
+  - startWithoutIdentity(): "Start now" — use the app without an identity; remembered on this computer, so the first-run question stops
 
 InterpretationStore:
 - State:
