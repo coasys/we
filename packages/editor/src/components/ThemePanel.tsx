@@ -999,16 +999,24 @@ export function ThemePanel() {
     );
   }
 
-  /** A labelled select over any value; an empty choice clears it. */
+  /**
+   * A labelled select over any value; an empty choice clears it.
+   *
+   * With `reset`, a row the theme has changed says so: its label in the text's own colour rather
+   * than muted, and a reset beside it — so which settings of a component or a type role have moved
+   * is visible at a glance, and each is one press from its default.
+   */
   function choiceRow(
     label: string,
     value: () => string,
     options: { value: string; label: string }[],
     onChange: (value: string | undefined) => void,
+    reset?: () => void,
   ) {
+    const changed = () => !!reset && value() !== '';
     return (
       <Row ay="center" gap="300">
-        <we-text minWidth="100px" fontSize="300" color="text-muted">
+        <we-text minWidth="100px" fontSize="300" color={changed() ? 'text' : 'text-muted'}>
           {label}
         </we-text>
         <we-select
@@ -1021,6 +1029,22 @@ export function ThemePanel() {
             saveTheme();
           }}
         />
+        <Show when={reset}>
+          {/* Held in place when there is nothing to reset, so the selects line up down the column. */}
+          <we-button
+            size="xs"
+            variant="ghost"
+            square
+            label={`Reset ${label.toLowerCase()}`}
+            visibility={changed() ? 'visible' : 'hidden'}
+            onClick={() => {
+              reset!();
+              saveTheme();
+            }}
+          >
+            <we-icon name="arrow-counter-clockwise" />
+          </we-button>
+        </Show>
       </Row>
     );
   }
@@ -1042,6 +1066,18 @@ export function ThemePanel() {
   }
 
   const [component, setComponent] = createSignal('button');
+
+  /** `menu-item` → `Menu item`. */
+  const componentLabel = (name: string) => capitalise(name.replace(/-/g, ' '));
+  const componentEdited = (name: string) => !!overrides().components?.[name];
+  const editedComponents = () => Object.keys(overrides().components ?? {});
+
+  function resetComponent(name: string) {
+    const next = { ...overrides().components };
+    delete next[name];
+    setOverride('components', pruned(next) as ThemeOverrides['components']);
+    saveTheme();
+  }
 
   function setComponentKey(key: keyof ComponentOverride, value: string | undefined) {
     const current = overrides().components ?? {};
@@ -2199,20 +2235,62 @@ export function ThemePanel() {
             </FoldingSection>
 
             {/* ── Type ── */}
+            {/*
+              Typefaces and how text is set, in one section: a face the theme carries only matters as a
+              font choice, so it sits beside the choices it adds to.
+            */}
             <FoldingSection title="Type">
-              {selectControl('Font family', 'fontFamily', () => [...themeFaces(), ...FONT_OPTIONS], '100px', 'default')}
-              {selectControl(
-                'Heading font',
-                'headingFontFamily',
-                () => [HEADING_FONT_OPTIONS[0], ...themeFaces(), ...HEADING_FONT_OPTIONS.slice(1)],
-                '100px',
-                'match',
-              )}
-              {selectControl('Code font', 'monoFontFamily', MONO_FONT_OPTIONS, '100px', 'system')}
-              {selectControl('Letter spacing', 'letterSpacing', LETTER_SPACING_OPTIONS, '100px', 'default')}
-              {selectControl('Line height', 'lineHeight', LINE_HEIGHT_OPTIONS, '100px', 'default')}
               <Column gap="200">
-                <Subheading>Scale</Subheading>
+                <Subheading>Typefaces</Subheading>
+                {selectControl(
+                  'Font family',
+                  'fontFamily',
+                  () => [...themeFaces(), ...FONT_OPTIONS],
+                  '100px',
+                  'default',
+                )}
+                {selectControl(
+                  'Heading font',
+                  'headingFontFamily',
+                  () => [HEADING_FONT_OPTIONS[0], ...themeFaces(), ...HEADING_FONT_OPTIONS.slice(1)],
+                  '100px',
+                  'match',
+                )}
+                {selectControl('Code font', 'monoFontFamily', MONO_FONT_OPTIONS, '100px', 'system')}
+                <we-text fontSize="100" color="text-faint" lineHeight="1.4">
+                  Add a font file to carry it in the theme, so it works for everybody who opens it. It joins the choices
+                  above.
+                </we-text>
+                <For each={overrides().fontFaces ?? []}>
+                  {(face) => (
+                    <Row ay="center" ax="between" gap="300">
+                      <we-text fontSize="300">{face.family}</we-text>
+                      <we-button size="sm" variant="ghost" onClick={() => removeFontFace(face.family)}>
+                        Remove
+                      </we-button>
+                    </Row>
+                  )}
+                </For>
+                <we-file-upload
+                  accept=".woff2,.woff,.ttf,.otf"
+                  on:change={(e: CustomEvent) => {
+                    const file = (Array.isArray(e.detail) ? e.detail[0] : e.detail) as File | undefined;
+                    if (file instanceof File) addFontFace(file);
+                  }}
+                />
+                <Show when={fontProblem()}>
+                  <we-text fontSize="200" color="danger-text">
+                    {fontProblem()}
+                  </we-text>
+                </Show>
+              </Column>
+              <Column gap="200">
+                <Subheading>Text</Subheading>
+                {selectControl('Letter spacing', 'letterSpacing', LETTER_SPACING_OPTIONS, '100px', 'default')}
+                {selectControl('Line height', 'lineHeight', LINE_HEIGHT_OPTIONS, '100px', 'default')}
+                <we-text fontSize="300" color="text-muted">
+                  Size
+                </we-text>
                 {presetRow(
                   { sm: 'Small', default: 'Default', lg: 'Large', xl: 'XL' } as Record<FontScalePreset, string>,
                   (p) => activeFontScalePreset() === p,
@@ -2235,24 +2313,28 @@ export function ThemePanel() {
                       () => String(overrides().typeStyles?.[role]?.weight ?? ''),
                       WEIGHT_OPTIONS,
                       (v) => setTypeStyle(role, 'weight', v),
+                      () => setTypeStyle(role, 'weight', undefined),
                     )}
                     {choiceRow(
                       'Tracking',
                       () => overrides().typeStyles?.[role]?.letterSpacing ?? '',
                       TRACKING_OPTIONS,
                       (v) => setTypeStyle(role, 'letterSpacing', v),
+                      () => setTypeStyle(role, 'letterSpacing', undefined),
                     )}
                     {choiceRow(
                       'Case',
                       () => overrides().typeStyles?.[role]?.textTransform ?? '',
                       CASE_OPTIONS,
                       (v) => setTypeStyle(role, 'textTransform', v),
+                      () => setTypeStyle(role, 'textTransform', undefined),
                     )}
                     {choiceRow(
                       'Colour',
                       () => overrides().typeStyles?.[role]?.color ?? '',
                       TEXT_ROLE_OPTIONS,
                       (v) => setTypeStyle(role, 'color', v),
+                      () => setTypeStyle(role, 'color', undefined),
                     )}
                   </Column>
                 )}
@@ -2407,98 +2489,113 @@ export function ThemePanel() {
               Per variant is a level further and lives in the theme's JSON (components.<name>.variants).
             */}
             <FoldingSection title="Components">
-              {choiceRow(
-                'Component',
-                () => component(),
-                COMPONENT_NAMES.map((name) => ({ value: name, label: name })),
-                (v) => setComponent(v ?? 'button'),
-              )}
-              {choiceRow(
-                'Radius',
-                () => overrides().components?.[component()]?.radius ?? '',
-                RADIUS_OPTIONS,
-                (v) => setComponentKey('radius', v),
-              )}
-              {choiceRow(
-                'Padding',
-                () => overrides().components?.[component()]?.padding ?? '',
-                SPACING_OPTIONS,
-                (v) => setComponentKey('padding', v),
-              )}
-              {choiceRow(
-                'Gap',
-                () => overrides().components?.[component()]?.gap ?? '',
-                SPACING_OPTIONS,
-                (v) => setComponentKey('gap', v),
-              )}
-              {choiceRow(
-                'Border width',
-                () => overrides().components?.[component()]?.borderWidth ?? '',
-                BORDER_WIDTH_OPTIONS,
-                (v) => setComponentKey('borderWidth', v),
-              )}
-              {choiceRow(
-                'Shadow',
-                () => overrides().components?.[component()]?.shadow ?? '',
-                SHADOW_OPTIONS,
-                (v) => setComponentKey('shadow', v),
-              )}
-              {choiceRow(
-                'Type',
-                () => overrides().components?.[component()]?.type ?? '',
-                [
-                  { value: '', label: 'Default' },
-                  ...TYPE_ROLES.map((role) => ({ value: role, label: TYPE_ROLE_LABELS[role] })),
-                ],
-                (v) => setComponentKey('type', v),
-              )}
-              {choiceRow(
-                'Fill',
-                () => overrides().components?.[component()]?.fill ?? '',
-                FILL_ROLE_OPTIONS,
-                (v) => setComponentKey('fill', v),
-              )}
-              {choiceRow(
-                'Text',
-                () => overrides().components?.[component()]?.text ?? '',
-                TEXT_ROLE_OPTIONS,
-                (v) => setComponentKey('text', v),
-              )}
-              {choiceRow(
-                'Border',
-                () => overrides().components?.[component()]?.border ?? '',
-                BORDER_ROLE_OPTIONS,
-                (v) => setComponentKey('border', v),
-              )}
-            </FoldingSection>
-
-            {/* ── Fonts ── */}
-            <FoldingSection title="Fonts">
-              <we-text fontSize="200" color="text-muted" lineHeight="1.5">
-                Typefaces this theme carries, so its fonts work for everybody who opens it. Added faces appear in the
-                font choices under Type.
-              </we-text>
-              <For each={overrides().fontFaces ?? []}>
-                {(face) => (
-                  <Row ay="center" ax="between" gap="300">
-                    <we-text fontSize="300">{face.family}</we-text>
-                    <we-button size="sm" variant="ghost" onClick={() => removeFontFace(face.family)}>
-                      Remove
-                    </we-button>
-                  </Row>
+              {/*
+                The chooser apart from what it chooses: a full-size select above a box holding that
+                component's settings, so it reads as "pick one, then change it" rather than as one
+                more setting. Edited components say so in the list and can be reset from beside it.
+              */}
+              <Row ay="center" gap="200">
+                <we-select
+                  flex="1"
+                  value={component()}
+                  options={COMPONENT_NAMES.map((name) => ({
+                    value: name,
+                    label: componentEdited(name) ? `${componentLabel(name)} · edited` : componentLabel(name),
+                  }))}
+                  on:change={(e: CustomEvent) => setComponent((e.detail as string) || 'button')}
+                />
+                <Show when={componentEdited(component())}>
+                  <we-button size="sm" variant="ghost" onClick={() => resetComponent(component())}>
+                    Reset
+                  </we-button>
+                </Show>
+              </Row>
+              <Column gap="300" p="300" r="surface" border="1px solid border">
+                {choiceRow(
+                  'Radius',
+                  () => overrides().components?.[component()]?.radius ?? '',
+                  RADIUS_OPTIONS,
+                  (v) => setComponentKey('radius', v),
+                  () => setComponentKey('radius', undefined),
                 )}
-              </For>
-              <we-file-upload
-                accept=".woff2,.woff,.ttf,.otf"
-                on:change={(e: CustomEvent) => {
-                  const file = (Array.isArray(e.detail) ? e.detail[0] : e.detail) as File | undefined;
-                  if (file instanceof File) addFontFace(file);
-                }}
-              />
-              <Show when={fontProblem()}>
-                <we-text fontSize="200" color="danger-text">
-                  {fontProblem()}
-                </we-text>
+                {choiceRow(
+                  'Padding',
+                  () => overrides().components?.[component()]?.padding ?? '',
+                  SPACING_OPTIONS,
+                  (v) => setComponentKey('padding', v),
+                  () => setComponentKey('padding', undefined),
+                )}
+                {choiceRow(
+                  'Gap',
+                  () => overrides().components?.[component()]?.gap ?? '',
+                  SPACING_OPTIONS,
+                  (v) => setComponentKey('gap', v),
+                  () => setComponentKey('gap', undefined),
+                )}
+                {choiceRow(
+                  'Border width',
+                  () => overrides().components?.[component()]?.borderWidth ?? '',
+                  BORDER_WIDTH_OPTIONS,
+                  (v) => setComponentKey('borderWidth', v),
+                  () => setComponentKey('borderWidth', undefined),
+                )}
+                {choiceRow(
+                  'Shadow',
+                  () => overrides().components?.[component()]?.shadow ?? '',
+                  SHADOW_OPTIONS,
+                  (v) => setComponentKey('shadow', v),
+                  () => setComponentKey('shadow', undefined),
+                )}
+                {choiceRow(
+                  'Type',
+                  () => overrides().components?.[component()]?.type ?? '',
+                  [
+                    { value: '', label: 'Default' },
+                    ...TYPE_ROLES.map((role) => ({ value: role, label: TYPE_ROLE_LABELS[role] })),
+                  ],
+                  (v) => setComponentKey('type', v),
+                  () => setComponentKey('type', undefined),
+                )}
+                {choiceRow(
+                  'Fill',
+                  () => overrides().components?.[component()]?.fill ?? '',
+                  FILL_ROLE_OPTIONS,
+                  (v) => setComponentKey('fill', v),
+                  () => setComponentKey('fill', undefined),
+                )}
+                {choiceRow(
+                  'Text',
+                  () => overrides().components?.[component()]?.text ?? '',
+                  TEXT_ROLE_OPTIONS,
+                  (v) => setComponentKey('text', v),
+                  () => setComponentKey('text', undefined),
+                )}
+                {choiceRow(
+                  'Border',
+                  () => overrides().components?.[component()]?.border ?? '',
+                  BORDER_ROLE_OPTIONS,
+                  (v) => setComponentKey('border', v),
+                  () => setComponentKey('border', undefined),
+                )}
+              </Column>
+              <Show when={editedComponents().length}>
+                <Row ay="center" gap="200">
+                  <we-text flex="1" fontSize="200" color="text-faint">
+                    {editedComponents().length === 1
+                      ? '1 component edited'
+                      : `${editedComponents().length} components edited`}
+                  </we-text>
+                  <we-button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => {
+                      setOverride('components', undefined);
+                      saveTheme();
+                    }}
+                  >
+                    Reset all
+                  </we-button>
+                </Row>
               </Show>
             </FoldingSection>
 
